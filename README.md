@@ -74,12 +74,12 @@ Sistema ERP completo para **International Packers SRL** - Gestión integral de o
 - **Icons**: Lucide React
 - **Forms**: React Hook Form + Zod
 
-## 📦 Instalación
+## 📦 Instalación Rápida
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/tu-usuario/osi-plus-v7.git
-cd osi-plus-v7
+git clone https://github.com/frederickespin/osi-plus.git
+cd osi-plus
 
 # Instalar dependencias
 npm install
@@ -90,6 +90,8 @@ npm run dev
 # Construir para producción
 npm run build
 ```
+
+> 📘 **Para instrucciones detalladas de configuración y colaboración, ver [CONTRIBUTING.md](./CONTRIBUTING.md)**
 
 ## 🔧 Configuración de GitHub
 
@@ -139,9 +141,18 @@ git push -u origin main
 
 Propietario - International Packers SRL
 
-## 👨‍💻 Desarrollo
+## 👨‍💻 Colaboración y Desarrollo
 
-Para reportar issues o solicitar features, contactar al equipo de desarrollo.
+¿Quieres colaborar en el proyecto? Lee nuestra **[Guía para Desarrolladores (CONTRIBUTING.md)](./CONTRIBUTING.md)** que incluye:
+
+- 📋 Requisitos previos y software necesario
+- 🔄 Cómo compartir el proyecto con otros desarrolladores
+- ⚙️ Configuración paso a paso del entorno de desarrollo
+- 🏗️ Estructura del proyecto y arquitectura
+- 🔧 Flujo de trabajo y mejores prácticas
+- 🐛 Solución de problemas comunes
+
+Para reportar issues o solicitar features, crea un issue en GitHub.
 
 ---
 

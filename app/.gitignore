@@ -1,0 +1,15 @@
+# Dependencias
+node_modules/
+
+# Archivos de compilación y distribución
+dist/
+build/
+
+# Variables de entorno y configuración local
+.env
+.env.local
+
+# Logs y archivos del sistema
+*.log
+.DS_Store
+.vscode/

@@ -71,6 +71,37 @@ OSi-plus es un sistema ERP completo diseñado para la gestión de operaciones de
 | `npm run preview` | Previsualiza build de producción |
 | `npm run lint` | Ejecuta linter |
 
+## Backend (Vercel Functions)
+
+El proyecto incluye un backend base en `api/` para ejecutar en Vercel:
+
+- `GET /api/health` - Estado de salud del backend
+- `GET /api/info` - Información de entorno, commit y región
+- `GET /api/modules` - Lista base de módulos del ERP
+
+### Probar backend en local con CLI
+
+```bash
+npx vercel dev
+```
+
+Luego prueba:
+
+- `http://localhost:3000/api/health`
+- `http://localhost:3000/api/info`
+- `http://localhost:3000/api/modules`
+
+### Deploy por CLI
+
+```bash
+npx vercel
+npx vercel --prod
+```
+
+Opcional para frontend:
+
+- `VITE_API_URL=/api` (si frontend y backend viven en el mismo dominio de Vercel)
+
 ## Estructura del proyecto
 
 ```

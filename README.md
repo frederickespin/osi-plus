@@ -16,6 +16,7 @@ OSi-plus es un sistema ERP completo diseñado para la gestión de operaciones de
 - **WMS** - Sistema de gestión de almacén
 - **Inventario** - Control de stock
 - **Clientes** - CRM y gestión de clientes
+- **Comercial (Ventas)** - Gestión comercial, clientes y proyectos
 - **RRHH** - Recursos Humanos
 - **Carpintería** - Flujo de trabajo de producción
 - **Diseña y Cotiza** - Ingeniería, costos, inventario y producción
@@ -95,7 +96,7 @@ osi-plus-erp/
 El sistema soporta los siguientes roles:
 
 - **A** - Administrador (acceso total)
-- **K** - Coordinador
+- **K** - Ventas / Comercial (Key Account)
 - **B** - Operaciones
 - **C** - Materiales
 - **I** - RRHH

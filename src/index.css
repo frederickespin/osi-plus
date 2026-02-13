@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    
+    /* Brand */
+    --primary: 245 39% 25%;              /* #2A2657 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 215 42% 43%;            /* #3F669C */
+    --secondary-foreground: 0 0% 100%;
+
+    --accent: 212 39% 75%;               /* #A6BDD8 */
+    --accent-foreground: 245 39% 15%;
+
+    --destructive: 0 60% 53%;            /* #CF4241 */
+    --destructive-foreground: 0 0% 100%;
+
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 245 39% 25%;
+    --radius: 0.625rem;
+
+    /* Opcional: charts (Recharts) */
+    --chart-1: 245 39% 25%;
+    --chart-2: 215 42% 43%;
+    --chart-3: 0 60% 53%;
+    --chart-4: 212 39% 75%;
+    --chart-5: 4 61% 60%;               /* #D7635A */
+    
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 245 39% 10%;
+    --foreground: 0 0% 98%;
+
+    --card: 245 39% 12%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 245 39% 12%;
+    --popover-foreground: 0 0% 98%;
+
+    /* Brand (ligeramente más claro en dark) */
+    --primary: 245 39% 55%;
+    --primary-foreground: 245 39% 10%;
+
+    --secondary: 215 42% 55%;
+    --secondary-foreground: 245 39% 10%;
+
+    --accent: 212 39% 25%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --ring: 245 39% 55%;
+
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

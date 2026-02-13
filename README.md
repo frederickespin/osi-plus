@@ -22,6 +22,7 @@ Sistema ERP completo para **International Packers SRL** - Gestión integral de o
 | Rol | Código | Descripción |
 |-----|--------|-------------|
 | Administrador | A | Acceso total al sistema |
+| ventas | V | Acceso al mudulo comercial y cajas de madera |
 | Coordinador | K | Proyectos y planificación |
 | Operaciones | B | Órdenes OSI y recursos |
 | Materiales | C | Inventario y compras |
@@ -40,6 +41,12 @@ Sistema ERP completo para **International Packers SRL** - Gestión integral de o
 - Vista general de operaciones
 - OSI por estado
 - Alertas y notificaciones
+
+### comercial analisis y costos
+- crear clientes
+- cotizaciones
+- planifica
+- agenda
 
 ### Operaciones
 - Muro de Liquidación (Kanban)

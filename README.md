@@ -1,155 +1,125 @@
-# OSi-plus V7
+# OSi-plus ERP v17
 
-Sistema ERP completo para **International Packers SRL** - Gestión integral de operaciones de mudanza y logística.
+Sistema de Gestión Integral para International Packers SRL
 
-![Version](https://img.shields.io/badge/version-7.0.0-blue)
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?logo=typescript)
-![Tailwind](https://img.shields.io/badge/Tailwind-3.0-06B6D4?logo=tailwindcss)
-![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite)
+## Descripción
 
-## 📋 Características
+OSi-plus es un sistema ERP completo diseñado para la gestión de operaciones de embalaje y logística. Incluye módulos para:
 
-- **25+ Módulos** para diferentes roles de usuario
-- **Sistema de Roles (RBAC)** con 12 perfiles diferentes
-- **Diseño Corporativo** con colores #003366 y #D4AF37
-- **Navegación Simplificada** sin submenús desplegables
-- **Responsive** para escritorio y móvil
-- **Flujos de Trabajo** para operaciones de campo
+- **Dashboard** - Torre de Control con métricas en tiempo real
+- **Operaciones** - Gestión de OSI (Orden de Servicio Interno)
+- **Seguridad** - Control de acceso y visitantes
+- **Choferes** - Gestión de flota y entregas
+- **Supervisor** - Evaluación de equipos y QR scanning
+- **Mecánica** - Órdenes de trabajo y repuestos
+- **Despacho** - Checklists de carga/descarga
+- **WMS** - Sistema de gestión de almacén
+- **Inventario** - Control de stock
+- **Clientes** - CRM y gestión de clientes
+- **RRHH** - Recursos Humanos
+- **Carpintería** - Flujo de trabajo de producción
+- **Diseña y Cotiza** - Ingeniería, costos, inventario y producción
+- **Nesting V2** - Consolidación de cajas
+- **Configuración** - Ajustes del sistema
 
-## 👥 Roles del Sistema
+## Tecnologías
 
-| Rol | Código | Descripción |
-|-----|--------|-------------|
-| Administrador | A | Acceso total al sistema |
-| ventas | V | Acceso al mudulo comercial y cajas de madera |
-| Coordinador | K | Proyectos y planificación |
-| Operaciones | B | Órdenes OSI y recursos |
-| Materiales | C | Inventario y compras |
-| Despachador | C1 | Handshake y cuarentena |
-| Supervisor | D | Equipos y evaluaciones |
-| Chofer | E | Rutas y custodia |
-| Portería | G | Escaneo QR e incidentes |
-| RRHH | I | KPIs y NOTA |
-| Carpintero | PA | Embalaje y etiquetas |
-| Mecánico | PB | Mantenimiento y repuestos |
-| Personal Campo | N | Perfil y tareas |
+- **React 19** - Framework de UI
+- **TypeScript** - Tipado estático
+- **Vite** - Build tool
+- **Tailwind CSS** - Estilos
+- **shadcn/ui** - Componentes UI
+- **Lucide React** - Iconos
+- **Recharts** - Gráficos
 
-## 🚀 Módulos Principales
+## Instalación
 
-### Torre de Control (Dashboard)
-- Vista general de operaciones
-- OSI por estado
-- Alertas y notificaciones
+### Requisitos previos
 
-### comercial analisis y costos
-- crear clientes
-- cotizaciones
-- planifica
-- agenda
+- Node.js 18+ 
+- npm o yarn
 
-### Operaciones
-- Muro de Liquidación (Kanban)
-- Órdenes OSI
-- Calendario de servicios
+### Pasos
 
-### Inventario (WMS)
-- Materiales y activos
-- Cajas de madera
-- Compras
+1. **Descomprimir el archivo** en tu carpeta de proyectos
 
-### RRHH
-- Dashboard de personal
-- KPIs individuales
-- Sistema NOTA
-- Insignias
+2. **Abrir en VS Code:**
+   ```bash
+   code osi-plus-erp
+   ```
 
-### Módulos Móviles
-- **Portería**: Escaneo QR + Reporte de incidentes
-- **Mecánica**: Órdenes + Solicitud de repuestos
-- **Supervisor**: Escaneo inteligente + Evaluación de equipo
-- **Carpintería**: Flujo de estados de trabajo
-- **Despacho**: Checklists de entrega/recepción
+3. **Instalar dependencias:**
+   ```bash
+   npm install
+   ```
 
-## 🛠️ Tecnologías
+4. **Iniciar servidor de desarrollo:**
+   ```bash
+   npm run dev
+   ```
 
-- **Frontend**: React 18 + TypeScript 5
-- **Build Tool**: Vite 6
-- **Styling**: Tailwind CSS 3
-- **UI Components**: shadcn/ui + Radix UI
-- **Charts**: Recharts
-- **Icons**: Lucide React
-- **Forms**: React Hook Form + Zod
+5. **Abrir en navegador:**
+   - La aplicación estará disponible en: `http://localhost:5173`
 
-## 📦 Instalación
+## Scripts disponibles
 
-```bash
-# Clonar el repositorio
-git clone https://github.com/tu-usuario/osi-plus-v7.git
-cd osi-plus-v7
+| Comando | Descripción |
+|---------|-------------|
+| `npm run dev` | Inicia servidor de desarrollo |
+| `npm run build` | Compila para producción |
+| `npm run preview` | Previsualiza build de producción |
+| `npm run lint` | Ejecuta linter |
 
-# Instalar dependencias
-npm install
+## Estructura del proyecto
 
-# Iniciar servidor de desarrollo
-npm run dev
-
-# Construir para producción
-npm run build
+```
+osi-plus-erp/
+├── src/
+│   ├── components/
+│   │   ├── layout/       # Componentes de layout (Sidebar)
+│   │   ├── modules/      # Módulos del ERP
+│   │   └── ui/           # Componentes UI (shadcn)
+│   ├── lib/              # Utilidades y algoritmos
+│   ├── types/            # Definiciones de tipos TypeScript
+│   └── App.tsx           # Componente principal
+├── public/               # Archivos estáticos
+├── index.html
+├── package.json
+├── tailwind.config.js
+├── tsconfig.json
+└── vite.config.ts
 ```
 
-## 🔧 Configuración de GitHub
+## Roles de usuario
 
-### Opción 1: Script Automático
-```bash
-./github-setup.sh tu-usuario-github [nombre-repo]
-```
+El sistema soporta los siguientes roles:
 
-### Opción 2: Manual
-```bash
-# Configurar remote
-git remote add origin https://github.com/tu-usuario/osi-plus-v7.git
+- **A** - Administrador (acceso total)
+- **K** - Coordinador
+- **B** - Operaciones
+- **C** - Materiales
+- **I** - RRHH
+- **D** - Supervisor
+- **E** - Chofer
+- **G** - Portería
+- **C1** - Despachador
+- **N** - Personal de Campo
+- **PA** - Carpintero
+- **PB** - Mecánico
 
-# Crear repo en GitHub (sin inicializar)
-# https://github.com/new
+## Módulo Diseña y Cotiza
 
-# Subir código
-git push -u origin main
-```
+El módulo más avanzado incluye:
 
-## 🎨 Sistema de Diseño
+1. **ROL A - Ingeniería**: Diseño de cajas con especificaciones técnicas
+2. **ROL B - Costos**: Cálculo de costos con campos editables
+3. **ROL C - Inventario**: Verificación de cajas reutilizables
+4. **ROL D - Producción**: Órdenes de trabajo y cut lists
 
-### Colores Corporativos
-- **Primario**: `#003366` (Azul corporativo)
-- **Acento**: `#D4AF37` (Dorado)
-- **Fondo**: `#FFFFFF` (Blanco)
-- **Texto**: `#1f2937` (Gris oscuro)
-
-### Tipografía
-- Inter (sans-serif)
-- Tamaños: xs (12px) a 4xl (36px)
-
-## 📱 Responsive Breakpoints
-
-- **Mobile**: < 768px (menú hamburguesa)
-- **Tablet**: 768px - 1024px
-- **Desktop**: > 1024px (sidebar colapsable)
-
-## 🔐 Seguridad
-
-- Autenticación por roles
-- Permisos granulares por módulo
-- Registro de actividad
-- Sesiones con expiración
-
-## 📝 Licencia
+## Licencia
 
 Propietario - International Packers SRL
 
-## 👨‍💻 Desarrollo
+## Soporte
 
-Para reportar issues o solicitar features, contactar al equipo de desarrollo.
-
----
-
-**International Packers SRL** - Mudanzas Internacionales
+Para soporte técnico contactar al departamento de TI.

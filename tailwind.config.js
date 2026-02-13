@@ -1,10 +1,17 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: false,
+  darkMode: "media",
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
+        brand: {
+          navy: "#2A2657",
+          blue: "#3F669C",
+          sky: "#A6BDD8",
+          red: "#CF4241",
+          coral: "#D7635A",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

@@ -80,11 +80,21 @@ const menuGroups: MenuGroup[] = [
     label: 'Comercial',
     icon: CaseIcon,
     items: [
+      { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'V'] },
+      { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'V'], description: 'Alcance -> cajas -> recursos -> resumen' },
+      { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'V'], description: 'Propuestas y proyectos' },
+      { id: 'commercial-config', label: 'Configuración', icon: Settings, roles: ['A', 'V'], description: 'Config de cajas' },
+      { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'V'] },
+    ]
+  },
+  {
+    id: 'coordination',
+    label: 'Coordinación',
+    icon: Briefcase,
+    items: [
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K'] },
-      { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'K'], description: 'Alcance -> cajas -> recursos -> resumen' },
-      { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K'], description: 'Propuestas y proyectos' },
-      { id: 'commercial-config', label: 'Configuración', icon: Settings, roles: ['A', 'K'], description: 'Config de cajas' },
       { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K'] },
+      { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K'], description: 'Seguimiento y cumplimiento' },
     ]
   },
   {
@@ -156,7 +166,7 @@ function getInitials(name?: string) {
 function getRoleLabel(role: UserRole) {
   if (role === "A") return "Administrador";
   if (role === "I") return "RRHH";
-  if (role === "K") return "Key Account";
+  if (role === "K") return "Coordinador";
   if (role === "V") return "Ventas";
   return role;
 }

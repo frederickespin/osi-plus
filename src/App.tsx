@@ -334,7 +334,7 @@ function getDefaultModuleForRole(role: UserRole): ModuleId {
   // Un default coherente evita que parezca que "eres admin" pero caes en RRHH sin querer.
   if (role === 'A') return 'dashboard';
   if (role === 'I') return 'hr';
-  if (role === 'K') return 'clients';
+  if (role === 'K') return 'projects';
   if (role === 'V') return 'osi-editor';
   if (role === 'B') return 'operations';
   if (role === 'C') return 'wms';

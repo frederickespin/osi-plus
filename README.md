@@ -166,7 +166,8 @@ osi-plus-erp/
 El sistema soporta los siguientes roles:
 
 - **A** - Administrador (acceso total)
-- **K** - Ventas / Comercial (Key Account)
+- **V** - Ventas / Comercial (Key Account)
+- **K** - coordinador
 - **B** - Operaciones
 - **C** - Materiales
 - **I** - RRHH

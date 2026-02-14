@@ -73,11 +73,37 @@ OSi-plus es un sistema ERP completo diseñado para la gestión de operaciones de
 
 ## Backend (Vercel Functions)
 
-El proyecto incluye un backend base en `api/` para ejecutar en Vercel:
+El proyecto incluye backend real en `api/` con base de datos y auth:
 
 - `GET /api/health` - Estado de salud del backend
 - `GET /api/info` - Información de entorno, commit y región
-- `GET /api/modules` - Lista base de módulos del ERP
+- `POST /api/auth/login` - Login (JWT)
+- `GET /api/auth/me` - Perfil autenticado
+- `GET/POST /api/users`
+- `GET/POST /api/clients`
+- `GET/POST /api/projects`
+- `GET/POST /api/osis`
+
+### Base de datos (Prisma)
+
+1. Configura variables locales copiando `.env.example` a `.env`
+2. Genera cliente:
+
+```bash
+npm run db:generate
+```
+
+3. Crea/actualiza estructura:
+
+```bash
+npm run db:push
+```
+
+4. Carga datos iniciales:
+
+```bash
+npm run db:seed
+```
 
 ### Probar backend en local con CLI
 
@@ -89,7 +115,10 @@ Luego prueba:
 
 - `http://localhost:3000/api/health`
 - `http://localhost:3000/api/info`
-- `http://localhost:3000/api/modules`
+- `http://localhost:3000/api/users`
+- `http://localhost:3000/api/clients`
+- `http://localhost:3000/api/projects`
+- `http://localhost:3000/api/osis`
 
 ### Deploy por CLI
 
@@ -97,6 +126,16 @@ Luego prueba:
 npx vercel
 npx vercel --prod
 ```
+
+### Variables/secrets en Vercel
+
+```bash
+vercel env add DATABASE_URL production
+vercel env add JWT_SECRET production
+vercel env add JWT_EXPIRES_IN production
+```
+
+Repite para `preview` y `development` si corresponde.
 
 Opcional para frontend:
 

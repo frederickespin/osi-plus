@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { 
   Plus, 
   Search, 
@@ -17,8 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { mockOSIs } from '@/data/mockData';
 import type { OSI, OSIStatus } from '@/types/osi.types';
+import { getOsis, type OsiDto } from '@/lib/api';
 
 const statusColumns: { id: OSIStatus; label: string; color: string }[] = [
   { id: 'draft', label: 'Borrador', color: 'bg-gray-100' },
@@ -34,8 +34,23 @@ const statusColumns: { id: OSIStatus; label: string; color: string }[] = [
 export function OperationsModule() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTab, setSelectedTab] = useState('all');
+  const [osis, setOsis] = useState<OSI[]>([]);
 
-  const filteredOSIs = mockOSIs.filter(osi => {
+  useEffect(() => {
+    let active = true;
+    getOsis().then((response) => {
+      if (!active) return;
+      setOsis(response.data.map(normalizeOsi));
+    }).catch(() => {
+      if (!active) return;
+      setOsis([]);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const filteredOSIs = useMemo(() => osis.filter(osi => {
     const matchesSearch = 
       osi.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       osi.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -46,7 +61,7 @@ export function OperationsModule() {
     if (selectedTab === 'active') return matchesSearch && !['completed', 'cancelled'].includes(osi.status);
     if (selectedTab === 'completed') return matchesSearch && osi.status === 'completed';
     return matchesSearch;
-  });
+  }), [osis, searchTerm, selectedTab]);
 
   const getOSIsByStatus = (status: OSIStatus) => filteredOSIs.filter(osi => osi.status === status);
 
@@ -74,14 +89,14 @@ export function OperationsModule() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
-            <p className="text-2xl font-bold text-slate-900">{mockOSIs.length}</p>
+            <p className="text-2xl font-bold text-slate-900">{osis.length}</p>
             <p className="text-sm text-slate-500">Total OSIs</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-2xl font-bold text-blue-600">
-              {mockOSIs.filter(o => !['completed', 'cancelled'].includes(o.status)).length}
+              {osis.filter(o => !['completed', 'cancelled'].includes(o.status)).length}
             </p>
             <p className="text-sm text-slate-500">Activas</p>
           </CardContent>
@@ -89,7 +104,7 @@ export function OperationsModule() {
         <Card>
           <CardContent className="p-4">
             <p className="text-2xl font-bold text-green-600">
-              {mockOSIs.filter(o => o.status === 'completed').length}
+              {osis.filter(o => o.status === 'completed').length}
             </p>
             <p className="text-sm text-slate-500">Completadas</p>
           </CardContent>
@@ -97,7 +112,7 @@ export function OperationsModule() {
         <Card>
           <CardContent className="p-4">
             <p className="text-2xl font-bold text-orange-600">
-              {mockOSIs.filter(o => o.status === 'liquidation').length}
+              {osis.filter(o => o.status === 'liquidation').length}
             </p>
             <p className="text-sm text-slate-500">En Liquidación</p>
           </CardContent>
@@ -195,6 +210,39 @@ export function OperationsModule() {
       </Tabs>
     </div>
   );
+}
+
+function normalizeOsi(osi: OsiDto): OSI {
+  const allowedStatuses: OSIStatus[] = [
+    'draft',
+    'pending_assignment',
+    'assigned',
+    'in_preparation',
+    'in_transit',
+    'at_destination',
+    'completed',
+    'cancelled',
+    'liquidation',
+  ];
+
+  const status = allowedStatuses.includes(osi.status as OSIStatus)
+    ? (osi.status as OSIStatus)
+    : 'draft';
+
+  const type = ['local', 'national', 'international'].includes(osi.type)
+    ? (osi.type as OSI['type'])
+    : 'local';
+
+  return {
+    ...osi,
+    status,
+    type,
+    assignedTo: osi.assignedTo ?? undefined,
+    value: Number(osi.value || 0),
+    team: Array.isArray(osi.team) ? osi.team : [],
+    vehicles: Array.isArray(osi.vehicles) ? osi.vehicles : [],
+    notes: osi.notes ?? undefined,
+  };
 }
 
 function OSICard({ osi }: { osi: OSI }) {

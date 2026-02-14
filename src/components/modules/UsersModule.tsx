@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Search, 
   Plus, 
@@ -11,12 +11,32 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { mockUsers, roleDefinitions } from '@/data/mockData';
+import { roleDefinitions } from '@/data/mockData';
+import { getUsers, type UserDto } from '@/lib/api';
 
 export function UsersModule() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [users, setUsers] = useState<UserDto[]>([]);
+  const [loading, setLoading] = useState(true);
   
-  const filteredUsers = mockUsers.filter(user =>
+  useEffect(() => {
+    let active = true;
+    getUsers()
+      .then((response) => {
+        if (active) setUsers(response.data);
+      })
+      .catch(() => {
+        if (active) setUsers([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const filteredUsers = users.filter(user =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -37,7 +57,7 @@ export function UsersModule() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-slate-900">{mockUsers.length}</p>
+            <p className="text-2xl font-bold text-slate-900">{users.length}</p>
             <p className="text-sm text-slate-500">Total Usuarios</p>
           </CardContent>
         </Card>
@@ -102,8 +122,8 @@ export function UsersModule() {
                   </TableCell>
                   <TableCell className="text-slate-600">{user.department}</TableCell>
                   <TableCell>
-                    <Badge variant={user.status === 'active' ? 'default' : 'secondary'}>
-                      {user.status === 'active' ? 'Activo' : 'Inactivo'}
+                    <Badge variant={user.status.toLowerCase() === 'active' ? 'default' : 'secondary'}>
+                      {user.status.toLowerCase() === 'active' ? 'Activo' : 'Inactivo'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
@@ -116,6 +136,13 @@ export function UsersModule() {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && filteredUsers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-slate-500 py-8">
+                    No se encontraron usuarios.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

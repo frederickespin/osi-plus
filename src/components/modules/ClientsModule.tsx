@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Search, 
   Plus, 
@@ -14,12 +14,32 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { mockClients, mockPICs, mockNPSSurveys } from '@/data/mockData';
+import { mockPICs, mockNPSSurveys } from '@/data/mockData';
+import { getClients, type ClientDto } from '@/lib/api';
 
 export function ClientsModule() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [clients, setClients] = useState<ClientDto[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    getClients()
+      .then((response) => {
+        if (active) setClients(response.data);
+      })
+      .catch(() => {
+        if (active) setClients([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   
-  const filteredClients = mockClients.filter(client =>
+  const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -40,14 +60,14 @@ export function ClientsModule() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-slate-900">{mockClients.length}</p>
+            <p className="text-2xl font-bold text-slate-900">{clients.length}</p>
             <p className="text-sm text-slate-500">Total Clientes</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-green-600">
-              {mockClients.filter(c => c.status === 'active').length}
+              {clients.filter(c => c.status.toLowerCase() === 'active').length}
             </p>
             <p className="text-sm text-slate-500">Activos</p>
           </CardContent>
@@ -88,6 +108,9 @@ export function ClientsModule() {
             {filteredClients.map((client) => (
               <ClientCard key={client.id} client={client} />
             ))}
+            {!loading && filteredClients.length === 0 && (
+              <p className="text-sm text-slate-500 col-span-full">No se encontraron clientes.</p>
+            )}
           </div>
         </TabsContent>
 
@@ -142,7 +165,7 @@ export function ClientsModule() {
   );
 }
 
-function ClientCard({ client }: { client: typeof mockClients[0] }) {
+function ClientCard({ client }: { client: ClientDto }) {
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4">

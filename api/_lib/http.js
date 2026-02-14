@@ -26,7 +26,32 @@ function methodNotAllowed(res, allowed = ["GET"]) {
   });
 }
 
+async function readJsonBody(req) {
+  if (req.body && typeof req.body === "object") {
+    return req.body;
+  }
+
+  if (typeof req.body === "string") {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+function unauthorized(res) {
+  return res.status(401).json({
+    ok: false,
+    error: "Unauthorized",
+  });
+}
+
 export {
   withCommonHeaders,
   methodNotAllowed,
+  readJsonBody,
+  unauthorized,
 };

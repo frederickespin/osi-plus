@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Plus, 
   Edit,
@@ -15,12 +15,36 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { mockProjects, mockOSIs } from '@/data/mockData';
+import { getOsis, getProjects, type OsiDto, type ProjectDto } from '@/lib/api';
 
 export function ProjectsModule() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [projects, setProjects] = useState<ProjectDto[]>([]);
+  const [osis, setOsis] = useState<OsiDto[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([getProjects(), getOsis()])
+      .then(([projectsResponse, osisResponse]) => {
+        if (!active) return;
+        setProjects(projectsResponse.data);
+        setOsis(osisResponse.data);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProjects([]);
+        setOsis([]);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   
-  const filteredProjects = mockProjects.filter(p =>
+  const filteredProjects = projects.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -41,14 +65,14 @@ export function ProjectsModule() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-slate-900">{mockProjects.length}</p>
+            <p className="text-2xl font-bold text-slate-900">{projects.length}</p>
             <p className="text-sm text-slate-500">Total Proyectos</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-green-600">
-              {mockProjects.filter(p => p.status === 'active').length}
+              {projects.filter(p => p.status === 'active').length}
             </p>
             <p className="text-sm text-slate-500">Activos</p>
           </CardContent>
@@ -56,7 +80,7 @@ export function ProjectsModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-blue-600">
-              ${mockProjects.reduce((acc, p) => acc + p.totalValue, 0).toLocaleString()}
+              ${projects.reduce((acc, p) => acc + p.totalValue, 0).toLocaleString()}
             </p>
             <p className="text-sm text-slate-500">Valor Total</p>
           </CardContent>
@@ -64,7 +88,7 @@ export function ProjectsModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-purple-600">
-              {mockProjects.reduce((acc, p) => acc + p.osiCount, 0)}
+              {projects.reduce((acc, p) => acc + p.osiCount, 0)}
             </p>
             <p className="text-sm text-slate-500">Total OSIs</p>
           </CardContent>
@@ -92,15 +116,18 @@ export function ProjectsModule() {
         <TabsContent value="all" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
+              <ProjectCard key={project.id} project={project} osis={osis} />
             ))}
+            {!loading && filteredProjects.length === 0 && (
+              <p className="text-sm text-slate-500 col-span-full">No se encontraron proyectos.</p>
+            )}
           </div>
         </TabsContent>
 
         <TabsContent value="active" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.filter(p => p.status === 'active').map((project) => (
-              <ProjectCard key={project.id} project={project} />
+              <ProjectCard key={project.id} project={project} osis={osis} />
             ))}
           </div>
         </TabsContent>
@@ -108,7 +135,7 @@ export function ProjectsModule() {
         <TabsContent value="completed" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.filter(p => p.status === 'completed').map((project) => (
-              <ProjectCard key={project.id} project={project} />
+              <ProjectCard key={project.id} project={project} osis={osis} />
             ))}
           </div>
         </TabsContent>
@@ -116,7 +143,7 @@ export function ProjectsModule() {
         <TabsContent value="pending" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.filter(p => p.status === 'pending').map((project) => (
-              <ProjectCard key={project.id} project={project} />
+              <ProjectCard key={project.id} project={project} osis={osis} />
             ))}
           </div>
         </TabsContent>
@@ -125,8 +152,8 @@ export function ProjectsModule() {
   );
 }
 
-function ProjectCard({ project }: { project: typeof mockProjects[0] }) {
-  const projectOSIs = mockOSIs.filter(o => o.projectId === project.id);
+function ProjectCard({ project, osis }: { project: ProjectDto; osis: OsiDto[] }) {
+  const projectOSIs = osis.filter(o => o.projectId === project.id);
   const completedOSIs = projectOSIs.filter(o => o.status === 'completed').length;
   const progress = projectOSIs.length > 0 ? (completedOSIs / projectOSIs.length) * 100 : 0;
 

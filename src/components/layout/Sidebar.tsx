@@ -37,6 +37,7 @@ interface SidebarProps {
   activeModule: ModuleId;
   onModuleChange: (module: ModuleId) => void;
   userRole?: UserRole;
+  userName?: string;
 }
 
 interface MenuItem {
@@ -144,7 +145,23 @@ const getMenuGroupsByRole = (role: UserRole): MenuGroup[] => {
   })).filter(group => group.items.length > 0);
 };
 
-export function Sidebar({ activeModule, onModuleChange, userRole = 'A' }: SidebarProps) {
+function getInitials(name?: string) {
+  const value = (name || "").trim();
+  if (!value) return "US";
+  const parts = value.split(/\s+/).filter(Boolean);
+  const letters = parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).filter(Boolean);
+  return (letters.join("") || "US").slice(0, 2);
+}
+
+function getRoleLabel(role: UserRole) {
+  if (role === "A") return "Administrador";
+  if (role === "I") return "RRHH";
+  if (role === "K") return "Key Account";
+  if (role === "V") return "Ventas";
+  return role;
+}
+
+export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName }: SidebarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
@@ -207,12 +224,12 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A' }: Sideba
         <div className="p-4 border-b border-white/10">
           <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
             <div className="w-10 h-10 bg-[#D4AF37] rounded-full flex items-center justify-center flex-shrink-0">
-              <span className="text-[#003366] font-bold text-sm">AD</span>
+              <span className="text-[#003366] font-bold text-sm">{getInitials(userName)}</span>
             </div>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-medium truncate">Admin User</p>
-                <p className="text-[#D4AF37] text-xs truncate">{userRole === 'A' ? 'Administrador' : userRole}</p>
+                <p className="text-white text-sm font-medium truncate">{userName || 'Usuario'}</p>
+                <p className="text-[#D4AF37] text-xs truncate">{getRoleLabel(userRole)}</p>
               </div>
             )}
           </div>

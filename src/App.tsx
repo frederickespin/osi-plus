@@ -2,7 +2,7 @@ import { Component, Suspense, lazy, useEffect, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Toaster } from '@/components/ui/sonner';
 import type { UserRole } from '@/types/osi.types';
-import { loadSession } from '@/lib/sessionStore';
+import { loadSession, type Session } from '@/lib/sessionStore';
 
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
@@ -186,11 +186,14 @@ export type ModuleId =
   | 'settings';
 
 function App() {
-  const [activeModule, setActiveModule] = useState<ModuleId>('clients');
-  const [userRole] = useState<UserRole>(() => {
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') return 'A';
-    return loadSession().role;
+  const [session] = useState<Session>(() => {
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return { role: 'A', name: 'Admin User' };
+    }
+    return loadSession();
   });
+  const userRole: UserRole = session.role;
+  const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {
@@ -311,6 +314,7 @@ function App() {
         activeModule={activeModule} 
         onModuleChange={setActiveModule} 
         userRole={userRole}
+        userName={session.name}
       />
       <main className="flex-1 overflow-auto">
         <AppErrorBoundary>
@@ -325,3 +329,21 @@ function App() {
 }
 
 export default App;
+
+function getDefaultModuleForRole(role: UserRole): ModuleId {
+  // Un default coherente evita que parezca que "eres admin" pero caes en RRHH sin querer.
+  if (role === 'A') return 'dashboard';
+  if (role === 'I') return 'hr';
+  if (role === 'K') return 'clients';
+  if (role === 'V') return 'osi-editor';
+  if (role === 'B') return 'operations';
+  if (role === 'C') return 'wms';
+  if (role === 'C1') return 'dispatch';
+  if (role === 'D') return 'supervisor';
+  if (role === 'E') return 'driver';
+  if (role === 'G') return 'security';
+  if (role === 'N') return 'field';
+  if (role === 'PA') return 'carpentry';
+  if (role === 'PB' || role === 'PD') return 'maintenance';
+  return 'clients';
+}

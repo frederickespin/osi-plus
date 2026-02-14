@@ -1,9 +1,9 @@
-import { 
-  LayoutDashboard, 
-  ClipboardList, 
-  Shield, 
-  Users, 
-  Wrench, 
+import {
+  LayoutDashboard,
+  ClipboardList,
+  Shield,
+  Users,
+  Wrench,
   Send,
   HardHat,
   Warehouse,
@@ -14,7 +14,6 @@ import {
   Hammer,
   Settings,
   UserCog,
-  CreditCard,
   Car,
   FolderOpen,
   Calendar,
@@ -26,7 +25,8 @@ import {
   LogOut,
   Menu,
   X,
-  Box
+  ChevronRight,
+  Briefcase as CaseIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
@@ -44,65 +44,119 @@ interface MenuItem {
   label: string;
   icon: React.ElementType;
   roles: UserRole[];
+  description?: string;
 }
 
-// Menú simplificado - acceso directo por roles
-const menuItems: MenuItem[] = [
-  // ROL A - Administrador
-  { id: 'dashboard', label: 'Centro de Comando', icon: LayoutDashboard, roles: ['A'] },
-  { id: 'settings', label: 'Configuración', icon: Settings, roles: ['A'] },
-  { id: 'users', label: 'Usuarios y Roles', icon: UserCog, roles: ['A'] },
-  { id: 'billing', label: 'Tarifas NOTA', icon: CreditCard, roles: ['A'] },
-  { id: 'fleet', label: 'Registro de Flota', icon: Car, roles: ['A'] },
-  
-  // ROL K - Coordinador
-  { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K'] },
-  { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K'] },
-  { id: 'carpentry', label: 'Planning de Cajas', icon: Box, roles: ['A', 'K'] },
-  
-  // ROL B - Operaciones
-  { id: 'operations', label: 'Operaciones', icon: ClipboardList, roles: ['A', 'B'] },
-  { id: 'calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'B'] },
-  { id: 'wall', label: 'Muro Liquidación', icon: LayoutTemplate, roles: ['A', 'B'] },
-  
-  // ROL C - Materiales/WMS
-  { id: 'wms', label: 'Inventario', icon: Warehouse, roles: ['A', 'C'] },
-  { id: 'inventory', label: 'Stock General', icon: Package, roles: ['A', 'C'] },
-  { id: 'carpentry', label: 'Órdenes Taller', icon: Hammer, roles: ['A', 'C'] },
-  
-  // ROL I - RRHH
-  { id: 'hr', label: 'Analítica', icon: Briefcase, roles: ['A', 'I'] },
-  { id: 'kpi', label: 'Ranking KPI', icon: BarChart3, roles: ['A', 'I'] },
-  { id: 'nota', label: 'Nómina NOTA', icon: FileText, roles: ['A', 'I'] },
-  { id: 'badges', label: 'Módulo Ecológico', icon: Award, roles: ['A', 'I'] },
-  
-  // Módulos Móviles - Acceso según rol
-  { id: 'security', label: 'Portería', icon: Shield, roles: ['A', 'G'] },
-  { id: 'mechanic', label: 'Mecánica', icon: Wrench, roles: ['A', 'PB'] },
-  { id: 'supervisor', label: 'Supervisor', icon: Users, roles: ['A', 'D'] },
-  { id: 'dispatch', label: 'Despacho', icon: Send, roles: ['A', 'C1'] },
-  { id: 'field', label: 'Personal Campo', icon: HardHat, roles: ['A', 'N'] },
-  
-  // Adicionales
-  { id: 'tracking', label: 'Rastreo', icon: MapPin, roles: ['A', 'K', 'B'] },
-  { id: 'purchases', label: 'Compras', icon: ShoppingCart, roles: ['A', 'C'] },
+interface MenuGroup {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  items: MenuItem[];
+}
+
+// Menú agrupado con categorías
+const menuGroups: MenuGroup[] = [
+  {
+    id: 'general',
+    label: 'General',
+    icon: LayoutDashboard,
+    items: [
+      { id: 'dashboard', label: 'Centro de Comando', icon: LayoutDashboard, roles: ['A'] },
+    ]
+  },
+  {
+    id: 'admin',
+    label: 'Administración',
+    icon: Settings,
+    items: [
+      { id: 'users', label: 'Usuarios y Roles', icon: UserCog, roles: ['A'] },
+      { id: 'settings', label: 'Configuración', icon: Settings, roles: ['A'] },
+      { id: 'fleet', label: 'Registro de Flota', icon: Car, roles: ['A'] },
+    ]
+  },
+  {
+    id: 'commercial',
+    label: 'Comercial',
+    icon: CaseIcon,
+    items: [
+      { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K'] },
+      { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'K'], description: 'Alcance -> cajas -> recursos -> resumen' },
+      { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K'], description: 'Propuestas y proyectos' },
+      { id: 'commercial-config', label: 'Configuración', icon: Settings, roles: ['A', 'K'], description: 'Config de cajas' },
+      { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K'] },
+    ]
+  },
+  {
+    id: 'operations',
+    label: 'Operaciones',
+    icon: ClipboardList,
+    items: [
+      { id: 'operations', label: 'Tablero Ops', icon: ClipboardList, roles: ['A', 'B'] },
+      { id: 'dispatch', label: 'Despacho', icon: Send, roles: ['A', 'C1'] },
+      { id: 'tracking', label: 'Rastreo', icon: MapPin, roles: ['A', 'K', 'B'] },
+      { id: 'calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'B'] },
+      { id: 'wall', label: 'Muro Liquidación', icon: LayoutTemplate, roles: ['A', 'B'] },
+      { id: 'security', label: 'Portería', icon: Shield, roles: ['A', 'G'] },
+    ]
+  },
+  {
+    id: 'field',
+    label: 'Campo y Taller',
+    icon: HardHat,
+    items: [
+      { id: 'field', label: 'Personal Campo', icon: HardHat, roles: ['A', 'N'] },
+      { id: 'supervisor', label: 'Supervisor', icon: Users, roles: ['A', 'D'] },
+      { id: 'supervisor-nota', label: 'Sup. NOTA', icon: FileText, roles: ['A', 'D'] },
+      { id: 'mechanic', label: 'Mecánica', icon: Wrench, roles: ['A', 'PB'] },
+      { id: 'maintenance', label: 'Mantenimiento', icon: Wrench, roles: ['A', 'PD'] },
+      { id: 'carpentry', label: 'Taller Madera', icon: Hammer, roles: ['A', 'C'] },
+    ]
+  },
+  {
+    id: 'logistics',
+    label: 'Logística',
+    icon: Package,
+    items: [
+      { id: 'wms', label: 'WMS Inventario', icon: Warehouse, roles: ['A', 'C'] },
+      { id: 'inventory', label: 'Stock General', icon: Package, roles: ['A', 'C'] },
+      { id: 'purchases', label: 'Compras', icon: ShoppingCart, roles: ['A', 'C'] },
+    ]
+  },
+  {
+    id: 'hr',
+    label: 'Recursos Humanos',
+    icon: Users,
+    items: [
+      { id: 'hr', label: 'Dashboard RRHH', icon: Briefcase, roles: ['A', 'I'] },
+      { id: 'kpi', label: 'Ranking KPI', icon: BarChart3, roles: ['A', 'I'] },
+      { id: 'nota', label: 'Nómina NOTA', icon: FileText, roles: ['A', 'I'] },
+      { id: 'osi-editor', label: 'Editor OSI', icon: ClipboardList, roles: ['A', 'V', 'K'] },
+      { id: 'badges', label: 'Eco Badges', icon: Award, roles: ['A', 'I'] },
+    ]
+  }
 ];
 
-// Obtener items filtrados por rol
-const getMenuItemsByRole = (role: UserRole): MenuItem[] => {
-  return menuItems.filter(item => item.roles.includes(role) || role === 'A');
+// Obtener grupos filtrados por rol
+const getMenuGroupsByRole = (role: UserRole): MenuGroup[] => {
+  return menuGroups.map(group => ({
+    ...group,
+    items: group.items.filter(item => item.roles.includes(role) || role === 'A')
+  })).filter(group => group.items.length > 0);
 };
 
 export function Sidebar({ activeModule, onModuleChange, userRole = 'A' }: SidebarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
 
-  const visibleMenuItems = getMenuItemsByRole(userRole);
+  const visibleGroups = getMenuGroupsByRole(userRole);
 
   const handleModuleClick = (moduleId: ModuleId) => {
     onModuleChange(moduleId);
     setIsMobileMenuOpen(false);
   };
+
+  const isGroupActive = (items: MenuItem[]) => items.some(i => i.id === activeModule);
 
   return (
     <>
@@ -141,9 +195,9 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A' }: Sideba
               <Package className="h-6 w-6 text-[#003366]" />
             </div>
             {!isCollapsed && (
-              <div>
-                <h1 className="text-white font-bold text-lg leading-tight">OSi-plus</h1>
-                <p className="text-white/60 text-xs">International Packers</p>
+              <div className="overflow-hidden">
+                <h1 className="text-white font-bold text-lg leading-tight truncate">OSi-plus</h1>
+                <p className="text-white/60 text-xs truncate">International Packers</p>
               </div>
             )}
           </div>
@@ -165,39 +219,108 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A' }: Sideba
         </div>
 
         {/* Menu Items */}
-        <nav className="flex-1 overflow-y-auto py-2">
-          <div className="px-2">
-            {!isCollapsed && (
-              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider px-3 mb-2">
-                Módulos
-              </p>
-            )}
-            <div className="space-y-1">
-              {visibleMenuItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeModule === item.id;
-                
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleModuleClick(item.id)}
+        <nav className="flex-1 overflow-y-auto py-2 overflow-x-hidden">
+          <div className="px-2 space-y-2">
+            
+            {visibleGroups.map((group) => {
+              const isActive = isGroupActive(group.items);
+              const isHovered = hoveredGroupId === group.id;
+              const isExpanded = isHovered || (isActive && !isCollapsed);
+              
+              // Only render spacer for empty groups (safety check)
+              if (group.items.length === 0) return null;
+
+              return (
+                <div 
+                  key={group.id}
+                  className="relative group"
+                  onMouseEnter={() => setHoveredGroupId(group.id)}
+                  onMouseLeave={() => setHoveredGroupId(null)}
+                >
+                  {/* Group Header */}
+                  <div 
                     className={`
-                      w-full flex items-center gap-3 px-3 py-3 rounded-lg
-                      text-sm font-medium transition-all duration-200
+                      flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer
+                      transition-all duration-200
                       ${isCollapsed ? 'justify-center' : ''}
                       ${isActive 
-                        ? 'bg-[#D4AF37]/20 text-[#D4AF37] border-l-4 border-[#D4AF37]' 
-                        : 'text-white hover:text-[#D4AF37] hover:bg-white/5 border-l-4 border-transparent'
+                        ? 'bg-[#D4AF37]/20 text-white' 
+                        : 'text-white/80 hover:bg-white/5 hover:text-white'
                       }
                     `}
-                    title={isCollapsed ? item.label : undefined}
                   >
-                    <Icon className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-[#D4AF37]' : ''}`} />
-                    {!isCollapsed && <span className="truncate">{item.label}</span>}
-                  </button>
-                );
-              })}
-            </div>
+                    <group.icon className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-[#D4AF37]' : ''}`} />
+                    
+                    {!isCollapsed && (
+                      <>
+                        <span className="flex-1 text-sm font-medium truncate">{group.label}</span>
+                        <ChevronRight 
+                          className={`h-4 w-4 text-white/40 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} 
+                        />
+                      </>
+                    )}
+
+                    {/* Collapsed Mode Flyout (Pseudo-tooltip) */}
+                    {isCollapsed && isHovered && (
+                      <div className="absolute left-full top-0 ml-2 w-56 bg-[#002244] border border-white/10 rounded-lg shadow-xl py-2 z-50">
+                        <div className="px-4 py-2 border-b border-white/10 mb-1">
+                          <span className="text-[#D4AF37] font-bold text-sm">{group.label}</span>
+                        </div>
+                        {group.items.map(item => (
+                          <button
+                            key={item.id}
+                            onClick={(e) => { e.stopPropagation(); handleModuleClick(item.id); }}
+                            className={`
+                              w-full flex items-center gap-3 px-4 py-2 text-sm text-left
+                              ${activeModule === item.id 
+                                ? 'bg-[#D4AF37]/20 text-white border-l-2 border-[#D4AF37]' 
+                                : 'text-white/70 hover:bg-white/5 hover:text-white'
+                              }
+                            `}
+                          >
+                            <item.icon className="h-4 w-4" />
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Expanded Mode Submenu */}
+                  {!isCollapsed && (
+                    <div 
+                      className={`
+                        overflow-hidden transition-all duration-300 ease-in-out
+                        ${isExpanded ? 'max-h-[500px] opacity-100 mt-1' : 'max-h-0 opacity-0'}
+                      `}
+                    >
+                      <div className="pl-4 space-y-1">
+                        {group.items.map((item) => {
+                           const isItemActive = activeModule === item.id;
+                           return (
+                            <button
+                              key={item.id}
+                              onClick={() => handleModuleClick(item.id)}
+                              className={`
+                                w-full flex items-center gap-3 px-3 py-2 rounded-lg
+                                text-sm transition-all duration-200 border-l-2
+                                ${isItemActive
+                                  ? 'border-[#D4AF37] text-[#D4AF37] bg-white/5'
+                                  : 'border-white/10 text-white/60 hover:text-white hover:bg-white/5 hover:border-white/30'
+                                }
+                              `}
+                            >
+                              <div className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
+                              <span className="truncate text-xs font-medium">{item.label}</span>
+                            </button>
+                           );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </nav>
 

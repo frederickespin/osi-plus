@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { mockOSIs, mockBadges, mockUsers } from '@/data/mockData';
+import { isFieldStaffRole, loadUsers } from '@/lib/userStore';
 import { toast } from 'sonner';
 
 export function FieldWorkerModule() {
@@ -33,7 +34,10 @@ export function FieldWorkerModule() {
   const [showScanDialog, setShowScanDialog] = useState(false);
   
   // Simular usuario de campo
-  const fieldWorker = mockUsers.find(u => u.role === 'N');
+  const storedUsers = loadUsers();
+  const users = storedUsers.length ? storedUsers : mockUsers;
+  const fieldWorker = users.find(u => u.role === 'N');
+  const canGenerateNota = !!fieldWorker && isFieldStaffRole(fieldWorker.role) && fieldWorker.notaEnabled !== false;
   const assignedOSIs = mockOSIs.filter(o => o.status === 'assigned' || o.status === 'in_preparation');
   const completedOSIs = mockOSIs.filter(o => o.status === 'completed').slice(0, 5);
 
@@ -50,6 +54,10 @@ export function FieldWorkerModule() {
 
   const handleCompleteTask = () => {
     setActiveTask(false);
+    if (!canGenerateNota) {
+      toast.error('Tu usuario no tiene habilitada la creación de NOTA');
+      return;
+    }
     toast.success('Tarea completada - NOTA generada');
   };
 
@@ -73,6 +81,9 @@ export function FieldWorkerModule() {
             <p className="text-slate-500">Personal de Campo - {fieldWorker?.department}</p>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="outline">{fieldWorker?.role}</Badge>
+              <Badge variant={canGenerateNota ? 'default' : 'secondary'}>
+                NOTA: {canGenerateNota ? 'Sí' : 'No'}
+              </Badge>
               <div className="flex items-center gap-1 text-sm text-slate-600">
                 <Star className="h-4 w-4 text-yellow-500" />
                 {fieldWorker?.rating}

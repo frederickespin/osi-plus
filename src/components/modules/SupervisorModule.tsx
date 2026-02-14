@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { mockOSIs, mockUsers, mockKPIRecords } from '@/data/mockData';
+import { isFieldStaffRole, loadUsers } from '@/lib/userStore';
 import { toast } from 'sonner';
 
 export function SupervisorModule() {
@@ -27,7 +28,11 @@ export function SupervisorModule() {
   const [showCloseOSIDialog, setShowCloseOSIDialog] = useState(false);
   const [canCloseOSI, setCanCloseOSI] = useState(false);
   
-  const teamMembers = mockUsers.filter(u => ['N', 'PA', 'E'].includes(u.role));
+  const storedUsers = loadUsers();
+  const users = storedUsers.length ? storedUsers : mockUsers;
+  const teamMembers = users.filter(u => ['N', 'PA', 'E'].includes(u.role));
+  const supervisorUser = users.find(u => u.role === 'PE') || users.find(u => u.role === 'D');
+  const canGenerateNota = !!supervisorUser && isFieldStaffRole(supervisorUser.role) && supervisorUser.notaEnabled !== false;
   const activeOSIs = mockOSIs.filter(o => ['assigned', 'in_preparation', 'in_transit'].includes(o.status));
   const myCurrentOSI = activeOSIs[0];
 
@@ -56,6 +61,13 @@ export function SupervisorModule() {
       toast.error('Debe escanear el QR de salida del cliente primero');
       return;
     }
+    const notaEnabledTeam = teamMembers.filter(
+      (member) => isFieldStaffRole(member.role) && member.notaEnabled !== false
+    );
+    if (notaEnabledTeam.length === 0) {
+      toast.error('No hay personal habilitado para generar NOTA en este equipo');
+      return;
+    }
     toast.success('OSI cerrada exitosamente');
     setShowCloseOSIDialog(false);
   };
@@ -69,6 +81,9 @@ export function SupervisorModule() {
           <p className="text-slate-500">Gestión de equipo y operaciones de campo</p>
         </div>
         <div className="flex items-center gap-3">
+          <Badge variant={canGenerateNota ? 'default' : 'secondary'}>
+            NOTA: {canGenerateNota ? 'Sí' : 'No'}
+          </Badge>
           <Button variant="outline">
             <MessageSquare className="h-4 w-4 mr-2" />
             Mensajes
@@ -342,7 +357,7 @@ function TeamMemberCard({ member }: { member: typeof mockUsers[0] }) {
           <div className="flex-1">
             <div className="flex items-center justify-between">
               <h4 className="font-semibold text-slate-900">{member.name}</h4>
-              <div className={`w-3 h-3 rounded-full ${member.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+              <div className={`w-3 h-3 rounded-full ${String(member.status).toUpperCase() === 'ACTIVE' ? 'bg-green-500' : 'bg-gray-400'}`} />
             </div>
             <p className="text-sm text-slate-500">{member.department}</p>
             <div className="flex items-center gap-2 mt-2">

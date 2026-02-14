@@ -14,7 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
-import { mockVehicles, mockMaintenanceRecords } from '@/data/mockData';
+import { mockVehicles, mockMaintenanceRecords, mockUsers } from '@/data/mockData';
+import { isFieldStaffRole, loadUsers } from '@/lib/userStore';
 import { toast } from 'sonner';
 
 export function MechanicModule() {
@@ -22,6 +23,10 @@ export function MechanicModule() {
   
   const completedMaintenance = mockMaintenanceRecords.filter(m => m.status === 'completed');
   const vehiclesInMaintenance = mockVehicles.filter(v => v.status === 'maintenance');
+  const storedUsers = loadUsers();
+  const users = storedUsers.length ? storedUsers : mockUsers;
+  const mechanicUser = users.find(u => u.role === 'PB');
+  const canGenerateNota = !!mechanicUser && isFieldStaffRole(mechanicUser.role) && mechanicUser.notaEnabled !== false;
 
   // Órdenes asignadas al mecánico (simulado)
   const myOrders = [
@@ -52,6 +57,9 @@ export function MechanicModule() {
           <h1 className="text-2xl font-bold text-slate-900">Mecánica</h1>
           <p className="text-slate-500">Mantenimiento de flota</p>
         </div>
+        <Badge variant={canGenerateNota ? 'default' : 'secondary'}>
+          NOTA: {canGenerateNota ? 'Sí' : 'No'}
+        </Badge>
       </div>
 
       {/* Botones Principales */}

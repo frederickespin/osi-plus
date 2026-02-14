@@ -6,7 +6,8 @@ import {
   Clock,
   CheckCircle,
   Package,
-  Navigation
+  Navigation,
+  RotateCcw
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,7 +20,7 @@ export function TrackingModule() {
   const [trackingCode, setTrackingCode] = useState('');
   const [showResults, setShowResults] = useState(false);
   
-  const trackedOSI = mockOSIs[0];
+  const trackedOSI = mockOSIs?.[0];
   
   const trackingEvents = [
     { status: 'OSI Creada', date: '2024-01-15 08:00', completed: true },
@@ -49,10 +50,23 @@ export function TrackingModule() {
             <Search className="h-5 w-5 mr-2" />
             Rastrear
           </Button>
+          {showResults && (
+            <Button 
+              size="lg" 
+              variant="outline" 
+              onClick={() => {
+                setShowResults(false);
+                setTrackingCode('');
+              }}
+            >
+              <RotateCcw className="h-5 w-5 mr-2" />
+              Reiniciar
+            </Button>
+          )}
         </div>
       </div>
 
-      {showResults && (
+      {showResults && trackedOSI && (
         <div className="max-w-4xl mx-auto space-y-6">
           {/* Status Card */}
           <Card className="border-2 border-blue-200">
@@ -155,3 +169,5 @@ export function TrackingModule() {
     </div>
   );
 }
+
+export default TrackingModule;

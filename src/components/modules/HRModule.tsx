@@ -56,7 +56,7 @@ export function HRModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-green-600">
-              {mockUsers.filter(u => u.status === 'active').length}
+              {mockUsers.filter(u => String(u.status).toUpperCase() === 'ACTIVE').length}
             </p>
             <p className="text-sm text-slate-500">Activos</p>
           </CardContent>
@@ -256,8 +256,8 @@ function EmployeeCard({ user }: { user: typeof mockUsers[0] }) {
           <div className="flex-1">
             <div className="flex items-center justify-between">
               <h4 className="font-semibold text-slate-900">{user.name}</h4>
-              <Badge variant={user.status === 'active' ? 'default' : 'secondary'}>
-                {user.status === 'active' ? 'Activo' : 'Inactivo'}
+              <Badge variant={String(user.status).toUpperCase() === 'ACTIVE' ? 'default' : 'secondary'}>
+                {String(user.status).toUpperCase() === 'ACTIVE' ? 'Activo' : 'Inactivo'}
               </Badge>
             </div>
             <p className="text-sm text-slate-500">{user.code} - {user.department}</p>

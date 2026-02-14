@@ -22,7 +22,8 @@ import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { mockOSIs, mockVehicles } from '@/data/mockData';
+import { mockOSIs, mockVehicles, mockUsers } from '@/data/mockData';
+import { isFieldStaffRole, loadUsers } from '@/lib/userStore';
 import { toast } from 'sonner';
 
 export function DriverModule() {
@@ -34,6 +35,10 @@ export function DriverModule() {
   // Simular OSI asignada al chofer
   const assignedOSI = mockOSIs.find(o => o.status === 'in_transit');
   const assignedVehicle = mockVehicles.find(v => v.assignedDriver === 'U007');
+  const storedUsers = loadUsers();
+  const users = storedUsers.length ? storedUsers : mockUsers;
+  const driverUser = users.find(u => u.role === 'E');
+  const canGenerateNota = !!driverUser && isFieldStaffRole(driverUser.role) && driverUser.notaEnabled !== false;
 
   const handleStartTrip = () => {
     setActiveTrip(true);
@@ -43,6 +48,10 @@ export function DriverModule() {
 
   const handleEndTrip = () => {
     setActiveTrip(false);
+    if (!canGenerateNota) {
+      toast.error('Tu usuario no tiene habilitada la creación de NOTA');
+      return;
+    }
     toast.success('Viaje finalizado - NOTA generada');
   };
 

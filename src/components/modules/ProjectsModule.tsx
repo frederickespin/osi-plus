@@ -1,53 +1,76 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { 
-  Plus, 
   Edit,
-  Trash2,
   Search,
   Calendar,
   Package,
   DollarSign,
   CheckCircle
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { getOsis, getProjects, type OsiDto, type ProjectDto } from '@/lib/api';
+import { mockProjects, mockOSIs } from '@/data/mockData';
+import { loadProjects } from '@/lib/projectsStore';
+import { isAdminRole, loadSession } from '@/lib/sessionStore';
+
+type Filter = "ALL" | "ACTIVE" | "COMPLETED" | "PENDING";
+type UiProjectStatus = "active" | "completed" | "pending" | "cancelled";
+
+function projectLabel(p: any) {
+  return String(p.name ?? p.customerName ?? "").toLowerCase();
+}
+
+function projectCode(p: any) {
+  return String(p.code ?? p.projectNumber ?? "").toLowerCase();
+}
+
+function normalizeProjectStatus(s: unknown): UiProjectStatus {
+  const v = String(s ?? "").trim().toLowerCase();
+
+  if (v === "active") return "active";
+  if (v === "pending") return "pending";
+  if (v === "completed") return "completed";
+  if (v === "cancelled" || v === "canceled") return "cancelled";
+  if (v === "closed") return "completed";
+  if (v === "active") return "active";
+
+  return "active";
+}
 
 export function ProjectsModule() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [projects, setProjects] = useState<ProjectDto[]>([]);
-  const [osis, setOsis] = useState<OsiDto[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<Filter>("ALL");
+  const session = loadSession();
+  const isAdmin = isAdminRole(session.role);
+  const [projects] = useState<any[]>(() => {
+    const commercial = loadProjects();
+    return commercial.length > 0 ? commercial : (mockProjects as any[]);
+  });
 
-  useEffect(() => {
-    let active = true;
-    Promise.all([getProjects(), getOsis()])
-      .then(([projectsResponse, osisResponse]) => {
-        if (!active) return;
-        setProjects(projectsResponse.data);
-        setOsis(osisResponse.data);
-      })
-      .catch(() => {
-        if (!active) return;
-        setProjects([]);
-        setOsis([]);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-  
-  const filteredProjects = projects.filter(p =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const searchedProjects = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return projects;
+
+    return projects.filter((p: any) => {
+      return projectLabel(p).includes(q) || projectCode(p).includes(q);
+    });
+  }, [searchTerm, projects]);
+
+  const filteredProjects = useMemo(() => {
+    if (filter === "ALL") return searchedProjects;
+    return searchedProjects.filter((p) => {
+      const st = normalizeProjectStatus((p as { status?: unknown }).status);
+      if (filter === "ACTIVE") return st === "active";
+      if (filter === "COMPLETED") return st === "completed";
+      if (filter === "PENDING") return st === "pending";
+      return true;
+    });
+  }, [searchedProjects, filter]);
 
   return (
     <div className="p-6 space-y-6">
@@ -56,10 +79,6 @@ export function ProjectsModule() {
           <h1 className="text-2xl font-bold text-slate-900">Proyectos</h1>
           <p className="text-slate-500">Gestión de proyectos "Sombrilla"</p>
         </div>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Proyecto
-        </Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -72,7 +91,7 @@ export function ProjectsModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-green-600">
-              {projects.filter(p => p.status === 'active').length}
+              {projects.filter((p) => normalizeProjectStatus((p as { status?: unknown }).status) === "active").length}
             </p>
             <p className="text-sm text-slate-500">Activos</p>
           </CardContent>
@@ -80,7 +99,7 @@ export function ProjectsModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-blue-600">
-              ${projects.reduce((acc, p) => acc + p.totalValue, 0).toLocaleString()}
+              ${projects.reduce((acc, p) => acc + Number((p as any).totalValue ?? 0), 0).toLocaleString()}
             </p>
             <p className="text-sm text-slate-500">Valor Total</p>
           </CardContent>
@@ -88,7 +107,7 @@ export function ProjectsModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-purple-600">
-              {projects.reduce((acc, p) => acc + p.osiCount, 0)}
+              {projects.reduce((acc, p) => acc + Number((p as any).osiCount ?? 0), 0)}
             </p>
             <p className="text-sm text-slate-500">Total OSIs</p>
           </CardContent>
@@ -105,7 +124,10 @@ export function ProjectsModule() {
         />
       </div>
 
-      <Tabs defaultValue="all">
+      <Tabs
+        value={filter.toLowerCase()}
+        onValueChange={(value) => setFilter(value.toUpperCase() as Filter)}
+      >
         <TabsList>
           <TabsTrigger value="all">Todos</TabsTrigger>
           <TabsTrigger value="active">Activos</TabsTrigger>
@@ -116,34 +138,31 @@ export function ProjectsModule() {
         <TabsContent value="all" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} osis={osis} />
+              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} />
             ))}
-            {!loading && filteredProjects.length === 0 && (
-              <p className="text-sm text-slate-500 col-span-full">No se encontraron proyectos.</p>
-            )}
           </div>
         </TabsContent>
 
         <TabsContent value="active" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredProjects.filter(p => p.status === 'active').map((project) => (
-              <ProjectCard key={project.id} project={project} osis={osis} />
+            {filteredProjects.map((project) => (
+              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} />
             ))}
           </div>
         </TabsContent>
 
         <TabsContent value="completed" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredProjects.filter(p => p.status === 'completed').map((project) => (
-              <ProjectCard key={project.id} project={project} osis={osis} />
+            {filteredProjects.map((project) => (
+              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} />
             ))}
           </div>
         </TabsContent>
 
         <TabsContent value="pending" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredProjects.filter(p => p.status === 'pending').map((project) => (
-              <ProjectCard key={project.id} project={project} osis={osis} />
+            {filteredProjects.map((project) => (
+              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} />
             ))}
           </div>
         </TabsContent>
@@ -152,10 +171,12 @@ export function ProjectsModule() {
   );
 }
 
-function ProjectCard({ project, osis }: { project: ProjectDto; osis: OsiDto[] }) {
-  const projectOSIs = osis.filter(o => o.projectId === project.id);
+function ProjectCard({ project, isAdmin }: { project: any; isAdmin: boolean }) {
+  const projectOSIs = mockOSIs.filter(o => o.projectId === project.id);
   const completedOSIs = projectOSIs.filter(o => o.status === 'completed').length;
   const progress = projectOSIs.length > 0 ? (completedOSIs / projectOSIs.length) * 100 : 0;
+
+  const lifecycle = normalizeProjectStatus((project as { status?: unknown }).status);
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -163,35 +184,40 @@ function ProjectCard({ project, osis }: { project: ProjectDto; osis: OsiDto[] })
         <div className="flex items-start justify-between mb-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h4 className="font-semibold text-slate-900">{project.name}</h4>
+              <h4 className="font-semibold text-slate-900">{project.name ?? project.customerName}</h4>
               <Badge variant={
-                project.status === 'active' ? 'default' :
-                project.status === 'completed' ? 'secondary' :
+                lifecycle === 'active' ? 'default' :
+                lifecycle === 'completed' ? 'secondary' :
                 'outline'
               }>
-                {project.status === 'active' ? 'Activo' :
-                 project.status === 'completed' ? 'Completado' : 'Pendiente'}
+                {lifecycle === 'active' ? 'Activo' :
+                 lifecycle === 'completed' ? 'Completado' :
+                 lifecycle === 'pending' ? 'Pendiente' : 'Cancelado'}
               </Badge>
             </div>
-            <p className="text-sm text-slate-500">{project.code}</p>
+            <p className="text-sm text-slate-500">{project.code ?? project.projectNumber}</p>
           </div>
-          <div className="flex gap-1">
-            <Button variant="ghost" size="icon">
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon">
-              <Trash2 className="h-4 w-4 text-red-500" />
-            </Button>
-          </div>
+          {isAdmin && (
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => toast.message("Edición de proyecto disponible solo para Admin (pendiente de formulario).")}
+                aria-label="Editar proyecto"
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
         
-        <p className="text-sm text-slate-600 mb-3">{project.clientName}</p>
+        <p className="text-sm text-slate-600 mb-3">{project.clientName ?? project.customerName}</p>
         
         <div className="flex items-center gap-4 text-sm text-slate-500 mb-3">
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {project.startDate}
-          </span>
+            <span className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+            {project.startDate ?? project.createdAt}
+            </span>
           {project.endDate && (
             <span className="flex items-center gap-1">
               <CheckCircle className="h-3 w-3" />
@@ -212,11 +238,11 @@ function ProjectCard({ project, osis }: { project: ProjectDto; osis: OsiDto[] })
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1 text-sm">
               <Package className="h-4 w-4 text-slate-400" />
-              <span>{project.osiCount} OSIs</span>
+              <span>{Number(project.osiCount ?? 0)} OSIs</span>
             </div>
             <div className="flex items-center gap-1 text-sm">
               <DollarSign className="h-4 w-4 text-slate-400" />
-              <span>${project.totalValue.toLocaleString()}</span>
+              <span>${Number(project.totalValue ?? 0).toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -224,4 +250,3 @@ function ProjectCard({ project, osis }: { project: ProjectDto; osis: OsiDto[] })
     </Card>
   );
 }
-

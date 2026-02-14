@@ -134,22 +134,22 @@ export interface PIC {
 }
 
 // ==================== USERS / EMPLOYEES ====================
-export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'INACTIVE' | 'active' | 'suspended' | 'inactive';
+export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'INACTIVE';
 export type ContractType = 'Planta' | 'Personal Móvil';
 export type BaseSkill = 'Empacador' | 'Estibador' | 'Cargador' | 'Desarmador' | 'Embalador';
 
 export interface User {
   // 1. Datos de Identidad y Seguridad
   id: string;
-  fullName?: string;
+  fullName: string;
   profilePhotoUrl?: string;
-  whatsappNumber?: string;
+  whatsappNumber: string;
   email: string;
   
   // 2. Clasificación Operativa
   role: UserRole;
   passwordHash?: string;
-  contractType?: ContractType;
+  contractType: ContractType;
   contractEndDate?: string; // Solo para Personal Móvil
   joinDate: string;
   department?: string;
@@ -167,7 +167,7 @@ export interface User {
   
   // 4. Métricas de Rendimiento
   status: UserStatus;
-  currentRating?: number; // 0-100
+  currentRating: number; // 0-100
   points: number;
   badges?: Badge[];
   lastIncidentDate?: string;

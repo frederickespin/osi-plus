@@ -21,7 +21,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
-import { mockWoodBoxes } from '@/data/mockData';
+import { mockWoodBoxes, mockUsers } from '@/data/mockData';
+import { isFieldStaffRole, loadUsers } from '@/lib/userStore';
 import { toast } from 'sonner';
 
 export function CarpentryModule() {
@@ -32,6 +33,10 @@ export function CarpentryModule() {
   
   const availableBoxes = mockWoodBoxes.filter(b => b.status === 'available');
   const inUseBoxes = mockWoodBoxes.filter(b => b.status === 'in_use');
+  const storedUsers = loadUsers();
+  const users = storedUsers.length ? storedUsers : mockUsers;
+  const carpenterUser = users.find(u => u.role === 'PA');
+  const canGenerateNota = !!carpenterUser && isFieldStaffRole(carpenterUser.role) && carpenterUser.notaEnabled !== false;
   
   // Solicitudes pendientes (simulado)
   const pendingRequests = [
@@ -53,6 +58,11 @@ export function CarpentryModule() {
       setShowStatusDialog(false);
       setShowFumigationDialog(true);
     } else if (newStatus === 'terminado') {
+      if (!canGenerateNota) {
+        toast.error('Tu usuario no tiene habilitada la creación de NOTA');
+        setShowStatusDialog(false);
+        return;
+      }
       toast.success('Caja marcada como TERMINADA - NOTA generada');
       setShowStatusDialog(false);
     } else {
@@ -80,6 +90,9 @@ export function CarpentryModule() {
           <p className="text-slate-500">Gestión de cajas de madera</p>
         </div>
         <div className="flex items-center gap-3">
+          <Badge variant={canGenerateNota ? 'default' : 'secondary'}>
+            NOTA: {canGenerateNota ? 'Sí' : 'No'}
+          </Badge>
           <Button variant="outline">
             <Recycle className="h-4 w-4 mr-2" />
             Smart Match

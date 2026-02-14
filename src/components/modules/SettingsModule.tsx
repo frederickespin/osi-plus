@@ -4,10 +4,8 @@ import {
   UserCog,
   Bell,
   Shield,
-  Database,
   Palette,
-  Save,
-  CheckCircle
+  Save
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,10 +21,21 @@ export function SettingsModule() {
     email: 'admin@ipackers.com',
     phone: '+591 2100000',
     address: 'Av. Principal #123, La Paz, Bolivia',
+    timezone: 'America/La_Paz (GMT-4)',
+    currency: 'DOP',
+    language: 'es',
+    dateFormat: 'DD/MM/YYYY',
     notifications: true,
     emailAlerts: true,
-    autoBackup: true,
+    dailySummary: false,
+    sessionTimeout: 30,
+    failedLoginAttempts: 3,
+    twoFactor: false,
+    activityLog: true,
+    primaryColor: '#003366',
   });
+
+  const colorOptions = ['#003366', '#2563eb', '#0f172a', '#15803d'];
 
   const handleSave = () => {
     toast.success('Configuración guardada exitosamente');
@@ -48,11 +57,10 @@ export function SettingsModule() {
 
       {/* Tabs */}
       <Tabs defaultValue="general">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="notifications">Notificaciones</TabsTrigger>
           <TabsTrigger value="security">Seguridad</TabsTrigger>
-          <TabsTrigger value="database">Base de Datos</TabsTrigger>
           <TabsTrigger value="appearance">Apariencia</TabsTrigger>
         </TabsList>
 
@@ -110,31 +118,45 @@ export function SettingsModule() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Zona Horaria</Label>
-                  <select className="w-full mt-1 p-2 border rounded-lg">
+                  <select
+                    className="w-full mt-1 p-2 border rounded-lg"
+                    value={settings.timezone}
+                    onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
+                  >
                     <option>America/La_Paz (GMT-4)</option>
-                    <option>America/Santiago (GMT-3)</option>
-                    <option>America/Buenos_Aires (GMT-3)</option>
+                    <option>America/Santo_Domingo (GMT-4)</option>
+                    <option>America/New_York (GMT-5)</option>
                   </select>
                 </div>
                 <div>
                   <Label>Moneda Principal</Label>
-                  <select className="w-full mt-1 p-2 border rounded-lg">
-                    <option>BOB - Boliviano</option>
-                    <option>USD - Dólar Americano</option>
-                    <option>EUR - Euro</option>
+                  <select
+                    className="w-full mt-1 p-2 border rounded-lg"
+                    value={settings.currency}
+                    onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
+                  >
+                    <option value="DOP">DOP - Peso Dominicano</option>
+                    <option value="USD">USD - Dólar Estadounidense</option>
                   </select>
                 </div>
                 <div>
                   <Label>Idioma</Label>
-                  <select className="w-full mt-1 p-2 border rounded-lg">
-                    <option>Español</option>
-                    <option>English</option>
-                    <option>Português</option>
+                  <select
+                    className="w-full mt-1 p-2 border rounded-lg"
+                    value={settings.language}
+                    onChange={(e) => setSettings({ ...settings, language: e.target.value })}
+                  >
+                    <option value="es">Español</option>
+                    <option value="en">English</option>
                   </select>
                 </div>
                 <div>
                   <Label>Formato de Fecha</Label>
-                  <select className="w-full mt-1 p-2 border rounded-lg">
+                  <select
+                    className="w-full mt-1 p-2 border rounded-lg"
+                    value={settings.dateFormat}
+                    onChange={(e) => setSettings({ ...settings, dateFormat: e.target.value })}
+                  >
                     <option>DD/MM/YYYY</option>
                     <option>MM/DD/YYYY</option>
                     <option>YYYY-MM-DD</option>
@@ -161,7 +183,7 @@ export function SettingsModule() {
                 </div>
                 <Switch 
                   checked={settings.notifications}
-                  onCheckedChange={(c) => setSettings({...settings, notifications: c})}
+                  onCheckedChange={(c) => setSettings({ ...settings, notifications: c })}
                 />
               </div>
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
@@ -171,7 +193,7 @@ export function SettingsModule() {
                 </div>
                 <Switch 
                   checked={settings.emailAlerts}
-                  onCheckedChange={(c) => setSettings({...settings, emailAlerts: c})}
+                  onCheckedChange={(c) => setSettings({ ...settings, emailAlerts: c })}
                 />
               </div>
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
@@ -179,7 +201,10 @@ export function SettingsModule() {
                   <p className="font-medium text-slate-900">Resumen Diario</p>
                   <p className="text-sm text-slate-500">Enviar reporte diario de actividades</p>
                 </div>
-                <Switch />
+                <Switch 
+                  checked={settings.dailySummary}
+                  onCheckedChange={(c) => setSettings({ ...settings, dailySummary: c })}
+                />
               </div>
             </CardContent>
           </Card>
@@ -197,11 +222,19 @@ export function SettingsModule() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Sesión Expira (minutos)</Label>
-                  <Input type="number" defaultValue={30} />
+                  <Input
+                    type="number"
+                    value={settings.sessionTimeout}
+                    onChange={(e) => setSettings({ ...settings, sessionTimeout: Number(e.target.value) })}
+                  />
                 </div>
                 <div>
                   <Label>Intentos de Login Fallidos</Label>
-                  <Input type="number" defaultValue={3} />
+                  <Input
+                    type="number"
+                    value={settings.failedLoginAttempts}
+                    onChange={(e) => setSettings({ ...settings, failedLoginAttempts: Number(e.target.value) })}
+                  />
                 </div>
               </div>
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
@@ -209,47 +242,20 @@ export function SettingsModule() {
                   <p className="font-medium text-slate-900">Autenticación de Dos Factores</p>
                   <p className="text-sm text-slate-500">Requerir 2FA para administradores</p>
                 </div>
-                <Switch />
+                <Switch
+                  checked={settings.twoFactor}
+                  onCheckedChange={(c) => setSettings({ ...settings, twoFactor: c })}
+                />
               </div>
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
                 <div>
                   <p className="font-medium text-slate-900">Registro de Actividad</p>
                   <p className="text-sm text-slate-500">Guardar logs de todas las acciones</p>
                 </div>
-                <Switch defaultChecked />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="database" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Base de Datos
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                <div>
-                  <p className="font-medium text-slate-900">Respaldo Automático</p>
-                  <p className="text-sm text-slate-500">Respaldar base de datos diariamente</p>
-                </div>
-                <Switch 
-                  checked={settings.autoBackup}
-                  onCheckedChange={(c) => setSettings({...settings, autoBackup: c})}
+                <Switch
+                  checked={settings.activityLog}
+                  onCheckedChange={(c) => setSettings({ ...settings, activityLog: c })}
                 />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Button variant="outline">
-                  <Database className="h-4 w-4 mr-2" />
-                  Respaldar Ahora
-                </Button>
-                <Button variant="outline">
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Restaurar Backup
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -267,11 +273,22 @@ export function SettingsModule() {
               <div>
                 <Label>Color Principal</Label>
                 <div className="flex gap-3 mt-2">
-                  <div className="w-10 h-10 rounded-lg bg-[#003366] cursor-pointer ring-2 ring-offset-2 ring-[#003366]" />
-                  <div className="w-10 h-10 rounded-lg bg-blue-600 cursor-pointer" />
-                  <div className="w-10 h-10 rounded-lg bg-slate-800 cursor-pointer" />
-                  <div className="w-10 h-10 rounded-lg bg-green-700 cursor-pointer" />
+                  {colorOptions.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setSettings({ ...settings, primaryColor: color })}
+                      className={`w-10 h-10 rounded-lg cursor-pointer ring-offset-2 transition-all ${
+                        settings.primaryColor === color ? 'ring-2 ring-slate-900' : 'ring-0'
+                      }`}
+                      style={{ backgroundColor: color }}
+                      aria-label={`Seleccionar color ${color}`}
+                    />
+                  ))}
                 </div>
+                <p className="text-sm text-slate-500 mt-2">
+                  Color seleccionado: <span className="font-medium">{settings.primaryColor}</span>
+                </p>
               </div>
             </CardContent>
           </Card>

@@ -113,6 +113,12 @@ const CrateWoodModule = lazy(() =>
 const CrateSettingsModule = lazy(() =>
   import('@/modules/CrateSettingsModule').then((m) => ({ default: m.default }))
 );
+const TemplatesCenterModule = lazy(() =>
+  import('@/components/modules/TemplatesCenterModule').then((m) => ({ default: m.TemplatesCenterModule }))
+);
+const TemplateApprovalsModule = lazy(() =>
+  import('@/components/modules/TemplateApprovalsModule').then((m) => ({ default: m.TemplateApprovalsModule }))
+);
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
@@ -183,6 +189,8 @@ export type ModuleId =
   | 'disenacotiza'
   | 'crate-wood'
   | 'crate-settings'
+  | 'k-templates'
+  | 'a-template-approvals'
   | 'settings';
 
 function App() {
@@ -301,6 +309,10 @@ function App() {
         return <CrateWoodModule />;
       case 'crate-settings':
         return <CrateSettingsModule />;
+      case 'k-templates':
+        return <TemplatesCenterModule userRole={userRole} />;
+      case 'a-template-approvals':
+        return <TemplateApprovalsModule userRole={userRole} />;
       case 'settings':
         return <SettingsModule />;
       default:

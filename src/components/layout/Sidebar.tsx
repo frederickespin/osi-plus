@@ -73,6 +73,7 @@ const menuGroups: MenuGroup[] = [
       { id: 'users', label: 'Usuarios y Roles', icon: UserCog, roles: ['A'] },
       { id: 'settings', label: 'Configuración', icon: Settings, roles: ['A'] },
       { id: 'fleet', label: 'Registro de Flota', icon: Car, roles: ['A'] },
+      { id: 'a-template-approvals', label: 'Aprobaciones (Plantillas)', icon: ClipboardList, roles: ['A'] },
     ]
   },
   {
@@ -95,6 +96,7 @@ const menuGroups: MenuGroup[] = [
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K'] },
       { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K'] },
       { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K'], description: 'Seguimiento y cumplimiento' },
+      { id: 'k-templates', label: 'Centro de Plantillas', icon: FileText, roles: ['A', 'K'], description: 'PIC / PGD / NPS con versionado' },
     ]
   },
   {

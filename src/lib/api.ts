@@ -93,6 +93,14 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     "Content-Type": "application/json",
   };
 
+  // MVP: el frontend trabaja con session en localStorage. Enviamos rol/usuario como headers.
+  // Cuando integremos login real, esto debe migrar a Authorization: Bearer.
+  try {
+    const s = JSON.parse(localStorage.getItem("osi-plus.session") || "null") as { role?: string; userId?: string } | null;
+    if (s?.role) headers["x-osi-role"] = String(s.role);
+    if (s?.userId) headers["x-osi-userid"] = String(s.userId);
+  } catch {}
+
   if (options.token) {
     headers.Authorization = `Bearer ${options.token}`;
   }
@@ -180,3 +188,90 @@ export async function createOsi(payload: Partial<OsiDto>) {
   });
 }
 
+// ====================
+// Templates (PIC/PGD/NPS) - Centro de Plantillas
+// ====================
+
+export type TemplateType = "PIC" | "PGD" | "NPS";
+export type TemplateVersionStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "PUBLISHED" | "REJECTED" | "ARCHIVED";
+
+export type TemplateDto = {
+  id: string;
+  type: TemplateType;
+  name: string;
+  scope: "GLOBAL" | "TENANT";
+  tenantId: string | null;
+  isActive: boolean;
+  publishedVersionId: string | null;
+  versions?: Array<{ id: string; version: number; status: TemplateVersionStatus; updatedAt: string }>;
+  publishedVersion?: { id: string; version: number; status: TemplateVersionStatus; publishedAt: string | null } | null;
+  updatedAt: string;
+};
+
+export type TemplateVersionDto = {
+  id: string;
+  templateId: string;
+  version: number;
+  status: TemplateVersionStatus;
+  contentJson: unknown | null;
+  contentHtml: string | null;
+  changeSummary: string | null;
+  requestedAt: string | null;
+  approvedAt: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  template?: TemplateDto;
+  createdBy?: { id: string; name: string; email: string };
+};
+
+export function listTemplates(type?: TemplateType, tenantId?: string | null) {
+  const params = new URLSearchParams();
+  if (type) params.set("type", type);
+  if (tenantId) params.set("tenantId", tenantId);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<{ ok: boolean; total: number; data: TemplateDto[] }>(`/templates/list${qs}`);
+}
+
+export function listPendingTemplateApprovals(tenantId?: string | null) {
+  const params = new URLSearchParams();
+  if (tenantId) params.set("tenantId", tenantId);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<{ ok: boolean; total: number; data: TemplateVersionDto[] }>(`/templates/pending${qs}`);
+}
+
+export function getTemplateVersion(versionId: string) {
+  return requestJson<{ ok: boolean; data: TemplateVersionDto }>(`/templates/version?id=${encodeURIComponent(versionId)}`);
+}
+
+export function upsertTemplateDraft(input: {
+  templateType: TemplateType;
+  templateName: string;
+  tenantId: string | null;
+  versionId?: string;
+  contentJson?: unknown;
+  contentHtml?: string;
+  changeSummary?: string;
+}) {
+  return requestJson<{ ok: boolean; data: TemplateVersionDto }>(`/templates/draft`, { method: "POST", body: input });
+}
+
+export function submitTemplateForApproval(versionId: string) {
+  return requestJson<{ ok: boolean; data: TemplateVersionDto }>(`/templates/submit`, { method: "POST", body: { versionId } });
+}
+
+export function approveTemplateVersion(versionId: string) {
+  return requestJson<{ ok: boolean; data: TemplateVersionDto }>(`/templates/approve`, { method: "POST", body: { versionId } });
+}
+
+export function approveTemplateBatch(versionIds: string[]) {
+  return requestJson<{ ok: boolean; data: { count: number } }>(`/templates/approve-batch`, { method: "POST", body: { versionIds } });
+}
+
+export function rejectTemplateVersion(versionId: string, reason: string) {
+  return requestJson<{ ok: boolean; data: TemplateVersionDto }>(`/templates/reject`, { method: "POST", body: { versionId, reason } });
+}
+
+export function publishTemplateVersion(versionId: string) {
+  return requestJson<{ ok: boolean; data: TemplateVersionDto }>(`/templates/publish`, { method: "POST", body: { versionId } });
+}

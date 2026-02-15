@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { 
   Plus, 
   Search, 
@@ -17,8 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { mockOSIs } from '@/data/mockData';
-import { loadOsi, setActiveOsiId } from '@/lib/hrNotaStorage';
+import { setActiveOsiId } from '@/lib/hrNotaStorage';
+import { useOpsOsis } from '@/lib/useOpsData';
 import type { OSI, OSIStatus } from '@/types/osi.types';
 
 const statusColumns: { id: OSIStatus; label: string; color: string }[] = [
@@ -36,9 +36,9 @@ export function OperationsModule() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTab, setSelectedTab] = useState('all');
 
-  const storedOsis = loadOsi();
-  const osisSource = storedOsis.length ? storedOsis : mockOSIs;
-  const filteredOSIs = osisSource.filter(osi => {
+  const { osis: osisSource } = useOpsOsis();
+
+  const filteredOSIs = useMemo(() => osisSource.filter(osi => {
     const matchesSearch = 
       osi.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       osi.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -49,7 +49,7 @@ export function OperationsModule() {
     if (selectedTab === 'active') return matchesSearch && !['completed', 'cancelled'].includes(osi.status);
     if (selectedTab === 'completed') return matchesSearch && osi.status === 'completed';
     return matchesSearch;
-  });
+  }), [osisSource, searchTerm, selectedTab]);
 
   const getOSIsByStatus = (status: OSIStatus) => filteredOSIs.filter(osi => osi.status === status);
 

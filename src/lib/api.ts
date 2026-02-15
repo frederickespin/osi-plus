@@ -80,7 +80,7 @@ export type OsiDto = {
   notes?: string | null;
 };
 
-type ApiListResponse<T> = { ok: boolean; total: number; data: T[] };
+export type ApiListResponse<T> = { ok: boolean; total: number; data: T[] };
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

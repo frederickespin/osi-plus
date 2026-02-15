@@ -14,9 +14,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { mockProjects, mockOSIs } from '@/data/mockData';
 import { loadProjects } from '@/lib/projectsStore';
 import { isAdminRole, loadSession } from '@/lib/sessionStore';
+import { useOpsOsis, useOpsProjects } from '@/lib/useOpsData';
 
 type Filter = "ALL" | "ACTIVE" | "COMPLETED" | "PENDING";
 type UiProjectStatus = "active" | "completed" | "pending" | "cancelled";
@@ -47,19 +47,24 @@ export function ProjectsModule() {
   const [filter, setFilter] = useState<Filter>("ALL");
   const session = loadSession();
   const isAdmin = isAdminRole(session.role);
+  const { osis } = useOpsOsis();
+  const { projects: apiProjects } = useOpsProjects();
+
   const [projects] = useState<any[]>(() => {
     const commercial = loadProjects();
-    return commercial.length > 0 ? commercial : (mockProjects as any[]);
+    return commercial.length > 0 ? commercial : [];
   });
+
+  const projectsSource = apiProjects.length ? apiProjects : projects;
 
   const searchedProjects = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    if (!q) return projects;
+    if (!q) return projectsSource;
 
-    return projects.filter((p: any) => {
+    return projectsSource.filter((p: any) => {
       return projectLabel(p).includes(q) || projectCode(p).includes(q);
     });
-  }, [searchTerm, projects]);
+  }, [searchTerm, projectsSource]);
 
   const filteredProjects = useMemo(() => {
     if (filter === "ALL") return searchedProjects;
@@ -91,7 +96,7 @@ export function ProjectsModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-green-600">
-              {projects.filter((p) => normalizeProjectStatus((p as { status?: unknown }).status) === "active").length}
+              {projectsSource.filter((p) => normalizeProjectStatus((p as { status?: unknown }).status) === "active").length}
             </p>
             <p className="text-sm text-slate-500">Activos</p>
           </CardContent>
@@ -99,7 +104,7 @@ export function ProjectsModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-blue-600">
-              ${projects.reduce((acc, p) => acc + Number((p as any).totalValue ?? 0), 0).toLocaleString()}
+              ${projectsSource.reduce((acc, p) => acc + Number((p as any).totalValue ?? 0), 0).toLocaleString()}
             </p>
             <p className="text-sm text-slate-500">Valor Total</p>
           </CardContent>
@@ -107,7 +112,7 @@ export function ProjectsModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-purple-600">
-              {projects.reduce((acc, p) => acc + Number((p as any).osiCount ?? 0), 0)}
+              {projectsSource.reduce((acc, p) => acc + Number((p as any).osiCount ?? 0), 0)}
             </p>
             <p className="text-sm text-slate-500">Total OSIs</p>
           </CardContent>
@@ -138,7 +143,7 @@ export function ProjectsModule() {
         <TabsContent value="all" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} />
+              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} osis={osis} />
             ))}
           </div>
         </TabsContent>
@@ -146,7 +151,7 @@ export function ProjectsModule() {
         <TabsContent value="active" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} />
+              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} osis={osis} />
             ))}
           </div>
         </TabsContent>
@@ -154,7 +159,7 @@ export function ProjectsModule() {
         <TabsContent value="completed" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} />
+              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} osis={osis} />
             ))}
           </div>
         </TabsContent>
@@ -162,7 +167,7 @@ export function ProjectsModule() {
         <TabsContent value="pending" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} />
+              <ProjectCard key={project.id} project={project} isAdmin={isAdmin} osis={osis} />
             ))}
           </div>
         </TabsContent>
@@ -171,8 +176,8 @@ export function ProjectsModule() {
   );
 }
 
-function ProjectCard({ project, isAdmin }: { project: any; isAdmin: boolean }) {
-  const projectOSIs = mockOSIs.filter(o => o.projectId === project.id);
+function ProjectCard({ project, isAdmin, osis }: { project: any; isAdmin: boolean; osis: any[] }) {
+  const projectOSIs = osis.filter((o) => o.projectId === project.id);
   const completedOSIs = projectOSIs.filter(o => o.status === 'completed').length;
   const progress = projectOSIs.length > 0 ? (completedOSIs / projectOSIs.length) * 100 : 0;
 

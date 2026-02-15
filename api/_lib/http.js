@@ -1,7 +1,10 @@
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, x-osi-role, x-osi-userid",
+  );
 }
 
 function withCommonHeaders(handler) {
@@ -13,7 +16,15 @@ function withCommonHeaders(handler) {
     }
 
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    return handler(req, res);
+    try {
+      return await handler(req, res);
+    } catch (err) {
+      // Ensure we always get a visible stack trace in Vercel logs.
+      const message =
+        err instanceof Error ? err.stack || err.message : String(err);
+      console.error("handler_error:", message);
+      return res.status(500).json({ ok: false, error: "Internal Server Error" });
+    }
   };
 }
 

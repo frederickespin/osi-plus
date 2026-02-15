@@ -1,0 +1,17 @@
+# Never upload local env files/secrets in CLI deployments
+.env
+.env.*
+.env.vercel*
+
+# Dev / tooling
+node_modules
+**/node_modules
+.git
+.vscode
+.idea
+*.zip
+
+# Local build outputs (Vercel builds on the server)
+dist
+**/dist
+

@@ -47,6 +47,8 @@ model User {
   templateVersionsCreated  TemplateVersion[] @relation("TemplateCreatedBy")
   templateVersionsApproved TemplateVersion[] @relation("TemplateApprovedBy")
   templateVersionsRejected TemplateVersion[] @relation("TemplateRejectedBy")
+
+  @@map("osi_users")
 }
 
 model Client {
@@ -62,6 +64,8 @@ model Client {
   lastService   String?
   createdAt     String
   projects      Project[]
+
+  @@map("osi_clients")
 }
 
 model Project {
@@ -79,6 +83,8 @@ model Project {
   notes      String?
   client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   osis       Osi[]
+
+  @@map("osi_projects")
 }
 
 model Osi {
@@ -100,6 +106,8 @@ model Osi {
   value         Float
   notes         String?
   project       Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("osi_osis")
 }
 
 model Template {
@@ -120,6 +128,7 @@ model Template {
 
   @@index([type, tenantId])
   @@unique([type, name, tenantId], name: "type_name_tenantId")
+  @@map("osi_templates")
 }
 
 model TemplateVersion {
@@ -148,6 +157,10 @@ model TemplateVersion {
 
   baseVersionId String?
   baseVersion   TemplateVersion?      @relation("TemplateBaseVersion", fields: [baseVersionId], references: [id])
+  derivedVersions TemplateVersion[]   @relation("TemplateBaseVersion")
+
+  // Opposite side for Template.publishedVersion
+  publishedForTemplates Template[]    @relation("TemplatePublishedVersion")
 
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
@@ -155,4 +168,5 @@ model TemplateVersion {
   @@unique([templateId, version])
   @@index([status, createdAt])
   @@index([templateId, status])
+  @@map("osi_template_versions")
 }

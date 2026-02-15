@@ -51,7 +51,12 @@ export function requirePermFromHeaders(req, res, perm) {
 }
 
 export async function ensureActorUserId(prisma, actor) {
-  if (actor.userId) return actor.userId;
+  if (actor.userId) {
+    // If the caller passed an ID, verify it exists to avoid FK violations.
+    // Frontend may send placeholders like "seed-admin" during MVP auth.
+    const byId = await prisma.user.findUnique({ where: { id: actor.userId } });
+    if (byId?.id) return byId.id;
+  }
 
   // Fallback: mapear por rol a un usuario existente (MVP mientras no haya login real)
   // A -> admin@ipackers.com, K -> maria@ipackers.com, otros -> admin.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Plus, Trash2, Boxes, FileText, Users, Truck, Scale, ShieldCheck } from "lucide-react";
+import { eachDayOfInterval, format, parseISO } from "date-fns";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,7 +16,15 @@ import type { UserRole } from "@/types/osi.types";
 import { loadLeads, recomputeTotals, upsertLead, upsertQuoteGuarded } from "@/lib/salesStore";
 import { loadProjects, upsertProjectByNumber } from "@/lib/projectsStore";
 import { addHistory } from "@/lib/customerHistoryStore";
-import { canPromoteBookingToProject, promoteBookingToProject } from "@/lib/commercialCalendarStore";
+import {
+  canPromoteBookingToProject,
+  countConfirmedProjectsOnDay,
+  createBooking,
+  loadBookings,
+  loadCalendarLimits,
+  promoteBookingToProject,
+  upsertBooking,
+} from "@/lib/commercialCalendarStore";
 import { loadQuoteAudit } from "@/lib/quoteAuditStore";
 
 function loadCrateDrafts(): any[] {
@@ -29,6 +38,40 @@ function loadCrateDrafts(): any[] {
 const money = (n: number) => `RD$ ${n.toFixed(2)}`;
 const uid = () =>
   crypto?.randomUUID ? crypto.randomUUID() : `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+function capacityTone(confirmed: number, limit: number) {
+  if (limit <= 0) {
+    return {
+      label: "Sin limite",
+      dotClass: "bg-slate-400",
+      textClass: "text-slate-700",
+      chipClass: "bg-slate-100 border-slate-200 text-slate-700",
+    };
+  }
+  const percentage = (confirmed / limit) * 100;
+  if (percentage >= 70) {
+    return {
+      label: "Rojo",
+      dotClass: "bg-red-500",
+      textClass: "text-red-700",
+      chipClass: "bg-red-50 border-red-200 text-red-700",
+    };
+  }
+  if (percentage >= 34) {
+    return {
+      label: "Amarillo",
+      dotClass: "bg-amber-500",
+      textClass: "text-amber-700",
+      chipClass: "bg-amber-50 border-amber-200 text-amber-700",
+    };
+  }
+  return {
+    label: "Verde",
+    dotClass: "bg-emerald-500",
+    textClass: "text-emerald-700",
+    chipClass: "bg-emerald-50 border-emerald-200 text-emerald-700",
+  };
+}
 
 export default function QuoteBuilder({
   userRole = "A",
@@ -47,6 +90,9 @@ export default function QuoteBuilder({
   const [tab, setTab] = useState("scope");
   const [resultNote, setResultNote] = useState("");
   const [resultScore, setResultScore] = useState("");
+  const [scheduleStartDate, setScheduleStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [scheduleEndDate, setScheduleEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
 
   const crates = useMemo(() => loadCrateDrafts(), []);
   const isApproved = useMemo(
@@ -65,6 +111,31 @@ export default function QuoteBuilder({
     return crates.find((d) => d.proposalNumber === quote.proposalNumber);
   }, [crates, quote.crateDraftId, quote.proposalNumber]);
   const recentAudits = useMemo(() => loadQuoteAudit(quote.id).slice(0, 5), [quote.id, quote.updatedAt]);
+  const limits = useMemo(() => loadCalendarLimits(), []);
+  const linkedBooking = useMemo(
+    () => loadBookings().find((b) => b.workNumber === quote.proposalNumber),
+    [quote.proposalNumber, scheduleRefreshKey, quote.updatedAt]
+  );
+
+  const scheduleDayDetails = useMemo(() => {
+    if (!scheduleStartDate || !scheduleEndDate || scheduleEndDate < scheduleStartDate) return [];
+
+    const days = eachDayOfInterval({ start: parseISO(scheduleStartDate), end: parseISO(scheduleEndDate) });
+    const bookings = loadBookings();
+    return days.map((day) => {
+      const iso = day.toISOString().slice(0, 10);
+      const confirmed = countConfirmedProjectsOnDay(bookings, iso);
+      const tone = capacityTone(confirmed, limits.maxProjectsPerDay);
+      const ratio = limits.maxProjectsPerDay > 0 ? `${confirmed}/${limits.maxProjectsPerDay}` : `${confirmed}/-`;
+      return {
+        iso,
+        label: format(day, "dd/MM/yyyy"),
+        confirmed,
+        ratio,
+        tone,
+      };
+    });
+  }, [limits.maxProjectsPerDay, scheduleEndDate, scheduleRefreshKey, scheduleStartDate]);
 
   const update = (patch: Partial<Quote>) => {
     if (!canEdit) {
@@ -161,6 +232,17 @@ export default function QuoteBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCrate?.id, selectedCrate?.updatedAt]);
 
+  useEffect(() => {
+    if (linkedBooking) {
+      setScheduleStartDate(linkedBooking.startDate);
+      setScheduleEndDate(linkedBooking.endDate);
+      return;
+    }
+    const todayIso = new Date().toISOString().slice(0, 10);
+    setScheduleStartDate(todayIso);
+    setScheduleEndDate(todayIso);
+  }, [linkedBooking?.id, linkedBooking?.startDate, linkedBooking?.endDate, quote.proposalNumber]);
+
   const openWoodCrateFromQuote = () => {
     window.dispatchEvent(
       new CustomEvent("osi:cratewood:open", {
@@ -177,6 +259,133 @@ export default function QuoteBuilder({
     );
   };
 
+  const openCommercialCalendar = () => {
+    window.dispatchEvent(new CustomEvent("changeModule", { detail: "commercial-calendar" }));
+  };
+
+  const scheduleTentativeBooking = () => {
+    if (!canEdit) {
+      toast.error("Esta propuesta ya fue aprobada. No se puede reprogramar desde este formulario.");
+      return;
+    }
+    if (!scheduleStartDate || !scheduleEndDate) {
+      toast.error("Define fecha de inicio y fecha final para programar.");
+      return;
+    }
+    if (scheduleEndDate < scheduleStartDate) {
+      toast.error("La fecha final no puede ser menor que la fecha de inicio.");
+      return;
+    }
+
+    const totalDays = eachDayOfInterval({ start: parseISO(scheduleStartDate), end: parseISO(scheduleEndDate) }).length;
+    const destination = (quote.serviceDestinationAddress ?? lead.destination ?? "").trim();
+    const origin = (quote.serviceOriginAddress ?? lead.origin ?? "").trim();
+
+    if (linkedBooking) {
+      upsertBooking({
+        ...linkedBooking,
+        bookingType: "PROPOSAL",
+        bookingStatus: "TENTATIVE",
+        workNumber: quote.proposalNumber,
+        customerName: lead.clientName,
+        customerId: quote.customerId,
+        leadId: lead.id,
+        quoteId: quote.id,
+        origin,
+        destination,
+        startDate: scheduleStartDate,
+        endDate: scheduleEndDate,
+        days: totalDays,
+      });
+      setScheduleRefreshKey((prev) => prev + 1);
+      toast.success("Tentativo actualizado en Calendario Comercial.");
+      return;
+    }
+
+    createBooking({
+      bookingType: "PROPOSAL",
+      bookingStatus: "TENTATIVE",
+      workNumber: quote.proposalNumber,
+      serviceType: "Propuesta comercial",
+      customerId: quote.customerId,
+      customerName: lead.clientName,
+      origin,
+      destination,
+      quoteId: quote.id,
+      leadId: lead.id,
+      startDate: scheduleStartDate,
+      endDate: scheduleEndDate,
+      days: totalDays,
+      notes: quote.notes || undefined,
+    });
+    setScheduleRefreshKey((prev) => prev + 1);
+    toast.success("Tentativo creado en Calendario Comercial.");
+  };
+
+  const generateServicePdf = async () => {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF();
+    const margin = 14;
+    const lineHeight = 6;
+    const pageBottom = 285;
+    let y = 16;
+
+    const writeLine = (text: string, options?: { bold?: boolean; size?: number }) => {
+      if (y > pageBottom) {
+        doc.addPage();
+        y = 16;
+      }
+      doc.setFont("helvetica", options?.bold ? "bold" : "normal");
+      doc.setFontSize(options?.size ?? 10);
+      const lines = doc.splitTextToSize(text, 180);
+      doc.text(lines, margin, y);
+      y += lineHeight * lines.length;
+    };
+
+    writeLine("OSi-plus ERP v17", { bold: true, size: 14 });
+    writeLine("Cotizacion Tecnica de Servicio", { bold: true, size: 12 });
+    writeLine(`Propuesta: ${quote.proposalNumber}`);
+    writeLine(`Fecha de emision: ${new Date().toLocaleDateString()}`);
+    y += 2;
+
+    writeLine("Datos del cliente", { bold: true, size: 11 });
+    writeLine(`Cliente: ${lead.clientName}`);
+    writeLine(`Origen: ${quote.serviceOriginAddress ?? lead.origin ?? "No definido"}`);
+    writeLine(`Destino: ${quote.serviceDestinationAddress ?? lead.destination ?? "No definido"}`);
+    writeLine(`Inicio programado: ${linkedBooking?.startDate ?? "No programado"}`);
+    writeLine(`Fin programado: ${linkedBooking?.endDate ?? "No programado"}`);
+    y += 2;
+
+    writeLine("Lineas del servicio", { bold: true, size: 11 });
+    if (quote.lines.length === 0) {
+      writeLine("Sin lineas cargadas.");
+    } else {
+      quote.lines.forEach((line, index) => {
+        writeLine(
+          `${index + 1}. [${line.category}] ${line.name} | Qty: ${line.qty} | Precio: ${money(line.unitPrice)} | Total: ${money(line.total)}`
+        );
+        if (line.description) writeLine(`   Detalle: ${line.description}`);
+      });
+    }
+    y += 2;
+
+    writeLine("Terminos del servicio", { bold: true, size: 11 });
+    writeLine(`Notas: ${quote.notes || "-"}`);
+    writeLine(`Inclusiones: ${quote.inclusions.join("; ") || "-"}`);
+    writeLine(`Exclusiones: ${quote.exclusions.join("; ") || "-"}`);
+    writeLine(`Permisos: ${quote.permits.join("; ") || "-"}`);
+    writeLine(`Clausulas: ${quote.contractClauses.join("; ") || "-"}`);
+    y += 2;
+
+    writeLine("Resumen economico", { bold: true, size: 11 });
+    writeLine(`Subtotal: ${money(quote.totals.subtotal)}`);
+    writeLine(`Descuento: ${money(quote.totals.discount)}`);
+    writeLine(`Total: ${money(quote.totals.total)}`, { bold: true });
+
+    doc.save(`cotizacion-${quote.proposalNumber}.pdf`);
+    toast.success("PDF generado correctamente.");
+  };
+
   const approveProposal = () => {
     const confirmed = window.confirm(
       "Asegure que la propuesta que el cliente esta conforme con la propuesta, despues de arpobado no se puede modificar."
@@ -187,6 +396,12 @@ export default function QuoteBuilder({
     if (!promotionCheck.ok) {
       toast.error(
         `No se puede confirmar la propuesta: el cupo de proyectos esta lleno el ${promotionCheck.dayISO} (${promotionCheck.count}/${promotionCheck.limit}). Reprograma el dia del servicio en Calendario Comercial antes de aprobar.`
+      );
+      return;
+    }
+    if (!promotionCheck.hasBooking) {
+      toast.error(
+        "Debes programar primero la propuesta como tentativo (fecha inicio/fin) en Calendario Comercial antes de confirmar."
       );
       return;
     }
@@ -304,6 +519,71 @@ export default function QuoteBuilder({
           <div className="space-y-2">
             <Label>Notas</Label>
             <Input disabled={!canEdit} value={quote.notes ?? ""} onChange={(e) => update({ notes: e.target.value })} />
+          </div>
+
+          <div className="md:col-span-3 rounded-lg border border-slate-200 bg-slate-50/70 p-4 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Programación tentativo en calendario</p>
+                <p className="text-xs text-slate-600">
+                  Define rango de servicio y revisa cupo por día antes de confirmar proyecto.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={openCommercialCalendar}>
+                  Abrir Calendario Comercial
+                </Button>
+                <Button type="button" onClick={scheduleTentativeBooking} disabled={!canEdit}>
+                  {linkedBooking ? "Actualizar tentativo" : "Programar tentativo"}
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label>Fecha inicio</Label>
+                <Input
+                  type="date"
+                  value={scheduleStartDate}
+                  disabled={!canEdit}
+                  onChange={(e) => {
+                    setScheduleStartDate(e.target.value);
+                    if (scheduleEndDate < e.target.value) setScheduleEndDate(e.target.value);
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Fecha final</Label>
+                <Input
+                  type="date"
+                  value={scheduleEndDate}
+                  disabled={!canEdit}
+                  min={scheduleStartDate}
+                  onChange={(e) => setScheduleEndDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Días seleccionados</Label>
+                <div className="h-9 px-3 rounded-md border bg-white text-sm flex items-center">
+                  {scheduleDayDetails.length}
+                </div>
+              </div>
+            </div>
+
+            {scheduleDayDetails.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {scheduleDayDetails.map((day) => (
+                  <div key={day.iso} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${day.tone.chipClass}`}>
+                    <span className={`w-2 h-2 rounded-full ${day.tone.dotClass}`} />
+                    <span className="font-medium">{day.label}</span>
+                    <span className={day.tone.textClass}>{day.ratio}</span>
+                    <span className={day.tone.textClass}>({day.tone.label})</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">Selecciona un rango de fechas para ver semáforo de capacidad.</p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -682,12 +962,8 @@ export default function QuoteBuilder({
                 <Button variant="outline" disabled={isApproved || !canEdit} onClick={markProposalLost}>
                   Marcar Perdida
                 </Button>
-                <Button
-                  onClick={() =>
-                    toast.message("PDF/Envio se hace en Etapa 3 (cuando haya backend o integracion WhatsApp).")
-                  }
-                >
-                  Generar PDF (placeholder)
+                <Button onClick={generateServicePdf}>
+                  Generar PDF del servicio
                 </Button>
               </div>
 

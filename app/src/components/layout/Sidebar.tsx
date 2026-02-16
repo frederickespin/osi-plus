@@ -87,6 +87,15 @@ const menuGroups: MenuGroup[] = [
     ]
   },
   {
+    id: 'coordination',
+    label: 'Coordinación',
+    icon: LayoutTemplate,
+    items: [
+      { id: 'templates', label: 'Centro Plantillas', icon: LayoutTemplate, roles: ['A', 'K'], description: 'PGD, PIC, NPS' },
+      { id: 'tracking', label: 'Seguimiento', icon: MapPin, roles: ['A', 'K'] },
+    ]
+  },
+  {
     id: 'operations',
     label: 'Operaciones',
     icon: ClipboardList,

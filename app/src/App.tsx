@@ -113,6 +113,9 @@ const CrateWoodModule = lazy(() =>
 const CrateSettingsModule = lazy(() =>
   import('@/modules/CrateSettingsModule').then((m) => ({ default: m.default }))
 );
+const TemplatesModule = lazy(() =>
+  import('@/components/modules/TemplatesModule').then((m) => ({ default: m.TemplatesModule }))
+);
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
@@ -183,6 +186,7 @@ export type ModuleId =
   | 'disenacotiza'
   | 'crate-wood'
   | 'crate-settings'
+  | 'templates'
   | 'settings';
 
 function App() {
@@ -298,6 +302,8 @@ function App() {
         return <CrateWoodModule />;
       case 'crate-settings':
         return <CrateSettingsModule />;
+      case 'templates':
+        return <TemplatesModule />;
       case 'settings':
         return <SettingsModule />;
       default:

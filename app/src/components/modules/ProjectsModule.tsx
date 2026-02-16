@@ -54,6 +54,10 @@ type AddendumDraftForm = {
   evidence: AddendumEvidence[];
 };
 
+function isAddendumLocked(project?: Pick<ResolvedProject, "statusRaw"> | null) {
+  return project?.statusRaw === "CLOSED";
+}
+
 function normalizeProjectStatus(s: unknown): string {
   return String(s ?? "").trim().toUpperCase();
 }
@@ -255,7 +259,13 @@ export function ProjectsModule() {
     return listAddendaByProject(selectedProject.id, selectedProject.projectNumber);
   }, [selectedProject?.id, selectedProject?.projectNumber, refreshKey]);
 
+  const isSelectedProjectClosed = isAddendumLocked(selectedProject);
+
   const openAddendumDialog = (project: ResolvedProject) => {
+    if (isAddendumLocked(project)) {
+      toast.error("Proyecto cerrado. Los adendums comerciales solo se gestionan antes del cierre.");
+      return;
+    }
     setSelectedProject(project);
     setAddendumDraft(defaultAddendumDraft(session.name?.trim() || `Rol ${session.role}`));
     setIsAddendumOpen(true);
@@ -263,6 +273,10 @@ export function ProjectsModule() {
 
   const createAddendum = () => {
     if (!selectedProject) return;
+    if (isSelectedProjectClosed) {
+      toast.error("Proyecto cerrado. No se pueden registrar adendums.");
+      return;
+    }
 
     const detail = addendumDraft.detail.trim();
     const amount = Number(addendumDraft.amount || 0);
@@ -325,6 +339,10 @@ export function ProjectsModule() {
   };
 
   const approvePendingAddendum = (item: CommercialAddendum) => {
+    if (isSelectedProjectClosed) {
+      toast.error("Proyecto cerrado. No se pueden aprobar adendums.");
+      return;
+    }
     const approvedBy = window.prompt("Indica quien aprobo el adicional:", session.name?.trim() || `Rol ${session.role}`);
     if (!approvedBy) return;
     if (item.evidence.length === 0) {
@@ -341,6 +359,10 @@ export function ProjectsModule() {
   };
 
   const rejectPendingAddendum = (item: CommercialAddendum) => {
+    if (isSelectedProjectClosed) {
+      toast.error("Proyecto cerrado. No se pueden rechazar adendums.");
+      return;
+    }
     const reason = window.prompt("Motivo del rechazo:");
     if (reason === null) return;
     updateAddendumStatus(item.id, {
@@ -419,6 +441,7 @@ export function ProjectsModule() {
                   key={project.id}
                   project={project}
                   isAdmin={isAdmin}
+                  addendumLocked={isAddendumLocked(project)}
                   onOpenAddendum={() => openAddendumDialog(project)}
                 />
               ))}
@@ -459,6 +482,7 @@ export function ProjectsModule() {
                       value={addendumDraft.detail}
                       onChange={(e) => setAddendumDraft((prev) => ({ ...prev, detail: e.target.value }))}
                       placeholder="Describe exactamente que adicional se esta solicitando."
+                      disabled={isSelectedProjectClosed}
                     />
                   </div>
 
@@ -471,6 +495,7 @@ export function ProjectsModule() {
                         value={addendumDraft.amount}
                         onChange={(e) => setAddendumDraft((prev) => ({ ...prev, amount: e.target.value }))}
                         placeholder="0.00"
+                        disabled={isSelectedProjectClosed}
                       />
                     </div>
                     <div className="space-y-1">
@@ -478,6 +503,7 @@ export function ProjectsModule() {
                       <select
                         className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                         value={addendumDraft.status}
+                        disabled={isSelectedProjectClosed}
                         onChange={(e) =>
                           setAddendumDraft((prev) => ({ ...prev, status: e.target.value as AddendumStatus }))
                         }
@@ -498,6 +524,7 @@ export function ProjectsModule() {
                             setAddendumDraft((prev) => ({ ...prev, approvedByName: e.target.value }))
                           }
                           placeholder="Nombre de quien aprobo"
+                          disabled={isSelectedProjectClosed}
                         />
                       </div>
                       <div className="space-y-1">
@@ -508,6 +535,7 @@ export function ProjectsModule() {
                           onChange={(e) =>
                             setAddendumDraft((prev) => ({ ...prev, approvedAtLocal: e.target.value }))
                           }
+                          disabled={isSelectedProjectClosed}
                         />
                       </div>
                     </div>
@@ -521,6 +549,7 @@ export function ProjectsModule() {
                         setAddendumDraft((prev) => ({ ...prev, approvalComment: e.target.value }))
                       }
                       placeholder="Notas de aprobacion o condiciones del adicional."
+                      disabled={isSelectedProjectClosed}
                     />
                   </div>
 
@@ -531,6 +560,7 @@ export function ProjectsModule() {
                       multiple
                       accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx"
                       onChange={(e) => void handleDraftEvidence(e)}
+                      disabled={isSelectedProjectClosed}
                     />
                     {addendumDraft.evidence.length > 0 && (
                       <div className="flex flex-wrap gap-2">
@@ -555,9 +585,9 @@ export function ProjectsModule() {
                   </div>
 
                   <div className="pt-2">
-                    <Button onClick={createAddendum} className="w-full">
+                    <Button onClick={createAddendum} className="w-full" disabled={isSelectedProjectClosed}>
                       <FilePlus2 className="h-4 w-4 mr-2" />
-                      Registrar adendum
+                      {isSelectedProjectClosed ? "Proyecto cerrado" : "Registrar adendum"}
                     </Button>
                   </div>
                 </div>
@@ -647,7 +677,7 @@ export function ProjectsModule() {
                           )}
                         </div>
 
-                        {item.status === "PENDING_APPROVAL" && (
+                        {item.status === "PENDING_APPROVAL" && !isSelectedProjectClosed && (
                           <div className="flex flex-wrap gap-2 pt-1">
                             <Button size="sm" onClick={() => approvePendingAddendum(item)}>
                               Aprobar
@@ -673,10 +703,12 @@ export function ProjectsModule() {
 function ProjectCard({
   project,
   isAdmin,
+  addendumLocked,
   onOpenAddendum,
 }: {
   project: ResolvedProject;
   isAdmin: boolean;
+  addendumLocked: boolean;
   onOpenAddendum: () => void;
 }) {
   return (
@@ -702,7 +734,13 @@ function ProjectCard({
           </div>
 
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" onClick={onOpenAddendum}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenAddendum}
+              disabled={addendumLocked}
+              title={addendumLocked ? "Proyecto cerrado: no se permiten nuevos adendums." : undefined}
+            >
               <FilePlus2 className="h-4 w-4 mr-1" />
               Adendum
             </Button>

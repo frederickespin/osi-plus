@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ptfs, pets, pics, pgds } from '@/data/mockData';
-import type { PTF, PET, PIC, PGD } from '@/types/osi.types';
+import type { PTF, PET, PETRole, PIC, PGD, PGDDocument } from '@/types/osi.types';
 
 export function TemplatesModule() {
   const [activeTab, setActiveTab] = useState('ptf');
@@ -164,7 +164,7 @@ export function TemplatesModule() {
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Configuración de Roles:</p>
                       <div className="flex flex-wrap gap-2">
-                        {pet.roles.map((role, idx) => (
+                        {pet.roles.map((role: PETRole, idx: number) => (
                           <Badge key={idx} variant="secondary">
                             {role.quantity}x {role.role}
                             {role.shab && ` (${role.shab.join(', ')})`}
@@ -268,7 +268,7 @@ export function TemplatesModule() {
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Documentos Requeridos:</p>
                       <div className="space-y-2">
-                        {pgd.documents.map((doc, idx) => (
+                        {pgd.documents.map((doc: PGDDocument, idx: number) => (
                           <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded">
                             <div className="flex items-center gap-2">
                               {doc.required ? (

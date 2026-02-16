@@ -74,7 +74,7 @@ Para ver la aplicación durante el desarrollo con recarga automática:
 npm run dev
 ```
 
-Luego abre tu navegador en: **http://localhost:5173**
+Luego abre tu navegador en: `http://localhost:5173`
 
 Este modo incluye:
 - ✅ Recarga automática al hacer cambios

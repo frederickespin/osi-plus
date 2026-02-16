@@ -1,7 +1,7 @@
 ﻿import { useMemo, useState } from "react";
 import { addDays, addWeeks, eachDayOfInterval, format, isSameDay, parseISO, startOfWeek, subWeeks } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, Pause, Play, Plus, RefreshCw } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, Pause, Play, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,8 @@ const VISIBLE_WEEKS = 4;
 const VISIBLE_DAYS = VISIBLE_WEEKS * 7;
 const DAY_MS = 1000 * 60 * 60 * 24;
 const toISO = (d: Date) => d.toISOString().slice(0, 10);
+const SERVICE_TYPE_PLACEHOLDER = "Mudanza local / nacional / exportacion / importacion / transporte";
+const isWeekendColumn = (index: number) => index % 7 >= 5;
 
 function getCapacityTone(confirmedProjects: number, maxProjects: number) {
   if (maxProjects <= 0) {
@@ -49,17 +51,17 @@ function getCapacityTone(confirmedProjects: number, maxProjects: number) {
     };
   }
 
-  const ratio = confirmedProjects / maxProjects;
-  if (ratio >= 1) {
+  const percentage = (confirmedProjects / maxProjects) * 100;
+  if (percentage >= 70) {
     return {
       dotClass: "bg-red-500",
       textClass: "text-red-600",
       chipClass: "bg-red-50 text-red-700 border-red-200",
       numberClass: "bg-red-100 text-red-700",
-      label: "Completo",
+      label: "Alto",
     };
   }
-  if (ratio >= 0.6) {
+  if (percentage >= 34) {
     return {
       dotClass: "bg-amber-500",
       textClass: "text-amber-600",
@@ -75,10 +77,6 @@ function getCapacityTone(confirmedProjects: number, maxProjects: number) {
     numberClass: "bg-emerald-100 text-emerald-700",
     label: "Disponible",
   };
-}
-
-function bookingTypeLabel(bookingType: BookingType) {
-  return bookingType === "PROJECT" ? "Proyecto confirmado" : "Propuesta";
 }
 
 function bookingStatusLabel(status: CommercialBooking["bookingStatus"]) {
@@ -122,9 +120,14 @@ export default function CommercialCalendarModule() {
     const quote = booking.quoteId ? quotesById.get(booking.quoteId) : undefined;
     const leadId = booking.leadId || quote?.leadId;
     const lead = leadId ? leadsById.get(leadId) : undefined;
+    const rawServiceType = booking.serviceType?.trim();
+    const isGenericType =
+      !rawServiceType ||
+      rawServiceType.toLowerCase() === "propuesta" ||
+      rawServiceType.toLowerCase() === "proyecto confirmado";
 
     return {
-      serviceType: booking.serviceType || bookingTypeLabel(booking.bookingType),
+      serviceType: isGenericType ? SERVICE_TYPE_PLACEHOLDER : rawServiceType,
       origin: booking.origin || quote?.serviceOriginAddress || lead?.origin || "No definido",
       destination: booking.destination || quote?.serviceDestinationAddress || lead?.destination || "No definido",
     };
@@ -459,13 +462,6 @@ export default function CommercialCalendarModule() {
             Vista operativa de propuestas y proyectos confirmados, con control de cupo diario.
           </p>
         </div>
-        <Button
-          onClick={() => resetForm()}
-          className="w-full md:w-auto bg-[#373363] hover:bg-[#2e2a53] text-white"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva reserva
-        </Button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -547,9 +543,15 @@ export default function CommercialCalendarModule() {
               <CardTitle className="text-lg">Calendario de capacidad</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="grid grid-cols-7 border-t border-slate-200 bg-slate-50">
-                {DAY_HEADERS.map((dayName) => (
-                  <div key={dayName} className="py-2 text-center text-xs font-semibold text-slate-600 border-r last:border-r-0">
+            <div className="grid grid-cols-7 border-t border-slate-200 bg-slate-50">
+                {DAY_HEADERS.map((dayName, index) => (
+                  <div
+                    key={dayName}
+                    className={cn(
+                      "py-2 text-center text-xs font-semibold text-slate-600 border-r last:border-r-0",
+                      index >= 5 && "bg-slate-200 text-slate-700"
+                    )}
+                  >
                     {dayName}
                   </div>
                 ))}
@@ -559,16 +561,18 @@ export default function CommercialCalendarModule() {
                 {dayCards.map((dayCard, index) => {
                   const isSelected = isSameDay(dayCard.date, selectedDay);
                   const isToday = isSameDay(dayCard.date, today);
-                  const topItems = dayCard.bookings.slice(0, 3);
+                  const weekend = isWeekendColumn(index);
+                  const topItems = dayCard.bookings.slice(0, 2);
 
                   return (
                     <button
                       key={dayCard.iso}
                       onClick={() => handleSelectDay(dayCard.date)}
                       className={cn(
-                        "relative min-h-[145px] border-r border-b border-slate-200 p-2 text-left transition-colors",
+                        "relative min-h-[170px] border-r border-b border-slate-200 p-2 text-left transition-colors",
                         index % 7 === 6 && "border-r-0",
                         index >= VISIBLE_DAYS - 7 && "border-b-0",
+                        weekend && "bg-slate-100/80",
                         "hover:bg-slate-50",
                         isSelected && "ring-2 ring-[#373363] ring-inset bg-[#373363]/5",
                         isToday && !isSelected && "bg-emerald-50/60"
@@ -588,34 +592,50 @@ export default function CommercialCalendarModule() {
                         <div className="flex items-center gap-1.5">
                           <span className={cn("text-[11px] font-semibold", dayCard.tone.textClass)}>
                             {limitsMaxProjects <= 0
-                              ? `${dayCard.confirmedProjects} Pj`
-                              : `${dayCard.confirmedProjects}/${limitsMaxProjects} Pj`}
+                              ? `${dayCard.confirmedProjects}/-`
+                              : `${dayCard.confirmedProjects}/${limitsMaxProjects}`}
                           </span>
                           <span className={cn("h-2.5 w-2.5 rounded-full", dayCard.tone.dotClass)} />
                         </div>
                       </div>
 
                       <div className="space-y-1">
-                        {topItems.map((booking) => (
-                          <div
-                            key={booking.id}
-                            className={cn(
-                              "rounded px-1.5 py-0.5 text-[11px] truncate border",
-                              booking.bookingStatus === "PAUSED" &&
-                                "bg-slate-100 text-slate-600 border-slate-200 line-through",
-                              booking.bookingStatus !== "PAUSED" &&
-                                booking.bookingType === "PROJECT" &&
-                                "bg-[#D7554F]/10 text-[#a73f39] border-[#D7554F]/30",
-                              booking.bookingStatus !== "PAUSED" &&
-                                booking.bookingType === "PROPOSAL" &&
-                                "bg-[#373363]/10 text-[#373363] border-[#373363]/30"
-                            )}
-                          >
-                            {booking.workNumber}
-                          </div>
-                        ))}
+                        {topItems.map((booking) => {
+                          const bookingContext = resolveBookingContext(booking);
+                          return (
+                            <div
+                              key={booking.id}
+                              className={cn(
+                                "rounded border p-1.5 text-[10px] leading-tight",
+                                booking.bookingStatus === "PAUSED" &&
+                                  "bg-slate-100 text-slate-600 border-slate-200 line-through",
+                                booking.bookingStatus !== "PAUSED" &&
+                                  booking.bookingType === "PROJECT" &&
+                                  "bg-red-100/80 text-red-800 border-red-300",
+                                booking.bookingStatus !== "PAUSED" &&
+                                  booking.bookingType === "PROPOSAL" &&
+                                  "bg-indigo-100/80 text-indigo-800 border-indigo-300"
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-semibold truncate">{booking.workNumber}</span>
+                                <span
+                                  className={cn(
+                                    "rounded px-1 text-[9px] font-semibold uppercase tracking-wide",
+                                    booking.bookingType === "PROJECT"
+                                      ? "bg-red-200 text-red-800"
+                                      : "bg-indigo-200 text-indigo-800"
+                                  )}
+                                >
+                                  {booking.bookingType === "PROJECT" ? "Proyecto" : "Propuesta"}
+                                </span>
+                              </div>
+                              <p className="truncate text-[10px] mt-1">{bookingContext.serviceType}</p>
+                            </div>
+                          );
+                        })}
                         {dayCard.bookings.length > 3 && (
-                          <p className="text-[11px] font-medium text-slate-500">+{dayCard.bookings.length - 3} mas</p>
+                          <p className="text-[11px] font-medium text-slate-500">+{dayCard.bookings.length - 2} mas</p>
                         )}
                       </div>
 
@@ -677,7 +697,16 @@ export default function CommercialCalendarModule() {
                       {selectedDayReferences.map((reference) => (
                         <tr
                           key={reference.booking.id}
-                          className="border-b last:border-b-0 hover:bg-slate-50 cursor-pointer"
+                          className={cn(
+                            "border-b last:border-b-0 cursor-pointer",
+                            reference.booking.bookingStatus === "PAUSED" && "bg-slate-100 hover:bg-slate-200/70",
+                            reference.booking.bookingStatus !== "PAUSED" &&
+                              reference.booking.bookingType === "PROJECT" &&
+                              "bg-red-50/60 hover:bg-red-100/60",
+                            reference.booking.bookingStatus !== "PAUSED" &&
+                              reference.booking.bookingType === "PROPOSAL" &&
+                              "bg-indigo-50/60 hover:bg-indigo-100/60"
+                          )}
                           onClick={() => setDetailBooking(reference.booking)}
                         >
                           <td className="px-3 py-2 font-medium text-slate-900">{reference.booking.workNumber}</td>

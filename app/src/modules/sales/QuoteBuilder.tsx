@@ -15,7 +15,7 @@ import type { UserRole } from "@/types/osi.types";
 import { loadLeads, recomputeTotals, upsertLead, upsertQuoteGuarded } from "@/lib/salesStore";
 import { loadProjects, upsertProjectByNumber } from "@/lib/projectsStore";
 import { addHistory } from "@/lib/customerHistoryStore";
-import { promoteBookingToProject } from "@/lib/commercialCalendarStore";
+import { canPromoteBookingToProject, promoteBookingToProject } from "@/lib/commercialCalendarStore";
 import { loadQuoteAudit } from "@/lib/quoteAuditStore";
 
 function loadCrateDrafts(): any[] {
@@ -178,6 +178,14 @@ export default function QuoteBuilder({
     );
     if (!confirmed) return;
 
+    const promotionCheck = canPromoteBookingToProject(quote.proposalNumber);
+    if (!promotionCheck.ok) {
+      toast.error(
+        `No se puede confirmar la propuesta: el cupo de proyectos esta lleno el ${promotionCheck.dayISO} (${promotionCheck.count}/${promotionCheck.limit}). Reprograma el dia del servicio en Calendario Comercial antes de aprobar.`
+      );
+      return;
+    }
+
     const leadCurrent = loadLeads().find((l) => l.id === lead.id);
     const wonLead: LeadLite = {
       ...(leadCurrent ?? lead),
@@ -185,19 +193,22 @@ export default function QuoteBuilder({
       updatedAt: new Date().toISOString(),
     };
     upsertLead(wonLead);
-    upsertProjectByNumber(quote.proposalNumber, {
+    const project = upsertProjectByNumber(quote.proposalNumber, {
       customerId: quote.customerId,
       customerName: lead.clientName,
       leadId: lead.id,
       quoteId: quote.id,
       status: "ACTIVE",
     });
-    promoteBookingToProject(quote.proposalNumber, {
-      customerId: quote.customerId,
-      customerName: lead.clientName,
-      leadId: lead.id,
-      quoteId: quote.id,
-    });
+    if (promotionCheck.hasBooking) {
+      promoteBookingToProject(quote.proposalNumber, {
+        projectId: project.id,
+        customerId: quote.customerId,
+        customerName: lead.clientName,
+        leadId: lead.id,
+        quoteId: quote.id,
+      });
+    }
     if (quote.customerId) {
       const score = Number(resultScore);
       addHistory({

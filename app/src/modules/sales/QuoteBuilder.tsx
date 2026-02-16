@@ -35,11 +35,13 @@ export default function QuoteBuilder({
   lead,
   quote,
   onQuoteChange,
+  onLeadChange,
 }: {
   userRole?: UserRole;
   lead: LeadLite;
   quote: Quote;
   onQuoteChange: (q: Quote) => void;
+  onLeadChange?: (lead: LeadLite) => void;
 }) {
   const isAdmin = userRole === "A";
   const [tab, setTab] = useState("scope");
@@ -52,6 +54,9 @@ export default function QuoteBuilder({
     [lead.status, quote.proposalNumber, quote.updatedAt]
   );
   const canEdit = !isApproved || isAdmin;
+  const canEditProspectDestination = canEdit && lead.status !== "WON" && lead.status !== "LOST";
+  const tabTriggerClass =
+    "py-2.5 font-semibold text-slate-700 transition-colors hover:bg-slate-200 data-[state=active]:bg-[#373363] data-[state=active]:text-white data-[state=active]:shadow";
   const selectedCrate = useMemo(() => {
     if (quote.crateDraftId) {
       const byId = crates.find((d) => d.id === quote.crateDraftId);
@@ -193,6 +198,7 @@ export default function QuoteBuilder({
       updatedAt: new Date().toISOString(),
     };
     upsertLead(wonLead);
+    onLeadChange?.(wonLead);
     const project = upsertProjectByNumber(quote.proposalNumber, {
       customerId: quote.customerId,
       customerName: lead.clientName,
@@ -230,6 +236,7 @@ export default function QuoteBuilder({
       updatedAt: new Date().toISOString(),
     };
     upsertLead(lostLead);
+    onLeadChange?.(lostLead);
     if (quote.customerId) {
       const score = Number(resultScore);
       addHistory({
@@ -241,6 +248,20 @@ export default function QuoteBuilder({
     }
     onQuoteChange({ ...quote });
     toast.message(`Propuesta ${quote.proposalNumber} marcada como perdida.`);
+  };
+
+  const commitDestinationToLead = (destinationRaw: string) => {
+    const destination = destinationRaw.trim();
+    if ((lead.destination ?? "") === destination) return;
+
+    const leadCurrent = loadLeads().find((l) => l.id === lead.id);
+    const updatedLead: LeadLite = {
+      ...(leadCurrent ?? lead),
+      destination,
+      updatedAt: new Date().toISOString(),
+    };
+    upsertLead(updatedLead);
+    onLeadChange?.(updatedLead);
   };
 
   return (
@@ -272,7 +293,13 @@ export default function QuoteBuilder({
           </div>
           <div className="space-y-2">
             <Label>Destino</Label>
-            <Input value={lead.destination ?? ""} disabled />
+            <Input
+              disabled={!canEditProspectDestination}
+              value={quote.serviceDestinationAddress ?? lead.destination ?? ""}
+              onChange={(e) => update({ serviceDestinationAddress: e.target.value })}
+              onBlur={(e) => commitDestinationToLead(e.target.value)}
+              placeholder="Editar direccion de destino del prospecto"
+            />
           </div>
           <div className="space-y-2">
             <Label>Notas</Label>
@@ -282,28 +309,28 @@ export default function QuoteBuilder({
       </Card>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="scope">
+        <TabsList className="grid w-full grid-cols-6 h-auto rounded-xl bg-slate-100 p-1.5">
+          <TabsTrigger value="scope" className={tabTriggerClass}>
             <Scale className="h-4 w-4 mr-2" />
             Alcance
           </TabsTrigger>
-          <TabsTrigger value="crating">
+          <TabsTrigger value="crating" className={tabTriggerClass}>
             <Boxes className="h-4 w-4 mr-2" />
             Cajas
           </TabsTrigger>
-          <TabsTrigger value="resources">
+          <TabsTrigger value="resources" className={tabTriggerClass}>
             <Users className="h-4 w-4 mr-2" />
             Recursos
           </TabsTrigger>
-          <TabsTrigger value="third">
+          <TabsTrigger value="third" className={tabTriggerClass}>
             <Truck className="h-4 w-4 mr-2" />
             Terceros
           </TabsTrigger>
-          <TabsTrigger value="legal">
+          <TabsTrigger value="legal" className={tabTriggerClass}>
             <ShieldCheck className="h-4 w-4 mr-2" />
             Legales
           </TabsTrigger>
-          <TabsTrigger value="summary">
+          <TabsTrigger value="summary" className={tabTriggerClass}>
             <FileText className="h-4 w-4 mr-2" />
             Resumen
           </TabsTrigger>
@@ -330,13 +357,13 @@ export default function QuoteBuilder({
               </Button>
             </CardHeader>
             <CardContent>
-              <Table>
+              <Table className="min-w-[980px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Concepto</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Precio</TableHead>
-                    <TableHead>Total</TableHead>
+                    <TableHead className="w-[55%]">Concepto</TableHead>
+                    <TableHead className="w-[120px]">Qty</TableHead>
+                    <TableHead className="w-[150px]">Precio</TableHead>
+                    <TableHead className="w-[160px]">Total</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -352,16 +379,22 @@ export default function QuoteBuilder({
                       .filter((l) => l.category === "PROCESS")
                       .map((l) => (
                         <TableRow key={l.id}>
-                          <TableCell className="space-y-2">
-                            <Input disabled={!canEdit} value={l.name} onChange={(e) => updateLine(l.id, { name: e.target.value })} />
+                          <TableCell className="space-y-2 whitespace-normal align-top min-w-[420px]">
                             <Input
+                              className="block"
+                              disabled={!canEdit}
+                              value={l.name}
+                              onChange={(e) => updateLine(l.id, { name: e.target.value })}
+                            />
+                            <Input
+                              className="block"
                               disabled={!canEdit}
                               placeholder="Descripcion (opcional)"
                               value={l.description ?? ""}
                               onChange={(e) => updateLine(l.id, { description: e.target.value })}
                             />
                           </TableCell>
-                          <TableCell className="w-[110px]">
+                          <TableCell className="w-[120px]">
                             <Input
                               disabled={!canEdit}
                               type="number"
@@ -369,7 +402,7 @@ export default function QuoteBuilder({
                               onChange={(e) => updateLine(l.id, { qty: Number(e.target.value) || 0 })}
                             />
                           </TableCell>
-                          <TableCell className="w-[140px]">
+                          <TableCell className="w-[150px]">
                             <Input
                               disabled={!canEdit}
                               type="number"

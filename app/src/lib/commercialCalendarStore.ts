@@ -8,8 +8,11 @@ export type CommercialBooking = {
   bookingType: BookingType;
   bookingStatus: BookingStatus;
   workNumber: string;
+  serviceType?: string;
   customerId?: string;
   customerName: string;
+  origin?: string;
+  destination?: string;
   quoteId?: string;
   leadId?: string;
   projectId?: string;

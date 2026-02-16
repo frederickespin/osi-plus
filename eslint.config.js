@@ -6,7 +6,9 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // This repo contains a legacy Vite app under `app/` which is not part of the current build.
+  // Ignore it to keep lint focused on the deployed codebase.
+  globalIgnores(['dist', '.vercel/**', 'app/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

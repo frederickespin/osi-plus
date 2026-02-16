@@ -62,6 +62,48 @@ OSi-plus es un sistema ERP completo diseñado para la gestión de operaciones de
 5. **Abrir en navegador:**
    - La aplicación estará disponible en: `http://localhost:5173`
 
+## Cómo ver el preview de la aplicación
+
+Existen dos formas de visualizar la aplicación:
+
+### Opción 1: Modo Desarrollo (Recomendado para desarrollo)
+
+Para ver la aplicación durante el desarrollo con recarga automática:
+
+```bash
+npm run dev
+```
+
+Luego abre tu navegador en: **http://localhost:5173**
+
+Este modo incluye:
+- ✅ Recarga automática al hacer cambios
+- ✅ Mensajes de error detallados
+- ✅ Herramientas de desarrollo de React
+
+### Opción 2: Preview de Producción
+
+Para ver cómo se verá la aplicación en producción:
+
+1. **Primero, compila la aplicación:**
+   ```bash
+   npm run build
+   ```
+
+2. **Luego, inicia el servidor de preview:**
+   ```bash
+   npm run preview
+   ```
+
+3. **Abre tu navegador en:** `http://localhost:4173`
+
+Este modo:
+- ✅ Simula el entorno de producción
+- ✅ Código optimizado y minificado
+- ✅ Rendimiento similar a producción
+
+**Nota:** El preview de producción usa el puerto `4173`, mientras que el modo desarrollo usa el puerto `5173`.
+
 ## Scripts disponibles
 
 | Comando | Descripción |

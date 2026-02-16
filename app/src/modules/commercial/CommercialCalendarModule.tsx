@@ -230,6 +230,9 @@ export default function CommercialCalendarModule() {
         icon: Package,
         color: "text-indigo-600",
         bgColor: "bg-indigo-100",
+        cardClass: "border-indigo-200 bg-gradient-to-br from-indigo-50 to-white",
+        valueClass: "text-indigo-800",
+        titleClass: "text-indigo-900",
         trend: "Consumen cupo diario",
         trendUp: true,
       },
@@ -241,6 +244,9 @@ export default function CommercialCalendarModule() {
         icon: FileText,
         color: "text-amber-600",
         bgColor: "bg-amber-100",
+        cardClass: "border-amber-200 bg-gradient-to-br from-amber-50 to-white",
+        valueClass: "text-amber-800",
+        titleClass: "text-amber-900",
         trend: "Pendientes de confirmacion",
         trendUp: true,
       },
@@ -252,6 +258,9 @@ export default function CommercialCalendarModule() {
         icon: Pause,
         color: "text-slate-600",
         bgColor: "bg-slate-200",
+        cardClass: "border-rose-200 bg-gradient-to-br from-rose-50 to-white",
+        valueClass: "text-rose-800",
+        titleClass: "text-rose-900",
         trend: windowStats.paused > 0 ? "Requiere seguimiento" : "Sin pendientes",
         trendUp: windowStats.paused === 0,
       },
@@ -263,6 +272,9 @@ export default function CommercialCalendarModule() {
         icon: CalendarDays,
         color: "text-emerald-600",
         bgColor: "bg-emerald-100",
+        cardClass: "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white",
+        valueClass: "text-emerald-800",
+        titleClass: "text-emerald-900",
         trend: `${daysLoadPercent}% del rango`,
         trendUp: daysLoadPercent <= 70,
       },
@@ -530,7 +542,7 @@ export default function CommercialCalendarModule() {
         {calendarStats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.key} className="transition-shadow hover:shadow-md">
+            <Card key={stat.key} className={cn("transition-shadow hover:shadow-md border-2", stat.cardClass)}>
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
                   <div className={cn("p-3 rounded-lg", stat.bgColor)}>
@@ -542,8 +554,8 @@ export default function CommercialCalendarModule() {
                   </div>
                 </div>
                 <div className="mt-4">
-                  <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
-                  <p className="text-sm text-slate-600">{stat.label}</p>
+                  <p className={cn("text-3xl font-extrabold", stat.valueClass)}>{stat.value}</p>
+                  <p className={cn("text-base md:text-lg font-bold leading-tight mt-1", stat.titleClass)}>{stat.label}</p>
                   <p className="text-xs text-slate-500 mt-1">{stat.helper}</p>
                 </div>
               </CardContent>

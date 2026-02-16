@@ -261,7 +261,7 @@ function App() {
       case 'commercial-calendar':
         return <CommercialCalendarModule />;
       case 'commercial-config':
-        return <CrateWoodModule initialTab="settings" mode="settingsOnly" />;
+        return <CrateSettingsModule />;
       case 'tracking':
         return <TrackingModule />;
       case 'hr':

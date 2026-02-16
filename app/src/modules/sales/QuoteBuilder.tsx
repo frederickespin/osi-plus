@@ -26,6 +26,7 @@ import {
   upsertBooking,
 } from "@/lib/commercialCalendarStore";
 import { loadQuoteAudit } from "@/lib/quoteAuditStore";
+import { generateQuoteServicePdf } from "@/lib/quotePdf";
 
 function loadCrateDrafts(): any[] {
   try {
@@ -323,66 +324,20 @@ export default function QuoteBuilder({
   };
 
   const generateServicePdf = async () => {
-    const { jsPDF } = await import("jspdf");
-    const doc = new jsPDF();
-    const margin = 14;
-    const lineHeight = 6;
-    const pageBottom = 285;
-    let y = 16;
-
-    const writeLine = (text: string, options?: { bold?: boolean; size?: number }) => {
-      if (y > pageBottom) {
-        doc.addPage();
-        y = 16;
-      }
-      doc.setFont("helvetica", options?.bold ? "bold" : "normal");
-      doc.setFontSize(options?.size ?? 10);
-      const lines = doc.splitTextToSize(text, 180);
-      doc.text(lines, margin, y);
-      y += lineHeight * lines.length;
-    };
-
-    writeLine("OSi-plus ERP v17", { bold: true, size: 14 });
-    writeLine("Cotizacion Tecnica de Servicio", { bold: true, size: 12 });
-    writeLine(`Propuesta: ${quote.proposalNumber}`);
-    writeLine(`Fecha de emision: ${new Date().toLocaleDateString()}`);
-    y += 2;
-
-    writeLine("Datos del cliente", { bold: true, size: 11 });
-    writeLine(`Cliente: ${lead.clientName}`);
-    writeLine(`Origen: ${quote.serviceOriginAddress ?? lead.origin ?? "No definido"}`);
-    writeLine(`Destino: ${quote.serviceDestinationAddress ?? lead.destination ?? "No definido"}`);
-    writeLine(`Inicio programado: ${linkedBooking?.startDate ?? "No programado"}`);
-    writeLine(`Fin programado: ${linkedBooking?.endDate ?? "No programado"}`);
-    y += 2;
-
-    writeLine("Lineas del servicio", { bold: true, size: 11 });
-    if (quote.lines.length === 0) {
-      writeLine("Sin lineas cargadas.");
-    } else {
-      quote.lines.forEach((line, index) => {
-        writeLine(
-          `${index + 1}. [${line.category}] ${line.name} | Qty: ${line.qty} | Precio: ${money(line.unitPrice)} | Total: ${money(line.total)}`
-        );
-        if (line.description) writeLine(`   Detalle: ${line.description}`);
-      });
-    }
-    y += 2;
-
-    writeLine("Terminos del servicio", { bold: true, size: 11 });
-    writeLine(`Notas: ${quote.notes || "-"}`);
-    writeLine(`Inclusiones: ${quote.inclusions.join("; ") || "-"}`);
-    writeLine(`Exclusiones: ${quote.exclusions.join("; ") || "-"}`);
-    writeLine(`Permisos: ${quote.permits.join("; ") || "-"}`);
-    writeLine(`Clausulas: ${quote.contractClauses.join("; ") || "-"}`);
-    y += 2;
-
-    writeLine("Resumen economico", { bold: true, size: 11 });
-    writeLine(`Subtotal: ${money(quote.totals.subtotal)}`);
-    writeLine(`Descuento: ${money(quote.totals.discount)}`);
-    writeLine(`Total: ${money(quote.totals.total)}`, { bold: true });
-
-    doc.save(`cotizacion-${quote.proposalNumber}.pdf`);
+    await generateQuoteServicePdf({
+      quote,
+      lead: {
+        clientName: lead.clientName,
+        origin: lead.origin,
+        destination: lead.destination,
+      },
+      booking: linkedBooking
+        ? {
+            startDate: linkedBooking.startDate,
+            endDate: linkedBooking.endDate,
+          }
+        : null,
+    });
     toast.success("PDF generado correctamente.");
   };
 

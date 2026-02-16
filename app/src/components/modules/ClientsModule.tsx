@@ -12,8 +12,10 @@ import { mockClients } from "@/data/mockData";
 import { toast } from "sonner";
 import QuoteBuilder from "@/modules/sales/QuoteBuilder";
 import { getOrCreateQuoteForLead, loadLeads, loadQuotes, saveLeads } from "@/lib/salesStore";
+import { loadBookings } from "@/lib/commercialCalendarStore";
 import { createCustomer, loadCustomers, saveCustomers, type Customer } from "@/lib/customersStore";
 import { loadHistory, historyByCustomer, type CustomerHistoryItem } from "@/lib/customerHistoryStore";
+import { generateQuoteServicePdf } from "@/lib/quotePdf";
 import type { LeadLite, LeadStatus, Quote } from "@/types/sales.types";
 import type { UserRole } from "@/types/osi.types";
 import { CustomerPipelineBar } from "@/components/CustomerPipelineBar";
@@ -156,6 +158,41 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
     refreshCRM();
   };
 
+  const viewCustomerReport = async (customer: Customer) => {
+    const relatedLeads = crmLeads
+      .filter((l) => l.customerId === customer.id || l.clientName === customer.displayName || l.clientName === customer.legalName)
+      .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+
+    const preferredLead = relatedLeads.find((l) => l.status === "WON") || relatedLeads[0];
+    const leadIds = new Set(relatedLeads.map((l) => l.id));
+    const relatedQuotes = crmQuotes
+      .filter((q) => q.customerId === customer.id || leadIds.has(q.leadId))
+      .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    const quote = relatedQuotes[0];
+
+    if (!quote) {
+      toast.error("No existe cotización técnica para este cliente.");
+      return;
+    }
+
+    const booking = loadBookings().find((b) => b.workNumber === quote.proposalNumber);
+    await generateQuoteServicePdf({
+      quote,
+      lead: {
+        clientName: preferredLead?.clientName || customer.displayName,
+        origin: preferredLead?.origin || customer.serviceOriginAddress || customer.address,
+        destination: preferredLead?.destination || customer.serviceDestinationAddress,
+      },
+      booking: booking
+        ? {
+            startDate: booking.startDate,
+            endDate: booking.endDate,
+          }
+        : null,
+    });
+    toast.success("Reporte PDF generado.");
+  };
+
   const openNewCustomerDialog = () => setIsNewOpen(true);
 
   const saveNewCustomer = () => {
@@ -283,6 +320,7 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
                 status={customerStatusMap[customer.id] ?? "PROSPECT"}
                 isSelected={selectedLead?.customerId === customer.id}
                 onOpenQuote={() => openLead(customer)}
+                onViewReport={() => void viewCustomerReport(customer)}
               />
             ))}
           </div>
@@ -497,12 +535,16 @@ function ClientCard({
   status,
   isSelected,
   onOpenQuote,
+  onViewReport,
 }: {
   customer: Customer;
   status: LeadStatus;
   isSelected?: boolean;
   onOpenQuote: () => void;
+  onViewReport: () => void;
 }) {
+  const hasActiveApprovedProject = status === "WON" && customer.status === "ACTIVE";
+
   return (
     <Card className={`hover:shadow-md transition-shadow ${isSelected ? "ring-2 ring-blue-500/40" : ""}`}>
       <CardContent className="p-4">
@@ -544,10 +586,17 @@ function ClientCard({
               <CustomerPipelineBar status={status} />
             </div>
             <div className="mt-3">
-              <Button variant="outline" size="sm" onClick={onOpenQuote}>
-                <FileText className="h-4 w-4 mr-2" />
-                Abrir cotizacion tecnica
-              </Button>
+              {hasActiveApprovedProject ? (
+                <Button variant="default" size="sm" onClick={onViewReport}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Ver reporte
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" onClick={onOpenQuote}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Abrir cotizacion tecnica
+                </Button>
+              )}
             </div>
           </div>
         </div>

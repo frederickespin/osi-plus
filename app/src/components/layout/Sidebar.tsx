@@ -79,11 +79,11 @@ const menuGroups: MenuGroup[] = [
     label: 'Comercial',
     icon: CaseIcon,
     items: [
-      { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K'] },
-      { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'K'], description: 'Alcance -> cajas -> recursos -> resumen' },
-      { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K'], description: 'Propuestas y proyectos' },
+      { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K', 'V'] },
+      { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'K', 'V'], description: 'Alcance -> cajas -> recursos -> resumen' },
+      { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K', 'V'], description: 'Propuestas y proyectos' },
       { id: 'commercial-config', label: 'Configuración', icon: Settings, roles: ['A', 'K'], description: 'Config de cajas' },
-      { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K'] },
+      { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K', 'V'] },
     ]
   },
   {

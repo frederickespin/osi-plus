@@ -112,7 +112,21 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    let body: unknown = null;
+    try {
+      body = await response.clone().json();
+    } catch {
+      try {
+        body = await response.text();
+      } catch {
+        body = null;
+      }
+    }
+
+    const err: any = new Error(`API ${response.status}: ${(body as any)?.error || response.statusText || "Request failed"}`);
+    err.status = response.status;
+    err.body = body;
+    throw err;
   }
 
   return response.json() as Promise<T>;
@@ -274,4 +288,122 @@ export function rejectTemplateVersion(versionId: string, reason: string) {
 
 export function publishTemplateVersion(versionId: string) {
   return requestJson<{ ok: boolean; data: TemplateVersionDto }>(`/templates/publish`, { method: "POST", body: { versionId } });
+}
+
+// ====================
+// K (Coordinación) - MVP Sprint 1
+// ====================
+
+export type ProjectKState = "PENDING_VALIDATION" | "VALIDATED" | "RELEASED";
+export type SignalPolicy = "HARD_BLOCK" | "SOFT_ALERT";
+export type SignalKind = "PAYMENT" | "PERMITS_PARKING" | "PGD_BLOCKING_DOCS" | "CRATES" | "THIRD_PARTIES";
+export type SignalColor = "GREEN" | "AMBER" | "RED";
+
+export type ProjectSignalDto = {
+  id: string;
+  projectId: string;
+  kind: SignalKind;
+  policy: SignalPolicy;
+  warnAt: string | null;
+  dueAt: string | null;
+  doneAt: string | null;
+  ackAt: string | null;
+  ackNote: string | null;
+  ackById: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectPgdItemStatus = "MISSING" | "SUBMITTED" | "VALIDATED" | "REJECTED";
+export type ProjectPgdItemDto = {
+  id: string;
+  projectPgdId: string;
+  name: string;
+  visibility: "CLIENT_VIEW" | "INTERNAL_VIEW";
+  responsible: "CLIENT" | "SUPERVISOR" | "DRIVER" | "INTERNAL";
+  isBlocking: boolean;
+  expectedFileType: "PDF" | "PHOTO" | "SIGNATURE" | "OTHER";
+  serviceTags: string[];
+  status: ProjectPgdItemStatus;
+  validatedAt: string | null;
+  validatedById: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectPgdDto = {
+  id: string;
+  projectId: string;
+  templateId: string;
+  templateVersionId: string;
+  appliedAt: string;
+  appliedById: string | null;
+  items: ProjectPgdItemDto[];
+  template?: { id: string; name: string; type: TemplateType } | null;
+  templateVersion?: { id: string; version: number; status: TemplateVersionStatus } | null;
+};
+
+export type KSemaphores = {
+  payment: SignalColor;
+  permits: SignalColor;
+  pgd: SignalColor;
+  crates: SignalColor;
+  thirdParties: SignalColor;
+  pgdSummary?: { applied: boolean; blockingTotal: number; blockingValidated: number; blockingMissing: number };
+};
+
+export type KDashboardProjectDto = ProjectDto & {
+  kState: ProjectKState;
+  kValidatedAt?: string | null;
+  kReleasedAt?: string | null;
+  semaphores: KSemaphores;
+};
+
+export function getKDashboard() {
+  return requestJson<{ ok: boolean; counts: { total: number; byKState: Record<string, number> }; data: KDashboardProjectDto[] }>(
+    "/k/dashboard",
+  );
+}
+
+export function getKProject(projectId: string) {
+  return requestJson<{
+    ok: boolean;
+    data: {
+      project: ProjectDto & {
+        kState: ProjectKState;
+        kValidatedAt?: string | null;
+        kReleasedAt?: string | null;
+        signals: ProjectSignalDto[];
+        pgd: ProjectPgdDto | null;
+      };
+      semaphores: KSemaphores;
+    };
+  }>(`/k/project?id=${encodeURIComponent(projectId)}`);
+}
+
+export function updateProjectSignal(payload: { signalId: string; done?: boolean; ack?: boolean; ackNote?: string }) {
+  return requestJson<{ ok: boolean; data: ProjectSignalDto }>("/k/signal", { method: "POST", body: payload });
+}
+
+export function applyProjectPgd(payload: { projectId: string; templateId: string }) {
+  return requestJson<{ ok: boolean; data: ProjectPgdDto }>("/k/pgd/apply", { method: "POST", body: payload });
+}
+
+export function setProjectValidated(projectId: string) {
+  return requestJson<{ ok: boolean; data: ProjectDto & { kState: ProjectKState } }>("/k/project-validate", {
+    method: "POST",
+    body: { projectId },
+  });
+}
+
+export function setProjectReleased(projectId: string) {
+  return requestJson<{ ok: boolean; data: ProjectDto & { kState: ProjectKState } }>("/k/project-release", {
+    method: "POST",
+    body: { projectId },
+  });
+}
+
+export function setProjectPgdItemStatus(payload: { itemId: string; status: ProjectPgdItemStatus; note?: string }) {
+  return requestJson<{ ok: boolean; data: ProjectPgdItemDto }>("/k/pgd/item", { method: "POST", body: payload });
 }

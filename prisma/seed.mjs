@@ -178,6 +178,120 @@ async function main() {
       notes: "Traslado de caja fuerte",
     },
   });
+
+  // ====================
+  // Default Templates (PGD/PIC/NPS) - so K can apply PGD immediately in MVP.
+  // ====================
+
+  const ensureTemplatePublished = async ({ type, name, contentJson, contentHtml = null }) => {
+    const existing = await prisma.template.findFirst({
+      where: { type, name, tenantId: null },
+    });
+
+    const template = existing
+      ? existing
+      : await prisma.template.create({
+          data: {
+            type,
+            name,
+            scope: "GLOBAL",
+            tenantId: null,
+          },
+        });
+
+    // If already published, keep it.
+    if (template.publishedVersionId) return template;
+
+    const v1 = await prisma.templateVersion.create({
+      data: {
+        templateId: template.id,
+        version: 1,
+        status: "PUBLISHED",
+        contentJson,
+        contentHtml,
+        changeSummary: "Seed v1",
+        requestedAt: new Date(),
+        approvedAt: new Date(),
+        approvedById: admin.id,
+        publishedAt: new Date(),
+        createdById: admin.id,
+        baseVersionId: null,
+      },
+    });
+
+    return prisma.template.update({
+      where: { id: template.id },
+      data: { publishedVersionId: v1.id },
+    });
+  };
+
+  await ensureTemplatePublished({
+    type: "PGD",
+    name: "PGD - Base",
+    contentJson: {
+      serviceTags: ["Base"],
+      documents: [
+        {
+          name: "Permiso de Parqueo / Municipal",
+          visibility: "INTERNAL_VIEW",
+          responsible: "SUPERVISOR",
+          isBlocking: false,
+          expectedFileType: "PDF",
+          serviceTags: ["Local", "Nacional", "Internacional"],
+        },
+        {
+          name: "Declaración de Valor",
+          visibility: "CLIENT_VIEW",
+          responsible: "CLIENT",
+          isBlocking: true,
+          expectedFileType: "PDF",
+          serviceTags: ["Internacional"],
+        },
+        {
+          name: "Copia de Pasaporte / ID",
+          visibility: "CLIENT_VIEW",
+          responsible: "CLIENT",
+          isBlocking: true,
+          expectedFileType: "PHOTO",
+          serviceTags: ["Internacional"],
+        },
+      ],
+    },
+  });
+
+  await ensureTemplatePublished({
+    type: "PIC",
+    name: "PIC - Preparacion (Base)",
+    contentJson: {
+      triggerPhase: "PRE_OSI",
+      channel: "BOTH",
+      bodyHtml:
+        "<p><strong>Hola {Cliente_Nombre}</strong>,</p>" +
+        "<p>Confirmamos tu servicio para <strong>{Fecha_Servicio}</strong>. Para evitar contratiempos:</p>" +
+        "<ul>" +
+        "<li>Desconecta electrodomesticos 24h antes.</li>" +
+        "<li>Ten listos documentos y llaves.</li>" +
+        "<li>Indica restricciones de acceso o ascensores.</li>" +
+        "</ul>" +
+        "<p>Proyecto: {Proyecto_Codigo}</p>",
+      attachments: [],
+      variables: ["Cliente_Nombre", "Fecha_Servicio", "Proyecto_Codigo"],
+    },
+  });
+
+  await ensureTemplatePublished({
+    type: "NPS",
+    name: "NPS - Base",
+    contentJson: {
+      question: "En una escala del 0 al 10, ¿qué tan probable es que recomiendes a International Packers?",
+      scale: "0_10",
+      positiveTags: ["Puntualidad", "Amabilidad", "Cuidado", "Profesionalismo"],
+      negativeTags: ["Retraso", "Daños", "Actitud", "Comunicación"],
+      evaluateSupervisorD: true,
+      evaluateOfficeKV: true,
+      alertThreshold: 7,
+    },
+  });
 }
 
 main()
@@ -189,4 +303,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-

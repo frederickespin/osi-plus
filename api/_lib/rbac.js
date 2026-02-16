@@ -50,6 +50,22 @@ export function requirePermFromHeaders(req, res, perm) {
   return { role, userId };
 }
 
+export function requireRoleFromHeaders(req, res, roles) {
+  const role = String(req.headers["x-osi-role"] || "").toUpperCase().trim();
+  if (!role) return unauthorized(res);
+
+  if (!Array.isArray(roles) || roles.length === 0) {
+    return res.status(500).json({ ok: false, error: "Server misconfig", detail: "roles missing" });
+  }
+
+  if (!roles.includes(role)) {
+    return res.status(403).json({ ok: false, error: "Forbidden", role, roles });
+  }
+
+  const userId = String(req.headers["x-osi-userid"] || "").trim() || null;
+  return { role, userId };
+}
+
 export async function ensureActorUserId(prisma, actor) {
   if (actor.userId) {
     // If the caller passed an ID, verify it exists to avoid FK violations.

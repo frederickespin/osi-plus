@@ -123,30 +123,16 @@ export function TemplatesCenterModule({ userRole }: Props) {
   }, [items, search]);
 
   const openNew = () => {
-    setEditingTemplateName("");
-    setEditingVersionId(undefined);
-    setChangeSummary("");
-    setShowAdvancedJson(false);
-
-    setPicTriggerPhase("PRE_OSI");
-    setPicChannel("BOTH");
-    setPicBodyHtml("");
-    setPicAttachmentsText("");
-
-    setPgdServiceTagsText("");
-    setPgdDocs([]);
-
-    setNpsQuestion("");
-    setNpsScale("0_10");
-    setNpsPositiveTagsText("");
-    setNpsNegativeTagsText("");
-    setNpsEvalSupervisorD(true);
-    setNpsEvalOfficeKV(false);
-    setNpsAlertThreshold(3);
-
-    setJsonPreview("{\n\n}");
-    setHtmlPreview("");
-    setIsOpen(true);
+    const ctx = {
+      templateType: activeTab,
+      templateId: null,
+      templateName: "",
+      editingVersionId: null,
+      sourceVersionId: null,
+      returnModule: "k-templates",
+    };
+    localStorage.setItem("osi-plus.templates.editorContext", JSON.stringify(ctx));
+    window.dispatchEvent(new CustomEvent("changeModule", { detail: "k-template-editor" }));
   };
 
   function buildPicContent(bodyOverride?: string): PicTemplateContent {
@@ -203,6 +189,13 @@ export function TemplatesCenterModule({ userRole }: Props) {
   }
 
   function hydrateEditorsFromContent(type: TemplateType, contentJson: unknown, contentHtml: string) {
+    const asCommaText = (value: unknown) => {
+      if (!value) return "";
+      if (Array.isArray(value)) return value.map((v) => String(v)).filter(Boolean).join(", ");
+      if (typeof value === "string") return value;
+      return "";
+    };
+
     if (type === "PIC") {
       const c = safeParseJson<Partial<PicTemplateContent>>(contentJson, {});
       setPicTriggerPhase((c.triggerPhase as TriggerPhase) || "PRE_OSI");
@@ -223,7 +216,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
 
     if (type === "PGD") {
       const c = safeParseJson<Partial<PgdTemplateContent>>(contentJson, { documents: [] });
-      setPgdServiceTagsText((c.serviceTags || []).join(", "));
+      setPgdServiceTagsText(asCommaText((c as any).serviceTags));
       const docs = Array.isArray(c.documents) ? c.documents : [];
       setPgdDocs(
         docs.map((d) => ({
@@ -232,7 +225,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
           responsible: (d?.responsible as PgdResponsible) || "CLIENT",
           isBlocking: Boolean(d?.isBlocking),
           expectedFileType: (d?.expectedFileType as PgdFileType) || "PDF",
-          serviceTagsText: (d?.serviceTags || []).join(", "),
+          serviceTagsText: asCommaText((d as any)?.serviceTags),
         })),
       );
       const next = buildPgdContent();
@@ -244,8 +237,8 @@ export function TemplatesCenterModule({ userRole }: Props) {
     const c = safeParseJson<Partial<NpsTemplateContent>>(contentJson, {});
     setNpsQuestion(String(c.question || ""));
     setNpsScale((c.scale as NpsScale) || "0_10");
-    setNpsPositiveTagsText((c.positiveTags || []).join(", "));
-    setNpsNegativeTagsText((c.negativeTags || []).join(", "));
+    setNpsPositiveTagsText(asCommaText((c as any).positiveTags));
+    setNpsNegativeTagsText(asCommaText((c as any).negativeTags));
     setNpsEvalSupervisorD(c.evaluateSupervisorD !== false);
     setNpsEvalOfficeKV(Boolean(c.evaluateOfficeKV));
     setNpsAlertThreshold(Number.isFinite(Number(c.alertThreshold)) ? Number(c.alertThreshold) : 3);
@@ -254,35 +247,23 @@ export function TemplatesCenterModule({ userRole }: Props) {
     setHtmlPreview("");
   }
 
-  const openEditDraft = async (t: TemplateDto) => {
+  const openEditDraft = (t: TemplateDto) => {
     const latest = t.versions?.[0];
-    setEditingTemplateName(t.name);
-    setEditingVersionId(latest?.status === "DRAFT" ? latest.id : undefined);
-    setChangeSummary("");
-    setShowAdvancedJson(false);
+    const editingVersionId = latest?.status === "DRAFT" ? latest.id : null;
+    const sourceVersionId = editingVersionId
+      ? editingVersionId
+      : (t.publishedVersionId ? String(t.publishedVersionId) : null);
 
-    const sourceVersionId =
-      latest?.status === "DRAFT"
-        ? latest.id
-        : (t.publishedVersionId ? String(t.publishedVersionId) : null);
-
-    if (sourceVersionId) {
-      setIsLoadingVersion(true);
-      try {
-        const v = await getTemplateVersion(sourceVersionId);
-        const json = (v.data as any)?.contentJson ?? null;
-        const html = String((v.data as any)?.contentHtml ?? "");
-        hydrateEditorsFromContent(activeTab, json, html);
-      } catch {
-        hydrateEditorsFromContent(activeTab, null, "");
-      } finally {
-        setIsLoadingVersion(false);
-      }
-    } else {
-      hydrateEditorsFromContent(activeTab, null, "");
-    }
-
-    setIsOpen(true);
+    const ctx = {
+      templateType: activeTab,
+      templateId: t.id,
+      templateName: t.name,
+      editingVersionId,
+      sourceVersionId,
+      returnModule: "k-templates",
+    };
+    localStorage.setItem("osi-plus.templates.editorContext", JSON.stringify(ctx));
+    window.dispatchEvent(new CustomEvent("changeModule", { detail: "k-template-editor" }));
   };
 
   const updatePreviews = () => {
@@ -373,7 +354,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
             <RefreshCcw className="h-4 w-4 mr-2" />
             Refrescar
           </Button>
-          <Button onClick={openNew}>
+          <Button onClick={openNew} disabled={userRole !== "K"}>
             <Plus className="h-4 w-4 mr-2" />
             Nueva
           </Button>
@@ -416,12 +397,16 @@ export function TemplatesCenterModule({ userRole }: Props) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => void openEditDraft(t)}>
-                        <Edit className="h-4 w-4 mr-2" />
-                        {latest?.status === "DRAFT" ? "Editar Draft" : "Nuevo Draft"}
+                        {userRole === "K" ? (
+                          <Edit className="h-4 w-4 mr-2" />
+                        ) : (
+                          <Eye className="h-4 w-4 mr-2" />
+                        )}
+                        {userRole === "K" ? (latest?.status === "DRAFT" ? "Editar Draft" : "Nuevo Draft") : "Ver"}
                       </Button>
                       <Button
                         size="sm"
-                        disabled={!latest || latest.status !== "DRAFT"}
+                        disabled={userRole !== "K" || !latest || latest.status !== "DRAFT"}
                         onClick={() => submitLatestDraft(t)}
                       >
                         <Send className="h-4 w-4 mr-2" />
@@ -441,13 +426,13 @@ export function TemplatesCenterModule({ userRole }: Props) {
       </Tabs>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-w-[1600px] w-[min(1600px,calc(100vw-0.5rem))] max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingVersionId ? "Editar Draft" : "Nueva Plantilla / Draft"}</DialogTitle>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-4">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+            <div className="space-y-4 xl:col-span-5 2xl:col-span-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs text-slate-500">Nombre</Label>
@@ -469,11 +454,11 @@ export function TemplatesCenterModule({ userRole }: Props) {
                     <CardTitle className="text-base">PIC: Instrucciones al Cliente</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                      <div className="sm:col-span-6">
                         <Label className="text-xs text-slate-500">Fase de disparo</Label>
                         <Select value={picTriggerPhase} onValueChange={(v) => setPicTriggerPhase(v as TriggerPhase)}>
-                          <SelectTrigger>
+                          <SelectTrigger className="w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -483,10 +468,10 @@ export function TemplatesCenterModule({ userRole }: Props) {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div>
+                      <div className="sm:col-span-6">
                         <Label className="text-xs text-slate-500">Canal</Label>
                         <Select value={picChannel} onValueChange={(v) => setPicChannel(v as OutputChannel)}>
-                          <SelectTrigger>
+                          <SelectTrigger className="w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -540,7 +525,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
                       <Input value={pgdServiceTagsText} onChange={(e) => setPgdServiceTagsText(e.target.value)} placeholder="Ej: Internacional, Arte" />
                     </div>
 
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <div className="text-sm text-slate-700 font-medium">Documentos</div>
                       <Button
                         type="button"
@@ -568,8 +553,8 @@ export function TemplatesCenterModule({ userRole }: Props) {
                     <div className="space-y-3">
                       {pgdDocs.map((d, idx) => (
                         <div key={idx} className="border rounded-lg p-3 space-y-3">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div>
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                            <div className="md:col-span-7">
                               <Label className="text-xs text-slate-500">Nombre</Label>
                               <Input
                                 value={d.name}
@@ -579,7 +564,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
                                 placeholder="Ej: Declaración de Valor"
                               />
                             </div>
-                            <div>
+                            <div className="md:col-span-5">
                               <Label className="text-xs text-slate-500">Tags (coma)</Label>
                               <Input
                                 value={d.serviceTagsText}
@@ -591,8 +576,8 @@ export function TemplatesCenterModule({ userRole }: Props) {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div>
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                            <div className="sm:col-span-4">
                               <Label className="text-xs text-slate-500">Visibilidad</Label>
                               <Select
                                 value={d.visibility}
@@ -600,7 +585,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
                                   setPgdDocs((prev) => prev.map((x, i) => (i === idx ? { ...x, visibility: v as PgdVisibility } : x)))
                                 }
                               >
-                                <SelectTrigger>
+                                <SelectTrigger className="w-full">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -609,7 +594,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div>
+                            <div className="sm:col-span-4">
                               <Label className="text-xs text-slate-500">Responsable</Label>
                               <Select
                                 value={d.responsible}
@@ -617,7 +602,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
                                   setPgdDocs((prev) => prev.map((x, i) => (i === idx ? { ...x, responsible: v as PgdResponsible } : x)))
                                 }
                               >
-                                <SelectTrigger>
+                                <SelectTrigger className="w-full">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -627,7 +612,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div>
+                            <div className="sm:col-span-4">
                               <Label className="text-xs text-slate-500">Tipo archivo</Label>
                               <Select
                                 value={d.expectedFileType}
@@ -635,7 +620,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
                                   setPgdDocs((prev) => prev.map((x, i) => (i === idx ? { ...x, expectedFileType: v as PgdFileType } : x)))
                                 }
                               >
-                                <SelectTrigger>
+                                <SelectTrigger className="w-full">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -648,7 +633,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             <div className="flex items-center gap-2">
                               <Switch
                                 checked={d.isBlocking}
@@ -689,11 +674,11 @@ export function TemplatesCenterModule({ userRole }: Props) {
                       <Input value={npsQuestion} onChange={(e) => setNpsQuestion(e.target.value)} placeholder="¿Recomendaría a International Packers...?" />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                      <div className="sm:col-span-6">
                         <Label className="text-xs text-slate-500">Escala</Label>
                         <Select value={npsScale} onValueChange={(v) => setNpsScale(v as NpsScale)}>
-                          <SelectTrigger>
+                          <SelectTrigger className="w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -702,7 +687,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div>
+                      <div className="sm:col-span-6">
                         <Label className="text-xs text-slate-500">Umbral alerta (score &lt;)</Label>
                         <Input
                           type="number"
@@ -712,12 +697,12 @@ export function TemplatesCenterModule({ userRole }: Props) {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                      <div className="sm:col-span-6">
                         <Label className="text-xs text-slate-500">Tags positivos (coma)</Label>
                         <Input value={npsPositiveTagsText} onChange={(e) => setNpsPositiveTagsText(e.target.value)} placeholder="Puntualidad, Amabilidad, Cuidado" />
                       </div>
-                      <div>
+                      <div className="sm:col-span-6">
                         <Label className="text-xs text-slate-500">Tags negativos (coma)</Label>
                         <Input value={npsNegativeTagsText} onChange={(e) => setNpsNegativeTagsText(e.target.value)} placeholder="Retraso, Daños, Actitud" />
                       </div>
@@ -766,7 +751,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
               )}
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 xl:col-span-7 2xl:col-span-7 xl:sticky xl:top-4 self-start">
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Vista previa</CardTitle>
@@ -782,8 +767,78 @@ export function TemplatesCenterModule({ userRole }: Props) {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="text-xs text-slate-500">JSON</div>
-                      <Textarea value={jsonPreview} readOnly rows={18} className="font-mono text-xs" />
+                      <div className="text-xs text-slate-500">Preview</div>
+                      {activeTab === "PGD" ? (
+                        <div className="border rounded-md p-3 space-y-2">
+                          <div className="text-sm font-medium text-slate-900">Checklist (simulación)</div>
+                          <div className="text-xs text-slate-600">
+                            Docs: <span className="font-medium text-slate-900">{pgdDocs.filter((d) => d.name.trim()).length}</span>
+                            {" · "}
+                            Bloqueantes:{" "}
+                            <span className="font-medium text-slate-900">{pgdDocs.filter((d) => d.name.trim() && d.isBlocking).length}</span>
+                          </div>
+                          <div className="space-y-2">
+                            {pgdDocs.filter((d) => d.name.trim()).slice(0, 10).map((d, idx) => (
+                              <div key={idx} className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm text-slate-900 truncate">{d.name}</div>
+                                  <div className="text-xs text-slate-500">
+                                    {d.visibility} · {d.responsible} · {d.expectedFileType}
+                                  </div>
+                                </div>
+                                {d.isBlocking ? (
+                                  <Badge className="bg-red-600 hover:bg-red-600 shrink-0">Bloqueante</Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="shrink-0">No bloquea</Badge>
+                                )}
+                              </div>
+                            ))}
+                            {pgdDocs.filter((d) => d.name.trim()).length > 10 && (
+                              <div className="text-xs text-slate-500">+ {pgdDocs.filter((d) => d.name.trim()).length - 10} más...</div>
+                            )}
+                            {pgdDocs.filter((d) => d.name.trim()).length === 0 && (
+                              <div className="text-sm text-slate-500">Agrega documentos para ver el checklist.</div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="border rounded-md p-3 space-y-2">
+                          <div className="text-sm font-medium text-slate-900">NPS (simulación)</div>
+                          <div className="text-xs text-slate-600">
+                            Escala: <span className="font-medium text-slate-900">{npsScale === "0_10" ? "0-10" : "1-5"}</span>
+                            {" · "}
+                            Alerta si score &lt; <span className="font-medium text-slate-900">{npsAlertThreshold}</span>
+                          </div>
+                          <div className="text-sm text-slate-900">{npsQuestion.trim() || "Sin pregunta"}</div>
+                          <div className="text-xs text-slate-600">
+                            Evalúa D: <span className="font-medium text-slate-900">{npsEvalSupervisorD ? "Sí" : "No"}</span>
+                            {" · "}
+                            Evalúa K/V: <span className="font-medium text-slate-900">{npsEvalOfficeKV ? "Sí" : "No"}</span>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs text-slate-500">Tags positivos</div>
+                            <div className="flex flex-wrap gap-1">
+                              {normalizeTagList(npsPositiveTagsText).slice(0, 12).map((t) => (
+                                <Badge key={t} variant="secondary">{t}</Badge>
+                              ))}
+                              {normalizeTagList(npsPositiveTagsText).length === 0 && (
+                                <span className="text-xs text-slate-500">-</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-xs text-slate-500">Tags negativos</div>
+                            <div className="flex flex-wrap gap-1">
+                              {normalizeTagList(npsNegativeTagsText).slice(0, 12).map((t) => (
+                                <Badge key={t} className="bg-slate-900 hover:bg-slate-900">{t}</Badge>
+                              ))}
+                              {normalizeTagList(npsNegativeTagsText).length === 0 && (
+                                <span className="text-xs text-slate-500">-</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>

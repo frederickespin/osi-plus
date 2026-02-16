@@ -28,6 +28,51 @@ enum TemplateVersionStatus {
   ARCHIVED
 }
 
+enum ProjectKState {
+  PENDING_VALIDATION
+  VALIDATED
+  RELEASED
+}
+
+enum SignalPolicy {
+  HARD_BLOCK
+  SOFT_ALERT
+}
+
+enum SignalKind {
+  PAYMENT
+  PERMITS_PARKING
+  PGD_BLOCKING_DOCS
+  CRATES
+  THIRD_PARTIES
+}
+
+enum PgdItemStatus {
+  MISSING
+  SUBMITTED
+  VALIDATED
+  REJECTED
+}
+
+enum PgdVisibility {
+  CLIENT_VIEW
+  INTERNAL_VIEW
+}
+
+enum PgdResponsible {
+  CLIENT
+  SUPERVISOR
+  DRIVER
+  INTERNAL
+}
+
+enum PgdFileType {
+  PDF
+  PHOTO
+  SIGNATURE
+  OTHER
+}
+
 model User {
   id           String   @id @default(cuid())
   code         String   @unique
@@ -47,6 +92,10 @@ model User {
   templateVersionsCreated  TemplateVersion[] @relation("TemplateCreatedBy")
   templateVersionsApproved TemplateVersion[] @relation("TemplateApprovedBy")
   templateVersionsRejected TemplateVersion[] @relation("TemplateRejectedBy")
+
+  projectSignalsAcked      ProjectSignal[]   @relation("ProjectSignalAckBy")
+  projectPgdsApplied       ProjectPgd[]      @relation("ProjectPgdAppliedBy")
+  projectPgdItemsValidated ProjectPgdItem[]  @relation("ProjectPgdItemValidatedBy")
 
   @@map("osi_users")
 }
@@ -77,14 +126,88 @@ model Project {
   status     String
   startDate  String
   endDate    String?
+  kState     ProjectKState @default(PENDING_VALIDATION)
+  kValidatedAt DateTime?
+  kReleasedAt  DateTime?
   osiCount   Int      @default(0)
   totalValue Float    @default(0)
   assignedTo String?
   notes      String?
   client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   osis       Osi[]
+  signals    ProjectSignal[]
+  pgd        ProjectPgd?
 
   @@map("osi_projects")
+}
+
+model ProjectSignal {
+  id        String      @id @default(cuid())
+  projectId String
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  kind      SignalKind
+  policy    SignalPolicy
+  warnAt    DateTime?
+  dueAt     DateTime?
+
+  doneAt    DateTime?
+
+  ackAt     DateTime?
+  ackNote   String?
+  ackById   String?
+  ackBy     User?       @relation("ProjectSignalAckBy", fields: [ackById], references: [id])
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([projectId, kind])
+  @@index([projectId, kind])
+  @@map("osi_project_signals")
+}
+
+model ProjectPgd {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  templateId        String
+  template          Template @relation(fields: [templateId], references: [id])
+  templateVersionId String
+  templateVersion   TemplateVersion @relation("ProjectPgdTemplateVersion", fields: [templateVersionId], references: [id])
+
+  appliedAt   DateTime @default(now())
+  appliedById String?
+  appliedBy   User?    @relation("ProjectPgdAppliedBy", fields: [appliedById], references: [id])
+
+  items      ProjectPgdItem[]
+
+  @@map("osi_project_pgd")
+}
+
+model ProjectPgdItem {
+  id           String   @id @default(cuid())
+  projectPgdId String
+  projectPgd   ProjectPgd @relation(fields: [projectPgdId], references: [id], onDelete: Cascade)
+
+  name           String
+  visibility     PgdVisibility
+  responsible    PgdResponsible
+  isBlocking     Boolean @default(false)
+  expectedFileType PgdFileType @default(OTHER)
+  serviceTags    String[]
+
+  status       PgdItemStatus @default(MISSING)
+  validatedAt  DateTime?
+  validatedById String?
+  validatedBy  User?    @relation("ProjectPgdItemValidatedBy", fields: [validatedById], references: [id])
+  note         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectPgdId, status])
+  @@map("osi_project_pgd_items")
 }
 
 model Osi {
@@ -125,6 +248,7 @@ model Template {
   updatedAt DateTime      @updatedAt
 
   versions  TemplateVersion[]
+  projectPgds ProjectPgd[]
 
   @@index([type, tenantId])
   @@unique([type, name, tenantId], name: "type_name_tenantId")
@@ -161,6 +285,7 @@ model TemplateVersion {
 
   // Opposite side for Template.publishedVersion
   publishedForTemplates Template[]    @relation("TemplatePublishedVersion")
+  projectPgdsLocked     ProjectPgd[]  @relation("ProjectPgdTemplateVersion")
 
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt

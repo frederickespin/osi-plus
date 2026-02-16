@@ -93,6 +93,7 @@ const menuGroups: MenuGroup[] = [
     label: 'Coordinación',
     icon: Briefcase,
     items: [
+      { id: 'k-dashboard', label: 'Control K', icon: LayoutDashboard, roles: ['A', 'K'], description: 'Semáforos + PGD aplicado' },
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K'] },
       { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K'] },
       { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K'], description: 'Seguimiento y cumplimiento' },

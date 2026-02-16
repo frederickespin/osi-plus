@@ -116,8 +116,17 @@ const CrateSettingsModule = lazy(() =>
 const TemplatesCenterModule = lazy(() =>
   import('@/components/modules/TemplatesCenterModule').then((m) => ({ default: m.TemplatesCenterModule }))
 );
+const TemplateEditorModule = lazy(() =>
+  import('@/components/modules/TemplateEditorModule').then((m) => ({ default: m.TemplateEditorModule }))
+);
 const TemplateApprovalsModule = lazy(() =>
   import('@/components/modules/TemplateApprovalsModule').then((m) => ({ default: m.TemplateApprovalsModule }))
+);
+const KDashboardModule = lazy(() =>
+  import('@/components/modules/KDashboardModule').then((m) => ({ default: m.KDashboardModule }))
+);
+const KProjectModule = lazy(() =>
+  import('@/components/modules/KProjectModule').then((m) => ({ default: m.KProjectModule }))
 );
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
@@ -190,7 +199,10 @@ export type ModuleId =
   | 'crate-wood'
   | 'crate-settings'
   | 'k-templates'
+  | 'k-template-editor'
   | 'a-template-approvals'
+  | 'k-dashboard'
+  | 'k-project'
   | 'settings';
 
 function App() {
@@ -311,8 +323,14 @@ function App() {
         return <CrateSettingsModule />;
       case 'k-templates':
         return <TemplatesCenterModule userRole={userRole} />;
+      case 'k-template-editor':
+        return <TemplateEditorModule userRole={userRole} />;
       case 'a-template-approvals':
         return <TemplateApprovalsModule userRole={userRole} />;
+      case 'k-dashboard':
+        return <KDashboardModule />;
+      case 'k-project':
+        return <KProjectModule userRole={userRole} />;
       case 'settings':
         return <SettingsModule />;
       default:
@@ -346,7 +364,7 @@ function getDefaultModuleForRole(role: UserRole): ModuleId {
   // Un default coherente evita que parezca que "eres admin" pero caes en RRHH sin querer.
   if (role === 'A') return 'dashboard';
   if (role === 'I') return 'hr';
-  if (role === 'K') return 'projects';
+  if (role === 'K') return 'k-dashboard';
   if (role === 'V') return 'osi-editor';
   if (role === 'B') return 'operations';
   if (role === 'C') return 'wms';

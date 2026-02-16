@@ -1,7 +1,19 @@
 ﻿import { useMemo, useState } from "react";
 import { addDays, addWeeks, eachDayOfInterval, format, isSameDay, parseISO, startOfWeek, subWeeks } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, Pause, Play, RefreshCw } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FileText,
+  Package,
+  Pause,
+  Play,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -206,6 +218,56 @@ export default function CommercialCalendarModule() {
       daysWithLoad: dayCards.filter((d) => d.bookings.length > 0).length,
     };
   }, [bookings, dayCards, windowStart]);
+
+  const calendarStats = useMemo(() => {
+    const daysLoadPercent = VISIBLE_DAYS > 0 ? Math.round((windowStats.daysWithLoad / VISIBLE_DAYS) * 100) : 0;
+    return [
+      {
+        key: "projects",
+        label: "Proyectos confirmados",
+        value: windowStats.activeProjects,
+        helper: "Dentro del rango visible",
+        icon: Package,
+        color: "text-indigo-600",
+        bgColor: "bg-indigo-100",
+        trend: "Consumen cupo diario",
+        trendUp: true,
+      },
+      {
+        key: "proposals",
+        label: "Propuestas tentativas",
+        value: windowStats.tentative,
+        helper: "No consumen cupo confirmado",
+        icon: FileText,
+        color: "text-amber-600",
+        bgColor: "bg-amber-100",
+        trend: "Pendientes de confirmacion",
+        trendUp: true,
+      },
+      {
+        key: "paused",
+        label: "Reservas pausadas",
+        value: windowStats.paused,
+        helper: "Pendientes de reanudacion",
+        icon: Pause,
+        color: "text-slate-600",
+        bgColor: "bg-slate-200",
+        trend: windowStats.paused > 0 ? "Requiere seguimiento" : "Sin pendientes",
+        trendUp: windowStats.paused === 0,
+      },
+      {
+        key: "days",
+        label: "Dias con carga",
+        value: windowStats.daysWithLoad,
+        helper: `De ${VISIBLE_DAYS} dias visibles`,
+        icon: CalendarDays,
+        color: "text-emerald-600",
+        bgColor: "bg-emerald-100",
+        trend: `${daysLoadPercent}% del rango`,
+        trendUp: daysLoadPercent <= 70,
+      },
+    ] as const;
+  }, [windowStats]);
 
   const resetForm = (dateISO?: string) => {
     const nextISO = dateISO || dayISO;
@@ -465,34 +527,29 @@ export default function CommercialCalendarModule() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Proyectos confirmados</p>
-            <p className="text-2xl font-semibold text-slate-900 mt-1">{windowStats.activeProjects}</p>
-            <p className="text-xs text-slate-500 mt-1">Dentro del rango visible</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Propuestas tentativas</p>
-            <p className="text-2xl font-semibold text-slate-900 mt-1">{windowStats.tentative}</p>
-            <p className="text-xs text-slate-500 mt-1">No consumen cupo confirmado</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Reservas pausadas</p>
-            <p className="text-2xl font-semibold text-slate-900 mt-1">{windowStats.paused}</p>
-            <p className="text-xs text-slate-500 mt-1">Pendientes de reanudacion</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Dias con carga</p>
-            <p className="text-2xl font-semibold text-slate-900 mt-1">{windowStats.daysWithLoad}</p>
-            <p className="text-xs text-slate-500 mt-1">De {VISIBLE_DAYS} dias visibles</p>
-          </CardContent>
-        </Card>
+        {calendarStats.map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <Card key={stat.key} className="transition-shadow hover:shadow-md">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className={cn("p-3 rounded-lg", stat.bgColor)}>
+                    <Icon className={cn("h-5 w-5", stat.color)} />
+                  </div>
+                  <div className={cn("flex items-center gap-1 text-xs", stat.trendUp ? "text-emerald-600" : "text-red-600")}>
+                    {stat.trendUp ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+                    <span>{stat.trend}</span>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
+                  <p className="text-sm text-slate-600">{stat.label}</p>
+                  <p className="text-xs text-slate-500 mt-1">{stat.helper}</p>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <Card>

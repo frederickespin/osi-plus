@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import type { ModuleId } from '@/App';
 import type { UserRole } from '@/types/osi.types';
+import { canAccessModule } from '@/lib/roleModuleMap';
 
 interface SidebarProps {
   activeModule: ModuleId;
@@ -45,7 +46,7 @@ interface MenuItem {
   id: ModuleId;
   label: string;
   icon: React.ElementType;
-  roles: UserRole[];
+  roles: UserRole[]; // Referencia para documentación; el filtro usa canAccessModule
   description?: string;
 }
 
@@ -151,11 +152,11 @@ const menuGroups: MenuGroup[] = [
   }
 ];
 
-// Obtener grupos filtrados por rol
+// Filtrar menú por rol usando roleModuleMap (fuente única de verdad)
 const getMenuGroupsByRole = (role: UserRole): MenuGroup[] => {
   return menuGroups.map(group => ({
     ...group,
-    items: group.items.filter(item => item.roles.includes(role) || role === 'A')
+    items: group.items.filter(item => canAccessModule(role, item.id)),
   })).filter(group => group.items.length > 0);
 };
 

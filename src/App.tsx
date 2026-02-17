@@ -4,6 +4,8 @@ import { Toaster } from '@/components/ui/sonner';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 import type { UserRole } from '@/types/osi.types';
 import { loadSession, saveSession, clearSession, type Session } from '@/lib/sessionStore';
+import { getDefaultModuleForRole } from '@/lib/roleModuleMap';
+import { EnvBanner } from '@/components/EnvBanner';
 
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
@@ -375,21 +377,24 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      <Sidebar 
-        activeModule={activeModule} 
-        onModuleChange={setActiveModule} 
-        userRole={userRole}
-        userName={session.name}
-        onLogout={handleLogout}
-      />
-      <main className="flex-1 overflow-auto">
+    <div className="flex flex-col h-screen bg-slate-50">
+      <EnvBanner />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar 
+          activeModule={activeModule} 
+          onModuleChange={setActiveModule} 
+          userRole={userRole}
+          userName={session.name}
+          onLogout={handleLogout}
+        />
+        <main className="flex-1 overflow-auto">
         <AppErrorBoundary>
           <Suspense fallback={<div className="p-6 text-slate-600">Cargando módulo...</div>}>
             {renderModule()}
           </Suspense>
         </AppErrorBoundary>
-      </main>
+        </main>
+      </div>
       <Toaster />
     </div>
   );
@@ -397,20 +402,4 @@ function App() {
 
 export default App;
 
-function getDefaultModuleForRole(role: UserRole): ModuleId {
-  // Un default coherente evita que parezca que "eres admin" pero caes en RRHH sin querer.
-  if (role === 'A') return 'dashboard';
-  if (role === 'I') return 'hr';
-  if (role === 'K') return 'k-dashboard';
-  if (role === 'V') return 'osi-editor';
-  if (role === 'B') return 'operations';
-  if (role === 'C') return 'wms';
-  if (role === 'C1') return 'dispatch';
-  if (role === 'D') return 'supervisor';
-  if (role === 'E') return 'driver';
-  if (role === 'G') return 'security';
-  if (role === 'N') return 'field';
-  if (role === 'PA') return 'carpentry';
-  if (role === 'PB' || role === 'PD') return 'maintenance';
-  return 'clients';
-}
+// getDefaultModuleForRole imported from @/lib/roleModuleMap (fuente única de verdad)

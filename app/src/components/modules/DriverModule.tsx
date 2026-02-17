@@ -24,7 +24,10 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { mockOSIs, mockVehicles, mockUsers } from '@/data/mockData';
 import { isFieldStaffRole, loadUsers } from '@/lib/userStore';
+import { formatCurrency } from '@/lib/formatters';
 import { toast } from 'sonner';
+
+const money = (value: number) => formatCurrency(value);
 
 export function DriverModule() {
   const [activeTrip, setActiveTrip] = useState(false);
@@ -328,7 +331,7 @@ function TripCard({ osi, upcoming, completed }: { osi: typeof mockOSIs[0]; upcom
             </div>
           </div>
           <div className="text-right">
-            <p className="font-semibold text-slate-900">${osi.value.toLocaleString()}</p>
+            <p className="font-semibold text-slate-900">{money(osi.value)}</p>
           </div>
         </div>
       </CardContent>

@@ -27,6 +27,7 @@ import {
 } from "@/lib/commercialCalendarStore";
 import { loadQuoteAudit } from "@/lib/quoteAuditStore";
 import { generateQuoteServicePdf } from "@/lib/quotePdf";
+import { formatCurrency } from "@/lib/formatters";
 
 function loadCrateDrafts(): any[] {
   try {
@@ -36,7 +37,7 @@ function loadCrateDrafts(): any[] {
   }
 }
 
-const money = (n: number) => `RD$ ${n.toFixed(2)}`;
+const money = (n: number) => formatCurrency(n);
 const uid = () =>
   crypto?.randomUUID ? crypto.randomUUID() : `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
@@ -137,6 +138,7 @@ export default function QuoteBuilder({
       };
     });
   }, [limits.maxProjectsPerDay, scheduleEndDate, scheduleRefreshKey, scheduleStartDate]);
+  const plannedDaysFromSchedule = scheduleDayDetails.length;
 
   const update = (patch: Partial<Quote>) => {
     if (!canEdit) {
@@ -190,7 +192,10 @@ export default function QuoteBuilder({
     field: "inclusions" | "exclusions" | "permits" | "contractClauses",
     value: string
   ) => {
-    const next = value.split("\n").map((s) => s.trim()).filter(Boolean);
+    const next = value
+      .split(/\r?\n/)
+      .map((s) => s.replace(/\r/g, ""))
+      .filter((s) => s.trim().length > 0);
     update({ [field]: next } as Partial<Quote>);
   };
 
@@ -243,6 +248,18 @@ export default function QuoteBuilder({
     setScheduleStartDate(todayIso);
     setScheduleEndDate(todayIso);
   }, [linkedBooking?.id, linkedBooking?.startDate, linkedBooking?.endDate, quote.proposalNumber]);
+
+  useEffect(() => {
+    if (!canEdit) return;
+    if (quote.resourcePlan.plannedDays === plannedDaysFromSchedule) return;
+    update({
+      resourcePlan: {
+        ...quote.resourcePlan,
+        plannedDays: plannedDaysFromSchedule,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit, plannedDaysFromSchedule, quote.resourcePlan.plannedDays]);
 
   const openWoodCrateFromQuote = () => {
     window.dispatchEvent(
@@ -325,7 +342,13 @@ export default function QuoteBuilder({
 
   const generateServicePdf = async () => {
     await generateQuoteServicePdf({
-      quote,
+      quote: {
+        ...quote,
+        resourcePlan: {
+          ...quote.resourcePlan,
+          plannedDays: plannedDaysFromSchedule,
+        },
+      },
       lead: {
         clientName: lead.clientName,
         origin: lead.origin,
@@ -719,12 +742,10 @@ export default function QuoteBuilder({
               <div className="space-y-2">
                 <Label>Dias planificados</Label>
                 <Input
-                  disabled={!canEdit}
+                  disabled
+                  readOnly
                   type="number"
-                  value={quote.resourcePlan.plannedDays}
-                  onChange={(e) =>
-                    update({ resourcePlan: { ...quote.resourcePlan, plannedDays: Number(e.target.value) || 0 } })
-                  }
+                  value={plannedDaysFromSchedule}
                 />
               </div>
               <div className="space-y-2">
@@ -750,7 +771,7 @@ export default function QuoteBuilder({
                 />
               </div>
               <p className="text-xs text-slate-500 md:col-span-3">
-                Esto se usara luego para sugerir PET + costos internos (etapa 3).
+                Este valor se calcula automáticamente según los días seleccionados en la programación del cliente.
               </p>
             </CardContent>
           </Card>
@@ -832,6 +853,7 @@ export default function QuoteBuilder({
                   disabled={!canEdit}
                   value={quote.inclusions.join("\n")}
                   onChange={(e) => updateLegalField("inclusions", e.target.value)}
+                  placeholder="Texto libre con espacios (una línea por inclusión)."
                 />
               </div>
               <div className="space-y-2">
@@ -840,6 +862,7 @@ export default function QuoteBuilder({
                   disabled={!canEdit}
                   value={quote.exclusions.join("\n")}
                   onChange={(e) => updateLegalField("exclusions", e.target.value)}
+                  placeholder="Texto libre con espacios (una línea por exclusión)."
                 />
               </div>
               <div className="space-y-2">
@@ -848,6 +871,7 @@ export default function QuoteBuilder({
                   disabled={!canEdit}
                   value={quote.permits.join("\n")}
                   onChange={(e) => updateLegalField("permits", e.target.value)}
+                  placeholder="Texto libre con espacios (una línea por permiso)."
                 />
               </div>
 

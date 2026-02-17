@@ -14,6 +14,7 @@ import { loadProjects } from "@/lib/projectsStore";
 import { loadQuotes } from "@/lib/salesStore";
 import { loadBookings } from "@/lib/commercialCalendarStore";
 import { loadOsi } from "@/lib/hrNotaStorage";
+import { formatCurrency } from "@/lib/formatters";
 import {
   createCommercialAddendum,
   listAddendaByProject,
@@ -132,7 +133,7 @@ function formatDateTime(value?: string) {
   return d.toLocaleString();
 }
 
-const money = (n: number) => `RD$ ${n.toLocaleString()}`;
+const money = (n: number) => formatCurrency(n);
 
 async function readFilesAsEvidence(files: File[]) {
   const toDataUrl = (file: File) =>

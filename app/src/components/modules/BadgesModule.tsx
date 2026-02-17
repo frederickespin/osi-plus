@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { formatCurrency } from '@/lib/formatters';
 import { mockBadges, mockUsers } from '@/data/mockData';
 import { toast } from 'sonner';
 
@@ -190,7 +191,7 @@ export function BadgesModule() {
                       <p className="text-xs text-slate-500">Meta alcanzada</p>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-blue-600">$2,250</p>
+                      <p className="text-2xl font-bold text-blue-600">{formatCurrency(2250, "$")}</p>
                       <p className="text-xs text-slate-500">Ahorro generado</p>
                     </div>
                   </div>

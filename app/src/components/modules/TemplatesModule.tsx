@@ -20,6 +20,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ptfs, pets, pics, pgds } from '@/data/mockData';
 import type { PTF, PET, PETRole, PIC, PGD, PGDDocument } from '@/types/osi.types';
 
+function safeText(value: unknown, fallback = '-') {
+  if (typeof value !== 'string') return fallback;
+  const cleaned = value.trim();
+  return cleaned.length > 0 ? cleaned : fallback;
+}
+
+function shortText(value: unknown, max = 100, fallback = 'Sin contenido') {
+  const text = safeText(value, fallback);
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}...`;
+}
+
+function toArray<T>(value: T[] | undefined | null) {
+  return Array.isArray(value) ? value : [];
+}
+
 export function TemplatesModule() {
   const [activeTab, setActiveTab] = useState('ptf');
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,16 +45,16 @@ export function TemplatesModule() {
   const [selectedPGD, setSelectedPGD] = useState<PGD | null>(null);
 
   const filteredPTFs = ptfs.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    safeText(p.name, '').toLowerCase().includes(searchTerm.toLowerCase())
   );
   const filteredPETs = pets.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    safeText(p.name, '').toLowerCase().includes(searchTerm.toLowerCase())
   );
   const filteredPICs = pics.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    safeText(p.name, '').toLowerCase().includes(searchTerm.toLowerCase())
   );
   const filteredPGDs = pgds.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    safeText(p.name, '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -109,22 +125,22 @@ export function TemplatesModule() {
                       </Button>
                     </div>
                   </div>
-                  <CardTitle className="text-lg mt-2">{ptf.name}</CardTitle>
+                  <CardTitle className="text-lg mt-2">{safeText(ptf.name, 'Plantilla sin nombre')}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-slate-600 mb-4">{ptf.description}</p>
+                  <p className="text-sm text-slate-600 mb-4">{safeText(ptf.description, 'Sin descripción')}</p>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-500">Tipo de Servicio:</span>
-                      <Badge variant="outline">{ptf.serviceType}</Badge>
+                      <Badge variant="outline">{safeText(ptf.serviceType, 'General')}</Badge>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-500">Materiales:</span>
-                      <span className="font-medium">{ptf.materials.length}</span>
+                      <span className="font-medium">{toArray(ptf.materials).length}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-500">Herramientas:</span>
-                      <span className="font-medium">{ptf.tools.length}</span>
+                      <span className="font-medium">{toArray(ptf.tools).length}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -156,25 +172,25 @@ export function TemplatesModule() {
                       </Button>
                     </div>
                   </div>
-                  <CardTitle className="text-lg mt-2">{pet.name}</CardTitle>
+                  <CardTitle className="text-lg mt-2">{safeText(pet.name, 'Plantilla sin nombre')}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-slate-600 mb-4">{pet.description}</p>
+                  <p className="text-sm text-slate-600 mb-4">{safeText(pet.description, 'Sin descripción')}</p>
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Configuración de Roles:</p>
                       <div className="flex flex-wrap gap-2">
-                        {pet.roles.map((role: PETRole, idx: number) => (
+                        {toArray<PETRole>(pet.roles as PETRole[]).map((role, idx) => (
                           <Badge key={idx} variant="secondary">
-                            {role.quantity}x {role.role}
-                            {role.shab && ` (${role.shab.join(', ')})`}
+                            {role.quantity}x {safeText(role.role, 'Rol')}
+                            {toArray(role.shab).length > 0 && ` (${toArray(role.shab).join(', ')})`}
                           </Badge>
                         ))}
                       </div>
                     </div>
                     <div className="pt-2 border-t">
                       <p className="text-xs text-slate-500">
-                        <span className="font-medium">Requisitos:</span> {pet.requirements.join(', ')}
+                        <span className="font-medium">Requisitos:</span> {toArray(pet.requirements).join(', ') || 'Sin requisitos'}
                       </p>
                     </div>
                   </div>
@@ -207,24 +223,24 @@ export function TemplatesModule() {
                       </Button>
                     </div>
                   </div>
-                  <CardTitle className="text-lg mt-2">{pic.name}</CardTitle>
+                  <CardTitle className="text-lg mt-2">{safeText(pic.name, 'Plantilla sin nombre')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-500">Tipo de Servicio:</span>
-                      <Badge variant="outline">{pic.serviceType}</Badge>
+                      <Badge variant="outline">{safeText(pic.serviceType, 'General')}</Badge>
                     </div>
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Contenido:</p>
                       <p className="text-sm bg-slate-50 p-3 rounded">
-                        {pic.content.substring(0, 100)}...
+                        {shortText(pic.content, 100)}
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Template WhatsApp:</p>
                       <p className="text-sm bg-green-50 p-3 rounded text-green-800">
-                        {pic.whatsappTemplate.substring(0, 100)}...
+                        {shortText(pic.whatsappTemplate, 100)}
                       </p>
                     </div>
                   </div>
@@ -257,18 +273,18 @@ export function TemplatesModule() {
                       </Button>
                     </div>
                   </div>
-                  <CardTitle className="text-lg mt-2">{pgd.name}</CardTitle>
+                  <CardTitle className="text-lg mt-2">{safeText(pgd.name, 'Plantilla sin nombre')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-500">Tipo de Servicio:</span>
-                      <Badge variant="outline">{pgd.serviceType}</Badge>
+                      <Badge variant="outline">{safeText(pgd.serviceType, 'General')}</Badge>
                     </div>
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Documentos Requeridos:</p>
                       <div className="space-y-2">
-                        {pgd.documents.map((doc: PGDDocument, idx: number) => (
+                        {toArray<PGDDocument>(pgd.documents as PGDDocument[]).map((doc, idx) => (
                           <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded">
                             <div className="flex items-center gap-2">
                               {doc.required ? (
@@ -304,17 +320,17 @@ export function TemplatesModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="w-5 h-5" />
-              {selectedPTF?.name}
+              {safeText(selectedPTF?.name, 'Plantilla sin nombre')}
             </DialogTitle>
           </DialogHeader>
           {selectedPTF && (
             <div className="space-y-6">
-              <p className="text-slate-600">{selectedPTF.description}</p>
+              <p className="text-slate-600">{safeText(selectedPTF.description, 'Sin descripción')}</p>
               
               <div>
                 <h4 className="font-medium mb-3">Materiales</h4>
                 <div className="space-y-2">
-                  {selectedPTF.materials.map((mat, idx) => (
+                  {toArray(selectedPTF.materials).map((mat, idx) => (
                     <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded">
                       <div className="flex items-center gap-2">
                         <Package className="w-4 h-4 text-slate-400" />
@@ -334,7 +350,7 @@ export function TemplatesModule() {
               <div>
                 <h4 className="font-medium mb-3">Herramientas</h4>
                 <div className="flex flex-wrap gap-2">
-                  {selectedPTF.tools.map((tool, idx) => (
+                  {toArray(selectedPTF.tools).map((tool, idx) => (
                     <Badge key={idx} variant="secondary">
                       {tool.quantity}x {tool.toolId}
                     </Badge>
@@ -363,17 +379,17 @@ export function TemplatesModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              {selectedPET?.name}
+              {safeText(selectedPET?.name, 'Plantilla sin nombre')}
             </DialogTitle>
           </DialogHeader>
           {selectedPET && (
             <div className="space-y-6">
-              <p className="text-slate-600">{selectedPET.description}</p>
+              <p className="text-slate-600">{safeText(selectedPET.description, 'Sin descripción')}</p>
               
               <div>
                 <h4 className="font-medium mb-3">Configuración de Equipo</h4>
                 <div className="space-y-3">
-                  {selectedPET.roles.map((role, idx) => (
+                  {toArray(selectedPET.roles).map((role, idx) => (
                     <div key={idx} className="p-3 bg-slate-50 rounded">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -381,10 +397,10 @@ export function TemplatesModule() {
                           <span className="font-medium">{role.quantity} persona(s)</span>
                         </div>
                       </div>
-                      {role.shab && (
+                      {toArray(role.shab).length > 0 && (
                         <div className="mt-2 flex items-center gap-2">
                           <span className="text-sm text-slate-500">Habilidades:</span>
-                          {role.shab.map((s, i) => (
+                          {toArray(role.shab).map((s, i) => (
                             <Badge key={i} variant="outline" className="text-xs">
                               {s}
                             </Badge>
@@ -404,7 +420,7 @@ export function TemplatesModule() {
               <div>
                 <h4 className="font-medium mb-2">Requisitos Adicionales</h4>
                 <ul className="list-disc list-inside text-sm text-slate-600">
-                  {selectedPET.requirements.map((req, idx) => (
+                  {toArray(selectedPET.requirements).map((req, idx) => (
                     <li key={idx}>{req}</li>
                   ))}
                 </ul>
@@ -420,20 +436,20 @@ export function TemplatesModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <MessageSquare className="w-5 h-5" />
-              {selectedPIC?.name}
+              {safeText(selectedPIC?.name, 'Plantilla sin nombre')}
             </DialogTitle>
           </DialogHeader>
           {selectedPIC && (
             <div className="space-y-6">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-500">Tipo de Servicio:</span>
-                <Badge>{selectedPIC.serviceType}</Badge>
+                <Badge>{safeText(selectedPIC.serviceType, 'General')}</Badge>
               </div>
               
               <div>
                 <h4 className="font-medium mb-2">Contenido</h4>
                 <div className="p-4 bg-slate-50 rounded-lg">
-                  <p className="text-sm whitespace-pre-wrap">{selectedPIC.content}</p>
+                  <p className="text-sm whitespace-pre-wrap">{safeText(selectedPIC.content, 'Sin contenido configurado')}</p>
                 </div>
               </div>
               
@@ -441,7 +457,7 @@ export function TemplatesModule() {
                 <h4 className="font-medium mb-2">Template WhatsApp</h4>
                 <div className="p-4 bg-green-50 rounded-lg">
                   <p className="text-sm text-green-800 whitespace-pre-wrap">
-                    {selectedPIC.whatsappTemplate}
+                    {safeText(selectedPIC.whatsappTemplate, 'Sin template de WhatsApp')}
                   </p>
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
@@ -459,20 +475,20 @@ export function TemplatesModule() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ClipboardCheck className="w-5 h-5" />
-              {selectedPGD?.name}
+              {safeText(selectedPGD?.name, 'Plantilla sin nombre')}
             </DialogTitle>
           </DialogHeader>
           {selectedPGD && (
             <div className="space-y-6">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-500">Tipo de Servicio:</span>
-                <Badge>{selectedPGD.serviceType}</Badge>
+                <Badge>{safeText(selectedPGD.serviceType, 'General')}</Badge>
               </div>
               
               <div>
                 <h4 className="font-medium mb-3">Checklist de Documentos</h4>
                 <div className="space-y-2">
-                  {selectedPGD.documents.map((doc, idx) => (
+                  {toArray(selectedPGD.documents).map((doc, idx) => (
                     <div key={idx} className="p-3 bg-slate-50 rounded">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">

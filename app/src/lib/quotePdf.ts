@@ -1,5 +1,6 @@
 import type { CommercialBooking } from "@/lib/commercialCalendarStore";
 import type { Quote } from "@/types/sales.types";
+import { formatCurrency } from "@/lib/formatters";
 
 type QuoteLeadInfo = {
   clientName: string;
@@ -13,7 +14,7 @@ type GenerateQuoteServicePdfInput = {
   booking?: Pick<CommercialBooking, "startDate" | "endDate"> | null;
 };
 
-const money = (n: number) => `RD$ ${n.toFixed(2)}`;
+const money = (n: number) => formatCurrency(n);
 
 export async function generateQuoteServicePdf(input: GenerateQuoteServicePdfInput) {
   const { jsPDF } = await import("jspdf");

@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { formatCurrency } from '@/lib/formatters';
 import { toast } from 'sonner';
 
 import { mockVehicles, mockMaintenanceRecords, mockUsers } from '@/data/mockData';
@@ -207,7 +208,7 @@ export function FleetAdminModule() {
                           </span>
                           <span className="flex items-center gap-1">
                             <Gauge className="h-3 w-3" />
-                            ${record.cost}
+                            {formatCurrency(record.cost, "$")}
                           </span>
                         </div>
                       </div>
@@ -238,7 +239,7 @@ export function FleetAdminModule() {
                   </div>
                   <div className="text-right">
                     <p className="font-medium text-slate-900">45 L</p>
-                    <p className="text-sm text-slate-500">$315</p>
+                    <p className="text-sm text-slate-500">{formatCurrency(315, "$")}</p>
                   </div>
                 </div>
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
@@ -253,7 +254,7 @@ export function FleetAdminModule() {
                   </div>
                   <div className="text-right">
                     <p className="font-medium text-slate-900">38 L</p>
-                    <p className="text-sm text-slate-500">$266</p>
+                    <p className="text-sm text-slate-500">{formatCurrency(266, "$")}</p>
                   </div>
                 </div>
               </div>

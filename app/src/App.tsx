@@ -190,11 +190,14 @@ export type ModuleId =
   | 'settings';
 
 function App() {
-  const [activeModule, setActiveModule] = useState<ModuleId>('clients');
-  const [userRole] = useState<UserRole>(() => {
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') return 'A';
-    return loadSession().role;
+  const [session] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return { role: 'A' as UserRole, name: 'Admin User' };
+    }
+    return loadSession();
   });
+  const [activeModule, setActiveModule] = useState<ModuleId>(() => (session.role === 'A' ? 'dashboard' : 'clients'));
+  const userRole = session.role;
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {
@@ -317,6 +320,7 @@ function App() {
         activeModule={activeModule} 
         onModuleChange={setActiveModule} 
         userRole={userRole}
+        userName={session.name}
       />
       <main className="flex-1 overflow-auto">
         <AppErrorBoundary>

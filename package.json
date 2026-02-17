@@ -2,16 +2,21 @@
   "name": "osi-plus-erp",
   "private": true,
   "version": "17.0.0",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "PATH=\"/opt/homebrew/opt/node@22/bin:/usr/local/opt/node@22/bin:$PATH\" vite",
     "build": "prisma generate && vite build",
     "postinstall": "prisma generate",
     "lint": "eslint .",
     "preview": "vite preview",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:seed": "node prisma/seed.mjs"
+    "db:seed": "node prisma/seed.mjs",
+    "vercel:check": "bash scripts/vercel-check.sh",
+    "vercel:fix-jwt": "bash scripts/vercel-fix-jwt.sh"
   },
   "dependencies": {
     "22": "^0.0.0",

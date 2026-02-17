@@ -717,14 +717,16 @@ export default function QuoteBuilder({
                   {Array.isArray(selectedCrate?.plan?.costing?.boxes) && selectedCrate.plan.costing.boxes.length > 0 && (
                     <div className="pt-2">
                       <p className="font-medium">Contenido por caja:</p>
-                      <ul className="list-disc pl-5">
-                        {selectedCrate.plan.costing.boxes.slice(0, 5).map((b: any, idx: number) => (
-                          <li key={b.id ?? idx}>
-                            Caja {idx + 1}: {b.itemCount ?? b.items?.length ?? 0} item(s) -{" "}
-                            {Array.isArray(b.items) ? b.items.map((it: any) => it.name).filter(Boolean).slice(0, 3).join(", ") : "Sin detalle"}
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="mt-2 max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-white p-3">
+                        <ul className="list-disc pl-5 space-y-1">
+                          {selectedCrate.plan.costing.boxes.map((b: any, idx: number) => (
+                            <li key={b.id ?? idx} className="break-words">
+                              Caja {idx + 1}: {b.itemCount ?? b.items?.length ?? 0} item(s) -{" "}
+                              {Array.isArray(b.items) ? b.items.map((it: any) => it.name).filter(Boolean).slice(0, 3).join(", ") : "Sin detalle"}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
                   )}
                 </div>

@@ -1,8 +1,9 @@
-import { Component, Suspense, lazy, useEffect, useState } from 'react';
+import { Component, Suspense, lazy, useEffect, useState, useCallback } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Toaster } from '@/components/ui/sonner';
+import { LoginScreen } from '@/components/auth/LoginScreen';
 import type { UserRole } from '@/types/osi.types';
-import { loadSession, type Session } from '@/lib/sessionStore';
+import { loadSession, saveSession, clearSession, type Session } from '@/lib/sessionStore';
 
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
@@ -206,14 +207,37 @@ export type ModuleId =
   | 'settings';
 
 function App() {
-  const [session] = useState<Session>(() => {
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      return { role: 'A', name: 'Admin User' };
+  const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [activeModule, setActiveModule] = useState<ModuleId>('dashboard');
+
+  // Update default module when session changes
+  useEffect(() => {
+    if (session?.role) {
+      setActiveModule(getDefaultModuleForRole(session.role));
     }
-    return loadSession();
-  });
-  const userRole: UserRole = session.role;
-  const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
+  }, [session?.role]);
+
+  // Handle login success
+  const handleLoginSuccess = useCallback((newSession: Session) => {
+    saveSession(newSession);
+    setSession(newSession);
+  }, []);
+
+  // Handle logout
+  const handleLogout = useCallback(() => {
+    clearSession();
+    setSession(null);
+  }, []);
+
+  // Listen for session expired events from API
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      clearSession();
+      setSession(null);
+    };
+    window.addEventListener('osi:session:expired', handleSessionExpired);
+    return () => window.removeEventListener('osi:session:expired', handleSessionExpired);
+  }, []);
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {
@@ -245,6 +269,18 @@ function App() {
     window.addEventListener("osi:salesquote:open", handler as EventListener);
     return () => window.removeEventListener("osi:salesquote:open", handler as EventListener);
   }, []);
+
+  // Show login screen if no valid session
+  if (!session || !session.token) {
+    return (
+      <>
+        <LoginScreen onLoginSuccess={handleLoginSuccess} />
+        <Toaster />
+      </>
+    );
+  }
+
+  const userRole: UserRole = session.role;
 
   const renderModule = () => {
     switch (activeModule) {
@@ -345,6 +381,7 @@ function App() {
         onModuleChange={setActiveModule} 
         userRole={userRole}
         userName={session.name}
+        onLogout={handleLogout}
       />
       <main className="flex-1 overflow-auto">
         <AppErrorBoundary>

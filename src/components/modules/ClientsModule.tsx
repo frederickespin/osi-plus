@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Search, Plus, Phone, Mail, MapPin, FileText } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Search, Plus, Phone, Mail, MapPin, FileText, RefreshCw, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { loadHistory, historyByCustomer, type CustomerHistoryItem } from "@/lib/
 import type { LeadLite, LeadStatus, Quote } from "@/types/sales.types";
 import type { UserRole } from "@/types/osi.types";
 import { CustomerPipelineBar } from "@/components/CustomerPipelineBar";
+import { getClients, createClient, type ClientDto } from "@/lib/api";
 
 export function ClientsModule({ userRole = "A" as UserRole }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -26,6 +27,8 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
   const [historyItems, setHistoryItems] = useState<CustomerHistoryItem[]>([]);
   const [selectedLead, setSelectedLead] = useState<LeadLite | null>(null);
   const [activeQuote, setActiveQuote] = useState<Quote | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [apiAvailable, setApiAvailable] = useState(true);
 
   const [isNewOpen, setIsNewOpen] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
@@ -50,33 +53,80 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
     setHistoryItems(loadHistory());
   };
 
-  useEffect(() => {
-    const existingCustomers = loadCustomers();
-    if (existingCustomers.length > 0) {
-      setCustomers(existingCustomers);
-    } else {
-      const seeded: Customer[] = mockClients.map((client) => ({
-        id: String(client.id),
-        legalName: client.legalName,
-        displayName: client.displayName,
-        taxId: "",
-        phone: client.phone,
-        email: client.email,
-        address: client.address,
-        serviceOriginAddress: client.address,
-        serviceDestinationAddress: "",
-        billingLegalName: client.legalName,
-        billingTaxId: "",
-        billingAddress: client.address,
-        billingEmail: client.email,
-        billingPhone: client.phone,
-        status: client.status,
-        createdAt: client.createdAt,
-        updatedAt: client.updatedAt,
-      }));
-      saveCustomers(seeded);
-      setCustomers(seeded);
+  // Convert API ClientDto to local Customer type
+  const clientDtoToCustomer = (dto: ClientDto): Customer => ({
+    id: dto.id,
+    legalName: dto.name,
+    displayName: dto.name,
+    taxId: "",
+    phone: dto.phone,
+    email: dto.email,
+    address: dto.address,
+    serviceOriginAddress: dto.address,
+    serviceDestinationAddress: "",
+    billingLegalName: dto.name,
+    billingTaxId: "",
+    billingAddress: dto.address,
+    billingEmail: dto.email,
+    billingPhone: dto.phone,
+    status: dto.status as Customer["status"],
+    createdAt: dto.createdAt,
+    updatedAt: dto.createdAt,
+  });
+
+  // Load customers - try API first, fallback to localStorage
+  const loadCustomersData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Try API first
+      const response = await getClients();
+      if (response.ok && response.data.length > 0) {
+        const apiCustomers = response.data.map(clientDtoToCustomer);
+        setCustomers(apiCustomers);
+        // Also save to localStorage as cache
+        saveCustomers(apiCustomers);
+        setApiAvailable(true);
+      } else {
+        // API returned empty, use localStorage
+        throw new Error("API returned empty");
+      }
+    } catch {
+      // Fallback to localStorage
+      setApiAvailable(false);
+      const existingCustomers = loadCustomers();
+      if (existingCustomers.length > 0) {
+        setCustomers(existingCustomers);
+      } else {
+        // Seed with mock data
+        const seeded: Customer[] = mockClients.map((client) => ({
+          id: String(client.id),
+          legalName: client.legalName,
+          displayName: client.displayName,
+          taxId: "",
+          phone: client.phone,
+          email: client.email,
+          address: client.address,
+          serviceOriginAddress: client.address,
+          serviceDestinationAddress: "",
+          billingLegalName: client.legalName,
+          billingTaxId: "",
+          billingAddress: client.address,
+          billingEmail: client.email,
+          billingPhone: client.phone,
+          status: client.status,
+          createdAt: client.createdAt,
+          updatedAt: client.updatedAt,
+        }));
+        saveCustomers(seeded);
+        setCustomers(seeded);
+      }
+    } finally {
+      setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    loadCustomersData();
 
     const existingLeads = loadLeads();
     if (existingLeads.length === 0) {
@@ -95,7 +145,7 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
       saveLeads(seededLeads);
     }
     refreshCRM();
-  }, []);
+  }, [loadCustomersData]);
 
   const customerStatusMap = useMemo(() => {
     const out: Record<string, LeadStatus> = {};
@@ -158,7 +208,7 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
 
   const openNewCustomerDialog = () => setIsNewOpen(true);
 
-  const saveNewCustomer = () => {
+  const saveNewCustomer = async () => {
     const missingCore =
       !newCustomer.legalName.trim() ||
       !newCustomer.taxId.trim() ||
@@ -183,7 +233,8 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
       toast.error("Debe registrar una Cédula o RNC válido para el cliente.");
       return;
     }
-    const created = createCustomer({
+    // Create customer - try API first, fallback to localStorage
+    const customerData = {
       legalName: newCustomer.legalName.trim(),
       displayName: newCustomer.legalName.trim(),
       taxId: newCustomer.taxId.trim(),
@@ -197,9 +248,37 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
       billingAddress: newCustomer.billingAddress.trim(),
       billingEmail: newCustomer.billingEmail.trim(),
       billingPhone: newCustomer.billingPhone.trim(),
-      status: "ACTIVE",
-    });
-    setCustomers((prev) => [created, ...prev]);
+      status: "ACTIVE" as const,
+    };
+
+    try {
+      // Try API first
+      if (apiAvailable) {
+        const response = await createClient({
+          name: customerData.legalName,
+          email: customerData.email,
+          phone: customerData.phone,
+          address: customerData.address,
+          type: "corporate",
+          status: "active",
+        });
+        if (response.ok && response.data) {
+          const created = clientDtoToCustomer(response.data);
+          setCustomers((prev) => [created, ...prev]);
+          toast.success("Cliente creado exitosamente");
+        } else {
+          throw new Error("API error");
+        }
+      } else {
+        throw new Error("API not available");
+      }
+    } catch {
+      // Fallback to localStorage
+      const created = createCustomer(customerData);
+      setCustomers((prev) => [created, ...prev]);
+      toast.success("Cliente guardado localmente");
+    }
+
     setNewCustomer({
       legalName: "",
       displayName: "",
@@ -223,12 +302,28 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Clientes</h1>
-          <p className="text-slate-500">Gestion de clientes, propuestas e historial comercial</p>
+          <p className="text-slate-500">
+            Gestion de clientes, propuestas e historial comercial
+            {!apiAvailable && (
+              <Badge variant="outline" className="ml-2 text-amber-600 border-amber-300">
+                Modo offline
+              </Badge>
+            )}
+          </p>
         </div>
-        <Button onClick={openNewCustomerDialog}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Cliente
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={loadCustomersData} disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </Button>
+          <Button onClick={openNewCustomerDialog}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nuevo Cliente
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

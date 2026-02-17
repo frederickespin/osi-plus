@@ -38,6 +38,7 @@ interface SidebarProps {
   onModuleChange: (module: ModuleId) => void;
   userRole?: UserRole;
   userName?: string;
+  onLogout?: () => void;
 }
 
 interface MenuItem {
@@ -174,7 +175,7 @@ function getRoleLabel(role: UserRole) {
   return role;
 }
 
-export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName }: SidebarProps) {
+export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName, onLogout }: SidebarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
@@ -366,16 +367,19 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
           >
             {isCollapsed ? <Menu className="h-4 w-4" /> : <><Menu className="h-4 w-4" /> Colapsar</>}
           </Button>
-          <Button 
-            variant="ghost" 
-            className={`
-              w-full justify-start gap-2 text-white/70 hover:text-white hover:bg-white/5 mt-2
-              ${isCollapsed ? 'justify-center px-2' : ''}
-            `}
-          >
-            <LogOut className="h-4 w-4" />
-            {!isCollapsed && 'Cerrar Sesión'}
-          </Button>
+          {onLogout && (
+            <Button 
+              variant="ghost" 
+              className={`
+                w-full justify-start gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 mt-2
+                ${isCollapsed ? 'justify-center px-2' : ''}
+              `}
+              onClick={onLogout}
+            >
+              <LogOut className="h-4 w-4" />
+              {!isCollapsed && 'Cerrar Sesión'}
+            </Button>
+          )}
         </div>
       </aside>
     </>

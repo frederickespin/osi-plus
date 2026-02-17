@@ -1,19 +1,24 @@
-/**
- * Banner que muestra "Entorno de Pruebas" cuando VITE_APP_ENV === 'preview'.
- * No se muestra en producción para no saturar la UI.
- */
-const env = import.meta.env.VITE_APP_ENV || "";
+import { getAppEnv, ENV_LABELS } from "@/lib/env";
+
+const BANNER_STYLES = {
+  development: "bg-sky-600/95 text-white",
+  preview: "bg-amber-500/95 text-amber-950",
+  production: "bg-emerald-700/95 text-white",
+} as const;
 
 export function EnvBanner() {
-  if (env !== "preview") return null;
+  const env = getAppEnv();
+  const label = ENV_LABELS[env];
 
   return (
     <div
-      className="bg-amber-500/95 text-amber-950 text-center py-1.5 text-sm font-medium shadow-sm shrink-0"
+      className={`${BANNER_STYLES[env]} text-center py-1.5 text-sm font-medium shadow-sm shrink-0`}
       role="status"
-      aria-label="Entorno de pruebas"
+      aria-label={`Ambiente: ${label}`}
     >
-      Entorno de Pruebas — Los datos aquí son de prueba, no de producción
+      {env === "production"
+        ? `${label} — Datos reales`
+        : `${label} — Los datos aquí no son de producción`}
     </div>
   );
 }

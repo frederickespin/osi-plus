@@ -2,7 +2,12 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-insecure-secret";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+// JWT expects: number (seconds) or string like "7d", "20h" - reject invalid values
+const raw = process.env.JWT_EXPIRES_IN;
+const JWT_EXPIRES_IN =
+  typeof raw === "string" && /^(\d+[smhd]|\d+)$/.test(raw.trim())
+    ? raw.trim()
+    : "7d";
 
 export async function hashPassword(plainText) {
   return bcrypt.hash(plainText, 10);

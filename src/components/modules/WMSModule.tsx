@@ -10,11 +10,32 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { mockLocations, mockInventoryMoves } from '@/data/mockData';
+import { toast } from 'sonner';
+import { QRScanner, QRGenerator, QRCodeGenerators, type ParsedQRCode, getQRTypeLabel } from '@/components/qr';
 
 export function WMSModule() {
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<typeof mockLocations[0] | null>(null);
   
   const zones = ['MAIN', 'LOCKER', 'CUARENTENA', 'TALLER'];
+  
+  const handleQRScan = (result: ParsedQRCode) => {
+    setShowScanner(false);
+    if (result.type === 'LOCATION') {
+      const location = mockLocations.find(l => l.code === result.payload);
+      if (location) {
+        setSelectedLocation(location);
+        toast.success(`Ubicación encontrada: ${location.code}`);
+      } else {
+        toast.warning('Ubicación no encontrada en el sistema');
+      }
+    } else if (result.type === 'BOX' || result.type === 'ASSET') {
+      toast.success(`${getQRTypeLabel(result.type)} escaneado: ${result.payload}`);
+    } else {
+      toast.info(`Código escaneado: ${result.rawValue}`);
+    }
+  };
   
   return (
     <div className="p-6 space-y-6">
@@ -24,7 +45,7 @@ export function WMSModule() {
           <p className="text-slate-500">Sistema de Gestión de Almacén</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => setShowScanner(true)}>
             <QrCode className="h-4 w-4 mr-2" />
             Escanear QR
           </Button>
@@ -140,24 +161,33 @@ export function WMSModule() {
         </TabsContent>
 
         <TabsContent value="qr">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {mockLocations.map((loc) => (
-              <Card key={loc.id}>
-                <CardContent className="p-4 text-center">
-                  <div className="w-24 h-24 mx-auto mb-3 bg-slate-100 rounded-lg flex items-center justify-center">
-                    <QrCode className="h-12 w-12 text-slate-400" />
-                  </div>
-                  <p className="font-medium text-slate-900">{loc.code}</p>
-                  <p className="text-xs text-slate-500">{loc.zone}</p>
-                  <Button variant="outline" size="sm" className="mt-3 w-full">
-                    Descargar QR
-                  </Button>
-                </CardContent>
-              </Card>
+              <div key={loc.id} className="flex flex-col items-center">
+                <QRGenerator
+                  value={QRCodeGenerators.location(loc.zone, loc.code)}
+                  label={loc.code}
+                  size={150}
+                  showDownload={true}
+                  showCopy={false}
+                />
+              </div>
             ))}
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* QR Scanner Modal */}
+      {showScanner && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <QRScanner
+            onScan={handleQRScan}
+            onClose={() => setShowScanner(false)}
+            acceptedTypes={['LOCATION', 'BOX', 'ASSET']}
+            title="Escanear Ubicación / Caja"
+          />
+        </div>
+      )}
     </div>
   );
 }

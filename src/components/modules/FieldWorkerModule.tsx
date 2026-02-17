@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input';
 import { mockOSIs, mockBadges, mockUsers } from '@/data/mockData';
 import { isFieldStaffRole, loadUsers } from '@/lib/userStore';
 import { toast } from 'sonner';
+import { QRScanner, type ParsedQRCode, getQRTypeLabel } from '@/components/qr';
 
 export function FieldWorkerModule() {
   const [activeTask, setActiveTask] = useState(false);
@@ -432,30 +433,24 @@ export function FieldWorkerModule() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: Escanear QR */}
-      <Dialog open={showScanDialog} onOpenChange={setShowScanDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <QrCode className="h-5 w-5" />
-              Escanear Código QR
-            </DialogTitle>
-          </DialogHeader>
-          <div className="text-center py-8">
-            <div className="w-48 h-48 mx-auto mb-4 bg-slate-100 rounded-lg flex items-center justify-center border-2 border-dashed border-slate-300">
-              <QrCode className="h-24 w-24 text-slate-400" />
-            </div>
-            <p className="text-slate-500">Acerca el código QR de la OSI al escáner</p>
-            <Input className="mt-4" placeholder="O ingresa el código manualmente..." />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowScanDialog(false)}>Cancelar</Button>
-            <Button onClick={() => { setShowScanDialog(false); toast.success('OSI encontrada'); }}>
-              Buscar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* QR Scanner Dialog */}
+      {showScanDialog && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <QRScanner
+            onScan={(result: ParsedQRCode) => {
+              setShowScanDialog(false);
+              if (result.isValid) {
+                toast.success(`${getQRTypeLabel(result.type)} encontrada: ${result.payload}`);
+              } else {
+                toast.warning('Código no reconocido');
+              }
+            }}
+            onClose={() => setShowScanDialog(false)}
+            acceptedTypes={['OSI', 'BOX', 'LOCATION']}
+            title="Escanear OSI / Caja"
+          />
+        </div>
+      )}
     </div>
   );
 }

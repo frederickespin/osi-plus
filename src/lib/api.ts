@@ -88,21 +88,29 @@ type RequestOptions = {
   token?: string;
 };
 
+interface ApiError extends Error {
+  status?: number;
+  body?: unknown;
+}
+
 async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
 
-  // MVP: el frontend trabaja con session en localStorage. Enviamos rol/usuario como headers.
-  // Cuando integremos login real, esto debe migrar a Authorization: Bearer.
+  // Get token from options or localStorage
+  const token = options.token || localStorage.getItem("osi-plus.token");
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  // Also send role/userId headers for backward compatibility with MVP endpoints
   try {
     const s = JSON.parse(localStorage.getItem("osi-plus.session") || "null") as { role?: string; userId?: string } | null;
     if (s?.role) headers["x-osi-role"] = String(s.role);
     if (s?.userId) headers["x-osi-userid"] = String(s.userId);
-  } catch {}
-
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`;
+  } catch {
+    // Ignore parse errors
   }
 
   const response = await fetch(`${API_BASE}${path}`, {
@@ -110,6 +118,17 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
+
+  // Handle 401 Unauthorized - clear session and redirect to login
+  if (response.status === 401) {
+    localStorage.removeItem("osi-plus.session");
+    localStorage.removeItem("osi-plus.token");
+    // Dispatch event for App to handle
+    window.dispatchEvent(new CustomEvent("osi:session:expired"));
+    const err: ApiError = new Error("Sesión expirada. Por favor inicia sesión nuevamente.");
+    err.status = 401;
+    throw err;
+  }
 
   if (!response.ok) {
     let body: unknown = null;
@@ -123,7 +142,9 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
       }
     }
 
-    const err: any = new Error(`API ${response.status}: ${(body as any)?.error || response.statusText || "Request failed"}`);
+    const err: ApiError = new Error(
+      `API ${response.status}: ${(body as { error?: string })?.error || response.statusText || "Request failed"}`
+    );
     err.status = response.status;
     err.body = body;
     throw err;

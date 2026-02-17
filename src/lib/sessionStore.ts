@@ -4,9 +4,11 @@ export type Session = {
   userId?: string;
   name?: string;
   role: UserRole; // 'A','V','K',...
+  token?: string;
 };
 
 const KEY = "osi-plus.session";
+const TOKEN_KEY = "osi-plus.token";
 
 function normalizeRole(raw: unknown): UserRole | null {
   if (typeof raw !== "string") return null;
@@ -25,13 +27,49 @@ function normalizeRole(raw: unknown): UserRole | null {
   return null;
 }
 
-export function loadSession(): Session {
+/**
+ * Load session from localStorage.
+ * Returns null if no valid session exists (requires token for authenticated session).
+ */
+export function loadSession(): Session | null {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || "null");
+    const token = localStorage.getItem(TOKEN_KEY);
     const role = normalizeRole(s?.role);
-    if (role) return { ...s, role };
-  } catch {}
-  return { role: "V" }; // default seguro
+    
+    // Require both role and token for a valid session
+    if (role && token) {
+      return { ...s, role, token };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save session to localStorage.
+ */
+export function saveSession(session: Session): void {
+  localStorage.setItem(KEY, JSON.stringify(session));
+  if (session.token) {
+    localStorage.setItem(TOKEN_KEY, session.token);
+  }
+}
+
+/**
+ * Clear session from localStorage.
+ */
+export function clearSession(): void {
+  localStorage.removeItem(KEY);
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/**
+ * Get the current auth token.
+ */
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function isAdminRole(role: UserRole) {

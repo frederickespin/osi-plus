@@ -17,13 +17,22 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { mockHandshakes } from '@/data/mockData';
 import { toast } from 'sonner';
+import { QRScanner, type ParsedQRCode, getQRTypeLabel } from '@/components/qr';
+
+interface ScannedData {
+  type: string;
+  code: string;
+  plate?: string;
+  driver?: string;
+  osi?: string;
+  rawValue?: string;
+}
 
 export function SecurityModule() {
   const [scanMode, setScanMode] = useState(false);
-  const [searchCode, setSearchCode] = useState('');
   const [showIncidentDialog, setShowIncidentDialog] = useState(false);
   const [showChecklistDialog, setShowChecklistDialog] = useState(false);
-  const [scannedData, setScannedData] = useState<any>(null);
+  const [scannedData, setScannedData] = useState<ScannedData | null>(null);
   
   // Checklist state
   const [checklist, setChecklist] = useState({
@@ -36,18 +45,37 @@ export function SecurityModule() {
   const pendingHandshakes = mockHandshakes.filter(h => h.status === 'pending');
   const completedHandshakes = mockHandshakes.filter(h => h.status === 'completed');
 
-  const handleScan = () => {
-    // Simular escaneo exitoso
-    setScannedData({
-      type: 'vehicle',
-      code: 'VH-001',
-      plate: 'ABC-123',
-      driver: 'Roberto Sánchez',
-      osi: 'OSI-2024-002'
-    });
+  // Handle QR scan result
+  const handleQRScan = (result: ParsedQRCode) => {
     setScanMode(false);
-    setShowChecklistDialog(true);
-    toast.success('Código QR escaneado correctamente');
+    
+    // Map QR result to scanned data
+    const data: ScannedData = {
+      type: result.type,
+      code: result.payload,
+      rawValue: result.rawValue,
+    };
+    
+    // Add mock data based on type for demo
+    if (result.type === 'VEHICLE') {
+      data.plate = 'ABC-123';
+      data.driver = 'Roberto Sánchez';
+      data.osi = 'OSI-2024-002';
+    } else if (result.type === 'OSI') {
+      data.plate = 'XYZ-789';
+      data.driver = 'Juan Pérez';
+      data.osi = result.rawValue;
+    }
+    
+    setScannedData(data);
+    
+    if (result.isValid) {
+      toast.success(`${getQRTypeLabel(result.type)} escaneado: ${result.payload}`);
+      setShowChecklistDialog(true);
+    } else {
+      toast.warning('Código no reconocido - verificar manualmente');
+      setShowChecklistDialog(true);
+    }
   };
 
   const handleReportIncident = () => {
@@ -98,32 +126,16 @@ export function SecurityModule() {
         </Button>
       </div>
 
-      {/* Scanner Mode */}
+      {/* QR Scanner Dialog */}
       {scanMode && (
-        <Card className="border-2 border-dashed border-[#003366] bg-blue-50">
-          <CardContent className="p-8 text-center">
-            <div className="w-32 h-32 mx-auto mb-4 bg-white rounded-lg flex items-center justify-center border-2 border-[#003366]">
-              <QrCode className="h-16 w-16 text-[#003366]" />
-            </div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">
-              Escanea el código QR
-            </h3>
-            <p className="text-slate-500 mb-4">
-              Acerca el código QR del vehículo o OSI al escáner
-            </p>
-            <div className="max-w-sm mx-auto flex gap-2">
-              <Input 
-                placeholder="O ingresa el código manualmente..."
-                value={searchCode}
-                onChange={(e) => setSearchCode(e.target.value)}
-              />
-              <Button onClick={handleScan}>Verificar</Button>
-            </div>
-            <Button variant="ghost" className="mt-4" onClick={() => setScanMode(false)}>
-              Cancelar
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <QRScanner
+            onScan={handleQRScan}
+            onClose={() => setScanMode(false)}
+            acceptedTypes={['OSI', 'VEHICLE', 'USER', 'HANDSHAKE']}
+            title="Escanear Entrada/Salida"
+          />
+        </div>
       )}
 
       {/* Stats */}

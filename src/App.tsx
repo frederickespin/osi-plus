@@ -2,7 +2,7 @@ import { Component, Suspense, lazy, useEffect, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Toaster } from '@/components/ui/sonner';
 import type { UserRole } from '@/types/osi.types';
-import { loadSession, type Session } from '@/lib/sessionStore';
+import { loadSession, saveSession, type Session } from '@/lib/sessionStore';
 
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
@@ -214,6 +214,10 @@ function App() {
   });
   const userRole: UserRole = session.role;
   const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
+
+  useEffect(() => {
+    saveSession(session);
+  }, [session]);
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {

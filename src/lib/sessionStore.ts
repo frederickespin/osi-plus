@@ -8,7 +8,7 @@ export type Session = {
 
 const KEY = "osi-plus.session";
 
-function normalizeRole(raw: unknown): UserRole | null {
+export function normalizeRole(raw: unknown): UserRole | null {
   if (typeof raw !== "string") return null;
   const value = raw.trim().toUpperCase();
 
@@ -32,6 +32,20 @@ export function loadSession(): Session {
     if (role) return { ...s, role };
   } catch {}
   return { role: "V" }; // default seguro
+}
+
+export function saveSession(session: Session) {
+  try {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        ...session,
+        role: session.role,
+      }),
+    );
+  } catch {
+    // no-op on storage errors
+  }
 }
 
 export function isAdminRole(role: UserRole) {

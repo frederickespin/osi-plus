@@ -1,3 +1,4 @@
+import { loadSession, normalizeRole } from "@/lib/sessionStore";
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 export type HealthResponse = {
@@ -96,9 +97,14 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   // MVP: el frontend trabaja con session en localStorage. Enviamos rol/usuario como headers.
   // Cuando integremos login real, esto debe migrar a Authorization: Bearer.
   try {
-    const s = JSON.parse(localStorage.getItem("osi-plus.session") || "null") as { role?: string; userId?: string } | null;
-    if (s?.role) headers["x-osi-role"] = String(s.role);
-    if (s?.userId) headers["x-osi-userid"] = String(s.userId);
+    const session = loadSession();
+    const normalizedRole = normalizeRole(session.role);
+    if (normalizedRole) headers["x-osi-role"] = normalizedRole;
+
+    // Mantener compatibilidad con sesiones antiguas donde userId solo existe en storage crudo.
+    const raw = JSON.parse(localStorage.getItem("osi-plus.session") || "null") as { userId?: string } | null;
+    const userId = session.userId || raw?.userId;
+    if (userId) headers["x-osi-userid"] = String(userId);
   } catch {}
 
   if (options.token) {

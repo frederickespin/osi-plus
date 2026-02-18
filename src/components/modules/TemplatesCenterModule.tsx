@@ -65,6 +65,7 @@ const PIC_VARIABLES = [
 ] as const;
 
 export function TemplatesCenterModule({ userRole }: Props) {
+  const canManageDrafts = userRole === "K" || userRole === "A";
   const [activeTab, setActiveTab] = useState<TemplateType>("PIC");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -366,7 +367,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
             <RefreshCcw className="h-4 w-4 mr-2" />
             Refrescar
           </Button>
-          <Button onClick={openNew} disabled={userRole !== "K"}>
+          <Button onClick={openNew} disabled={!canManageDrafts}>
             <Plus className="h-4 w-4 mr-2" />
             Nueva
           </Button>
@@ -414,16 +415,16 @@ export function TemplatesCenterModule({ userRole }: Props) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => void openEditDraft(t)}>
-                        {userRole === "K" ? (
+                        {canManageDrafts ? (
                           <Edit className="h-4 w-4 mr-2" />
                         ) : (
                           <Eye className="h-4 w-4 mr-2" />
                         )}
-                        {userRole === "K" ? (latest?.status === "DRAFT" ? "Editar Draft" : "Nuevo Draft") : "Ver"}
+                        {canManageDrafts ? (latest?.status === "DRAFT" ? "Editar Draft" : "Nuevo Draft") : "Ver"}
                       </Button>
                       <Button
                         size="sm"
-                        disabled={userRole !== "K" || !latest || latest.status !== "DRAFT"}
+                        disabled={!canManageDrafts || !latest || latest.status !== "DRAFT"}
                         onClick={() => submitLatestDraft(t)}
                       >
                         <Send className="h-4 w-4 mr-2" />

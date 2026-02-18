@@ -15,6 +15,8 @@ function permsForRole(role) {
   if (role === "A") {
     return [
       PERMS.TEMPLATES_VIEW,
+      PERMS.TEMPLATES_EDIT_DRAFT,
+      PERMS.TEMPLATES_SUBMIT,
       PERMS.TEMPLATES_APPROVE,
       PERMS.TEMPLATES_REJECT,
       PERMS.TEMPLATES_PUBLISH,

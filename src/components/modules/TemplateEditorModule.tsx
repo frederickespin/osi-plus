@@ -80,7 +80,7 @@ type PgdDocDraft = {
 };
 
 export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
-  const canEdit = userRole === "K";
+  const canEdit = userRole === "K" || userRole === "A";
   const ctx = useMemo(() => readContext(), []);
 
   if (!ctx) {
@@ -310,7 +310,7 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
   };
 
   const saveDraft = async (opts: { submit?: boolean } = {}) => {
-    if (!canEdit) return toast.error("Solo el rol K puede crear/editar drafts.");
+    if (!canEdit) return toast.error("Solo los roles K o A pueden crear/editar drafts.");
     if (!templateName.trim()) return toast.error("Nombre requerido.");
 
     setIsSaving(true);
@@ -403,8 +403,8 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
             {isLoadingVersion
               ? "Cargando contenido..."
               : canEdit
-                ? "Edita y guarda como Draft (K), luego envía a aprobación."
-                : "Modo lectura: solo el rol K puede crear/editar drafts."}
+                ? "Edita y guarda como Draft (K/A), luego envía a aprobación."
+                : "Modo lectura: solo los roles K o A pueden crear/editar drafts."}
           </p>
         </div>
 

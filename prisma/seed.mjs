@@ -1,3 +1,8 @@
+/**
+ * Seed de base de datos – solo para desarrollo y preview.
+ * No usar en producción sin cambiar las contraseñas por defecto (Admin123*, Demo123*, Ventas123*).
+ * Ver docs/AUDITORIA_SEGURIDAD.md (C3).
+ */
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 

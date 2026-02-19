@@ -19,6 +19,7 @@ export const PERMS = {
   USERS_CREATE: "users:create",
   USERS_EDIT: "users:edit",
   USERS_DELETE: "users:delete",
+  USERS_REACTIVATE: "users:reactivate",
   
   // Clients
   CLIENTS_VIEW: "clients:view",
@@ -126,10 +127,10 @@ const ROLE_PERMISSIONS: Record<RoleCode, Perm[]> = {
     PERMS.OPS_VIEW, PERMS.OPS_TRACKING, PERMS.OPS_CALENDAR,
   ],
   
-  // Operaciones
+  // Operaciones (Gestor OSIs: crear órdenes externas e internas)
   B: [
     PERMS.OPS_VIEW, PERMS.OPS_TRACKING, PERMS.OPS_CALENDAR, PERMS.OPS_WALL,
-    PERMS.OSI_VIEW, PERMS.OSI_ASSIGN,
+    PERMS.OSI_VIEW, PERMS.OSI_CREATE, PERMS.OSI_EDIT, PERMS.OSI_ASSIGN,
     PERMS.PROJECTS_VIEW,
   ],
   
@@ -202,9 +203,9 @@ const ROLE_PERMISSIONS: Record<RoleCode, Perm[]> = {
   // PF (Reservado)
   PF: [PERMS.OSI_VIEW],
   
-  // RRHH
+  // RRHH (Gestión de Personal: reactivación de usuarios suspendidos)
   I: [
-    PERMS.USERS_VIEW,
+    PERMS.USERS_VIEW, PERMS.USERS_REACTIVATE,
     PERMS.HR_VIEW, PERMS.HR_KPI, PERMS.HR_NOTA, PERMS.HR_BADGES,
     PERMS.OSI_VIEW,
   ],

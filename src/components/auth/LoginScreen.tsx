@@ -139,38 +139,40 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               )}
             </Button>
           </form>
-          
-          <div className="mt-6 pt-4 border-t border-slate-200">
-            <Collapsible open={credsOpen} onOpenChange={setCredsOpen}>
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="w-full flex items-center justify-center gap-1 text-xs text-slate-500 hover:text-slate-700 font-medium"
-                >
-                  Credenciales para probar roles
-                  {credsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="mt-3 space-y-2 text-xs max-h-40 overflow-y-auto">
-                  {TEST_USERS.map((u) => (
-                    <div
-                      key={u.email}
-                      className="bg-slate-50 p-2 rounded cursor-pointer hover:bg-slate-100 transition-colors"
-                      onClick={() => {
-                        setEmail(u.email);
-                        setPassword(u.password);
-                      }}
-                    >
-                      <p className="font-medium text-slate-600">{u.name} (rol {u.role})</p>
-                      <p className="text-slate-400 truncate">{u.email}</p>
-                      <p className="text-slate-400">•••••••• (click para cargar)</p>
-                    </div>
-                  ))}
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
+
+          {getAppEnv() !== "production" && (
+            <div className="mt-6 pt-4 border-t border-slate-200">
+              <Collapsible open={credsOpen} onOpenChange={setCredsOpen}>
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-center gap-1 text-xs text-slate-500 hover:text-slate-700 font-medium"
+                  >
+                    Credenciales para probar roles
+                    {credsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="mt-3 space-y-2 text-xs max-h-40 overflow-y-auto">
+                    {TEST_USERS.map((u) => (
+                      <div
+                        key={u.email}
+                        className="bg-slate-50 p-2 rounded cursor-pointer hover:bg-slate-100 transition-colors"
+                        onClick={() => {
+                          setEmail(u.email);
+                          setPassword(u.password);
+                        }}
+                      >
+                        <p className="font-medium text-slate-600">{u.name} (rol {u.role})</p>
+                        <p className="text-slate-400 truncate">{u.email}</p>
+                        <p className="text-slate-400">•••••••• (click para cargar)</p>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -31,6 +31,7 @@ import {
   type PgdVisibility,
   type TriggerPhase,
 } from "@/lib/templateSchemas";
+import DOMPurify from "dompurify";
 
 const EDITOR_CTX_KEY = "osi-plus.templates.editorContext";
 
@@ -780,7 +781,9 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
                 {templateType === "PIC" ? (
                   <div
                     className="border rounded-md p-4 prose prose-sm max-w-none bg-white break-words"
-                    dangerouslySetInnerHTML={{ __html: picBodyHtml || "<p class='text-slate-400'>Sin contenido</p>" }}
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(picBodyHtml || "<p class='text-slate-400'>Sin contenido</p>"),
+                    }}
                   />
                 ) : templateType === "PGD" ? (
                   <div className="border rounded-md p-4 bg-white space-y-3">

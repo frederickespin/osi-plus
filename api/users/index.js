@@ -65,7 +65,19 @@ export default withCommonHeaders(async (req, res) => {
 
     return res.status(201).json({
       ok: true,
-      data: created,
+      data: {
+        id: created.id,
+        code: created.code,
+        name: created.name,
+        email: created.email,
+        phone: created.phone,
+        role: created.role,
+        status: created.status,
+        department: created.department,
+        joinDate: created.joinDate,
+        points: created.points,
+        rating: created.rating,
+      },
     });
   }
 

@@ -26,7 +26,8 @@ import {
   Menu,
   X,
   ChevronRight,
-  Briefcase as CaseIcon
+  Briefcase as CaseIcon,
+  Boxes
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
@@ -73,7 +74,7 @@ const menuGroups: MenuGroup[] = [
     label: 'Administración',
     icon: Settings,
     items: [
-      { id: 'users', label: 'Usuarios y Roles', icon: UserCog, roles: ['A'] },
+      { id: 'users', label: 'Usuarios y Roles', icon: UserCog, roles: ['A', 'I'], description: 'I: Gestión de Personal (solo reactivación)' },
       { id: 'settings', label: 'Configuración', icon: Settings, roles: ['A'] },
       { id: 'fleet', label: 'Registro de Flota', icon: Car, roles: ['A'] },
       { id: 'a-template-approvals', label: 'Aprobaciones (Plantillas)', icon: ClipboardList, roles: ['A'] },
@@ -87,6 +88,8 @@ const menuGroups: MenuGroup[] = [
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'V'] },
       { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'V'], description: 'Alcance -> cajas -> recursos -> resumen' },
       { id: 'k-templates', label: 'Plantillas PST', icon: FileText, roles: ['A', 'V', 'K'], description: 'Catálogo de servicios técnicos' },
+      { id: 'crate-wood', label: 'Cotizador con Nesting', icon: Boxes, roles: ['A', 'V'], description: 'Diseño cajas y pies tablares' },
+      { id: 'disenacotiza', label: 'Diseña y Cotiza', icon: Boxes, roles: ['A', 'V'], description: 'Nesting + ingeniería + costos' },
       { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'V'], description: 'Propuestas y proyectos' },
       { id: 'commercial-config', label: 'Configuración', icon: Settings, roles: ['A', 'V'], description: 'Config de cajas' },
       { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'V'] },
@@ -98,10 +101,12 @@ const menuGroups: MenuGroup[] = [
     icon: Briefcase,
     items: [
       { id: 'k-dashboard', label: 'Control K', icon: LayoutDashboard, roles: ['A', 'K'], description: 'Semáforos + PGD aplicado' },
+      { id: 'k-project', label: 'Gestor Proyectos Sombrilla', icon: FolderOpen, roles: ['A', 'K'], description: 'Expediente maestro del servicio vendido' },
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K'] },
       { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K'] },
       { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K'], description: 'Seguimiento y cumplimiento' },
       { id: 'k-templates', label: 'Centro de Plantillas', icon: FileText, roles: ['A', 'K'], description: 'PIC / PGD / NPS con versionado' },
+      { id: 'nesting', label: 'Visor Nesting', icon: Boxes, roles: ['A', 'K'], description: 'Diseño técnico vendido por V (solo lectura)' },
     ]
   },
   {
@@ -110,6 +115,7 @@ const menuGroups: MenuGroup[] = [
     icon: ClipboardList,
     items: [
       { id: 'operations', label: 'Tablero Ops', icon: ClipboardList, roles: ['A', 'B'] },
+      { id: 'osi-editor', label: 'Gestor de OSIs', icon: ClipboardList, roles: ['A', 'B'], description: 'Creación de órdenes externas e internas' },
       { id: 'dispatch', label: 'Despacho', icon: Send, roles: ['A', 'C1'] },
       { id: 'tracking', label: 'Rastreo', icon: MapPin, roles: ['A', 'K', 'B'] },
       { id: 'calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'B'] },

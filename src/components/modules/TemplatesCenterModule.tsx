@@ -35,6 +35,7 @@ import {
   type PgdVisibility,
   type NpsScale,
 } from "@/lib/templateSchemas";
+import DOMPurify from "dompurify";
 
 type Props = { userRole: UserRole };
 
@@ -786,7 +787,9 @@ export function TemplatesCenterModule({ userRole }: Props) {
                       <div className="text-xs text-slate-500">Render (HTML)</div>
                       <div
                         className="border rounded-md p-3 prose prose-sm max-w-none"
-                        dangerouslySetInnerHTML={{ __html: htmlPreview || "<p class='text-slate-400'>Sin contenido</p>" }}
+                        dangerouslySetInnerHTML={{
+                          __html: DOMPurify.sanitize(htmlPreview || "<p class='text-slate-400'>Sin contenido</p>"),
+                        }}
                       />
                     </div>
                   ) : (

@@ -64,9 +64,12 @@ export const MODULES_BY_ROLE: Record<UserRole, ModuleId[]> = {
     "wms", "inventory", "purchases",
     "hr", "kpi", "nota", "badges",
   ],
-  V: ["clients", "sales-quote", "commercial-calendar", "commercial-config", "projects", "osi-editor"],
-  K: ["k-dashboard", "clients", "projects", "commercial-calendar", "k-templates", "osi-editor", "tracking"],
-  B: ["operations", "tracking", "calendar", "wall", "projects"],
+  // V: Pipeline, Cotizador Nesting, Agenda, Historial Cliente (PDF)
+  V: ["clients", "sales-quote", "commercial-calendar", "commercial-config", "projects", "osi-editor", "crate-wood", "disenacotiza"],
+  // K: Gestor Proyectos, Editor Plantillas, Visor Nesting, Dashboard (PDF)
+  K: ["k-dashboard", "k-project", "clients", "projects", "commercial-calendar", "k-templates", "osi-editor", "tracking", "nesting", "nestingv2"],
+  // B: Muro, Gestor OSIs, Calendario, PTF/PET, Validación Documental (PDF)
+  B: ["operations", "tracking", "calendar", "wall", "projects", "osi-editor"],
   C: ["wms", "inventory", "purchases", "carpentry"],
   C1: ["dispatch"],
   D: ["supervisor", "supervisor-nota", "operations", "tracking"],
@@ -78,7 +81,8 @@ export const MODULES_BY_ROLE: Record<UserRole, ModuleId[]> = {
   PC: ["field"],
   PD: ["maintenance"],
   PF: ["field"],
-  I: ["hr", "kpi", "nota", "badges"],
+  // I: KPIs 360°, Ecológico, Nómina Variable, Gestión Personal (PDF) – users con permiso restringido a reactivación
+  I: ["hr", "kpi", "nota", "badges", "users"],
   PE: ["supervisor", "field"],
   RB: ["field"],
 };

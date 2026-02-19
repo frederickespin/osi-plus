@@ -2,25 +2,27 @@
 
 Este documento es el "guion" operativo de la app y está basado en lo que realmente está cableado hoy en el código:
 
-- Menú/roles: `src/components/layout/Sidebar.tsx`
-- Registro y render de módulos: `src/App.tsx`
+- **Fuente de verdad de módulos por rol:** `src/lib/roleModuleMap.ts` (`MODULES_BY_ROLE`, `canAccessModule`).
+- Menú: `src/components/layout/Sidebar.tsx` (filtra por `canAccessModule`).
+- Registro y render de módulos: `src/App.tsx`.
 
 ## 1. Roles (código, nombre, qué ve, qué puede hacer, módulos permitidos)
 
 Notas:
-- `A` (Admin) ve todo: el filtro del menú permite `role === 'A'` como acceso global.
+- `A` (Admin) ve todo: `canAccessModule('A', id)` devuelve siempre true.
 - En la app el rol se toma desde sesión local (`localStorage`), ver `src/lib/sessionStore.ts`.
+- Mapeo alineado al PDF "Matriz de Acceso y Visibilidad".
 
 ### Roles estratégicos (Web)
 
-| Rol | Nombre | Qué ve / hace (resumen) | Módulos permitidos (según menú) |
+| Rol | Nombre | Qué ve / hace (resumen) | Módulos permitidos (roleModuleMap) |
 | --- | --- | --- | --- |
 | `A` | Administrador | Acceso total. Configura y audita. | Todos los módulos. |
-| `V` | Ventas | Opera el ecosistema Comercial (clientes, cotizador, calendar, config) y herramientas relacionadas. | `clients`, `sales-quote`, `commercial-calendar`, `commercial-config`, `projects`, `osi-editor` |
-| `K` | Coordinador | Seguimiento/coordina expedientes (clientes/proyectos/calendario) y soporte transversal. | `clients`, `projects`, `commercial-calendar`, `tracking`, `osi-editor` |
-| `B` | Operaciones | Tablero de operaciones, calendario, muro y seguridad/periferia asociada. | `operations`, `tracking`, `calendar`, `wall` |
-| `C` | Materiales | WMS/stock/compras y taller madera. | `wms`, `inventory`, `purchases`, `carpentry` |
-| `I` | RRHH | Dash RRHH, KPI, NOTA, eco badges. | `hr`, `kpi`, `nota`, `badges` |
+| `V` | Ventas | Pipeline, Cotizador con Nesting, Agenda, Historial Cliente. | `clients`, `sales-quote`, `commercial-calendar`, `commercial-config`, `projects`, `osi-editor`, `crate-wood`, `disenacotiza` |
+| `K` | Coordinador | Gestor Proyectos Sombrilla, Editor Plantillas (PGD/PIC/NPS), Visor Nesting, Dashboard. | `k-dashboard`, `k-project`, `clients`, `projects`, `commercial-calendar`, `k-templates`, `osi-editor`, `tracking`, `nesting`, `nestingv2` |
+| `B` | Operaciones | Muro Liquidación, Gestor de OSIs, Calendario, PTF/PET, Validación Documental. | `operations`, `tracking`, `calendar`, `wall`, `projects`, `osi-editor` |
+| `C` | Materiales | Inventario Maestro, Smart Match (en inventory), Editor PTF, Aprobación Costos Carpintería. | `wms`, `inventory`, `purchases`, `carpentry` |
+| `I` | RRHH | Dashboard KPIs 360°, Módulo Ecológico, Nómina Variable, Gestión de Personal (solo reactivación). | `hr`, `kpi`, `nota`, `badges`, `users` |
 
 ### Roles operativos (App móvil / ejecución)
 
@@ -56,35 +58,37 @@ Convenciones actuales:
 
 | Módulo | Id | Objetivo | APIs |
 | --- | --- | --- | --- |
-| Usuarios y Roles | `users` | Gestión/visualización de usuarios. | `GET /api/users` (cuando DB esté activa) |
+| Usuarios y Roles | `users` | Gestión/visualización de usuarios (A). I: Gestión de Personal (solo reactivación de suspendidos). | `GET /api/users`; reactivación con `USERS_REACTIVATE` |
 | Configuración | `settings` | Configuración global. | (pendiente) |
 | Registro de Flota | `fleet` | Gestión flota. | (pendiente) |
 
-### Comercial (Ventas: V)
+### Comercial (Ventas: V) – PDF: Pipeline, Cotizador Nesting, Agenda, Historial Cliente
 
 | Módulo | Id | Objetivo | Entradas/Salidas | Estados | APIs |
 | --- | --- | --- | --- | --- | --- |
 | Clientes | `clients` | CRM básico de clientes. | Entrada: búsqueda/selección cliente. Salida: contexto hacia ventas/proyecto. | Stores: `src/lib/customersStore.ts`, `src/lib/customerHistoryStore.ts` (según versión actual). | `GET /api/clients` (cuando DB esté activa) |
 | Cotizador Técnico | `sales-quote` | Cotización técnica: alcance -> cajas -> recursos -> resumen. | Entrada: contexto (evento `osi:salesquote:open`). Salida: cotización/alcance. | Store: `src/lib/salesStore.ts`, `src/lib/quoteAuditStore.ts` | (pendiente) |
+| Cotizador con Nesting | `crate-wood` | Diseño de cajas y pies tablares (PDF: dueño del módulo). | Entrada: artículos. Salida: nesting, ingeniería, costos. | Store: `src/lib/crateDraftStore.ts`, `src/lib/crateSettingsStore.ts` | (pendiente) |
+| Diseña y Cotiza | `disenacotiza` | Nesting + ingeniería + costos. | Entrada: items. Salida: cotización técnica. | (pendiente) | (pendiente) |
 | Calendario Comercial | `commercial-calendar` | Propuestas/proyectos en calendario. | Entrada: bookings y límites. Salida: agenda/fechas. | Store: `src/lib/commercialCalendarStore.ts` | (pendiente) |
 | Config Comercial | `commercial-config` | Config de cajas (desde CrateWood settings-only). | Entrada: settings. Salida: parámetros de cálculo. | Store: `src/lib/crateSettingsStore.ts` | (pendiente) |
 | Proyectos | `projects` | Expedientes “sombrilla”. | Entrada: búsqueda proyecto. Salida: detalle/OSI. | Store: `src/lib/projectsStore.ts` | `GET /api/projects` (cuando DB esté activa) |
 
-### Coordinación (K)
+### Coordinación (K) – PDF: Gestor Proyectos, Editor Plantillas, Visor Nesting, Dashboard
 
-Los módulos se comparten con Comercial pero el acceso está separado por rol:
-- `clients`, `projects`, `commercial-calendar`
+Incluye: `k-dashboard`, `k-project`, `k-templates`, `nesting`/`nestingv2` (visor), `clients`, `projects`, `commercial-calendar`, `osi-editor`, `tracking`.
 
-### Operaciones
+### Operaciones (B) – PDF: Muro, Gestor OSIs, Calendario, PTF/PET, Validación Documental
 
 | Módulo | Id | Objetivo | APIs |
 | --- | --- | --- | --- |
 | Tablero Ops | `operations` | Gestión de operaciones y/o tablero principal de OSIs. | `GET /api/osis` (cuando DB esté activa) |
-| Despacho | `dispatch` | Flujo despacho / handoff. | (pendiente) |
+| Gestor de OSIs | `osi-editor` | Creación de órdenes externas e internas (B). | (pendiente) |
+| Despacho | `dispatch` | Flujo despacho / handoff (C1). | (pendiente) |
 | Rastreo | `tracking` | Rastreo OSI por código. | (pendiente) |
-| Calendario Ops | `calendar` | Calendario operativo. | (pendiente) |
-| Muro Liquidación | `wall` | Kanban/estado de OSIs. | (pendiente) |
-| Portería | `security` | Control de accesos. | (pendiente) |
+| Calendario Ops | `calendar` | Calendario dinámico (asignación flota/personal). | (pendiente) |
+| Muro Liquidación | `wall` | Kanban/estado de OSIs (semáforo Rojo/Amarillo/Verde). | (pendiente) |
+| Portería | `security` | Control de accesos (G). | (pendiente) |
 
 ### Campo y Taller
 
@@ -105,7 +109,7 @@ Los módulos se comparten con Comercial pero el acceso está separado por rol:
 | Stock General | `inventory` | Stock general. |
 | Compras | `purchases` | Compras. |
 
-### RRHH
+### RRHH (I) – PDF: KPIs 360°, Ecológico, Nómina Variable, Gestión de Personal
 
 | Módulo | Id | Objetivo |
 | --- | --- | --- |
@@ -113,17 +117,19 @@ Los módulos se comparten con Comercial pero el acceso está separado por rol:
 | Ranking KPI | `kpi` | Ranking KPIs. |
 | Nómina NOTA | `nota` | Nómina variable NOTA. |
 | Eco Badges | `badges` | Módulo ecológico / badges. |
+| Usuarios (I) | `users` | Gestión de Personal: solo reactivación de usuarios suspendidos. |
 
 ### Herramientas / módulos técnicos
 
-| Módulo | Id | Objetivo | Notas |
+| Módulo | Id | Objetivo | Notas (PDF ↔ roleModuleMap) |
 | --- | --- | --- | --- |
-| Editor OSI | `osi-editor` | Editor y acciones OSI (tooling). | Acceso: `A`, `V`, `K` (según menú). |
-| Nesting | `nesting` | Algoritmos nesting v1. | |
-| Nesting V2 | `nestingv2` | Algoritmos nesting v2. | |
-| Diseña y Cotiza | `disenacotiza` | Diseño/ingeniería + costos. | |
-| Crate Wood | `crate-wood` | Motor de cajones/huacales. | Puede abrirse con evento `osi:cratewood:open`. |
-| Crate Settings | `crate-settings` | Ajustes del motor crate. | |
+| Editor OSI | `osi-editor` | Editor y acciones OSI (tooling). | Acceso: `A`, `V`, `K`, `B` (B = Gestor de OSIs). |
+| Nesting | `nesting` | Algoritmos nesting v1. | V: dueño (vía crate-wood/disenacotiza). K: visor (solo lectura). |
+| Nesting V2 | `nestingv2` | Algoritmos nesting v2. | K: visor. |
+| Diseña y Cotiza | `disenacotiza` | Diseño/ingeniería + costos. | V (Cotizador con Nesting). |
+| Crate Wood | `crate-wood` | Motor de cajones/huacales / Cotizador con Nesting. | V. Puede abrirse con evento `osi:cratewood:open`. |
+| Crate Settings | `crate-settings` | Ajustes del motor crate. | V (commercial-config). |
+| Gestor Proyectos Sombrilla | `k-project` | Expediente maestro del servicio vendido. | K. |
 
 ## 3. Estructura del proyecto (carpetas importantes)
 
@@ -163,9 +169,10 @@ Base URL (mismo dominio): `/api`
 
 ## 5. Cómo mantener este guion actualizado
 
-Cuando cambies roles o menú:
-- Actualiza `src/components/layout/Sidebar.tsx` (fuente de verdad de permisos).
+Cuando cambies qué módulos ve cada rol:
+- Actualiza `src/lib/roleModuleMap.ts` (`MODULES_BY_ROLE`). Es la fuente de verdad.
+- Opcionalmente ajusta ítems y grupos en `src/components/layout/Sidebar.tsx` (etiquetas, descripciones, en qué grupo aparece cada módulo).
 
 Cuando agregues o renombres módulos:
-- Actualiza `ModuleId` y `renderModule()` en `src/App.tsx`.
+- Actualiza `ModuleId` en `src/lib/roleModuleMap.ts` y en `src/App.tsx`, y `renderModule()` en `src/App.tsx`.
 

@@ -110,6 +110,25 @@ Este documento detalla **qué estamos implementando**, **por qué lo hacemos as�
 - `GET/POST /api/clients` → requiere CLIENTS_* (A, V, K).
 - `GET/POST /api/projects` → requiere PROJECTS_* (A, V, K, B).
 - `GET/POST /api/osis` → requiere OSI_* según rol.
+- Endpoint de reactivación de usuarios → requiere USERS_REACTIVATE (rol I).
+
+### 3.4 Matriz de Acceso y Visibilidad (PDF)
+
+La especificación "Matriz de Acceso y Visibilidad" define qué módulos ve cada rol. Resumen alineado al código:
+
+| Rol | Perfil | Módulos / vistas (Web) |
+|-----|--------|------------------------|
+| **A** | Administrador | Acceso total (dashboard, users, settings, fleet, plantillas, comercial, coordinación, operaciones, campo, logística, RRHH). |
+| **V** | Ventas | Pipeline, Cotizador con Nesting (`sales-quote`, `crate-wood`, `disenacotiza`), Agenda (`commercial-calendar`), Historial Cliente (`clients`), `projects`, `commercial-config`, `osi-editor`. |
+| **K** | Coordinador | Gestor Proyectos Sombrilla (`k-project`), Centro de Plantillas (`k-templates`), Visor Nesting (`nesting`, `nestingv2`), Control K (`k-dashboard`), `clients`, `projects`, `commercial-calendar`, `osi-editor`, `tracking`. |
+| **B** | Operaciones | Muro Liquidación (`wall`), Gestor de OSIs (`osi-editor`), Calendario (`calendar`), Tablero Ops (`operations`), `tracking`, `projects`. |
+| **C** | Materiales | Inventario (`wms`, `inventory`), Compras (`purchases`), Taller Madera / Aprobación costos (`carpentry`). |
+| **I** | RRHH | Dashboard KPIs (`hr`, `kpi`), Nómina NOTA (`nota`), Eco Badges (`badges`), Gestión de Personal (`users`, solo reactivación). |
+
+**Visibilidad cruzada (pendiente de implementar en vistas/API):**
+- **Financiera:** Solo A (total) y V (precios venta). D, E, N no ven precios cliente.
+- **Inventario:** C y C1 stock completo; B disponibilidad; V costos madera para cotizar.
+- **Cliente:** V y K datos sensibles (contratos); D y E solo datos de ejecución (dirección, contacto).
 
 ---
 
@@ -117,11 +136,11 @@ Este documento detalla **qué estamos implementando**, **por qué lo hacemos as�
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/lib/roleModuleMap.ts` | Nuevo: mapeo rol → módulos, módulo por defecto |
+| `src/lib/roleModuleMap.ts` | Mapeo rol → módulos (PDF); V/K/B/I actualizados (crate-wood, k-project, nesting, osi-editor, users) |
 | `src/components/layout/Sidebar.tsx` | Usa roleModuleMap como fuente de menú |
 | `src/App.tsx` | Usa getDefaultModuleForRole de roleModuleMap |
 | `api/_lib/requireAuth.js` | Nuevo: middleware de verificación JWT |
-| `api/_lib/rbac.js` | Ampliado: permisos para users, clients, projects, osis |
+| `api/_lib/rbac.js` | Sincronizado con rbac.ts; USERS_REACTIVATE para I; permisos OPS/WMS/HR/FLEET/SECURITY |
 | `api/users/index.js` | Añadido requireAuth + requirePerm |
 | `api/clients/index.js` | Añadido requireAuth + requirePerm |
 | `api/projects/index.js` | Añadido requireAuth + requirePerm |

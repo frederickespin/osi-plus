@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -74,6 +74,29 @@ enum PgdFileType {
   OTHER
 }
 
+enum OsiKind {
+  EXTERNAL
+  INTERNAL
+}
+
+enum OsiCustodyStatus {
+  DRIVER
+  SUPERVISOR
+}
+
+enum OsiHandshakeStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+enum PtfSuggestionStatus {
+  PENDING
+  APPLIED
+  IGNORED
+  ESCALATED
+}
+
 model User {
   id           String   @id @default(cuid())
   code         String   @unique
@@ -94,9 +117,9 @@ model User {
   templateVersionsApproved TemplateVersion[] @relation("TemplateApprovedBy")
   templateVersionsRejected TemplateVersion[] @relation("TemplateRejectedBy")
 
-  projectSignalsAcked      ProjectSignal[]   @relation("ProjectSignalAckBy")
-  projectPgdsApplied       ProjectPgd[]      @relation("ProjectPgdAppliedBy")
-  projectPgdItemsValidated ProjectPgdItem[]  @relation("ProjectPgdItemValidatedBy")
+  projectSignalsAcked      ProjectSignal[]  @relation("ProjectSignalAckBy")
+  projectPgdsApplied       ProjectPgd[]     @relation("ProjectPgdAppliedBy")
+  projectPgdItemsValidated ProjectPgdItem[] @relation("ProjectPgdItemValidatedBy")
 
   @@map("osi_users")
 }
@@ -119,48 +142,52 @@ model Client {
 }
 
 model Project {
-  id         String   @id @default(cuid())
-  code       String   @unique
-  name       String
-  clientId   String
-  clientName String
-  status     String
-  startDate  String
-  endDate    String?
-  kState     ProjectKState @default(PENDING_VALIDATION)
-  kValidatedAt DateTime?
-  kReleasedAt  DateTime?
-  osiCount   Int      @default(0)
-  totalValue Float    @default(0)
-  assignedTo String?
-  notes      String?
-  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  osis       Osi[]
-  signals    ProjectSignal[]
-  pgd        ProjectPgd?
+  id             String          @id @default(cuid())
+  code           String          @unique
+  name           String
+  clientId       String
+  clientName     String
+  quoteId        String?
+  leadId         String?
+  pstCode        String?
+  pstServiceName String?
+  status         String
+  startDate      String
+  endDate        String?
+  kState         ProjectKState   @default(PENDING_VALIDATION)
+  kValidatedAt   DateTime?
+  kReleasedAt    DateTime?
+  osiCount       Int             @default(0)
+  totalValue     Float           @default(0)
+  assignedTo     String?
+  notes          String?
+  client         Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  osis           Osi[]
+  signals        ProjectSignal[]
+  pgd            ProjectPgd?
 
   @@map("osi_projects")
 }
 
 model ProjectSignal {
-  id        String      @id @default(cuid())
+  id        String  @id @default(cuid())
   projectId String
-  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  kind      SignalKind
-  policy    SignalPolicy
-  warnAt    DateTime?
-  dueAt     DateTime?
+  kind   SignalKind
+  policy SignalPolicy
+  warnAt DateTime?
+  dueAt  DateTime?
 
-  doneAt    DateTime?
+  doneAt DateTime?
 
-  ackAt     DateTime?
-  ackNote   String?
-  ackById   String?
-  ackBy     User?       @relation("ProjectSignalAckBy", fields: [ackById], references: [id])
+  ackAt   DateTime?
+  ackNote String?
+  ackById String?
+  ackBy   User?     @relation("ProjectSignalAckBy", fields: [ackById], references: [id])
 
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([projectId, kind])
   @@index([projectId, kind])
@@ -168,12 +195,12 @@ model ProjectSignal {
 }
 
 model ProjectPgd {
-  id          String   @id @default(cuid())
-  projectId   String   @unique
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   templateId        String
-  template          Template @relation(fields: [templateId], references: [id])
+  template          Template        @relation(fields: [templateId], references: [id])
   templateVersionId String
   templateVersion   TemplateVersion @relation("ProjectPgdTemplateVersion", fields: [templateVersionId], references: [id])
 
@@ -181,28 +208,28 @@ model ProjectPgd {
   appliedById String?
   appliedBy   User?    @relation("ProjectPgdAppliedBy", fields: [appliedById], references: [id])
 
-  items      ProjectPgdItem[]
+  items ProjectPgdItem[]
 
   @@map("osi_project_pgd")
 }
 
 model ProjectPgdItem {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   projectPgdId String
   projectPgd   ProjectPgd @relation(fields: [projectPgdId], references: [id], onDelete: Cascade)
 
-  name           String
-  visibility     PgdVisibility
-  responsible    PgdResponsible
-  isBlocking     Boolean @default(false)
-  expectedFileType PgdFileType @default(OTHER)
-  serviceTags    String[]
+  name             String
+  visibility       PgdVisibility
+  responsible      PgdResponsible
+  isBlocking       Boolean        @default(false)
+  expectedFileType PgdFileType    @default(OTHER)
+  serviceTags      String[]
 
-  status       PgdItemStatus @default(MISSING)
-  validatedAt  DateTime?
+  status        PgdItemStatus @default(MISSING)
+  validatedAt   DateTime?
   validatedById String?
-  validatedBy  User?    @relation("ProjectPgdItemValidatedBy", fields: [validatedById], references: [id])
-  note         String?
+  validatedBy   User?         @relation("ProjectPgdItemValidatedBy", fields: [validatedById], references: [id])
+  note          String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -212,84 +239,203 @@ model ProjectPgdItem {
 }
 
 model Osi {
-  id            String  @id @default(cuid())
-  code          String  @unique
-  projectId     String
-  projectCode   String
-  clientId      String
-  clientName    String
-  status        String
-  type          String
-  origin        String
-  destination   String
-  scheduledDate String
-  createdAt     String
-  assignedTo    String?
-  team          String[]
-  vehicles      String[]
-  value         Float
-  notes         String?
-  project       Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id                    String              @id @default(cuid())
+  code                  String              @unique
+  projectId             String
+  projectCode           String
+  clientId              String
+  clientName            String
+  kind                  OsiKind             @default(EXTERNAL)
+  status                String
+  type                  String
+  origin                String
+  destination           String
+  scheduledDate         String
+  scheduledStartAt      String?
+  scheduledEndAt        String?
+  supervisorId          String?
+  driverId              String?
+  pstCode               String?
+  pstTemplateVersionId  String?
+  ptfCode               String?
+  petCode               String?
+  ptfMaterialPlan       Json?
+  petPlan               Json?
+  ptfEditedManually     Boolean             @default(false)
+  petEditedManually     Boolean             @default(false)
+  custodyStatus         OsiCustodyStatus    @default(DRIVER)
+  custodyTransferredAt  DateTime?
+  driverAvailable       Boolean             @default(false)
+  vehicleAvailable      Boolean             @default(false)
+  lastMaterialDeviation Json?
+  startedAt             DateTime?
+  endedAt               DateTime?
+  npsScore              Int?
+  supervisorNotes       String?
+  ecoPoints             Int?
+  createdAt             String
+  assignedTo            String?
+  team                  String[]
+  vehicles              String[]
+  value                 Float
+  notes                 String?
+  project               Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  changeLogs            OsiChangeLog[]
+  handshakes            OsiHandshake[]
+  materialReturns       OsiMaterialReturn[]
 
   @@map("osi_osis")
 }
 
+model OsiChangeLog {
+  id          String   @id @default(cuid())
+  osiId       String
+  osi         Osi      @relation(fields: [osiId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actorRole   String
+  action      String
+  fieldPath   String?
+  beforeJson  Json?
+  afterJson   Json?
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([osiId, createdAt])
+  @@map("osi_osi_change_logs")
+}
+
+model OsiHandshake {
+  id          String             @id @default(cuid())
+  osiId       String
+  osi         Osi                @relation(fields: [osiId], references: [id], onDelete: Cascade)
+  status      OsiHandshakeStatus @default(PENDING)
+  fromRole    String
+  fromUserId  String?
+  toRole      String
+  toUserId    String?
+  type        String             @default("TACTICAL_TRANSFER")
+  timestamp   DateTime           @default(now())
+  completedAt DateTime?
+  notes       String?
+  payloadJson Json?
+  createdAt   DateTime           @default(now())
+
+  @@index([osiId, status])
+  @@map("osi_osi_handshakes")
+}
+
+model OsiMaterialReturn {
+  id             String   @id @default(cuid())
+  osiId          String
+  osi            Osi      @relation(fields: [osiId], references: [id], onDelete: Cascade)
+  pstCode        String?
+  ptfCode        String?
+  dispatchedJson Json
+  returnedJson   Json
+  deviationJson  Json
+  recordedById   String?
+  recordedByRole String?
+  recordedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([pstCode, recordedAt])
+  @@index([osiId, recordedAt])
+  @@map("osi_osi_material_returns")
+}
+
+model PtfAdjustmentSuggestion {
+  id               String              @id @default(cuid())
+  pstCode          String
+  ptfCode          String?
+  status           PtfSuggestionStatus @default(PENDING)
+  basedOnOsiIds    String[]
+  occurrences      Int                 @default(0)
+  recommendedDelta Json
+  reason           String?
+  ignoredCount     Int                 @default(0)
+  lastIgnoredAt    DateTime?
+  lastActionById   String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  escalations      EscalationEvent[]
+
+  @@index([pstCode, status, createdAt])
+  @@map("osi_ptf_adjustment_suggestions")
+}
+
+model EscalationEvent {
+  id           String                   @id @default(cuid())
+  type         String
+  message      String
+  targetRoles  String[]
+  suggestionId String?
+  suggestion   PtfAdjustmentSuggestion? @relation(fields: [suggestionId], references: [id], onDelete: SetNull)
+  createdAt    DateTime                 @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+  metadataJson Json?
+
+  @@index([createdAt])
+  @@index([suggestionId])
+  @@map("osi_escalation_events")
+}
+
 model Template {
-  id        String        @id @default(cuid())
-  type      TemplateType
-  name      String
-  scope     TemplateScope @default(TENANT)
-  tenantId  String?
-  isActive  Boolean       @default(true)
+  id       String        @id @default(cuid())
+  type     TemplateType
+  name     String
+  scope    TemplateScope @default(TENANT)
+  tenantId String?
+  isActive Boolean       @default(true)
 
   publishedVersionId String?
   publishedVersion   TemplateVersion? @relation("TemplatePublishedVersion", fields: [publishedVersionId], references: [id])
 
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  versions  TemplateVersion[]
+  versions    TemplateVersion[]
   projectPgds ProjectPgd[]
 
-  @@index([type, tenantId])
   @@unique([type, name, tenantId], name: "type_name_tenantId")
+  @@index([type, tenantId])
   @@map("osi_templates")
 }
 
 model TemplateVersion {
-  id            String                @id @default(cuid())
-  templateId    String
-  template      Template              @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
-  version       Int
-  status        TemplateVersionStatus @default(DRAFT)
+  version Int
+  status  TemplateVersionStatus @default(DRAFT)
 
-  contentJson   Json?
-  contentHtml   String?
+  contentJson Json?
+  contentHtml String?
 
   changeSummary String?
   requestedAt   DateTime?
   approvedAt    DateTime?
   publishedAt   DateTime?
 
-  createdById   String
-  approvedById  String?
-  rejectedById  String?
+  createdById  String
+  approvedById String?
+  rejectedById String?
 
-  createdBy     User                  @relation("TemplateCreatedBy", fields: [createdById], references: [id])
-  approvedBy    User?                 @relation("TemplateApprovedBy", fields: [approvedById], references: [id])
-  rejectedBy    User?                 @relation("TemplateRejectedBy", fields: [rejectedById], references: [id])
+  createdBy  User  @relation("TemplateCreatedBy", fields: [createdById], references: [id])
+  approvedBy User? @relation("TemplateApprovedBy", fields: [approvedById], references: [id])
+  rejectedBy User? @relation("TemplateRejectedBy", fields: [rejectedById], references: [id])
 
-  baseVersionId String?
-  baseVersion   TemplateVersion?      @relation("TemplateBaseVersion", fields: [baseVersionId], references: [id])
-  derivedVersions TemplateVersion[]   @relation("TemplateBaseVersion")
+  baseVersionId   String?
+  baseVersion     TemplateVersion?  @relation("TemplateBaseVersion", fields: [baseVersionId], references: [id])
+  derivedVersions TemplateVersion[] @relation("TemplateBaseVersion")
 
   // Opposite side for Template.publishedVersion
-  publishedForTemplates Template[]    @relation("TemplatePublishedVersion")
-  projectPgdsLocked     ProjectPgd[]  @relation("ProjectPgdTemplateVersion")
+  publishedForTemplates Template[]   @relation("TemplatePublishedVersion")
+  projectPgdsLocked     ProjectPgd[] @relation("ProjectPgdTemplateVersion")
 
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([templateId, version])
   @@index([status, createdAt])

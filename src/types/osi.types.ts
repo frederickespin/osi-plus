@@ -48,6 +48,10 @@ export interface OpsProject {
   name: string;
   clientId: string;
   clientName: string;
+  quoteId?: string;
+  leadId?: string;
+  pstCode?: string;
+  pstServiceName?: string;
   status: 'active' | 'completed' | 'cancelled' | 'pending';
   startDate: string;
   endDate?: string;
@@ -69,6 +73,7 @@ export interface OSI {
   projectCode: string;
   clientId: string;
   clientName: string;
+  kind?: 'EXTERNAL' | 'INTERNAL';
   status: OSIStatus;
   type: 'local' | 'national' | 'international';
   origin: string;
@@ -76,6 +81,35 @@ export interface OSI {
   scheduledDate: string;
   scheduledStartAt?: string;
   scheduledEndAt?: string;
+  supervisorId?: string;
+  driverId?: string;
+  pstCode?: string;
+  pstTemplateVersionId?: string;
+  ptfCode?: string;
+  petCode?: string;
+  ptfMaterialPlan?: {
+    source?: string;
+    pstCode?: string;
+    items?: Array<{ code: string; qty: number; unit?: string }>;
+  };
+  petPlan?: {
+    source?: string;
+    pstCode?: string;
+    slots?: number;
+    requiredRoles?: string[];
+  };
+  ptfEditedManually?: boolean;
+  petEditedManually?: boolean;
+  custodyStatus?: 'DRIVER' | 'SUPERVISOR';
+  custodyTransferredAt?: string;
+  driverAvailable?: boolean;
+  vehicleAvailable?: boolean;
+  lastMaterialDeviation?: Record<string, number>;
+  startedAt?: string;
+  endedAt?: string;
+  npsScore?: number;
+  supervisorNotes?: string;
+  ecoPoints?: number;
   createdAt: string;
   assignedTo?: string;
   assignedDriverId?: string;

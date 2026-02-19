@@ -53,6 +53,10 @@ export type ProjectDto = {
   name: string;
   clientId: string;
   clientName: string;
+  quoteId?: string | null;
+  leadId?: string | null;
+  pstCode?: string | null;
+  pstServiceName?: string | null;
   status: string;
   startDate: string;
   endDate?: string | null;
@@ -69,17 +73,112 @@ export type OsiDto = {
   projectCode: string;
   clientId: string;
   clientName: string;
+  kind?: "EXTERNAL" | "INTERNAL";
   status: string;
   type: string;
   origin: string;
   destination: string;
   scheduledDate: string;
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
+  supervisorId?: string | null;
+  driverId?: string | null;
+  pstCode?: string | null;
+  pstTemplateVersionId?: string | null;
+  ptfCode?: string | null;
+  petCode?: string | null;
+  ptfMaterialPlan?: unknown;
+  petPlan?: unknown;
+  ptfEditedManually?: boolean;
+  petEditedManually?: boolean;
+  custodyStatus?: "DRIVER" | "SUPERVISOR";
+  custodyTransferredAt?: string | null;
+  driverAvailable?: boolean;
+  vehicleAvailable?: boolean;
+  lastMaterialDeviation?: Record<string, number> | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  npsScore?: number | null;
+  supervisorNotes?: string | null;
+  ecoPoints?: number | null;
   createdAt: string;
   assignedTo?: string | null;
   team: string[];
   vehicles: string[];
   value: number;
   notes?: string | null;
+};
+
+export type OsiChangeLogDto = {
+  id: string;
+  osiId: string;
+  actorUserId?: string | null;
+  actorRole: string;
+  action: string;
+  fieldPath?: string | null;
+  beforeJson?: unknown;
+  afterJson?: unknown;
+  reason?: string | null;
+  createdAt: string;
+};
+
+export type OsiHandshakeDto = {
+  id: string;
+  osiId: string;
+  status: "PENDING" | "COMPLETED" | "REJECTED";
+  fromRole: string;
+  fromUserId?: string | null;
+  toRole: string;
+  toUserId?: string | null;
+  type: string;
+  timestamp: string;
+  completedAt?: string | null;
+  notes?: string | null;
+  payloadJson?: unknown;
+  createdAt: string;
+};
+
+export type OsiMaterialReturnDto = {
+  id: string;
+  osiId: string;
+  pstCode?: string | null;
+  ptfCode?: string | null;
+  dispatchedJson: unknown;
+  returnedJson: unknown;
+  deviationJson: Record<string, number>;
+  recordedById?: string | null;
+  recordedByRole?: string | null;
+  recordedAt: string;
+  createdAt: string;
+};
+
+export type PtfAdjustmentSuggestionDto = {
+  id: string;
+  pstCode: string;
+  ptfCode?: string | null;
+  status: "PENDING" | "APPLIED" | "IGNORED" | "ESCALATED";
+  basedOnOsiIds: string[];
+  occurrences: number;
+  recommendedDelta: Record<string, number>;
+  reason?: string | null;
+  ignoredCount: number;
+  lastIgnoredAt?: string | null;
+  lastActionById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  escalations?: EscalationEventDto[];
+};
+
+export type EscalationEventDto = {
+  id: string;
+  type: string;
+  message: string;
+  targetRoles: string[];
+  suggestionId?: string | null;
+  createdAt: string;
+  resolvedAt?: string | null;
+  resolvedById?: string | null;
+  metadataJson?: unknown;
 };
 
 export type ApiListResponse<T> = { ok: boolean; total: number; data: T[] };
@@ -204,6 +303,89 @@ export async function getOsis(query = "", status = "") {
 
 export async function createOsi(payload: Partial<OsiDto>) {
   return requestJson<{ ok: boolean; data: OsiDto }>("/osis", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function getOsiById(osiId: string) {
+  return requestJson<{
+    ok: boolean;
+    data: OsiDto & {
+      changeLogs: OsiChangeLogDto[];
+      handshakes: OsiHandshakeDto[];
+      materialReturns: OsiMaterialReturnDto[];
+    };
+  }>(`/osis/${encodeURIComponent(osiId)}`);
+}
+
+export async function updateOsi(osiId: string, payload: Partial<OsiDto> & { changeReason?: string; applySuggestedPtfPet?: boolean }) {
+  return requestJson<{ ok: boolean; data: OsiDto; meta?: { changes: number } }>(`/osis/${encodeURIComponent(osiId)}`, {
+    method: "PATCH",
+    body: payload,
+  });
+}
+
+export async function registerOsiHandshake(
+  osiId: string,
+  payload: { supervisorId: string; driverId: string; timestamp?: string; notes?: string }
+) {
+  return requestJson<{ ok: boolean; data: { handshake: OsiHandshakeDto; osi: OsiDto } }>(
+    `/osis/${encodeURIComponent(osiId)}/handshake`,
+    {
+      method: "POST",
+      body: payload,
+    }
+  );
+}
+
+export async function registerOsiMaterialReturn(
+  osiId: string,
+  payload: {
+    pstCode?: string;
+    ptfCode?: string;
+    dispatched: Array<{ code: string; qty: number; unit?: string }>;
+    returned: Array<{ code: string; qty: number; unit?: string }>;
+    recordedAt?: string;
+  }
+) {
+  return requestJson<{
+    ok: boolean;
+    data: {
+      materialReturn: OsiMaterialReturnDto;
+      deviation: Record<string, number>;
+      deviationSummary: string;
+      osi: OsiDto;
+      suggestion: PtfAdjustmentSuggestionDto | null;
+    };
+    meta: { hasDeviation: boolean; deviationCount: number };
+  }>(`/osis/${encodeURIComponent(osiId)}/return`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function listPtfSuggestions(params?: { pstCode?: string; status?: string }) {
+  const qs = new URLSearchParams();
+  if (params?.pstCode) qs.set("pstCode", params.pstCode);
+  if (params?.status) qs.set("status", params.status);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return requestJson<{ ok: boolean; total: number; data: PtfAdjustmentSuggestionDto[] }>(`/ptf/suggestions${suffix}`);
+}
+
+export async function recomputePtfSuggestions(payload?: { pstCode?: string }) {
+  return requestJson<{ ok: boolean; total: number; data: PtfAdjustmentSuggestionDto[] }>(`/ptf/suggestions/recompute`, {
+    method: "POST",
+    body: payload || {},
+  });
+}
+
+export async function actionPtfSuggestion(payload: { suggestionId: string; action: "APPLY" | "IGNORE"; note?: string }) {
+  return requestJson<{
+    ok: boolean;
+    data: PtfAdjustmentSuggestionDto;
+    escalation?: EscalationEventDto | null;
+  }>(`/ptf/suggestions/action`, {
     method: "POST",
     body: payload,
   });

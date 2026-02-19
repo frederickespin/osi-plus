@@ -38,6 +38,10 @@ export default withCommonHeaders(async (req, res) => {
         name: String(body.name || "Proyecto"),
         clientId: String(body.clientId || ""),
         clientName: String(body.clientName || ""),
+        quoteId: body.quoteId ? String(body.quoteId) : null,
+        leadId: body.leadId ? String(body.leadId) : null,
+        pstCode: body.pstCode ? String(body.pstCode) : null,
+        pstServiceName: body.pstServiceName ? String(body.pstServiceName) : null,
         status: String(body.status || "active"),
         startDate: String(body.startDate || new Date().toISOString().slice(0, 10)),
         endDate: body.endDate ? String(body.endDate) : null,
@@ -56,4 +60,3 @@ export default withCommonHeaders(async (req, res) => {
 
   return methodNotAllowed(res, ["GET", "POST"]);
 });
-

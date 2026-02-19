@@ -35,6 +35,8 @@ export function permsForRole(role: RoleCode): Perm[] {
   if (role === "A") {
     return [
       PERMS.TEMPLATES_VIEW,
+      PERMS.TEMPLATES_EDIT_DRAFT,
+      PERMS.TEMPLATES_SUBMIT,
       PERMS.TEMPLATES_APPROVE,
       PERMS.TEMPLATES_REJECT,
       PERMS.TEMPLATES_PUBLISH,
@@ -60,6 +62,10 @@ export function permsForRole(role: RoleCode): Perm[] {
       PERMS.TEMPLATES_EDIT_DRAFT,
       PERMS.TEMPLATES_SUBMIT,
     ];
+  }
+
+  if (role === "B" || role === "C" || role === "C1" || role === "I") {
+    return [PERMS.TEMPLATES_VIEW];
   }
 
   return [];

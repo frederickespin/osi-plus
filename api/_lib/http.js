@@ -1,6 +1,6 @@
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Content-Type, Authorization, x-osi-role, x-osi-userid",
@@ -60,9 +60,18 @@ function unauthorized(res) {
   });
 }
 
+function badRequest(res, error = "Bad Request", detail = null) {
+  return res.status(400).json({
+    ok: false,
+    error,
+    ...(detail ? { detail } : {}),
+  });
+}
+
 export {
   withCommonHeaders,
   methodNotAllowed,
   readJsonBody,
   unauthorized,
+  badRequest,
 };

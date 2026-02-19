@@ -340,6 +340,8 @@ export default function QuoteBuilder({
       customerName: lead.clientName,
       leadId: lead.id,
       quoteId: quote.id,
+      pstCode: String((quote as any).pstCode || ""),
+      pstServiceName: String((quote as any).pstServiceName || ""),
       status: "ACTIVE",
     });
     promoteBookingToProject(quote.proposalNumber, {

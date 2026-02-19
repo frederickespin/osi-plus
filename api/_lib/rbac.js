@@ -43,6 +43,10 @@ function permsForRole(role) {
     ];
   }
 
+  if (role === "B" || role === "C" || role === "C1" || role === "I") {
+    return [PERMS.TEMPLATES_VIEW];
+  }
+
   return [];
 }
 

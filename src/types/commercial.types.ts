@@ -7,6 +7,8 @@ export type CommercialProject = {
   customerName: string;
   leadId?: string;
   quoteId?: string;
+  pstCode?: string;
+  pstServiceName?: string;
   status: CommercialProjectStatus;
   createdAt: string;
   updatedAt: string;

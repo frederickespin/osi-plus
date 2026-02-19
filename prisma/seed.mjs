@@ -24,6 +24,8 @@ async function main() {
     },
   });
 
+  const demoHash = await bcrypt.hash("Demo123*", 10);
+
   const sales = await prisma.user.upsert({
     where: { email: "maria@ipackers.com" },
     update: {},
@@ -39,6 +41,78 @@ async function main() {
       points: 980,
       rating: 4.7,
       passwordHash: await bcrypt.hash("Ventas123*", 10),
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "ventas@ipackers.com" },
+    update: {},
+    create: {
+      code: "EMP003",
+      name: "Laura Fernandez",
+      email: "ventas@ipackers.com",
+      phone: "+59170000003",
+      role: "V",
+      status: "active",
+      department: "Comercial",
+      joinDate: "2020-05-10",
+      points: 820,
+      rating: 4.5,
+      passwordHash: demoHash,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "operaciones@ipackers.com" },
+    update: {},
+    create: {
+      code: "EMP004",
+      name: "Roberto Vargas",
+      email: "operaciones@ipackers.com",
+      phone: "+59170000004",
+      role: "B",
+      status: "active",
+      department: "Operaciones",
+      joinDate: "2020-02-01",
+      points: 1100,
+      rating: 4.9,
+      passwordHash: demoHash,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "materiales@ipackers.com" },
+    update: {},
+    create: {
+      code: "EMP005",
+      name: "Ana Mendoza",
+      email: "materiales@ipackers.com",
+      phone: "+59170000005",
+      role: "C",
+      status: "active",
+      department: "Logística",
+      joinDate: "2020-04-15",
+      points: 750,
+      rating: 4.6,
+      passwordHash: demoHash,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "rrhh@ipackers.com" },
+    update: {},
+    create: {
+      code: "EMP006",
+      name: "Pedro Suarez",
+      email: "rrhh@ipackers.com",
+      phone: "+59170000006",
+      role: "I",
+      status: "active",
+      department: "RRHH",
+      joinDate: "2020-01-20",
+      points: 900,
+      rating: 4.7,
+      passwordHash: demoHash,
     },
   });
 

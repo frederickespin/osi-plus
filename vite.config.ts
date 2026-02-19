@@ -7,6 +7,14 @@ import { inspectAttr } from 'kimi-plugin-inspect-react'
 export default defineConfig({
   base: './',
   plugins: [inspectAttr(), react()],
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_PROXY || 'https://osi-plus.vercel.app',
+        changeOrigin: true,
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

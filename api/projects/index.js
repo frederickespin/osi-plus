@@ -1,8 +1,14 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, readJsonBody, withCommonHeaders } from "../_lib/http.js";
+import { requireAuth } from "../_lib/requireAuth.js";
+import { PERMS, requirePerm } from "../_lib/rbac.js";
 
 export default withCommonHeaders(async (req, res) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+
   if (req.method === "GET") {
+    if (!requirePerm(req, res, PERMS.PROJECTS_VIEW)) return;
     const query = String(req.query?.q || "").toLowerCase().trim();
     const projects = await prisma.project.findMany({
       orderBy: { startDate: "desc" },
@@ -24,6 +30,7 @@ export default withCommonHeaders(async (req, res) => {
   }
 
   if (req.method === "POST") {
+    if (!requirePerm(req, res, PERMS.PROJECTS_CREATE)) return;
     const body = await readJsonBody(req);
     const created = await prisma.project.create({
       data: {

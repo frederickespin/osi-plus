@@ -1,8 +1,14 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, readJsonBody, withCommonHeaders } from "../_lib/http.js";
+import { requireAuth } from "../_lib/requireAuth.js";
+import { PERMS, requirePerm } from "../_lib/rbac.js";
 
 export default withCommonHeaders(async (req, res) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+
   if (req.method === "GET") {
+    if (!requirePerm(req, res, PERMS.OSI_VIEW)) return;
     const status = String(req.query?.status || "").trim();
     const query = String(req.query?.q || "").toLowerCase().trim();
 
@@ -29,6 +35,7 @@ export default withCommonHeaders(async (req, res) => {
   }
 
   if (req.method === "POST") {
+    if (!requirePerm(req, res, PERMS.OSI_CREATE)) return;
     const body = await readJsonBody(req);
     const created = await prisma.osi.create({
       data: {

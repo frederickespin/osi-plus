@@ -3,10 +3,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { login } from '@/lib/api';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { getAppEnv, ENV_LABELS } from '@/lib/env';
 import type { UserRole } from '@/types/osi.types';
+
+const TEST_USERS = [
+  { email: 'admin@ipackers.com', password: 'Admin123*', role: 'A', name: 'Administrador' },
+  { email: 'maria@ipackers.com', password: 'Ventas123*', role: 'K', name: 'Coordinador' },
+  { email: 'ventas@ipackers.com', password: 'Demo123*', role: 'V', name: 'Ventas' },
+  { email: 'operaciones@ipackers.com', password: 'Demo123*', role: 'B', name: 'Operaciones' },
+  { email: 'materiales@ipackers.com', password: 'Demo123*', role: 'C', name: 'Materiales' },
+  { email: 'rrhh@ipackers.com', password: 'Demo123*', role: 'I', name: 'RRHH' },
+] as const;
 
 export interface LoginSession {
   token: string;
@@ -23,6 +34,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [credsOpen, setCredsOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,6 +83,18 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </div>
           <CardTitle className="text-2xl font-bold text-slate-900">OSi-Plus ERP</CardTitle>
           <p className="text-slate-500 text-sm">Sistema de Gestión Integral</p>
+          <p
+            className={`text-xs font-medium px-2 py-1 rounded inline-block ${
+              getAppEnv() === 'production'
+                ? 'bg-emerald-100 text-emerald-800'
+                : getAppEnv() === 'preview'
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-sky-100 text-sky-800'
+            }`}
+            title="Ambiente actual"
+          >
+            {ENV_LABELS[getAppEnv()]}
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -117,21 +141,35 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </form>
           
           <div className="mt-6 pt-4 border-t border-slate-200">
-            <p className="text-center text-xs text-slate-400 mb-2">
-              Credenciales de demostración:
-            </p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-slate-50 p-2 rounded">
-                <p className="font-medium text-slate-600">Admin</p>
-                <p className="text-slate-400">admin@ipackers.com</p>
-                <p className="text-slate-400">Admin123*</p>
-              </div>
-              <div className="bg-slate-50 p-2 rounded">
-                <p className="font-medium text-slate-600">Coordinador</p>
-                <p className="text-slate-400">maria@ipackers.com</p>
-                <p className="text-slate-400">Ventas123*</p>
-              </div>
-            </div>
+            <Collapsible open={credsOpen} onOpenChange={setCredsOpen}>
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-center gap-1 text-xs text-slate-500 hover:text-slate-700 font-medium"
+                >
+                  Credenciales para probar roles
+                  {credsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="mt-3 space-y-2 text-xs max-h-40 overflow-y-auto">
+                  {TEST_USERS.map((u) => (
+                    <div
+                      key={u.email}
+                      className="bg-slate-50 p-2 rounded cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={() => {
+                        setEmail(u.email);
+                        setPassword(u.password);
+                      }}
+                    >
+                      <p className="font-medium text-slate-600">{u.name} (rol {u.role})</p>
+                      <p className="text-slate-400 truncate">{u.email}</p>
+                      <p className="text-slate-400">•••••••• (click para cargar)</p>
+                    </div>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </div>
         </CardContent>
       </Card>

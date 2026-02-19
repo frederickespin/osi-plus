@@ -14,30 +14,15 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { loadSystemSettings, saveSystemSettings, type MainCurrencyCode } from '@/lib/systemSettingsStore';
 
 export function SettingsModule() {
-  const [settings, setSettings] = useState({
-    companyName: 'International Packers SRL',
-    email: 'admin@ipackers.com',
-    phone: '+591 2100000',
-    address: 'Av. Principal #123, La Paz, Bolivia',
-    timezone: 'America/La_Paz (GMT-4)',
-    currency: 'DOP',
-    language: 'es',
-    dateFormat: 'DD/MM/YYYY',
-    notifications: true,
-    emailAlerts: true,
-    dailySummary: false,
-    sessionTimeout: 30,
-    failedLoginAttempts: 3,
-    twoFactor: false,
-    activityLog: true,
-    primaryColor: '#003366',
-  });
+  const [settings, setSettings] = useState(() => loadSystemSettings());
 
   const colorOptions = ['#003366', '#2563eb', '#0f172a', '#15803d'];
 
   const handleSave = () => {
+    saveSystemSettings(settings);
     toast.success('Configuración guardada exitosamente');
   };
 
@@ -133,7 +118,7 @@ export function SettingsModule() {
                   <select
                     className="w-full mt-1 p-2 border rounded-lg"
                     value={settings.currency}
-                    onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
+                    onChange={(e) => setSettings({ ...settings, currency: e.target.value as MainCurrencyCode })}
                   >
                     <option value="DOP">DOP - Peso Dominicano</option>
                     <option value="USD">USD - Dólar Estadounidense</option>

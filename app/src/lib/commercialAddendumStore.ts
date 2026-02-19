@@ -1,5 +1,6 @@
 import { loadSession } from "@/lib/sessionStore";
 import type { UserRole } from "@/types/osi.types";
+import { getMainCurrencySymbol } from "@/lib/systemSettingsStore";
 
 export type AddendumStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED";
 
@@ -19,7 +20,7 @@ export type CommercialAddendum = {
   customerName: string;
   detail: string;
   amount: number;
-  currency: "RD$";
+  currency: string;
   status: AddendumStatus;
   requestedByName: string;
   requestedByRole: UserRole;
@@ -89,7 +90,7 @@ export function createCommercialAddendum(input: {
     customerName: input.customerName,
     detail: input.detail.trim(),
     amount: Number(input.amount || 0),
-    currency: "RD$",
+    currency: getMainCurrencySymbol(),
     status: input.status,
     requestedByName,
     requestedByRole,

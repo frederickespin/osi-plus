@@ -72,7 +72,7 @@ const MONTH_NAMES = [
 
 const CSV_HEADERS = ['Empleado', 'Nombre', 'OSI', 'Fecha', 'Detalle', 'Monto'];
 
-const toCurrency = (amount: number) => formatCurrency(amount, "$");
+const toCurrency = (amount: number) => formatCurrency(amount);
 
 const SHAB_CATEGORIES = ['PA', 'PB', 'PC', 'PD', 'PF', 'PE'] as const;
 const GENERAL_CATEGORY = 'GENERAL';

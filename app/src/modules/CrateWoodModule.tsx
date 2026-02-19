@@ -31,6 +31,7 @@ import { loadCrateSettings } from "@/lib/crateSettingsStore";
 import { runNesting, runEngineering, runCosting } from "@/lib/crateEngine";
 import type { CrateProfileKey } from "@/lib/crateSettingsStore";
 import { formatCurrency } from "@/lib/formatters";
+import { getMainCurrencySymbol } from "@/lib/systemSettingsStore";
 
 type LeadLite = { id: string; clientName?: string; name?: string; status?: string; origin?: string; destination?: string };
 
@@ -158,6 +159,7 @@ const buildDemoItems = (): CrateItemInput[] => ([
 
 export default function CrateWoodModule(props?: { initialTab?: CrateOpenTab; mode?: "settingsOnly" | "full" }) {
   const mode = props?.mode ?? "full";
+  const currencySymbol = getMainCurrencySymbol();
   const [activeTab, setActiveTab] = useState<CrateTab>(() =>
     mode === "settingsOnly" ? "settings" : mapOpenTabToInternal(props?.initialTab)
   );
@@ -1008,7 +1010,7 @@ export default function CrateWoodModule(props?: { initialTab?: CrateOpenTab; mod
                   </div>
 
                   <p className="text-xs text-slate-500">
-                    Si ves RD$ 0.00 en materiales, entra a <strong>Configuración → Costos unitarios</strong> y llena los precios.
+                    Si ves {currencySymbol} 0.00 en materiales, entra a <strong>Configuración → Costos unitarios</strong> y llena los precios.
                   </p>
                 </>
               )}

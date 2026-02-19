@@ -53,7 +53,7 @@ import {
 } from '@/lib/nestingAlgorithms';
 import { formatCurrency } from '@/lib/formatters';
 
-const money = (value: number) => formatCurrency(value, "$");
+const money = (value: number) => formatCurrency(value);
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function NestingModule() {

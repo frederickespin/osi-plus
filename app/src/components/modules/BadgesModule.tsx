@@ -191,7 +191,7 @@ export function BadgesModule() {
                       <p className="text-xs text-slate-500">Meta alcanzada</p>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg text-center">
-                      <p className="text-2xl font-bold text-blue-600">{formatCurrency(2250, "$")}</p>
+                      <p className="text-2xl font-bold text-blue-600">{formatCurrency(2250)}</p>
                       <p className="text-xs text-slate-500">Ahorro generado</p>
                     </div>
                   </div>

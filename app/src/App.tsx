@@ -190,6 +190,7 @@ export type ModuleId =
   | 'settings';
 
 function App() {
+  const [, setSettingsRevision] = useState(0);
   const [session] = useState(() => {
     if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
       return { role: 'A' as UserRole, name: 'Admin User' };
@@ -228,6 +229,12 @@ function App() {
     };
     window.addEventListener("osi:salesquote:open", handler as EventListener);
     return () => window.removeEventListener("osi:salesquote:open", handler as EventListener);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setSettingsRevision((prev) => prev + 1);
+    window.addEventListener("osi:system-settings:changed", handler);
+    return () => window.removeEventListener("osi:system-settings:changed", handler);
   }, []);
 
   const renderModule = () => {

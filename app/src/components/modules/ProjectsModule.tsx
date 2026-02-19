@@ -15,6 +15,7 @@ import { loadQuotes } from "@/lib/salesStore";
 import { loadBookings } from "@/lib/commercialCalendarStore";
 import { loadOsi } from "@/lib/hrNotaStorage";
 import { formatCurrency } from "@/lib/formatters";
+import { getMainCurrencySymbol } from "@/lib/systemSettingsStore";
 import {
   createCommercialAddendum,
   listAddendaByProject,
@@ -159,6 +160,7 @@ async function readFilesAsEvidence(files: File[]) {
 }
 
 export function ProjectsModule() {
+  const currencySymbol = getMainCurrencySymbol();
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<Filter>("ALL");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -489,7 +491,7 @@ export function ProjectsModule() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label>Monto adicional (RD$)</Label>
+                      <Label>Monto adicional ({currencySymbol})</Label>
                       <Input
                         type="number"
                         min={0}

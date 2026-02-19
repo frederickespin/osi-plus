@@ -82,7 +82,7 @@ export function BillingModule() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-blue-600">
-              {formatCurrency(mockNOTAs.reduce((acc, n) => acc + n.amount, 0), "$")}
+              {formatCurrency(mockNOTAs.reduce((acc, n) => acc + n.amount, 0))}
             </p>
             <p className="text-sm text-slate-500">Total Mes</p>
           </CardContent>
@@ -122,7 +122,7 @@ export function BillingModule() {
                       </TableCell>
                       <TableCell className="flex items-center gap-1">
                         <DollarSign className="h-4 w-4 text-slate-400" />
-                        {formatCurrency(tarifa.monto, "$")}
+                        {formatCurrency(tarifa.monto)}
                       </TableCell>
                       <TableCell className="text-slate-600">{tarifa.unidad}</TableCell>
                       <TableCell className="text-right">
@@ -162,7 +162,7 @@ export function BillingModule() {
                       <TableCell className="font-medium">{nota.code}</TableCell>
                       <TableCell>{nota.osiCode}</TableCell>
                       <TableCell>{nota.description}</TableCell>
-                      <TableCell>{formatCurrency(nota.amount, "$")}</TableCell>
+                      <TableCell>{formatCurrency(nota.amount)}</TableCell>
                       <TableCell>
                         <Badge variant={
                           nota.status === 'paid' ? 'default' :

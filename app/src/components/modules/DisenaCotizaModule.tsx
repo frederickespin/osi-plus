@@ -77,7 +77,7 @@ const EXAMPLE_BUNDLES: BundleV2[] = [
   },
 ];
 
-const money = (value: number) => formatCurrency(value, "$");
+const money = (value: number) => formatCurrency(value);
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function DisenaCotizaModule() {

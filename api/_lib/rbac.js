@@ -9,100 +9,41 @@ export const PERMS = {
   TEMPLATES_REJECT: "templates:reject",
   TEMPLATES_PUBLISH: "templates:publish",
   TEMPLATES_ARCHIVE: "templates:archive",
-  USERS_VIEW: "users:view",
-  USERS_CREATE: "users:create",
-  USERS_EDIT: "users:edit",
-  USERS_DELETE: "users:delete",
-  CLIENTS_VIEW: "clients:view",
-  CLIENTS_CREATE: "clients:create",
-  CLIENTS_EDIT: "clients:edit",
-  PROJECTS_VIEW: "projects:view",
-  PROJECTS_CREATE: "projects:create",
-  PROJECTS_EDIT: "projects:edit",
-  PROJECTS_VALIDATE: "projects:validate",
-  PROJECTS_RELEASE: "projects:release",
-  OSI_VIEW: "osi:view",
-  OSI_CREATE: "osi:create",
-  OSI_EDIT: "osi:edit",
-  OSI_DISPATCH: "osi:dispatch",
-  OSI_ASSIGN: "osi:assign",
-};
-
-const ROLE_PERMS = {
-  A: Object.values(PERMS),
-  V: [
-    PERMS.TEMPLATES_VIEW,
-    PERMS.CLIENTS_VIEW,
-    PERMS.CLIENTS_CREATE,
-    PERMS.CLIENTS_EDIT,
-    PERMS.PROJECTS_VIEW,
-    PERMS.PROJECTS_CREATE,
-    PERMS.PROJECTS_EDIT,
-    PERMS.OSI_VIEW,
-    PERMS.OSI_CREATE,
-    PERMS.OSI_EDIT,
-  ],
-  K: [
-    PERMS.TEMPLATES_VIEW,
-    PERMS.TEMPLATES_CREATE,
-    PERMS.TEMPLATES_EDIT_DRAFT,
-    PERMS.TEMPLATES_SUBMIT,
-    PERMS.CLIENTS_VIEW,
-    PERMS.PROJECTS_VIEW,
-    PERMS.PROJECTS_CREATE,
-    PERMS.PROJECTS_VALIDATE,
-    PERMS.PROJECTS_RELEASE,
-    PERMS.OSI_VIEW,
-    PERMS.OSI_EDIT,
-  ],
-  B: [
-    PERMS.PROJECTS_VIEW,
-    PERMS.OSI_VIEW,
-    PERMS.OSI_CREATE,
-    PERMS.OSI_EDIT,
-    PERMS.OSI_ASSIGN,
-  ],
-  C: [PERMS.CLIENTS_VIEW, PERMS.PROJECTS_VIEW, PERMS.OSI_VIEW],
-  C1: [PERMS.OSI_VIEW, PERMS.OSI_DISPATCH],
-  D: [PERMS.OSI_VIEW, PERMS.OSI_EDIT],
-  E: [PERMS.OSI_VIEW],
-  G: [PERMS.OSI_VIEW],
-  N: [PERMS.OSI_VIEW],
-  PA: [PERMS.OSI_VIEW],
-  PB: [PERMS.OSI_VIEW],
-  PC: [PERMS.OSI_VIEW],
-  PD: [PERMS.OSI_VIEW],
-  PF: [PERMS.OSI_VIEW],
-  I: [
-    PERMS.USERS_VIEW,
-    PERMS.CLIENTS_VIEW,
-    PERMS.PROJECTS_VIEW,
-    PERMS.OSI_VIEW,
-  ],
-  PE: [PERMS.OSI_VIEW],
-  RB: [PERMS.OSI_VIEW],
 };
 
 function permsForRole(role) {
-  return ROLE_PERMS[role] || [];
-}
+  if (role === "A") {
+    return [
+      PERMS.TEMPLATES_VIEW,
+      PERMS.TEMPLATES_EDIT_DRAFT,
+      PERMS.TEMPLATES_SUBMIT,
+      PERMS.TEMPLATES_APPROVE,
+      PERMS.TEMPLATES_REJECT,
+      PERMS.TEMPLATES_PUBLISH,
+      PERMS.TEMPLATES_ARCHIVE,
+      PERMS.TEMPLATES_CREATE,
+    ];
+  }
 
-/**
- * Requiere que req.user (de requireAuth) tenga el permiso dado.
- * Usar después de requireAuth. Retorna true si permitido, false si envió 403.
- */
-export function requirePerm(req, res, perm) {
-  const role = req.user?.role;
-  if (!role) {
-    unauthorized(res);
-    return false;
+  if (role === "K") {
+    return [
+      PERMS.TEMPLATES_VIEW,
+      PERMS.TEMPLATES_CREATE,
+      PERMS.TEMPLATES_EDIT_DRAFT,
+      PERMS.TEMPLATES_SUBMIT,
+    ];
   }
-  const allowed = permsForRole(role).includes(perm);
-  if (!allowed) {
-    res.status(403).json({ ok: false, error: "Forbidden", perm });
-    return false;
+
+  if (role === "V") {
+    return [
+      PERMS.TEMPLATES_VIEW,
+      PERMS.TEMPLATES_CREATE,
+      PERMS.TEMPLATES_EDIT_DRAFT,
+      PERMS.TEMPLATES_SUBMIT,
+    ];
   }
-  return true;
+
+  return [];
 }
 
 export function requirePermFromHeaders(req, res, perm) {

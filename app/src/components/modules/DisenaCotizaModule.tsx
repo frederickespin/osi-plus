@@ -28,6 +28,7 @@ import type { BundleV2 } from '@/types/nestingV2.types';
 import type { DisenaCotizaResult, ResultadoIngenieria, CostoCaja, CotizacionResult } from '@/types/disenacotiza.types';
 import { DEFAULT_COSTOS_CONFIG } from '@/types/disenacotiza.types';
 import { ejecutarDisenaCotiza } from '@/lib/disenacotiza';
+import { formatCurrency } from '@/lib/formatters';
 
 // ==================== DATOS DE EJEMPLO (de Nesting V2) ====================
 const EXAMPLE_BUNDLES: BundleV2[] = [
@@ -75,6 +76,8 @@ const EXAMPLE_BUNDLES: BundleV2[] = [
     item_count: 1,
   },
 ];
+
+const money = (value: number) => formatCurrency(value);
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function DisenaCotizaModule() {
@@ -263,13 +266,13 @@ export function DisenaCotizaModule() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-blue-600">${result.cotizacion.subtotal.toFixed(0)}</p>
+              <p className="text-2xl font-bold text-blue-600">{money(result.cotizacion.subtotal)}</p>
               <p className="text-sm text-slate-500">Subtotal</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">${result.cotizacion.totalFinal.toFixed(0)}</p>
+              <p className="text-2xl font-bold text-green-600">{money(result.cotizacion.totalFinal)}</p>
               <p className="text-sm text-slate-500">Total Final</p>
             </CardContent>
           </Card>
@@ -822,7 +825,7 @@ function CostoCard({ costo, ingenieria, onUpdate }: { costo: CostoCaja; ingenier
             </div>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-bold text-green-600">${costo.totalConItbis.toFixed(2)}</p>
+            <p className="text-2xl font-bold text-green-600">{money(costo.totalConItbis)}</p>
             <p className="text-xs text-slate-500">Total con ITBIS</p>
           </div>
         </div>
@@ -831,11 +834,11 @@ function CostoCard({ costo, ingenieria, onUpdate }: { costo: CostoCaja; ingenier
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="p-3 bg-slate-50 rounded-lg">
             <p className="text-xs text-slate-500">Madera</p>
-            <p className="font-mono font-medium">${costo.costoMadera.toFixed(2)}</p>
+            <p className="font-mono font-medium">{money(costo.costoMadera)}</p>
           </div>
           <div className="p-3 bg-slate-50 rounded-lg">
             <p className="text-xs text-slate-500">Plywood</p>
-            <p className="font-mono font-medium">${costo.costoPlywood.toFixed(2)}</p>
+            <p className="font-mono font-medium">{money(costo.costoPlywood)}</p>
           </div>
           <div className="p-3 bg-slate-50 rounded-lg">
             <p className="text-xs text-slate-500">Mano de Obra</p>
@@ -896,10 +899,10 @@ function CotizacionCompleta({ cotizacion }: { cotizacion: CotizacionResult }) {
           {cotizacion.costosCajas.map((c) => (
             <TableRow key={c.boxId}>
               <TableCell className="font-mono">{c.boxId}</TableCell>
-              <TableCell className="text-right font-mono">${(c.costoMadera + c.costoPlywood + c.costoHardware).toFixed(2)}</TableCell>
-              <TableCell className="text-right font-mono">${c.costoManoObra.toFixed(2)}</TableCell>
-              <TableCell className="text-right font-mono">${c.costoEmpaque.toFixed(2)}</TableCell>
-              <TableCell className="text-right font-mono">${c.subtotalDirectos.toFixed(2)}</TableCell>
+              <TableCell className="text-right font-mono">{money(c.costoMadera + c.costoPlywood + c.costoHardware)}</TableCell>
+              <TableCell className="text-right font-mono">{money(c.costoManoObra)}</TableCell>
+              <TableCell className="text-right font-mono">{money(c.costoEmpaque)}</TableCell>
+              <TableCell className="text-right font-mono">{money(c.subtotalDirectos)}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -911,27 +914,27 @@ function CotizacionCompleta({ cotizacion }: { cotizacion: CotizacionResult }) {
       <div className="space-y-2">
         <div className="flex justify-between">
           <span className="text-slate-500">Transporte</span>
-          <span className="font-mono">${cotizacion.transporte.toFixed(2)}</span>
+          <span className="font-mono">{money(cotizacion.transporte)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-500">Fumigación</span>
-          <span className="font-mono">${cotizacion.fumigacion.toFixed(2)}</span>
+          <span className="font-mono">{money(cotizacion.fumigacion)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-500">Logística</span>
-          <span className="font-mono">${cotizacion.logistica.toFixed(2)}</span>
+          <span className="font-mono">{money(cotizacion.logistica)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-500">Gastos Generales ({DEFAULT_COSTOS_CONFIG.gastosGeneralesPercent}%)</span>
-          <span className="font-mono">${cotizacion.gastosGenerales.toFixed(2)}</span>
+          <span className="font-mono">{money(cotizacion.gastosGenerales)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-500">Administración ({DEFAULT_COSTOS_CONFIG.administracionPercent}%)</span>
-          <span className="font-mono">${cotizacion.administracion.toFixed(2)}</span>
+          <span className="font-mono">{money(cotizacion.administracion)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-500">Comisión Venta ({DEFAULT_COSTOS_CONFIG.comisionVentaPercent}%)</span>
-          <span className="font-mono">${cotizacion.comisionVenta.toFixed(2)}</span>
+          <span className="font-mono">{money(cotizacion.comisionVenta)}</span>
         </div>
       </div>
 
@@ -940,15 +943,15 @@ function CotizacionCompleta({ cotizacion }: { cotizacion: CotizacionResult }) {
       <div className="space-y-2">
         <div className="flex justify-between">
           <span className="text-slate-500">Subtotal</span>
-          <span className="font-mono">${cotizacion.subtotal.toFixed(2)}</span>
+          <span className="font-mono">{money(cotizacion.subtotal)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-500">ITBIS ({DEFAULT_COSTOS_CONFIG.itbisPercent}%)</span>
-          <span className="font-mono">${cotizacion.itbis.toFixed(2)}</span>
+          <span className="font-mono">{money(cotizacion.itbis)}</span>
         </div>
         <div className="flex justify-between text-xl font-bold pt-2 border-t">
           <span>TOTAL FINAL</span>
-          <span className="text-green-600">${cotizacion.totalFinal.toFixed(2)}</span>
+          <span className="text-green-600">{money(cotizacion.totalFinal)}</span>
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Send, Edit, RefreshCcw, Eye } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -64,9 +65,12 @@ const PIC_VARIABLES = [
 ] as const;
 
 export function TemplatesCenterModule({ userRole }: Props) {
-  const [activeTab, setActiveTab] = useState<TemplateType>("PIC");
+  const [activeTab, setActiveTab] = useState<TemplateType>(userRole === "V" ? "PST" : "PIC");
+  const canManageDrafts = userRole === "K" || userRole === "A" || (userRole === "V" && activeTab === "PST");
+  const visibleTabs: TemplateType[] = userRole === "V" ? ["PST"] : ["PIC", "PGD", "NPS", "PST"];
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [items, setItems] = useState<TemplateDto[]>([]);
 
   const [isOpen, setIsOpen] = useState(false);
@@ -105,11 +109,20 @@ export function TemplatesCenterModule({ userRole }: Props) {
 
   const refresh = () => {
     setLoading(true);
+    setLoadError(null);
     listTemplates(activeTab)
       .then((r) => setItems(r.data))
-      .catch(() => setItems([]))
+      .catch((e: any) => {
+        setItems([]);
+        const message = e?.message || "No se pudo cargar el Centro de Plantillas.";
+        setLoadError(message);
+      })
       .finally(() => setLoading(false));
   };
+
+  useEffect(() => {
+    if (userRole === "V" && activeTab !== "PST") setActiveTab("PST");
+  }, [activeTab, userRole]);
 
   useEffect(() => {
     refresh();
@@ -337,8 +350,13 @@ export function TemplatesCenterModule({ userRole }: Props) {
   const submitLatestDraft = async (t: TemplateDto) => {
     const latest = t.versions?.[0];
     if (!latest || latest.status !== "DRAFT") return;
-    await submitTemplateForApproval(latest.id);
-    refresh();
+    try {
+      await submitTemplateForApproval(latest.id);
+      toast.success("Plantilla enviada a aprobación.");
+      refresh();
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo enviar a aprobación.");
+    }
   };
 
   return (
@@ -346,7 +364,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Centro de Plantillas</h1>
-          <p className="text-slate-500">PIC / PGD / NPS con flujo Draft → Aprobación → Publicación</p>
+          <p className="text-slate-500">PIC / PGD / NPS / PST con flujo Draft → Aprobación → Publicación</p>
           <p className="text-xs text-slate-400 mt-1">Rol actual: {userRole}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -354,7 +372,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
             <RefreshCcw className="h-4 w-4 mr-2" />
             Refrescar
           </Button>
-          <Button onClick={openNew} disabled={userRole !== "K"}>
+          <Button onClick={openNew} disabled={!canManageDrafts}>
             <Plus className="h-4 w-4 mr-2" />
             Nueva
           </Button>
@@ -363,9 +381,10 @@ export function TemplatesCenterModule({ userRole }: Props) {
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TemplateType)}>
         <TabsList>
-          <TabsTrigger value="PIC">PIC</TabsTrigger>
-          <TabsTrigger value="PGD">PGD</TabsTrigger>
-          <TabsTrigger value="NPS">NPS</TabsTrigger>
+          {visibleTabs.includes("PIC") && <TabsTrigger value="PIC">PIC</TabsTrigger>}
+          {visibleTabs.includes("PGD") && <TabsTrigger value="PGD">PGD</TabsTrigger>}
+          {visibleTabs.includes("NPS") && <TabsTrigger value="NPS">NPS</TabsTrigger>}
+          {visibleTabs.includes("PST") && <TabsTrigger value="PST">PST</TabsTrigger>}
         </TabsList>
 
         <div className="mt-4 max-w-md">
@@ -373,6 +392,11 @@ export function TemplatesCenterModule({ userRole }: Props) {
         </div>
 
         <TabsContent value={activeTab} className="mt-6">
+          {loadError && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {loadError}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filtered.map((t) => {
               const latest = t.versions?.[0];
@@ -397,16 +421,16 @@ export function TemplatesCenterModule({ userRole }: Props) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => void openEditDraft(t)}>
-                        {userRole === "K" ? (
+                        {canManageDrafts ? (
                           <Edit className="h-4 w-4 mr-2" />
                         ) : (
                           <Eye className="h-4 w-4 mr-2" />
                         )}
-                        {userRole === "K" ? (latest?.status === "DRAFT" ? "Editar Draft" : "Nuevo Draft") : "Ver"}
+                        {canManageDrafts ? (latest?.status === "DRAFT" ? "Editar Draft" : "Nuevo Draft") : "Ver"}
                       </Button>
                       <Button
                         size="sm"
-                        disabled={userRole !== "K" || !latest || latest.status !== "DRAFT"}
+                        disabled={!canManageDrafts || !latest || latest.status !== "DRAFT"}
                         onClick={() => submitLatestDraft(t)}
                       >
                         <Send className="h-4 w-4 mr-2" />

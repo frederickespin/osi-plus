@@ -41,6 +41,66 @@ export type NpsTemplateContent = {
   alertThreshold: number; // If score < threshold => alert.
 };
 
+export type PstBasePriceMode = "PER_M3" | "PER_KG" | "FLAT_FEE" | "PER_HOUR" | "CUSTOM_FORMULA";
+
+export type PstRequiredInput =
+  | "DESTINATION_ADDRESS"
+  | "DECLARED_VALUE"
+  | "MOVE_DATE"
+  | "ORIGIN_ADDRESS"
+  | "CONTACT_PHONE"
+  | "SERVICE_DAYS"
+  | "SPECIAL_HANDLING_NOTES";
+
+export type PstTemplateContent = {
+  schemaVersion: 1;
+  serviceCode: string;
+  serviceName: string;
+  basePriceLogic: {
+    mode: PstBasePriceMode;
+    currency: "RD$" | "USD";
+    baseRate: number;
+    minimumCharge: number;
+  };
+  defaultNestingAllowed: boolean;
+  linkedPgdTemplateCode?: string;
+  marginRules: {
+    maxDiscountPctWithoutApproval: number;
+    minMarginPct: number;
+  };
+  requiredInputs: PstRequiredInput[];
+  notes?: string;
+};
+
+export const PST_BASE_PRICE_MODES: PstBasePriceMode[] = [
+  "PER_M3",
+  "PER_KG",
+  "FLAT_FEE",
+  "PER_HOUR",
+  "CUSTOM_FORMULA",
+];
+
+export const PST_REQUIRED_INPUT_OPTIONS: PstRequiredInput[] = [
+  "DESTINATION_ADDRESS",
+  "DECLARED_VALUE",
+  "MOVE_DATE",
+  "ORIGIN_ADDRESS",
+  "CONTACT_PHONE",
+  "SERVICE_DAYS",
+  "SPECIAL_HANDLING_NOTES",
+];
+
+export function pstRequiredInputLabel(input: PstRequiredInput): string {
+  if (input === "DESTINATION_ADDRESS") return "Dirección destino";
+  if (input === "DECLARED_VALUE") return "Valor declarado";
+  if (input === "MOVE_DATE") return "Fecha de servicio";
+  if (input === "ORIGIN_ADDRESS") return "Dirección origen";
+  if (input === "CONTACT_PHONE") return "Teléfono contacto";
+  if (input === "SERVICE_DAYS") return "Días de servicio";
+  if (input === "SPECIAL_HANDLING_NOTES") return "Notas de manejo especial";
+  return input;
+}
+
 export function safeParseJson<T>(raw: unknown, fallback: T): T {
   if (!raw) return fallback;
   if (typeof raw === "object") return raw as T;
@@ -69,4 +129,3 @@ export function extractVariablesFromHtml(html: string): string[] {
   }
   return Array.from(vars).sort((a, b) => a.localeCompare(b));
 }
-

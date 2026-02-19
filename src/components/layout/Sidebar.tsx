@@ -86,6 +86,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'V'] },
       { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'V'], description: 'Alcance -> cajas -> recursos -> resumen' },
+      { id: 'k-templates', label: 'Plantillas PST', icon: FileText, roles: ['A', 'V', 'K'], description: 'Catálogo de servicios técnicos' },
       { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'V'], description: 'Propuestas y proyectos' },
       { id: 'commercial-config', label: 'Configuración', icon: Settings, roles: ['A', 'V'], description: 'Config de cajas' },
       { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'V'] },

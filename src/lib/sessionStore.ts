@@ -10,7 +10,7 @@ export type Session = {
 const KEY = "osi-plus.session";
 const TOKEN_KEY = "osi-plus.token";
 
-function normalizeRole(raw: unknown): UserRole | null {
+export function normalizeRole(raw: unknown): UserRole | null {
   if (typeof raw !== "string") return null;
   const value = raw.trim().toUpperCase();
 
@@ -51,9 +51,19 @@ export function loadSession(): Session | null {
  * Save session to localStorage.
  */
 export function saveSession(session: Session): void {
-  localStorage.setItem(KEY, JSON.stringify(session));
-  if (session.token) {
-    localStorage.setItem(TOKEN_KEY, session.token);
+  try {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        ...session,
+        role: session.role,
+      }),
+    );
+    if (session.token) {
+      localStorage.setItem(TOKEN_KEY, session.token);
+    }
+  } catch {
+    // no-op on storage errors
   }
 }
 

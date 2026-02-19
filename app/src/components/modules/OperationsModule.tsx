@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { mockOSIs } from '@/data/mockData';
 import { loadOsi, setActiveOsiId } from '@/lib/hrNotaStorage';
+import { formatCurrency } from '@/lib/formatters';
 import type { OSI, OSIStatus } from '@/types/osi.types';
 
 const statusColumns: { id: OSIStatus; label: string; color: string }[] = [
@@ -31,6 +32,8 @@ const statusColumns: { id: OSIStatus; label: string; color: string }[] = [
   { id: 'completed', label: 'Completada', color: 'bg-green-50' },
   { id: 'liquidation', label: 'Liquidación', color: 'bg-orange-50' },
 ];
+
+const money = (value: number) => formatCurrency(value);
 
 export function OperationsModule() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -250,7 +253,7 @@ function OSICard({ osi }: { osi: OSI }) {
             </div>
           </div>
           <div className="text-right">
-            <p className="font-semibold text-slate-900">${osi.value.toLocaleString()}</p>
+            <p className="font-semibold text-slate-900">{money(osi.value)}</p>
             <Button variant="outline" size="sm" className="mt-2 mr-2" onClick={openNotaPlan}>
               Plan NOTA
             </Button>
@@ -273,7 +276,7 @@ function KanbanCard({ osi }: { osi: OSI }) {
       </div>
       <p className="text-xs text-slate-600 mb-2 truncate">{osi.clientName}</p>
       <div className="flex items-center justify-between">
-        <Badge variant="outline" className="text-xs">${osi.value.toLocaleString()}</Badge>
+        <Badge variant="outline" className="text-xs">{money(osi.value)}</Badge>
         {osi.status === 'completed' && <CheckCircle className="h-4 w-4 text-green-500" />}
         {osi.status === 'in_transit' && <Clock className="h-4 w-4 text-blue-500" />}
         {osi.status === 'pending_assignment' && <AlertCircle className="h-4 w-4 text-red-500" />}

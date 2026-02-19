@@ -17,6 +17,7 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { loadOsi, setActiveOsiId } from '@/lib/hrNotaStorage';
 import { loadUsers, normalizeUsers } from '@/lib/userStore';
+import { formatCurrency } from '@/lib/formatters';
 import { mockUsers } from '@/data/mockData';
 
 export function TowerControl() {
@@ -489,7 +490,7 @@ export function TowerControl() {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-slate-500">Ingresos (Estimados)</span>
-                  <span className="font-medium">RD$ {monthMetrics.revenue.toLocaleString()}</span>
+                  <span className="font-medium">{formatCurrency(monthMetrics.revenue)}</span>
                 </div>
                 {/* Visual bar just for effect */}
                 <Progress value={75} className="h-2" />

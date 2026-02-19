@@ -2,6 +2,7 @@ import { QuoteSchema, type Quote, type QuoteLine, type LeadLite } from "@/types/
 import { nextNumber } from "@/lib/sequenceStore";
 import { appendQuoteAudit } from "@/lib/quoteAuditStore";
 import type { UserRole } from "@/types/osi.types";
+import { getMainCurrencySymbol } from "@/lib/systemSettingsStore";
 
 const LS_LEADS = "osi-plus.leads";
 const LS_QUOTES = "osi-plus.quotes";
@@ -86,7 +87,7 @@ export function getOrCreateQuoteForLead(
     billingEmail: snapshot?.billingEmail,
     billingPhone: snapshot?.billingPhone,
     title: `Cotizacion - ${clientName || "Cliente"}`,
-    currency: "RD$",
+    currency: getMainCurrencySymbol(),
     notes: "",
     inclusions: [],
     exclusions: [],

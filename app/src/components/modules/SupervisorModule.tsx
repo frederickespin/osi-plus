@@ -272,7 +272,7 @@ export function SupervisorModule() {
                 <div className="flex items-center gap-3 mb-3">
                   <Avatar className="h-10 w-10">
                     <AvatarFallback className="bg-blue-100 text-blue-700">
-                      {member.name.split(' ').map(n => n[0]).join('')}
+                      {member.name.split(' ').map((n: string) => n[0]).join('')}
                     </AvatarFallback>
                   </Avatar>
                   <div>
@@ -351,7 +351,7 @@ function TeamMemberCard({ member }: { member: typeof mockUsers[0] }) {
         <div className="flex items-start gap-4">
           <Avatar className="h-12 w-12">
             <AvatarFallback className="bg-blue-100 text-blue-700">
-              {member.name.split(' ').map(n => n[0]).join('')}
+              {member.name.split(' ').map((n: string) => n[0]).join('')}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1">

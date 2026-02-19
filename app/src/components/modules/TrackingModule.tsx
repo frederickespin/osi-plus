@@ -6,7 +6,6 @@ import {
   Clock,
   CheckCircle,
   Package,
-  Navigation
   Navigation,
   RotateCcw
 } from 'lucide-react';

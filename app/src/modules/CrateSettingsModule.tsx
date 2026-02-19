@@ -18,6 +18,7 @@ import {
   type CrateSettings,
   type CrateProfileKey,
 } from "@/lib/crateSettingsStore";
+import { getMainCurrencySymbol } from "@/lib/systemSettingsStore";
 
 function setByPath<T>(obj: T, path: Array<string | number>, value: unknown): T {
   const clone = structuredClone(obj) as any;
@@ -42,6 +43,7 @@ const PROFILE_LABEL: Record<CrateProfileKey, string> = {
 export default function CrateSettingsModule({ embedded }: { embedded?: boolean } = {}) {
   const [activeTab, setActiveTab] = useState("materials");
   const [settings, setSettings] = useState<CrateSettings>(() => loadCrateSettings());
+  const currencySymbol = getMainCurrencySymbol();
 
   const profiles = useMemo(() => Object.keys(settings.engineering.plywoodThicknessByProfileIn) as CrateProfileKey[], [settings]);
 
@@ -377,7 +379,7 @@ export default function CrateSettingsModule({ embedded }: { embedded?: boolean }
 
               {settings.pricing.labor.enabled && (
                 <div className="space-y-2">
-                  <Label>Tarifa mano de obra / hora (RD$)</Label>
+                  <Label>Tarifa mano de obra / hora ({currencySymbol})</Label>
                   <Input
                     type="number"
                     value={settings.pricing.labor.ratePerHour}
@@ -406,7 +408,7 @@ export default function CrateSettingsModule({ embedded }: { embedded?: boolean }
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-lg">Costos unitarios (RD$)</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-lg">Costos unitarios ({currencySymbol})</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -496,7 +498,7 @@ export default function CrateSettingsModule({ embedded }: { embedded?: boolean }
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Tarifa fumigación (RD$)</Label>
+                  <Label>Tarifa fumigación ({currencySymbol})</Label>
                   <Input
                     type="number"
                     value={settings.adders.fumigation.rate}
@@ -504,7 +506,7 @@ export default function CrateSettingsModule({ embedded }: { embedded?: boolean }
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Marcaje IPPC (RD$ por caja)</Label>
+                  <Label>Marcaje IPPC ({currencySymbol} por caja)</Label>
                   <Input
                     type="number"
                     value={settings.adders.fumigation.markingIppcRatePerBox}
@@ -559,7 +561,7 @@ export default function CrateSettingsModule({ embedded }: { embedded?: boolean }
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>RD$ Small (por caja)</Label>
+                  <Label>{currencySymbol} Small (por caja)</Label>
                   <Input
                     type="number"
                     value={settings.adders.fasteners.rateBySize.small}
@@ -567,7 +569,7 @@ export default function CrateSettingsModule({ embedded }: { embedded?: boolean }
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>RD$ Medium (por caja)</Label>
+                  <Label>{currencySymbol} Medium (por caja)</Label>
                   <Input
                     type="number"
                     value={settings.adders.fasteners.rateBySize.medium}
@@ -575,7 +577,7 @@ export default function CrateSettingsModule({ embedded }: { embedded?: boolean }
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>RD$ Large (por caja)</Label>
+                  <Label>{currencySymbol} Large (por caja)</Label>
                   <Input
                     type="number"
                     value={settings.adders.fasteners.rateBySize.large}

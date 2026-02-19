@@ -73,7 +73,7 @@ export function FieldWorkerModule() {
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16">
             <AvatarFallback className="bg-blue-100 text-blue-700 text-xl">
-              {fieldWorker?.name.split(' ').map(n => n[0]).join('')}
+              {fieldWorker?.name.split(' ').map((n: string) => n[0]).join('')}
             </AvatarFallback>
           </Avatar>
           <div>

@@ -37,6 +37,7 @@ interface SidebarProps {
   activeModule: ModuleId;
   onModuleChange: (module: ModuleId) => void;
   userRole?: UserRole;
+  userName?: string;
 }
 
 interface MenuItem {
@@ -79,11 +80,21 @@ const menuGroups: MenuGroup[] = [
     label: 'Comercial',
     icon: CaseIcon,
     items: [
-      { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K'] },
-      { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'K'], description: 'Alcance -> cajas -> recursos -> resumen' },
-      { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K'], description: 'Propuestas y proyectos' },
+      { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'K', 'V'] },
+      { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'K', 'V'], description: 'Alcance -> cajas -> recursos -> resumen' },
+      { id: 'commercial-calendar', label: 'Calendario', icon: Calendar, roles: ['A', 'K', 'V'], description: 'Propuestas y proyectos' },
+      { id: 'osi-editor', label: 'Editor OSI', icon: ClipboardList, roles: ['A', 'V', 'K'], description: 'Plan y aprobaciones' },
       { id: 'commercial-config', label: 'Configuración', icon: Settings, roles: ['A', 'K'], description: 'Config de cajas' },
-      { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K'] },
+      { id: 'projects', label: 'Proyectos', icon: FolderOpen, roles: ['A', 'K', 'V'] },
+    ]
+  },
+  {
+    id: 'coordination',
+    label: 'Coordinación',
+    icon: LayoutTemplate,
+    items: [
+      { id: 'templates', label: 'Centro Plantillas', icon: LayoutTemplate, roles: ['A', 'K'], description: 'PGD, PIC, NPS' },
+      { id: 'tracking', label: 'Seguimiento', icon: MapPin, roles: ['A', 'K'] },
     ]
   },
   {
@@ -130,11 +141,38 @@ const menuGroups: MenuGroup[] = [
       { id: 'hr', label: 'Dashboard RRHH', icon: Briefcase, roles: ['A', 'I'] },
       { id: 'kpi', label: 'Ranking KPI', icon: BarChart3, roles: ['A', 'I'] },
       { id: 'nota', label: 'Nómina NOTA', icon: FileText, roles: ['A', 'I'] },
-      { id: 'osi-editor', label: 'Editor OSI', icon: ClipboardList, roles: ['A', 'V', 'K'] },
       { id: 'badges', label: 'Eco Badges', icon: Award, roles: ['A', 'I'] },
     ]
   }
 ];
+
+const roleLabel: Record<UserRole, string> = {
+  A: 'Administrador',
+  V: 'Ventas',
+  K: 'Coordinador',
+  B: 'Operaciones',
+  C: 'Materiales',
+  C1: 'Despacho',
+  D: 'Supervisor',
+  E: 'Chofer',
+  G: 'Portería',
+  N: 'Campo',
+  PA: 'Carpintería',
+  PB: 'Mecánica',
+  PC: 'Instalación',
+  PD: 'Mantenimiento',
+  PF: 'Electricidad',
+  I: 'RRHH',
+  PE: 'Sup. Suplente',
+  RB: 'RB',
+};
+
+function getInitials(name: string, fallback = "US") {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return fallback;
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase() || fallback;
+}
 
 // Obtener grupos filtrados por rol
 const getMenuGroupsByRole = (role: UserRole): MenuGroup[] => {
@@ -144,12 +182,15 @@ const getMenuGroupsByRole = (role: UserRole): MenuGroup[] => {
   })).filter(group => group.items.length > 0);
 };
 
-export function Sidebar({ activeModule, onModuleChange, userRole = 'A' }: SidebarProps) {
+export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName }: SidebarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
 
   const visibleGroups = getMenuGroupsByRole(userRole);
+  const profileName = userName?.trim() || (userRole === 'A' ? 'Admin User' : `Usuario ${userRole}`);
+  const profileRoleLabel = roleLabel[userRole] || userRole;
+  const profileInitials = getInitials(profileName, userRole.slice(0, 2));
 
   const handleModuleClick = (moduleId: ModuleId) => {
     onModuleChange(moduleId);
@@ -207,12 +248,12 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A' }: Sideba
         <div className="p-4 border-b border-white/10">
           <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
             <div className="w-10 h-10 bg-[#D4AF37] rounded-full flex items-center justify-center flex-shrink-0">
-              <span className="text-[#003366] font-bold text-sm">AD</span>
+              <span className="text-[#003366] font-bold text-sm">{profileInitials}</span>
             </div>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-medium truncate">Admin User</p>
-                <p className="text-[#D4AF37] text-xs truncate">{userRole === 'A' ? 'Administrador' : userRole}</p>
+                <p className="text-white text-sm font-medium truncate">{profileName}</p>
+                <p className="text-[#D4AF37] text-xs truncate">{profileRoleLabel}</p>
               </div>
             )}
           </div>

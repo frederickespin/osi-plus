@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { mockOSIs } from '@/data/mockData';
+import { formatCurrency } from '@/lib/formatters';
 import type { OSIStatus } from '@/types/osi.types';
 
 const statusColumns: { id: OSIStatus; label: string; color: string }[] = [
@@ -22,6 +23,8 @@ const statusColumns: { id: OSIStatus; label: string; color: string }[] = [
   { id: 'completed', label: 'Completada', color: 'bg-green-50' },
   { id: 'liquidation', label: 'Liquidación', color: 'bg-orange-50' },
 ];
+
+const money = (value: number) => formatCurrency(value);
 
 export function WallModule() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -127,7 +130,7 @@ function KanbanCard({ osi }: { osi: typeof mockOSIs[0] }) {
       </div>
       <p className="text-xs text-slate-600 mb-2 truncate">{osi.clientName}</p>
       <div className="flex items-center justify-between">
-        <Badge variant="outline" className="text-xs">${osi.value.toLocaleString()}</Badge>
+        <Badge variant="outline" className="text-xs">{money(osi.value)}</Badge>
         <div className="flex gap-1">
           {osi.status === 'completed' && <CheckCircle className="h-4 w-4 text-green-500" />}
           {osi.status === 'in_transit' && <Clock className="h-4 w-4 text-blue-500" />}

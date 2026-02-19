@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PstBasePriceMode, PstRequiredInput } from "@/lib/templateSchemas";
 
 export type LeadStatus =
   | "PROSPECT"
@@ -37,6 +38,20 @@ export const QuoteSchema = z.object({
   billingAddress: z.string().optional(),
   billingEmail: z.string().optional(),
   billingPhone: z.string().optional(),
+  pstCode: z.string().optional(),
+  pstServiceName: z.string().optional(),
+  pstVersionLocked: z.number().optional(),
+  pstLinkedPgdTemplateCode: z.string().optional(),
+  pstDefaultNestingAllowed: z.boolean().optional(),
+  pstPriceMode: z.string().optional(),
+  pstPriceCurrency: z.string().optional(),
+  pstBaseRate: z.number().optional(),
+  pstMinimumCharge: z.number().optional(),
+  pstMaxDiscountPctWithoutApproval: z.number().optional(),
+  pstMinMarginPct: z.number().optional(),
+  pstRequiredInputs: z.array(z.string()).default([]),
+  pstInputValues: z.record(z.string(), z.string()).default({}),
+  pstNotes: z.string().optional(),
   title: z.string().min(1),
   currency: z.literal("RD$").default("RD$"),
   notes: z.string().optional(),
@@ -63,11 +78,30 @@ export const QuoteSchema = z.object({
 });
 export type Quote = z.infer<typeof QuoteSchema>;
 
+export type QuoteWithPst = Quote & {
+  pstCode?: string;
+  pstServiceName?: string;
+  pstVersionLocked?: number;
+  pstLinkedPgdTemplateCode?: string;
+  pstDefaultNestingAllowed?: boolean;
+  pstPriceMode?: PstBasePriceMode;
+  pstPriceCurrency?: "RD$" | "USD";
+  pstBaseRate?: number;
+  pstMinimumCharge?: number;
+  pstMaxDiscountPctWithoutApproval?: number;
+  pstMinMarginPct?: number;
+  pstRequiredInputs?: PstRequiredInput[];
+  pstInputValues?: Record<string, string>;
+  pstNotes?: string;
+};
+
 export type LeadLite = {
   id: string;
   customerId?: string;
   clientName: string;
   status: LeadStatus;
+  serviceType?: string;
+  pstCode?: string;
   origin?: string;
   destination?: string;
   phone?: string;

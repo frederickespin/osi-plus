@@ -51,6 +51,9 @@ import {
   kgToLb,
   roundToFraction,
 } from '@/lib/nestingAlgorithms';
+import { formatCurrency } from '@/lib/formatters';
+
+const money = (value: number) => formatCurrency(value);
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function NestingModule() {
@@ -382,7 +385,7 @@ export function NestingModule() {
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <p className="font-bold text-lg">${version.totalCost.toFixed(2)}</p>
+                            <p className="font-bold text-lg">{money(version.totalCost)}</p>
                             <p className="text-sm text-slate-500">costo total</p>
                           </div>
                           <Button 
@@ -431,7 +434,7 @@ export function NestingModule() {
                 </Card>
                 <Card>
                   <CardContent className="p-4">
-                    <p className="text-3xl font-bold text-green-600">${currentVersion.totalCost.toFixed(2)}</p>
+                    <p className="text-3xl font-bold text-green-600">{money(currentVersion.totalCost)}</p>
                     <p className="text-sm text-slate-500">Costo Total</p>
                   </CardContent>
                 </Card>
@@ -816,7 +819,7 @@ function BOMCard({ bom, boxNumber }: { bom: BoxBOM; boxNumber: number }) {
                     <TableCell>{p.thicknessDisplay}</TableCell>
                     <TableCell>{p.sheetCount}</TableCell>
                     <TableCell>{p.totalAreaSqFt.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">${(p.cost + p.wasteCost).toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{money(p.cost + p.wasteCost)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -846,7 +849,7 @@ function BOMCard({ bom, boxNumber }: { bom: BoxBOM; boxNumber: number }) {
                     <TableCell>{l.profile}</TableCell>
                     <TableCell>{l.pieces192Count}</TableCell>
                     <TableCell>{l.cuts.length}</TableCell>
-                    <TableCell className="text-right">${(l.cost + l.wasteCost).toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{money(l.cost + l.wasteCost)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -874,7 +877,7 @@ function BOMCard({ bom, boxNumber }: { bom: BoxBOM; boxNumber: number }) {
                   <TableRow key={i}>
                     <TableCell>{c.name}</TableCell>
                     <TableCell>{c.quantity} {c.unit}</TableCell>
-                    <TableCell className="text-right">${c.cost.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{money(c.cost)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -886,19 +889,19 @@ function BOMCard({ bom, boxNumber }: { bom: BoxBOM; boxNumber: number }) {
         <div className="border-t pt-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-slate-500">Materiales</span>
-            <span className="font-mono">${bom.materialsCost.toFixed(2)}</span>
+            <span className="font-mono">{money(bom.materialsCost)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-slate-500">Mano de Obra</span>
-            <span className="font-mono">${bom.laborCost.toFixed(2)}</span>
+            <span className="font-mono">{money(bom.laborCost)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-slate-500">Overhead</span>
-            <span className="font-mono">${bom.overheadCost.toFixed(2)}</span>
+            <span className="font-mono">{money(bom.overheadCost)}</span>
           </div>
           <div className="flex justify-between text-lg font-bold border-t pt-2">
             <span>Total Caja</span>
-            <span className="text-green-600">${bom.totalCost.toFixed(2)}</span>
+            <span className="text-green-600">{money(bom.totalCost)}</span>
           </div>
         </div>
       </CardContent>

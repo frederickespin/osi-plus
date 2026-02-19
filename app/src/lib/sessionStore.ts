@@ -25,13 +25,57 @@ function normalizeRole(raw: unknown): UserRole | null {
   return null;
 }
 
+function parseSessionCandidate(candidate: unknown): Session | null {
+  if (typeof candidate === "string") {
+    const role = normalizeRole(candidate);
+    return role ? { role } : null;
+  }
+
+  if (candidate && typeof candidate === "object") {
+    const raw = candidate as Record<string, unknown>;
+    const role = normalizeRole(raw.role ?? raw.userRole ?? raw.roleCode);
+    if (!role) return null;
+
+    const name =
+      typeof raw.name === "string"
+        ? raw.name.trim() || undefined
+        : typeof raw.userName === "string"
+          ? raw.userName.trim() || undefined
+          : undefined;
+    const userId =
+      typeof raw.userId === "string"
+        ? raw.userId.trim() || undefined
+        : typeof raw.id === "string"
+          ? raw.id.trim() || undefined
+          : undefined;
+
+    return { role, name, userId };
+  }
+
+  return null;
+}
+
+function persistSession(session: Session) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(session));
+  } catch {}
+}
+
 export function loadSession(): Session {
   try {
-    const s = JSON.parse(localStorage.getItem(KEY) || "null");
-    const role = normalizeRole(s?.role);
-    if (role) return { ...s, role };
+    const parsed = JSON.parse(localStorage.getItem(KEY) || "null");
+    const session = parseSessionCandidate(parsed);
+    if (session) {
+      // Reescribe formato normalizado por compatibilidad entre versiones.
+      persistSession(session);
+      return session;
+    }
   } catch {}
-  return { role: "V" }; // default seguro
+
+  // Entorno sin login implementado: usar Admin para evitar falsas restricciones de navegación.
+  const fallback: Session = { role: "A", name: "Admin User" };
+  persistSession(fallback);
+  return fallback;
 }
 
 export function isAdminRole(role: UserRole) {

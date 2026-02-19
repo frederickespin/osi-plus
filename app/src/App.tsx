@@ -113,6 +113,9 @@ const CrateWoodModule = lazy(() =>
 const CrateSettingsModule = lazy(() =>
   import('@/modules/CrateSettingsModule').then((m) => ({ default: m.default }))
 );
+const TemplatesModule = lazy(() =>
+  import('@/components/modules/TemplatesModule').then((m) => ({ default: m.TemplatesModule }))
+);
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
@@ -183,14 +186,19 @@ export type ModuleId =
   | 'disenacotiza'
   | 'crate-wood'
   | 'crate-settings'
+  | 'templates'
   | 'settings';
 
 function App() {
-  const [activeModule, setActiveModule] = useState<ModuleId>('clients');
-  const [userRole] = useState<UserRole>(() => {
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') return 'A';
-    return loadSession().role;
+  const [, setSettingsRevision] = useState(0);
+  const [session] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return { role: 'A' as UserRole, name: 'Admin User' };
+    }
+    return loadSession();
   });
+  const [activeModule, setActiveModule] = useState<ModuleId>(() => (session.role === 'A' ? 'dashboard' : 'clients'));
+  const userRole = session.role;
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {
@@ -221,6 +229,12 @@ function App() {
     };
     window.addEventListener("osi:salesquote:open", handler as EventListener);
     return () => window.removeEventListener("osi:salesquote:open", handler as EventListener);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setSettingsRevision((prev) => prev + 1);
+    window.addEventListener("osi:system-settings:changed", handler);
+    return () => window.removeEventListener("osi:system-settings:changed", handler);
   }, []);
 
   const renderModule = () => {
@@ -298,6 +312,8 @@ function App() {
         return <CrateWoodModule />;
       case 'crate-settings':
         return <CrateSettingsModule />;
+      case 'templates':
+        return <TemplatesModule />;
       case 'settings':
         return <SettingsModule />;
       default:
@@ -311,6 +327,7 @@ function App() {
         activeModule={activeModule} 
         onModuleChange={setActiveModule} 
         userRole={userRole}
+        userName={session.name}
       />
       <main className="flex-1 overflow-auto">
         <AppErrorBoundary>

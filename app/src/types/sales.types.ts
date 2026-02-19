@@ -38,7 +38,7 @@ export const QuoteSchema = z.object({
   billingEmail: z.string().optional(),
   billingPhone: z.string().optional(),
   title: z.string().min(1),
-  currency: z.literal("RD$").default("RD$"),
+  currency: z.string().min(1).default("RD$"),
   notes: z.string().optional(),
   inclusions: z.array(z.string()).default([]),
   exclusions: z.array(z.string()).default([]),

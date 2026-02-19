@@ -30,6 +30,8 @@ import {
 import { loadCrateSettings } from "@/lib/crateSettingsStore";
 import { runNesting, runEngineering, runCosting } from "@/lib/crateEngine";
 import type { CrateProfileKey } from "@/lib/crateSettingsStore";
+import { formatCurrency } from "@/lib/formatters";
+import { getMainCurrencySymbol } from "@/lib/systemSettingsStore";
 
 type LeadLite = { id: string; clientName?: string; name?: string; status?: string; origin?: string; destination?: string };
 
@@ -118,6 +120,8 @@ const ItemFormSchema = z.object({
 type ItemForm = z.infer<typeof ItemFormSchema>;
 type CrateTab = "items" | "nesting" | "engineering" | "pricing" | "settings";
 type CrateOpenTab = "input" | "nesting" | "engineering" | "costing" | "settings";
+
+const money = (value: number) => formatCurrency(value);
 type CrateWoodOpenContext = {
   openTab?: CrateOpenTab;
   mode?: "settingsOnly" | "full";
@@ -155,6 +159,7 @@ const buildDemoItems = (): CrateItemInput[] => ([
 
 export default function CrateWoodModule(props?: { initialTab?: CrateOpenTab; mode?: "settingsOnly" | "full" }) {
   const mode = props?.mode ?? "full";
+  const currencySymbol = getMainCurrencySymbol();
   const [activeTab, setActiveTab] = useState<CrateTab>(() =>
     mode === "settingsOnly" ? "settings" : mapOpenTabToInternal(props?.initialTab)
   );
@@ -972,10 +977,10 @@ export default function CrateWoodModule(props?: { initialTab?: CrateOpenTab; mod
                         <TableRow key={b.id}>
                           <TableCell className="font-medium">{idx + 1}</TableCell>
                           <TableCell>{b.profile}</TableCell>
-                          <TableCell>RD$ {b.costs.materials.toFixed(2)}</TableCell>
-                          <TableCell>RD$ {b.costs.adders.toFixed(2)}</TableCell>
-                          <TableCell>RD$ {b.costs.totalCost.toFixed(2)}</TableCell>
-                          <TableCell className="font-semibold">RD$ {b.costs.sellPrice.toFixed(2)}</TableCell>
+                          <TableCell>{money(b.costs.materials)}</TableCell>
+                          <TableCell>{money(b.costs.adders)}</TableCell>
+                          <TableCell>{money(b.costs.totalCost)}</TableCell>
+                          <TableCell className="font-semibold">{money(b.costs.sellPrice)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -984,28 +989,28 @@ export default function CrateWoodModule(props?: { initialTab?: CrateOpenTab; mod
                   <div className="p-4 bg-slate-50 rounded-lg grid grid-cols-1 md:grid-cols-5 gap-3">
                     <div>
                       <p className="text-xs text-slate-500">Materiales</p>
-                      <p className="font-semibold">RD$ {draft.plan.costing.totals.materials.toFixed(2)}</p>
+                      <p className="font-semibold">{money(draft.plan.costing.totals.materials)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">Labor</p>
-                      <p className="font-semibold">RD$ {draft.plan.costing.totals.labor.toFixed(2)}</p>
+                      <p className="font-semibold">{money(draft.plan.costing.totals.labor)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">Adicionales</p>
-                      <p className="font-semibold">RD$ {draft.plan.costing.totals.adders.toFixed(2)}</p>
+                      <p className="font-semibold">{money(draft.plan.costing.totals.adders)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">Costo total</p>
-                      <p className="font-semibold">RD$ {draft.plan.costing.totals.totalCost.toFixed(2)}</p>
+                      <p className="font-semibold">{money(draft.plan.costing.totals.totalCost)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">Precio sugerido</p>
-                      <p className="font-semibold">RD$ {draft.plan.costing.totals.sellPrice.toFixed(2)}</p>
+                      <p className="font-semibold">{money(draft.plan.costing.totals.sellPrice)}</p>
                     </div>
                   </div>
 
                   <p className="text-xs text-slate-500">
-                    Si ves RD$ 0.00 en materiales, entra a <strong>Configuración → Costos unitarios</strong> y llena los precios.
+                    Si ves {currencySymbol} 0.00 en materiales, entra a <strong>Configuración → Costos unitarios</strong> y llena los precios.
                   </p>
                 </>
               )}

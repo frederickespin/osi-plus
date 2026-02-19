@@ -8,8 +8,11 @@ export type CommercialBooking = {
   bookingType: BookingType;
   bookingStatus: BookingStatus;
   workNumber: string;
+  serviceType?: string;
   customerId?: string;
   customerName: string;
+  origin?: string;
+  destination?: string;
   quoteId?: string;
   leadId?: string;
   projectId?: string;
@@ -114,6 +117,38 @@ export function validateProjectCapacity(
     }
   }
   return { ok: true as const };
+}
+
+export function canPromoteBookingToProject(workNumber: string) {
+  const list = loadBookings();
+  const booking = list.find((x) => x.workNumber === workNumber);
+
+  if (!booking) {
+    return { ok: true as const, hasBooking: false as const };
+  }
+
+  if (limitsDisabled(loadCalendarLimits())) {
+    return { ok: true as const, hasBooking: true as const, booking };
+  }
+
+  const limits = loadCalendarLimits();
+  const cap = validateProjectCapacity(list, limits, booking.startDate, booking.endDate, booking.id);
+
+  if (!cap.ok) {
+    return {
+      ok: false as const,
+      reason: "CAPACITY_FULL" as const,
+      dayISO: cap.dayISO,
+      count: cap.count,
+      limit: limits.maxProjectsPerDay,
+    };
+  }
+
+  return { ok: true as const, hasBooking: true as const, booking };
+}
+
+function limitsDisabled(limits: CalendarLimits) {
+  return limits.maxProjectsPerDay <= 0;
 }
 
 export function promoteBookingToProject(

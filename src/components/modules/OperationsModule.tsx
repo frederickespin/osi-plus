@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -303,6 +303,14 @@ export function OperationsModule() {
     }));
   }, [form.petPlanText]);
 
+  const ptfItemsPreview = useMemo(() => {
+    const parsed = parseJsonSafe<{ items?: Array<{ code?: string; qty?: number; unit?: string }> }>(
+      form.ptfMaterialPlanText,
+      { items: [] }
+    );
+    return Array.isArray(parsed.items) ? parsed.items : [];
+  }, [form.ptfMaterialPlanText]);
+
   const selectProject = (projectId: string) => {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return;
@@ -517,62 +525,192 @@ export function OperationsModule() {
       </Tabs>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{mode === "create" ? "Nueva OSI Externa" : `Editar OSI ${form.id}`}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <Card><CardHeader><CardTitle className="text-base">Proyecto + PST + Roles</CardTitle></CardHeader><CardContent className="space-y-3">
-              <div className="space-y-1"><Label>Proyecto Sombrilla</Label>
-                <Select value={form.projectId} onValueChange={selectProject}><SelectTrigger><SelectValue placeholder="Seleccionar proyecto" /></SelectTrigger><SelectContent>
-                  {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.code} · {p.clientName}</SelectItem>)}
-                </SelectContent></Select>
+        <DialogContent className="max-w-[1600px] w-[min(1600px,calc(100vw-0.5rem))] max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{mode === "create" ? "Nueva OSI Externa" : `Editar OSI ${form.id}`}</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+            <div className="space-y-4 xl:col-span-7 2xl:col-span-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Proyecto + PST + Roles</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-1">
+                    <Label>Proyecto Sombrilla</Label>
+                    <Select value={form.projectId} onValueChange={selectProject}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar proyecto" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.code} · {p.clientName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1"><Label>Project Code</Label><Input value={form.projectCode} disabled /></div>
+                    <div className="space-y-1"><Label>Cliente</Label><Input value={form.clientName} disabled /></div>
+                    <div className="space-y-1"><Label>Origen</Label><Input value={form.origin} onChange={(e) => updateField("origin", e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Destino</Label><Input value={form.destination} onChange={(e) => updateField("destination", e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Fecha</Label><Input type="date" value={form.scheduledDate} onChange={(e) => updateField("scheduledDate", e.target.value)} /></div>
+                    <div className="space-y-1">
+                      <Label>Tipo</Label>
+                      <Select value={form.type} onValueChange={(v) => updateField("type", v as OsiForm["type"])}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="local">Local</SelectItem>
+                          <SelectItem value="national">Nacional</SelectItem>
+                          <SelectItem value="international">Internacional</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Supervisor (D)</Label>
+                      {supervisors.length ? (
+                        <Select value={form.supervisorId} onValueChange={(v) => updateField("supervisorId", v)}>
+                          <SelectTrigger><SelectValue placeholder="Seleccionar supervisor" /></SelectTrigger>
+                          <SelectContent>
+                            {supervisors.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>{u.name} ({u.role})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input value={form.supervisorId} onChange={(e) => updateField("supervisorId", e.target.value)} placeholder="ID supervisor" />
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Chofer (E)</Label>
+                      {drivers.length ? (
+                        <Select value={form.driverId} onValueChange={(v) => updateField("driverId", v)}>
+                          <SelectTrigger><SelectValue placeholder="Seleccionar chofer" /></SelectTrigger>
+                          <SelectContent>
+                            {drivers.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>{u.name} ({u.role})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input value={form.driverId} onChange={(e) => updateField("driverId", e.target.value)} placeholder="ID chofer" />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>PST</Label>
+                    <Select value={form.pstCode} onValueChange={onPstChanged}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar PST" /></SelectTrigger>
+                      <SelectContent>
+                        {pstCatalog.map((p) => (
+                          <SelectItem key={p.versionId} value={p.serviceCode}>
+                            {p.serviceName} ({p.serviceCode})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="outline" onClick={applySuggestedFromCurrentPst} disabled={!form.pstCode}>
+                      Aplicar sugerido
+                    </Button>
+                    <span className="text-xs text-slate-500">PTF: {form.ptfCode || "N/D"} · PET: {form.petCode || "N/D"}</span>
+                  </div>
+                  {!form.pstCode && <Badge variant="destructive">PST faltante: elegir manualmente antes de liberar.</Badge>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">PTF/PET + Auditoría</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1"><Label>PTF Código</Label><Input value={form.ptfCode} onChange={(e) => updateField("ptfCode", e.target.value)} /></div>
+                    <div className="space-y-1"><Label>PET Código</Label><Input value={form.petCode} onChange={(e) => updateField("petCode", e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Equipo (CSV)</Label><Input value={form.teamCsv} onChange={(e) => updateField("teamCsv", e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Vehículos (CSV)</Label><Input value={form.vehiclesCsv} onChange={(e) => updateField("vehiclesCsv", e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Valor</Label><Input type="number" value={form.value} onChange={(e) => updateField("value", e.target.value)} /></div>
+                  </div>
+
+                  <div className="space-y-1"><Label>PTF Materiales (JSON)</Label><Textarea className="min-h-28 font-mono text-xs" value={form.ptfMaterialPlanText} onChange={(e) => { updateField("ptfMaterialPlanText", e.target.value); updateField("ptfEditedManually", true); }} /></div>
+                  <div className="space-y-1"><Label>PET Plan (JSON)</Label><Textarea className="min-h-28 font-mono text-xs" value={form.petPlanText} onChange={(e) => { updateField("petPlanText", e.target.value); updateField("petEditedManually", true); }} /></div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-medium text-slate-700 mb-2">Slots PET sugeridos por PST</p>
+                    <div className="flex flex-wrap gap-2">
+                      {petSlotsPreview.length ? petSlotsPreview.map((slot) => (
+                        <Badge key={`${slot.slot}-${slot.role}`} variant="outline">Slot {slot.slot}: {slot.role}</Badge>
+                      )) : <span className="text-xs text-slate-500">Sin slots definidos.</span>}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1"><Label>Notas</Label><Textarea value={form.notes} onChange={(e) => updateField("notes", e.target.value)} /></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1"><Label>Inicio real (KPI)</Label><Input type="datetime-local" value={form.startedAt} onChange={(e) => updateField("startedAt", e.target.value)} /></div>
+                    <div className="space-y-1"><Label>Fin real (KPI)</Label><Input type="datetime-local" value={form.endedAt} onChange={(e) => updateField("endedAt", e.target.value)} /></div>
+                    <div className="space-y-1"><Label>NPS</Label><Input type="number" min={0} max={10} value={form.npsScore} onChange={(e) => updateField("npsScore", e.target.value)} placeholder="0-10" /></div>
+                    <div className="space-y-1"><Label>Puntos ecológicos</Label><Input type="number" value={form.ecoPoints} onChange={(e) => updateField("ecoPoints", e.target.value)} /></div>
+                  </div>
+                  <div className="space-y-1"><Label>Nota supervisor (KPI)</Label><Textarea value={form.supervisorNotes} onChange={(e) => updateField("supervisorNotes", e.target.value)} /></div>
+                  <div className="space-y-1"><Label>Motivo cambio (auditoría)</Label><Input value={form.changeReason} onChange={(e) => updateField("changeReason", e.target.value)} placeholder="Opcional, recomendado al editar PTF/PET" /></div>
+                </CardContent>
+              </Card>
+
+              <div className="flex justify-end gap-2 border-t pt-4">
+                <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button>
+                <Button onClick={() => void save()} disabled={saving}>{saving ? "Guardando..." : mode === "create" ? "Crear OSI" : "Guardar cambios"}</Button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1"><Label>Project Code</Label><Input value={form.projectCode} disabled /></div>
-                <div className="space-y-1"><Label>Cliente</Label><Input value={form.clientName} disabled /></div>
-                <div className="space-y-1"><Label>Origen</Label><Input value={form.origin} onChange={(e) => updateField("origin", e.target.value)} /></div>
-                <div className="space-y-1"><Label>Destino</Label><Input value={form.destination} onChange={(e) => updateField("destination", e.target.value)} /></div>
-                <div className="space-y-1"><Label>Fecha</Label><Input type="date" value={form.scheduledDate} onChange={(e) => updateField("scheduledDate", e.target.value)} /></div>
-                <div className="space-y-1"><Label>Tipo</Label><Select value={form.type} onValueChange={(v) => updateField("type", v as OsiForm["type"])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="local">Local</SelectItem><SelectItem value="national">Nacional</SelectItem><SelectItem value="international">Internacional</SelectItem></SelectContent></Select></div>
-                <div className="space-y-1"><Label>Supervisor (D)</Label>{supervisors.length ? <Select value={form.supervisorId} onValueChange={(v) => updateField("supervisorId", v)}><SelectTrigger><SelectValue placeholder="Seleccionar supervisor" /></SelectTrigger><SelectContent>{supervisors.map((u) => <SelectItem key={u.id} value={u.id}>{u.name} ({u.role})</SelectItem>)}</SelectContent></Select> : <Input value={form.supervisorId} onChange={(e) => updateField("supervisorId", e.target.value)} placeholder="ID supervisor" />}</div>
-                <div className="space-y-1"><Label>Chofer (E)</Label>{drivers.length ? <Select value={form.driverId} onValueChange={(v) => updateField("driverId", v)}><SelectTrigger><SelectValue placeholder="Seleccionar chofer" /></SelectTrigger><SelectContent>{drivers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name} ({u.role})</SelectItem>)}</SelectContent></Select> : <Input value={form.driverId} onChange={(e) => updateField("driverId", e.target.value)} placeholder="ID chofer" />}</div>
-              </div>
-              <div className="space-y-1"><Label>PST</Label><Select value={form.pstCode} onValueChange={onPstChanged}><SelectTrigger><SelectValue placeholder="Seleccionar PST" /></SelectTrigger><SelectContent>{pstCatalog.map((p) => <SelectItem key={p.versionId} value={p.serviceCode}>{p.serviceName} ({p.serviceCode})</SelectItem>)}</SelectContent></Select></div>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={applySuggestedFromCurrentPst} disabled={!form.pstCode}>Aplicar sugerido</Button>
-                <span className="text-xs text-slate-500">PTF: {form.ptfCode || "N/D"} · PET: {form.petCode || "N/D"}</span>
-              </div>
-              {!form.pstCode && <Badge variant="destructive">PST faltante: elegir manualmente antes de liberar.</Badge>}
-            </CardContent></Card>
-            <Card><CardHeader><CardTitle className="text-base">PTF/PET + Auditoría</CardTitle></CardHeader><CardContent className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1"><Label>PTF Código</Label><Input value={form.ptfCode} onChange={(e) => updateField("ptfCode", e.target.value)} /></div>
-                <div className="space-y-1"><Label>PET Código</Label><Input value={form.petCode} onChange={(e) => updateField("petCode", e.target.value)} /></div>
-                <div className="space-y-1"><Label>Equipo (CSV)</Label><Input value={form.teamCsv} onChange={(e) => updateField("teamCsv", e.target.value)} /></div>
-                <div className="space-y-1"><Label>Vehículos (CSV)</Label><Input value={form.vehiclesCsv} onChange={(e) => updateField("vehiclesCsv", e.target.value)} /></div>
-                <div className="space-y-1"><Label>Valor</Label><Input type="number" value={form.value} onChange={(e) => updateField("value", e.target.value)} /></div>
-              </div>
-              <div className="space-y-1"><Label>PTF Materiales (JSON)</Label><Textarea className="min-h-28 font-mono text-xs" value={form.ptfMaterialPlanText} onChange={(e) => { updateField("ptfMaterialPlanText", e.target.value); updateField("ptfEditedManually", true); }} /></div>
-              <div className="space-y-1"><Label>PET Plan (JSON)</Label><Textarea className="min-h-28 font-mono text-xs" value={form.petPlanText} onChange={(e) => { updateField("petPlanText", e.target.value); updateField("petEditedManually", true); }} /></div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-medium text-slate-700 mb-2">Slots PET sugeridos por PST</p>
-                <div className="flex flex-wrap gap-2">
-                  {petSlotsPreview.length ? petSlotsPreview.map((slot) => (
-                    <Badge key={`${slot.slot}-${slot.role}`} variant="outline">Slot {slot.slot}: {slot.role}</Badge>
-                  )) : <span className="text-xs text-slate-500">Sin slots definidos.</span>}
-                </div>
-              </div>
-              <div className="space-y-1"><Label>Notas</Label><Textarea value={form.notes} onChange={(e) => updateField("notes", e.target.value)} /></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1"><Label>Inicio real (KPI)</Label><Input type="datetime-local" value={form.startedAt} onChange={(e) => updateField("startedAt", e.target.value)} /></div>
-                <div className="space-y-1"><Label>Fin real (KPI)</Label><Input type="datetime-local" value={form.endedAt} onChange={(e) => updateField("endedAt", e.target.value)} /></div>
-                <div className="space-y-1"><Label>NPS</Label><Input type="number" min={0} max={10} value={form.npsScore} onChange={(e) => updateField("npsScore", e.target.value)} placeholder="0-10" /></div>
-                <div className="space-y-1"><Label>Puntos ecológicos</Label><Input type="number" value={form.ecoPoints} onChange={(e) => updateField("ecoPoints", e.target.value)} /></div>
-              </div>
-              <div className="space-y-1"><Label>Nota supervisor (KPI)</Label><Textarea value={form.supervisorNotes} onChange={(e) => updateField("supervisorNotes", e.target.value)} /></div>
-              <div className="space-y-1"><Label>Motivo cambio (auditoría)</Label><Input value={form.changeReason} onChange={(e) => updateField("changeReason", e.target.value)} placeholder="Opcional, recomendado al editar PTF/PET" /></div>
-            </CardContent></Card>
+            </div>
+
+            <div className="space-y-4 xl:col-span-5 2xl:col-span-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Vista previa</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant={form.pstCode ? "secondary" : "destructive"}>PST {form.pstCode || "FALTANTE"}</Badge>
+                    <Badge variant="outline">{form.type}</Badge>
+                    <Badge variant="outline">{form.kind}</Badge>
+                  </div>
+                  <div className="rounded-md border border-slate-200 p-3 bg-white space-y-2">
+                    <div className="text-sm font-medium text-slate-900">{form.projectCode || "Sin proyecto"} · {form.clientName || "Sin cliente"}</div>
+                    <div className="text-xs text-slate-600">{form.origin || "Origen"} → {form.destination || "Destino"}</div>
+                    <div className="text-xs text-slate-600">Fecha: {form.scheduledDate || "N/D"}</div>
+                    <div className="text-xs text-slate-600">D: {form.supervisorId || "—"} · E: {form.driverId || "—"}</div>
+                  </div>
+
+                  <div className="rounded-md border border-slate-200 p-3 bg-slate-50 space-y-2">
+                    <div className="text-xs text-slate-500">PTF sugerido</div>
+                    <div className="text-sm font-medium text-slate-900">{form.ptfCode || "Sin PTF"}</div>
+                    <div className="space-y-1">
+                      {ptfItemsPreview.length ? ptfItemsPreview.slice(0, 6).map((item, idx) => (
+                        <div key={`${item.code || idx}-${idx}`} className="text-xs text-slate-700">
+                          {item.code || "ITEM"}: {Number(item.qty || 0)} {item.unit || "UND"}
+                        </div>
+                      )) : <div className="text-xs text-slate-500">Sin materiales cargados.</div>}
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-slate-200 p-3 bg-slate-50">
+                    <div className="text-xs text-slate-500 mb-2">PET / Slots</div>
+                    <div className="flex flex-wrap gap-1">
+                      {petSlotsPreview.length ? petSlotsPreview.map((slot) => (
+                        <Badge key={`preview-${slot.slot}-${slot.role}`} variant="outline">{slot.slot}:{slot.role}</Badge>
+                      )) : <span className="text-xs text-slate-500">Sin slots definidos.</span>}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancelar</Button><Button onClick={() => void save()} disabled={saving}>{saving ? "Guardando..." : mode === "create" ? "Crear OSI" : "Guardar cambios"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

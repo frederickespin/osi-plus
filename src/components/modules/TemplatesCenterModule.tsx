@@ -65,8 +65,9 @@ const PIC_VARIABLES = [
 ] as const;
 
 export function TemplatesCenterModule({ userRole }: Props) {
-  const canManageDrafts = userRole === "K" || userRole === "A";
-  const [activeTab, setActiveTab] = useState<TemplateType>("PIC");
+  const [activeTab, setActiveTab] = useState<TemplateType>(userRole === "V" ? "PST" : "PIC");
+  const canManageDrafts = userRole === "K" || userRole === "A" || (userRole === "V" && activeTab === "PST");
+  const visibleTabs: TemplateType[] = userRole === "V" ? ["PST"] : ["PIC", "PGD", "NPS", "PST"];
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -118,6 +119,10 @@ export function TemplatesCenterModule({ userRole }: Props) {
       })
       .finally(() => setLoading(false));
   };
+
+  useEffect(() => {
+    if (userRole === "V" && activeTab !== "PST") setActiveTab("PST");
+  }, [activeTab, userRole]);
 
   useEffect(() => {
     refresh();
@@ -359,7 +364,7 @@ export function TemplatesCenterModule({ userRole }: Props) {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Centro de Plantillas</h1>
-          <p className="text-slate-500">PIC / PGD / NPS con flujo Draft → Aprobación → Publicación</p>
+          <p className="text-slate-500">PIC / PGD / NPS / PST con flujo Draft → Aprobación → Publicación</p>
           <p className="text-xs text-slate-400 mt-1">Rol actual: {userRole}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -376,9 +381,10 @@ export function TemplatesCenterModule({ userRole }: Props) {
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TemplateType)}>
         <TabsList>
-          <TabsTrigger value="PIC">PIC</TabsTrigger>
-          <TabsTrigger value="PGD">PGD</TabsTrigger>
-          <TabsTrigger value="NPS">NPS</TabsTrigger>
+          {visibleTabs.includes("PIC") && <TabsTrigger value="PIC">PIC</TabsTrigger>}
+          {visibleTabs.includes("PGD") && <TabsTrigger value="PGD">PGD</TabsTrigger>}
+          {visibleTabs.includes("NPS") && <TabsTrigger value="NPS">NPS</TabsTrigger>}
+          {visibleTabs.includes("PST") && <TabsTrigger value="PST">PST</TabsTrigger>}
         </TabsList>
 
         <div className="mt-4 max-w-md">

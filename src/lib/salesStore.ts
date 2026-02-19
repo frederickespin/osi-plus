@@ -85,6 +85,8 @@ export function getOrCreateQuoteForLead(
     billingAddress: snapshot?.billingAddress,
     billingEmail: snapshot?.billingEmail,
     billingPhone: snapshot?.billingPhone,
+    pstRequiredInputs: [],
+    pstInputValues: {},
     title: `Cotizacion - ${clientName || "Cliente"}`,
     currency: "RD$",
     notes: "",

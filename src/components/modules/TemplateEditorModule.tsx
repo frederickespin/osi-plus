@@ -20,11 +20,17 @@ import {
 import {
   extractVariablesFromHtml,
   normalizeTagList,
+  PST_BASE_PRICE_MODES,
+  PST_REQUIRED_INPUT_OPTIONS,
+  pstRequiredInputLabel,
   safeParseJson,
   type NpsScale,
   type NpsTemplateContent,
   type OutputChannel,
   type PicTemplateContent,
+  type PstBasePriceMode,
+  type PstRequiredInput,
+  type PstTemplateContent,
   type PgdFileType,
   type PgdResponsible,
   type PgdTemplateContent,
@@ -58,6 +64,7 @@ function writeContext(ctx: TemplateEditorContext) {
 function typeLabel(t: TemplateType) {
   if (t === "PIC") return "PIC (Instrucciones)";
   if (t === "PGD") return "PGD (Gestión Documental)";
+  if (t === "PST") return "PST (Servicio Técnico)";
   return "NPS (Encuesta)";
 }
 
@@ -80,7 +87,6 @@ type PgdDocDraft = {
 };
 
 export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
-  const canEdit = userRole === "K" || userRole === "A";
   const ctx = useMemo(() => readContext(), []);
 
   if (!ctx) {
@@ -100,6 +106,8 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
       </div>
     );
   }
+
+  const canEdit = userRole === "K" || userRole === "A" || (userRole === "V" && ctx.templateType === "PST");
 
   const [templateName, setTemplateName] = useState(ctx.templateName || "");
   const [changeSummary, setChangeSummary] = useState("");
@@ -132,6 +140,20 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
   const [npsEvalSupervisorD, setNpsEvalSupervisorD] = useState(true);
   const [npsEvalOfficeKV, setNpsEvalOfficeKV] = useState(true);
   const [npsAlertThreshold, setNpsAlertThreshold] = useState(7);
+
+  // PST state
+  const [pstServiceCode, setPstServiceCode] = useState("");
+  const [pstServiceName, setPstServiceName] = useState("");
+  const [pstPriceMode, setPstPriceMode] = useState<PstBasePriceMode>("PER_M3");
+  const [pstPriceCurrency, setPstPriceCurrency] = useState<"RD$" | "USD">("USD");
+  const [pstBaseRate, setPstBaseRate] = useState(0);
+  const [pstMinimumCharge, setPstMinimumCharge] = useState(0);
+  const [pstNestingAllowed, setPstNestingAllowed] = useState(true);
+  const [pstLinkedPgdTemplateCode, setPstLinkedPgdTemplateCode] = useState("");
+  const [pstMaxDiscountPct, setPstMaxDiscountPct] = useState(10);
+  const [pstMinMarginPct, setPstMinMarginPct] = useState(25);
+  const [pstRequiredInputs, setPstRequiredInputs] = useState<PstRequiredInput[]>(["DESTINATION_ADDRESS", "MOVE_DATE"]);
+  const [pstNotes, setPstNotes] = useState("");
 
   const templateType = ctx.templateType;
 
@@ -174,6 +196,27 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
         })),
       );
       setPgdSelectedIndex(0);
+      return;
+    }
+
+    if (type === "PST") {
+      const c = safeParseJson<Partial<PstTemplateContent>>(contentJson, {} as Partial<PstTemplateContent>);
+      setPstServiceCode(String((c as any).serviceCode || ""));
+      setPstServiceName(String((c as any).serviceName || ""));
+      setPstPriceMode(((c as any).basePriceLogic?.mode as PstBasePriceMode) || "PER_M3");
+      setPstPriceCurrency(((c as any).basePriceLogic?.currency as "RD$" | "USD") || "USD");
+      setPstBaseRate(Number((c as any).basePriceLogic?.baseRate || 0));
+      setPstMinimumCharge(Number((c as any).basePriceLogic?.minimumCharge || 0));
+      setPstNestingAllowed(Boolean((c as any).defaultNestingAllowed));
+      setPstLinkedPgdTemplateCode(String((c as any).linkedPgdTemplateCode || ""));
+      setPstMaxDiscountPct(Number((c as any).marginRules?.maxDiscountPctWithoutApproval || 0));
+      setPstMinMarginPct(Number((c as any).marginRules?.minMarginPct || 0));
+      const req = Array.isArray((c as any).requiredInputs) ? (c as any).requiredInputs : [];
+      const normalizedReq = req
+        .map((x: unknown) => String(x || "").trim().toUpperCase())
+        .filter((x: string) => PST_REQUIRED_INPUT_OPTIONS.includes(x as PstRequiredInput)) as PstRequiredInput[];
+      setPstRequiredInputs(normalizedReq.length ? normalizedReq : ["DESTINATION_ADDRESS", "MOVE_DATE"]);
+      setPstNotes(String((c as any).notes || ""));
       return;
     }
 
@@ -258,9 +301,33 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
     };
   }
 
+  function buildPstContent(): PstTemplateContent {
+    const requiredInputs = Array.from(new Set(pstRequiredInputs));
+    return {
+      schemaVersion: 1,
+      serviceCode: pstServiceCode.trim().toUpperCase(),
+      serviceName: pstServiceName.trim(),
+      basePriceLogic: {
+        mode: pstPriceMode,
+        currency: pstPriceCurrency,
+        baseRate: Number(pstBaseRate || 0),
+        minimumCharge: Number(pstMinimumCharge || 0),
+      },
+      defaultNestingAllowed: pstNestingAllowed,
+      linkedPgdTemplateCode: pstLinkedPgdTemplateCode.trim() || undefined,
+      marginRules: {
+        maxDiscountPctWithoutApproval: Number(pstMaxDiscountPct || 0),
+        minMarginPct: Number(pstMinMarginPct || 0),
+      },
+      requiredInputs,
+      notes: pstNotes.trim() || undefined,
+    };
+  }
+
   const contentJson = useMemo(() => {
     if (templateType === "PIC") return buildPicContent();
     if (templateType === "PGD") return buildPgdContent();
+    if (templateType === "PST") return buildPstContent();
     return buildNpsContent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -278,6 +345,18 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
     npsEvalSupervisorD,
     npsEvalOfficeKV,
     npsAlertThreshold,
+    pstServiceCode,
+    pstServiceName,
+    pstPriceMode,
+    pstPriceCurrency,
+    pstBaseRate,
+    pstMinimumCharge,
+    pstNestingAllowed,
+    pstLinkedPgdTemplateCode,
+    pstMaxDiscountPct,
+    pstMinMarginPct,
+    pstRequiredInputs,
+    pstNotes,
   ]);
 
   const jsonPreview = useMemo(() => {
@@ -291,6 +370,7 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
   const previewTitle = useMemo(() => {
     if (templateType === "PIC") return "Render (HTML)";
     if (templateType === "PGD") return "Checklist (simulación)";
+    if (templateType === "PST") return "PST (simulación)";
     return "NPS (simulación)";
   }, [templateType]);
 
@@ -310,8 +390,13 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
   };
 
   const saveDraft = async (opts: { submit?: boolean } = {}) => {
-    if (!canEdit) return toast.error("Solo los roles K o A pueden crear/editar drafts.");
+    if (!canEdit) return toast.error("No tienes permisos para editar esta plantilla.");
     if (!templateName.trim()) return toast.error("Nombre requerido.");
+    if (templateType === "PST") {
+      if (!pstServiceCode.trim()) return toast.error("serviceCode es obligatorio.");
+      if (!pstServiceName.trim()) return toast.error("serviceName es obligatorio.");
+      if (pstRequiredInputs.length === 0) return toast.error("Selecciona al menos un required input.");
+    }
 
     setIsSaving(true);
     try {
@@ -403,8 +488,8 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
             {isLoadingVersion
               ? "Cargando contenido..."
               : canEdit
-                ? "Edita y guarda como Draft (K/A), luego envía a aprobación."
-                : "Modo lectura: solo los roles K o A pueden crear/editar drafts."}
+                ? "Edita y guarda como Draft, luego envía a aprobación."
+                : "Modo lectura: no tienes permisos de edición para este tipo."}
           </p>
         </div>
 
@@ -560,6 +645,106 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-slate-700">Evaluar Gestión Oficina (K/V)</div>
                   <Switch checked={npsEvalOfficeKV} onCheckedChange={setNpsEvalOfficeKV} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {templateType === "PST" && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Config PST</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-slate-500">Service Code</Label>
+                    <Input
+                      value={pstServiceCode}
+                      onChange={(e) => setPstServiceCode(e.target.value.toUpperCase())}
+                      placeholder="SRV-INT-STD"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Nombre comercial</Label>
+                    <Input
+                      value={pstServiceName}
+                      onChange={(e) => setPstServiceName(e.target.value)}
+                      placeholder="Mudanza Internacional Estándar"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs text-slate-500">Modo de precio</Label>
+                    <Select value={pstPriceMode} onValueChange={(v) => setPstPriceMode(v as PstBasePriceMode)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PST_BASE_PRICE_MODES.map((mode) => (
+                          <SelectItem key={mode} value={mode}>{mode}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Moneda</Label>
+                    <Select value={pstPriceCurrency} onValueChange={(v) => setPstPriceCurrency(v as "RD$" | "USD")}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="RD$">RD$</SelectItem>
+                        <SelectItem value="USD">USD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Tarifa base</Label>
+                    <Input type="number" value={pstBaseRate} onChange={(e) => setPstBaseRate(Number(e.target.value) || 0)} />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Cargo mínimo</Label>
+                    <Input
+                      type="number"
+                      value={pstMinimumCharge}
+                      onChange={(e) => setPstMinimumCharge(Number(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs text-slate-500">PGD vinculado (código)</Label>
+                    <Input
+                      value={pstLinkedPgdTemplateCode}
+                      onChange={(e) => setPstLinkedPgdTemplateCode(e.target.value.toUpperCase())}
+                      placeholder="PGD-ADUANAS"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Máx. descuento sin aprobación (%)</Label>
+                    <Input
+                      type="number"
+                      value={pstMaxDiscountPct}
+                      onChange={(e) => setPstMaxDiscountPct(Number(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Margen mínimo (%)</Label>
+                    <Input
+                      type="number"
+                      value={pstMinMarginPct}
+                      onChange={(e) => setPstMinMarginPct(Number(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-slate-700">Permitir Nesting por defecto</div>
+                  <Switch checked={pstNestingAllowed} onCheckedChange={setPstNestingAllowed} />
                 </div>
               </CardContent>
             </Card>
@@ -767,6 +952,50 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
               </CardContent>
             </Card>
           )}
+
+          {templateType === "PST" && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Required Inputs y notas</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-500">Required Inputs</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {PST_REQUIRED_INPUT_OPTIONS.map((key) => {
+                      const checked = pstRequiredInputs.includes(key);
+                      return (
+                        <label key={key} className="flex items-center gap-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setPstRequiredInputs((prev) => Array.from(new Set([...prev, key])));
+                              } else {
+                                setPstRequiredInputs((prev) => prev.filter((x) => x !== key));
+                              }
+                            }}
+                          />
+                          {pstRequiredInputLabel(key)}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs text-slate-500">Notas</Label>
+                  <Textarea
+                    value={pstNotes}
+                    onChange={(e) => setPstNotes(e.target.value)}
+                    rows={5}
+                    placeholder="Incluye guía aduanal básica. No incluye seguros premium."
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {showPreview && (
@@ -808,6 +1037,49 @@ export function TemplateEditorModule({ userRole }: { userRole: UserRole }) {
                         ))}
                       </div>
                     )}
+                  </div>
+                ) : templateType === "PST" ? (
+                  <div className="border rounded-md p-4 bg-white space-y-3">
+                    <div className="text-sm font-medium text-slate-900">
+                      {pstServiceName || "Sin nombre"} ({pstServiceCode || "SIN-CODIGO"})
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      Precio: <span className="font-medium text-slate-900">{pstPriceMode}</span>
+                      {" · "}
+                      Moneda: <span className="font-medium text-slate-900">{pstPriceCurrency}</span>
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      Tarifa base: <span className="font-medium text-slate-900">{pstBaseRate}</span>
+                      {" · "}
+                      Mínimo: <span className="font-medium text-slate-900">{pstMinimumCharge}</span>
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      Max descuento sin aprobación:{" "}
+                      <span className="font-medium text-slate-900">{pstMaxDiscountPct}%</span>
+                      {" · "}
+                      Margen mínimo: <span className="font-medium text-slate-900">{pstMinMarginPct}%</span>
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      Nesting por defecto: <span className="font-medium text-slate-900">{pstNestingAllowed ? "Sí" : "No"}</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-slate-500">Required Inputs</div>
+                      <div className="flex flex-wrap gap-1">
+                        {pstRequiredInputs.length === 0 ? (
+                          <span className="text-xs text-slate-500">-</span>
+                        ) : (
+                          pstRequiredInputs.map((key) => (
+                            <Badge key={key} variant="secondary">{pstRequiredInputLabel(key)}</Badge>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    {pstLinkedPgdTemplateCode.trim() && (
+                      <div className="text-xs text-slate-600">
+                        PGD vinculado: <span className="font-medium text-slate-900">{pstLinkedPgdTemplateCode.trim()}</span>
+                      </div>
+                    )}
+                    {pstNotes.trim() && <div className="text-xs text-slate-600">{pstNotes.trim()}</div>}
                   </div>
                 ) : (
                   <div className="border rounded-md p-4 bg-white space-y-3">

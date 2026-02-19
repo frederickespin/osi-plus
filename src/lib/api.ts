@@ -1,4 +1,5 @@
 import { loadSession, normalizeRole } from "@/lib/sessionStore";
+import type { PstTemplateContent } from "@/lib/templateSchemas";
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 export type HealthResponse = {
@@ -209,10 +210,10 @@ export async function createOsi(payload: Partial<OsiDto>) {
 }
 
 // ====================
-// Templates (PIC/PGD/NPS) - Centro de Plantillas
+// Templates (PIC/PGD/NPS/PST) - Centro de Plantillas
 // ====================
 
-export type TemplateType = "PIC" | "PGD" | "NPS";
+export type TemplateType = "PIC" | "PGD" | "NPS" | "PST";
 export type TemplateVersionStatus = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "PUBLISHED" | "REJECTED" | "ARCHIVED";
 
 export type TemplateDto = {
@@ -294,6 +295,41 @@ export function rejectTemplateVersion(versionId: string, reason: string) {
 
 export function publishTemplateVersion(versionId: string) {
   return requestJson<{ ok: boolean; data: TemplateVersionDto }>(`/templates/publish`, { method: "POST", body: { versionId } });
+}
+
+export type PstActiveTemplateDto = {
+  templateId: string;
+  templateName: string;
+  serviceCode: string;
+  serviceName: string;
+  versionId: string;
+  version: number;
+  status: TemplateVersionStatus;
+  publishedAt?: string | null;
+  content: PstTemplateContent;
+};
+
+export type PstTemplateDetailDto = PstActiveTemplateDto & {
+  linkedPgd?: {
+    templateId: string;
+    templateName: string;
+    versionId: string;
+    version: number;
+  } | null;
+};
+
+export function listActivePstTemplates(tenantId?: string | null) {
+  const params = new URLSearchParams();
+  if (tenantId) params.set("tenantId", tenantId);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<{ ok: boolean; total: number; data: PstActiveTemplateDto[] }>(`/pst/active${qs}`);
+}
+
+export function getPstTemplateByServiceCode(serviceCode: string, tenantId?: string | null) {
+  const params = new URLSearchParams();
+  if (tenantId) params.set("tenantId", tenantId);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return requestJson<{ ok: boolean; data: PstTemplateDetailDto }>(`/pst/${encodeURIComponent(serviceCode)}${qs}`);
 }
 
 // ====================

@@ -12,6 +12,7 @@ enum TemplateType {
   PIC
   PGD
   NPS
+  PST
 }
 
 enum TemplateScope {

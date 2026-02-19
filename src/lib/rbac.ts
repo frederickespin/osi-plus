@@ -54,7 +54,12 @@ export function permsForRole(role: RoleCode): Perm[] {
 
   // Ventas también puede ver (por compatibilidad); si quieres, lo restringimos solo a K.
   if (role === "V") {
-    return [PERMS.TEMPLATES_VIEW];
+    return [
+      PERMS.TEMPLATES_VIEW,
+      PERMS.TEMPLATES_CREATE,
+      PERMS.TEMPLATES_EDIT_DRAFT,
+      PERMS.TEMPLATES_SUBMIT,
+    ];
   }
 
   return [];

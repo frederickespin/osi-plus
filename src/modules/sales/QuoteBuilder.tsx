@@ -12,11 +12,14 @@ import { Textarea } from "@/components/ui/textarea";
 
 import type { LeadLite, Quote, QuoteLine } from "@/types/sales.types";
 import type { UserRole } from "@/types/osi.types";
+import type { PstRequiredInput } from "@/lib/templateSchemas";
 import { loadLeads, recomputeTotals, upsertLead, upsertQuoteGuarded } from "@/lib/salesStore";
 import { loadProjects, upsertProjectByNumber } from "@/lib/projectsStore";
 import { addHistory } from "@/lib/customerHistoryStore";
-import { promoteBookingToProject } from "@/lib/commercialCalendarStore";
+import { canPromoteBookingToProject, promoteBookingToProject } from "@/lib/commercialCalendarStore";
 import { loadQuoteAudit } from "@/lib/quoteAuditStore";
+import { listActivePstTemplates, type PstActiveTemplateDto } from "@/lib/api";
+import { pstRequiredInputLabel } from "@/lib/templateSchemas";
 
 function loadCrateDrafts(): any[] {
   try {
@@ -26,9 +29,30 @@ function loadCrateDrafts(): any[] {
   }
 }
 
-const money = (n: number) => `RD$ ${n.toFixed(2)}`;
+const money = (n: number) =>
+  `RD$ ${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const uid = () =>
   crypto?.randomUUID ? crypto.randomUUID() : `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+function normalizePstRequiredInputs(list: unknown): PstRequiredInput[] {
+  if (!Array.isArray(list)) return [];
+  const allowed: PstRequiredInput[] = [
+    "DESTINATION_ADDRESS",
+    "DECLARED_VALUE",
+    "MOVE_DATE",
+    "ORIGIN_ADDRESS",
+    "CONTACT_PHONE",
+    "SERVICE_DAYS",
+    "SPECIAL_HANDLING_NOTES",
+  ];
+  return Array.from(
+    new Set(
+      list
+        .map((x) => String(x || "").trim().toUpperCase())
+        .filter((x): x is PstRequiredInput => allowed.includes(x as PstRequiredInput))
+    )
+  );
+}
 
 export default function QuoteBuilder({
   userRole = "A",
@@ -45,6 +69,8 @@ export default function QuoteBuilder({
   const [tab, setTab] = useState("scope");
   const [resultNote, setResultNote] = useState("");
   const [resultScore, setResultScore] = useState("");
+  const [pstCatalog, setPstCatalog] = useState<PstActiveTemplateDto[]>([]);
+  const [pstLoading, setPstLoading] = useState(false);
 
   const crates = useMemo(() => loadCrateDrafts(), []);
   const isApproved = useMemo(
@@ -59,7 +85,26 @@ export default function QuoteBuilder({
     }
     return crates.find((d) => d.proposalNumber === quote.proposalNumber);
   }, [crates, quote.crateDraftId, quote.proposalNumber]);
+
+  const selectedPst = useMemo(
+    () => pstCatalog.find((pst) => pst.serviceCode === quote.pstCode),
+    [pstCatalog, quote.pstCode]
+  );
+
+  const discountPct = useMemo(() => {
+    const subtotal = Number(quote.totals.subtotal || 0);
+    if (subtotal <= 0) return 0;
+    return (Number(quote.totals.discount || 0) / subtotal) * 100;
+  }, [quote.totals.subtotal, quote.totals.discount]);
   const recentAudits = useMemo(() => loadQuoteAudit(quote.id).slice(0, 5), [quote.id, quote.updatedAt]);
+
+  useEffect(() => {
+    setPstLoading(true);
+    listActivePstTemplates()
+      .then((r) => setPstCatalog(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setPstCatalog([]))
+      .finally(() => setPstLoading(false));
+  }, []);
 
   const update = (patch: Partial<Quote>) => {
     if (!canEdit) {
@@ -85,6 +130,83 @@ export default function QuoteBuilder({
       return;
     }
     onQuoteChange(guarded.quote);
+  };
+
+  const applyPstTemplate = (pst: PstActiveTemplateDto | null) => {
+    if (!pst) {
+      const nextLines = quote.lines.filter((line) => !(line.category === "BASE" && line.meta?.pstBase === "true"));
+      update({
+        pstCode: undefined,
+        pstServiceName: undefined,
+        pstVersionLocked: undefined,
+        pstLinkedPgdTemplateCode: undefined,
+        pstDefaultNestingAllowed: undefined,
+        pstPriceMode: undefined,
+        pstPriceCurrency: undefined,
+        pstBaseRate: undefined,
+        pstMinimumCharge: undefined,
+        pstMaxDiscountPctWithoutApproval: undefined,
+        pstMinMarginPct: undefined,
+        pstRequiredInputs: [],
+        pstInputValues: {},
+        pstNotes: undefined,
+        lines: nextLines,
+      } as Partial<Quote>);
+      return;
+    }
+
+    const content = pst.content;
+    const serviceCode = String(content.serviceCode || "").trim().toUpperCase();
+    const serviceName = String(content.serviceName || "").trim();
+    const baseRate = Number(content.basePriceLogic?.baseRate || 0);
+    const minimumCharge = Number(content.basePriceLogic?.minimumCharge || 0);
+    const requiredInputs = normalizePstRequiredInputs(content.requiredInputs);
+
+    const previousInputValues = (quote as any).pstInputValues || {};
+    const pstInputValues = requiredInputs.reduce<Record<string, string>>((acc, key) => {
+      acc[key] = String(previousInputValues[key] || "");
+      return acc;
+    }, {});
+
+    const nextLines = quote.lines.filter((line) => !(line.category === "BASE" && line.meta?.pstBase === "true"));
+    const baseAmount = Math.max(minimumCharge, baseRate);
+    const baseLine: QuoteLine = {
+      id: uid(),
+      category: "BASE",
+      name: `${serviceName || "Servicio"} (${serviceCode})`,
+      description: `Base PST ${serviceCode}`,
+      qty: 1,
+      unit: "serv",
+      unitPrice: baseAmount,
+      total: baseAmount,
+      meta: {
+        pstBase: "true",
+        pstCode: serviceCode,
+      },
+    };
+
+    update({
+      pstCode: serviceCode,
+      pstServiceName: serviceName,
+      pstVersionLocked: Number(pst.version || 1),
+      pstLinkedPgdTemplateCode: String(content.linkedPgdTemplateCode || ""),
+      pstDefaultNestingAllowed: Boolean(content.defaultNestingAllowed),
+      pstPriceMode: String(content.basePriceLogic?.mode || ""),
+      pstPriceCurrency: String(content.basePriceLogic?.currency || "RD$"),
+      pstBaseRate: baseRate,
+      pstMinimumCharge: minimumCharge,
+      pstMaxDiscountPctWithoutApproval: Number(content.marginRules?.maxDiscountPctWithoutApproval || 0),
+      pstMinMarginPct: Number(content.marginRules?.minMarginPct || 0),
+      pstRequiredInputs: requiredInputs,
+      pstInputValues,
+      pstNotes: String(content.notes || ""),
+      lines: [baseLine, ...nextLines],
+    } as Partial<Quote>);
+  };
+
+  const updatePstInputValue = (key: PstRequiredInput, value: string) => {
+    const prev = ((quote as any).pstInputValues || {}) as Record<string, string>;
+    update({ pstInputValues: { ...prev, [key]: value } } as Partial<Quote>);
   };
 
   const addLine = (partial: Omit<QuoteLine, "id" | "total">) => {
@@ -173,6 +295,32 @@ export default function QuoteBuilder({
   };
 
   const approveProposal = () => {
+    const required = normalizePstRequiredInputs((quote as any).pstRequiredInputs || []);
+    const inputValues = ((quote as any).pstInputValues || {}) as Record<string, string>;
+    const missingRequired = required.filter((key) => !String(inputValues[key] || "").trim());
+    if (missingRequired.length > 0) {
+      toast.error(
+        `Completa los campos PST requeridos: ${missingRequired.map((k) => pstRequiredInputLabel(k)).join(", ")}.`
+      );
+      return;
+    }
+
+    const maxDiscount = Number((quote as any).pstMaxDiscountPctWithoutApproval || 0);
+    if (maxDiscount > 0 && discountPct > maxDiscount) {
+      toast.error(
+        `Descuento ${discountPct.toFixed(2)}% excede el máximo PST (${maxDiscount}%). Requiere aprobación o ajuste.`
+      );
+      return;
+    }
+
+    const cap = canPromoteBookingToProject(quote.proposalNumber);
+    if (!cap.ok && cap.reason === "CAPACITY_FULL") {
+      toast.error(
+        `El día ${cap.dayISO} está lleno (${cap.count}/${cap.limit}). Reprograma en Calendario antes de confirmar.`
+      );
+      return;
+    }
+
     const confirmed = window.confirm(
       "Asegure que la propuesta que el cliente esta conforme con la propuesta, despues de arpobado no se puede modificar."
     );
@@ -182,6 +330,8 @@ export default function QuoteBuilder({
     const wonLead: LeadLite = {
       ...(leadCurrent ?? lead),
       status: "WON",
+      pstCode: String((quote as any).pstCode || ""),
+      serviceType: String((quote as any).pstServiceName || ""),
       updatedAt: new Date().toISOString(),
     };
     upsertLead(wonLead);
@@ -216,6 +366,8 @@ export default function QuoteBuilder({
     const lostLead: LeadLite = {
       ...(leadCurrent ?? lead),
       status: "LOST",
+      pstCode: String((quote as any).pstCode || ""),
+      serviceType: String((quote as any).pstServiceName || ""),
       updatedAt: new Date().toISOString(),
     };
     upsertLead(lostLead);
@@ -267,6 +419,82 @@ export default function QuoteBuilder({
             <Label>Notas</Label>
             <Input disabled={!canEdit} value={quote.notes ?? ""} onChange={(e) => update({ notes: e.target.value })} />
           </div>
+
+          <div className="space-y-2 md:col-span-2">
+            <Label>Plantilla PST (Servicio Técnico)</Label>
+            <div className="flex items-center gap-2">
+              <select
+                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                disabled={!canEdit || pstLoading}
+                value={(quote as any).pstCode || ""}
+                onChange={(e) => {
+                  const code = String(e.target.value || "");
+                  if (!code) return applyPstTemplate(null);
+                  const found = pstCatalog.find((p) => p.serviceCode === code) || null;
+                  applyPstTemplate(found);
+                }}
+              >
+                <option value="">{pstLoading ? "Cargando PST..." : "Seleccionar servicio PST..."}</option>
+                {pstCatalog.map((pst) => (
+                  <option key={`${pst.templateId}-${pst.versionId}`} value={pst.serviceCode}>
+                    {pst.serviceName} ({pst.serviceCode})
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => window.dispatchEvent(new CustomEvent("changeModule", { detail: "k-templates" }))}
+              >
+                Gestionar PST
+              </Button>
+            </div>
+            {selectedPst && (
+              <div className="text-xs text-slate-500">
+                Versión bloqueada: v{selectedPst.version}
+                {" · "}
+                Precio: {(quote as any).pstPriceMode || "-"} / {(quote as any).pstPriceCurrency || "-"}
+                {" · "}
+                Nesting por defecto: {(quote as any).pstDefaultNestingAllowed ? "Sí" : "No"}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Control de descuento PST</Label>
+            <Input
+              value={
+                (quote as any).pstMaxDiscountPctWithoutApproval
+                  ? `${discountPct.toFixed(2)}% / máx ${(quote as any).pstMaxDiscountPctWithoutApproval}%`
+                  : `${discountPct.toFixed(2)}%`
+              }
+              disabled
+            />
+          </div>
+
+          {Array.isArray((quote as any).pstRequiredInputs) && (quote as any).pstRequiredInputs.length > 0 && (
+            <div className="md:col-span-3 space-y-3 border border-slate-200 rounded-lg p-3 bg-slate-50">
+              <div className="text-sm font-medium text-slate-900">Datos obligatorios por PST</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {normalizePstRequiredInputs((quote as any).pstRequiredInputs).map((key) => (
+                  <div key={key} className="space-y-1">
+                    <Label>{pstRequiredInputLabel(key)}</Label>
+                    <Input
+                      disabled={!canEdit}
+                      value={String(((quote as any).pstInputValues || {})[key] || "")}
+                      onChange={(e) => updatePstInputValue(key, e.target.value)}
+                      placeholder={`Completar ${pstRequiredInputLabel(key).toLowerCase()}`}
+                    />
+                  </div>
+                ))}
+              </div>
+              {(quote as any).pstLinkedPgdTemplateCode && (
+                <div className="text-xs text-slate-600">
+                  PGD sugerido: <span className="font-medium">{(quote as any).pstLinkedPgdTemplateCode}</span>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

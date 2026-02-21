@@ -1,6 +1,11 @@
 # OSi-plus ERP v17 (carpeta legacy)
 
-> **Nota:** Esta carpeta es una estructura **legacy** / copia histórica. El código activo del frontend está en la **raíz del repositorio** (`src/`, `api/`, etc.). No hay imports desde la raíz hacia `app/`. Si no se usa, se puede planificar su eliminación o archivo. Ver `docs/CODIGO_MUERTO.md`.
+> **Nota:** Esta carpeta es una estructura **legacy** / copia histórica.
+> - El código activo del frontend está en la **raíz del repositorio** (`src/`, `api/`, etc.).
+> - **No editar `app/src`** para desarrollo diario.
+> - Si ejecutas `npm run dev` dentro de `app/`, se redirige al proyecto raíz.
+> - No hay imports desde la raíz hacia `app/`.
+> Ver `docs/CODIGO_MUERTO.md`.
 
 Sistema de Gestión Integral para International Packers SRL
 

@@ -4,10 +4,10 @@
   "version": "17.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "dev": "npm --prefix .. run dev",
+    "build": "npm --prefix .. run build",
+    "lint": "npm --prefix .. run lint",
+    "preview": "npm --prefix .. run preview"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

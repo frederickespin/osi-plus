@@ -2,6 +2,13 @@
 
 Sistema de Gestión Integral para International Packers SRL
 
+## Fuente de verdad del frontend
+
+- Frontend activo: `src/` (raíz del repo)
+- Backend activo: `api/` (Vercel Functions) y `prisma/`
+- La carpeta `app/` se mantiene solo como legado y no debe usarse para desarrollo diario.
+- Si ejecutas scripts desde `app/`, ahora se redirigen automáticamente al proyecto raíz.
+
 ## Descripción
 
 OSi-plus es un sistema ERP completo diseñado para la gestión de operaciones de embalaje y logística. Incluye módulos para:

@@ -113,11 +113,24 @@ try {
   const expectedTotal = 7 + Object.values(EXPECTED_DB_TESTS).reduce((sum, count) => sum + count, 0);
   const total = passedCount(mtTests) + dbPassed;
   invariant(total === expectedTotal, `La cadena esperaba ${expectedTotal} pruebas y obtuvo ${total}`);
+  const legacyAuthRun = runJson("mt-01b1-legacy-compat-test.mjs", "MT-01B1/LEGACY_COMPAT");
+  const authFoundationRun = runJson("mt-01b1-test.mjs", "MT-01B1/FOUNDATION");
+  const authRaceRun = runJson("mt-01b1-refresh-race-test.mjs", "MT-01B1/REFRESH_RACE");
+  invariant(legacyAuthRun.assertions === 10, `MT-01B1 legacy esperaba 10 pruebas y obtuvo ${legacyAuthRun.assertions}`);
+  invariant(authFoundationRun.assertions === 33, `MT-01B1 esperaba 33 pruebas y obtuvo ${authFoundationRun.assertions}`);
+  invariant(authRaceRun.assertions === 21, `MT-01B1 race esperaba 21 pruebas y obtuvo ${authRaceRun.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
+    mt01b1: { legacy: legacyAuthRun.assertions, foundation: authFoundationRun.assertions, refreshRace: authRaceRun.assertions, total: 64 },
     suites,
-    suiteRuns: { "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode }, ...suiteRuns },
+    suiteRuns: {
+      "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
+      ...suiteRuns,
+      "MT-01B1/LEGACY_COMPAT": { status: "PASS", assertions: legacyAuthRun.assertions, durationMs: legacyAuthRun.durationMs, exitCode: 0 },
+      "MT-01B1/FOUNDATION": { status: "PASS", assertions: authFoundationRun.assertions, durationMs: authFoundationRun.durationMs, exitCode: 0 },
+      "MT-01B1/REFRESH_RACE": { status: "PASS", assertions: authRaceRun.assertions, durationMs: authRaceRun.durationMs, exitCode: 0 },
+    },
     total,
   }, null, 2)}\n`);
 } finally {

@@ -8,6 +8,7 @@ import { resolveCrateCalculationAuthority } from "../api/_lib/crateSettingsAdapt
 import { logisticsGeoIntegrationMode } from "../api/_lib/logisticsGeoAdapter.js";
 import { quoteChangeOrderPersistenceMode } from "../api/_lib/quoteChangeOrderAdapter.js";
 import { vehicleEngineIntegrationMode } from "../api/_lib/vehicleEngineAdapter.js";
+import { resolveMt01bAuthPolicy } from "../api/_lib/authPolicy.js";
 
 export const DB01_RUNTIME_SERVICE_MODULES = Object.freeze([
   { service: "CommercialAuditLog", pattern: /commercialauditlog/i },
@@ -34,6 +35,7 @@ export const CANONICAL_MIGRATIONS = Object.freeze([
   "20260801008000_vehicle_engine_settings",
   "20260801009000_logistics_rate_metadata",
   "20260801010000_crate_settings",
+  "20260801011000_mt01b_auth_sessions",
 ]);
 
 function invariant(condition, message) {
@@ -131,6 +133,26 @@ function validateTrackedSecrets(root = process.cwd()) {
   return files.length;
 }
 
+export function validateMt01bFoundationIsolation({ root = process.cwd(), files = trackedFiles() } = {}) {
+  files = files.map((file) => file.replaceAll("\\", "/"));
+  const forbiddenPaths = files.filter((file) => /(?:select-tenant|switch-tenant|auth\/memberships|tenant(?:selection|switcher))/i.test(file));
+  invariant(forbiddenPaths.length === 0, `MT-01B1 no permite selección o cambio de empresa: ${forbiddenPaths.join(", ")}`);
+
+  const runtime = files.filter((file) => /^(?:api|src)\/.+\.(?:[cm]?[jt]sx?)$/.test(file));
+  const imports = [];
+  const directWrites = [];
+  for (const file of runtime) {
+    let source;
+    try { source = readFileSync(resolve(root, file), "utf8"); } catch { continue; }
+    if (!file.startsWith("api/_lib/") && !file.startsWith("api/auth/") && /(?:authContext|authSession|membershipAuthorization)/i.test(source)) imports.push(file);
+    if (file !== "api/_lib/membershipAuthorization.js" &&
+        /(?:tenantMembership\s*\.\s*(?:update|updateMany|upsert|delete)|UPDATE\s+["'`]*tenant_memberships)/i.test(source)) directWrites.push(file);
+  }
+  invariant(imports.length === 0, `MT-01B1 fue conectado fuera de auth/_lib: ${imports.join(", ")}`);
+  invariant(directWrites.length === 0, `Escritura de membresía fuera del servicio único: ${directWrites.join(", ")}`);
+  return runtime.length;
+}
+
 function validateFixtureRuntimeIsolation(root = process.cwd()) {
   const runtimeFiles = trackedFiles().filter((file) => /^(?:api|src)\//.test(file) && /\.(?:[cm]?[jt]sx?)$/.test(file));
   const forbiddenImport = /(?:from\s*|import\s*\(|require\s*\()\s*["'][^"']*scripts\/fixtures\/db01(?:\/|["'])/;
@@ -219,6 +241,10 @@ export function validateRuntimeDefaults(env = process.env) {
   invariant(String(env.DB01F_RISK_ENGINE_MODE || "LEGACY_ONLY").toUpperCase() === "LEGACY_ONLY", "Modo de riesgo no permitido");
   invariant(String(env.DB01I_VEHICLE_ENGINE_MODE || "LEGACY_ONLY").toUpperCase() === "LEGACY_ONLY", "Modo de vehículos no permitido");
   invariant(new Set(["LEGACY", "LEGACY_ONLY"]).has(String(env.DB01J_CRATE_SETTINGS_AUTHORITY || "LEGACY").toUpperCase()), "Autoridad CrateSettings no permitida");
+  const authPolicy = resolveMt01bAuthPolicy(env);
+  invariant(authPolicy.mode === "LEGACY", "MT-01B debe permanecer en LEGACY");
+  invariant(authPolicy.tenantSwitchEnabled === false, "MT-01B no permite cambio de empresa");
+  invariant(!env.MT01B_LEGACY_TOKEN_ACCEPT_UNTIL, "La fecha legacy sólo se configura al activar HYBRID en MT-01B2");
 }
 
 async function validateDatabase(raw) {
@@ -235,7 +261,7 @@ async function validateDatabase(raw) {
       SELECT migration_name, finished_at, rolled_back_at, applied_steps_count
       FROM "osi"."_prisma_migrations" ORDER BY migration_name
     `);
-    invariant(migrations.length === CANONICAL_MIGRATIONS.length, "El historial no contiene 11 migraciones");
+    invariant(migrations.length === CANONICAL_MIGRATIONS.length, `El historial no contiene ${CANONICAL_MIGRATIONS.length} migraciones`);
     invariant(
       JSON.stringify(migrations.map((row) => row.migration_name)) === JSON.stringify([...CANONICAL_MIGRATIONS].sort()),
       "El historial contiene migraciones no canónicas",
@@ -255,9 +281,10 @@ export async function validateCanonicalCi({ phase = "database" } = {}) {
   const trackedFileCount = validateTrackedSecrets();
   const runtimeFilesChecked = validateFixtureRuntimeIsolation();
   const db01RuntimeFilesChecked = validateDb01RuntimeActivation();
+  const mt01bRuntimeFilesChecked = validateMt01bFoundationIsolation();
   validateRuntimeDefaults();
   const database = phase === "database" ? await validateDatabase(process.env.DATABASE_URL) : null;
-  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, runtimeFilesChecked, db01RuntimeFilesChecked, database };
+  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, runtimeFilesChecked, db01RuntimeFilesChecked, mt01bRuntimeFilesChecked, database };
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";

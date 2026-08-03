@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   validateDb01RuntimeActivation,
+  validateMt01bFoundationIsolation,
   validateRuntimeDefaults,
 } from "./validate-canonical-ci.mjs";
 
@@ -91,6 +92,22 @@ try {
     "autoridad relacional rechazada",
     () => validateRuntimeDefaults({ DB01J_CRATE_SETTINGS_AUTHORITY: "RELATIONAL" }),
     ["Autoridad CrateSettings"],
+  );
+  rejection(
+    "MT-01B HYBRID rechazado antes de B2",
+    () => validateRuntimeDefaults({ MT01B_AUTH_MODE: "HYBRID", MT01B_LEGACY_TOKEN_ACCEPT_UNTIL: new Date(Date.now() + 3_600_000).toISOString() }),
+    ["LEGACY"],
+  );
+  rejection(
+    "tenant switch rechazado",
+    () => validateRuntimeDefaults({ MT01B_TENANT_SWITCH_ENABLED: "true" }),
+    ["cambio de empresa"],
+  );
+  const fakeSwitch = fixture("src/TenantSwitcher.tsx", "export function TenantSwitcher() { return null; }\n");
+  rejection(
+    "componente de cambio de tenant rechazado",
+    () => validateMt01bFoundationIsolation({ root, files: [fakeSwitch] }),
+    ["TenantSwitcher"],
   );
 
   process.stdout.write(`${JSON.stringify({ ok: true, passed: results.length, results }, null, 2)}\n`);

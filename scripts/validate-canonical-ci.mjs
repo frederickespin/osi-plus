@@ -9,6 +9,19 @@ import { logisticsGeoIntegrationMode } from "../api/_lib/logisticsGeoAdapter.js"
 import { quoteChangeOrderPersistenceMode } from "../api/_lib/quoteChangeOrderAdapter.js";
 import { vehicleEngineIntegrationMode } from "../api/_lib/vehicleEngineAdapter.js";
 
+export const DB01_RUNTIME_SERVICE_MODULES = Object.freeze([
+  { service: "CommercialAuditLog", pattern: /commercialauditlog/i },
+  { service: "ApprovalRequest", pattern: /approvalrequest/i },
+  { service: "RiskEngine", pattern: /riskengine/i },
+  { service: "LogisticOverrideApproval", pattern: /logisticoverrideapproval/i },
+  { service: "QuoteChangeOrder", pattern: /quotechangeorder/i },
+  { service: "LogisticsGeography", pattern: /(?:geonormalization|logisticsgeo|logisticszonerules)/i },
+  { service: "Vehicle", pattern: /(?:vehiclenormalization|vehiclefleet|vehicleimport|vehicleengine)/i },
+  { service: "CrateSettings", pattern: /cratesettings(?:adapter|import|support|validation|versioned)/i },
+]);
+
+export const DB01_RUNTIME_IMPORT_ALLOWLIST = Object.freeze([]);
+
 export const CANONICAL_MIGRATIONS = Object.freeze([
   "20260801000000_production_baseline",
   "20260801001000_mt01a_tenant_memberships",
@@ -132,7 +145,56 @@ function validateFixtureRuntimeIsolation(root = process.cwd()) {
   return runtimeFiles.length;
 }
 
-function validateRuntimeDefaults() {
+function moduleSpecifiers(source) {
+  const values = [];
+  const patterns = [
+    /\b(?:import|export)\s+(?:[^;"']*?\s+from\s+)?["']([^"']+)["']/g,
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+    /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) values.push(match[1].replaceAll("\\", "/"));
+  }
+  return [...new Set(values)];
+}
+
+function db01ServiceForSpecifier(specifier) {
+  const normalized = String(specifier || "").replaceAll("\\", "/");
+  return DB01_RUNTIME_SERVICE_MODULES.find(({ pattern }) => pattern.test(normalized))?.service || null;
+}
+
+export function validateDb01RuntimeActivation({
+  root = process.cwd(),
+  files = trackedFiles(),
+  allowlist = DB01_RUNTIME_IMPORT_ALLOWLIST,
+} = {}) {
+  const allowed = new Set(allowlist.map((entry) => `${entry.file}:${entry.service}`));
+  const runtimeFiles = files
+    .map((file) => file.replaceAll("\\", "/"))
+    .filter((file) => (
+      (file.startsWith("api/") && !file.startsWith("api/_lib/")) || file.startsWith("src/")
+    ) && /\.(?:[cm]?[jt]sx?)$/.test(file));
+  const violations = [];
+  for (const file of runtimeFiles) {
+    let source;
+    try {
+      source = readFileSync(resolve(root, file), "utf8");
+    } catch {
+      continue;
+    }
+    for (const specifier of moduleSpecifiers(source)) {
+      const service = db01ServiceForSpecifier(specifier);
+      if (service && !allowed.has(`${file}:${service}`)) violations.push({ file, service, specifier });
+    }
+  }
+  invariant(
+    violations.length === 0,
+    `Activación DB-01 bloqueada: ${violations.map(({ file, service, specifier }) => `${file} -> ${service} (${specifier})`).join(", ")}`,
+  );
+  return runtimeFiles.length;
+}
+
+export function validateRuntimeDefaults(env = process.env) {
   invariant(approvalPersistenceMode({}) === "LEGACY_ONLY", "ApprovalRequest no está en LEGACY_ONLY");
   invariant(quoteChangeOrderPersistenceMode({}) === "LEGACY_ONLY", "QuoteChangeOrder no está en LEGACY_ONLY");
   invariant(logisticsGeoIntegrationMode({}) === "LEGACY_ONLY", "Geografía no está en LEGACY_ONLY");
@@ -140,13 +202,23 @@ function validateRuntimeDefaults() {
   const crate = resolveCrateCalculationAuthority({ legacySettings: {}, relationalSettings: {} });
   invariant(crate.authority === "LEGACY" && crate.effectsApplied === false, "CrateSettings no conserva autoridad legacy");
 
+  invariant(approvalPersistenceMode(env) === "LEGACY_ONLY", "ApprovalRequest relacional o DUAL_WRITE no permitido");
+  invariant(quoteChangeOrderPersistenceMode(env) === "LEGACY_ONLY", "QuoteChangeOrder relacional o DUAL_WRITE no permitido");
+  invariant(logisticsGeoIntegrationMode(env) === "LEGACY_ONLY", "SHADOW geográfico no permitido");
+
   const forbidden = [
     "DB01E_APPROVAL_RELATIONAL_ENABLED", "DB01E_APPROVAL_RELATIONAL_AUTHORITY",
     "DB01G_CHANGE_ORDER_RELATIONAL_ENABLED", "DB01G_CHANGE_ORDER_RELATIONAL_AUTHORITY",
     "DB01H_LOGISTICS_GEO_ENABLED", "DB01H_LOGISTICS_GEO_SHADOW",
-  ].filter((key) => String(process.env[key] || "false").toLowerCase() === "true");
+    "DB01H_LOGISTICS_RELATIONAL_ENABLED", "DB01H_LOGISTICS_SHADOW_ENABLED",
+    "DB01J_CRATE_SETTINGS_RELATIONAL_ENABLED", "DB01J_CRATE_SETTINGS_DUAL_WRITE_ENABLED",
+    "DB01J_CRATE_SETTINGS_SHADOW_ENABLED", "DB01J_CRATE_SETTINGS_ENFORCED_ENABLED",
+    "DB01J_CRATE_SETTINGS_EFFECTS_ENABLED",
+  ].filter((key) => String(env[key] || "false").toLowerCase() === "true");
   invariant(forbidden.length === 0, `Feature flags no permitidos en CI: ${forbidden.join(", ")}`);
-  invariant(String(process.env.DB01I_VEHICLE_ENGINE_MODE || "LEGACY_ONLY").toUpperCase() === "LEGACY_ONLY", "Modo de vehículos no permitido");
+  invariant(String(env.DB01F_RISK_ENGINE_MODE || "LEGACY_ONLY").toUpperCase() === "LEGACY_ONLY", "Modo de riesgo no permitido");
+  invariant(String(env.DB01I_VEHICLE_ENGINE_MODE || "LEGACY_ONLY").toUpperCase() === "LEGACY_ONLY", "Modo de vehículos no permitido");
+  invariant(new Set(["LEGACY", "LEGACY_ONLY"]).has(String(env.DB01J_CRATE_SETTINGS_AUTHORITY || "LEGACY").toUpperCase()), "Autoridad CrateSettings no permitida");
 }
 
 async function validateDatabase(raw) {
@@ -182,9 +254,10 @@ export async function validateCanonicalCi({ phase = "database" } = {}) {
   const migrations = validateMigrationFiles();
   const trackedFileCount = validateTrackedSecrets();
   const runtimeFilesChecked = validateFixtureRuntimeIsolation();
+  const db01RuntimeFilesChecked = validateDb01RuntimeActivation();
   validateRuntimeDefaults();
   const database = phase === "database" ? await validateDatabase(process.env.DATABASE_URL) : null;
-  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, runtimeFilesChecked, database };
+  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, runtimeFilesChecked, db01RuntimeFilesChecked, database };
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";

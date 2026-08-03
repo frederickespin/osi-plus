@@ -86,7 +86,9 @@ jobs:
         run: npm ci
 
       - name: Validate local target and active chain
-        run: node scripts/validate-canonical-ci.mjs --preflight
+        run: |
+          node scripts/validate-canonical-ci.mjs --preflight
+          node scripts/validate-canonical-activation-guard-test.mjs
 
       - name: Validate and generate Prisma
         run: |

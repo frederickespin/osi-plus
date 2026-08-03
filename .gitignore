@@ -45,3 +45,7 @@ coverage
 .temp
 .tmp
 .vercel
+
+# Isolated local infrastructure and regenerated Prisma clients for DB-01.
+.local/mt01a-postgres-18/
+prisma/db01/generated/

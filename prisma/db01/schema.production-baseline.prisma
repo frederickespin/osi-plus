@@ -1,0 +1,2041 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DB01_DATABASE_URL")
+}
+
+model account_contacts {
+  id                String   @id
+  account_id        String
+  contact_id        String
+  relationship_role String
+  accounts          accounts @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  contacts          contacts @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+
+  @@unique([account_id, contact_id, relationship_role])
+}
+
+model account_pricing_profiles {
+  id                         String                       @id
+  account_id                 String
+  base_master_tariff_id      String
+  currency_override          String?
+  valid_from                 DateTime?
+  valid_to                   DateTime?
+  global_markup_pct          Decimal?                     @db.Decimal(7, 4)
+  global_discount_pct        Decimal?                     @db.Decimal(7, 4)
+  is_active                  Boolean                      @default(true)
+  notes                      String?
+  air_markup_pct             Decimal?                     @db.Decimal(7, 4)
+  air_min_kg                 Decimal?                     @db.Decimal(14, 4)
+  lcl_markup_pct             Decimal?                     @db.Decimal(7, 4)
+  lcl_min_wm                 Decimal?                     @db.Decimal(14, 4)
+  fcl_markup_pct             Decimal?                     @db.Decimal(7, 4)
+  local_markup_pct           Decimal?                     @db.Decimal(7, 4)
+  local_min_hours            Decimal?                     @db.Decimal(14, 4)
+  local_base_zone_km         Decimal?                     @db.Decimal(14, 4)
+  local_per_km_rate          Decimal?                     @db.Decimal(14, 4)
+  local_min_trip_fee         Decimal?                     @db.Decimal(14, 4)
+  after_hours_multiplier     Decimal?                     @db.Decimal(10, 4)
+  weekend_multiplier         Decimal?                     @db.Decimal(10, 4)
+  holiday_multiplier         Decimal?                     @db.Decimal(10, 4)
+  created_at                 DateTime                     @default(now())
+  updated_at                 DateTime
+  code                       String                       @unique
+  service_type               String?
+  service_mode               String?
+  customer_type              String?
+  accounts                   accounts                     @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  master_tariffs             master_tariffs               @relation(fields: [base_master_tariff_id], references: [id])
+  account_surcharge_policies account_surcharge_policies[]
+  tariff_overrides           tariff_overrides[]
+
+  @@index([account_id, is_active])
+  @@index([base_master_tariff_id, is_active])
+  @@index([service_type, service_mode, customer_type, is_active], map: "account_pricing_profiles_service_type_service_mode_customer_typ")
+}
+
+model account_surcharge_policies {
+  id                       String                   @id
+  profile_id               String
+  surcharge_code           String
+  handling                 AccountSurchargeHandling
+  override_rate            Decimal?                 @db.Decimal(14, 4)
+  meta                     Json                     @default("{}")
+  created_at               DateTime                 @default(now())
+  updated_at               DateTime
+  account_pricing_profiles account_pricing_profiles @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  surcharge_catalog        surcharge_catalog        @relation(fields: [surcharge_code], references: [code])
+
+  @@unique([profile_id, surcharge_code])
+  @@index([surcharge_code])
+}
+
+model accounts {
+  id                       String                     @id
+  account_type             AccountType
+  legal_name               String
+  tax_id                   String?
+  default_currency         String
+  billing_preferences      String?
+  payment_instructions     String?
+  created_at               DateTime                   @default(now())
+  updated_at               DateTime                   @default(now())
+  account_contacts         account_contacts[]
+  account_pricing_profiles account_pricing_profiles[]
+  service_cases            service_cases[]
+}
+
+model business_entities {
+  id                    String                  @id
+  code                  String                  @unique
+  legal_name            String
+  trade_name            String?
+  entity_kind           EntityKind
+  tax_id                String?
+  country_code          String?
+  phone                 String?
+  email                 String?
+  website               String?
+  notes                 String?
+  is_active             Boolean                 @default(true)
+  created_at            DateTime                @default(now())
+  updated_at            DateTime
+  business_entity_types business_entity_types[]
+  commission_agreements commission_agreements[]
+  entity_contacts       entity_contacts[]
+  lead_commissions      lead_commissions[]
+  lead_parties          lead_parties[]
+
+  @@index([entity_kind, is_active])
+  @@index([legal_name])
+}
+
+model business_entity_types {
+  id                 String            @id
+  business_entity_id String
+  entity_type_id     String
+  created_at         DateTime          @default(now())
+  business_entities  business_entities @relation(fields: [business_entity_id], references: [id], onDelete: Cascade)
+  entity_types       entity_types      @relation(fields: [entity_type_id], references: [id], onDelete: Cascade)
+
+  @@unique([business_entity_id, entity_type_id])
+  @@index([entity_type_id])
+}
+
+model case_milestones {
+  id                  String        @id
+  case_id             String        @unique
+  first_response_at   DateTime?
+  icp_completed_at    DateTime?
+  survey_scheduled_at DateTime?
+  survey_completed_at DateTime?
+  estimate_sent_at    DateTime?
+  final_quote_sent_at DateTime?
+  approved_at         DateTime?
+  ops_handoff_at      DateTime?
+  closed_at           DateTime?
+  close_reason        String?
+  service_cases       service_cases @relation(fields: [case_id], references: [id], onDelete: Cascade)
+
+  @@index([final_quote_sent_at])
+  @@index([first_response_at])
+}
+
+model catalog_assumptions {
+  id          String   @id
+  code        String   @unique
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+}
+
+model catalog_materials {
+  id          String   @id
+  code        String   @unique
+  name        String
+  description String?
+  unit        String?
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+}
+
+model catalog_service_flags {
+  id          String   @id
+  code        String   @unique
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+}
+
+model catalog_service_types {
+  id          String   @id
+  code        String   @unique
+  name        String
+  category    String
+  mode_policy String
+  fixed_mode  String?
+  active      Boolean  @default(true)
+  metadata    Json     @default("{}")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+}
+
+model catalog_special_handling {
+  id          String   @id
+  code        String   @unique
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+}
+
+model catalog_surcharges {
+  id           String   @id
+  code         String   @unique
+  name         String
+  description  String?
+  default_unit String?
+  active       Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now())
+}
+
+model code_sequences {
+  key        String   @id
+  value      Int      @default(0)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model commission_agreements {
+  id                 String                 @id
+  business_entity_id String
+  applies_to         CommissionAppliesTo
+  commission_type    CommissionType
+  commission_value   Decimal                @db.Decimal(12, 2)
+  currency           String
+  service_type       CommercialServiceType?
+  valid_from         DateTime?
+  valid_to           DateTime?
+  notes              String?
+  is_active          Boolean                @default(true)
+  created_at         DateTime               @default(now())
+  updated_at         DateTime
+  business_entities  business_entities      @relation(fields: [business_entity_id], references: [id], onDelete: Cascade)
+  lead_commissions   lead_commissions[]
+
+  @@index([business_entity_id, is_active])
+}
+
+model contacts {
+  id                                                        String             @id
+  full_name                                                 String
+  phones                                                    Json               @default("[]")
+  emails                                                    Json               @default("[]")
+  whatsapp                                                  String?
+  created_at                                                DateTime           @default(now())
+  updated_at                                                DateTime           @default(now())
+  account_contacts                                          account_contacts[]
+  events                                                    events[]
+  service_cases_service_cases_approver_contact_idTocontacts service_cases[]    @relation("service_cases_approver_contact_idTocontacts")
+  service_cases_service_cases_owner_contact_idTocontacts    service_cases[]    @relation("service_cases_owner_contact_idTocontacts")
+  service_cases_service_cases_payer_contact_idTocontacts    service_cases[]    @relation("service_cases_payer_contact_idTocontacts")
+  service_cases_service_cases_primary_contact_idTocontacts  service_cases[]    @relation("service_cases_primary_contact_idTocontacts")
+  surveys                                                   surveys[]
+}
+
+model crating_requests {
+  id                      String               @id
+  case_id                 String
+  quote_id                String?
+  status                  CratingRequestStatus
+  items                   Json                 @default("[]")
+  output_cost_summary     Json                 @default("{}")
+  generated_line_item_ids Json                 @default("[]")
+  created_at              DateTime             @default(now())
+  updated_at              DateTime             @default(now())
+  service_cases           service_cases        @relation(fields: [case_id], references: [id], onDelete: Cascade)
+  quotes                  quotes?              @relation(fields: [quote_id], references: [id])
+}
+
+model entity_contacts {
+  id                 String            @id
+  business_entity_id String
+  full_name          String
+  position           String?
+  email              String?
+  phone              String?
+  mobile             String?
+  is_primary         Boolean           @default(false)
+  notes              String?
+  created_at         DateTime          @default(now())
+  updated_at         DateTime
+  business_entities  business_entities @relation(fields: [business_entity_id], references: [id], onDelete: Cascade)
+  lead_parties       lead_parties[]
+
+  @@index([business_entity_id, is_primary])
+}
+
+model entity_types {
+  id                    String                  @id
+  code                  EntityTypeCode          @unique
+  name                  String
+  description           String?
+  business_entity_types business_entity_types[]
+}
+
+model evaluator_article_catalog_snapshots {
+  id         String   @id
+  version    Int
+  items      Json     @default("[]")
+  updated_at DateTime
+  updated_by String?
+}
+
+model evaluator_visit_reports {
+  id                String   @id
+  external_visit_id String   @unique
+  case_id           String
+  case_code         String
+  status            String   @default("SUBMITTED")
+  payload_hash      String
+  payload           Json
+  item_count        Int      @default(0)
+  piece_count       Int      @default(0)
+  photo_count       Int      @default(0)
+  revision          Int      @default(1)
+  received_at       DateTime @default(now())
+  confirmed_at      DateTime @default(now())
+  submitted_by      String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime
+
+  @@index([case_id, confirmed_at])
+  @@index([status, confirmed_at])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model events {
+  id                     String                @id
+  case_id                String
+  event_type             CommercialEventType
+  start_at               DateTime
+  end_at                 DateTime
+  status                 CommercialEventStatus @default(SCHEDULED)
+  assigned_to_contact_id String?
+  location_id            String?
+  notes                  String?
+  meta                   Json                  @default("{}")
+  created_at             DateTime              @default(now())
+  updated_at             DateTime              @default(now())
+  contacts               contacts?             @relation(fields: [assigned_to_contact_id], references: [id])
+  service_cases          service_cases         @relation(fields: [case_id], references: [id], onDelete: Cascade)
+  locations              locations?            @relation(fields: [location_id], references: [id])
+
+  @@index([case_id, event_type, start_at])
+}
+
+model global_commercial_settings {
+  id                        String    @id
+  version                   Int
+  is_active                 Boolean   @default(false)
+  is_scheduled              Boolean   @default(false)
+  scheduled_activation_date DateTime? @db.Date
+  activated_at              DateTime?
+  activated_by              String?
+  created_by                String
+  km_metro                  Int
+  km_interior               Int
+  tarifa_base               Decimal   @db.Decimal(10, 2)
+  visit_fee_minimo          Decimal   @db.Decimal(10, 2)
+  margen_minimo             Decimal   @db.Decimal(5, 2)
+  hub_principal_id          String
+  created_at                DateTime  @default(now())
+  transport_minimo          Decimal   @default(0) @db.Decimal(10, 2)
+  osi_hubs                  osi_hubs  @relation(fields: [hub_principal_id], references: [id])
+
+  @@index([is_active])
+  @@index([is_scheduled])
+  @@index([version])
+}
+
+model lead_addresses {
+  id            String      @id
+  lead_id       String
+  address_role  AddressRole
+  country       String?
+  city          String?
+  state         String?
+  postal_code   String?
+  address_line1 String?
+  address_line2 String?
+  notes         String?
+  created_at    DateTime    @default(now())
+  osi_leads     osi_leads   @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@index([lead_id, address_role])
+}
+
+model lead_commissions {
+  id                      String                 @id
+  lead_id                 String
+  referral_entity_id      String
+  commission_agreement_id String?
+  base_amount             Decimal                @db.Decimal(14, 2)
+  commission_type         CommissionType
+  commission_value        Decimal                @db.Decimal(12, 2)
+  commission_amount       Decimal                @db.Decimal(14, 2)
+  currency                String
+  status                  CommissionStatus       @default(PENDING)
+  notes                   String?
+  created_at              DateTime               @default(now())
+  updated_at              DateTime
+  commission_agreements   commission_agreements? @relation(fields: [commission_agreement_id], references: [id])
+  osi_leads               osi_leads              @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  business_entities       business_entities      @relation(fields: [referral_entity_id], references: [id])
+
+  @@index([lead_id, status])
+  @@index([referral_entity_id, status])
+}
+
+model lead_parties {
+  id                 String            @id
+  lead_id            String
+  business_entity_id String
+  contact_id         String?
+  role               LeadPartyRole
+  is_primary         Boolean           @default(false)
+  notes              String?
+  created_at         DateTime          @default(now())
+  business_entities  business_entities @relation(fields: [business_entity_id], references: [id])
+  entity_contacts    entity_contacts?  @relation(fields: [contact_id], references: [id])
+  osi_leads          osi_leads         @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@index([business_entity_id])
+  @@index([contact_id])
+  @@index([lead_id, role])
+}
+
+model lead_service_requirements {
+  id              String            @id
+  lead_service_id String
+  requirement_key String
+  status          RequirementStatus @default(PENDING)
+  notes           String?
+  created_at      DateTime          @default(now())
+  updated_at      DateTime
+  lead_services   lead_services     @relation(fields: [lead_service_id], references: [id], onDelete: Cascade)
+
+  @@index([lead_service_id, status])
+}
+
+model lead_services {
+  id                        String                      @id
+  lead_id                   String
+  service_type              CommercialServiceType
+  is_primary                Boolean                     @default(false)
+  sequence                  Int?
+  notes                     String?
+  created_at                DateTime                    @default(now())
+  lead_service_requirements lead_service_requirements[]
+  osi_leads                 osi_leads                   @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@index([lead_id, service_type])
+}
+
+model lead_stage_history {
+  id                 String     @id
+  lead_id            String
+  from_stage         LeadStage?
+  to_stage           LeadStage
+  changed_by_user_id String?
+  comment            String?
+  created_at         DateTime   @default(now())
+  osi_leads          osi_leads  @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+
+  @@index([lead_id, created_at])
+  @@index([to_stage, created_at])
+}
+
+model location_access_profiles {
+  id                 String            @id
+  location_id        String            @unique
+  floor_number       Int?
+  elevator_available Boolean           @default(false)
+  elevator_notes     String?
+  stairs_floors      Int?
+  parking_difficulty ParkingDifficulty @default(MEDIUM)
+  long_carry_band    LongCarryBand     @default(NONE)
+  truck_restrictions String?
+  building_rules     String?
+  risk_notes         String?
+  photos_asset_ids   Json              @default("[]")
+  updated_at         DateTime          @default(now())
+  locations          locations         @relation(fields: [location_id], references: [id], onDelete: Cascade)
+}
+
+model locations {
+  id                                                             String                    @id
+  label                                                          String
+  address_line                                                   String
+  sector                                                         String?
+  city                                                           String
+  province                                                       String?
+  country                                                        String
+  geo_lat                                                        Decimal?                  @db.Decimal(10, 7)
+  geo_lng                                                        Decimal?                  @db.Decimal(10, 7)
+  location_type                                                  LocationType
+  created_at                                                     DateTime                  @default(now())
+  updated_at                                                     DateTime                  @default(now())
+  events                                                         events[]
+  location_access_profiles                                       location_access_profiles?
+  service_cases_service_cases_destination_location_idTolocations service_cases[]           @relation("service_cases_destination_location_idTolocations")
+  service_cases_service_cases_origin_location_idTolocations      service_cases[]           @relation("service_cases_origin_location_idTolocations")
+
+  @@index([city, sector])
+}
+
+model master_tariffs {
+  id                       String                     @id
+  code                     String                     @unique
+  name                     String
+  scope                    MasterTariffScope
+  currency                 String
+  is_active                Boolean                    @default(true)
+  notes                    String?
+  created_at               DateTime                   @default(now())
+  updated_at               DateTime
+  coverage_options         Json                       @default("[]")
+  service_rules            Json                       @default("[]")
+  account_pricing_profiles account_pricing_profiles[]
+  tariff_rate_sets         tariff_rate_sets[]
+
+  @@index([currency, is_active])
+  @@index([scope, is_active])
+}
+
+model operational_compensation_configs {
+  id         String   @id
+  version    Int
+  data       Json
+  updated_at DateTime
+  updated_by String?
+}
+
+model osi_clients {
+  id                        String              @id
+  code                      String              @unique
+  name                      String
+  email                     String
+  phone                     String
+  address                   String
+  type                      String
+  status                    String
+  totalServices             Int                 @default(0)
+  lastService               String?
+  createdAt                 String
+  fiscalName                String?
+  taxId                     String?
+  billingAddress            String?
+  paymentMethod             String?
+  currency                  String?
+  paymentTerms              String?
+  accountsPayableName       String?
+  accountsPayableEmail      String?
+  accountsPayablePhone      String?
+  complianceNotes           String?
+  kycCompleted              Boolean             @default(false)
+  normalizedPhone           String?
+  billingTaxId              String?
+  serviceOriginAddress      String?
+  serviceDestinationAddress String?
+  updatedAt                 DateTime            @default(now())
+  osi_kyc_documents         osi_kyc_documents[]
+  osi_leads                 osi_leads[]
+  osi_projects              osi_projects[]
+  osi_surveys               osi_surveys[]
+}
+
+model osi_escalation_events {
+  id                             String                          @id
+  type                           String
+  message                        String
+  targetRoles                    String[]
+  suggestionId                   String?
+  createdAt                      DateTime                        @default(now())
+  resolvedAt                     DateTime?
+  resolvedById                   String?
+  metadataJson                   Json?
+  osi_ptf_adjustment_suggestions osi_ptf_adjustment_suggestions? @relation(fields: [suggestionId], references: [id])
+
+  @@index([createdAt])
+  @@index([suggestionId])
+}
+
+model osi_hubs {
+  id                         String                       @id
+  name                       String
+  lat                        Float
+  lng                        Float
+  active                     Boolean                      @default(true)
+  priority                   Int                          @default(1)
+  created_at                 DateTime                     @default(now())
+  global_commercial_settings global_commercial_settings[]
+
+  @@index([active, priority])
+}
+
+model osi_kyc_documents {
+  id             String            @id
+  leadId         String?
+  clientId       String?
+  type           KycDocumentType
+  url            String
+  status         KycDocumentStatus @default(UPLOADED)
+  note           String?
+  uploadedByRole String?
+  uploadedAt     DateTime          @default(now())
+  verifiedAt     DateTime?
+  osi_clients    osi_clients?      @relation(fields: [clientId], references: [id])
+  osi_leads      osi_leads?        @relation(fields: [leadId], references: [id])
+
+  @@index([clientId, type])
+  @@index([leadId, type])
+  @@index([status, uploadedAt])
+}
+
+model osi_lead_audit_logs {
+  id         String     @id
+  leadId     String
+  actorId    String?
+  actorRole  String
+  action     String
+  note       String?
+  beforeJson Json?
+  afterJson  Json?
+  createdAt  DateTime   @default(now())
+  osi_users  osi_users? @relation(fields: [actorId], references: [id])
+  osi_leads  osi_leads  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+}
+
+model osi_lead_volume_estimates {
+  id                       String                   @id
+  leadId                   String                   @unique
+  areaProfileId            String
+  estimatedM3Base          Float
+  adjustmentPct            Float                    @default(0)
+  estimatedM3Final         Float
+  confidence               LeadEstimateConfidence   @default(MED)
+  notes                    String?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @default(now())
+  updatedById              String?
+  osi_volume_area_profiles osi_volume_area_profiles @relation(fields: [areaProfileId], references: [id])
+  osi_leads                osi_leads                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  osi_users                osi_users?               @relation(fields: [updatedById], references: [id])
+
+  @@index([areaProfileId, updatedAt])
+  @@index([confidence, updatedAt])
+}
+
+model osi_leads {
+  id                        String                     @id
+  code                      String                     @unique
+  status                    String
+  leadType                  LeadType?
+  channel                   String?
+  clientName                String
+  phone                     String?
+  email                     String?
+  preliminaryOriginAddress  String?
+  estimatedServiceType      String?
+  estimatedMoveDate         String?
+  pstCode                   String?
+  originAddress             String?
+  destinationAddress        String?
+  originFloor               String?
+  destinationFloor          String?
+  accessType                String?
+  allowedTimeWindow         String?
+  serviceResponsibleName    String?
+  paymentResponsibleName    String?
+  billingCompanyName        String?
+  surveyMethod              String?
+  geoDistanceKm             Float?
+  geoValidated              Boolean                    @default(false)
+  viaticInformed            Boolean                    @default(false)
+  acceptanceStatus          AcceptanceStatus           @default(PENDING)
+  acceptanceEvidence        String?
+  acceptanceNote            String?
+  conversionStatus          LeadConversionStatus       @default(PENDING)
+  confirmedServiceDate      String?
+  lostReason                String?
+  lostReasonNote            String?
+  fiscalData                Json?
+  kycRequired               Boolean                    @default(false)
+  kycCompleted              Boolean                    @default(false)
+  nestingRequired           Boolean                    @default(false)
+  nestingCompleted          Boolean                    @default(false)
+  fileNumber                String?
+  convertedAt               DateTime?
+  sentToKAt                 DateTime?
+  gatewayCompletedAt        DateTime?
+  createdByRole             String?
+  updatedByRole             String?
+  customerId                String?
+  projectId                 String?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @default(now())
+  surveyRequired            Boolean                    @default(false)
+  surveyStatus              SurveyStatus               @default(NOT_STARTED)
+  surveyCompletedAt         DateTime?
+  surveyFlagsJson           Json?
+  surveySummaryJson         Json?
+  originCountryCode         String?
+  destinationCountryCode    String?
+  derivedMode               LeadDerivedMode            @default(PENDING)
+  modeUpdatedAt             DateTime?
+  visitSkipped              Boolean                    @default(false)
+  visitSkipReason           String?
+  visitSkipAt               DateTime?
+  title                     String?
+  source_channel_v2         LeadSourceChannel?
+  stage_v2                  LeadStage?
+  service_scope_v2          CommercialServiceType?
+  lead_addresses            lead_addresses[]
+  lead_commissions          lead_commissions[]
+  lead_parties              lead_parties[]
+  lead_services             lead_services[]
+  lead_stage_history        lead_stage_history[]
+  osi_kyc_documents         osi_kyc_documents[]
+  osi_lead_audit_logs       osi_lead_audit_logs[]
+  osi_lead_volume_estimates osi_lead_volume_estimates?
+  osi_clients               osi_clients?               @relation(fields: [customerId], references: [id])
+  osi_projects              osi_projects?              @relation(fields: [projectId], references: [id])
+  osi_surveys               osi_surveys[]
+
+  @@index([customerId])
+  @@index([derivedMode, modeUpdatedAt])
+  @@index([leadType, conversionStatus])
+  @@index([projectId])
+  @@index([source_channel_v2, updatedAt])
+  @@index([stage_v2, updatedAt])
+  @@index([status, updatedAt])
+}
+
+model osi_osi_change_logs {
+  id          String   @id
+  osiId       String
+  actorUserId String?
+  actorRole   String
+  action      String
+  fieldPath   String?
+  beforeJson  Json?
+  afterJson   Json?
+  reason      String?
+  createdAt   DateTime @default(now())
+  osi_osis    osi_osis @relation(fields: [osiId], references: [id], onDelete: Cascade)
+
+  @@index([osiId, createdAt])
+}
+
+model osi_osi_handshakes {
+  id          String             @id
+  osiId       String
+  status      OsiHandshakeStatus @default(PENDING)
+  fromRole    String
+  fromUserId  String?
+  toRole      String
+  toUserId    String?
+  type        String             @default("TACTICAL_TRANSFER")
+  timestamp   DateTime           @default(now())
+  completedAt DateTime?
+  notes       String?
+  payloadJson Json?
+  createdAt   DateTime           @default(now())
+  osi_osis    osi_osis           @relation(fields: [osiId], references: [id], onDelete: Cascade)
+
+  @@index([osiId, status])
+}
+
+model osi_osi_material_returns {
+  id             String   @id
+  osiId          String
+  pstCode        String?
+  ptfCode        String?
+  dispatchedJson Json
+  returnedJson   Json
+  deviationJson  Json
+  recordedById   String?
+  recordedByRole String?
+  recordedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  osi_osis       osi_osis @relation(fields: [osiId], references: [id], onDelete: Cascade)
+
+  @@index([osiId, recordedAt])
+  @@index([pstCode, recordedAt])
+}
+
+model osi_osis {
+  id                       String                     @id
+  code                     String                     @unique
+  projectId                String
+  projectCode              String
+  clientId                 String
+  clientName               String
+  status                   String
+  type                     String
+  origin                   String
+  destination              String
+  scheduledDate            String
+  createdAt                String
+  assignedTo               String?
+  team                     String[]
+  vehicles                 String[]
+  value                    Float
+  notes                    String?
+  custodyStatus            OsiCustodyStatus           @default(DRIVER)
+  custodyTransferredAt     DateTime?
+  driverAvailable          Boolean                    @default(false)
+  driverId                 String?
+  ecoPoints                Int?
+  endedAt                  DateTime?
+  kind                     OsiKind                    @default(EXTERNAL)
+  lastMaterialDeviation    Json?
+  npsScore                 Int?
+  petCode                  String?
+  petEditedManually        Boolean                    @default(false)
+  petPlan                  Json?
+  pstCode                  String?
+  pstTemplateVersionId     String?
+  ptfCode                  String?
+  ptfEditedManually        Boolean                    @default(false)
+  ptfMaterialPlan          Json?
+  scheduledEndAt           String?
+  scheduledStartAt         String?
+  startedAt                DateTime?
+  supervisorId             String?
+  supervisorNotes          String?
+  vehicleAvailable         Boolean                    @default(false)
+  osi_osi_change_logs      osi_osi_change_logs[]
+  osi_osi_handshakes       osi_osi_handshakes[]
+  osi_osi_material_returns osi_osi_material_returns[]
+  osi_projects             osi_projects               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model osi_pipeline_case_quotes {
+  id                 String             @id
+  caseId             String
+  level              PipelineQuoteLevel
+  version            Int                @default(1)
+  status             String             @default("DRAFT")
+  sentAt             DateTime?
+  validUntil         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @default(now())
+  osi_pipeline_cases osi_pipeline_cases @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, version])
+  @@index([status, updatedAt])
+}
+
+model osi_pipeline_cases {
+  id                            String                         @id
+  caseCode                      String                         @unique
+  clientName                    String?
+  mode                          PipelineMode
+  serviceType                   String
+  customerType                  PipelineCustomerType
+  status                        PipelineCaseStatus             @default(NEW_INBOX)
+  ownerId                       String?
+  ownerName                     String
+  estimatedCbm                  Float                          @default(0)
+  requiresSurvey                Boolean                        @default(false)
+  surveyMethod                  PipelineSurveyMethod           @default(NO_APLICA)
+  flags                         String[]                       @default([])
+  milestonesJson                Json?
+  originLocation                String
+  destinationLocation           String
+  destinationContracted         Boolean                        @default(true)
+  destinationOverrideType       String?
+  destinationAcceptanceUploaded Boolean                        @default(false)
+  noDestinationCaseType         String?
+  assetsCount                   Int                            @default(0)
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @default(now())
+  osi_pipeline_case_quotes      osi_pipeline_case_quotes[]
+  osi_users                     osi_users?                     @relation(fields: [ownerId], references: [id])
+  osi_pipeline_crating_requests osi_pipeline_crating_requests?
+  osi_pipeline_events           osi_pipeline_events[]
+
+  @@index([createdAt])
+  @@index([mode, status, updatedAt])
+  @@index([ownerId, status, updatedAt])
+}
+
+model osi_pipeline_crating_requests {
+  id                 String             @id
+  caseId             String             @unique
+  code               String?
+  status             String             @default("PENDING")
+  estimateReady      Boolean            @default(false)
+  payloadJson        Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @default(now())
+  osi_pipeline_cases osi_pipeline_cases @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
+}
+
+model osi_pipeline_events {
+  id                 String              @id
+  caseId             String
+  eventType          PipelineEventType
+  status             PipelineEventStatus @default(PENDING)
+  startAt            DateTime
+  code               String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @default(now())
+  osi_pipeline_cases osi_pipeline_cases  @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, startAt])
+  @@index([code])
+  @@index([eventType, startAt])
+}
+
+model osi_project_coordination {
+  id                                      String                                    @id
+  project_id                              String                                    @unique
+  status                                  String
+  requirements_json                       Json                                      @default("{}")
+  milestones_json                         Json                                      @default("[]")
+  documents_json                          Json                                      @default("[]")
+  created_at                              DateTime                                  @default(now())
+  updated_at                              DateTime
+  osi_projects                            osi_projects                              @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  osi_project_coordination_communications osi_project_coordination_communications[]
+}
+
+model osi_project_coordination_communications {
+  id                       String                   @id
+  coordination_id          String
+  template_key             String
+  channel                  String
+  subject                  String?
+  content                  String
+  recipient_name           String?
+  recipient_email          String?
+  sent_by_id               String?
+  sent_by_role             String?
+  sent_at                  DateTime
+  created_at               DateTime                 @default(now())
+  osi_project_coordination osi_project_coordination @relation(fields: [coordination_id], references: [id], onDelete: Cascade)
+
+  @@index([coordination_id, sent_at], map: "osi_project_coordination_communications_coordination_id_sent_at")
+}
+
+model osi_project_pgd {
+  id                    String                  @id
+  projectId             String                  @unique
+  templateId            String
+  templateVersionId     String
+  appliedAt             DateTime                @default(now())
+  appliedById           String?
+  osi_users             osi_users?              @relation(fields: [appliedById], references: [id])
+  osi_projects          osi_projects            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  osi_templates         osi_templates           @relation(fields: [templateId], references: [id])
+  osi_template_versions osi_template_versions   @relation(fields: [templateVersionId], references: [id])
+  osi_project_pgd_items osi_project_pgd_items[]
+}
+
+model osi_project_pgd_items {
+  id               String          @id
+  projectPgdId     String
+  name             String
+  visibility       PgdVisibility
+  responsible      PgdResponsible
+  isBlocking       Boolean         @default(false)
+  expectedFileType PgdFileType     @default(OTHER)
+  serviceTags      String[]
+  status           PgdItemStatus   @default(MISSING)
+  validatedAt      DateTime?
+  validatedById    String?
+  note             String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime
+  osi_project_pgd  osi_project_pgd @relation(fields: [projectPgdId], references: [id], onDelete: Cascade)
+  osi_users        osi_users?      @relation(fields: [validatedById], references: [id])
+
+  @@index([projectPgdId, status])
+}
+
+model osi_project_signals {
+  id           String       @id
+  projectId    String
+  kind         SignalKind
+  policy       SignalPolicy
+  warnAt       DateTime?
+  dueAt        DateTime?
+  doneAt       DateTime?
+  ackAt        DateTime?
+  ackNote      String?
+  ackById      String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime
+  osi_users    osi_users?   @relation(fields: [ackById], references: [id])
+  osi_projects osi_projects @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, kind])
+  @@index([projectId, kind])
+}
+
+model osi_projects {
+  id                       String                    @id
+  code                     String                    @unique
+  name                     String
+  clientId                 String
+  clientName               String
+  status                   String
+  startDate                String
+  endDate                  String?
+  osiCount                 Int                       @default(0)
+  totalValue               Float                     @default(0)
+  assignedTo               String?
+  notes                    String?
+  kReleasedAt              DateTime?
+  kState                   ProjectKState             @default(PENDING_VALIDATION)
+  kValidatedAt             DateTime?
+  leadId                   String?
+  pstCode                  String?
+  pstServiceName           String?
+  quoteId                  String?
+  fileNumber               String?                   @unique
+  osi_leads                osi_leads[]
+  osi_osis                 osi_osis[]
+  osi_project_coordination osi_project_coordination?
+  osi_project_pgd          osi_project_pgd?
+  osi_project_signals      osi_project_signals[]
+  osi_clients              osi_clients               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  osi_surveys              osi_surveys[]
+}
+
+model osi_ptf_adjustment_suggestions {
+  id                    String                  @id
+  pstCode               String
+  ptfCode               String?
+  status                PtfSuggestionStatus     @default(PENDING)
+  basedOnOsiIds         String[]
+  occurrences           Int                     @default(0)
+  recommendedDelta      Json
+  reason                String?
+  ignoredCount          Int                     @default(0)
+  lastIgnoredAt         DateTime?
+  lastActionById        String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime
+  osi_escalation_events osi_escalation_events[]
+
+  @@index([pstCode, status, createdAt])
+}
+
+model osi_survey_item_nesting {
+  id               String              @id
+  surveyItemId     String              @unique
+  realLength       Float?
+  realWidth        Float?
+  realHeight       Float?
+  unit             SurveyDimensionUnit @default(CM)
+  technicalNote    String?
+  ispm15Required   Boolean             @default(false)
+  fragileTier      String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @default(now())
+  osi_survey_items osi_survey_items    @relation(fields: [surveyItemId], references: [id], onDelete: Cascade)
+}
+
+model osi_survey_items {
+  id                      String                   @id
+  surveyId                String
+  roomId                  String?
+  itemRef                 String?
+  itemName                String?
+  quantity                Int                      @default(1)
+  packLevel               SurveyPackLevel          @default(P1)
+  needsDisassembly        Boolean                  @default(false)
+  notes                   String?
+  unitVolume              Float?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @default(now())
+  osi_survey_item_nesting osi_survey_item_nesting?
+  osi_survey_rooms        osi_survey_rooms?        @relation(fields: [roomId], references: [id])
+  osi_surveys             osi_surveys              @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  osi_survey_media        osi_survey_media[]
+
+  @@index([roomId])
+  @@index([surveyId, packLevel])
+}
+
+model osi_survey_media {
+  id               String            @id
+  surveyId         String
+  surveyItemId     String?
+  type             SurveyMediaType   @default(OTHER)
+  url              String
+  description      String?
+  createdAt        DateTime          @default(now())
+  osi_surveys      osi_surveys       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  osi_survey_items osi_survey_items? @relation(fields: [surveyItemId], references: [id])
+
+  @@index([surveyId, type])
+  @@index([surveyItemId, type])
+}
+
+model osi_survey_rooms {
+  id               String             @id
+  surveyId         String
+  name             String
+  sortOrder        Int                @default(0)
+  note             String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @default(now())
+  osi_survey_items osi_survey_items[]
+  osi_surveys      osi_surveys        @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId, sortOrder])
+}
+
+model osi_survey_signatures {
+  id               String      @id
+  surveyId         String      @unique
+  signerName       String?
+  acceptedDigital  Boolean     @default(false)
+  signatureDataUrl String?
+  signatureNote    String?
+  signedAt         DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @default(now())
+  osi_surveys      osi_surveys @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+}
+
+model osi_survey_site_access {
+  id                        String              @id
+  surveyId                  String              @unique
+  propertyType              SurveyPropertyType?
+  floorLevel                Int?
+  elevatorAvailableForMove  Boolean?
+  elevatorDims              Json?
+  stairsType                SurveyStairsType?
+  stairsWidthOk             Boolean?
+  truckParkingDistanceM     Float?
+  timeRestrictionsForTrucks Boolean?
+  timeRestrictionsNote      String?
+  permitsRequired           String[]
+  permitsEvidenceProvided   Boolean             @default(false)
+  permitsTaskCreated        Boolean             @default(false)
+  longCarry                 Boolean             @default(false)
+  stairCarryRisk            Boolean             @default(false)
+  needsPermits              Boolean             @default(false)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @default(now())
+  osi_surveys               osi_surveys         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId, longCarry, stairCarryRisk])
+}
+
+model osi_surveys {
+  id                          String                  @id
+  leadId                      String
+  clientId                    String?
+  projectId                   String?
+  type                        SurveyType              @default(PRESENCIAL)
+  status                      SurveyStatus            @default(IN_PROGRESS)
+  inspectorUserId             String?
+  originAddressId             String?
+  checkInGps                  Json?
+  checkInAt                   DateTime?
+  submittedAt                 DateTime?
+  estimatedTotalVolume        Float?
+  volumeUnit                  String?
+  prohibitedItemsAcknowledged Boolean                 @default(false)
+  riskNotes                   String?
+  longCarry                   Boolean                 @default(false)
+  stairCarryRisk              Boolean                 @default(false)
+  needsPermits                Boolean                 @default(false)
+  needsCratingCount           Int                     @default(0)
+  packP1Count                 Int                     @default(0)
+  packP2Count                 Int                     @default(0)
+  packP3Count                 Int                     @default(0)
+  flagsJson                   Json?
+  summaryJson                 Json?
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @default(now())
+  osi_survey_items            osi_survey_items[]
+  osi_survey_media            osi_survey_media[]
+  osi_survey_rooms            osi_survey_rooms[]
+  osi_survey_signatures       osi_survey_signatures?
+  osi_survey_site_access      osi_survey_site_access?
+  osi_clients                 osi_clients?            @relation(fields: [clientId], references: [id])
+  osi_leads                   osi_leads               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  osi_projects                osi_projects?           @relation(fields: [projectId], references: [id])
+
+  @@index([leadId, createdAt])
+  @@index([status, updatedAt])
+}
+
+model osi_template_versions {
+  id                                                                    String                  @id
+  templateId                                                            String
+  version                                                               Int
+  status                                                                TemplateVersionStatus   @default(DRAFT)
+  contentJson                                                           Json?
+  contentHtml                                                           String?
+  changeSummary                                                         String?
+  requestedAt                                                           DateTime?
+  approvedAt                                                            DateTime?
+  publishedAt                                                           DateTime?
+  createdById                                                           String
+  approvedById                                                          String?
+  rejectedById                                                          String?
+  baseVersionId                                                         String?
+  createdAt                                                             DateTime                @default(now())
+  updatedAt                                                             DateTime
+  osi_project_pgd                                                       osi_project_pgd[]
+  osi_users_osi_template_versions_approvedByIdToosi_users               osi_users?              @relation("osi_template_versions_approvedByIdToosi_users", fields: [approvedById], references: [id])
+  osi_template_versions                                                 osi_template_versions?  @relation("osi_template_versionsToosi_template_versions", fields: [baseVersionId], references: [id])
+  other_osi_template_versions                                           osi_template_versions[] @relation("osi_template_versionsToosi_template_versions")
+  osi_users_osi_template_versions_createdByIdToosi_users                osi_users               @relation("osi_template_versions_createdByIdToosi_users", fields: [createdById], references: [id])
+  osi_users_osi_template_versions_rejectedByIdToosi_users               osi_users?              @relation("osi_template_versions_rejectedByIdToosi_users", fields: [rejectedById], references: [id])
+  osi_templates_osi_template_versions_templateIdToosi_templates         osi_templates           @relation("osi_template_versions_templateIdToosi_templates", fields: [templateId], references: [id], onDelete: Cascade)
+  osi_templates_osi_templates_publishedVersionIdToosi_template_versions osi_templates[]         @relation("osi_templates_publishedVersionIdToosi_template_versions")
+
+  @@unique([templateId, version])
+  @@index([status, createdAt])
+  @@index([templateId, status])
+}
+
+model osi_templates {
+  id                                                                            String                  @id
+  type                                                                          TemplateType
+  name                                                                          String
+  scope                                                                         TemplateScope           @default(TENANT)
+  tenantId                                                                      String?
+  isActive                                                                      Boolean                 @default(true)
+  publishedVersionId                                                            String?
+  createdAt                                                                     DateTime                @default(now())
+  updatedAt                                                                     DateTime
+  osi_project_pgd                                                               osi_project_pgd[]
+  osi_template_versions_osi_template_versions_templateIdToosi_templates         osi_template_versions[] @relation("osi_template_versions_templateIdToosi_templates")
+  osi_template_versions_osi_templates_publishedVersionIdToosi_template_versions osi_template_versions?  @relation("osi_templates_publishedVersionIdToosi_template_versions", fields: [publishedVersionId], references: [id])
+
+  @@unique([type, name, tenantId])
+  @@index([type, tenantId])
+}
+
+model osi_tipos_servicio_config {
+  id                String         @id
+  serviceKey        String         @unique
+  modePolicy        LeadModePolicy @default(FIXED)
+  fixedMode         ServiceMode?
+  surveyRule        SurveyRule     @default(OPTIONAL)
+  surveyThresholdM3 Float?
+  enableModules     Json?
+  active            Boolean        @default(true)
+  updatedAt         DateTime       @default(now())
+  updatedById       String?
+  osi_users         osi_users?     @relation(fields: [updatedById], references: [id])
+
+  @@index([active, serviceKey])
+}
+
+model osi_users {
+  id                                                                  String                      @id
+  code                                                                String                      @unique
+  name                                                                String
+  email                                                               String                      @unique
+  phone                                                               String
+  role                                                                String
+  status                                                              String
+  department                                                          String?
+  joinDate                                                            String
+  points                                                              Int                         @default(0)
+  rating                                                              Float                       @default(0)
+  passwordHash                                                        String
+  createdAt                                                           DateTime                    @default(now())
+  updatedAt                                                           DateTime
+  profilePhotoUrl                                                     String?
+  employeeProfile                                                     Json?
+  osi_lead_audit_logs                                                 osi_lead_audit_logs[]
+  osi_lead_volume_estimates                                           osi_lead_volume_estimates[]
+  osi_pipeline_cases                                                  osi_pipeline_cases[]
+  osi_project_pgd                                                     osi_project_pgd[]
+  osi_project_pgd_items                                               osi_project_pgd_items[]
+  osi_project_signals                                                 osi_project_signals[]
+  osi_template_versions_osi_template_versions_approvedByIdToosi_users osi_template_versions[]     @relation("osi_template_versions_approvedByIdToosi_users")
+  osi_template_versions_osi_template_versions_createdByIdToosi_users  osi_template_versions[]     @relation("osi_template_versions_createdByIdToosi_users")
+  osi_template_versions_osi_template_versions_rejectedByIdToosi_users osi_template_versions[]     @relation("osi_template_versions_rejectedByIdToosi_users")
+  osi_tipos_servicio_config                                           osi_tipos_servicio_config[]
+  osi_volume_area_profiles                                            osi_volume_area_profiles[]
+}
+
+model osi_volume_area_profiles {
+  id                        String                      @id
+  name                      String                      @unique
+  defaultM3                 Float
+  minM3                     Float
+  maxM3                     Float
+  active                    Boolean                     @default(true)
+  updatedAt                 DateTime                    @default(now())
+  updatedById               String?
+  osi_lead_volume_estimates osi_lead_volume_estimates[]
+  osi_users                 osi_users?                  @relation(fields: [updatedById], references: [id])
+
+  @@index([active, updatedAt])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model quote_addendums {
+  id                          String    @id
+  quote_id                    String
+  base_version                Int
+  addendum_number             Int
+  description                 String
+  amount_delta                Float
+  currency                    String
+  status                      String    @default("PENDING")
+  created_at                  DateTime  @default(now())
+  created_by                  String
+  base_approved_amount        Float?
+  cap_percent                 Float     @default(15)
+  financial_nature            String    @default("CUSTOMER_REVENUE")
+  service_classification      String    @default("SCOPE_ADDITION")
+  invoice_treatment           String    @default("ADDITIONAL_LINE")
+  invoice_line_description    String?
+  billing_status              String    @default("PENDING_INVOICE")
+  invoice_reference           String?
+  acceptance_json             Json?
+  evidence_json               Json?
+  operational_adjustment_json Json?
+  approved_at                 DateTime?
+
+  @@index([quote_id, status], map: "quote_addendums_quote_status_idx")
+}
+
+model quote_line_items {
+  id                String        @id
+  quote_id          String
+  block             QuoteBlock
+  item_type         QuoteItemType
+  catalog_code      String?
+  description       String
+  qty               Decimal       @db.Decimal(12, 3)
+  unit              String
+  unit_price        Decimal       @db.Decimal(14, 2)
+  total             Decimal       @db.Decimal(14, 2)
+  evidence_required Boolean       @default(false)
+  notes             String?
+  quotes            quotes        @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+}
+
+model quote_versions {
+  id                          String   @id
+  quote_id                    String
+  version_number              Int
+  data                        Json
+  hub_snapshot                String?
+  vehicle_snapshot            String?
+  zone_origin_snapshot        String?
+  zone_destination_snapshot   String?
+  km_rate_snapshot            Float?
+  free_km_snapshot            Float?
+  surcharge_snapshot          Float?
+  sla_snapshot                Int?
+  margin_snapshot             Float?
+  engine_flags_snapshot       Json?
+  operational_volume_total    Float?
+  operational_volume_source   String?
+  selected_shipping_method    String?
+  operational_volume_snapshot Json?
+  created_at                  DateTime @default(now())
+  created_by                  String
+  quotes                      quotes   @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+
+  @@index([quote_id, version_number])
+}
+
+model quotes {
+  id                  String             @id
+  case_id             String
+  level               QuoteLevel
+  version             Int
+  status              QuoteStatus
+  currency            String
+  payment_terms_text  String?
+  assumptions_codes   Json               @default("[]")
+  exclusions_text     String?
+  change_control_text String?
+  sent_at             DateTime?
+  valid_until         DateTime?
+  created_at          DateTime           @default(now())
+  crating_requests    crating_requests[]
+  quote_line_items    quote_line_items[]
+  quote_versions      quote_versions[]
+  service_cases       service_cases      @relation(fields: [case_id], references: [id], onDelete: Cascade)
+
+  @@unique([case_id, level, version])
+  @@index([case_id, status, sent_at])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model service_cases {
+  id                                                         String                  @id
+  case_code                                                  String                  @unique
+  mode                                                       ServiceCaseMode
+  service_type                                               String
+  customer_type                                              ServiceCaseCustomerType
+  status                                                     ServiceCaseStatus
+  owner_contact_id                                           String?
+  account_id                                                 String?
+  primary_contact_id                                         String
+  payer_contact_id                                           String?
+  approver_contact_id                                        String?
+  origin_location_id                                         String
+  destination_location_id                                    String?
+  blocks                                                     Json                    @default("{}")
+  no_destination_case_type                                   NoDestinationCaseType?
+  no_destination_ack_asset_id                                String?
+  estimated_cbm                                              Decimal?                @db.Decimal(12, 3)
+  survey_method                                              SurveyMethod?
+  requires_survey                                            Boolean                 @default(false)
+  service_flags                                              Json                    @default("[]")
+  created_at                                                 DateTime                @default(now())
+  updated_at                                                 DateTime                @default(now())
+  case_milestones                                            case_milestones?
+  crating_requests                                           crating_requests[]
+  events                                                     events[]
+  quotes                                                     quotes[]
+  accounts                                                   accounts?               @relation(fields: [account_id], references: [id])
+  contacts_service_cases_approver_contact_idTocontacts       contacts?               @relation("service_cases_approver_contact_idTocontacts", fields: [approver_contact_id], references: [id])
+  locations_service_cases_destination_location_idTolocations locations?              @relation("service_cases_destination_location_idTolocations", fields: [destination_location_id], references: [id])
+  locations_service_cases_origin_location_idTolocations      locations               @relation("service_cases_origin_location_idTolocations", fields: [origin_location_id], references: [id])
+  contacts_service_cases_owner_contact_idTocontacts          contacts?               @relation("service_cases_owner_contact_idTocontacts", fields: [owner_contact_id], references: [id])
+  contacts_service_cases_payer_contact_idTocontacts          contacts?               @relation("service_cases_payer_contact_idTocontacts", fields: [payer_contact_id], references: [id])
+  contacts_service_cases_primary_contact_idTocontacts        contacts                @relation("service_cases_primary_contact_idTocontacts", fields: [primary_contact_id], references: [id])
+  surveys                                                    surveys[]
+
+  @@index([case_code])
+  @@index([created_at])
+  @@index([mode, status])
+  @@index([owner_contact_id, status])
+  @@index([service_flags], map: "service_cases_service_flags_gin_idx", type: Gin)
+}
+
+model surcharge_catalog {
+  id                         String                       @id
+  code                       String                       @unique
+  name                       String
+  default_pricing_mode       SurchargePricingMode
+  default_rate               Decimal                      @db.Decimal(14, 4)
+  currency                   String
+  applies_to                 Json                         @default("{}")
+  created_at                 DateTime                     @default(now())
+  updated_at                 DateTime
+  account_surcharge_policies account_surcharge_policies[]
+
+  @@index([currency])
+}
+
+model surveys {
+  id                           String        @id
+  case_id                      String
+  survey_type                  String
+  performed_at                 DateTime
+  performed_by_contact_id      String?
+  origin_access_confirmed      Boolean       @default(false)
+  destination_access_confirmed Boolean       @default(false)
+  volume_estimate              String?
+  inventory_summary            String?
+  special_handling_codes       Json          @default("[]")
+  surcharges_possible_codes    Json          @default("[]")
+  assumptions_codes            Json          @default("[]")
+  evidence_asset_ids           Json          @default("[]")
+  notes                        String?
+  created_at                   DateTime      @default(now())
+  service_cases                service_cases @relation(fields: [case_id], references: [id], onDelete: Cascade)
+  contacts                     contacts?     @relation(fields: [performed_by_contact_id], references: [id])
+}
+
+model tariff_overrides {
+  id                       String                   @id
+  profile_id               String
+  scope                    TariffOverrideScope
+  mode                     TariffRateMode?
+  route_key                String?
+  key                      String
+  value                    Json
+  notes                    String?
+  created_at               DateTime                 @default(now())
+  updated_at               DateTime
+  account_pricing_profiles account_pricing_profiles @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@index([profile_id, scope, mode])
+  @@index([route_key])
+}
+
+model tariff_rate_bands {
+  id               String           @id
+  rate_set_id      String
+  from_value       Decimal          @db.Decimal(14, 4)
+  to_value         Decimal?         @db.Decimal(14, 4)
+  rate             Decimal          @db.Decimal(14, 4)
+  fixed_fee        Decimal?         @db.Decimal(14, 4)
+  unit             String
+  meta             Json             @default("{}")
+  created_at       DateTime         @default(now())
+  updated_at       DateTime
+  tariff_rate_sets tariff_rate_sets @relation(fields: [rate_set_id], references: [id], onDelete: Cascade)
+
+  @@index([rate_set_id, from_value])
+}
+
+model tariff_rate_sets {
+  id                 String              @id
+  master_tariff_id   String
+  mode               TariffRateMode
+  measurement_system String
+  density_reference  Decimal?            @db.Decimal(12, 4)
+  minimum_charge     Decimal?            @db.Decimal(14, 4)
+  base_fee           Decimal?            @db.Decimal(14, 4)
+  meta               Json                @default("{}")
+  created_at         DateTime            @default(now())
+  updated_at         DateTime
+  tariff_rate_bands  tariff_rate_bands[]
+  master_tariffs     master_tariffs      @relation(fields: [master_tariff_id], references: [id], onDelete: Cascade)
+
+  @@index([master_tariff_id, mode])
+}
+
+enum AcceptanceStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum AccountSurchargeHandling {
+  CHARGE
+  INCLUDE
+  DISABLE
+}
+
+enum AccountType {
+  INDIVIDUAL
+  CORPORATE
+  AGENT
+  GOVERNMENT
+  NON_PROFIT
+}
+
+enum AddressRole {
+  ORIGIN
+  DESTINATION
+  PICKUP_LOCAL
+  DELIVERY_LOCAL
+  STORAGE_LOCATION
+  BILLING
+}
+
+enum CommercialEventStatus {
+  SCHEDULED
+  CONFIRMED
+  DONE
+  CANCELLED
+}
+
+enum CommercialEventType {
+  SURVEY
+  FOLLOW_UP
+  DEADLINE
+  SERVICE
+}
+
+enum CommercialServiceType {
+  EXPORT
+  IMPORT
+  LOCAL_ORIGIN
+  LOCAL_DESTINATION
+  LOCAL_INTERNAL
+  STORAGE
+  CRATING
+}
+
+enum CommissionAppliesTo {
+  LEAD
+  INVOICE
+  COLLECTION
+  MARGIN
+}
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  PAYABLE
+  PAID
+  VOID
+}
+
+enum CommissionType {
+  PERCENT
+  FIXED
+}
+
+enum CratingRequestStatus {
+  NEEDED
+  ESTIMATING
+  APPROVED
+  IN_PRODUCTION
+  DELIVERED
+}
+
+enum EntityKind {
+  COMPANY
+  PERSON
+}
+
+enum EntityTypeCode {
+  CLIENT
+  CORPORATE
+  ACCOUNT
+  PARTNER
+  AGENT
+  REFERRER
+  SUPPLIER
+}
+
+enum KycDocumentStatus {
+  UPLOADED
+  VALIDATED
+  REJECTED
+}
+
+enum KycDocumentType {
+  PASSPORT_ID
+  POWER_OF_ATTORNEY
+  VALUATION_LETTER
+  COMPLIANCE_CHECKLIST
+  TAX_REGISTRATION
+  OTHER
+}
+
+enum LeadConversionStatus {
+  PENDING
+  READY
+  CONVERTED
+  SENT_TO_K
+}
+
+enum LeadDerivedMode {
+  NATIONAL
+  IMPORT_EXPORT
+  PENDING
+}
+
+enum LeadEstimateConfidence {
+  LOW
+  MED
+  HIGH
+}
+
+enum LeadModePolicy {
+  FIXED
+  BY_DESTINATION
+}
+
+enum LeadPartyRole {
+  CLIENT
+  BILL_TO
+  ACCOUNT
+  PARTNER
+  REFERRER
+  CORPORATE_OWNER
+  AGENT_ORIGIN
+  AGENT_DESTINATION
+}
+
+enum LeadSourceChannel {
+  WHATSAPP
+  PHONE
+  EMAIL
+  WEB
+  REFERRAL
+  PARTNER
+  CORPORATE
+  OTHER
+}
+
+enum LeadStage {
+  NEW_LEAD
+  CONTACTADO
+  SURVEY_PENDIENTE
+  SURVEY_REALIZADO
+  COTIZANDO
+  PROPUESTA_ENVIADA
+  FOLLOW_UP
+  GANADO
+  PERDIDO
+  EXPEDIENTE_ABIERTO
+  EN_COORDINACION
+  LISTO_PARA_HANDOFF
+}
+
+enum LeadType {
+  L1
+  L2
+  L3
+  L4
+}
+
+enum LocationType {
+  ORIGIN
+  DESTINATION
+  WAREHOUSE
+  OFFICE
+  OTHER
+}
+
+enum LongCarryBand {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum MasterTariffScope {
+  INTL
+  LOCAL
+  GOV
+  CORP
+}
+
+enum NoDestinationCaseType {
+  CASE_A_PACKING_ORIGIN
+  CASE_B_ORIGIN_STORAGE
+  CASE_C_PICKUP_NO_DELIVERY
+}
+
+enum OsiCustodyStatus {
+  DRIVER
+  SUPERVISOR
+}
+
+enum OsiHandshakeStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+enum OsiKind {
+  EXTERNAL
+  INTERNAL
+}
+
+enum ParkingDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum PgdFileType {
+  PDF
+  PHOTO
+  SIGNATURE
+  OTHER
+}
+
+enum PgdItemStatus {
+  MISSING
+  SUBMITTED
+  VALIDATED
+  REJECTED
+}
+
+enum PgdResponsible {
+  CLIENT
+  SUPERVISOR
+  DRIVER
+  INTERNAL
+}
+
+enum PgdVisibility {
+  CLIENT_VIEW
+  INTERNAL_VIEW
+}
+
+enum PipelineCaseStatus {
+  NEW_INBOX
+  AWAITING_ICP
+  GOVERNANCE_CONFIRMED
+  REQUIREMENTS_CONFIRMED
+  SURVEY_PLANNING
+  SURVEY_SCHEDULED
+  SURVEY_COMPLETED
+  CRATING_ESTIMATE_PENDING
+  PRICING_IN_PROGRESS
+  INTERNAL_REVIEW
+  QUOTE_SENT
+  NEGOTIATION
+  CHANGE_CONTROL
+  APPROVED
+  OPS_HANDOFF
+}
+
+enum PipelineCustomerType {
+  L1_AGENT
+  L2_INTL_DIRECT
+  L3_CORPORATE
+  L4_PERSONAL
+}
+
+enum PipelineEventStatus {
+  PENDING
+  DONE
+  CANCELLED
+}
+
+enum PipelineEventType {
+  SURVEY
+  FOLLOW_UP
+  DEADLINE
+  SERVICE
+}
+
+enum PipelineMode {
+  LOCAL
+  EXPORT
+  IMPORT
+}
+
+enum PipelineQuoteLevel {
+  BASIC
+  STANDARD
+  PREMIUM
+}
+
+enum PipelineSurveyMethod {
+  PRESENCIAL
+  VIRTUAL
+  LISTADO_FOTOS
+  NO_APLICA
+}
+
+enum ProjectKState {
+  PENDING_VALIDATION
+  VALIDATED
+  RELEASED
+}
+
+enum PtfSuggestionStatus {
+  PENDING
+  APPLIED
+  IGNORED
+  ESCALATED
+}
+
+enum QuoteBlock {
+  ORIGIN
+  TRANSPORT
+  DESTINATION
+  THIRD_PARTY
+  STORAGE
+}
+
+enum QuoteItemType {
+  SERVICE
+  SURCHARGE
+  MATERIAL
+  CRATING
+  DISCOUNT
+  TAX
+}
+
+enum QuoteLevel {
+  ESTIMATE
+  FINAL
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum RequirementStatus {
+  PENDING
+  RECEIVED
+  APPROVED
+  NOT_REQUIRED
+}
+
+enum ServiceCaseCustomerType {
+  L1_AGENT
+  L2_INTL_DIRECT
+  L3_CORPORATE
+  L4_PERSONAL
+}
+
+enum ServiceCaseMode {
+  LOCAL
+  EXPORT
+  IMPORT
+}
+
+enum ServiceCaseStatus {
+  NEW_INBOX
+  AWAITING_ICP
+  GOVERNANCE_CONFIRMED
+  REQUIREMENTS_CONFIRMED
+  SURVEY_PLANNING
+  SURVEY_SCHEDULED
+  SURVEY_COMPLETED
+  CRATING_ESTIMATE_PENDING
+  PRICING_IN_PROGRESS
+  INTERNAL_REVIEW
+  QUOTE_SENT
+  NEGOTIATION
+  CHANGE_CONTROL
+  APPROVED
+  OPS_HANDOFF
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum ServiceMode {
+  NATIONAL
+  IMPORT_EXPORT
+}
+
+enum SignalKind {
+  PAYMENT
+  PERMITS_PARKING
+  PGD_BLOCKING_DOCS
+  CRATES
+  THIRD_PARTIES
+}
+
+enum SignalPolicy {
+  HARD_BLOCK
+  SOFT_ALERT
+}
+
+enum SurchargePricingMode {
+  FIXED
+  PER_UNIT
+  PER_HOUR
+  PER_DAY
+  PER_KM
+  PCT
+}
+
+enum SurveyDimensionUnit {
+  CM
+  IN
+}
+
+enum SurveyMediaType {
+  SITE
+  PRE_EXISTING_DAMAGE
+  NESTING_ITEM
+  OTHER
+}
+
+enum SurveyMethod {
+  PRESENCIAL
+  VIRTUAL
+  LISTADO_FOTOS
+  LISTA
+  FOTOS
+}
+
+enum SurveyPackLevel {
+  P1
+  P2
+  P3
+}
+
+enum SurveyPropertyType {
+  CASA
+  APARTAMENTO
+  OFICINA
+  NAVE
+}
+
+enum SurveyRule {
+  ALWAYS
+  THRESHOLD
+  OPTIONAL
+}
+
+enum SurveyStairsType {
+  CARACOL
+  RECTAS
+  MIXTO
+}
+
+enum SurveyStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+}
+
+enum SurveyType {
+  PRESENCIAL
+  VIRTUAL
+  LISTADO
+}
+
+enum TariffOverrideScope {
+  GLOBAL
+  ROUTE
+  MODE
+  SERVICE_TYPE
+}
+
+enum TariffRateMode {
+  AIR
+  LCL
+  FCL
+  LOCAL
+}
+
+enum TemplateScope {
+  GLOBAL
+  TENANT
+}
+
+enum TemplateType {
+  PIC
+  PGD
+  NPS
+  PST
+}
+
+enum TemplateVersionStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}

@@ -52,7 +52,7 @@ function candidateMatches(candidates, sample) {
   }).map((rule) => rule.code);
 }
 
-export async function analyzeLegacyRiskRules({ dataPath = "data/logistic-engine-admin.json" } = {}) {
+export async function analyzeLegacyRiskRules({ dataPath = "scripts/fixtures/db01/legacy-logistics-engine-admin.json" } = {}) {
   const parsed = JSON.parse(await readFile(dataPath, "utf8"));
   const configured = normalizedRiskRules(parsed?.riskRules || {});
   const defaults = normalizedRiskRules(DEFAULTS);

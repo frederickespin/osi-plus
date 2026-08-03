@@ -1,0 +1,17 @@
+{
+  "fixture": "legacy-logistics-engine-admin.json",
+  "originCommit": "7a74e94",
+  "gitBlobHash": "dda38d2c47e844086acfe4d279a624e578d99911",
+  "purpose": "Comparación LEGACY y dry-run de DB-01F, DB-01H y DB-01I exclusivamente.",
+  "operationalAuthority": false,
+  "mustNotImport": true,
+  "knownAmbiguities": {
+    "values": [57, 55, 220],
+    "historicalAlias": "COSNTANZA",
+    "provenance": {
+      "57And55": "Presentes en el fixture histórico exacto.",
+      "220": "Fallback compilado comparado por DB-01I; no está contenido en el blob del fixture.",
+      "COSNTANZA": "Alias histórico conservado para pruebas de compatibilidad; no está contenido en el blob del fixture."
+    }
+  }
+}

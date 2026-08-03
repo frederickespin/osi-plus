@@ -18,9 +18,18 @@ function sameJson(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+async function readOptionalSource(file) {
+  try {
+    return { content: await readFile(file, "utf8"), missing: false };
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    return { content: "", missing: true };
+  }
+}
+
 export async function analyzeLogisticsSources(root = process.cwd(), sourceOverrides = {}) {
   const files = {
-    store: path.join(root, "data/logistic-engine-admin.json"),
+    store: path.join(root, "scripts/fixtures/db01/legacy-logistics-engine-admin.json"),
     defaults: path.join(root, "api/admin/logistic-engine/_store.js"),
     clientRegions: path.join(root, "src/lib/geoRegionsStore.ts"),
     serverRegions: path.join(root, "api/admin/logistic-engine/_shared.js"),
@@ -28,13 +37,14 @@ export async function analyzeLogisticsSources(root = process.cwd(), sourceOverri
     serverEngine: path.join(root, "api/_domain/logisticEngine.js"),
   };
   const sourceKeys = Object.keys(files);
-  const [storeRaw, defaultsRaw, clientRegionsRaw, serverRegionsRaw, clientEngineRaw, serverEngineRaw] = await Promise.all(
+  const sourceResults = await Promise.all(
     sourceKeys.map((key) =>
       Object.prototype.hasOwnProperty.call(sourceOverrides, key)
-        ? String(sourceOverrides[key])
-        : readFile(files[key], "utf8"),
+        ? { content: String(sourceOverrides[key]), missing: false }
+        : readOptionalSource(files[key]),
     ),
   );
+  const [storeRaw, defaultsRaw, clientRegionsRaw, serverRegionsRaw, clientEngineRaw, serverEngineRaw] = sourceResults.map((result) => result.content);
   const store = JSON.parse(storeRaw);
   const clientRegions = parseRegionLiterals(clientRegionsRaw, "CLIENT_DEFAULTS");
   const serverRegions = parseRegionLiterals(serverRegionsRaw, "SERVER_DEFAULTS");
@@ -80,6 +90,7 @@ export async function analyzeLogisticsSources(root = process.cwd(), sourceOverri
   const totals = Object.fromEntries(CLASSIFICATIONS.map((name) => [name, records.filter((row) => row.classification === name).length]));
   return {
     mode: "DRY_RUN_ONLY", writesPerformed: false,
+    missingSources: sourceKeys.filter((_, index) => sourceResults[index].missing).map((key) => files[key]),
     sourceHashes: {
       store: sha256(storeRaw), defaults: sha256(defaultsRaw), clientRegions: sha256(clientRegionsRaw),
       serverRegions: sha256(serverRegionsRaw), clientEngine: sha256(clientEngineRaw), serverEngine: sha256(serverEngineRaw),

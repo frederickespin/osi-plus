@@ -1,0 +1,85 @@
+{
+  "global": {
+    "freeKmMetro": 15,
+    "freeKmInterior": 0,
+    "minimumMarginPercent": 18,
+    "enableAutoMargin": true,
+    "enableAutoVehicleSelection": true,
+    "blockIfNoVehicle": false
+  },
+  "zoneRules": {
+    "METRO": {
+      "kmRate": 57,
+      "freeKm": 15,
+      "slaHours": 24,
+      "surchargePercent": 0
+    },
+    "INTERIOR": {
+      "kmRate": 55,
+      "freeKm": 0,
+      "slaHours": 72,
+      "surchargePercent": 10
+    }
+  },
+  "zoneTypeConfigs": {
+    "METRO": {
+      "kmRate": 57,
+      "freeKm": 15,
+      "slaHours": 24,
+      "surchargePercent": 0
+    },
+    "INTERIOR": {
+      "kmRate": 55,
+      "freeKm": 0,
+      "slaHours": 72,
+      "surchargePercent": 10
+    }
+  },
+  "regionOverrides": {
+    "PUERTO_PLATA": {
+      "overrideKmRate": null,
+      "overrideFreeKm": null,
+      "overrideSlaHours": null,
+      "overrideSurchargePercent": 5
+    }
+  },
+  "hubs": [
+    {
+      "id": "default-hub",
+      "name": "Hub principal",
+      "lat": 18.4861,
+      "lng": -69.9312,
+      "active": true,
+      "priority": 1
+    }
+  ],
+  "transportRules": [
+    {
+      "zoneType": "METRO",
+      "kmMultiplier": 1,
+      "surchargePercent": 0,
+      "volumeMultiplier": 1
+    },
+    {
+      "zoneType": "INTERIOR",
+      "kmMultiplier": 1.15,
+      "surchargePercent": 10,
+      "volumeMultiplier": 1.1
+    }
+  ],
+  "vehicleRules": {
+    "allowManualOverride": true,
+    "requireApprovalIfOverride": false,
+    "distributeWearAutomatically": true,
+    "considerUpcomingMaintenance": true
+  },
+  "riskRules": {
+    "maxAutomaticDistanceKm": 120,
+    "autoExtendedSla": true,
+    "highRiskZones": [
+      "STI",
+      "PUNTA_CANA"
+    ],
+    "requireApprovalOverKm": 80
+  }
+}

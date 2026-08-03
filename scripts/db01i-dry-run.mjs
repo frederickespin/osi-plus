@@ -19,9 +19,18 @@ function parseMockVehicles(source) {
   return objects.map((body) => Object.fromEntries([...body.matchAll(/(\w+):\s*(?:"([^"]*)"|'([^']*)'|([\d.]+))/g)].map((match) => [match[1], match[2] ?? match[3] ?? Number(match[4])])));
 }
 
+async function readOptionalSource(file) {
+  try {
+    return { content: await readFile(file, "utf8"), missing: false };
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    return { content: "", missing: true };
+  }
+}
+
 export async function analyzeVehicleSources(root = process.cwd()) {
   const files = {
-    store: "data/logistic-engine-admin.json",
+    store: "scripts/fixtures/db01/legacy-logistics-engine-admin.json",
     defaults: "api/admin/logistic-engine/_store.js",
     fleetStore: "src/lib/fleetStore.ts",
     mockData: "src/data/mockData.ts",
@@ -29,7 +38,8 @@ export async function analyzeVehicleSources(root = process.cwd()) {
     clientEngine: "src/core/logisticEngine.ts",
     serverEngine: "api/_domain/logisticEngine.js",
   };
-  const raw = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, file]) => [key, await readFile(path.join(root, file), "utf8")])));
+  const sourceResults = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([key, file]) => [key, await readOptionalSource(path.join(root, file))])));
+  const raw = Object.fromEntries(Object.entries(sourceResults).map(([key, result]) => [key, result.content]));
   const store = JSON.parse(raw.store);
   const mocks = parseMockVehicles(raw.mockData);
   const cacheKeys = {
@@ -65,6 +75,7 @@ export async function analyzeVehicleSources(root = process.cwd()) {
   ].map((row) => ({ ...row, imported: false, administrativeDecision: "Aprobar código, nombre, país, división, alias, coordenadas y zona antes de importar." }));
   return {
     mode: "DRY_RUN_ONLY", writesPerformed: false,
+    missingSources: Object.entries(sourceResults).filter(([, result]) => result.missing).map(([key]) => files[key]),
     browserDataRead: false,
     reason: "El servidor no puede seleccionar ni leer el localStorage de un navegador sin exportación administrativa explícita.",
     sourceHashes: Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, sha256(value)])),

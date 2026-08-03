@@ -234,11 +234,11 @@ try {
     performance: { records: bulkCount, insertMs: Number(insertMs.toFixed(2)), pageMs: Number(pageMs.toFixed(2)) },
     dryRun: dryRun.totals,
   };
-  await writeFile("prisma/db01/DB-01J-TEST-RESULTS.json", `${JSON.stringify(output, null, 2)}\n`, "utf8");
+  await writeFile(process.env.DB01J_RESULTS_PATH || "prisma/db01/DB-01J-TEST-RESULTS.json", `${JSON.stringify(output, null, 2)}\n`, "utf8");
   console.log(JSON.stringify(output, null, 2));
 } catch (error) {
   const output = { passed: results.length, failed: 1, results, error: { name: error?.name, code: error?.code, message: String(error?.message || error), stack: error?.stack } };
-  await writeFile("prisma/db01/DB-01J-TEST-RESULTS.json", `${JSON.stringify(output, null, 2)}\n`, "utf8");
+  await writeFile(process.env.DB01J_RESULTS_PATH || "prisma/db01/DB-01J-TEST-RESULTS.json", `${JSON.stringify(output, null, 2)}\n`, "utf8");
   console.error(JSON.stringify(output, null, 2));
   process.exitCode = 1;
 } finally {

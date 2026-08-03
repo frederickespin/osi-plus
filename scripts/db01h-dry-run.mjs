@@ -34,7 +34,7 @@ export async function analyzeLogisticsSources(root = process.cwd(), sourceOverri
     clientRegions: path.join(root, "src/lib/geoRegionsStore.ts"),
     serverRegions: path.join(root, "api/admin/logistic-engine/_shared.js"),
     clientEngine: path.join(root, "src/core/logisticEngine.ts"),
-    serverEngine: path.join(root, "api/_domain/logisticEngine.js"),
+    serverEngine: path.join(root, "scripts/fixtures/db01/legacy-logistic-engine-reference.mjs"),
   };
   const sourceKeys = Object.keys(files);
   const sourceResults = await Promise.all(

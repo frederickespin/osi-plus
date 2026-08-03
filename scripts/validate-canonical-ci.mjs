@@ -118,6 +118,20 @@ function validateTrackedSecrets(root = process.cwd()) {
   return files.length;
 }
 
+function validateFixtureRuntimeIsolation(root = process.cwd()) {
+  const runtimeFiles = trackedFiles().filter((file) => /^(?:api|src)\//.test(file) && /\.(?:[cm]?[jt]sx?)$/.test(file));
+  const forbiddenImport = /(?:from\s*|import\s*\(|require\s*\()\s*["'][^"']*scripts\/fixtures\/db01(?:\/|["'])/;
+  const violations = runtimeFiles.filter((file) => {
+    try {
+      return forbiddenImport.test(readFileSync(resolve(root, file), "utf8").replaceAll("\\", "/"));
+    } catch {
+      return false;
+    }
+  });
+  invariant(violations.length === 0, `Runtime no puede importar fixtures DB-01: ${violations.join(", ")}`);
+  return runtimeFiles.length;
+}
+
 function validateRuntimeDefaults() {
   invariant(approvalPersistenceMode({}) === "LEGACY_ONLY", "ApprovalRequest no está en LEGACY_ONLY");
   invariant(quoteChangeOrderPersistenceMode({}) === "LEGACY_ONLY", "QuoteChangeOrder no está en LEGACY_ONLY");
@@ -167,9 +181,10 @@ export async function validateCanonicalCi({ phase = "database" } = {}) {
   const target = assertCanonicalCiTarget();
   const migrations = validateMigrationFiles();
   const trackedFileCount = validateTrackedSecrets();
+  const runtimeFilesChecked = validateFixtureRuntimeIsolation();
   validateRuntimeDefaults();
   const database = phase === "database" ? await validateDatabase(process.env.DATABASE_URL) : null;
-  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, database };
+  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, runtimeFilesChecked, database };
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";

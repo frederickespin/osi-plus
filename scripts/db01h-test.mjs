@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import { performance } from "node:perf_hooks";
 import { writeFile } from "node:fs/promises";
-import { calculateLogisticEngine } from "../api/_domain/logisticEngine.js";
+import { calculateLogisticEngine } from "./fixtures/db01/legacy-logistic-engine-reference.mjs";
 import { canonicalizePlace, normalizeGeoName, normalizeGeoToken } from "../api/_lib/geoNormalization.js";
 import {
   activateGeoRegionVersion,

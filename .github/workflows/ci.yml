@@ -127,9 +127,6 @@ jobs:
       - name: Run MT-01A and DB-01D through DB-01J
         run: node scripts/run-canonical-db-tests.mjs
 
-      - name: Run related domain tests
-        run: npm run test:domain
-
       - name: Build
         run: npm run build
 

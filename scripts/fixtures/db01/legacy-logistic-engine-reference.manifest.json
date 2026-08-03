@@ -1,0 +1,24 @@
+{
+  "sourceCommit": "7a74e948e63476855ff8f801a7f1dee20b0d31bf",
+  "sourcePath": "api/_domain/logisticEngine.js",
+  "sourceGitBlobHash": "3748071f3829662dadf8b6a353f81c8afab7930c",
+  "exportedFunctions": ["calculateLogisticEngine"],
+  "internalPureFunctions": [
+    "toRadians",
+    "haversineKm",
+    "round2",
+    "normalizeZoneType",
+    "resolveZoneRuleForRegion",
+    "normalizeStatus",
+    "isVehicleAvailable",
+    "getVehicleCapacity",
+    "getVehicleOperationalCost",
+    "deriveWeekend",
+    "deriveAfterHours"
+  ],
+  "externalDependencies": [],
+  "sideEffects": [],
+  "purpose": "Referencia histórica pura para comparación LEGACY en pruebas DB-01H.",
+  "operationalAuthority": false,
+  "runtimeImportAllowed": false
+}

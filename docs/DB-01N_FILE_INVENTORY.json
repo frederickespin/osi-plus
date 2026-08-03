@@ -1,0 +1,3122 @@
+{
+  "generatedAt": "2026-08-03T00:59:23.077Z",
+  "source": {
+    "branch": "opt/phase-2-limpieza",
+    "head": "58a0db6fe937a25ba0e861b3a8de260cf7ff66d4",
+    "statusEntries": 717,
+    "attributedEntries": 82,
+    "expandedFiles": 438
+  },
+  "target": {
+    "branch": "chore/db01-canonical-migrations",
+    "head": "58a0db6fe937a25ba0e861b3a8de260cf7ff66d4",
+    "changedFiles": 138,
+    "classificationCounts": {
+      "Documentación operativa": 19,
+      "Evidencia útil": 4,
+      "Migración requerida": 55,
+      "Prueba requerida": 33,
+      "Runtime requerido": 27
+    }
+  },
+  "secretScan": {
+    "credentialUrlFiles": [
+      ".github/workflows/ci.yml"
+    ],
+    "credentialUrlsAreKnownLocalCiExamples": true,
+    "neonEndpointFiles": [],
+    "privateKeyFiles": []
+  },
+  "included": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": ".gitignore",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/approvalRequest.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/approvalRequestAdapter.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/commercialAuditLog.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/crateSettingsAdapter.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/crateSettingsImport.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/crateSettingsSupport.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/crateSettingsValidation.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/crateSettingsVersioned.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/geoNormalization.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/logisticOverrideApproval.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/logisticsGeoAdapter.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/logisticsGeoAdmin.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/logisticsGeoSupport.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/logisticsZoneRules.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/quoteChangeOrder.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/quoteChangeOrderAdapter.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/riskEngine.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/vehicleEngineAdapter.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/vehicleEngineSettings.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/vehicleEngineSupport.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/vehicleFleet.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/vehicleImport.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "api/_lib/vehicleNormalization.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "docs/DB-01L_CANONICAL_REHEARSAL_REPORT_2026-08-02.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/DB-01M_FINAL_REPORT_2026-08-02.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/DB-01M_PRODUCTION_ADOPTION_RUNBOOK.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/DB-01N2_DIFFERENTIAL_VALIDATION_2026-08-02.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/DB-01N2_PR_PROPOSAL.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/DB-01N_FILE_INVENTORY.json",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/DB-01N_ISOLATION_REPORT_2026-08-02.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/MT-01A_TENANT_MEMBERSHIPS.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "eslint.config.js",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "prisma/db01/DB-01B-DIVERGENCE-MATRIX.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01B-UNDEPLOYED-MODELS.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01C-ADOPTION-PROCEDURE.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01C-MODEL-DECISIONS.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01D-AUDIT-POLICY.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01D-RISK-ENGINE-DECISION.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01J-QUOTEV2-DECISION.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01J-TEST-RESULTS.json",
+      "classification": "Evidencia útil"
+    },
+    {
+      "path": "prisma/db01/DB-01K-HASHES.sha256",
+      "classification": "Evidencia útil"
+    },
+    {
+      "path": "prisma/db01/DB-01K-MIGRATION-NAME-MAP.json",
+      "classification": "Evidencia útil"
+    },
+    {
+      "path": "prisma/db01/DB-01K-REPORT.md",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/schema.production-baseline.prisma",
+      "classification": "Evidencia útil"
+    },
+    {
+      "path": "prisma/db01/structure-fingerprint.sql",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01m/preserve-histories-db01-legacy.sql",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01m/rollback-db01-adoption.sql",
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260219_ops_pst_flow/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260222_commercial_gateway_lead_client/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260222_survey_module_dynamic/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260226_lead_volume_visit_rules/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260301_commercial_schema_v1/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260301_pipeline_cases_backend/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260312_commercial_entities_parties_commissions/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260403_project_coordination/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260406_tariff_v2_pricing_profiles/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260407_tariff_v2_auto_codes/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260413_operational_volume_snapshot/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260414_clients_duplicate_guard/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260415_logistics_versioned_engine/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260420_client_master_billing_tax_id/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260420_client_master_service_addresses/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260429_user_extended_profile/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260720_evaluator_article_catalog/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260720_evaluator_visit_reports/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260721_quote_addendum_classification/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260723_operational_compensation_config/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260724_logistics_transport_minimum/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260724_pricing_profile_applicability/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260724_tariff_service_rules/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260727_client_master_updated_at/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260727_quote_addendum_cap_15/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260801_mt_01a_tenant_memberships/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/MANIFEST.json",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/README.md",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/migration_lock.toml",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260219_ops_pst_flow/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260222_commercial_gateway_lead_client/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260222_survey_module_dynamic/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260226_lead_volume_visit_rules/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260301_commercial_schema_v1/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260301_pipeline_cases_backend/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260312_commercial_entities_parties_commissions/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260403_project_coordination/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260406_tariff_v2_pricing_profiles/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260407_tariff_v2_auto_codes/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260413_operational_volume_snapshot/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260414_clients_duplicate_guard/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260415_logistics_versioned_engine/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260429_user_extended_profile/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801000000_production_baseline/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801001000_mt01a_tenant_memberships/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801002000_commercial_audit_log/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801003000_approval_requests/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801004000_risk_engine_rules_evaluations/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801005000_logistic_override_approvals/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801006000_quote_change_orders/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801007000_logistics_geography_zone_rules/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801008000_vehicle_engine_settings/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801009000_logistics_rate_metadata/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801010000_crate_settings/migration.sql",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/README.md",
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "scripts/db01d-backfill.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01d-lib.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01d-synthetic-users.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01d-test.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01e-dry-run.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01e-lib.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01e-test.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01f-dry-run.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01f-lib.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01f-test.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01g-dry-run.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01g-lib.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01g-test.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01h-dry-run.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01h-lib.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01h-test.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01i-dry-run.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01i-lib.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01i-test.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01j-dry-run.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01j-lib.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01j-test.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01k-adoption-rehearsal.ps1",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01k-inventory.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01n-inventory.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-backfill.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-dry-run.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-lib.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-rollback.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-state.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-synthetic-users.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-test.mjs",
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/validate-prisma-schema-target.mjs",
+      "classification": "Prueba requerida"
+    }
+  ],
+  "originalInventory": [
+    {
+      "path": "docs/DB-01L_CANONICAL_REHEARSAL_REPORT_2026-08-02.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/DB-01M_FINAL_REPORT_2026-08-02.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/DB-01M_PRODUCTION_ADOPTION_RUNBOOK.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "docs/MT-01A_TENANT_MEMBERSHIPS.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01B-DIVERGENCE-MATRIX.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01B-REPORT.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01B-UNDEPLOYED-MODELS.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01C-ADOPTION-PROCEDURE.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01C-HASHES.sha256",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01C-MODEL-DECISIONS.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01C-REPORT.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01D-AUDIT-POLICY.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01D-HASHES.sha256",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01D-REPORT.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01D-RESULTS.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01D-RISK-ENGINE-DECISION.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01E-HASHES.sha256",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01E-REPORT.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01E-RESULTS.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01F-DRY-RUN.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01F-HASHES.sha256",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01F-IMPLEMENTATION-REPORT.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01F-TEST-RESULTS.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01G-DRY-RUN.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01G-HASHES.sha256",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01G-IMPLEMENTATION-REPORT.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01G-TEST-RESULTS.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01H-DRY-RUN.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01H-HASHES.sha256",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01H-IMPLEMENTATION-REPORT.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01H-TEST-RESULTS.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01I-DRY-RUN.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01I-HASHES.sha256",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01I-IMPLEMENTATION-REPORT.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01I-TEST-RESULTS.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01J-CONSUMER-INVENTORY.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01J-DRY-RUN.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado de prueba regenerable"
+    },
+    {
+      "path": "prisma/db01/DB-01J-HASHES.sha256",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01J-IMPLEMENTATION-REPORT.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01J-QUOTEV2-DECISION.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/DB-01J-TEST-RESULTS.json",
+      "included": true,
+      "classification": "Evidencia útil"
+    },
+    {
+      "path": "prisma/db01/DB-01K-ADOPTION-DIFF.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01K-ADOPTION-RESULTS.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01K-HASHES.sha256",
+      "included": true,
+      "classification": "Evidencia útil"
+    },
+    {
+      "path": "prisma/db01/DB-01K-MIGRATION-NAME-MAP.json",
+      "included": true,
+      "classification": "Evidencia útil"
+    },
+    {
+      "path": "prisma/db01/DB-01K-PRECHANGE-INVENTORY.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/DB-01K-REPORT.md",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01/adoption-simulation/legacy-histories.synthetic.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Ensayo experimental sustituido por DB-01M"
+    },
+    {
+      "path": "prisma/db01/adoption-simulation/preserve-legacy-histories.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Ensayo experimental sustituido por DB-01M"
+    },
+    {
+      "path": "prisma/db01/adoption-simulation/rollback-adoption-simulation.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Ensayo experimental sustituido por DB-01M"
+    },
+    {
+      "path": "prisma/db01/baseline.candidate.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/README.md",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/00000000000000_production_baseline/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_mt_01a_tenant_memberships/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_z_db_01d_commercial_audit_log/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_zz_db_01e_approval_request/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_zzz_db_01f_risk_engine/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_zzzz_db_01f_logistic_override/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_zzzzz_db_01g_quote_change_order/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_zzzzzz_db_01h_logistics_geography/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_zzzzzzz_db_01i_vehicle_engine/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_zzzzzzzz_db_01j_logistics_rate_metadata/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/20260801_zzzzzzzzz_db_01j_crate_settings/migration.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/migrations/migration_lock.toml",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/canonical-migrations/schema.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cadena experimental duplicada; sustituida por prisma/migrations"
+    },
+    {
+      "path": "prisma/db01/db01b-results.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/db01c-results.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/generate-baseline-candidate.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/client.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/client.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/default.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/default.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/edge.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/index.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/index.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/package.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/query_engine-windows.dll.node",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/query_engine_bg.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/query_engine_bg.wasm",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/runtime/edge-esm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/runtime/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/runtime/index-browser.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/runtime/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/runtime/library.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/runtime/library.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/runtime/react-native.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/runtime/wasm-compiler-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/runtime/wasm-engine-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/schema.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/wasm-edge-light-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/wasm-worker-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/wasm.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01d-client/wasm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/client.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/client.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/default.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/default.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/edge.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/index.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/index.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/package.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/query_engine-windows.dll.node",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/query_engine_bg.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/query_engine_bg.wasm",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/runtime/edge-esm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/runtime/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/runtime/index-browser.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/runtime/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/runtime/library.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/runtime/library.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/runtime/react-native.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/runtime/wasm-compiler-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/runtime/wasm-engine-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/schema.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/wasm-edge-light-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/wasm-worker-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/wasm.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01e-client/wasm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/client.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/client.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/default.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/default.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/edge.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/index.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/index.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/package.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/query_engine-windows.dll.node",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/query_engine_bg.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/query_engine_bg.wasm",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/runtime/edge-esm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/runtime/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/runtime/index-browser.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/runtime/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/runtime/library.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/runtime/library.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/runtime/react-native.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/runtime/wasm-compiler-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/runtime/wasm-engine-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/schema.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/wasm-edge-light-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/wasm-worker-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/wasm.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01f-client/wasm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/client.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/client.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/default.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/default.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/edge.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/index.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/index.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/package.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/query_engine-windows.dll.node",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/query_engine_bg.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/query_engine_bg.wasm",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/runtime/edge-esm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/runtime/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/runtime/index-browser.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/runtime/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/runtime/library.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/runtime/library.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/runtime/react-native.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/runtime/wasm-compiler-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/runtime/wasm-engine-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/schema.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/wasm-edge-light-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/wasm-worker-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/wasm.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01g-client/wasm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/client.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/client.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/default.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/default.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/edge.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/index.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/index.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/package.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/query_engine-windows.dll.node",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/query_engine_bg.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/query_engine_bg.wasm",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/runtime/edge-esm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/runtime/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/runtime/index-browser.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/runtime/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/runtime/library.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/runtime/library.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/runtime/react-native.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/runtime/wasm-compiler-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/runtime/wasm-engine-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/schema.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/wasm-edge-light-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/wasm-worker-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/wasm.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01h-client/wasm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/client.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/client.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/default.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/default.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/edge.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/index.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/index.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/package.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/query_engine-windows.dll.node",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/query_engine_bg.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/query_engine_bg.wasm",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/runtime/edge-esm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/runtime/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/runtime/index-browser.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/runtime/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/runtime/library.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/runtime/library.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/runtime/react-native.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/runtime/wasm-compiler-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/runtime/wasm-engine-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/schema.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/wasm-edge-light-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/wasm-worker-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/wasm.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01i-client/wasm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/client.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/client.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/default.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/default.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/edge.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/index.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/index.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/package.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/query_engine-windows.dll.node",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/query_engine_bg.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/query_engine_bg.wasm",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/runtime/edge-esm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/runtime/edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/runtime/index-browser.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/runtime/index-browser.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/runtime/library.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/runtime/library.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/runtime/react-native.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/runtime/wasm-compiler-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/runtime/wasm-engine-edge.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/schema.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/wasm-edge-light-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/wasm-worker-loader.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/wasm.d.ts",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/generated/db01j-client/wasm.js",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Cliente Prisma regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.after-approval-request.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.after-commercial-audit.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.after-crate-settings.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.after-logistics-geography.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.after-mt01a.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.after-quote-change-order.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.after-risk-engine.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.after-vehicle-engine.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.pre-db01k.prisma",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Datamodel o SQL intermedio regenerable"
+    },
+    {
+      "path": "prisma/db01/schema.production-baseline.prisma",
+      "included": true,
+      "classification": "Evidencia útil"
+    },
+    {
+      "path": "prisma/db01/structure-fingerprint.sql",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01l/artifacts/application-smoke.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-initial-structure-metadata.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-initial-structure.normalized.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-initial-structure.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-initial.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-post-adoption.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-post-rollback-structure-metadata.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-post-rollback-structure.normalized.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-post-rollback-structure.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-post-rollback.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/db01m-post-smoke.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/deploy-second.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/deploy.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/final-histories.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/final-validation.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/final.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/initial-structure.normalized.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/initial-structure.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/initial.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/mt01a-backfill-first.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/mt01a-backfill-second.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/mt01a-dry-run.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/post-adoption-diff.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/post-adoption-histories.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/post-adoption-validation.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/post-adoption.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/post-rollback-histories.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/post-rollback-structure-metadata.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/post-rollback-structure.normalized.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/post-rollback-structure.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/post-rollback.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/public-audit.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/rollback-execution.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/rollback-validation.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/status-after-baseline.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/artifacts/status-final.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01l/preserve-legacy-histories.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "prisma/db01m/artifacts/application-smoke.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/git-audit.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/history-preservation.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/identity-initial.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/initial-structure.normalized.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/initial-structure.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/initial.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/mt01a-backfill-first.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/mt01a-backfill-second.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/mt01a-dry-run.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-adoption-diff.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-adoption-histories.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-adoption-validation.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-adoption.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-rollback-histories.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-rollback-structure.normalized.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-rollback-structure.sql",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-rollback.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-smoke-validation.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/post-smoke.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/prisma-deploy-first.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/prisma-deploy-second.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/prisma-deploy.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/prisma-diff.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/prisma-resolve-baseline.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/prisma-status.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/rollback-execution.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/artifacts/rollback-validation.json",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Resultado local regenerable o voluminoso"
+    },
+    {
+      "path": "prisma/db01m/preserve-histories-db01-legacy.sql",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/db01m/rollback-db01-adoption.sql",
+      "included": true,
+      "classification": "Documentación operativa"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260219_ops_pst_flow/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260222_commercial_gateway_lead_client/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260222_survey_module_dynamic/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260226_lead_volume_visit_rules/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260301_commercial_schema_v1/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260301_pipeline_cases_backend/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260312_commercial_entities_parties_commissions/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260403_project_coordination/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260406_tariff_v2_pricing_profiles/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260407_tariff_v2_auto_codes/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260413_operational_volume_snapshot/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260414_clients_duplicate_guard/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260415_logistics_versioned_engine/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260420_client_master_billing_tax_id/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260420_client_master_service_addresses/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260429_user_extended_profile/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260720_evaluator_article_catalog/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260720_evaluator_visit_reports/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260721_quote_addendum_classification/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260723_operational_compensation_config/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260724_logistics_transport_minimum/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260724_pricing_profile_applicability/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260724_tariff_service_rules/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260727_client_master_updated_at/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260727_quote_addendum_cap_15/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/20260801_mt_01a_tenant_memberships/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/MANIFEST.json",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/README.md",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migration-archive/pre-db01/migration_lock.toml",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801000000_production_baseline/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801001000_mt01a_tenant_memberships/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801002000_commercial_audit_log/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801003000_approval_requests/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801004000_risk_engine_rules_evaluations/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801005000_logistic_override_approvals/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801006000_quote_change_orders/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801007000_logistics_geography_zone_rules/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801008000_vehicle_engine_settings/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801009000_logistics_rate_metadata/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/20260801010000_crate_settings/migration.sql",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/migrations/README.md",
+      "included": true,
+      "classification": "Migración requerida"
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "included": true,
+      "classification": "Runtime requerido"
+    },
+    {
+      "path": "scripts/db01c-backfill.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01c-compare-fingerprints.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01c-constraints-test.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01c-lib.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01c-rollback-mt01a.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01c-state.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01c-synthetic-users.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01c-user-state.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01d-backfill.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01d-lib.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01d-synthetic-users.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01d-test.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01e-dry-run.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01e-lib.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01e-test.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01f-dry-run.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01f-lib.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01f-test.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01g-dry-run.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01g-lib.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01g-test.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01h-dry-run.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01h-lib.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01h-test.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01i-dry-run.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01i-lib.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01i-test.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01j-dry-run.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01j-lib.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01j-test.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01k-adoption-rehearsal.ps1",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01k-finalize-artifacts.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "scripts/db01k-inventory.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/db01k-normalize-local-env-schema.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Evidencia histórica no esencial para la cadena reproducible"
+    },
+    {
+      "path": "scripts/db01l-backfill.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-capture.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-common.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-dry-run.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-history-check.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-normalize-structure.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-public-audit.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-rollback-validate.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-rollback.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-smoke.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-structure-dump.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01l-validate.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01m-git-audit.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01m-history-check.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01m-preserve-histories.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01m-prisma.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01m-rollback-validate.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01m-rollback.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01m-sanitize-artifacts.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/db01m-validate.mjs",
+      "included": false,
+      "classification": "Artefacto temporal o regenerable",
+      "exclusionReason": "Herramienta experimental o específica de rama"
+    },
+    {
+      "path": "scripts/mt-01a-backfill.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-dry-run.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-lib.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-rollback.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-state.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-synthetic-users.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    },
+    {
+      "path": "scripts/mt-01a-test.mjs",
+      "included": true,
+      "classification": "Prueba requerida"
+    }
+  ]
+}

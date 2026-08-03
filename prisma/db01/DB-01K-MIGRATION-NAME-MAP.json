@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-08-02T00:41:36.419Z",
+  "migrations": [
+    {
+      "experimentalName": "00000000000000_production_baseline",
+      "definitiveName": "20260801000000_production_baseline",
+      "sha256": "59a6060c78107a73cf9793da65cc5fc1a35d9d3c5e60ae37e04e5f395812bb2c",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_mt_01a_tenant_memberships",
+      "definitiveName": "20260801001000_mt01a_tenant_memberships",
+      "sha256": "015c8bd39f050f71fbe1bea0f94198091149296269fed77905bcefd23094cd44",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_z_db_01d_commercial_audit_log",
+      "definitiveName": "20260801002000_commercial_audit_log",
+      "sha256": "b7f2a68d769b1d3564a042d282e98e84bed9b8ceb2c5c2369c96e8d66d346206",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_zz_db_01e_approval_request",
+      "definitiveName": "20260801003000_approval_requests",
+      "sha256": "9ed62a48d1f63df676a7c1d34be7a8c57bfd8fab9a7400c5129f7f5cfaf503ef",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_zzz_db_01f_risk_engine",
+      "definitiveName": "20260801004000_risk_engine_rules_evaluations",
+      "sha256": "cc1c4c1424c1f84dba0732524108360e8d782483b943da9c8eadd4bd2eb63a70",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_zzzz_db_01f_logistic_override",
+      "definitiveName": "20260801005000_logistic_override_approvals",
+      "sha256": "965835c65cdaae15281246c5bfb511e479fdd42bd317e196ed599e06f361cb1d",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_zzzzz_db_01g_quote_change_order",
+      "definitiveName": "20260801006000_quote_change_orders",
+      "sha256": "91cccaf3f19cebb9880fcdec880ffa8ed0e6ece1975e4b38924b5794b86b1f6c",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_zzzzzz_db_01h_logistics_geography",
+      "definitiveName": "20260801007000_logistics_geography_zone_rules",
+      "sha256": "77c32308f74d6ceb9e6ef9f45856d2cfe7169f9b3162f32808208bc30adae04b",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_zzzzzzz_db_01i_vehicle_engine",
+      "definitiveName": "20260801008000_vehicle_engine_settings",
+      "sha256": "4f61d20698ec8e61f5324f436e8012e63dc29c1e883b6e3922cc3cc9696499b3",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_zzzzzzzz_db_01j_logistics_rate_metadata",
+      "definitiveName": "20260801009000_logistics_rate_metadata",
+      "sha256": "8852e835e027fc76d828d9a3ab2e1c40f251f817ab4f573296bb39224b425899",
+      "semanticSqlUnchanged": true
+    },
+    {
+      "experimentalName": "20260801_zzzzzzzzz_db_01j_crate_settings",
+      "definitiveName": "20260801010000_crate_settings",
+      "sha256": "d834b99fe7083e5d9907a7b0c49ac6d0d3ff1f577de638e098c04ea9513f5310",
+      "semanticSqlUnchanged": true
+    }
+  ]
+}

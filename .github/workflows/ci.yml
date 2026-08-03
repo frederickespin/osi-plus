@@ -15,8 +15,8 @@ jobs:
     env:
       # Prisma may fail during `prisma generate` if these are missing.
       # Use harmless dummy URLs for CI (no DB connection is performed).
-      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/prisma?schema=public
-      DIRECT_URL: postgresql://prisma:prisma@localhost:5432/prisma?schema=public
+      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/prisma?schema=osi
+      DIRECT_URL: postgresql://prisma:prisma@localhost:5432/prisma?schema=osi
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,11 +24,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install
         run: npm ci
+
+      - name: Validate Prisma schema target
+        run: node scripts/validate-prisma-schema-target.mjs
+
+      - name: Validate Prisma datamodel
+        run: npx prisma validate --schema prisma/schema.prisma
 
       - name: Lint
         continue-on-error: true

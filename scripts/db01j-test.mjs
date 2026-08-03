@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { performance } from "node:perf_hooks";
 import { writeFile } from "node:fs/promises";
 import { resolveCrateCalculationAuthority } from "../api/_lib/crateSettingsAdapter.js";
@@ -14,6 +13,7 @@ import { createDb01jPrisma } from "./db01j-lib.mjs";
 
 const prisma = createDb01jPrisma();
 const results = [];
+let stressDiagnostics = null;
 const run = Date.now().toString(36);
 const upper = run.toUpperCase();
 const t1 = `db01j-t1-${run}`;
@@ -133,9 +133,45 @@ try {
   await expectError("moneda ISO explícita obligatoria", () => Promise.resolve(normalizeCrateSettingsInput(config("NO-CURRENCY", { currencyCode: undefined }))), "CRATE_SETTINGS_INPUT_INVALID");
   await expectError("parámetros sin consumidor se rechazan", () => Promise.resolve(normalizeCrateSettingsInput({ ...config("INVENTED"), technical: { ...config("INVENTED").technical, qrFormat: "INVENTADO" } })), "CRATE_SETTINGS_INPUT_INVALID");
 
-  const baseInput = config("BASE", { scope: "GLOBAL" });
-  const [baseA, baseB] = await Promise.all([createCrateSettingsVersion(prisma, creatorContext, baseInput), createCrateSettingsVersion(prisma, creatorContext, baseInput)]);
-  check("creación concurrente idempotente", baseA.settings.id === baseB.settings.id && [baseA.idempotent, baseB.idempotent].includes(true));
+  const concurrencyRounds = 20;
+  const concurrencyWidth = 20;
+  const concurrencyOutcomes = [];
+  let baseInput;
+  let baseA;
+  for (let round = 0; round < concurrencyRounds; round += 1) {
+    const concurrentInput = round === 0
+      ? config("BASE", { scope: "GLOBAL" })
+      : config(`CONCURRENT-${round}`);
+    const settled = await Promise.allSettled(Array.from(
+      { length: concurrencyWidth },
+      () => createCrateSettingsVersion(prisma, creatorContext, concurrentInput),
+    ));
+    const fulfilled = settled.filter((result) => result.status === "fulfilled").map((result) => result.value);
+    const rejected = settled.filter((result) => result.status === "rejected");
+    concurrencyOutcomes.push({
+      round: round + 1,
+      fulfilled,
+      rejected,
+      ids: new Set(fulfilled.map((result) => result.settings.id)),
+      created: fulfilled.filter((result) => result.idempotent === false),
+      errorCodes: [...new Set(rejected.map((result) => result.reason?.code || result.reason?.meta?.code || "DATABASE"))],
+    });
+    if (round === 0 && fulfilled[0]) {
+      baseInput = concurrentInput;
+      baseA = fulfilled[0];
+    }
+  }
+  const concurrencyRows = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::int AS settings,
+      COUNT(DISTINCT request_id)::int AS requests
+    FROM "osi"."crate_settings_versions"
+    WHERE "tenant_id"=$1 AND "source"='SYNTHETIC_TEST'
+  `, t1);
+  const concurrencyAudits = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::int AS audits, COUNT(DISTINCT request_id)::int AS requests
+    FROM "osi"."commercial_audit_logs"
+    WHERE "tenant_id"=$1 AND "action"='CRATE_SETTINGS_DRAFT_CREATED'
+  `, t1);
   await expectError("requestId con otro payload", () => createCrateSettingsVersion(prisma, creatorContext, { ...baseInput, name: "Otro nombre" }), "CRATE_SETTINGS_IDEMPOTENCY_CONFLICT");
   await expectError("RBAC ignora permisos del navegador", () => createCrateSettingsVersion(prisma, limitedContext, config("NOAUTH")), "LOGISTICS_GEO_FORBIDDEN");
   await expectError("creador no puede aprobar", () => approveCrateSettings(prisma, creatorContext, { id: baseA.settings.id, expectedVersion: 1, requestId: `self-approve-${run}` }), "CRATE_SETTINGS_SEPARATION_OF_DUTIES");
@@ -145,9 +181,16 @@ try {
   await expectError("versión activa inmutable", () => prisma.$executeRawUnsafe(`UPDATE "osi"."crate_settings_versions" SET "name"='Alterada' WHERE "id"='${active.settings.id}'`));
   await expectError("eliminación de versión bloqueada", () => prisma.$executeRawUnsafe(`DELETE FROM "osi"."crate_settings_versions" WHERE "id"='${active.settings.id}'`));
 
-  const tenant2 = await createCrateSettingsVersion(prisma, t2Context, { ...baseInput, requestId: `t2-${run}` });
-  check("código puede repetirse entre empresas", Boolean(tenant2.settings.id));
+  const tenant2 = await createCrateSettingsVersion(prisma, t2Context, baseInput);
+  check("código y requestId pueden repetirse entre empresas", Boolean(tenant2.settings.id));
   await expectError("acceso cruzado devuelve 404", () => getCrateSettings(prisma, t2Context, active.settings.id), "CRATE_SETTINGS_NOT_FOUND");
+
+  let businessDuplicateError;
+  try {
+    await createCrateSettingsVersion(prisma, creatorContext, { ...baseInput, requestId: `duplicate-business-${run}` });
+  } catch (error) {
+    businessDuplicateError = error;
+  }
 
   const conflict = await createCrateSettingsVersion(prisma, creatorContext, config("CONFLICT", { scope: "GLOBAL" }));
   const conflictApproved = await approveCrateSettings(prisma, approverContext, { id: conflict.settings.id, expectedVersion: 1, requestId: `approve-conflict-${run}` });
@@ -162,13 +205,60 @@ try {
   const replacementActive = await activateCrateSettings(prisma, approverContext, { id: replacementApproved.settings.id, expectedVersion: 2, requestId: `activate-replace-${run}`, replaceActive: true });
   check("nueva versión reemplaza activa explícitamente", replacementActive.settings.businessVersion === 2 && replacementActive.settings.state === "ACTIVE");
 
+  const activationScope = `ACTIVATION_RACE_${upper}`;
+  const activationDrafts = [];
+  for (let index = 0; index < concurrencyWidth; index += 1) {
+    const draft = await createCrateSettingsVersion(prisma, creatorContext, config(`ACTIVATE-${index}`, { scope: activationScope }));
+    activationDrafts.push(await approveCrateSettings(prisma, approverContext, {
+      id: draft.settings.id, expectedVersion: 1, requestId: `approve-activation-${index}-${run}`,
+    }));
+  }
+  const activationSettled = await Promise.allSettled(activationDrafts.map((draft, index) => activateCrateSettings(
+    prisma,
+    approverContext,
+    { id: draft.settings.id, expectedVersion: 2, requestId: `activate-race-${index}-${run}` },
+  )));
+  const activationFulfilled = activationSettled.filter((result) => result.status === "fulfilled");
+  const activationRejected = activationSettled.filter((result) => result.status === "rejected");
+  const activationErrorCodes = [...new Set(activationRejected.map((result) => result.reason?.code || result.reason?.meta?.code || "DATABASE"))];
+  const activeRaceRows = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::int AS count FROM "osi"."crate_settings_versions"
+    WHERE "tenant_id"=$1 AND "scope"=$2 AND "state"='ACTIVE'
+  `, t1, activationScope);
+  const activeRaceAudits = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::int AS count FROM "osi"."commercial_audit_logs"
+    WHERE "tenant_id"=$1 AND "action"='CRATE_SETTINGS_ACTIVE'
+      AND "entity_id" = ANY($2::text[])
+  `, t1, activationDrafts.map((item) => item.settings.id));
+  const activeRaceConflictAudits = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::int AS count, COUNT(DISTINCT "request_id")::int AS requests
+    FROM "osi"."commercial_audit_logs"
+    WHERE "tenant_id"=$1 AND "action"='CRATE_SETTINGS_CONFLICT_REJECTED'
+      AND "entity_id" = ANY($2::text[])
+  `, t1, activationDrafts.map((item) => item.settings.id));
+
   const snapshotInput = {
     settingsId: replacementActive.settings.id, calculationRef: `CALC-${upper}`, sourceEntity: "CRATE_DRAFT", sourceEntityId: `DRAFT-${upper}`,
     calculationInput: { pieces: 3, lengthCm: 120 }, calculationOutput: { boxes: 1, cost: 4000 }, source: "SYNTHETIC_TEST", requestId: `snapshot-${run}`,
   };
-  const snapshot = await createCrateCalculationSnapshot(prisma, creatorContext, snapshotInput);
-  const snapshotAgain = await createCrateCalculationSnapshot(prisma, creatorContext, snapshotInput);
-  check("snapshot histórico completo e idempotente", snapshot.snapshot.id === snapshotAgain.snapshot.id && snapshotAgain.idempotent && snapshot.snapshot.settingsBusinessVersion === 2 && snapshot.snapshot.currencyCode === "DOP");
+  const snapshotSettled = await Promise.allSettled(Array.from(
+    { length: concurrencyWidth },
+    () => createCrateCalculationSnapshot(prisma, creatorContext, snapshotInput),
+  ));
+  const snapshotFulfilled = snapshotSettled.filter((result) => result.status === "fulfilled").map((result) => result.value);
+  const snapshotRejected = snapshotSettled.filter((result) => result.status === "rejected");
+  const snapshotErrorCodes = [...new Set(snapshotRejected.map((result) => result.reason?.code || result.reason?.meta?.code || "DATABASE"))];
+  const snapshotIds = new Set(snapshotFulfilled.map((result) => result.snapshot.id));
+  const snapshotCreated = snapshotFulfilled.filter((result) => !result.idempotent);
+  const snapshot = snapshotFulfilled[0];
+  const snapshotRows = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::int AS count FROM "osi"."crate_calculation_snapshots"
+    WHERE "tenant_id"=$1 AND "request_id"=$2
+  `, t1, snapshotInput.requestId);
+  const snapshotAudits = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::int AS count FROM "osi"."commercial_audit_logs"
+    WHERE "tenant_id"=$1 AND "request_id"=$2 AND "action"='CRATE_CALCULATION_SNAPSHOT_CREATED'
+  `, t1, snapshotInput.requestId);
   await expectError("snapshot histórico inmutable", () => prisma.$executeRawUnsafe(`UPDATE "osi"."crate_calculation_snapshots" SET "source"='ALTERED' WHERE "id"='${snapshot.snapshot.id}'`));
   await retireCrateSettings(prisma, approverContext, { id: replacementActive.settings.id, expectedVersion: 3, requestId: `retire-replacement-${run}` });
   const snapshotRow = await prisma.$queryRawUnsafe(`SELECT "settings_hash","currency_code" FROM "osi"."crate_calculation_snapshots" WHERE "id"=$1`, snapshot.snapshot.id);
@@ -198,10 +288,72 @@ try {
   const importedAgain = await importCrateSettingsBatch(prisma, creatorContext, { requestId: `import-${run}`, manifestHash: importPreview.manifest.manifestHash, exportPayload });
   check("importación auditada e idempotente", imported.createdIds.length === 1 && importedAgain.idempotent && importedAgain.importId === imported.importId);
 
+  const auditFailureInput = config("AUDITFAIL");
   const beforeAuditFailure = await prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS count FROM "osi"."crate_settings_versions" WHERE "tenant_id"=$1`, t1);
-  await expectError("fallo de auditoría crítica revierte borrador", () => createCrateSettingsVersion(prisma, creatorContext, config("AUDITFAIL"), { auditWriter: async () => { throw new Error("AUDIT_DOWN"); } }));
+  await expectError("fallo de auditoría crítica revierte borrador", () => createCrateSettingsVersion(prisma, creatorContext, auditFailureInput, { auditWriter: async () => { throw new Error("AUDIT_DOWN"); } }));
   const afterAuditFailure = await prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS count FROM "osi"."crate_settings_versions" WHERE "tenant_id"=$1`, t1);
   check("auditoría fallida no deja configuración", beforeAuditFailure[0].count === afterAuditFailure[0].count);
+  const auditRetry = await createCrateSettingsVersion(prisma, creatorContext, auditFailureInput);
+  const auditRetryRows = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::int AS settings FROM "osi"."crate_settings_versions"
+    WHERE "tenant_id"=$1 AND "request_id"=$2
+  `, t1, auditFailureInput.requestId);
+  const auditRetryAudits = await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::int AS audits FROM "osi"."commercial_audit_logs"
+    WHERE "tenant_id"=$1 AND "request_id"=$2 AND "action"='CRATE_SETTINGS_DRAFT_CREATED'
+  `, t1, auditFailureInput.requestId);
+  check("reintento después de rollback crea una vez", !auditRetry.idempotent && auditRetryRows[0].settings === 1 && auditRetryAudits[0].audits === 1);
+
+  stressDiagnostics = {
+    creation: concurrencyOutcomes.map((outcome) => ({
+      round: outcome.round, fulfilled: outcome.fulfilled.length, rejected: outcome.rejected.length,
+      ids: outcome.ids.size, created: outcome.created.length, errorCodes: outcome.errorCodes,
+    })),
+    activation: {
+      fulfilled: activationFulfilled.length, rejected: activationRejected.length,
+      errorCodes: activationErrorCodes, activeRows: activeRaceRows[0].count, auditRows: activeRaceAudits[0].count,
+      conflictAuditRows: activeRaceConflictAudits[0].count, conflictAuditRequests: activeRaceConflictAudits[0].requests,
+    },
+    snapshot: {
+      fulfilled: snapshotFulfilled.length, rejected: snapshotRejected.length,
+      ids: snapshotIds.size, created: snapshotCreated.length, errorCodes: snapshotErrorCodes,
+      snapshotRows: snapshotRows[0].count, auditRows: snapshotAudits[0].count,
+    },
+  };
+
+  for (const outcome of concurrencyOutcomes) {
+    check(
+      `creación concurrente idempotente ronda ${outcome.round}`,
+      outcome.rejected.length === 0 && outcome.ids.size === 1 && outcome.created.length === 1,
+      `fulfilled=${outcome.fulfilled.length}; rejected=${outcome.rejected.length}; codes=${outcome.errorCodes.join(",")}`,
+    );
+  }
+  check(
+    "requestId distinto con código y versión duplicados",
+    businessDuplicateError?.code === "CRATE_SETTINGS_DUPLICATE",
+    `code=${businessDuplicateError?.code || businessDuplicateError?.meta?.code || "NONE"}`,
+  );
+  check(
+    "creación concurrente no duplica configuraciones ni auditorías",
+    concurrencyRows[0].settings === concurrencyRounds && concurrencyRows[0].requests === concurrencyRounds
+      && concurrencyAudits[0].audits === concurrencyRounds && concurrencyAudits[0].requests === concurrencyRounds,
+    `settings=${concurrencyRows[0].settings}; audits=${concurrencyAudits[0].audits}`,
+  );
+  check(
+    "activaciones simultáneas tienen un ganador determinista",
+    activationFulfilled.length === 1 && activationRejected.length === concurrencyWidth - 1
+      && activationErrorCodes.length === 1 && activationErrorCodes[0] === "CRATE_SETTINGS_ACTIVE_CONFLICT"
+      && activeRaceRows[0].count === 1 && activeRaceAudits[0].count === 1
+      && activeRaceConflictAudits[0].count === concurrencyWidth - 1 && activeRaceConflictAudits[0].requests === concurrencyWidth - 1,
+    `fulfilled=${activationFulfilled.length}; rejected=${activationRejected.length}; codes=${activationErrorCodes.join(",")}; active=${activeRaceRows[0].count}; audits=${activeRaceAudits[0].count}; conflictAudits=${activeRaceConflictAudits[0].count}`,
+  );
+  check(
+    "snapshots concurrentes son idempotentes",
+    snapshotRejected.length === 0 && snapshotIds.size === 1 && snapshotCreated.length === 1
+      && snapshotRows[0].count === 1 && snapshotAudits[0].count === 1
+      && snapshot.snapshot.settingsBusinessVersion === 2 && snapshot.snapshot.currencyCode === "DOP",
+    `fulfilled=${snapshotFulfilled.length}; rejected=${snapshotRejected.length}; codes=${snapshotErrorCodes.join(",")}; rows=${snapshotRows[0].count}; audits=${snapshotAudits[0].count}`,
+  );
 
   const page = await listCrateSettings(prisma, creatorContext, { limit: 3 });
   check("paginación obligatoria", page.items.length === 3 && Boolean(page.nextCursor));
@@ -231,13 +383,14 @@ try {
 
   const output = {
     passed: results.length, failed: 0, results,
+    stressDiagnostics,
     performance: { records: bulkCount, insertMs: Number(insertMs.toFixed(2)), pageMs: Number(pageMs.toFixed(2)) },
     dryRun: dryRun.totals,
   };
   await writeFile(process.env.DB01J_RESULTS_PATH || "prisma/db01/DB-01J-TEST-RESULTS.json", `${JSON.stringify(output, null, 2)}\n`, "utf8");
   console.log(JSON.stringify(output, null, 2));
 } catch (error) {
-  const output = { passed: results.length, failed: 1, results, error: { name: error?.name, code: error?.code, message: String(error?.message || error), stack: error?.stack } };
+  const output = { passed: results.length, failed: 1, results, stressDiagnostics, error: { name: error?.name, code: error?.code, message: String(error?.message || error), stack: error?.stack } };
   await writeFile(process.env.DB01J_RESULTS_PATH || "prisma/db01/DB-01J-TEST-RESULTS.json", `${JSON.stringify(output, null, 2)}\n`, "utf8");
   console.error(JSON.stringify(output, null, 2));
   process.exitCode = 1;

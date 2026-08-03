@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { canonicalJson, sha256 } from "./geoNormalization.js";
 import { LogisticsGeoError, json, requiredText } from "./logisticsGeoSupport.js";
 import { normalizeCrateSettingsInput } from "./crateSettingsValidation.js";
-import { CRATE_SETTINGS_PERMISSIONS, auditCrateSettings, resolveCrateSettingsActor, serializable } from "./crateSettingsSupport.js";
+import { CRATE_SETTINGS_PERMISSIONS, auditCrateSettings, resolveCrateSettingsActor } from "./crateSettingsSupport.js";
 
 const SETTINGS_TABLE = Prisma.raw('"osi"."crate_settings_versions"');
 const SNAPSHOT_TABLE = Prisma.raw('"osi"."crate_calculation_snapshots"');
@@ -40,6 +40,14 @@ function error(message, code, status = 409) {
   return new LogisticsGeoError(message, { code, status });
 }
 
+function readCommitted(prisma, work) {
+  return prisma.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+}
+
+function isUniqueViolation(cause) {
+  return cause?.code === "P2010" && String(cause?.meta?.code || "") === "23505";
+}
+
 async function lockRequest(tx, tenantId, namespace, requestId) {
   await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${namespace}:${requestId}`}, 0))`);
 }
@@ -68,8 +76,10 @@ export async function insertCrateSettingsDraft(tx, actor, normalized, input, opt
   }
   const id = randomUUID();
   const versionHash = sha256(canonicalJson({ tenantId: actor.tenantId, seriesId, businessVersion, configurationHash: normalized.configurationHash }));
-  const rows = await tx.$queryRaw(Prisma.sql`
-    INSERT INTO ${SETTINGS_TABLE}(
+  let rows;
+  try {
+    rows = await tx.$queryRaw(Prisma.sql`
+      INSERT INTO ${SETTINGS_TABLE}(
       "id","tenant_id","series_id","code","normalized_code","name","scope","schema_version","business_version","operation_mode",
       "technical_json","economic_json","catalog_refs_json","units_json","currency_code","configuration_json","configuration_hash","version_hash",
       "valid_from","valid_to","replaces_settings_id","source","evidence_json","created_by_user_id","created_by_membership_id","request_id","payload_hash"
@@ -79,8 +89,16 @@ export async function insertCrateSettingsDraft(tx, actor, normalized, input, opt
       CAST(${json(normalized.catalogRefs)} AS jsonb),CAST(${json(normalized.units)} AS jsonb),${normalized.currencyCode},CAST(${json(normalized.configuration)} AS jsonb),
       ${normalized.configurationHash},${versionHash},${normalized.validFrom},${normalized.validTo},${normalized.replacesSettingsId},${normalized.source},
       CAST(${json(normalized.evidence)} AS jsonb),${actor.userId},${actor.membershipId},${requestId},${payloadHash}
-    ) RETURNING *
-  `);
+      ) RETURNING *
+    `);
+  } catch (cause) {
+    if (isUniqueViolation(cause)) {
+      throw new LogisticsGeoError("El código y la versión ya existen en esta empresa.", {
+        code: "CRATE_SETTINGS_DUPLICATE", status: 409, cause,
+      });
+    }
+    throw cause;
+  }
   await auditCrateSettings(tx, actor, { action: "CRATE_SETTINGS_DRAFT_CREATED", entity: "CRATE_SETTINGS", entityId: id, requestId, afterJson: dto(rows[0]) }, options.auditWriter);
   if (replaced && replaced.configuration_hash !== normalized.configurationHash) {
     await auditCrateSettings(tx, actor, {
@@ -101,7 +119,8 @@ export async function insertCrateSettingsDraft(tx, actor, normalized, input, opt
 
 export function createCrateSettingsVersion(prisma, context, input, options = {}) {
   const normalized = normalizeCrateSettingsInput(input);
-  return serializable(prisma, async (tx) => {
+  // READ COMMITTED lets a waiter observe the transaction that released the requestId lock.
+  return readCommitted(prisma, async (tx) => {
     const actor = await resolveCrateSettingsActor(tx, context, CRATE_SETTINGS_PERMISSIONS.MANAGE);
     return insertCrateSettingsDraft(tx, actor, normalized, input, { ...options, context });
   });
@@ -123,13 +142,19 @@ async function transition(prisma, context, input, target, options = {}) {
   const permission = target === "APPROVED" ? CRATE_SETTINGS_PERMISSIONS.APPROVE
     : target === "RETIRED" ? CRATE_SETTINGS_PERMISSIONS.RETIRE : CRATE_SETTINGS_PERMISSIONS.ACTIVATE;
   const action = `CRATE_SETTINGS_${target}`;
-  return serializable(prisma, async (tx) => {
+  return readCommitted(prisma, async (tx) => {
     const actor = await resolveCrateSettingsActor(tx, context, permission);
     const id = requiredText(input.id, "id", 191);
     const requestId = requiredText(input.requestId, "requestId", 191);
     await lockRequest(tx, actor.tenantId, `crate-transition:${target}`, requestId);
     const prior = await priorTransition(tx, actor, { ...input, id }, action);
     if (prior) return prior;
+    const initialRows = await tx.$queryRaw(Prisma.sql`SELECT "id","scope" FROM ${SETTINGS_TABLE} WHERE "tenant_id"=${actor.tenantId} AND "id"=${id} LIMIT 1`);
+    if (!initialRows[0]) throw error("Configuración no encontrada.", "CRATE_SETTINGS_NOT_FOUND", 404);
+    if (target === "ACTIVE") {
+      await lockRequest(tx, actor.tenantId, "crate-active-scope", initialRows[0].scope);
+    }
+    // This read happens after any wait on the scope lock and therefore sees the committed winner.
     const rows = await tx.$queryRaw(Prisma.sql`SELECT * FROM ${SETTINGS_TABLE} WHERE "tenant_id"=${actor.tenantId} AND "id"=${id} FOR UPDATE`);
     const current = rows[0];
     if (!current) throw error("Configuración no encontrada.", "CRATE_SETTINGS_NOT_FOUND", 404);
@@ -199,7 +224,8 @@ export async function listCrateSettings(prisma, context, filters = {}) {
 }
 
 export function createCrateCalculationSnapshot(prisma, context, input, options = {}) {
-  return serializable(prisma, async (tx) => {
+  // Snapshot idempotency has the same post-lock visibility requirement as settings creation.
+  return readCommitted(prisma, async (tx) => {
     const actor = await resolveCrateSettingsActor(tx, context, CRATE_SETTINGS_PERMISSIONS.SNAPSHOT_CREATE, { allowSystem: true });
     const requestId = requiredText(input.requestId, "requestId", 191);
     await lockRequest(tx, actor.tenantId, "crate-snapshot", requestId);
@@ -241,4 +267,4 @@ export function compareCrateSettingsShadow(legacy, relational) {
   };
 }
 
-export const __crateSettingsInternals = Object.freeze({ dto, snapshotDto, lockRequest });
+export const __crateSettingsInternals = Object.freeze({ dto, snapshotDto, lockRequest, readCommitted, isUniqueViolation });

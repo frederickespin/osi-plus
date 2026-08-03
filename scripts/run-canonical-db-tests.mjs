@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { assertCanonicalCiTarget } from "./validate-canonical-ci.mjs";
 
-const EXPECTED_DB_TESTS = Object.freeze({ d: 21, e: 37, f: 38, g: 47, h: 35, i: 60, j: 31 });
+const EXPECTED_DB_TESTS = Object.freeze({ d: 21, e: 37, f: 38, g: 47, h: 35, i: 60, j: 54 });
 const SENSITIVE_NAME = /(DATABASE_URL|DIRECT_URL|PASSWORD|TOKEN|SECRET|API_KEY)/i;
 
 function invariant(condition, message) {

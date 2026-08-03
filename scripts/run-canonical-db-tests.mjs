@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { assertCanonicalCiTarget } from "./validate-canonical-ci.mjs";
 
-const EXPECTED_DB_TESTS = Object.freeze({ d: 21, e: 37, f: 38, g: 47, h: 35, i: 36, j: 31 });
+const EXPECTED_DB_TESTS = Object.freeze({ d: 21, e: 37, f: 38, g: 47, h: 35, i: 60, j: 31 });
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -71,8 +71,9 @@ try {
     suites[`DB-01${letter.toUpperCase()}`] = passed;
     dbPassed += passed;
   }
+  const expectedTotal = 7 + Object.values(EXPECTED_DB_TESTS).reduce((sum, count) => sum + count, 0);
   const total = passedCount(mtTests) + dbPassed;
-  invariant(total === 252, `La cadena esperaba 252 pruebas y obtuvo ${total}`);
+  invariant(total === expectedTotal, `La cadena esperaba ${expectedTotal} pruebas y obtuvo ${total}`);
   process.stdout.write(`${JSON.stringify({ ok: true, mt01a: 7, suites, total }, null, 2)}\n`);
 } finally {
   rmSync(envPath, { force: true });

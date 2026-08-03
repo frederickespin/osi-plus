@@ -68,10 +68,11 @@ export async function insertVehicle(tx, actor, input, { importBatchId = null, au
 }
 
 export function createVehicle(prisma, context, input, options = {}) {
-  return serializable(prisma, async (tx) => {
+  // READ COMMITTED lets the post-lock lookup observe the transaction that just released this requestId lock.
+  return prisma.$transaction(async (tx) => {
     const actor = await resolveVehicleActor(tx, context, VEHICLE_PERMISSIONS.MANAGE);
     return insertVehicle(tx, actor, input, options);
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
 
 export async function listVehicles(prisma, context, filters = {}) {

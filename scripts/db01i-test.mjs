@@ -89,17 +89,44 @@ try {
   check("integración desactivada por defecto", vehicleEngineIntegrationMode({}) === "LEGACY_ONLY");
   check("normaliza código, matrícula y VIN", normalizeVehicleCode(" vh 01 ") === "VH-01" && normalizeVehiclePlate(" ab-123 cd ") === "AB123CD" && normalizeVehicleVin(" vin-12 34 ") === "VIN1234");
 
+  const concurrencyRounds = 20;
+  const concurrencyWidth = 20;
+  const concurrentVehicleIds = [];
+  for (let round = 0; round < concurrencyRounds; round += 1) {
+    const concurrentInput = vehicle(`CONCURRENT-${round}`);
+    const concurrentResults = await Promise.all(Array.from(
+      { length: concurrencyWidth },
+      () => createVehicle(prisma, creatorContext, concurrentInput),
+    ));
+    const ids = new Set(concurrentResults.map((result) => result.vehicle.id));
+    const created = concurrentResults.filter((result) => result.idempotent === false);
+    check(`creación concurrente idempotente ronda ${round + 1}`, ids.size === 1 && created.length === 1);
+    concurrentVehicleIds.push(concurrentResults[0].vehicle.id);
+  }
+  const concurrentRows = await prisma.$queryRawUnsafe(
+    `SELECT COUNT(*)::int AS count FROM "osi"."osi_vehicles" WHERE "id"=ANY($1::text[])`,
+    concurrentVehicleIds,
+  );
+  const concurrentAudits = await prisma.$queryRawUnsafe(
+    `SELECT COUNT(*)::int AS count FROM "osi"."commercial_audit_logs" WHERE "tenant_id"=$1 AND "entity"='VEHICLE' AND "entity_id"=ANY($2::text[]) AND "action"='VEHICLE_CREATED'`,
+    t1,
+    concurrentVehicleIds,
+  );
+  check("20 rondas no crean vehículos duplicados", concurrentRows[0].count === concurrencyRounds);
+  check("20 rondas no crean auditorías duplicadas", concurrentAudits[0].count === concurrencyRounds);
+
   const firstInput = vehicle("FIRST");
   const [firstA, firstB] = await Promise.all([createVehicle(prisma, creatorContext, firstInput), createVehicle(prisma, creatorContext, firstInput)]);
-  check("creación concurrente idempotente", firstA.vehicle.id === firstB.vehicle.id && [firstA.idempotent, firstB.idempotent].includes(true));
+  check("creación concurrente idempotente base", firstA.vehicle.id === firstB.vehicle.id && [firstA.idempotent, firstB.idempotent].includes(true));
   await expectError("requestId distinto payload", () => createVehicle(prisma, creatorContext, { ...firstInput, brand: "Otra" }), "VEHICLE_IDEMPOTENCY_CONFLICT");
   await expectError("RBAC ignora permisos del navegador", () => createVehicle(prisma, limitedContext, vehicle("NOAUTH")), "LOGISTICS_GEO_FORBIDDEN");
+  await expectError("código normalizado duplicado por tenant", () => createVehicle(prisma, creatorContext, vehicle("CODE", { businessCode: firstInput.businessCode })), "VEHICLE_DUPLICATE");
   await expectError("matrícula duplicada por tenant", () => createVehicle(prisma, creatorContext, vehicle("PLATE", { plate: firstInput.plate })), "VEHICLE_DUPLICATE");
   await expectError("VIN duplicado por tenant", () => createVehicle(prisma, creatorContext, vehicle("VIN", { vin: firstInput.vin })), "VEHICLE_DUPLICATE");
   const sameDescription = await createVehicle(prisma, creatorContext, vehicle("SAME", { brand: firstInput.brand, model: firstInput.model }));
   check("marca y modelo no infieren duplicado", Boolean(sameDescription.vehicle.id));
-  const tenantTwoVehicle = await createVehicle(prisma, t2Context, { ...vehicle("TENANT2"), plate: firstInput.plate, vin: firstInput.vin });
-  check("matrícula y VIN pueden repetirse entre empresas", Boolean(tenantTwoVehicle.vehicle.id));
+  const tenantTwoVehicle = await createVehicle(prisma, t2Context, firstInput);
+  check("identificadores y requestId pueden repetirse entre empresas", Boolean(tenantTwoVehicle.vehicle.id));
   await expectError("acceso cruzado devuelve 404", () => getVehicle(prisma, t2Context, firstA.vehicle.id), "VEHICLE_NOT_FOUND");
   const retired = await changeVehicleStatus(prisma, creatorContext, { id: sameDescription.vehicle.id, expectedVersion: 1, operationalStatus: "RETIRED", availableForCalculation: true, requestId: `retire-${run}` });
   check("retiro conserva registro y desactiva cálculo", retired.operationalStatus === "RETIRED" && !retired.availableForCalculation && retired.rowVersion === 2);
@@ -168,10 +195,15 @@ try {
   await prisma.$executeRawUnsafe(`UPDATE "osi"."osi_vehicles" SET "calculation_locked_at"=CURRENT_TIMESTAMP WHERE "id"='${dependencyVehicle}'`);
   await expectError("rollback con dependencia se bloquea", () => rollbackVehicleImportBatch(prisma, creatorContext, { batchId: dependencyBatch.batchId, requestId: `rollback-dep-${run}` }), "VEHICLE_IMPORT_HAS_DEPENDENCIES");
 
+  const auditFailureInput = vehicle("AUDITFAIL");
   const beforeAuditFailure = await prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS count FROM "osi"."osi_vehicles" WHERE "tenant_id"=$1`, t1);
-  await expectError("fallo de auditoría crítica revierte vehículo", () => createVehicle(prisma, creatorContext, vehicle("AUDITFAIL"), { auditWriter: async () => { throw new Error("AUDIT_DOWN"); } }));
+  await expectError("fallo de auditoría crítica revierte vehículo", () => createVehicle(prisma, creatorContext, auditFailureInput, { auditWriter: async () => { throw new Error("AUDIT_DOWN"); } }));
   const afterAuditFailure = await prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS count FROM "osi"."osi_vehicles" WHERE "tenant_id"=$1`, t1);
   check("auditoría fallida no deja vehículo", beforeAuditFailure[0].count === afterAuditFailure[0].count);
+  const recoveredAfterAuditFailure = await createVehicle(prisma, creatorContext, auditFailureInput);
+  const recoveredRows = await prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS count FROM "osi"."osi_vehicles" WHERE "tenant_id"=$1 AND "request_id"=$2`, t1, auditFailureInput.requestId);
+  const recoveredAudits = await prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS count FROM "osi"."commercial_audit_logs" WHERE "tenant_id"=$1 AND "request_id"=$2 AND "action"='VEHICLE_CREATED'`, t1, auditFailureInput.requestId);
+  check("reintento tras rollback crea una fila y una auditoría", Boolean(recoveredAfterAuditFailure.vehicle.id) && recoveredRows[0].count === 1 && recoveredAudits[0].count === 1);
 
   const bulkCount = 2000;
   const bulkStart = performance.now();

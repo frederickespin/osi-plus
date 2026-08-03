@@ -15,8 +15,8 @@ jobs:
     env:
       # Prisma may fail during `prisma generate` if these are missing.
       # Use harmless dummy URLs for CI (no DB connection is performed).
-      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/prisma?schema=public
-      DIRECT_URL: postgresql://prisma:prisma@localhost:5432/prisma?schema=public
+      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/prisma?schema=osi
+      DIRECT_URL: postgresql://prisma:prisma@localhost:5432/prisma?schema=osi
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,11 +24,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install
         run: npm ci
+
+      - name: Validate Prisma schema target
+        run: node scripts/validate-prisma-schema-target.mjs
+
+      - name: Validate Prisma datamodel
+        run: npx prisma validate --schema prisma/schema.prisma
 
       - name: Lint
         continue-on-error: true
@@ -36,3 +42,97 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  canonical-database-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: osi_db01n_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: osi-ci-only-password
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d osi_db01n_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CANONICAL_DB_VALIDATION: "true"
+      VERCEL_ENV: development
+      DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DIRECT_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01D_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01E_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01F_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01G_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01H_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01I_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01J_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Validate local target and active chain
+        run: |
+          node scripts/validate-canonical-ci.mjs --preflight
+          node scripts/validate-canonical-activation-guard-test.mjs
+
+      - name: Validate and generate Prisma
+        run: |
+          node scripts/validate-prisma-schema-target.mjs
+          npx prisma validate --schema prisma/schema.prisma
+          npx prisma generate --schema prisma/schema.prisma
+
+      - name: Deploy canonical migrations from empty database
+        run: npx prisma migrate deploy --schema prisma/schema.prisma
+
+      - name: Verify idempotent second deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(npx prisma migrate deploy --schema prisma/schema.prisma 2>&1)"
+          printf '%s\n' "$output"
+          grep -Fq "No pending migrations to apply." <<< "$output"
+
+      - name: Verify migration status and drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx prisma migrate status --schema prisma/schema.prisma
+          set +e
+          npx prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --script --exit-code > "$RUNNER_TEMP/canonical-drift.sql"
+          diff_status=$?
+          set -e
+          cat "$RUNNER_TEMP/canonical-drift.sql"
+          test "$diff_status" -eq 0
+          grep -Fxq -- "-- This is an empty migration." "$RUNNER_TEMP/canonical-drift.sql"
+
+      - name: Verify canonical history and safe modes
+        run: node scripts/validate-canonical-ci.mjs
+
+      - name: Run MT-01A and DB-01D through DB-01J
+        run: node scripts/run-canonical-db-tests.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Recheck security and repository cleanliness
+        run: |
+          node scripts/validate-canonical-ci.mjs --preflight
+          git diff --exit-code

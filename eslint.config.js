@@ -8,7 +8,13 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   // This repo contains a legacy Vite app under `app/` which is not part of the current build.
   // Ignore it to keep lint focused on the deployed codebase.
-  globalIgnores(['dist', '.vercel/**', 'app/**']),
+  globalIgnores([
+    'dist',
+    '.vercel/**',
+    'app/**',
+    'prisma/db01/generated/**',
+    'prisma/migration-archive/**',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

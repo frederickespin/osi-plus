@@ -1,0 +1,318 @@
+{
+  "generatedAt": "2026-08-02T00:41:36.419Z",
+  "evidenceSource": "DB-01A read-only production audit; DB-01K did not connect to production.",
+  "archived": [
+    {
+      "name": "20260219_ops_pst_flow",
+      "inferredDate": "20260219",
+      "sha256": "e4ebfed5843190e1e13f3d40cdce9db3ab2ff38e0e8659a06500e12216dd70f1",
+      "bytes": 34626,
+      "encoding": "UTF-16LE-BOM",
+      "nulBytes": 17312,
+      "gitBlob": "ff80953ff9f4790d82412aad609499dc69ec0d94",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260222_commercial_gateway_lead_client",
+      "inferredDate": "20260222",
+      "sha256": "3b0a2066fa6ef369915ad14891172a7f84a4ad9a3b1e4ec33c2272a1c247339b",
+      "bytes": 7738,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "543107c45d858e165333dc30dab730b41b8afdf2",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260222_survey_module_dynamic",
+      "inferredDate": "20260222",
+      "sha256": "258649bf8ecc9571bcbcf67ee166071afca7231bb899c2787264644b7fc6bed7",
+      "bytes": 11005,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "c10ec63b56324bea2e2b123c9a31ee77fed3a88e",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260226_lead_volume_visit_rules",
+      "inferredDate": "20260226",
+      "sha256": "0ff5377f63f51c9a8467fd03c7eda9f743293f7bc5f30f9e8e8bee2ee44f7b31",
+      "bytes": 7500,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "f1c6f18f93fc2ba41b787ed45cbb1a3ef87e3cd4",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260301_commercial_schema_v1",
+      "inferredDate": "20260301",
+      "sha256": "5361366051de60c7481426450a8b7b10aa63c394dc509bccbd144f5b79f70678",
+      "bytes": 23679,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "07e48974c5697668c03b0466bb18462644005900",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260301_pipeline_cases_backend",
+      "inferredDate": "20260301",
+      "sha256": "be5b330752f300929275801219fba0c22f7043b9a21e329ede24d6802a9e2ca7",
+      "bytes": 7006,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "0449cc8d2aa28fda9d1da32c03b2de6d37513059",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260312_commercial_entities_parties_commissions",
+      "inferredDate": "20260312",
+      "sha256": "7d7b7314f8979c0e6840818d21648e3846641ac1235a51e22be4bdeb9b807ca0",
+      "bytes": 10620,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "46fef08baca0960006cfe4581e3bc63e792ee783",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260403_project_coordination",
+      "inferredDate": "20260403",
+      "sha256": "c242934835762d469e88c0a546a442bc84bd41a05f3baeb94ba9fa0c19bd7095",
+      "bytes": 1737,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "96b3f09bfc4b782506324fd0955a40c684827d3f",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260406_tariff_v2_pricing_profiles",
+      "inferredDate": "20260406",
+      "sha256": "95603213bcd75d0fa91498353ca4a06d515fd57b0b3becfdc73e0822afca5778",
+      "bytes": 10443,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "dbcbaec0382a8718bfa5b1743f4714ad442a7a89",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260407_tariff_v2_auto_codes",
+      "inferredDate": "20260407",
+      "sha256": "a736c25f1cd9a9687928af69bfff7703d01fbcdfc450487a06fdd519337372ff",
+      "bytes": 840,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "17cbe9ef69b88bb0da215f3c035ada280502aebe",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260413_operational_volume_snapshot",
+      "inferredDate": "20260413",
+      "sha256": "9c852056c01a1daef3c35cf4e03e23f3cd7fd12c98515f8184a4bfedde198e83",
+      "bytes": 1679,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "82e7dc9fe1aee18a0f32058c5eb7cceca26767a8",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260414_clients_duplicate_guard",
+      "inferredDate": "20260414",
+      "sha256": "0ec8e19de2766693f2bf334a8a900e3ad16c25fb9d79bf8998169b8636e8335d",
+      "bytes": 1649,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "b9bb389e1f3c08b466a65af40a18f6eb4533c891",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260415_logistics_versioned_engine",
+      "inferredDate": "20260415",
+      "sha256": "9acc65bd33c7501952a544e73ddcbe9c7a7d87be43a900e75831e15e85477c4e",
+      "bytes": 6553,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "0c71f3caec3892d372d93d1ee5c9ab0c04399946",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260420_client_master_billing_tax_id",
+      "inferredDate": "20260420",
+      "sha256": "f06b62426cb0c4f64945b7ed933c5d827a329477491ab437f466238b8d052cf1",
+      "bytes": 250,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260420_client_master_service_addresses",
+      "inferredDate": "20260420",
+      "sha256": "e74a8cd3e404b4a0d2726140ead08423407a3bfcca96a9aaf0a795162424c72f",
+      "bytes": 466,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260429_user_extended_profile",
+      "inferredDate": "20260429",
+      "sha256": "22f77acac7ea68e5d6731aadf40c631049140f6f269ea78f320425765c41fb16",
+      "bytes": 101,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": "2b0522cd551a12413f2dfc13da780d032d3fb594",
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260720_evaluator_article_catalog",
+      "inferredDate": "20260720",
+      "sha256": "3b32aac1df709195efdf6ec5e10e91432601607ca2333c744196c1a21ed3b221",
+      "bytes": 294,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260720_evaluator_visit_reports",
+      "inferredDate": "20260720",
+      "sha256": "fda8036b8086718b7a9d617330852ff1fdb16118dd4deb07ea7fb7c896bcc93d",
+      "bytes": 1165,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260721_quote_addendum_classification",
+      "inferredDate": "20260721",
+      "sha256": "a1f5643f60998840c919ae05c897c32dbf23ae85b2994ae1de3567136ce9caee",
+      "bytes": 1624,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260723_operational_compensation_config",
+      "inferredDate": "20260723",
+      "sha256": "bb24d6220fdf323c864b7aaa99e027e2154454043793883917fc89c2171898ff",
+      "bytes": 274,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260724_logistics_transport_minimum",
+      "inferredDate": "20260724",
+      "sha256": "fb17344af95e2f4fdca675a4899733f3eb089085a99307f57f2ec106f9bfe43b",
+      "bytes": 120,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260724_pricing_profile_applicability",
+      "inferredDate": "20260724",
+      "sha256": "376b2ac0b8ed4d8891231e155a547338c029872d45ed15898f5170a0da42ade7",
+      "bytes": 482,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260724_tariff_service_rules",
+      "inferredDate": "20260724",
+      "sha256": "725ec6f48f3d649bac95d0145fccbc09f72c72240a972883bbe9e09395019bba",
+      "bytes": 190,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260727_client_master_updated_at",
+      "inferredDate": "20260727",
+      "sha256": "b9374b8c5c40c794a7fbd6b94cc4343e7c1a96a22abc2128d937dc4a4fa8fd2f",
+      "bytes": 112,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260727_quote_addendum_cap_15",
+      "inferredDate": "20260727",
+      "sha256": "bac28427fb4091c01ed1d5ed75da9bd77679421fb4a0d877413fe18479425393",
+      "bytes": 75,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    },
+    {
+      "name": "20260801_mt_01a_tenant_memberships",
+      "inferredDate": "20260801",
+      "sha256": "015c8bd39f050f71fbe1bea0f94198091149296269fed77905bcefd23094cd44",
+      "bytes": 3582,
+      "encoding": "UTF-8-compatible",
+      "nulBytes": 0,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "ABSENT_FROM_OBSERVED_CANONICAL_HISTORY",
+      "archiveReason": "Pre-DB-01 migration retained byte-for-byte outside the active canonical chain."
+    }
+  ],
+  "metadataOnly": [
+    {
+      "name": "20260121211455_init",
+      "sqlAvailable": false,
+      "sha256": null,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "REGISTERED_IN_LEGACY_PRODUCTION_HISTORY",
+      "archiveReason": "Metadata-only: SQL was not present in the repository and was not reconstructed."
+    },
+    {
+      "name": "20260123004649_add_crate_plan",
+      "sqlAvailable": false,
+      "sha256": null,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "REGISTERED_IN_LEGACY_PRODUCTION_HISTORY",
+      "archiveReason": "Metadata-only: SQL was not present in the repository and was not reconstructed."
+    },
+    {
+      "name": "20260123005908_update_crate_plan_schema",
+      "sqlAvailable": false,
+      "sha256": null,
+      "gitBlob": null,
+      "productionStatusObservedInDb01a": "REGISTERED_IN_LEGACY_PRODUCTION_HISTORY",
+      "archiveReason": "Metadata-only: SQL was not present in the repository and was not reconstructed."
+    }
+  ]
+}

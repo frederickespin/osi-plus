@@ -1,0 +1,158 @@
+{
+  "passed": 31,
+  "failed": 0,
+  "results": [
+    {
+      "name": "integración LEGACY_ONLY desactivada por defecto",
+      "passed": true
+    },
+    {
+      "name": "hash determinista",
+      "passed": true
+    },
+    {
+      "name": "conversiones de unidades",
+      "passed": true
+    },
+    {
+      "name": "moneda ISO explícita obligatoria",
+      "passed": true,
+      "details": "code=CRATE_SETTINGS_INPUT_INVALID"
+    },
+    {
+      "name": "parámetros sin consumidor se rechazan",
+      "passed": true,
+      "details": "code=CRATE_SETTINGS_INPUT_INVALID"
+    },
+    {
+      "name": "creación concurrente idempotente",
+      "passed": true
+    },
+    {
+      "name": "requestId con otro payload",
+      "passed": true,
+      "details": "code=CRATE_SETTINGS_IDEMPOTENCY_CONFLICT"
+    },
+    {
+      "name": "RBAC ignora permisos del navegador",
+      "passed": true,
+      "details": "code=LOGISTICS_GEO_FORBIDDEN"
+    },
+    {
+      "name": "creador no puede aprobar",
+      "passed": true,
+      "details": "code=CRATE_SETTINGS_SEPARATION_OF_DUTIES"
+    },
+    {
+      "name": "versión activa y moneda explícita",
+      "passed": true
+    },
+    {
+      "name": "versión activa inmutable",
+      "passed": true,
+      "details": "code=P2010"
+    },
+    {
+      "name": "eliminación de versión bloqueada",
+      "passed": true,
+      "details": "code=P2010"
+    },
+    {
+      "name": "código puede repetirse entre empresas",
+      "passed": true
+    },
+    {
+      "name": "acceso cruzado devuelve 404",
+      "passed": true,
+      "details": "code=CRATE_SETTINGS_NOT_FOUND"
+    },
+    {
+      "name": "dos configuraciones activas superpuestas se impiden",
+      "passed": true,
+      "details": "code=CRATE_SETTINGS_ACTIVE_CONFLICT"
+    },
+    {
+      "name": "nueva versión reemplaza activa explícitamente",
+      "passed": true
+    },
+    {
+      "name": "snapshot histórico completo e idempotente",
+      "passed": true
+    },
+    {
+      "name": "snapshot histórico inmutable",
+      "passed": true,
+      "details": "code=P2010"
+    },
+    {
+      "name": "retiro no altera snapshot",
+      "passed": true
+    },
+    {
+      "name": "activación SHADOW deshabilitada",
+      "passed": true,
+      "details": "code=CRATE_SETTINGS_SHADOW_DISABLED"
+    },
+    {
+      "name": "ENFORCED deshabilitado",
+      "passed": true,
+      "details": "code=CRATE_SETTINGS_ENFORCED_DISABLED"
+    },
+    {
+      "name": "LEGACY contra SHADOW sin efectos",
+      "passed": true
+    },
+    {
+      "name": "dry-run rechaza moneda heredada ambigua sin escribir",
+      "passed": true
+    },
+    {
+      "name": "exportación explícita convertible",
+      "passed": true
+    },
+    {
+      "name": "importación auditada e idempotente",
+      "passed": true
+    },
+    {
+      "name": "fallo de auditoría crítica revierte borrador",
+      "passed": true,
+      "details": "code=DATABASE"
+    },
+    {
+      "name": "auditoría fallida no deja configuración",
+      "passed": true
+    },
+    {
+      "name": "paginación obligatoria",
+      "passed": true
+    },
+    {
+      "name": "rendimiento con snapshots sintéticos",
+      "passed": true,
+      "details": "2000 registros; 91.35 ms inserción; 2.04 ms página"
+    },
+    {
+      "name": "dry-run no lee navegador ni escribe",
+      "passed": true
+    },
+    {
+      "name": "operaciones críticas auditadas",
+      "passed": true
+    }
+  ],
+  "performance": {
+    "records": 2000,
+    "insertMs": 91.35,
+    "pageMs": 2.04
+  },
+  "dryRun": {
+    "CONVERTIBLE": 1,
+    "DUPLICATE": 0,
+    "CONTRADICTORY": 1,
+    "AMBIGUOUS": 3,
+    "INCOMPLETE": 2,
+    "OBSOLETE": 0,
+    "WITHOUT_ACTIVE_CONSUMER": 0
+  }
+}

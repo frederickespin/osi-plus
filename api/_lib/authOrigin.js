@@ -71,7 +71,9 @@ export function withMt01bAuthHeaders(handler) {
       return res.status(status).json({
         ok: false,
         error: error?.code || "MT01B_AUTH_ERROR",
-        message: status >= 500 ? "Error de configuración de autenticación" : error.message,
+        message: status >= 500
+          ? (error?.recoverable ? "Autenticación temporalmente no disponible" : "Error de configuración de autenticación")
+          : error.message,
         ...(error?.recoverable ? { recoverable: true } : {}),
         ...(error?.recoverable && Number.isInteger(error?.retryAfterMs) ? { retryAfterMs: error.retryAfterMs } : {}),
       });

@@ -55,7 +55,7 @@ Con una membresía activa, el upgrade es automático. Con más de una, devuelve 
 La rotación usa una transacción `READ COMMITTED` y este orden:
 
 1. Localizar el token sin cambiarlo.
-2. Intentar `pg_try_advisory_xact_lock` con una clave derivada de tenant + identificador opaco del refresh.
+2. Intentar `pg_try_advisory_xact_lock` con una clave estable derivada de `tenantId + sessionId`. Todos los tokens de una familia, incluido un token ROTATED anterior, comparten exactamente el mismo lock.
 3. Sólo el ganador bloquea la sesión y luego el token; todas las lecturas autoritativas ocurren después del advisory lock.
 4. Validar token, versión, hash y fingerprint.
 5. Marcar el token anterior `ROTATED`.
@@ -65,7 +65,9 @@ La rotación usa una transacción `READ COMMITTED` y este orden:
 9. Confirmar la transacción.
 10. Firmar access token y emitir cookie sólo después del commit.
 
-Mientras el ganador conserva el lock, las solicitudes concurrentes reciben inmediatamente `409 MT01B_REFRESH_IN_PROGRESS`, `recoverable=true` y `retryAfterMs` con jitter. No reciben `Set-Cookie`, no crean auditorías y no comprometen la familia. Después del commit, reutilizar el token anterior con el mismo fingerprint dentro de la tolerancia de cinco segundos devuelve `409 MT01B_REFRESH_ALREADY_ROTATED` con el mismo contrato recuperable. Fuera de la tolerancia o con fingerprint incompatible, se marca la familia `COMPROMISED`, se revocan sus tokens y se exige login.
+Mientras el ganador conserva el lock, las solicitudes concurrentes reciben inmediatamente `409 MT01B_REFRESH_IN_PROGRESS`, `recoverable=true` y `retryAfterMs` con jitter. No reciben `Set-Cookie`, no crean auditorías y no comprometen la familia. Logout y cambios de autorización usan el mismo lock de cada sesión antes de revocar. Después del commit, reutilizar el token anterior con el mismo fingerprint dentro de la tolerancia de cinco segundos devuelve `409 MT01B_REFRESH_ALREADY_ROTATED` con el mismo contrato recuperable. Fuera de la tolerancia o con fingerprint incompatible, se marca la familia `COMPROMISED`, se revocan sus tokens y se exige login.
+
+Los `lock_timeout`, `statement_timeout` y fallos de conexión se convierten en códigos MT-01B sanitizados y recuperables. Nunca se devuelve SQL, URL, hashes o secretos. Una respuesta perdida después del commit no puede reconstruir el secreto nuevo: el reintento con el token anterior devuelve `MT01B_REFRESH_ALREADY_ROTATED`, conserva una sola cadena y el cliente deberá usar la cookie ya compartida o iniciar sesión otra vez.
 
 El fingerprint es sólo una señal de correlación para distinguir una carrera legítima de una reutilización sospechosa; nunca sustituye la firma, el secreto del refresh ni las validaciones de usuario, tenant y membresía.
 
@@ -82,7 +84,9 @@ El fingerprint es sólo una señal de correlación para distinguir una carrera l
 
 La configuración exige `lock_timeout <= statement_timeout < timeout` y rechaza valores fuera de rango al resolverse la política. Ningún valor usa 60 segundos.
 
-MT-01B2 deberá implementar *single-flight* entre pestañas (por ejemplo, coordinación segura con `BroadcastChannel` y un líder temporal). MT-01B1 sólo define los códigos `MT01B_REFRESH_IN_PROGRESS` y `MT01B_REFRESH_ALREADY_ROTATED`, junto con `recoverable` y `retryAfterMs`; no coordina todavía el frontend.
+MT-01B2 deberá implementar *single-flight* entre pestañas (por ejemplo, coordinación segura con `BroadcastChannel` y un líder temporal). MT-01B1 sólo define los códigos `MT01B_REFRESH_IN_PROGRESS`, `MT01B_REFRESH_ALREADY_ROTATED`, `MT01B_SESSION_OPERATION_IN_PROGRESS` y los fallos temporales sanitizados, junto con `recoverable` y `retryAfterMs`; no coordina todavía el frontend.
+
+La activación de MT-01B2 exige una prueba desde una región equivalente al trayecto Vercel–Neon, p95 con margen suficiente respecto a `statement_timeout`, cero timeouts bajo la carga prevista y métricas separadas de red, lock, SQL, auditoría y commit. En Q3 se observó en Neon aislado un máximo aproximado de 2,260 ms para consultas/auditoría y 2,878 ms total del ganador. La revisión Q4, ya con lock por familia, observó 2,460.37 ms y 2,959.63 ms respectivamente, sin timeouts en 50 × 20 solicitudes. Aunque `statement_timeout` limita cada sentencia y no el total, ese margen sigue siendo insuficiente para activar HYBRID sin la validación regional.
 
 ## Cookie, CORS y origen
 
@@ -92,7 +96,7 @@ El token de acceso no se persiste en esta fase. MT-01B2 deberá conservarlo sól
 
 ## Cambios de autorización
 
-`membershipAuthorization.js` es el único servicio preparado para modificar rol, estado, permisos concedidos o denegados. Bloquea la membresía, incrementa `authorizationVersion`, revoca sus sesiones activas y agrega `CommercialAuditLog` crítico dentro de la misma transacción. Una falla de auditoría revierte el cambio.
+`membershipAuthorization.js` es el único servicio preparado para modificar rol, estado, permisos concedidos o denegados. Adquiere de forma determinista los locks de todas las sesiones activas, bloquea la membresía, incrementa `authorizationVersion`, revoca sus sesiones y agrega `CommercialAuditLog` crítico dentro de la misma transacción. Una sesión ocupada produce conflicto recuperable; una falla de auditoría revierte el cambio.
 
 ## Activación futura
 

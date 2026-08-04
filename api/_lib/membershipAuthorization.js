@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
-import { Mt01bAuthError } from "./authPolicy.js";
+import { Mt01bAuthError, assertMt01bV2Enabled } from "./authPolicy.js";
+import { configureAuthTransaction, controlledAuthPersistenceError, trySessionFamilyLock } from "./authSession.js";
 
 export const MEMBERSHIP_AUTHORIZATION_MANAGE = "tenant:membership:manage";
 const ROLES = new Set(["A", "V", "K", "B", "C", "C1", "D", "E", "G", "N", "PA", "PB", "PC", "PD", "PF", "I", "PE"]);
@@ -39,7 +40,10 @@ function dto(row) {
   };
 }
 
-export async function updateMembershipAuthorization(prisma, context, input) {
+export async function updateMembershipAuthorization(prisma, context, input, {
+  env = process.env,
+  auditWriter = appendCommercialAudit,
+} = {}) {
   const tenantId = required(context?.tenantId, "context.tenantId");
   const actorMembershipId = required(context?.membershipId || context?.actorMembershipId, "context.membershipId");
   const membershipId = required(input?.membershipId, "membershipId");
@@ -52,7 +56,10 @@ export async function updateMembershipAuthorization(prisma, context, input) {
   if (status != null && !STATUSES.has(status)) throw new Mt01bAuthError("Estado empresarial inválido.", { code: "MT01B_MEMBERSHIP_INPUT_INVALID", status: 400 });
   if (role == null && status == null && granted == null && denied == null) throw new Mt01bAuthError("No hay cambios de autorización.", { code: "MT01B_MEMBERSHIP_INPUT_INVALID", status: 400 });
 
-  return prisma.$transaction(async (tx) => {
+  const policy = assertMt01bV2Enabled(env);
+  try {
+    return await prisma.$transaction(async (tx) => {
+    await configureAuthTransaction(tx, policy);
     const actors = await tx.$queryRaw(Prisma.sql`
       SELECT tm."id", tm."user_id", tm."role"::text AS "role", tm."status"::text AS "status",
              tm."granted_permissions", tm."denied_permissions"
@@ -66,6 +73,25 @@ export async function updateMembershipAuthorization(prisma, context, input) {
       deniedPermissions: actors[0].denied_permissions,
     })) throw new Mt01bAuthError("Actor empresarial inactivo o no autorizado.", { code: "MT01B_MEMBERSHIP_FORBIDDEN", status: 403 });
 
+    const initialSessions = await tx.$queryRaw(Prisma.sql`
+      SELECT "id" FROM "osi"."auth_sessions"
+      WHERE "tenant_id" = ${tenantId} AND "membership_id" = ${membershipId} AND "status" = 'ACTIVE'
+      ORDER BY "id"
+    `);
+    const lockedSessionIds = new Set();
+    for (const session of initialSessions) {
+      const acquired = await trySessionFamilyLock(tx, tenantId, session.id);
+      if (!acquired) {
+        throw new Mt01bAuthError("Una sesión de la membresía está siendo actualizada.", {
+          code: "MT01B_SESSION_OPERATION_IN_PROGRESS",
+          status: 409,
+          recoverable: true,
+          retryAfterMs: policy.refreshRetryBaseMs,
+        });
+      }
+      lockedSessionIds.add(session.id);
+    }
+
     const targets = await tx.$queryRaw(Prisma.sql`
       SELECT "id", "tenant_id", "user_id", "role"::text AS "role", "status"::text AS "status",
              "granted_permissions", "denied_permissions", "authorization_version"
@@ -75,6 +101,27 @@ export async function updateMembershipAuthorization(prisma, context, input) {
     `);
     const before = targets[0];
     if (!before) throw new Mt01bAuthError("Membresía no encontrada.", { code: "MT01B_MEMBERSHIP_NOT_FOUND", status: 404 });
+
+    // El FOR UPDATE anterior impide que una creación nueva complete su lectura
+    // FOR SHARE de la membresía. Releemos para incluir sesiones que terminaron
+    // de crearse justo antes de adquirir ese bloqueo.
+    const finalSessions = await tx.$queryRaw(Prisma.sql`
+      SELECT "id" FROM "osi"."auth_sessions"
+      WHERE "tenant_id" = ${tenantId} AND "membership_id" = ${membershipId} AND "status" = 'ACTIVE'
+      ORDER BY "id"
+    `);
+    for (const session of finalSessions) {
+      if (lockedSessionIds.has(session.id)) continue;
+      const acquired = await trySessionFamilyLock(tx, tenantId, session.id);
+      if (!acquired) {
+        throw new Mt01bAuthError("Una sesión de la membresía está siendo actualizada.", {
+          code: "MT01B_SESSION_OPERATION_IN_PROGRESS",
+          status: 409,
+          recoverable: true,
+          retryAfterMs: policy.refreshRetryBaseMs,
+        });
+      }
+    }
 
     const nextRole = role ?? before.role;
     const nextStatus = status ?? before.status;
@@ -104,7 +151,7 @@ export async function updateMembershipAuthorization(prisma, context, input) {
       WHERE rt."tenant_id" = s."tenant_id" AND rt."session_id" = s."id"
         AND s."tenant_id" = ${tenantId} AND s."membership_id" = ${membershipId} AND rt."status" = 'ACTIVE'
     `);
-    await appendCommercialAudit(tx, {
+    await auditWriter(tx, {
       tenantId,
       actorKind: "MEMBERSHIP",
       actorMembershipId,
@@ -121,5 +168,12 @@ export async function updateMembershipAuthorization(prisma, context, input) {
       critical: true,
     });
     return dto(after);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      maxWait: policy.transactionMaxWaitMs,
+      timeout: policy.transactionTimeoutMs,
+    });
+  } catch (error) {
+    throw controlledAuthPersistenceError(error, policy);
+  }
 }

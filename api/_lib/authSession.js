@@ -81,7 +81,7 @@ function retryAfterMs(policy) {
   return policy.refreshRetryBaseMs + (policy.refreshRetryJitterMs > 0 ? randomInt(policy.refreshRetryJitterMs + 1) : 0);
 }
 
-async function configureAuthTransaction(tx, policy) {
+export async function configureAuthTransaction(tx, policy) {
   await tx.$queryRaw(Prisma.sql`
     SELECT
       set_config('lock_timeout', ${`${policy.lockTimeoutMs}ms`}, true),
@@ -89,12 +89,47 @@ async function configureAuthTransaction(tx, policy) {
   `);
 }
 
-async function tryRefreshLock(tx, tenantId, refreshRequestId) {
-  const namespace = `${tenantId}:mt01b-refresh:${refreshRequestId}`;
+export async function trySessionFamilyLock(tx, tenantId, sessionId) {
+  const namespace = `${tenantId}:mt01b-auth-session:${sessionId}`;
   const rows = await tx.$queryRaw(Prisma.sql`
     SELECT pg_try_advisory_xact_lock(hashtextextended(${namespace}, 0)) AS "acquired"
   `);
   return rows[0]?.acquired === true;
+}
+
+export function controlledAuthPersistenceError(error, policy) {
+  if (error instanceof Mt01bAuthError) return error;
+  const code = String(error?.code || "");
+  const detail = `${code}\n${String(error?.message || "")}`.toLowerCase();
+  if (detail.includes("lock timeout") || detail.includes("55p03")) {
+    return new Mt01bAuthError("La sesión está siendo actualizada por otra operación.", {
+      code: "MT01B_AUTH_LOCK_TIMEOUT",
+      status: 409,
+      recoverable: true,
+      retryAfterMs: retryAfterMs(policy),
+      cause: error,
+    });
+  }
+  if (detail.includes("statement timeout") || detail.includes("57014") || detail.includes("canceling statement")) {
+    return new Mt01bAuthError("La operación de autenticación excedió su tiempo seguro.", {
+      code: "MT01B_AUTH_STATEMENT_TIMEOUT",
+      status: 503,
+      recoverable: true,
+      retryAfterMs: retryAfterMs(policy),
+      cause: error,
+    });
+  }
+  if (["P1001", "P1002", "P1017", "P2024", "P2028"].includes(code) ||
+      /connection|server has closed|socket|econn|transaction.*closed/.test(detail)) {
+    return new Mt01bAuthError("La persistencia de autenticación no está disponible temporalmente.", {
+      code: "MT01B_AUTH_DATABASE_UNAVAILABLE",
+      status: 503,
+      recoverable: true,
+      retryAfterMs: retryAfterMs(policy),
+      cause: error,
+    });
+  }
+  return error;
 }
 
 function throwOutcome(outcome) {
@@ -235,6 +270,7 @@ export async function rotateMembershipRefreshToken(prisma, rawToken, {
   now = new Date(),
   timingObserver,
   auditWriter = appendCommercialAudit,
+  accessTokenSigner = signMembershipAccessToken,
 } = {}) {
   requirePrisma(prisma);
   const totalStartedAt = performance.now();
@@ -275,7 +311,7 @@ export async function rotateMembershipRefreshToken(prisma, rawToken, {
     timing.transactionAcquireMs = elapsed(transactionRequestedAt);
     await configureAuthTransaction(tx, policy);
     const advisoryStartedAt = performance.now();
-    const acquired = await tryRefreshLock(tx, locator[0].tenant_id, parsed.id);
+    const acquired = await trySessionFamilyLock(tx, locator[0].tenant_id, locator[0].session_id);
     timing.advisoryLockMs = elapsed(advisoryStartedAt);
     if (!acquired) {
       timing.outcome = "IN_PROGRESS";
@@ -410,7 +446,7 @@ export async function rotateMembershipRefreshToken(prisma, rawToken, {
   } catch (error) {
     timing.totalMs = elapsed(totalStartedAt);
     emitTiming(timingObserver, timing);
-    throw error;
+    throw controlledAuthPersistenceError(error, policy);
   }
 
   timing.totalMs = elapsed(totalStartedAt);
@@ -418,7 +454,7 @@ export async function rotateMembershipRefreshToken(prisma, rawToken, {
   if (outcome.kind !== "ROTATED") throwOutcome(outcome);
   return {
     identity: outcome.identity,
-    accessToken: signMembershipAccessToken(outcome.identity, { env }),
+    accessToken: accessTokenSigner(outcome.identity, { env }),
     refreshToken: nextRefresh.value,
     refreshMaxAgeSeconds: Math.max(1, Math.floor((outcome.refreshExpiresAt.getTime() - now.getTime()) / 1_000)),
   };
@@ -433,8 +469,18 @@ export async function revokeMembershipAuthSession(prisma, rawToken, { env = proc
     SELECT "tenant_id", "session_id" FROM "osi"."auth_refresh_tokens" WHERE "id" = ${parsed.id} LIMIT 1
   `);
   if (!locator[0]) return { revoked: false };
-  return prisma.$transaction(async (tx) => {
+  try {
+    return await prisma.$transaction(async (tx) => {
     await configureAuthTransaction(tx, policy);
+    const acquired = await trySessionFamilyLock(tx, locator[0].tenant_id, locator[0].session_id);
+    if (!acquired) {
+      throw new Mt01bAuthError("Otra operación de esta sesión está en curso.", {
+        code: "MT01B_SESSION_OPERATION_IN_PROGRESS",
+        status: 409,
+        recoverable: true,
+        retryAfterMs: retryAfterMs(policy),
+      });
+    }
     const sessions = await tx.$queryRaw(Prisma.sql`
       SELECT * FROM "osi"."auth_sessions"
       WHERE "tenant_id" = ${locator[0].tenant_id} AND "id" = ${locator[0].session_id} FOR UPDATE
@@ -449,9 +495,12 @@ export async function revokeMembershipAuthSession(prisma, rawToken, { env = proc
     if (!token || !sameHash(token.token_hash, suppliedHash)) return { revoked: false };
     await invalidateFamily(tx, sessions[0], reason, now);
     return { revoked: true, sessionId: sessions[0].id };
-  }, {
-    isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-    maxWait: policy.transactionMaxWaitMs,
-    timeout: policy.transactionTimeoutMs,
-  });
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      maxWait: policy.transactionMaxWaitMs,
+      timeout: policy.transactionTimeoutMs,
+    });
+  } catch (error) {
+    throw controlledAuthPersistenceError(error, policy);
+  }
 }

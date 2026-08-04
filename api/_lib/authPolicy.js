@@ -7,12 +7,13 @@ export const MT01B_AUTH_MODES = Object.freeze({
 const MAX_LEGACY_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;
 
 export class Mt01bAuthError extends Error {
-  constructor(message, { code = "MT01B_AUTH_ERROR", status = 401, recoverable = false, cause } = {}) {
+  constructor(message, { code = "MT01B_AUTH_ERROR", status = 401, recoverable = false, retryAfterMs, cause } = {}) {
     super(message, cause ? { cause } : undefined);
     this.name = "Mt01bAuthError";
     this.code = code;
     this.status = status;
     this.recoverable = recoverable;
+    if (Number.isInteger(retryAfterMs) && retryAfterMs > 0) this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -60,6 +61,19 @@ export function resolveMt01bAuthPolicy(env = process.env, now = new Date()) {
     }
   }
 
+  const transactionMaxWaitMs = positiveInteger(env.MT01B_AUTH_TRANSACTION_MAX_WAIT_MS, 2_000, "MT01B_AUTH_TRANSACTION_MAX_WAIT_MS", { min: 250, max: 5_000 });
+  const transactionTimeoutMs = positiveInteger(env.MT01B_AUTH_TRANSACTION_TIMEOUT_MS, 5_000, "MT01B_AUTH_TRANSACTION_TIMEOUT_MS", { min: 1_000, max: 10_000 });
+  const lockTimeoutMs = positiveInteger(env.MT01B_AUTH_LOCK_TIMEOUT_MS, 250, "MT01B_AUTH_LOCK_TIMEOUT_MS", { min: 25, max: 1_000 });
+  const statementTimeoutMs = positiveInteger(env.MT01B_AUTH_STATEMENT_TIMEOUT_MS, 3_000, "MT01B_AUTH_STATEMENT_TIMEOUT_MS", { min: 250, max: 4_000 });
+  const refreshRetryBaseMs = positiveInteger(env.MT01B_REFRESH_RETRY_BASE_MS, 150, "MT01B_REFRESH_RETRY_BASE_MS", { min: 50, max: 1_000 });
+  const refreshRetryJitterMs = positiveInteger(env.MT01B_REFRESH_RETRY_JITTER_MS, 100, "MT01B_REFRESH_RETRY_JITTER_MS", { min: 0, max: 500 });
+  if (lockTimeoutMs > statementTimeoutMs || statementTimeoutMs >= transactionTimeoutMs) {
+    throw new Mt01bAuthError("Los límites SQL de autenticación deben cumplir lock_timeout <= statement_timeout < timeout.", {
+      code: "MT01B_AUTH_CONFIG_INVALID",
+      status: 500,
+    });
+  }
+
   return {
     mode,
     tenantSwitchEnabled,
@@ -68,6 +82,12 @@ export function resolveMt01bAuthPolicy(env = process.env, now = new Date()) {
     refreshTokenTtlSeconds: positiveInteger(env.MT01B_REFRESH_TOKEN_TTL_SECONDS, 14 * 24 * 3600, "MT01B_REFRESH_TOKEN_TTL_SECONDS", { max: 30 * 24 * 3600 }),
     sessionTtlSeconds: positiveInteger(env.MT01B_SESSION_TTL_SECONDS, 30 * 24 * 3600, "MT01B_SESSION_TTL_SECONDS", { max: 90 * 24 * 3600 }),
     refreshConcurrencyToleranceMs: positiveInteger(env.MT01B_REFRESH_CONCURRENCY_TOLERANCE_MS, 5_000, "MT01B_REFRESH_CONCURRENCY_TOLERANCE_MS", { min: 1_000, max: 10_000 }),
+    transactionMaxWaitMs,
+    transactionTimeoutMs,
+    lockTimeoutMs,
+    statementTimeoutMs,
+    refreshRetryBaseMs,
+    refreshRetryJitterMs,
   };
 }
 

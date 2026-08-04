@@ -1,7 +1,9 @@
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
+import { performance } from "node:perf_hooks";
 import { Prisma } from "@prisma/client";
 import { signMembershipAccessToken } from "./auth.js";
 import { Mt01bAuthError, assertMt01bV2Enabled, requireRefreshPepper } from "./authPolicy.js";
+import { appendCommercialAudit } from "./commercialAuditLog.js";
 
 function hmacHex(namespace, value, env = process.env) {
   return createHmac("sha256", requireRefreshPepper(env))
@@ -66,12 +68,50 @@ function requirePrisma(prisma) {
   }
 }
 
+function elapsed(startedAt) {
+  return Number((performance.now() - startedAt).toFixed(2));
+}
+
+function emitTiming(observer, timing) {
+  if (typeof observer !== "function") return;
+  try { observer(Object.freeze({ ...timing })); } catch { /* La telemetría nunca altera autenticación. */ }
+}
+
+function retryAfterMs(policy) {
+  return policy.refreshRetryBaseMs + (policy.refreshRetryJitterMs > 0 ? randomInt(policy.refreshRetryJitterMs + 1) : 0);
+}
+
+async function configureAuthTransaction(tx, policy) {
+  await tx.$queryRaw(Prisma.sql`
+    SELECT
+      set_config('lock_timeout', ${`${policy.lockTimeoutMs}ms`}, true),
+      set_config('statement_timeout', ${`${policy.statementTimeoutMs}ms`}, true)
+  `);
+}
+
+async function tryRefreshLock(tx, tenantId, refreshRequestId) {
+  const namespace = `${tenantId}:mt01b-refresh:${refreshRequestId}`;
+  const rows = await tx.$queryRaw(Prisma.sql`
+    SELECT pg_try_advisory_xact_lock(hashtextextended(${namespace}, 0)) AS "acquired"
+  `);
+  return rows[0]?.acquired === true;
+}
+
 function throwOutcome(outcome) {
+  if (outcome.kind === "IN_PROGRESS") {
+    throw new Mt01bAuthError("Otra rotación de esta sesión está en curso.", {
+      code: "MT01B_REFRESH_IN_PROGRESS",
+      status: 409,
+      recoverable: true,
+      retryAfterMs: outcome.retryAfterMs,
+    });
+  }
   if (outcome.kind === "RECOVERABLE_CONFLICT") {
     throw new Mt01bAuthError("El refresh ya fue rotado por otra solicitud legítima.", {
       code: "MT01B_REFRESH_ALREADY_ROTATED",
       status: 409,
       recoverable: true,
+      retryAfterMs: outcome.retryAfterMs,
     });
   }
   if (outcome.kind === "COMPROMISED") {
@@ -102,6 +142,7 @@ export async function createMembershipAuthSession(prisma, identity, { req, env =
   ));
 
   const committed = await prisma.$transaction(async (tx) => {
+    await configureAuthTransaction(tx, policy);
     const rows = await tx.$queryRaw(Prisma.sql`
       SELECT tm."id", tm."tenant_id", tm."user_id", tm."role"::text AS "membership_role",
              tm."status"::text AS "membership_status", tm."authorization_version",
@@ -146,7 +187,11 @@ export async function createMembershipAuthSession(prisma, identity, { req, env =
       role: String(member.membership_role),
       authorizationVersion: Number(member.authorization_version),
     };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+    maxWait: policy.transactionMaxWaitMs,
+    timeout: policy.transactionTimeoutMs,
+  });
 
   return {
     identity: committed,
@@ -184,24 +229,65 @@ async function invalidateFamily(tx, session, code, now) {
   `);
 }
 
-export async function rotateMembershipRefreshToken(prisma, rawToken, { req, env = process.env, now = new Date() } = {}) {
+export async function rotateMembershipRefreshToken(prisma, rawToken, {
+  req,
+  env = process.env,
+  now = new Date(),
+  timingObserver,
+  auditWriter = appendCommercialAudit,
+} = {}) {
   requirePrisma(prisma);
+  const totalStartedAt = performance.now();
+  const timing = {
+    outcome: "ERROR",
+    locatorRoundTripMs: 0,
+    transactionAcquireMs: 0,
+    advisoryLockMs: 0,
+    queryAndAuditMs: 0,
+    auditMs: 0,
+    commitRoundTripMs: 0,
+    totalMs: 0,
+  };
   const policy = assertMt01bV2Enabled(env, now);
   const parsed = parseRefreshToken(rawToken);
   const suppliedHash = hashRefreshToken(rawToken, env);
   const fingerprintHash = deriveClientFingerprint(req, env);
 
+  const locatorStartedAt = performance.now();
   const locator = await prisma.$queryRaw(Prisma.sql`
     SELECT "tenant_id", "session_id" FROM "osi"."auth_refresh_tokens" WHERE "id" = ${parsed.id} LIMIT 1
   `);
-  if (!locator[0]) throw new Mt01bAuthError("Refresh token inválido.", { code: "MT01B_REFRESH_INVALID" });
+  timing.locatorRoundTripMs = elapsed(locatorStartedAt);
+  if (!locator[0]) {
+    timing.outcome = "INVALID";
+    timing.totalMs = elapsed(totalStartedAt);
+    emitTiming(timingObserver, timing);
+    throw new Mt01bAuthError("Refresh token inválido.", { code: "MT01B_REFRESH_INVALID" });
+  }
 
   const nextRefresh = opaqueRefreshToken();
   const nextHash = hashRefreshToken(nextRefresh.value, env);
-  const outcome = await prisma.$transaction(async (tx) => {
-    // El bloqueo de sesión serializa toda la familia. La lectura del token con
-    // FOR UPDATE ocurre después, de modo que un waiter observa el ROTATED ya confirmado.
-    const sessions = await tx.$queryRaw(Prisma.sql`
+  const transactionRequestedAt = performance.now();
+  let callbackCompletedAt = transactionRequestedAt;
+  let outcome;
+  try {
+    outcome = await prisma.$transaction(async (tx) => {
+    timing.transactionAcquireMs = elapsed(transactionRequestedAt);
+    await configureAuthTransaction(tx, policy);
+    const advisoryStartedAt = performance.now();
+    const acquired = await tryRefreshLock(tx, locator[0].tenant_id, parsed.id);
+    timing.advisoryLockMs = elapsed(advisoryStartedAt);
+    if (!acquired) {
+      timing.outcome = "IN_PROGRESS";
+      callbackCompletedAt = performance.now();
+      return { kind: "IN_PROGRESS", retryAfterMs: retryAfterMs(policy) };
+    }
+
+    const workStartedAt = performance.now();
+    try {
+      // Toda lectura autoritativa ocurre después del advisory lock. Una colisión
+      // sólo produce un 409 adicional; tenant, sesión y token nunca se mezclan.
+      const sessions = await tx.$queryRaw(Prisma.sql`
       SELECT s.*, tm."role"::text AS "membership_role", tm."status"::text AS "membership_status",
              tm."authorization_version" AS "membership_authorization_version",
              u."status" AS "user_status", t."status"::text AS "tenant_status"
@@ -213,85 +299,122 @@ export async function rotateMembershipRefreshToken(prisma, rawToken, { req, env 
       WHERE s."tenant_id" = ${locator[0].tenant_id} AND s."id" = ${locator[0].session_id}
       FOR UPDATE OF s
     `);
-    const session = sessions[0];
-    if (!session) return { kind: "SESSION_INVALID" };
+      const session = sessions[0];
+      if (!session) return { kind: "SESSION_INVALID" };
 
-    const tokens = await tx.$queryRaw(Prisma.sql`
+      const tokens = await tx.$queryRaw(Prisma.sql`
       SELECT * FROM "osi"."auth_refresh_tokens"
       WHERE "tenant_id" = ${session.tenant_id} AND "session_id" = ${session.id} AND "id" = ${parsed.id}
       FOR UPDATE
     `);
-    const token = tokens[0];
-    if (!token || !sameHash(token.token_hash, suppliedHash)) {
-      return { kind: "SESSION_INVALID", code: "MT01B_REFRESH_INVALID" };
-    }
+      const token = tokens[0];
+      if (!token || !sameHash(token.token_hash, suppliedHash)) {
+        return { kind: "SESSION_INVALID", code: "MT01B_REFRESH_INVALID" };
+      }
 
-    if (upper(token.status) === "ROTATED") {
+      if (upper(token.status) === "ROTATED") {
       const age = now.getTime() - new Date(token.rotated_at).getTime();
       if (sameHash(token.fingerprint_hash, fingerprintHash) && age >= 0 && age <= policy.refreshConcurrencyToleranceMs) {
-        return { kind: "RECOVERABLE_CONFLICT" };
+        timing.outcome = "ALREADY_ROTATED";
+        return { kind: "RECOVERABLE_CONFLICT", retryAfterMs: retryAfterMs(policy) };
       }
       await compromiseFamily(tx, session, token, "REFRESH_TOKEN_REUSE", now);
       return { kind: "COMPROMISED" };
-    }
-    if (upper(session.status) !== "ACTIVE" || upper(token.status) !== "ACTIVE") {
-      return { kind: "SESSION_INVALID" };
-    }
-    if (!sameHash(session.fingerprint_hash, fingerprintHash) || !sameHash(token.fingerprint_hash, fingerprintHash)) {
+      }
+      if (upper(session.status) !== "ACTIVE" || upper(token.status) !== "ACTIVE") {
+        return { kind: "SESSION_INVALID" };
+      }
+      if (!sameHash(session.fingerprint_hash, fingerprintHash) || !sameHash(token.fingerprint_hash, fingerprintHash)) {
       await compromiseFamily(tx, session, token, "REFRESH_FINGERPRINT_MISMATCH", now);
       return { kind: "COMPROMISED" };
-    }
-    if (new Date(session.expires_at) <= now || new Date(token.expires_at) <= now) {
+      }
+      if (new Date(session.expires_at) <= now || new Date(token.expires_at) <= now) {
       await invalidateFamily(tx, session, "SESSION_EXPIRED", now);
       return { kind: "SESSION_INVALID", code: "MT01B_SESSION_EXPIRED" };
-    }
-    if (upper(session.membership_status) !== "ACTIVE" || upper(session.tenant_status) !== "ACTIVE" || !activeGlobalUser(session.user_status) ||
+      }
+      if (upper(session.membership_status) !== "ACTIVE" || upper(session.tenant_status) !== "ACTIVE" || !activeGlobalUser(session.user_status) ||
         Number(session.authorization_version_snapshot) !== Number(session.membership_authorization_version)) {
       await invalidateFamily(tx, session, "AUTHORIZATION_CHANGED", now);
       return { kind: "SESSION_INVALID", code: "MT01B_AUTHORIZATION_CHANGED" };
-    }
-    if (Number(token.version) !== Number(session.current_refresh_version)) {
+      }
+      if (Number(token.version) !== Number(session.current_refresh_version)) {
       await compromiseFamily(tx, session, token, "REFRESH_VERSION_MISMATCH", now);
       return { kind: "COMPROMISED" };
-    }
+      }
 
-    const nextVersion = Number(session.current_refresh_version) + 1;
-    const nextExpiresAt = new Date(Math.min(
+      const nextVersion = Number(session.current_refresh_version) + 1;
+      const nextExpiresAt = new Date(Math.min(
       new Date(session.expires_at).getTime(),
       now.getTime() + policy.refreshTokenTtlSeconds * 1_000,
-    ));
+      ));
 
     // Orden obligatorio por el índice parcial: el ACTIVE anterior se rota antes de insertar el nuevo.
-    await tx.$executeRaw(Prisma.sql`
+      await tx.$executeRaw(Prisma.sql`
       UPDATE "osi"."auth_refresh_tokens"
       SET "status" = 'ROTATED', "rotated_at" = ${now}
       WHERE "tenant_id" = ${session.tenant_id} AND "session_id" = ${session.id}
         AND "id" = ${token.id} AND "status" = 'ACTIVE'
     `);
-    await tx.$executeRaw(Prisma.sql`
+      await tx.$executeRaw(Prisma.sql`
       INSERT INTO "osi"."auth_refresh_tokens" (
         "id", "tenant_id", "session_id", "version", "token_hash", "fingerprint_hash", "status", "expires_at"
       ) VALUES (
         ${nextRefresh.id}, ${session.tenant_id}, ${session.id}, ${nextVersion}, ${nextHash}, ${fingerprintHash}, 'ACTIVE', ${nextExpiresAt}
       )
     `);
-    await tx.$executeRaw(Prisma.sql`
+      await tx.$executeRaw(Prisma.sql`
       UPDATE "osi"."auth_refresh_tokens" SET "replaced_by_token_id" = ${nextRefresh.id}
       WHERE "tenant_id" = ${session.tenant_id} AND "session_id" = ${session.id} AND "id" = ${token.id}
     `);
-    await tx.$executeRaw(Prisma.sql`
+      await tx.$executeRaw(Prisma.sql`
       UPDATE "osi"."auth_sessions"
       SET "current_refresh_version" = ${nextVersion}, "last_refreshed_at" = ${now}, "updated_at" = ${now}
       WHERE "tenant_id" = ${session.tenant_id} AND "id" = ${session.id}
     `);
 
-    return {
-      kind: "ROTATED",
-      identity: identityFromRow(session),
-      refreshExpiresAt: nextExpiresAt,
-    };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+      const auditStartedAt = performance.now();
+      await auditWriter(tx, {
+      tenantId: session.tenant_id,
+      actorKind: "MEMBERSHIP",
+      actorMembershipId: session.membership_id,
+    }, {
+      action: "AUTH_SESSION_REFRESH_ROTATED",
+      entity: "AUTH_SESSION",
+      entityId: session.id,
+      source: "MT01B_AUTH",
+      requestId: parsed.id,
+      correlationId: parsed.id,
+      critical: true,
+      beforeJson: { status: session.status, refreshVersion: Number(session.current_refresh_version) },
+      afterJson: { status: session.status, refreshVersion: nextVersion },
+      metadataJson: { concurrencyControl: "PG_TRY_ADVISORY_XACT_LOCK" },
+    });
+      timing.auditMs = elapsed(auditStartedAt);
+      timing.outcome = "ROTATED";
 
+      return {
+        kind: "ROTATED",
+        identity: identityFromRow(session),
+        refreshExpiresAt: nextExpiresAt,
+      };
+    } finally {
+      timing.queryAndAuditMs = elapsed(workStartedAt);
+      callbackCompletedAt = performance.now();
+    }
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+    maxWait: policy.transactionMaxWaitMs,
+    timeout: policy.transactionTimeoutMs,
+  });
+    timing.commitRoundTripMs = elapsed(callbackCompletedAt);
+  } catch (error) {
+    timing.totalMs = elapsed(totalStartedAt);
+    emitTiming(timingObserver, timing);
+    throw error;
+  }
+
+  timing.totalMs = elapsed(totalStartedAt);
+  emitTiming(timingObserver, timing);
   if (outcome.kind !== "ROTATED") throwOutcome(outcome);
   return {
     identity: outcome.identity,
@@ -303,21 +426,32 @@ export async function rotateMembershipRefreshToken(prisma, rawToken, { req, env 
 
 export async function revokeMembershipAuthSession(prisma, rawToken, { env = process.env, now = new Date(), reason = "LOGOUT" } = {}) {
   requirePrisma(prisma);
-  assertMt01bV2Enabled(env, now);
+  const policy = assertMt01bV2Enabled(env, now);
   const parsed = parseRefreshToken(rawToken);
   const suppliedHash = hashRefreshToken(rawToken, env);
+  const locator = await prisma.$queryRaw(Prisma.sql`
+    SELECT "tenant_id", "session_id" FROM "osi"."auth_refresh_tokens" WHERE "id" = ${parsed.id} LIMIT 1
+  `);
+  if (!locator[0]) return { revoked: false };
   return prisma.$transaction(async (tx) => {
+    await configureAuthTransaction(tx, policy);
+    const sessions = await tx.$queryRaw(Prisma.sql`
+      SELECT * FROM "osi"."auth_sessions"
+      WHERE "tenant_id" = ${locator[0].tenant_id} AND "id" = ${locator[0].session_id} FOR UPDATE
+    `);
+    if (!sessions[0]) return { revoked: false };
     const tokens = await tx.$queryRaw(Prisma.sql`
-      SELECT * FROM "osi"."auth_refresh_tokens" WHERE "id" = ${parsed.id} FOR UPDATE
+      SELECT * FROM "osi"."auth_refresh_tokens"
+      WHERE "tenant_id" = ${sessions[0].tenant_id} AND "session_id" = ${sessions[0].id} AND "id" = ${parsed.id}
+      FOR UPDATE
     `);
     const token = tokens[0];
     if (!token || !sameHash(token.token_hash, suppliedHash)) return { revoked: false };
-    const sessions = await tx.$queryRaw(Prisma.sql`
-      SELECT * FROM "osi"."auth_sessions"
-      WHERE "tenant_id" = ${token.tenant_id} AND "id" = ${token.session_id} FOR UPDATE
-    `);
-    if (!sessions[0]) return { revoked: false };
     await invalidateFamily(tx, sessions[0], reason, now);
     return { revoked: true, sessionId: sessions[0].id };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }, {
+    isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+    maxWait: policy.transactionMaxWaitMs,
+    timeout: policy.transactionTimeoutMs,
+  });
 }

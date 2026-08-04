@@ -55,16 +55,34 @@ Con una membresía activa, el upgrade es automático. Con más de una, devuelve 
 La rotación usa una transacción `READ COMMITTED` y este orden:
 
 1. Localizar el token sin cambiarlo.
-2. Bloquear la sesión.
-3. Bloquear y validar el token actual, su versión, hash y fingerprint.
-4. Marcar el token anterior `ROTATED`.
-5. Crear el nuevo token `ACTIVE`.
-6. Relacionar `replacedByTokenId`.
-7. Incrementar la versión de la sesión.
-8. Confirmar la transacción.
-9. Firmar access token y emitir cookie sólo después del commit.
+2. Intentar `pg_try_advisory_xact_lock` con una clave derivada de tenant + identificador opaco del refresh.
+3. Sólo el ganador bloquea la sesión y luego el token; todas las lecturas autoritativas ocurren después del advisory lock.
+4. Validar token, versión, hash y fingerprint.
+5. Marcar el token anterior `ROTATED`.
+6. Crear el nuevo token `ACTIVE`.
+7. Relacionar `replacedByTokenId`.
+8. Incrementar la versión de la sesión y persistir la auditoría crítica.
+9. Confirmar la transacción.
+10. Firmar access token y emitir cookie sólo después del commit.
 
-Solicitudes legítimas simultáneas con el mismo token y fingerprint tienen tolerancia predeterminada de cinco segundos. Sólo una rota; las demás reciben `409 MT01B_REFRESH_ALREADY_ROTATED` con `recoverable=true`. No reciben el nuevo refresh ni crean otra cadena. Fuera de la tolerancia o con fingerprint incompatible, se marca la familia `COMPROMISED`, se revocan sus tokens y se exige login.
+Mientras el ganador conserva el lock, las solicitudes concurrentes reciben inmediatamente `409 MT01B_REFRESH_IN_PROGRESS`, `recoverable=true` y `retryAfterMs` con jitter. No reciben `Set-Cookie`, no crean auditorías y no comprometen la familia. Después del commit, reutilizar el token anterior con el mismo fingerprint dentro de la tolerancia de cinco segundos devuelve `409 MT01B_REFRESH_ALREADY_ROTATED` con el mismo contrato recuperable. Fuera de la tolerancia o con fingerprint incompatible, se marca la familia `COMPROMISED`, se revocan sus tokens y se exige login.
+
+El fingerprint es sólo una señal de correlación para distinguir una carrera legítima de una reutilización sospechosa; nunca sustituye la firma, el secreto del refresh ni las validaciones de usuario, tenant y membresía.
+
+### Política de tiempo
+
+| Variable | Predeterminado | Límite seguro | Alcance |
+|---|---:|---:|---|
+| `MT01B_AUTH_TRANSACTION_MAX_WAIT_MS` | 2000 ms | 250–5000 ms | Espera de Prisma para obtener/iniciar la transacción. |
+| `MT01B_AUTH_TRANSACTION_TIMEOUT_MS` | 5000 ms | 1000–10000 ms | Duración total máxima de la transacción interactiva. |
+| `MT01B_AUTH_LOCK_TIMEOUT_MS` | 250 ms | 25–1000 ms | Espera máxima de PostgreSQL por un lock bloqueante residual. |
+| `MT01B_AUTH_STATEMENT_TIMEOUT_MS` | 3000 ms | 250–4000 ms | Duración máxima de cada sentencia SQL. |
+| `MT01B_REFRESH_RETRY_BASE_MS` | 150 ms | 50–1000 ms | Base indicada al cliente antes de reintentar. |
+| `MT01B_REFRESH_RETRY_JITTER_MS` | 100 ms | 0–500 ms | Jitter adicional para evitar otro pico simultáneo. |
+
+La configuración exige `lock_timeout <= statement_timeout < timeout` y rechaza valores fuera de rango al resolverse la política. Ningún valor usa 60 segundos.
+
+MT-01B2 deberá implementar *single-flight* entre pestañas (por ejemplo, coordinación segura con `BroadcastChannel` y un líder temporal). MT-01B1 sólo define los códigos `MT01B_REFRESH_IN_PROGRESS` y `MT01B_REFRESH_ALREADY_ROTATED`, junto con `recoverable` y `retryAfterMs`; no coordina todavía el frontend.
 
 ## Cookie, CORS y origen
 

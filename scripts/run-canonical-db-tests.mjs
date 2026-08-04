@@ -117,12 +117,12 @@ try {
   const authFoundationRun = runJson("mt-01b1-test.mjs", "MT-01B1/FOUNDATION");
   const authRaceRun = runJson("mt-01b1-refresh-race-test.mjs", "MT-01B1/REFRESH_RACE");
   invariant(legacyAuthRun.assertions === 10, `MT-01B1 legacy esperaba 10 pruebas y obtuvo ${legacyAuthRun.assertions}`);
-  invariant(authFoundationRun.assertions === 33, `MT-01B1 esperaba 33 pruebas y obtuvo ${authFoundationRun.assertions}`);
-  invariant(authRaceRun.assertions === 21, `MT-01B1 race esperaba 21 pruebas y obtuvo ${authRaceRun.assertions}`);
+  invariant(authFoundationRun.assertions === 37, `MT-01B1 esperaba 37 pruebas y obtuvo ${authFoundationRun.assertions}`);
+  invariant(authRaceRun.assertions === 62, `MT-01B1 race esperaba 62 pruebas y obtuvo ${authRaceRun.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
-    mt01b1: { legacy: legacyAuthRun.assertions, foundation: authFoundationRun.assertions, refreshRace: authRaceRun.assertions, total: 64 },
+    mt01b1: { legacy: legacyAuthRun.assertions, foundation: authFoundationRun.assertions, refreshRace: authRaceRun.assertions, total: 109 },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },

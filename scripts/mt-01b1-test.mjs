@@ -42,6 +42,9 @@ try {
   await expectCode("HYBRID exige fecha absoluta", () => Promise.resolve(resolveMt01bAuthPolicy({ ...process.env, MT01B_LEGACY_TOKEN_ACCEPT_UNTIL: "" }, now)), "MT01B_LEGACY_CUTOFF_REQUIRED");
   await expectCode("fecha legacy no puede superar siete días", () => Promise.resolve(resolveMt01bAuthPolicy({ ...process.env, MT01B_LEGACY_TOKEN_ACCEPT_UNTIL: new Date(now.getTime() + 8 * 24 * 3600 * 1_000).toISOString() }, now)), "MT01B_LEGACY_CUTOFF_INVALID");
   await expectCode("tenant switch permanece bloqueado", () => Promise.resolve(resolveMt01bAuthPolicy({ ...process.env, MT01B_TENANT_SWITCH_ENABLED: "true" }, now)), "MT01B_TENANT_SWITCH_DISABLED");
+  await expectCode("maxWait rechaza valores inseguros", () => Promise.resolve(resolveMt01bAuthPolicy({ ...process.env, MT01B_AUTH_TRANSACTION_MAX_WAIT_MS: "6000" }, now)), "MT01B_AUTH_CONFIG_INVALID");
+  await expectCode("statement_timeout debe ser menor al timeout transaccional", () => Promise.resolve(resolveMt01bAuthPolicy({ ...process.env, MT01B_AUTH_TRANSACTION_TIMEOUT_MS: "2000", MT01B_AUTH_STATEMENT_TIMEOUT_MS: "2000" }, now)), "MT01B_AUTH_CONFIG_INVALID");
+  await expectCode("jitter rechaza valores inseguros", () => Promise.resolve(resolveMt01bAuthPolicy({ ...process.env, MT01B_REFRESH_RETRY_JITTER_MS: "501" }, now)), "MT01B_AUTH_CONFIG_INVALID");
 
   const created = await createMembershipAuthSession(prisma, actor, { req: request, now });
   const claims = verifyMembershipAccessToken(created.accessToken);
@@ -74,12 +77,15 @@ try {
   const raceSession = await createMembershipAuthSession(prisma, target, { req: request, now });
   const concurrent = await Promise.allSettled(Array.from({ length: 20 }, () => rotateMembershipRefreshToken(prisma, raceSession.refreshToken, { req: request, now: new Date(now.getTime() + 1_000) })));
   const winners = concurrent.filter((item) => item.status === "fulfilled");
-  const recoverable = concurrent.filter((item) => item.status === "rejected" && item.reason?.code === "MT01B_REFRESH_ALREADY_ROTATED" && item.reason?.recoverable === true);
+  const recoverable = concurrent.filter((item) => item.status === "rejected" &&
+    ["MT01B_REFRESH_IN_PROGRESS", "MT01B_REFRESH_ALREADY_ROTATED"].includes(item.reason?.code) &&
+    item.reason?.recoverable === true && Number.isInteger(item.reason?.retryAfterMs));
   check("20 refresh simultáneos producen una sola cadena", winners.length === 1 && recoverable.length === 19, { winners: winners.length, recoverable: recoverable.length });
   const raceTokens = await prisma.authRefreshToken.findMany({ where: { sessionId: raceSession.identity.sessionId } });
   check("rotación conserva un solo token ACTIVE", raceTokens.length === 2 && raceTokens.filter((token) => token.status === "ACTIVE").length === 1 && raceTokens.filter((token) => token.status === "ROTATED").length === 1);
   check("token anterior referencia reemplazo", raceTokens.find((token) => token.status === "ROTATED")?.replacedByTokenId === raceTokens.find((token) => token.status === "ACTIVE")?.id);
   check("concurrencia legítima no compromete familia", (await prisma.authSession.findUnique({ where: { id: raceSession.identity.sessionId } }))?.status === "ACTIVE");
+  await expectCode("reutilización dentro de tolerancia es recuperable", () => rotateMembershipRefreshToken(prisma, raceSession.refreshToken, { req: request, now: new Date(now.getTime() + 2_000) }), "MT01B_REFRESH_ALREADY_ROTATED");
   await expectCode("reutilización fuera de tolerancia compromete familia", () => rotateMembershipRefreshToken(prisma, raceSession.refreshToken, { req: request, now: new Date(now.getTime() + 7_000) }), "MT01B_REFRESH_REUSE_DETECTED");
   check("reutilización revoca token activo", await prisma.authRefreshToken.count({ where: { sessionId: raceSession.identity.sessionId, status: "ACTIVE" } }) === 0);
   check("familia queda COMPROMISED", (await prisma.authSession.findUnique({ where: { id: raceSession.identity.sessionId } }))?.status === "COMPROMISED");

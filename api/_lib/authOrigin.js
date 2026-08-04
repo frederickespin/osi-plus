@@ -64,11 +64,16 @@ export function withMt01bAuthHeaders(handler) {
       return await handler(req, res);
     } catch (error) {
       const status = Number(error?.status) || 500;
+      if (error?.recoverable && Number.isInteger(error?.retryAfterMs)) {
+        res.setHeader("Retry-After", String(Math.max(1, Math.ceil(error.retryAfterMs / 1_000))));
+        res.setHeader("X-Retry-After-Ms", String(error.retryAfterMs));
+      }
       return res.status(status).json({
         ok: false,
         error: error?.code || "MT01B_AUTH_ERROR",
         message: status >= 500 ? "Error de configuración de autenticación" : error.message,
         ...(error?.recoverable ? { recoverable: true } : {}),
+        ...(error?.recoverable && Number.isInteger(error?.retryAfterMs) ? { retryAfterMs: error.retryAfterMs } : {}),
       });
     }
   };

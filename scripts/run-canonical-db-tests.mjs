@@ -113,11 +113,33 @@ try {
   const expectedTotal = 7 + Object.values(EXPECTED_DB_TESTS).reduce((sum, count) => sum + count, 0);
   const total = passedCount(mtTests) + dbPassed;
   invariant(total === expectedTotal, `La cadena esperaba ${expectedTotal} pruebas y obtuvo ${total}`);
+  const legacyAuthRun = runJson("mt-01b1-legacy-compat-test.mjs", "MT-01B1/LEGACY_COMPAT");
+  const authFoundationRun = runJson("mt-01b1-test.mjs", "MT-01B1/FOUNDATION");
+  const authRaceRun = runJson("mt-01b1-refresh-race-test.mjs", "MT-01B1/REFRESH_RACE");
+  const authAdversarialRun = runJson("mt-01b1-adversarial-test.mjs", "MT-01B1/ADVERSARIAL");
+  invariant(legacyAuthRun.assertions === 10, `MT-01B1 legacy esperaba 10 pruebas y obtuvo ${legacyAuthRun.assertions}`);
+  invariant(authFoundationRun.assertions === 37, `MT-01B1 esperaba 37 pruebas y obtuvo ${authFoundationRun.assertions}`);
+  invariant(authRaceRun.assertions === 62, `MT-01B1 race esperaba 62 pruebas y obtuvo ${authRaceRun.assertions}`);
+  invariant(authAdversarialRun.assertions === 15, `MT-01B1 adversarial esperaba 15 pruebas y obtuvo ${authAdversarialRun.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
+    mt01b1: {
+      legacy: legacyAuthRun.assertions,
+      foundation: authFoundationRun.assertions,
+      refreshRace: authRaceRun.assertions,
+      adversarial: authAdversarialRun.assertions,
+      total: 124,
+    },
     suites,
-    suiteRuns: { "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode }, ...suiteRuns },
+    suiteRuns: {
+      "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
+      ...suiteRuns,
+      "MT-01B1/LEGACY_COMPAT": { status: "PASS", assertions: legacyAuthRun.assertions, durationMs: legacyAuthRun.durationMs, exitCode: 0 },
+      "MT-01B1/FOUNDATION": { status: "PASS", assertions: authFoundationRun.assertions, durationMs: authFoundationRun.durationMs, exitCode: 0 },
+      "MT-01B1/REFRESH_RACE": { status: "PASS", assertions: authRaceRun.assertions, durationMs: authRaceRun.durationMs, exitCode: 0 },
+      "MT-01B1/ADVERSARIAL": { status: "PASS", assertions: authAdversarialRun.assertions, durationMs: authAdversarialRun.durationMs, exitCode: 0 },
+    },
     total,
   }, null, 2)}\n`);
 } finally {

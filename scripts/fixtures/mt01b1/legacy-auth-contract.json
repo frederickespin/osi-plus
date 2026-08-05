@@ -1,0 +1,49 @@
+{
+  "loginMissing": {
+    "status": 400,
+    "body": { "ok": false, "error": "email y password son requeridos" }
+  },
+  "loginInvalid": {
+    "status": 401,
+    "body": { "ok": false, "error": "Credenciales inválidas" }
+  },
+  "loginSuccess": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "token": "[JWT]",
+      "user": {
+        "id": "[USER_ID]",
+        "code": "MT01B-LEGACY",
+        "name": "Usuario Legacy Sintético",
+        "email": "mt01b-legacy@example.invalid",
+        "phone": "0000000000",
+        "role": "A",
+        "status": "active",
+        "department": "QA",
+        "joinDate": "2026-08-03",
+        "points": 0,
+        "rating": 0
+      }
+    }
+  },
+  "meSuccess": {
+    "status": 200,
+    "body": {
+      "ok": true,
+      "user": {
+        "id": "[USER_ID]",
+        "code": "MT01B-LEGACY",
+        "name": "Usuario Legacy Sintético",
+        "email": "mt01b-legacy@example.invalid",
+        "phone": "0000000000",
+        "role": "A",
+        "status": "active",
+        "department": "QA",
+        "joinDate": "2026-08-03",
+        "points": 0,
+        "rating": 0
+      }
+    }
+  }
+}

@@ -153,6 +153,33 @@ export function validateMt01bFoundationIsolation({ root = process.cwd(), files =
   return runtime.length;
 }
 
+export function validateMt01b2FrontendIsolation({ root = process.cwd(), files = trackedFiles(), env = process.env } = {}) {
+  invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "MT-01B2A frontend debe permanecer desactivado");
+  files = files.map((file) => file.replaceAll("\\", "/"));
+  const authSourceFiles = files.filter((file) => file.startsWith("src/auth-v2/") && /\.(?:[cm]?[jt]sx?)$/.test(file));
+  const persistentMarkers = ["local" + "Storage", "session" + "Storage", "indexed" + "DB"];
+  const persistenceViolations = [];
+  for (const file of authSourceFiles) {
+    let source;
+    try { source = readFileSync(resolve(root, file), "utf8"); } catch { continue; }
+    const marker = persistentMarkers.find((candidate) => source.includes(candidate));
+    if (marker) persistenceViolations.push(`${file}:${marker}`);
+  }
+  invariant(persistenceViolations.length === 0, `MT-01B2A no permite tokens en almacenamiento persistente: ${persistenceViolations.join(", ")}`);
+
+  const activeRuntime = files.filter((file) => file.startsWith("src/") && !file.startsWith("src/auth-v2/") && /\.(?:[cm]?[jt]sx?)$/.test(file));
+  const imports = [];
+  for (const file of activeRuntime) {
+    let source;
+    try { source = readFileSync(resolve(root, file), "utf8"); } catch { continue; }
+    for (const specifier of moduleSpecifiers(source)) {
+      if (/(?:^|\/)auth-v2(?:\/|$)/i.test(specifier)) imports.push(`${file} -> ${specifier}`);
+    }
+  }
+  invariant(imports.length === 0, `MT-01B2A fue conectado al runtime activo: ${imports.join(", ")}`);
+  return { authSourceFiles: authSourceFiles.length, activeRuntimeFiles: activeRuntime.length };
+}
+
 function validateFixtureRuntimeIsolation(root = process.cwd()) {
   const runtimeFiles = trackedFiles().filter((file) => /^(?:api|src)\//.test(file) && /\.(?:[cm]?[jt]sx?)$/.test(file));
   const forbiddenImport = /(?:from\s*|import\s*\(|require\s*\()\s*["'][^"']*scripts\/fixtures\/db01(?:\/|["'])/;
@@ -245,6 +272,7 @@ export function validateRuntimeDefaults(env = process.env) {
   invariant(authPolicy.mode === "LEGACY", "MT-01B debe permanecer en LEGACY");
   invariant(authPolicy.tenantSwitchEnabled === false, "MT-01B no permite cambio de empresa");
   invariant(!env.MT01B_LEGACY_TOKEN_ACCEPT_UNTIL, "La fecha legacy sólo se configura al activar HYBRID en MT-01B2");
+  invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "MT-01B2A frontend debe permanecer desactivado");
 }
 
 async function validateDatabase(raw) {
@@ -282,9 +310,10 @@ export async function validateCanonicalCi({ phase = "database" } = {}) {
   const runtimeFilesChecked = validateFixtureRuntimeIsolation();
   const db01RuntimeFilesChecked = validateDb01RuntimeActivation();
   const mt01bRuntimeFilesChecked = validateMt01bFoundationIsolation();
+  const mt01b2Frontend = validateMt01b2FrontendIsolation();
   validateRuntimeDefaults();
   const database = phase === "database" ? await validateDatabase(process.env.DATABASE_URL) : null;
-  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, runtimeFilesChecked, db01RuntimeFilesChecked, mt01bRuntimeFilesChecked, database };
+  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, runtimeFilesChecked, db01RuntimeFilesChecked, mt01bRuntimeFilesChecked, mt01b2Frontend, database };
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";

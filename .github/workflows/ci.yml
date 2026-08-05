@@ -74,6 +74,7 @@ jobs:
       DB01J_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
+      VITE_MT01B2_CLIENT_ENABLED: "false"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -128,8 +129,10 @@ jobs:
       - name: Verify canonical history and safe modes
         run: node scripts/validate-canonical-ci.mjs
 
-      - name: Run MT-01A, DB-01D through DB-01J, and MT-01B1
-        run: node scripts/run-canonical-db-tests.mjs
+      - name: Run MT-01A, DB-01D through DB-01J, MT-01B1, and inactive MT-01B2A
+        run: |
+          node scripts/run-canonical-db-tests.mjs
+          node scripts/mt-01b2a-test.ts
 
       - name: Build
         run: npm run build

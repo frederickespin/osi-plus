@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   validateDb01RuntimeActivation,
   validateMt01bFoundationIsolation,
+  validateMt01b2FrontendIsolation,
   validateRuntimeDefaults,
 } from "./validate-canonical-ci.mjs";
 
@@ -108,6 +109,30 @@ try {
     "componente de cambio de tenant rechazado",
     () => validateMt01bFoundationIsolation({ root, files: [fakeSwitch] }),
     ["TenantSwitcher"],
+  );
+
+  const inactiveCoordinator = fixture("src/auth-v2/sessionCoordinator.ts", "export class SessionCoordinator {}\n");
+  validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator], env: { VITE_MT01B2_CLIENT_ENABLED: "false" } });
+  check("fundación frontend desacoplada aprobada", true);
+
+  const activeImport = fixture("src/main.tsx", 'import { SessionCoordinator } from "./auth-v2/sessionCoordinator.ts";\n');
+  rejection(
+    "import del coordinador desde arranque activo rechazado",
+    () => validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator, activeImport], env: {} }),
+    ["src/main.tsx", "auth-v2/sessionCoordinator.ts"],
+  );
+
+  const persistentToken = fixture("src/auth-v2/unsafe.ts", 'window.localStorage.setItem("accessToken", token);\n');
+  rejection(
+    "persistencia de token rechazada con archivo y mecanismo",
+    () => validateMt01b2FrontendIsolation({ root, files: [persistentToken], env: {} }),
+    ["src/auth-v2/unsafe.ts", "localStorage"],
+  );
+
+  rejection(
+    "activación VITE de MT-01B2A rechazada",
+    () => validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator], env: { VITE_MT01B2_CLIENT_ENABLED: "true" } }),
+    ["desactivado"],
   );
 
   process.stdout.write(`${JSON.stringify({ ok: true, passed: results.length, results }, null, 2)}\n`);

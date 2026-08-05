@@ -8,6 +8,7 @@
     "build": "prisma generate && vite build",
     "postinstall": "prisma generate",
     "lint": "eslint .",
+    "test:auth-null:browser": "playwright test -c playwright.auth-null.config.ts",
     "test:mt01b2b:browser": "playwright test",
     "preview": "vite preview",
     "db:generate": "prisma generate",

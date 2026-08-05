@@ -6,6 +6,7 @@ import type {
   SessionChannelMessage,
   SessionClock,
   SessionFence,
+  FrontendSessionTransport,
   SessionLock,
   SessionTransport,
 } from "./sessionTypes.ts";
@@ -87,8 +88,32 @@ async function responseBody(response: Response): Promise<Record<string, unknown>
   }
 }
 
-export function createFetchSessionTransport(baseUrl = "/api"): SessionTransport {
+function responseError(response: Response, body: Record<string, unknown>) {
+  const rawRetry = Number(body.retryAfterMs);
   return {
+    code: typeof body.error === "string" ? body.error.slice(0, 120) : `HTTP_${response.status}`,
+    recoverable: body.recoverable === true,
+    retryAfterMs: Number.isFinite(rawRetry) ? rawRetry : undefined,
+    status: response.status,
+  };
+}
+
+export function createFetchSessionTransport(baseUrl = "/api"): FrontendSessionTransport {
+  return {
+    async upgrade(legacyAccessToken, signal) {
+      const response = await fetch(`${baseUrl}/auth/session/upgrade`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${legacyAccessToken}`,
+        },
+        signal,
+      });
+      const body = await responseBody(response);
+      if (!response.ok) throw responseError(response, body);
+      return body as unknown as Awaited<ReturnType<FrontendSessionTransport["upgrade"]>>;
+    },
     async refresh(signal) {
       const response = await fetch(`${baseUrl}/auth/refresh`, {
         method: "POST",
@@ -97,7 +122,7 @@ export function createFetchSessionTransport(baseUrl = "/api"): SessionTransport 
         signal,
       });
       const body = await responseBody(response);
-      if (!response.ok) throw { code: body.error, recoverable: body.recoverable, retryAfterMs: body.retryAfterMs, body };
+      if (!response.ok) throw responseError(response, body);
       return body as unknown as Awaited<ReturnType<SessionTransport["refresh"]>>;
     },
     async logout(signal) {
@@ -109,7 +134,7 @@ export function createFetchSessionTransport(baseUrl = "/api"): SessionTransport 
       });
       if (!response.ok && response.status !== 204) {
         const body = await responseBody(response);
-        throw { code: body.error, recoverable: body.recoverable, retryAfterMs: body.retryAfterMs, body };
+        throw responseError(response, body);
       }
     },
   };

@@ -205,6 +205,12 @@ export class SessionCoordinator {
     return this.snapshot;
   }
 
+  establish(response: RefreshResponse): SessionSnapshot {
+    if (!this.#options.enabled || this.#destroyed) return this.snapshot;
+    this.#acceptServerResponse(response);
+    return this.snapshot;
+  }
+
   shouldMaintainActiveSession(): boolean {
     if (!this.#accessToken || this.snapshot.expiresAt == null) return false;
     const now = this.#options.clock.now();

@@ -123,9 +123,16 @@ try {
     ["src/main.tsx", "auth-v2/sessionCoordinator.ts"],
   );
 
-  const allowedGate = fixture("src/allowed-main.tsx", 'import { bootstrapMt01b2Frontend } from "./auth-v2/frontendSessionGate.ts";\n');
+  const allowedGate = fixture("src/lib/mt01b2FrontendBootstrap.ts", 'void import("../auth-v2/frontendSessionRuntime.ts");\n');
   validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator, allowedGate], env: {} });
-  check("únicamente la compuerta frontend puede importarse desde runtime", true);
+  check("únicamente el bootstrap autorizado puede importar auth-v2", true);
+
+  const unauthorizedGateImport = fixture("src/components/UnsafeAuth.tsx", 'import "../auth-v2/frontendSessionRuntime.ts";\n');
+  rejection(
+    "import auth-v2 fuera del bootstrap rechazado",
+    () => validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator, unauthorizedGateImport], env: {} }),
+    ["src/components/UnsafeAuth.tsx", "mt01b2FrontendBootstrap.ts"],
+  );
 
   const dynamicDirectImport = fixture("src/direct-dynamic.ts", 'void import("./auth-v2/frontendSessionRuntime.ts");\n');
   rejection(

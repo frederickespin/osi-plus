@@ -1,16 +1,24 @@
 import { defineConfig, devices } from "@playwright/test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 export default defineConfig({
   testDir: "./tests/mt01b2b",
+  outputDir: process.env.RUNNER_TEMP ?? join(tmpdir(), `mt01b2b-playwright-${process.pid}`),
   timeout: 90_000,
+  globalTimeout: 8 * 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
-  reporter: [["list"]],
+  retries: 0,
+  forbidOnly: true,
+  reporter: [["list"], ["./scripts/mt01b2b-browser-ci-reporter.mjs"]],
   use: {
     baseURL: "http://127.0.0.1:4174",
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
+    trace: "off",
+    screenshot: "off",
+    video: "off",
+    serviceWorkers: "block",
   },
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 4174",

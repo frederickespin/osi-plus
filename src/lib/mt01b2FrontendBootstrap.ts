@@ -1,5 +1,5 @@
-type FrontendAuthView = import("./frontendSessionRuntime.ts").FrontendAuthView;
-type FrontendSessionRuntime = import("./frontendSessionRuntime.ts").FrontendSessionRuntime;
+type FrontendAuthView = import("../auth-v2/frontendSessionRuntime.ts").FrontendAuthView;
+type FrontendSessionRuntime = import("../auth-v2/frontendSessionRuntime.ts").FrontendSessionRuntime;
 
 const DISABLED_VIEW: FrontendAuthView = Object.freeze({
   mode: "LEGACY",
@@ -32,7 +32,7 @@ async function loadRuntime(): Promise<FrontendSessionRuntime | null> {
   if (!enabled()) return null;
   if (runtime) return runtime;
   if (!runtimePromise) {
-    runtimePromise = import("./frontendSessionRuntime.ts").then(({ createFrontendSessionRuntime }) => {
+    runtimePromise = import("../auth-v2/frontendSessionRuntime.ts").then(({ createFrontendSessionRuntime }) => {
       const loaded = createFrontendSessionRuntime();
       loaded.subscribe(publish);
       runtime = loaded;

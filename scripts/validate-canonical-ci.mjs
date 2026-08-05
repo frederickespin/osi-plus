@@ -168,18 +168,18 @@ export function validateMt01b2FrontendIsolation({ root = process.cwd(), files = 
   invariant(persistenceViolations.length === 0, `MT-01B2A no permite tokens en almacenamiento persistente: ${persistenceViolations.join(", ")}`);
 
   const activeRuntime = files.filter((file) => file.startsWith("src/") && !file.startsWith("src/auth-v2/") && /\.(?:[cm]?[jt]sx?)$/.test(file));
+  const authorizedBootstrap = "src/lib/mt01b2FrontendBootstrap.ts";
   const imports = [];
   for (const file of activeRuntime) {
     let source;
     try { source = readFileSync(resolve(root, file), "utf8"); } catch { continue; }
     for (const specifier of moduleSpecifiers(source)) {
-      if (/(?:^|\/)auth-v2(?:\/|$)/i.test(specifier)
-        && !/(?:^|\/)auth-v2\/frontendSessionGate(?:\.ts)?$/i.test(specifier)) {
+      if (/(?:^|\/)auth-v2(?:\/|$)/i.test(specifier) && file !== authorizedBootstrap) {
         imports.push(`${file} -> ${specifier}`);
       }
     }
   }
-  invariant(imports.length === 0, `MT-01B2 sólo permite importar la compuerta frontend: ${imports.join(", ")}`);
+  invariant(imports.length === 0, `MT-01B2 sólo permite importar auth-v2 desde ${authorizedBootstrap}: ${imports.join(", ")}`);
   return { authSourceFiles: authSourceFiles.length, activeRuntimeFiles: activeRuntime.length };
 }
 

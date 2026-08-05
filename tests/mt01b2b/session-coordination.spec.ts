@@ -18,6 +18,26 @@ const baseFence = (suffix = "a"): Fence => ({
   authorizationVersion: 1,
 });
 
+const externalRequests = new WeakMap<BrowserContext, string[]>();
+
+test.beforeEach(async ({ context }) => {
+  const blocked: string[] = [];
+  externalRequests.set(context, blocked);
+  await context.route("**/*", async (route) => {
+    const requested = new URL(route.request().url());
+    if (requested.protocol === "http:" && requested.hostname === "127.0.0.1" && requested.port === "4174") {
+      await route.fallback();
+      return;
+    }
+    blocked.push(`${requested.protocol}//${requested.host}`);
+    await route.abort("blockedbyclient");
+  });
+});
+
+test.afterEach(async ({ context }) => {
+  expect(externalRequests.get(context) ?? []).toEqual([]);
+});
+
 function json(payload: unknown, status = 200) {
   return { status, contentType: "application/json", body: JSON.stringify(payload) };
 }
@@ -116,10 +136,10 @@ test("20 pestañas coordinan exactamente un refresh con Web Locks", async ({ con
   await Promise.all(pages.map((page) => create(page, channel, session)));
   await Promise.all(pages.map((page) => page.evaluate(() => window.mt01b2bHarness.initialize())));
   expect(calls).toBe(1);
-  expect(new Set(await tokens(pages))).toEqual(new Set([accessToken]));
+  expect((await tokens(pages)).every((value) => value === accessToken)).toBe(true);
   for (const page of pages) {
     const storage = await page.evaluate(() => window.mt01b2bHarness.storage());
-    expect(JSON.stringify(storage)).not.toContain(accessToken);
+    expect(JSON.stringify(storage).includes(accessToken)).toBe(false);
     await page.evaluate(() => window.mt01b2bHarness.destroy());
   }
 });
@@ -154,7 +174,7 @@ test("caída de pestaña líder libera el lock y converge", async ({ context, br
   await Promise.all(pending);
   await expect.poll(() => calls).toBeGreaterThanOrEqual(2);
   await expect.poll(async () => (await tokens(remaining)).filter(Boolean).length).toBe(remaining.length);
-  expect(new Set(await tokens(remaining))).toEqual(new Set([finalToken]));
+  expect((await tokens(remaining)).every((value) => value === finalToken)).toBe(true);
 });
 
 test("fallback sin Web Locks converge mediante el servidor", async ({ context, browserName }) => {
@@ -179,7 +199,7 @@ test("fallback sin Web Locks converge mediante el servidor", async ({ context, b
   await Promise.all(pages.map((page) => page.evaluate(() => window.mt01b2bHarness.initialize())));
   expect(calls).toBeGreaterThan(1);
   expect(calls).toBeLessThanOrEqual(32);
-  expect(new Set(await tokens(pages))).toEqual(new Set([winningToken]));
+  expect((await tokens(pages)).every((value) => value === winningToken)).toBe(true);
 });
 
 test("logout se propaga y limpia todas las pestañas", async ({ context, browserName }) => {
@@ -222,8 +242,8 @@ test("nuevo usuario rechaza respuesta y mensajes tardíos de la sesión anterior
   resolveOld!();
   await Promise.all([pendingOld.catch(() => null), pendingNew]);
   const installed = await page.evaluate(() => window.mt01b2bHarness.accessToken());
-  expect(installed).toContain(".");
-  expect(installed).not.toBe(token(oldSession, 10 * 60_000, "late-old"));
+  expect(typeof installed === "string" && installed.split(".").length === 3).toBe(true);
+  expect(installed === token(oldSession, 10 * 60_000, "late-old")).toBe(false);
   const snapshot = await page.evaluate(() => window.mt01b2bHarness.snapshot());
   expect(snapshot?.state).toBe("AUTHENTICATED");
 });
@@ -262,14 +282,14 @@ test("cierre, reapertura y destroy no persisten tokens ni dejan recursos", async
   const channel = `mt01b2b-reopen-${browserName}-${Date.now()}`;
   await create(page, channel, session);
   await page.evaluate(() => window.mt01b2bHarness.initialize());
-  expect(await page.evaluate(() => window.mt01b2bHarness.accessToken())).toBe(accessToken);
-  expect(JSON.stringify(await page.evaluate(() => window.mt01b2bHarness.storage()))).not.toContain(accessToken);
+  expect(await page.evaluate(() => window.mt01b2bHarness.accessToken()) === accessToken).toBe(true);
+  expect(JSON.stringify(await page.evaluate(() => window.mt01b2bHarness.storage())).includes(accessToken)).toBe(false);
   await page.evaluate(() => window.mt01b2bHarness.destroy());
   expect(await page.evaluate(() => window.mt01b2bHarness.resources())).toEqual({ activities: 0, channels: 0, coordinators: 0 });
   await page.close();
   page = await harnessPage(context);
-  expect(await page.evaluate(() => window.mt01b2bHarness.accessToken())).toBeNull();
-  expect(JSON.stringify(await page.evaluate(() => window.mt01b2bHarness.storage()))).not.toContain(accessToken);
+  expect(await page.evaluate(() => window.mt01b2bHarness.accessToken()) === null).toBe(true);
+  expect(JSON.stringify(await page.evaluate(() => window.mt01b2bHarness.storage())).includes(accessToken)).toBe(false);
 });
 
 test("revocación administrativa cruza pestañas sin conservar token", async ({ context, browserName }) => {
@@ -303,7 +323,7 @@ test("mensajes fuera de orden no reemplazan el token más nuevo", async ({ conte
     window.mt01b2bHarness.broadcast(channelName, { ...common, type: "AUTHENTICATED", nonce: "message-old", operationNonce: "operation-old", issuedAt: issuedAt + 5, expiresAt: Math.floor((issuedAt + 600_000) / 1_000) * 1_000, accessToken: older });
   }, { channelName: channel, selected: session, issuedAt: now, newer: newerToken, older: olderToken });
   await page.waitForTimeout(100);
-  expect(await page.evaluate(() => window.mt01b2bHarness.accessToken())).toBe(newerToken);
+  expect(await page.evaluate(() => window.mt01b2bHarness.accessToken()) === newerToken).toBe(true);
 });
 
 test("runtime integrado acepta upgrade y vuelve limpiamente a LEGACY si servidor lo desactiva", async ({ context, browserName }) => {
@@ -326,7 +346,7 @@ test("logout cancela el refresh programado del runtime integrado", async ({ cont
   let logoutCalls = 0;
   await context.route("**/__mt01b2b/upgrade", async (route) => {
     upgradeCalls += 1;
-    expect(route.request().headers().authorization).toBe("Bearer legacy-test-token");
+    expect(route.request().headers().authorization === "Bearer legacy-test-token").toBe(true);
     await route.fulfill(json(success(session, token(session, 61_000, "scheduled"))));
   });
   await context.route("**/__mt01b2b/refresh", async (route) => {

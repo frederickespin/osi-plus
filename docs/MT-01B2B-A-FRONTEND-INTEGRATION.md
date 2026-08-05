@@ -39,8 +39,8 @@ Inventario tomado sobre `origin/main` en `a8cc6c24f11b0f96d3260bef66752e9d6d39b9
 
 ## Diseño de integración
 
-La integración tiene una sola entrada controlada: `frontendSessionGate.ts`. `main.tsx` y
-`LoginScreen.tsx` sólo importan esa compuerta. El coordinador, sus adaptadores y el runtime
+La integración tiene una sola entrada controlada: `mt01b2FrontendBootstrap.ts`. `main.tsx` y
+`LoginScreen.tsx` sólo importan ese bootstrap. El coordinador, sus adaptadores y el runtime
 V2 se cargan mediante `import()` exclusivamente cuando Vite compila
 `VITE_MT01B2_CLIENT_ENABLED=true`.
 
@@ -114,7 +114,7 @@ Validación local, sin Neon ni producción:
 | DB-01/MT-01A | 299/299 |
 | MT-01B1 | 124/124 |
 | MT-01B2A | 24/24 |
-| Guardias de activación | 23/23 |
+| Guardias de activación | 24/24 |
 | Playwright Node 24 | 36/36 |
 | Chromium / Firefox / WebKit | 12/12 por motor |
 | Build LEGACY | Correcto |
@@ -130,6 +130,11 @@ El bundle LEGACY pasó de 2,160,293 a 2,160,584 bytes (+291 bytes). No contiene 
 marcadores del coordinador (`coordinatorChunks=0`). Durante el desarrollo una primera
 condición no estática sí generó un chunk V2; la guardia lo detectó y la compuerta fue
 corregida para que Vite elimine la rama desactivada.
+
+El job independiente `browser-session-validation` reproduce las 36 pruebas con Node 24.
+Su reporter exige exactamente 12 pruebas aprobadas y cero omitidas por navegador. El
+contexto bloquea cualquier solicitud distinta de `127.0.0.1:4174`; videos, screenshots y
+trazas permanecen desactivados, y el build LEGACY se inspecciona antes de abrir el navegador.
 
 ### Riesgos reservados para MT-01B2B-B
 

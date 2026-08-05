@@ -43,6 +43,51 @@ jobs:
       - name: Build
         run: npm run build
 
+  browser-session-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CANONICAL_DB_VALIDATION: "true"
+      DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DIRECT_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01D_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01E_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01F_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01G_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01H_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01I_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DB01J_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      MT01B_AUTH_MODE: LEGACY
+      MT01B_TENANT_SWITCH_ENABLED: "false"
+      VITE_MT01B2_CLIENT_ENABLED: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install isolated browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Build LEGACY and verify inactive bundle
+        run: |
+          npm run build
+          node scripts/validate-canonical-ci.mjs --preflight
+          node scripts/validate-canonical-activation-guard-test.mjs
+
+      - name: Validate cross-tab sessions in real browsers
+        run: npm run test:mt01b2b:browser
+
+      - name: Verify repository cleanliness
+        run: git diff --exit-code
+
   canonical-database-validation:
     runs-on: ubuntu-latest
     timeout-minutes: 25

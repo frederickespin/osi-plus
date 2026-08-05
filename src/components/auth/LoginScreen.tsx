@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { getAppEnv, ENV_LABELS } from '@/lib/env';
 import type { UserRole } from '@/types/osi.types';
-import { notifyMt01b2LegacyLogin } from '@/auth-v2/frontendSessionGate';
+import { notifyMt01b2LegacyLogin } from '@/lib/mt01b2FrontendBootstrap';
 
 const TEST_USERS = [
   { email: 'admin@ipackers.com', password: 'Admin123*', role: 'A', name: 'Administrador' },

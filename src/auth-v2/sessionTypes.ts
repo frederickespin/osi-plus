@@ -29,6 +29,15 @@ export type SessionIdentity = {
   role: string;
   authorizationVersion: number;
 };
+
+export type SessionFence = {
+  sessionId: string;
+  sessionEpoch: string;
+  subject: string;
+  tenantId: string;
+  membershipId: string;
+  authorizationVersion: number;
+};
 export type RefreshResponse = {
   ok: true;
   token: string;
@@ -59,32 +68,26 @@ export type SessionLock = {
   tryRun<T>(name: string, task: () => Promise<T>): Promise<LockResult<T>>;
 };
 
-export type RefreshStartedMessage = {
-  version: 1;
-  type: "REFRESH_STARTED";
+type SessionMessageFence = SessionFence & {
+  version: 2;
   senderId: string;
   nonce: string;
   issuedAt: number;
 };
 
-export type AuthenticatedMessage = {
-  version: 1;
+export type RefreshStartedMessage = SessionMessageFence & {
+  type: "REFRESH_STARTED";
+};
+
+export type AuthenticatedMessage = SessionMessageFence & {
   type: "AUTHENTICATED";
-  senderId: string;
-  nonce: string;
   operationNonce: string;
-  issuedAt: number;
   expiresAt: number;
-  authorizationVersion: number;
   accessToken: string;
 };
 
-export type TerminalMessage = {
-  version: 1;
+export type TerminalMessage = SessionMessageFence & {
   type: "LOGOUT" | "REAUTH_REQUIRED";
-  senderId: string;
-  nonce: string;
-  issuedAt: number;
 };
 
 export type SessionChannelMessage = RefreshStartedMessage | AuthenticatedMessage | TerminalMessage;
@@ -105,6 +108,9 @@ export type SessionCoordinatorPolicy = {
   maxBroadcastAgeMs: number;
   maxClockSkewMs: number;
   maxAccessTokenTtlMs: number;
+  maxBroadcastMessageBytes: number;
+  maxReplayNonces: number;
+  maxMessagesPerWindow: number;
 };
 
 export type SessionSnapshot = {
@@ -125,5 +131,7 @@ export type SessionCoordinatorOptions = {
   activity: SessionActivity;
   randomNonce(): string;
   randomUnit(): number;
+  expectedSession?: SessionFence;
+  dispose?: () => void;
   policy?: Partial<SessionCoordinatorPolicy>;
 };

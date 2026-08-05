@@ -10,6 +10,9 @@ export const DEFAULT_SESSION_COORDINATOR_POLICY: Readonly<SessionCoordinatorPoli
   maxBroadcastAgeMs: 10_000,
   maxClockSkewMs: 30_000,
   maxAccessTokenTtlMs: 60 * 60_000,
+  maxBroadcastMessageBytes: 24_576,
+  maxReplayNonces: 512,
+  maxMessagesPerWindow: 512,
 });
 
 export function isMt01b2ClientEnabled(env: Record<string, unknown>): boolean {
@@ -28,6 +31,9 @@ export function resolveSessionCoordinatorPolicy(
     "maxBroadcastAgeMs",
     "maxClockSkewMs",
     "maxAccessTokenTtlMs",
+    "maxBroadcastMessageBytes",
+    "maxReplayNonces",
+    "maxMessagesPerWindow",
   ] as const;
   for (const key of positive) {
     if (!Number.isInteger(policy[key]) || policy[key] <= 0) throw new Error(`MT01B2_INVALID_POLICY:${key}`);
@@ -35,7 +41,12 @@ export function resolveSessionCoordinatorPolicy(
   if (!Number.isInteger(policy.retryJitterMs) || policy.retryJitterMs < 0 || policy.retryJitterMs > 1_000) {
     throw new Error("MT01B2_INVALID_POLICY:retryJitterMs");
   }
-  if (policy.maxRetries > 5 || policy.maxRetryAfterMs > 5_000 || policy.maxAccessTokenTtlMs > 60 * 60_000) {
+  if (policy.maxRetries > 5
+    || policy.maxRetryAfterMs > 5_000
+    || policy.maxAccessTokenTtlMs > 60 * 60_000
+    || policy.maxBroadcastMessageBytes > 65_536
+    || policy.maxReplayNonces > 2_048
+    || policy.maxMessagesPerWindow > 2_048) {
     throw new Error("MT01B2_UNSAFE_POLICY");
   }
   return policy;

@@ -7,6 +7,7 @@ import type {
   SessionActivity,
   SessionChannel,
   SessionClock,
+  SessionFence,
   SessionLock,
   SessionTransport,
 } from "../src/auth-v2/sessionTypes.ts";
@@ -18,17 +19,51 @@ async function test(name: string, action: () => void | Promise<void>): Promise<v
   results.push({ name, passed: true });
 }
 
-function token(now: number, authorizationVersion = 1, ttlMs = 10 * 60_000): string {
-  const encode = (value: unknown) => btoa(JSON.stringify(value)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
-  return `${encode({ alg: "none", typ: "JWT" })}.${encode({ exp: Math.floor((now + ttlMs) / 1_000), authorizationVersion })}.signature`;
+function fence(overrides: Partial<SessionFence> = {}): SessionFence {
+  return {
+    sessionId: "session-a",
+    sessionEpoch: "session-a",
+    subject: "user-a",
+    tenantId: "tenant-a",
+    membershipId: "member-a",
+    authorizationVersion: 1,
+    ...overrides,
+  };
 }
 
-function success(now: number, authorizationVersion = 1): RefreshResponse {
+function token(now: number, session = fence(), ttlMs = 10 * 60_000, jti = "token-a"): string {
+  const encode = (value: unknown) => btoa(JSON.stringify(value)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+  return `${encode({ alg: "none", typ: "JWT" })}.${encode({
+    ver: 2,
+    typ: "access",
+    sid: session.sessionId,
+    sub: session.subject,
+    tenantId: session.tenantId,
+    membershipId: session.membershipId,
+    role: "ADMIN",
+    authorizationVersion: session.authorizationVersion,
+    jti,
+    exp: Math.floor((now + ttlMs) / 1_000),
+  })}.signature`;
+}
+
+function success(now: number, session = fence(), ttlMs = 10 * 60_000): RefreshResponse {
   return {
     ok: true,
-    token: token(now, authorizationVersion),
-    session: { tenantId: "tenant-a", membershipId: "member-a", role: "A", authorizationVersion },
+    token: token(now, session, ttlMs),
+    session: {
+      tenantId: session.tenantId,
+      membershipId: session.membershipId,
+      role: "ADMIN",
+      authorizationVersion: session.authorizationVersion,
+    },
   };
+}
+
+function tokenPayload(accessToken: string): Record<string, unknown> {
+  const encoded = accessToken.split(".")[1]!;
+  const normalized = encoded.replaceAll("-", "+").replaceAll("_", "/");
+  return JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="))) as Record<string, unknown>;
 }
 
 class TestHub {
@@ -58,6 +93,37 @@ class TestHub {
   inject(message: unknown): void {
     for (const target of this.#listeners.values()) queueMicrotask(() => target(message));
   }
+
+  get listenerCount(): number {
+    return this.#listeners.size;
+  }
+}
+
+class TrackedClock implements SessionClock {
+  readonly #timers = new Set<ReturnType<typeof setTimeout>>();
+
+  now(): number { return Date.now(); }
+
+  sleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolveSleep, reject) => {
+      const finish = () => {
+        this.#timers.delete(timer);
+        signal?.removeEventListener("abort", cancel);
+        resolveSleep();
+      };
+      const cancel = () => {
+        clearTimeout(timer);
+        this.#timers.delete(timer);
+        signal?.removeEventListener("abort", cancel);
+        reject(new DOMException("cancelled", "AbortError"));
+      };
+      const timer = setTimeout(finish, Math.min(milliseconds, 20));
+      this.#timers.add(timer);
+      signal?.addEventListener("abort", cancel, { once: true });
+    });
+  }
+
+  get activeTimers(): number { return this.#timers.size; }
 }
 
 class TestLock implements SessionLock {
@@ -70,6 +136,15 @@ class TestLock implements SessionLock {
     } finally {
       this.#busy = false;
     }
+  }
+}
+
+class MissOnceLock implements SessionLock {
+  attempts = 0;
+  async tryRun<T>(_name: string, task: () => Promise<T>) {
+    this.attempts += 1;
+    if (this.attempts === 1) return { acquired: false as const };
+    return { acquired: true as const, value: await task() };
   }
 }
 
@@ -98,6 +173,37 @@ function nextNonce(): string {
   return `nonce_${String(nonceSequence).padStart(10, "0")}`;
 }
 
+function refreshStartedMessage(session: SessionFence, operationNonce: string, issuedAt = Date.now()) {
+  return {
+    version: 2 as const,
+    type: "REFRESH_STARTED" as const,
+    senderId: "peer_sender_0001",
+    nonce: operationNonce,
+    issuedAt,
+    ...session,
+  };
+}
+
+function authenticatedMessage(
+  session: SessionFence,
+  operationNonce: string,
+  accessToken: string,
+  issuedAt = Date.now(),
+) {
+  const payload = tokenPayload(accessToken) as { exp: number };
+  return {
+    version: 2 as const,
+    type: "AUTHENTICATED" as const,
+    senderId: "peer_sender_0001",
+    nonce: nextNonce(),
+    operationNonce,
+    issuedAt,
+    expiresAt: payload.exp * 1_000,
+    accessToken,
+    ...session,
+  };
+}
+
 function coordinator(options: {
   tab: number;
   hub: TestHub;
@@ -105,17 +211,22 @@ function coordinator(options: {
   lock?: SessionLock | null;
   enabled?: boolean;
   sessionActivity?: SessionActivity;
+  expectedSession?: SessionFence | null;
+  sessionClock?: SessionClock;
+  dispose?: () => void;
 }): SessionCoordinator {
   return new SessionCoordinator({
     enabled: options.enabled ?? true,
-    tabId: `tab_${options.tab}`,
+    tabId: `tab_id_${String(options.tab).padStart(8, "0")}`,
     transport: options.transport,
     channel: options.hub.connect(),
     lock: options.lock === undefined ? new TestLock() : options.lock,
-    clock,
+    clock: options.sessionClock ?? clock,
     activity: options.sessionActivity ?? activity(),
     randomNonce: nextNonce,
     randomUnit: () => 0,
+    expectedSession: options.expectedSession === undefined ? fence() : options.expectedSession ?? undefined,
+    dispose: options.dispose,
     policy: {
       winnerWaitMs: 15,
       maxRetryAfterMs: 20,
@@ -264,21 +375,17 @@ await test("logout durante refresh cancela la operación y limpia todas las pest
 
 await test("revocación y cambio de authorizationVersion limpian copias en memoria", async () => {
   const hub = new TestHub();
-  let version = 1;
   let revoked = false;
   const transport: SessionTransport = {
     refresh: async () => {
       if (revoked) throw { code: "MT01B_AUTHORIZATION_CHANGED" };
-      return success(Date.now(), version);
+      return success(Date.now());
     },
     logout: async () => undefined,
   };
   const first = coordinator({ tab: 100, hub, transport });
   const second = coordinator({ tab: 101, hub, transport });
   await first.initialize();
-  version = 2;
-  await first.refresh();
-  assert.equal(first.snapshot.authorizationVersion, 2);
   revoked = true;
   await first.refresh();
   await clock.sleep(1);
@@ -299,29 +406,29 @@ await test("BroadcastChannel rechaza mensajes obsoletos, inválidos y sin operac
   const before = item.snapshot;
   hub.inject({ version: 1, type: "AUTHENTICATED", senderId: "attacker", nonce: "bad", issuedAt: Date.now(), accessToken: "secret" });
   hub.inject({
-    version: 1,
+    version: 2,
     type: "AUTHENTICATED",
-    senderId: "attacker",
+    senderId: "attacker_id",
     nonce: "nonce_attacker_1",
     operationNonce: "nonce_unknown_1",
     issuedAt: Date.now() - 60_000,
     expiresAt: Date.now() + 60_000,
-    authorizationVersion: 1,
     accessToken: token(Date.now()),
+    ...fence(),
   });
   const operationNonce = "nonce_known_operation";
   const issuedAt = Date.now();
-  hub.inject({ version: 1, type: "REFRESH_STARTED", senderId: "peer", nonce: operationNonce, issuedAt });
+  hub.inject({ version: 2, type: "REFRESH_STARTED", senderId: "peer_sender", nonce: operationNonce, issuedAt, ...fence() });
   hub.inject({
-    version: 1,
+    version: 2,
     type: "AUTHENTICATED",
-    senderId: "peer",
+    senderId: "peer_sender",
     nonce: "nonce_forged_result",
     operationNonce,
     issuedAt,
     expiresAt: issuedAt + 123_000,
-    authorizationVersion: 999,
-    accessToken: token(issuedAt, 1),
+    accessToken: token(issuedAt),
+    ...fence({ authorizationVersion: 999 }),
   });
   await clock.sleep(1);
   assert.deepEqual(item.snapshot, before);
@@ -334,7 +441,7 @@ await test("clock skew y expiración inválida no autentican", async () => {
     tab: 120,
     hub: new TestHub(),
     transport: {
-      refresh: async () => ({ ...success(Date.now()), token: token(Date.now(), 1, -120_000) }),
+      refresh: async () => ({ ...success(Date.now()), token: token(Date.now(), fence(), -120_000) }),
       logout: async () => undefined,
     },
   });
@@ -393,7 +500,7 @@ await test("usuario oculto o inactivo no refresca continuamente", async () => {
     hub: new TestHub(),
     sessionActivity: activity({ visible: false, lastActivityAt: Date.now() - 60 * 60_000 }),
     transport: {
-      refresh: async () => { calls += 1; return success(Date.now(), 1, 30_000); },
+      refresh: async () => { calls += 1; return success(Date.now(), fence(), 30_000); },
       logout: async () => undefined,
     },
   });
@@ -447,6 +554,248 @@ await test("V2 desactivado conserva LEGACY y no llama endpoints cuando el client
   await serverDisabled.refresh();
   assert.equal(serverDisabledCalls, 1);
   serverDisabled.destroy();
+});
+
+await test("una pestaña sin identidad esperada rechaza tokens difundidos", async () => {
+  const hub = new TestHub();
+  const session = fence();
+  const item = coordinator({
+    tab: 200,
+    hub,
+    expectedSession: null,
+    transport: { refresh: async () => success(Date.now(), session), logout: async () => undefined },
+  });
+  const operation = "unknown_session_operation";
+  const issuedAt = Date.now();
+  hub.inject(refreshStartedMessage(session, operation, issuedAt));
+  hub.inject(authenticatedMessage(session, operation, token(issuedAt, session), issuedAt + 1));
+  await clock.sleep(1);
+  assert.equal(item.getAccessToken(), null);
+  assert.equal(item.snapshot.state, "INITIALIZING");
+  item.destroy();
+});
+
+await test("logout y nuevo login no aceptan mensajes tardíos de la sesión anterior", async () => {
+  const hub = new TestHub();
+  const oldSession = fence();
+  const newSession = fence({
+    sessionId: "session-b",
+    sessionEpoch: "session-b",
+    subject: "user-b",
+    membershipId: "member-b",
+  });
+  const oldCoordinator = coordinator({
+    tab: 210,
+    hub,
+    expectedSession: oldSession,
+    transport: { refresh: async () => success(Date.now(), oldSession), logout: async () => undefined },
+  });
+  await oldCoordinator.initialize();
+  oldCoordinator.destroy();
+
+  const current = coordinator({
+    tab: 211,
+    hub,
+    expectedSession: newSession,
+    transport: { refresh: async () => success(Date.now(), newSession), logout: async () => undefined },
+  });
+  await current.initialize();
+  const currentToken = current.getAccessToken();
+  const operation = "old_session_operation";
+  const issuedAt = Date.now();
+  hub.inject(refreshStartedMessage(oldSession, operation, issuedAt));
+  hub.inject(authenticatedMessage(oldSession, operation, token(issuedAt, oldSession), issuedAt + 1));
+  hub.inject({
+    version: 2,
+    type: "LOGOUT",
+    senderId: "peer_sender_0002",
+    nonce: "old_logout_nonce",
+    issuedAt: issuedAt + 2,
+    ...oldSession,
+  });
+  await clock.sleep(1);
+  assert.equal(current.snapshot.state, "AUTHENTICATED");
+  assert.equal(current.getAccessToken(), currentToken);
+  current.destroy();
+});
+
+await test("un refresh resuelto después de destroy no instala ni difunde el token", async () => {
+  const hub = new TestHub();
+  let resolveRefresh: (value: RefreshResponse) => void = () => undefined;
+  const refreshResponse = new Promise<RefreshResponse>((resolveResponse) => { resolveRefresh = resolveResponse; });
+  let disposed = 0;
+  const item = coordinator({
+    tab: 220,
+    hub,
+    dispose: () => { disposed += 1; },
+    transport: {
+      refresh: async () => refreshResponse,
+      logout: async () => undefined,
+    },
+  });
+  const pending = item.initialize();
+  await clock.sleep(1);
+  item.destroy();
+  resolveRefresh(success(Date.now()));
+  await pending;
+  assert.equal(item.getAccessToken(), null);
+  assert.equal(hub.listenerCount, 0);
+  assert.equal(disposed, 1);
+});
+
+await test("dos coordinadores con sesiones distintas no contaminan sus tokens", async () => {
+  const hub = new TestHub();
+  const lock = new TestLock();
+  const firstSession = fence();
+  const secondSession = fence({
+    sessionId: "session-c",
+    sessionEpoch: "session-c",
+    subject: "user-c",
+    tenantId: "tenant-c",
+    membershipId: "member-c",
+  });
+  const first = coordinator({
+    tab: 230,
+    hub,
+    lock,
+    expectedSession: firstSession,
+    transport: { refresh: async () => success(Date.now(), firstSession), logout: async () => undefined },
+  });
+  const second = coordinator({
+    tab: 231,
+    hub,
+    lock,
+    expectedSession: secondSession,
+    transport: { refresh: async () => success(Date.now(), secondSession), logout: async () => undefined },
+  });
+  await Promise.all([first.initialize(), second.initialize()]);
+  assert.equal(tokenPayload(first.getAccessToken()!).sid, firstSession.sessionId);
+  assert.equal(tokenPayload(second.getAccessToken()!).sid, secondSession.sessionId);
+  first.destroy();
+  second.destroy();
+});
+
+await test("mensajes fuera de orden y nonces repetidos no reemplazan el token más nuevo", async () => {
+  const hub = new TestHub();
+  const session = fence();
+  const item = coordinator({
+    tab: 240,
+    hub,
+    expectedSession: session,
+    transport: { refresh: async () => success(Date.now(), session), logout: async () => undefined },
+  });
+  await item.initialize();
+  const base = Date.now();
+  const newerOperation = "newer_operation_nonce";
+  const olderOperation = "older_operation_nonce";
+  hub.inject(refreshStartedMessage(session, newerOperation, base));
+  hub.inject(refreshStartedMessage(session, olderOperation, base));
+  const newer = authenticatedMessage(session, newerOperation, token(base, session, 10 * 60_000, "token-new"), base + 10);
+  const older = authenticatedMessage(session, olderOperation, token(base, session, 10 * 60_000, "token-old"), base + 5);
+  hub.inject(newer);
+  hub.inject(newer);
+  hub.inject(older);
+  await clock.sleep(1);
+  assert.equal(item.getAccessToken(), newer.accessToken);
+  item.destroy();
+});
+
+await test("tormentas, esquemas desconocidos y mensajes excesivos quedan acotados", async () => {
+  const hub = new TestHub();
+  const session = fence();
+  const item = coordinator({
+    tab: 250,
+    hub,
+    expectedSession: session,
+    transport: { refresh: async () => success(Date.now(), session), logout: async () => undefined },
+  });
+  const issuedAt = Date.now();
+  for (let index = 0; index < 700; index += 1) {
+    hub.inject(refreshStartedMessage(session, `storm_nonce_${String(index).padStart(8, "0")}`, issuedAt));
+  }
+  hub.inject({
+    ...authenticatedMessage(session, "storm_nonce_00000000", token(issuedAt, session), issuedAt + 1),
+    unknown: true,
+  });
+  hub.inject({
+    ...authenticatedMessage(session, "storm_nonce_00000001", token(issuedAt, session), issuedAt + 2),
+    accessToken: "x".repeat(30_000),
+  });
+  await clock.sleep(5);
+  assert.equal(item.getAccessToken(), null);
+  assert.equal(hub.listenerCount, 1);
+  item.destroy();
+  assert.equal(hub.listenerCount, 0);
+});
+
+await test("logout cancela timers de espera y ejecuta dispose una sola vez", async () => {
+  const hub = new TestHub();
+  const trackedClock = new TrackedClock();
+  let disposed = 0;
+  const neverAcquired: SessionLock = { tryRun: async () => ({ acquired: false as const }) };
+  const item = coordinator({
+    tab: 260,
+    hub,
+    lock: neverAcquired,
+    sessionClock: trackedClock,
+    dispose: () => { disposed += 1; },
+    transport: { refresh: async () => success(Date.now()), logout: async () => undefined },
+  });
+  const pending = item.initialize();
+  await new Promise((resolveWait) => setTimeout(resolveWait, 2));
+  await item.logout();
+  await pending;
+  assert.equal(trackedClock.activeTimers, 0);
+  item.destroy();
+  item.destroy();
+  assert.equal(disposed, 1);
+});
+
+await test("un token expirado durante la espera se rechaza y el servidor resuelve la carrera", async () => {
+  const hub = new TestHub();
+  const lock = new MissOnceLock();
+  let calls = 0;
+  const item = coordinator({
+    tab: 270,
+    hub,
+    lock,
+    transport: {
+      refresh: async () => { calls += 1; return success(Date.now()); },
+      logout: async () => undefined,
+    },
+  });
+  const pending = item.initialize();
+  const operation = "expired_wait_operation";
+  const issuedAt = Date.now();
+  hub.inject(refreshStartedMessage(fence(), operation, issuedAt));
+  hub.inject(authenticatedMessage(fence(), operation, token(issuedAt, fence(), -120_000), issuedAt + 1));
+  await pending;
+  assert.equal(lock.attempts, 2);
+  assert.equal(calls, 1);
+  assert.equal(item.snapshot.state, "AUTHENTICATED");
+  item.destroy();
+});
+
+await test("retryAfterMs negativo, enorme o inválido nunca crea reintentos infinitos", async () => {
+  for (const retryAfterMs of [-1, 999_999_999, "invalid"]) {
+    let calls = 0;
+    const item = coordinator({
+      tab: 280 + calls,
+      hub: new TestHub(),
+      transport: {
+        refresh: async () => {
+          calls += 1;
+          if (calls === 1) throw { code: "MT01B_REFRESH_IN_PROGRESS", recoverable: true, retryAfterMs };
+          return success(Date.now());
+        },
+        logout: async () => undefined,
+      },
+    });
+    await item.initialize();
+    assert.equal(calls, 2);
+    assert.equal(item.snapshot.state, "AUTHENTICATED");
+    item.destroy();
+  }
 });
 
 await test("el módulo V2 no contiene APIs de persistencia de tokens", () => {

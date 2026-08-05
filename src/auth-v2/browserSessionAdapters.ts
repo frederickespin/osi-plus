@@ -5,6 +5,7 @@ import type {
   SessionChannel,
   SessionChannelMessage,
   SessionClock,
+  SessionFence,
   SessionLock,
   SessionTransport,
 } from "./sessionTypes.ts";
@@ -37,11 +38,18 @@ export class BrowserActivity implements SessionActivity {
 export const browserClock: SessionClock = {
   now: () => Date.now(),
   sleep: (milliseconds, signal) => new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(resolve, milliseconds);
-    signal?.addEventListener("abort", () => {
+    const finish = () => {
+      signal?.removeEventListener("abort", cancel);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, milliseconds);
+    const cancel = () => {
       window.clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
       reject(new DOMException("Operación cancelada", "AbortError"));
-    }, { once: true });
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    if (signal?.aborted) cancel();
   }),
 };
 
@@ -107,7 +115,10 @@ export function createFetchSessionTransport(baseUrl = "/api"): SessionTransport 
   };
 }
 
-export function createInactiveBrowserSessionCoordinator(env: Record<string, unknown>): {
+export function createInactiveBrowserSessionCoordinator(
+  env: Record<string, unknown>,
+  expectedSession?: SessionFence,
+): {
   coordinator: SessionCoordinator;
   activity: BrowserActivity;
 } {
@@ -124,6 +135,8 @@ export function createInactiveBrowserSessionCoordinator(env: Record<string, unkn
       activity,
       randomNonce: () => crypto.randomUUID(),
       randomUnit: () => crypto.getRandomValues(new Uint32Array(1))[0]! / 0x1_0000_0000,
+      expectedSession,
+      dispose: () => activity.destroy(),
     }),
   };
 }

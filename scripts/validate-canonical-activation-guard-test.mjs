@@ -5,6 +5,7 @@ import {
   validateDb01RuntimeActivation,
   validateMt01bFoundationIsolation,
   validateMt01b2FrontendIsolation,
+  validateMt01b2LegacyBundle,
   validateRuntimeDefaults,
 } from "./validate-canonical-ci.mjs";
 
@@ -122,6 +123,24 @@ try {
     ["src/main.tsx", "auth-v2/sessionCoordinator.ts"],
   );
 
+  const allowedGate = fixture("src/lib/mt01b2FrontendBootstrap.ts", 'void import("../auth-v2/frontendSessionRuntime.ts");\n');
+  validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator, allowedGate], env: {} });
+  check("únicamente el bootstrap autorizado puede importar auth-v2", true);
+
+  const unauthorizedGateImport = fixture("src/components/UnsafeAuth.tsx", 'import "../auth-v2/frontendSessionRuntime.ts";\n');
+  rejection(
+    "import auth-v2 fuera del bootstrap rechazado",
+    () => validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator, unauthorizedGateImport], env: {} }),
+    ["src/components/UnsafeAuth.tsx", "mt01b2FrontendBootstrap.ts"],
+  );
+
+  const dynamicDirectImport = fixture("src/direct-dynamic.ts", 'void import("./auth-v2/frontendSessionRuntime.ts");\n');
+  rejection(
+    "import dinámico directo del runtime V2 rechazado",
+    () => validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator, dynamicDirectImport], env: {} }),
+    ["src/direct-dynamic.ts", "frontendSessionRuntime.ts"],
+  );
+
   const persistentToken = fixture("src/auth-v2/unsafe.ts", 'window.localStorage.setItem("accessToken", token);\n');
   rejection(
     "persistencia de token rechazada con archivo y mecanismo",
@@ -133,6 +152,17 @@ try {
     "activación VITE de MT-01B2A rechazada",
     () => validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator], env: { VITE_MT01B2_CLIENT_ENABLED: "true" } }),
     ["desactivado"],
+  );
+
+  fixture("dist/assets/index-safe.js", 'console.log("legacy");\n');
+  validateMt01b2LegacyBundle({ root });
+  check("bundle LEGACY sin coordinador aprobado", true);
+
+  fixture("dist/assets/index-unsafe.js", 'const channel = "osi-plus:mt01b2:session";\n');
+  rejection(
+    "bundle LEGACY con coordinador rechazado",
+    () => validateMt01b2LegacyBundle({ root }),
+    ["index-unsafe.js", "osi-plus:mt01b2:session"],
   );
 
   process.stdout.write(`${JSON.stringify({ ok: true, passed: results.length, results }, null, 2)}\n`);

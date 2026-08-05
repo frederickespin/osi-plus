@@ -44,9 +44,21 @@ export type RefreshResponse = {
   session: SessionIdentity;
 };
 
+export type UpgradeResponse = RefreshResponse & {
+  user: {
+    id: string;
+    name: string;
+    role: string;
+  } | null;
+};
+
 export type SessionTransport = {
   refresh(signal: AbortSignal): Promise<RefreshResponse>;
   logout(signal: AbortSignal): Promise<void>;
+};
+
+export type FrontendSessionTransport = SessionTransport & {
+  upgrade(legacyAccessToken: string, signal: AbortSignal): Promise<UpgradeResponse>;
 };
 
 export type SessionClock = {

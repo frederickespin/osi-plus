@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PrismaClient } from "@prisma/client";
@@ -168,16 +168,42 @@ export function validateMt01b2FrontendIsolation({ root = process.cwd(), files = 
   invariant(persistenceViolations.length === 0, `MT-01B2A no permite tokens en almacenamiento persistente: ${persistenceViolations.join(", ")}`);
 
   const activeRuntime = files.filter((file) => file.startsWith("src/") && !file.startsWith("src/auth-v2/") && /\.(?:[cm]?[jt]sx?)$/.test(file));
+  const authorizedBootstrap = "src/lib/mt01b2FrontendBootstrap.ts";
   const imports = [];
   for (const file of activeRuntime) {
     let source;
     try { source = readFileSync(resolve(root, file), "utf8"); } catch { continue; }
     for (const specifier of moduleSpecifiers(source)) {
-      if (/(?:^|\/)auth-v2(?:\/|$)/i.test(specifier)) imports.push(`${file} -> ${specifier}`);
+      if (/(?:^|\/)auth-v2(?:\/|$)/i.test(specifier) && file !== authorizedBootstrap) {
+        imports.push(`${file} -> ${specifier}`);
+      }
     }
   }
-  invariant(imports.length === 0, `MT-01B2A fue conectado al runtime activo: ${imports.join(", ")}`);
+  invariant(imports.length === 0, `MT-01B2 sólo permite importar auth-v2 desde ${authorizedBootstrap}: ${imports.join(", ")}`);
   return { authSourceFiles: authSourceFiles.length, activeRuntimeFiles: activeRuntime.length };
+}
+
+export function validateMt01b2LegacyBundle({ root = process.cwd() } = {}) {
+  const assetsRoot = resolve(root, "dist/assets");
+  if (!existsSync(assetsRoot)) return { checked: false, jsFiles: 0, bytes: 0 };
+  const jsFiles = readdirSync(assetsRoot).filter((file) => file.endsWith(".js"));
+  const forbidden = [
+    "osi-plus:mt01b2:session",
+    "CrossTabSessionCoordinator",
+    "MT01B_REFRESH_IN_PROGRESS",
+    "/auth/session/upgrade",
+  ];
+  const findings = [];
+  let bytes = 0;
+  for (const file of jsFiles) {
+    const source = readFileSync(resolve(assetsRoot, file), "utf8");
+    bytes += Buffer.byteLength(source);
+    for (const marker of forbidden) {
+      if (source.includes(marker)) findings.push(`${file}:${marker}`);
+    }
+  }
+  invariant(findings.length === 0, `El build LEGACY contiene la integración MT-01B2: ${findings.join(", ")}`);
+  return { checked: true, jsFiles: jsFiles.length, bytes };
 }
 
 function validateFixtureRuntimeIsolation(root = process.cwd()) {
@@ -311,9 +337,10 @@ export async function validateCanonicalCi({ phase = "database" } = {}) {
   const db01RuntimeFilesChecked = validateDb01RuntimeActivation();
   const mt01bRuntimeFilesChecked = validateMt01bFoundationIsolation();
   const mt01b2Frontend = validateMt01b2FrontendIsolation();
+  const mt01b2LegacyBundle = validateMt01b2LegacyBundle();
   validateRuntimeDefaults();
   const database = phase === "database" ? await validateDatabase(process.env.DATABASE_URL) : null;
-  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, runtimeFilesChecked, db01RuntimeFilesChecked, mt01bRuntimeFilesChecked, mt01b2Frontend, database };
+  return { ok: true, phase, target, migrations: migrations.length, trackedFileCount, runtimeFilesChecked, db01RuntimeFilesChecked, mt01bRuntimeFilesChecked, mt01b2Frontend, mt01b2LegacyBundle, database };
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";

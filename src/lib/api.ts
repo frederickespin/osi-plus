@@ -198,14 +198,18 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   // Cuando integremos login real, esto debe migrar a Authorization: Bearer.
   try {
     const session = loadSession();
-    const normalizedRole = normalizeRole(session.role);
-    if (normalizedRole) headers["x-osi-role"] = normalizedRole;
+    if (session) {
+      const normalizedRole = normalizeRole(session.role);
+      if (normalizedRole) headers["x-osi-role"] = normalizedRole;
 
-    // Mantener compatibilidad con sesiones antiguas donde userId solo existe en storage crudo.
-    const raw = JSON.parse(localStorage.getItem("osi-plus.session") || "null") as { userId?: string } | null;
-    const userId = session.userId || raw?.userId;
-    if (userId) headers["x-osi-userid"] = String(userId);
-  } catch {}
+      // Mantener compatibilidad con sesiones antiguas donde userId solo existe en storage crudo.
+      const raw = JSON.parse(localStorage.getItem("osi-plus.session") || "null") as { userId?: string } | null;
+      const userId = session.userId || raw?.userId;
+      if (userId) headers["x-osi-userid"] = String(userId);
+    }
+  } catch {
+    // El almacenamiento legacy es opcional para solicitudes públicas.
+  }
 
   if (options.token) {
     headers.Authorization = `Bearer ${options.token}`;
@@ -229,9 +233,13 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
       }
     }
 
-    const err: any = new Error(`API ${response.status}: ${(body as any)?.error || response.statusText || "Request failed"}`);
-    err.status = response.status;
-    err.body = body;
+    const bodyError = typeof body === "object" && body !== null && "error" in body
+      ? String((body as { error?: unknown }).error || "")
+      : "";
+    const err = Object.assign(
+      new Error(`API ${response.status}: ${bodyError || response.statusText || "Request failed"}`),
+      { status: response.status, body },
+    );
     throw err;
   }
 

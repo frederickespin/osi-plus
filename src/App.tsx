@@ -1,8 +1,16 @@
 import { Component, Suspense, lazy, useEffect, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { LoginScreen, type LoginSession } from '@/components/auth/LoginScreen';
 import { Toaster } from '@/components/ui/sonner';
 import type { UserRole } from '@/types/osi.types';
-import { loadSession, saveSession, type Session } from '@/lib/sessionStore';
+import { getMe } from '@/lib/api';
+import {
+  clearSession,
+  inspectStoredSession,
+  normalizeRole,
+  saveSession,
+  type Session,
+} from '@/lib/sessionStore';
 
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
@@ -143,7 +151,6 @@ class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasErr
   }
 
   componentDidCatch(error: unknown) {
-    // eslint-disable-next-line no-console
     console.error("AppErrorBoundary:", error);
   }
 
@@ -205,19 +212,86 @@ export type ModuleId =
   | 'k-project'
   | 'settings';
 
-function App() {
-  const [session] = useState<Session>(() => {
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      return { role: 'A', name: 'Admin User' };
+type AuthState =
+  | { status: 'AUTH_LOADING'; session: null }
+  | { status: 'AUTHENTICATED'; session: Session }
+  | {
+      status: 'ANONYMOUS';
+      session: null;
+      reason: 'NO_SESSION' | 'INVALID_LOCAL_SESSION' | 'UNAUTHORIZED' | 'VALIDATION_FAILED' | 'LOGGED_OUT';
+    };
+
+type PendingLegacyValidation = {
+  token: string;
+  promise: Promise<Session>;
+};
+
+let pendingLegacyValidation: PendingLegacyValidation | null = null;
+
+function validateLegacySession(session: Session): Promise<Session> {
+  const token = session.token;
+  if (!token) return Promise.reject(Object.assign(new Error('Token legacy requerido.'), { status: 401 }));
+  if (pendingLegacyValidation?.token === token) return pendingLegacyValidation.promise;
+
+  const promise = getMe(token).then((response) => {
+    const role = normalizeRole(response.user.role);
+    if (!role) {
+      throw Object.assign(new Error('El servidor devolvió un rol inválido.'), { status: 401 });
     }
-    return loadSession();
+    return {
+      token,
+      userId: response.user.id,
+      name: response.user.name,
+      role,
+    };
   });
+  const entry = { token, promise };
+  pendingLegacyValidation = entry;
+  void promise.then(
+    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
+    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
+  );
+  return promise;
+}
+
+function AuthLoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-100" role="status" aria-live="polite">
+      <p className="text-sm font-medium text-slate-600">Verificando sesión...</p>
+    </div>
+  );
+}
+
+async function resolveInitialAuthState(): Promise<AuthState> {
+  const stored = inspectStoredSession();
+  if (stored.kind === 'EMPTY') {
+    return { status: 'ANONYMOUS', session: null, reason: 'NO_SESSION' };
+  }
+  if (stored.kind === 'INVALID') {
+    clearSession();
+    return { status: 'ANONYMOUS', session: null, reason: 'INVALID_LOCAL_SESSION' };
+  }
+
+  try {
+    const session = await validateLegacySession(stored.session);
+    saveSession(session);
+    return { status: 'AUTHENTICATED', session };
+  } catch (error: unknown) {
+    const status = typeof error === 'object' && error !== null && 'status' in error
+      ? Number((error as { status?: unknown }).status)
+      : null;
+    if (status === 401) clearSession();
+    return {
+      status: 'ANONYMOUS',
+      session: null,
+      reason: status === 401 ? 'UNAUTHORIZED' : 'VALIDATION_FAILED',
+    };
+  }
+}
+
+function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const userRole: UserRole = session.role;
   const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
-
-  useEffect(() => {
-    saveSession(session);
-  }, [session]);
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {
@@ -349,6 +423,7 @@ function App() {
         onModuleChange={setActiveModule} 
         userRole={userRole}
         userName={session.name}
+        onLogout={onLogout}
       />
       <main className="flex-1 overflow-auto">
         <AppErrorBoundary>
@@ -360,6 +435,41 @@ function App() {
       <Toaster />
     </div>
   );
+}
+
+function App() {
+  const [authState, setAuthState] = useState<AuthState>({ status: 'AUTH_LOADING', session: null });
+
+  useEffect(() => {
+    let active = true;
+    void resolveInitialAuthState().then((nextState) => {
+      if (active) setAuthState(nextState);
+    });
+
+    return () => { active = false; };
+  }, []);
+
+  const handleLoginSuccess = (session: LoginSession) => {
+    saveSession(session);
+    setAuthState({ status: 'AUTHENTICATED', session });
+  };
+
+  const handleLogout = () => {
+    clearSession();
+    setAuthState({ status: 'ANONYMOUS', session: null, reason: 'LOGGED_OUT' });
+  };
+
+  if (authState.status === 'AUTH_LOADING') return <AuthLoadingScreen />;
+  if (authState.status === 'ANONYMOUS') {
+    return (
+      <>
+        <LoginScreen onLoginSuccess={handleLoginSuccess} />
+        <Toaster />
+      </>
+    );
+  }
+
+  return <AuthenticatedApp session={authState.session} onLogout={handleLogout} />;
 }
 
 export default App;

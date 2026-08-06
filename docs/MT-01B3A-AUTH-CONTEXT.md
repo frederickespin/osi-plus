@@ -47,3 +47,16 @@ La resolución V2 requiere una consulta/round-trip. `/auth/me` agrega dos lectur
 - Separar la escritura idempotente que hoy ocurre en `GET /api/k/dashboard`.
 - Definir CSP y completar el token broker antes de activar HYBRID.
 - Revisar CORS heredado `*`; B3A no lo cambia para evitar alterar contratos activos.
+
+## Endurecimiento Q1
+
+- El access token empresarial acepta únicamente `HS256`, header `typ=JWT`,
+  `iss=osi-plus`, `aud=osi-plus-api`, payload `typ=access` y `ver=2`.
+- Los claims obligatorios exigen tipo, longitud y representación JSON canónica;
+  claims duplicados o ambiguos se rechazan antes de consultar la base.
+- Un token con cualquier marcador V2 nunca puede degradarse a LEGACY ni usar
+  `x-osi-role` o `x-osi-userid` como fallback.
+- Las 25 rutas que todavía confían en headers están congeladas en la guardia
+  de CI. El total sólo puede disminuir mediante el cutover controlado de B3B.
+- La medición del contexto reporta promedio, p95 y máximo por separado; no se
+  fija un umbral estrecho que confunda cold start con regresión funcional.

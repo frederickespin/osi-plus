@@ -49,11 +49,11 @@ try {
   const created = await createMembershipAuthSession(prisma, actor, { req: request, now });
   const claims = verifyMembershipAccessToken(created.accessToken);
   check("JWT V2 contiene claims obligatorios", claims.ver === 2 && claims.typ === "access" && claims.sub === actor.userId && claims.membershipId === actor.membershipId && claims.tenantId === actor.tenantId && claims.role === "A" && claims.authorizationVersion === 1 && claims.jti && claims.iat && claims.exp);
-  const authContext = await resolveAuthContext(prisma, syntheticRequest({ authorization: `Bearer ${created.accessToken}` }));
-  check("AuthContext valida sesión, tenant y membresía", authContext.authVersion === "V2" && authContext.sessionId === created.identity.sessionId && authContext.tenantId === actor.tenantId);
+  const authContext = await resolveAuthContext(syntheticRequest({ authorization: `Bearer ${created.accessToken}` }), { prisma });
+  check("AuthContext valida sesión, tenant y membresía", authContext.authType === "V2" && authContext.sessionId === created.identity.sessionId && authContext.tenantId === actor.tenantId);
 
   const badV2 = jwt.sign({ ver: 2, typ: "access", sub: actor.userId, role: "A" }, process.env.JWT_SECRET || "dev-insecure-secret", { issuer: "osi-plus", audience: "osi-plus-api", expiresIn: 300 });
-  await expectCode("V2 incompleto nunca degrada a legacy", () => resolveAuthContext(prisma, syntheticRequest({ authorization: `Bearer ${badV2}` })), "MT01B_LEGACY_TOKEN_INVALID");
+  await expectCode("V2 incompleto nunca degrada a legacy", () => resolveAuthContext(syntheticRequest({ authorization: `Bearer ${badV2}` }), { prisma }), "MT01B_TOKEN_INVALID");
 
   const legacy = signAccessToken({ sub: actor.userId, email: `legacy-${actor.userId}@example.invalid`, role: "V" });
   const upgradedIdentity = await resolveLegacyUpgradeIdentity(prisma, legacy, { now });
@@ -110,7 +110,7 @@ try {
   check("servicio único incrementa authorizationVersion", updated.authorizationVersion === 2 && updated.role === "C");
   check("servicio normaliza permisos", JSON.stringify(updated.grantedPermissions) === JSON.stringify(["quote:view"]));
   check("cambio de autorización revoca sesiones", (await prisma.authSession.findUnique({ where: { id: targetSession.identity.sessionId } }))?.status === "REVOKED");
-  await expectCode("access token anterior queda invalidado", () => resolveAuthContext(prisma, syntheticRequest({ authorization: `Bearer ${targetSession.accessToken}` })), "MT01B_AUTHORIZATION_INVALID");
+  await expectCode("access token anterior queda invalidado", () => resolveAuthContext(syntheticRequest({ authorization: `Bearer ${targetSession.accessToken}` }), { prisma }), "MT01B_AUTHORIZATION_INVALID");
   const auditRows = await prisma.$queryRaw(Prisma.sql`
     SELECT COUNT(*)::integer AS "count" FROM "osi"."commercial_audit_logs"
     WHERE "tenant_id" = ${actor.tenantId} AND "entity" = 'TENANT_MEMBERSHIP'

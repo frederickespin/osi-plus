@@ -154,8 +154,8 @@ const ROLE_PERMS = {
   RB: [PERMS.OSI_VIEW],
 };
 
-function permsForRole(role) {
-  return ROLE_PERMS[role] || [];
+export function permsForRole(role) {
+  return [...(ROLE_PERMS[String(role || "").toUpperCase().trim()] || [])];
 }
 
 export function requirePerm(req, res, perm) {

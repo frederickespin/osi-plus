@@ -88,10 +88,18 @@ export function verifyMembershipAccessToken(token) {
   }
   const required = ["sub", "membershipId", "tenantId", "role", "sid", "jti"];
   if (payload?.ver !== 2 || payload?.typ !== "access" || required.some((claim) => !String(payload?.[claim] || "").trim()) ||
-      !Number.isInteger(payload?.authorizationVersion) || payload.authorizationVersion < 1) {
+      !Number.isInteger(payload?.authorizationVersion) || payload.authorizationVersion < 1 ||
+      !Number.isInteger(payload?.iat) || !Number.isInteger(payload?.exp) || payload.exp <= payload.iat) {
     throw new Mt01bAuthError("Claims empresariales incompletos.", { code: "MT01B_TOKEN_INVALID" });
   }
   return payload;
+}
+
+// Sólo clasifica el contrato para impedir que un JWT V2 inválido se degrade a
+// LEGACY. El contenido decodificado nunca se usa para autorizar.
+export function isMembershipAccessTokenCandidate(token) {
+  const decoded = jwt.decode(token);
+  return decoded?.ver === 2 || decoded?.typ === "access";
 }
 
 export function verifyStrictLegacyAccessToken(token) {

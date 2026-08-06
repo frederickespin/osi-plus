@@ -7,6 +7,11 @@ export type Session = {
   token?: string;
 };
 
+export type StoredSessionInspection =
+  | { kind: "EMPTY"; session: null }
+  | { kind: "INVALID"; session: null }
+  | { kind: "VALID"; session: Session };
+
 const KEY = "osi-plus.session";
 const TOKEN_KEY = "osi-plus.token";
 
@@ -31,20 +36,40 @@ export function normalizeRole(raw: unknown): UserRole | null {
  * Load session from localStorage.
  * Returns null if no valid session exists (requires token for authenticated session).
  */
-export function loadSession(): Session | null {
+export function inspectStoredSession(): StoredSessionInspection {
   try {
-    const s = JSON.parse(localStorage.getItem(KEY) || "null");
+    const rawSession = localStorage.getItem(KEY);
     const token = localStorage.getItem(TOKEN_KEY);
-    const role = normalizeRole(s?.role);
-    
-    // Require both role and token for a valid session
-    if (role && token) {
-      return { ...s, role, token };
+
+    if (!rawSession && !token) return { kind: "EMPTY", session: null };
+    if (!rawSession || !token) return { kind: "INVALID", session: null };
+
+    const parsed: unknown = JSON.parse(rawSession);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { kind: "INVALID", session: null };
     }
-    return null;
+
+    const stored = parsed as Record<string, unknown>;
+    const role = normalizeRole(stored.role);
+    if (!role) return { kind: "INVALID", session: null };
+
+    return {
+      kind: "VALID",
+      session: {
+        userId: typeof stored.userId === "string" ? stored.userId : undefined,
+        name: typeof stored.name === "string" ? stored.name : undefined,
+        role,
+        token,
+      },
+    };
   } catch {
-    return null;
+    return { kind: "INVALID", session: null };
   }
+}
+
+export function loadSession(): Session | null {
+  const stored = inspectStoredSession();
+  return stored.kind === "VALID" ? stored.session : null;
 }
 
 /**

@@ -85,6 +85,9 @@ jobs:
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
 
+      - name: Validate anonymous sessions in real browsers
+        run: npm run test:auth-null:browser
+
       - name: Verify repository cleanliness
         run: git diff --exit-code
 

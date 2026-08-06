@@ -12,7 +12,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   forbidOnly: true,
-  reporter: "list",
+  reporter: [["list"], ["./scripts/auth-null-browser-ci-reporter.mjs"]],
   use: {
     baseURL: "http://127.0.0.1:4175",
     trace: "off",

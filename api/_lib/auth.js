@@ -42,6 +42,19 @@ export function verifyAccessToken(token) {
 
 const MT01B_ISSUER = "osi-plus";
 const MT01B_ACCESS_AUDIENCE = "osi-plus-api";
+const MT01B_ACCESS_HEADER = Object.freeze({ alg: "HS256", typ: "JWT" });
+const MT01B_ACCESS_CLAIMS = Object.freeze([
+  "aud", "authorizationVersion", "exp", "iat", "iss", "jti", "membershipId",
+  "role", "sid", "sub", "tenantId", "typ", "ver",
+]);
+const MT01B_STRING_CLAIM_LIMITS = Object.freeze({
+  sub: 128,
+  membershipId: 128,
+  tenantId: 128,
+  role: 32,
+  sid: 128,
+  jti: 128,
+});
 
 function requiredClaim(value, claim) {
   const normalized = String(value || "").trim();
@@ -76,6 +89,26 @@ export function signMembershipAccessToken(identity, { env = process.env } = {}) 
 }
 
 export function verifyMembershipAccessToken(token) {
+  let complete;
+  let rawPayload;
+  try {
+    complete = jwt.decode(token, { complete: true });
+    rawPayload = Buffer.from(String(token).split(".")[1] || "", "base64url").toString("utf8");
+  } catch (cause) {
+    throw new Mt01bAuthError("Token empresarial inválido.", { code: "MT01B_TOKEN_INVALID", cause });
+  }
+  if (!complete || complete.header?.alg !== MT01B_ACCESS_HEADER.alg || complete.header?.typ !== MT01B_ACCESS_HEADER.typ) {
+    throw new Mt01bAuthError("Encabezado empresarial inválido.", { code: "MT01B_TOKEN_INVALID" });
+  }
+  // Los tokens emitidos por este servicio usan JSON compacto canónico. Exigir
+  // la misma representación evita claims duplicados que JSON.parse ocultaría.
+  try {
+    if (JSON.stringify(JSON.parse(rawPayload)) !== rawPayload) {
+      throw new Error("non-canonical payload");
+    }
+  } catch (cause) {
+    throw new Mt01bAuthError("Payload empresarial inválido.", { code: "MT01B_TOKEN_INVALID", cause });
+  }
   let payload;
   try {
     payload = jwt.verify(token, JWT_SECRET, {
@@ -86,8 +119,12 @@ export function verifyMembershipAccessToken(token) {
   } catch (cause) {
     throw new Mt01bAuthError("Token empresarial inválido.", { code: "MT01B_TOKEN_INVALID", cause });
   }
-  const required = ["sub", "membershipId", "tenantId", "role", "sid", "jti"];
-  if (payload?.ver !== 2 || payload?.typ !== "access" || required.some((claim) => !String(payload?.[claim] || "").trim()) ||
+  const keys = Object.keys(payload || {}).sort();
+  const invalidStringClaim = Object.entries(MT01B_STRING_CLAIM_LIMITS).some(([claim, maxLength]) =>
+    typeof payload?.[claim] !== "string" || payload[claim].length < 1 || payload[claim].length > maxLength || payload[claim] !== payload[claim].trim());
+  if (JSON.stringify(keys) !== JSON.stringify([...MT01B_ACCESS_CLAIMS].sort()) ||
+      payload?.iss !== MT01B_ISSUER || payload?.aud !== MT01B_ACCESS_AUDIENCE ||
+      payload?.ver !== 2 || payload?.typ !== "access" || invalidStringClaim ||
       !Number.isInteger(payload?.authorizationVersion) || payload.authorizationVersion < 1 ||
       !Number.isInteger(payload?.iat) || !Number.isInteger(payload?.exp) || payload.exp <= payload.iat) {
     throw new Mt01bAuthError("Claims empresariales incompletos.", { code: "MT01B_TOKEN_INVALID" });
@@ -99,7 +136,9 @@ export function verifyMembershipAccessToken(token) {
 // LEGACY. El contenido decodificado nunca se usa para autorizar.
 export function isMembershipAccessTokenCandidate(token) {
   const decoded = jwt.decode(token);
-  return decoded?.ver === 2 || decoded?.typ === "access";
+  if (!decoded || typeof decoded !== "object") return false;
+  return ["ver", "typ", "membershipId", "tenantId", "authorizationVersion", "sid", "jti"]
+    .some((claim) => Object.hasOwn(decoded, claim));
 }
 
 export function verifyStrictLegacyAccessToken(token) {
@@ -122,7 +161,7 @@ export function verifyStrictLegacyAccessToken(token) {
 export function getBearerToken(req) {
   const authHeader = req.headers.authorization || req.headers.Authorization;
   if (!authHeader || typeof authHeader !== "string") return null;
-  if (!authHeader.startsWith("Bearer ")) return null;
-  return authHeader.slice(7);
+  const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/.exec(authHeader);
+  return match?.[1] || null;
 }
 

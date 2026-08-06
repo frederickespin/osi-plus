@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
+import jwt from "jsonwebtoken";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { signAccessToken } from "../api/_lib/auth.js";
 import { resolveAuthContext } from "../api/_lib/authContext.js";
@@ -18,6 +19,7 @@ process.env.MT01B_REFRESH_TOKEN_PEPPER = "mt01b3a-ci-refresh-pepper-with-at-leas
 process.env.MT01B_ALLOWED_ORIGINS = "http://localhost:5173";
 
 const prisma = createTestPrisma();
+const testJwtSecret = process.env.JWT_SECRET || "dev-insecure-secret";
 const results = [];
 function check(name, condition, detail) {
   results.push({ name, passed: Boolean(condition), ...(detail ? { detail } : {}) });
@@ -45,14 +47,46 @@ function bearer(accessToken, extra = {}) {
     headers: { ...syntheticRequest({ authorization: `Bearer ${accessToken}` }).headers, ...(extra.headers || {}) },
   };
 }
+function signTestV2(payload, { algorithm = "HS256", typ = "JWT" } = {}) {
+  return jwt.sign(payload, testJwtSecret, { algorithm, header: { typ } });
+}
+function duplicateClaimToken(payload, claim) {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const canonical = JSON.stringify(payload);
+  const marker = `"${claim}":${JSON.stringify(payload[claim])}`;
+  const rawPayload = canonical.replace(marker, `${marker},${marker}`);
+  const encodedPayload = Buffer.from(rawPayload).toString("base64url");
+  const signingInput = `${header}.${encodedPayload}`;
+  const signature = createHmac("sha256", testJwtSecret).update(signingInput).digest("base64url");
+  return `${signingInput}.${signature}`;
+}
 
 try {
   const valid = await identityWithSession("valid", { role: "V" });
   const validRequest = bearer(valid.session.accessToken);
   const context = await resolveAuthContext(validRequest, { prisma, now });
   check("V2 válido resuelve identidad completa", context.authType === "V2" && context.userId === valid.identity.userId && context.tenantId === valid.identity.tenantId && context.membershipId === valid.identity.membershipId && context.sessionId === valid.session.identity.sessionId);
-  check("contexto y permisos son inmutables", Object.isFrozen(context) && Object.isFrozen(context.effectivePermissions));
+  let objectMutationRejected = false;
+  let arrayMutationRejected = false;
+  try { context.role = "A"; } catch { objectMutationRejected = true; }
+  try { context.effectivePermissions.push("forged:permission"); } catch { arrayMutationRejected = true; }
+  check("contexto y permisos son profundamente inmutables", Object.isFrozen(context) && Object.isFrozen(context.effectivePermissions) && Object.isFrozen(context.grantedPermissions) && Object.isFrozen(context.deniedPermissions) && objectMutationRejected && arrayMutationRejected && context.role === "V");
   check("rol y permisos base proceden de membership", context.role === "V" && context.effectivePermissions.includes(PERMS.CLIENTS_VIEW));
+
+  const validPayload = jwt.decode(valid.session.accessToken);
+  await expectCode("algoritmo incorrecto rechazado", () => resolveAuthContext(bearer(signTestV2(validPayload, { algorithm: "HS384" })), { prisma, now }), "MT01B_TOKEN_INVALID");
+  await expectCode("typ de header incorrecto rechazado", () => resolveAuthContext(bearer(signTestV2(validPayload, { typ: "NOT-JWT" })), { prisma, now }), "MT01B_TOKEN_INVALID");
+  await expectCode("aud array ambiguo rechazado", () => resolveAuthContext(bearer(signTestV2({ ...validPayload, aud: [validPayload.aud] })), { prisma, now }), "MT01B_TOKEN_INVALID");
+  await expectCode("claim vacío rechazado", () => resolveAuthContext(bearer(signTestV2({ ...validPayload, membershipId: "" })), { prisma, now }), "MT01B_TOKEN_INVALID");
+  await expectCode("claim de tipo incorrecto rechazado", () => resolveAuthContext(bearer(signTestV2({ ...validPayload, tenantId: [validPayload.tenantId] })), { prisma, now }), "MT01B_TOKEN_INVALID");
+  await expectCode("claim excesivamente largo rechazado", () => resolveAuthContext(bearer(signTestV2({ ...validPayload, jti: "x".repeat(129) })), { prisma, now }), "MT01B_TOKEN_INVALID");
+  await expectCode("claim duplicado rechazado", () => resolveAuthContext(bearer(duplicateClaimToken(validPayload, "sub")), { prisma, now }), "MT01B_TOKEN_INVALID");
+  await expectCode("Bearer malformado rechazado", () => resolveAuthContext(bearer(`${valid.session.accessToken} extra`), { prisma, now }), "MT01B_TOKEN_REQUIRED");
+  const ambiguous = signAccessToken({ sub: valid.identity.userId, email: "legacy@example.invalid", role: "V", tenantId: valid.identity.tenantId });
+  await expectCode("token ambiguo no degrada a LEGACY", () => resolveAuthContext(bearer(ambiguous), { prisma, now }), "MT01B_TOKEN_INVALID");
+
+  const crossedTenant = await createIdentity(prisma, `crossed-token-${randomUUID().slice(0, 6)}`);
+  await expectCode("session tenant membership cruzados rechazados", () => resolveAuthContext(bearer(signTestV2({ ...validPayload, tenantId: crossedTenant.tenantId, membershipId: crossedTenant.membershipId })), { prisma, now }), "MT01B_AUTHORIZATION_INVALID");
 
   const revoked = await identityWithSession("revoked");
   await prisma.authSession.update({ where: { id: revoked.session.identity.sessionId }, data: { status: "REVOKED", revokedAt: now } });

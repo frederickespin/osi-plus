@@ -22,6 +22,7 @@ const LEGACY_HEADER_ROUTES = new Set([
 ]);
 
 const V2_PREPARED_ROUTES = new Set(["api/auth/me.js"]);
+const LEGACY_JWT_ROUTES = new Set(["api/users/index.js", "api/clients/index.js", "api/projects/index.js"]);
 const ROUTE_HELPERS = new Set(["api/k/_lib.js", "api/osis/_helpers.js", "api/templates/_pst.js"]);
 
 function invariant(condition, message) {
@@ -41,6 +42,7 @@ function collectJs(directory) {
 }
 
 export function validateMt01b3aSources({ routeSources, envExample, authContextSource }) {
+  invariant(LEGACY_HEADER_ROUTES.size === 25, `MT-01B3A: la allowlist heredada debe contener exactamente 25 rutas; contiene ${LEGACY_HEADER_ROUTES.size}`);
   for (const route of routeSources.keys()) {
     invariant(INVENTORIED_ROUTES.has(route), `MT-01B3A: ruta nueva sin clasificación: ${route}`);
   }
@@ -51,8 +53,15 @@ export function validateMt01b3aSources({ routeSources, envExample, authContextSo
   for (const [route, source] of routeSources) {
     const trustsHeaders = /x-osi-(?:role|userid)|require(?:Perm|Role)FromHeaders/.test(source);
     invariant(!trustsHeaders || LEGACY_HEADER_ROUTES.has(route), `MT-01B3A: ${route} introduce confianza nueva en x-osi-role/x-osi-userid`);
+    if (LEGACY_HEADER_ROUTES.has(route)) {
+      invariant(trustsHeaders, `MT-01B3A: ${route} cambió su autenticación heredada sin actualizar inventario/allowlist`);
+    }
+    if (LEGACY_JWT_ROUTES.has(route)) {
+      invariant(/requireAuth/.test(source), `MT-01B3A: ${route} eliminó su autenticación JWT heredada`);
+    }
     if (V2_PREPARED_ROUTES.has(route)) {
       invariant(/requireAuthContext/.test(source), `MT-01B3A: ${route} está marcada V2 pero omite resolveAuthContext/requireAuthContext`);
+      invariant(!trustsHeaders, `MT-01B3A: ${route} V2 no puede aceptar x-osi-role/x-osi-userid`);
     }
   }
 

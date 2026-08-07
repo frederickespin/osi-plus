@@ -43,43 +43,27 @@ export default withCommonHeaders(async (req, res) => {
   const context = await requireAuthContext(req, res, { prisma });
   if (!context) return;
 
-  const user = await prisma.user.findUnique({
-    where: { id: context.userId },
-  });
-
-  if (!user) return unauthorized(res);
-
-  const legacyUser = legacyUserDto(user);
-
   if (context.authType === "LEGACY") {
+    const user = await prisma.user.findUnique({ where: { id: context.userId } });
+    if (!user) return unauthorized(res);
+    const legacyUser = legacyUserDto(user);
     return res.status(200).json({ ok: true, user: legacyUser });
-  }
-
-  const [tenant, membership] = await Promise.all([
-    prisma.tenant.findUnique({ where: { id: context.tenantId } }),
-    prisma.tenantMembership.findUnique({ where: { id: context.membershipId } }),
-  ]);
-  if (!tenant || !membership || membership.tenantId !== context.tenantId || membership.userId !== context.userId) {
-    return unauthorized(res);
   }
 
   return res.status(200).json({
     ok: true,
-    user: { ...legacyUser, role: context.role },
-    tenant: {
-      id: tenant.id,
-      code: tenant.code,
-      name: tenant.name,
-      status: tenant.status,
-    },
-    membership: {
-      id: membership.id,
+    auth: {
+      authVersion: context.authVersion,
+      userId: context.userId,
+      email: context.email,
+      tenantId: context.tenantId,
+      tenantCode: context.tenantCode,
+      membershipId: context.membershipId,
       role: context.role,
-      status: context.membershipStatus,
-      effectivePermissions: context.effectivePermissions,
       authorizationVersion: context.authorizationVersion,
+      permissions: context.effectivePermissions,
+      sessionId: context.sessionId,
     },
-    sessionId: context.sessionId,
   });
 });
 

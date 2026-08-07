@@ -59,7 +59,7 @@ async function seed() {
   await approval(ids.approvalTwo, ids.tenantTwo, ids.memberTwo, ids.userTwo, "APPROVED");
 }
 
-async function approval(id, tenantId, membershipId, userId, status) {
+async function approval(id, tenantId, membershipId, userId, status, approvalType = "EMPLOYEE_PROVISIONING") {
   const decided = status === "APPROVED";
   await prisma.$executeRaw(Prisma.sql`
     INSERT INTO "osi"."approval_requests"
@@ -67,7 +67,7 @@ async function approval(id, tenantId, membershipId, userId, status) {
        "status","request_reason","evaluation_snapshot_json","decider_user_id","decider_membership_id","decided_at",
        "decision_reason","request_id","payload_hash")
     VALUES
-      (${id}, ${tenantId}, 'EMPLOYEE_PROVISIONING', 'EMPLOYEE_PROVISIONING', ${id}, ${userId}, ${membershipId},
+      (${id}, ${tenantId}, ${approvalType}, ${approvalType}, ${id}, ${userId}, ${membershipId},
        ${status}::"osi"."ApprovalRequestStatus", 'Synthetic test', '{}'::jsonb,
        ${decided ? userId : null}, ${decided ? membershipId : null}, ${decided ? new Date() : null},
        ${decided ? "Approved for test" : null}, ${`approval-${id}`}, ${"a".repeat(64)})
@@ -101,6 +101,11 @@ try {
   await expectDbError("cross-tenant ApprovalRequest rejected", () => prisma.employeeProvisioningRequest.create({
     data: requestData({ id: randomUUID(), approval_request_id: ids.approvalTwo, normalizedEmail: `cross.${run}@example.test` }),
   }));
+  const wrongTypeApproval = `c1b1-wrong-type-${run}`;
+  await approval(wrongTypeApproval, ids.tenantOne, ids.memberOne, ids.userOne, "APPROVED", "LOGISTIC_OVERRIDE");
+  await expectDbError("non-employee ApprovalRequest rejected", () => prisma.employeeProvisioningRequest.create({
+    data: requestData({ id: randomUUID(), approval_request_id: wrongTypeApproval, normalizedEmail: `wrong-type.${run}@example.test` }),
+  }));
   await expectDbError("null lifecycle requires version zero", () => prisma.employeeProvisioningRequest.create({
     data: requestData({ id: randomUUID(), approval_request_id: ids.approvalTwo, tenant_id: ids.tenantTwo, lifecycleVersion: 1, normalizedEmail: `version.${run}@example.test` }),
   }));
@@ -110,6 +115,10 @@ try {
   await expectDbError("post-approval lifecycle requires APPROVED", () => prisma.employeeProvisioningRequest.create({
     data: requestData({ id: randomUUID(), approval_request_id: pendingApproval, lifecycleStatus: "IDENTITY_PENDING", lifecycleVersion: 1, normalizedEmail: `pending.${run}@example.test` }),
   }));
+  await prisma.employeeProvisioningRequest.update({
+    where: { id: ids.requestOne }, data: { lifecycleStatus: "IDENTITY_PENDING", lifecycleVersion: 1 },
+  });
+  check("IDENTITY_PENDING requires and accepts an approved employee request", (await prisma.employeeProvisioningRequest.findUnique({ where: { id: ids.requestOne } }))?.lifecycleStatus === "IDENTITY_PENDING");
   await expectDbError("provisioned membership requires complete pair", () => prisma.$executeRaw(Prisma.sql`
     UPDATE "osi"."employee_provisioning_requests"
        SET "lifecycle_status"='PROVISIONED_INACTIVE', "lifecycle_version"=1,
@@ -120,7 +129,7 @@ try {
     where: { id: ids.requestOne },
     data: {
       lifecycleStatus: "PROVISIONED_INACTIVE",
-      lifecycleVersion: 1,
+      lifecycleVersion: 2,
       provisionedMembershipId: ids.memberOne,
       provisionedUserId: ids.userOne,
       provisionedAt: new Date(),
@@ -163,6 +172,12 @@ try {
   await expectDbError("invitation rejects invalid HMAC", () => prisma.employeeProvisioningInvitation.create({
     data: { ...invitationBase, id: randomUUID(), tokenHmac: "not-a-hmac", issueRequestId: `issue-hmac-${run}`, status: "REVOKED", revokedAt: new Date() },
   }));
+  await expectDbError("invitation rejects uppercase HMAC", () => prisma.employeeProvisioningInvitation.create({
+    data: { ...invitationBase, id: randomUUID(), tokenHmac: "A".repeat(64), issueRequestId: `issue-uppercase-hmac-${run}`, status: "REVOKED", createdAt: new Date(Date.now() - 60_000), revokedAt: new Date() },
+  }));
+  await expectDbError("invitation rejects unreasonable maxAttempts", () => prisma.employeeProvisioningInvitation.create({
+    data: { ...invitationBase, id: randomUUID(), tokenHmac: hex("attempt-limit"), issueRequestId: `issue-attempt-limit-${run}`, maxAttempts: 21, status: "REVOKED", createdAt: new Date(Date.now() - 60_000), revokedAt: new Date() },
+  }));
   await expectDbError("invitation enforces attempt limit", () => prisma.employeeProvisioningInvitation.update({
     where: { id: invitation.id }, data: { attemptCount: 6 },
   }));
@@ -176,6 +191,12 @@ try {
   await expectDbError("invitation identity is immutable", () => prisma.employeeProvisioningInvitation.update({
     where: { id: invitation.id }, data: { issueRequestId: `changed-${run}` },
   }));
+  await expectDbError("invitation issuer identity is immutable", () => prisma.employeeProvisioningInvitation.update({
+    where: { id: invitation.id }, data: { issuedByUserId: ids.userTwo },
+  }));
+  await expectDbError("invitation security policy is immutable", () => prisma.employeeProvisioningInvitation.update({
+    where: { id: invitation.id }, data: { expiresAt: new Date(Date.now() + 7_200_000) },
+  }));
   const acceptedInvitation = await prisma.employeeProvisioningInvitation.update({
     where: { id: invitation.id },
     data: {
@@ -187,6 +208,14 @@ try {
     },
   });
   check("ACCEPTED invitation stores coherent timestamp and user", acceptedInvitation.acceptedAt instanceof Date && acceptedInvitation.acceptedUserId === ids.userOne);
+  const concurrentIssued = await Promise.allSettled(Array.from({ length: 20 }, (_, index) => prisma.employeeProvisioningInvitation.create({ data: {
+    ...invitationBase,
+    id: randomUUID(),
+    tokenHmac: hex(`concurrent-issued-${index}`),
+    issueRequestId: `issue-concurrent-${run}-${index}`,
+    issuePayloadHash: hex(`concurrent-payload-${index}`),
+  } })));
+  check("concurrent ISSUED invitations produce exactly one winner", concurrentIssued.filter((result) => result.status === "fulfilled").length === 1);
   const revokedInvitation = await prisma.employeeProvisioningInvitation.create({ data: {
     ...invitationBase, id: randomUUID(), tokenHmac: hex("revoked"), issueRequestId: `issue-revoked-${run}`,
     issuePayloadHash: "4".repeat(64), status: "REVOKED",
@@ -242,11 +271,57 @@ try {
     proposerMembershipId: ids.memberTwo, proposerUserId: ids.userTwo,
     requestId: `role-cross-${run}`, payloadHash: "9".repeat(64),
   } }));
+  const concurrentProposalRequestId = `role-concurrent-${run}`;
+  const concurrentProposals = await Promise.allSettled([
+    prisma.employeeAdminRoleProposal.create({ data: {
+      tenant_id: ids.tenantOne, provisioningRequestId: ids.requestOne, proposedRole: "A",
+      proposerMembershipId: ids.memberOne, proposerUserId: ids.userOne,
+      requestId: concurrentProposalRequestId, payloadHash: "2".repeat(64),
+    } }),
+    prisma.employeeAdminRoleProposal.create({ data: {
+      tenant_id: ids.tenantOne, provisioningRequestId: ids.requestOne, proposedRole: "A",
+      proposerMembershipId: ids.memberOne, proposerUserId: ids.userOne,
+      requestId: concurrentProposalRequestId, payloadHash: "3".repeat(64),
+    } }),
+  ]);
+  check("concurrent role proposals keep one exact idempotency outcome", concurrentProposals.filter((result) => result.status === "fulfilled").length === 1);
 
+  await expectDbError("ACTIVE lifecycle requires activatedAt", () => prisma.employeeProvisioningRequest.update({
+    where: { id: ids.requestOne }, data: { lifecycleStatus: "ACTIVE", lifecycleVersion: 3 },
+  }));
+  await prisma.employeeProvisioningRequest.update({
+    where: { id: ids.requestOne }, data: { lifecycleStatus: "ACTIVE", lifecycleVersion: 3, activatedAt: new Date() },
+  });
+  check("ACTIVE lifecycle stores activatedAt", (await prisma.employeeProvisioningRequest.findUnique({ where: { id: ids.requestOne } }))?.activatedAt instanceof Date);
+  await expectDbError("ACTIVE lifecycle rejects revokedAt", () => prisma.employeeProvisioningRequest.update({
+    where: { id: ids.requestOne }, data: { revokedAt: new Date() },
+  }));
+  await expectDbError("REVOKED lifecycle requires revokedAt", () => prisma.employeeProvisioningRequest.update({
+    where: { id: ids.requestOne }, data: { lifecycleStatus: "REVOKED", lifecycleVersion: 4 },
+  }));
+  await prisma.employeeProvisioningRequest.update({
+    where: { id: ids.requestOne }, data: { lifecycleStatus: "REVOKED", lifecycleVersion: 4, revokedAt: new Date() },
+  });
+  check("REVOKED lifecycle stores revokedAt", (await prisma.employeeProvisioningRequest.findUnique({ where: { id: ids.requestOne } }))?.revokedAt instanceof Date);
+  await expectDbError("TERMINATED lifecycle requires terminatedAt", () => prisma.employeeProvisioningRequest.update({
+    where: { id: ids.requestOne }, data: { lifecycleStatus: "TERMINATED", lifecycleVersion: 5, employmentStatus: "TERMINATED" },
+  }));
+  await prisma.employeeProvisioningRequest.update({
+    where: { id: ids.requestOne }, data: { lifecycleStatus: "TERMINATED", lifecycleVersion: 5, employmentStatus: "TERMINATED", terminatedAt: new Date() },
+  });
+  check("TERMINATED lifecycle stores terminatedAt", (await prisma.employeeProvisioningRequest.findUnique({ where: { id: ids.requestOne } }))?.terminatedAt instanceof Date);
+
+  const originalMixedEmail = `  C1B1.ONE.${run}@EXAMPLE.TEST  `;
+  await prisma.user.update({ where: { id: ids.userOne }, data: { email: originalMixedEmail } });
   await prisma.user.update({ where: { id: ids.userOne }, data: { normalizedEmail: `c1b1.one.${run}@example.test` } });
-  check("canonical normalizedEmail accepted", (await prisma.user.findUnique({ where: { id: ids.userOne } }))?.normalizedEmail === `c1b1.one.${run}@example.test`);
+  const normalizedUser = await prisma.user.findUnique({ where: { id: ids.userOne } });
+  check("canonical normalizedEmail matches lower(trim(email)) without changing email", normalizedUser?.normalizedEmail === `c1b1.one.${run}@example.test` && normalizedUser.email === originalMixedEmail);
   await expectDbError("uppercase normalizedEmail rejected", () => prisma.user.update({ where: { id: ids.userOne }, data: { normalizedEmail: `C1B1.ONE.${run}@example.test` } }));
+  await expectDbError("spaced normalizedEmail rejected", () => prisma.user.update({ where: { id: ids.userOne }, data: { normalizedEmail: ` c1b1.one.${run}@example.test ` } }));
   await expectDbError("Unicode normalizedEmail rejected", () => prisma.user.update({ where: { id: ids.userOne }, data: { normalizedEmail: `josé.${run}@example.test` } }));
+  await expectDbError("control characters in normalizedEmail rejected", () => prisma.user.update({ where: { id: ids.userOne }, data: { normalizedEmail: `c1b1.one.${run}@example.test\n` } }));
+  await expectDbError("normalizedEmail longer than 320 rejected", () => prisma.user.update({ where: { id: ids.userOne }, data: { normalizedEmail: `${"a".repeat(310)}@example.test` } }));
+  await expectDbError("normalizedEmail unrelated to User.email rejected", () => prisma.user.update({ where: { id: ids.userOne }, data: { normalizedEmail: `other.${run}@example.test` } }));
   await prisma.user.update({ where: { id: ids.userTwo }, data: { normalizedEmail: null } });
   check("normalizedEmail remains nullable", (await prisma.user.findUnique({ where: { id: ids.userTwo } }))?.normalizedEmail === null);
 

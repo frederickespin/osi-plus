@@ -27,7 +27,8 @@ ALTER TABLE "osi"."osi_users"
 ALTER TABLE "osi"."osi_users"
   ADD CONSTRAINT "osi_users_normalized_email_canonical_check" CHECK (
     "normalized_email" IS NULL OR (
-      "normalized_email" = LOWER(BTRIM("normalized_email"))
+      "normalized_email" = LOWER(BTRIM("email"))
+      AND "normalized_email" = LOWER(BTRIM("normalized_email"))
       AND "normalized_email" ~ '^[a-z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,63}$'
       AND "normalized_email" !~ '[^ -~]'
     )
@@ -61,7 +62,6 @@ CREATE TABLE "osi"."employee_provisioning_requests" (
   "provisioned_at" TIMESTAMPTZ(6),
   "activated_at" TIMESTAMPTZ(6),
   "revoked_at" TIMESTAMPTZ(6),
-  "terminated_lifecycle_at" TIMESTAMPTZ(6),
   "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "employee_provisioning_requests_pkey" PRIMARY KEY ("id"),
@@ -102,22 +102,22 @@ CREATE TABLE "osi"."employee_provisioning_requests" (
   CONSTRAINT "employee_provisioning_requests_lifecycle_check" CHECK (
     ("lifecycle_status" IS NULL AND "lifecycle_version" = 0
       AND "provisioned_membership_id" IS NULL AND "provisioned_at" IS NULL
-      AND "activated_at" IS NULL AND "revoked_at" IS NULL AND "terminated_lifecycle_at" IS NULL)
+      AND "activated_at" IS NULL AND "revoked_at" IS NULL AND "terminated_at" IS NULL)
     OR ("lifecycle_status" = 'IDENTITY_PENDING' AND "lifecycle_version" >= 1
       AND "provisioned_membership_id" IS NULL AND "provisioned_at" IS NULL
-      AND "activated_at" IS NULL AND "revoked_at" IS NULL AND "terminated_lifecycle_at" IS NULL)
+      AND "activated_at" IS NULL AND "revoked_at" IS NULL AND "terminated_at" IS NULL)
     OR ("lifecycle_status" = 'PROVISIONED_INACTIVE' AND "lifecycle_version" >= 1
       AND "provisioned_membership_id" IS NOT NULL AND "provisioned_at" IS NOT NULL
-      AND "activated_at" IS NULL AND "revoked_at" IS NULL AND "terminated_lifecycle_at" IS NULL)
+      AND "activated_at" IS NULL AND "revoked_at" IS NULL AND "terminated_at" IS NULL)
     OR ("lifecycle_status" = 'ACTIVE' AND "lifecycle_version" >= 1
       AND "provisioned_membership_id" IS NOT NULL AND "provisioned_at" IS NOT NULL
-      AND "activated_at" IS NOT NULL AND "revoked_at" IS NULL AND "terminated_lifecycle_at" IS NULL)
+      AND "activated_at" IS NOT NULL AND "revoked_at" IS NULL AND "terminated_at" IS NULL)
     OR ("lifecycle_status" = 'REVOKED' AND "lifecycle_version" >= 1
       AND "provisioned_membership_id" IS NOT NULL AND "provisioned_at" IS NOT NULL
-      AND "revoked_at" IS NOT NULL AND "terminated_lifecycle_at" IS NULL)
+      AND "revoked_at" IS NOT NULL AND "terminated_at" IS NULL)
     OR ("lifecycle_status" = 'TERMINATED' AND "lifecycle_version" >= 1
       AND "provisioned_membership_id" IS NOT NULL AND "provisioned_at" IS NOT NULL
-      AND "terminated_lifecycle_at" IS NOT NULL)
+      AND "terminated_at" IS NOT NULL)
   )
 );
 
@@ -261,6 +261,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   approval_status "osi"."ApprovalRequestStatus";
+  linked_approval_type TEXT;
 BEGIN
   IF TG_OP = 'UPDATE' AND (
     NEW."tenant_id" IS DISTINCT FROM OLD."tenant_id"
@@ -269,10 +270,13 @@ BEGIN
     RAISE EXCEPTION 'employee provisioning request identity is immutable' USING ERRCODE = '23514';
   END IF;
 
+  SELECT "status", "approval_type" INTO approval_status, linked_approval_type
+    FROM "osi"."approval_requests"
+    WHERE "tenant_id" = NEW."tenant_id" AND "id" = NEW."approval_request_id";
+  IF linked_approval_type IS DISTINCT FROM 'EMPLOYEE_PROVISIONING' THEN
+    RAISE EXCEPTION 'employee provisioning request requires EMPLOYEE_PROVISIONING approval' USING ERRCODE = '23514';
+  END IF;
   IF NEW."lifecycle_status" IS NOT NULL THEN
-    SELECT "status" INTO approval_status
-      FROM "osi"."approval_requests"
-      WHERE "tenant_id" = NEW."tenant_id" AND "id" = NEW."approval_request_id";
     IF approval_status IS DISTINCT FROM 'APPROVED'::"osi"."ApprovalRequestStatus" THEN
       RAISE EXCEPTION 'employee provisioning lifecycle requires approved request' USING ERRCODE = '23514';
     END IF;
@@ -294,8 +298,13 @@ BEGIN
     NEW."tenant_id" IS DISTINCT FROM OLD."tenant_id"
     OR NEW."provisioning_request_id" IS DISTINCT FROM OLD."provisioning_request_id"
     OR NEW."token_hmac" IS DISTINCT FROM OLD."token_hmac"
+    OR NEW."expires_at" IS DISTINCT FROM OLD."expires_at"
+    OR NEW."max_attempts" IS DISTINCT FROM OLD."max_attempts"
+    OR NEW."issued_by_membership_id" IS DISTINCT FROM OLD."issued_by_membership_id"
+    OR NEW."issued_by_user_id" IS DISTINCT FROM OLD."issued_by_user_id"
     OR NEW."issue_request_id" IS DISTINCT FROM OLD."issue_request_id"
     OR NEW."issue_payload_hash" IS DISTINCT FROM OLD."issue_payload_hash"
+    OR NEW."created_at" IS DISTINCT FROM OLD."created_at"
   ) THEN
     RAISE EXCEPTION 'employee provisioning invitation identity is immutable' USING ERRCODE = '23514';
   END IF;

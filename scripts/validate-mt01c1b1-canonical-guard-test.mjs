@@ -2,6 +2,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CANONICAL_MIGRATIONS, validateMigrationFiles } from "./validate-canonical-ci.mjs";
+import { validateMt01c1b1Guard } from "./validate-mt01c1b1-guard.mjs";
 
 const root = mkdtempSync(join(tmpdir(), "mt01c1b1-canonical-guard-"));
 const results = [];
@@ -26,6 +27,14 @@ try {
   try { validateMigrationFiles(root); } catch (error) { rejected = error; }
   check("unexpected migration fifteen is rejected", rejected?.message.includes("14 migraciones canónicas"));
   check("guard rejects before executing unexpected SQL", rejected instanceof Error);
+
+  mkdirSync(join(root, "api"), { recursive: true });
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(join(root, ".env.example"), "MT01B_AUTH_MODE=LEGACY\nMT01B_TENANT_SWITCH_ENABLED=false\nVITE_MT01B2_CLIENT_ENABLED=false\n", "utf8");
+  writeFileSync(join(root, "api", "normalized-email-consumer.js"), "export const query = { select: { normalizedEmail: true } };\n", "utf8");
+  let runtimeRejected = null;
+  try { validateMt01c1b1Guard(root); } catch (error) { runtimeRejected = error; }
+  check("runtime guard rejects normalizedEmail consumers", runtimeRejected?.message.includes("persistencia de provisión no puede tener consumidores runtime"));
   process.stdout.write(`${JSON.stringify({ ok: true, passed: results.length, results }, null, 2)}\n`);
 } finally {
   rmSync(root, { recursive: true, force: true });

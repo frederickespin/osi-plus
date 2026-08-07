@@ -134,8 +134,8 @@ try {
   const provisioningGuardRun = runJson("validate-mt01c1b1-canonical-guard-test.mjs", "MT-01C1B1/CANONICAL_GUARD");
   const provisioningRuntimeGuardRun = runJson("validate-mt01c1b1-guard.mjs", "MT-01C1B1/RUNTIME_GUARD");
   invariant(provisioningDryRun.report.readOnly === true, "MT-01C1B1 dry-run no confirmó modo de sólo lectura");
-  invariant(provisioningRun.assertions === 44, `MT-01C1B1 esperaba 44 pruebas y obtuvo ${provisioningRun.assertions}`);
-  invariant(provisioningGuardRun.assertions === 4, `MT-01C1B1 guard esperaba 4 pruebas y obtuvo ${provisioningGuardRun.assertions}`);
+  invariant(provisioningRun.assertions === 63, `MT-01C1B1 esperaba 63 pruebas y obtuvo ${provisioningRun.assertions}`);
+  invariant(provisioningGuardRun.assertions === 5, `MT-01C1B1 guard esperaba 5 pruebas y obtuvo ${provisioningGuardRun.assertions}`);
   invariant(provisioningRuntimeGuardRun.report.ok === true, "La guardia runtime MT-01C1B1 falló");
   process.stdout.write(`${JSON.stringify({
     ok: true,
@@ -159,7 +159,7 @@ try {
       persistence: provisioningRun.assertions,
       canonicalGuard: provisioningGuardRun.assertions,
       runtimeGuard: provisioningRuntimeGuardRun.report.ok,
-      total: 48,
+      total: 68,
     },
     suites,
     suiteRuns: {

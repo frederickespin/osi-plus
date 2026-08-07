@@ -21,13 +21,14 @@ export function validateMt01c1b1Guard(root = process.cwd()) {
   invariant(/VITE_MT01B2_CLIENT_ENABLED=["']?false["']?/i.test(envExample), "MT-01C1B1: cliente V2 debe seguir desactivado");
 
   const runtimeFiles = [...collect(path.join(root, "api")), ...collect(path.join(root, "src"))];
-  const pattern = /prisma\.(?:employeeProvisioningRequest|employeeProvisioningInvitation|employeeAdminRoleProposal)\b|from\s+["'][^"']*mt-01c1b1|import\s*\([^)]*mt-01c1b1/i;
+  const pattern = /prisma\.(?:employeeProvisioningRequest|employeeProvisioningInvitation|employeeAdminRoleProposal)\b|\bnormalizedEmail\b|\bnormalized_email\b|from\s+["'][^"']*mt-01c1b1|import\s*\([^)]*mt-01c1b1/i;
   const consumers = runtimeFiles.filter((file) => pattern.test(fs.readFileSync(file, "utf8")));
   invariant(consumers.length === 0, `MT-01C1B1: persistencia de provisión no puede tener consumidores runtime: ${consumers.map((file) => path.relative(root, file).replaceAll("\\", "/")).join(", ")}`);
 
   return {
     runtimeFiles: runtimeFiles.length,
     provisioningRuntimeConsumers: 0,
+    normalizedEmailRuntimeConsumers: 0,
     legacy: true,
     hybrid: false,
     tenantSwitch: false,

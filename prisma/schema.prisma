@@ -217,7 +217,6 @@ model EmployeeProvisioningRequest {
   provisionedAt           DateTime?                            @map("provisioned_at") @db.Timestamptz(6)
   activatedAt             DateTime?                            @map("activated_at") @db.Timestamptz(6)
   revokedAt               DateTime?                            @map("revoked_at") @db.Timestamptz(6)
-  terminatedLifecycleAt   DateTime?                            @map("terminated_lifecycle_at") @db.Timestamptz(6)
   createdAt               DateTime                             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime                             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   tenant                  Tenant                               @relation(fields: [tenant_id], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "employee_provisioning_requests_tenant_fkey")

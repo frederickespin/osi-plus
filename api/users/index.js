@@ -1,6 +1,6 @@
 import { prisma } from "../_lib/db.js";
 import { hashPassword } from "../_lib/auth.js";
-import { methodNotAllowed, readJsonBody, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, readJsonObject, withCommonHeaders } from "../_lib/http.js";
 import { requirePilotAuth, requirePilotPermission } from "../_lib/authContextPilot.js";
 import { PERMS } from "../_lib/rbac.js";
 
@@ -46,7 +46,7 @@ export default withCommonHeaders(async (req, res) => {
   }
 
   if (req.method === "POST") {
-    const body = await readJsonBody(req);
+    const body = await readJsonObject(req);
     const password = String(body.password || "ChangeMe123*");
     const created = await prisma.user.create({
       data: {

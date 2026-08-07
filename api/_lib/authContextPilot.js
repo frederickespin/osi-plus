@@ -29,7 +29,7 @@ function legacyRouteContext(user) {
 export async function requirePilotAuth(req, res, options = {}) {
   const policy = resolveMt01bAuthPolicy(options.env || process.env, options.now || new Date());
   if (policy.mode === MT01B_AUTH_MODES.LEGACY) {
-    const user = requireAuth(req, res);
+    const user = await requireAuth(req, res, { prisma: options.prisma });
     return user ? legacyRouteContext(user) : null;
   }
   return requireAuthContext(req, res, options);
@@ -38,7 +38,7 @@ export async function requirePilotAuth(req, res, options = {}) {
 export async function requirePilotPermission(req, res, permission, options = {}) {
   const policy = resolveMt01bAuthPolicy(options.env || process.env, options.now || new Date());
   if (policy.mode === MT01B_AUTH_MODES.LEGACY) {
-    const user = requireAuth(req, res);
+    const user = await requireAuth(req, res, { prisma: options.prisma });
     if (!user || !requirePerm(req, res, permission)) return null;
     return legacyRouteContext(user);
   }

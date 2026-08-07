@@ -3,6 +3,7 @@ import { getBearerToken, verifyAccessToken } from "../_lib/auth.js";
 import { MT01B_AUTH_MODES, resolveMt01bAuthPolicy } from "../_lib/authPolicy.js";
 import { methodNotAllowed, unauthorized, withCommonHeaders } from "../_lib/http.js";
 import { requireAuthContext } from "../_lib/authContextMiddleware.js";
+import { isGloballyActiveUser } from "../_lib/userStatus.js";
 
 function legacyUserDto(user) {
   return {
@@ -36,7 +37,7 @@ export default withCommonHeaders(async (req, res) => {
       return unauthorized(res);
     }
     const legacyUser = await prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!legacyUser) return unauthorized(res);
+    if (!legacyUser || !isGloballyActiveUser(legacyUser.status)) return unauthorized(res);
     return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser) });
   }
 
@@ -45,7 +46,7 @@ export default withCommonHeaders(async (req, res) => {
 
   if (context.authType === "LEGACY") {
     const user = await prisma.user.findUnique({ where: { id: context.userId } });
-    if (!user) return unauthorized(res);
+    if (!user || !isGloballyActiveUser(user.status)) return unauthorized(res);
     const legacyUser = legacyUserDto(user);
     return res.status(200).json({ ok: true, user: legacyUser });
   }

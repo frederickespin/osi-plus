@@ -234,6 +234,26 @@ export async function createEmployeeProvisioningRequest(prisma, context, input, 
         idempotent: true,
       };
     }
+    await advisoryLock(tx, actor.tenantId, `employee-code:${command.normalizedEmployeeCode}`);
+    const duplicateCode = await tx.$queryRaw(Prisma.sql`
+      SELECT p."id"
+      FROM "osi"."employee_provisioning_requests" p
+      JOIN "osi"."approval_requests" a ON a."tenant_id"=p."tenant_id" AND a."id"=p."approval_request_id"
+      WHERE p."tenant_id"=${actor.tenantId} AND p."normalized_employee_code"=${command.normalizedEmployeeCode}
+        AND a."status" IN ('PENDING','APPROVED')
+      UNION ALL
+      SELECT e."id" FROM "osi"."employee_profiles" e
+      WHERE e."tenant_id"=${actor.tenantId} AND e."employee_code"=${command.normalizedEmployeeCode}
+      LIMIT 1
+    `);
+    if (duplicateCode[0]) {
+      return auditedFailure(tx, actor, input, {
+        action: "EMPLOYEE_PROVISIONING_EMPLOYEE_CODE_CONFLICT",
+        code: "EMPLOYEE_PROVISIONING_EMPLOYEE_CODE_CONFLICT",
+        message: "El código de empleado ya está reservado en esta empresa.",
+        status: 409,
+      }, options.auditWriter);
+    }
     if (command.requestedRole === "A" && actor.userId === command.targetUserId) return auditedFailure(tx, actor, input, { action: "EMPLOYEE_PROVISIONING_CREATE_UNAUTHORIZED", code: "EMPLOYEE_PROVISIONING_SELF_ADMIN_FORBIDDEN", message: "No puede solicitarse rol administrador a sí mismo." }, options.auditWriter);
     let supervisor = null;
     if (command.supervisorMembershipId) {

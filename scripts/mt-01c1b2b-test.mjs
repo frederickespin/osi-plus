@@ -96,6 +96,11 @@ try {
   const requesterContext = context(tenant1, actors.requester);
   const approverContext = context(tenant1, actors.approver);
 
+  const duplicateCodeResults = await Promise.allSettled(Array.from({ length: 20 }, (_, index) => createEmployeeProvisioningRequest(prisma, requesterContext, requestInput(`code-race-${index}`, {
+    employeeCode: ` shared-${run} `,
+  }))));
+  check("20 requestId distintos reservan una sola vez el mismo employeeCode", duplicateCodeResults.filter((item) => item.status === "fulfilled").length === 1);
+
   const concurrentInput = requestInput("concurrent");
   const concurrent = await Promise.all(Array.from({ length: 20 }, () => createEmployeeProvisioningRequest(prisma, requesterContext, concurrentInput)));
   check("20 creaciones idénticas devuelven una solicitud", new Set(concurrent.map((item) => item.request.id)).size === 1);

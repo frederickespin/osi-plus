@@ -2,9 +2,10 @@
 
 ## Alcance runtime
 
-`requireAuth` sólo es consumido por `authContextPilot`, que protege las rutas
-JWT de Usuarios, Clientes y Proyectos. Cada solicitud LEGACY consulta una vez
-`User.status`; el resultado se conserva únicamente en la propia solicitud.
+`requireAuth` sólo es consumido directamente por `authContextPilot`, que afecta
+indirectamente los seis métodos GET/POST de Usuarios, Clientes y Proyectos.
+Cada solicitud LEGACY consulta una vez `User.status`; la promesa se guarda en
+un `Symbol` del objeto `req` y nunca se comparte entre solicitudes o usuarios.
 Las 25 rutas que confían en encabezados heredados permanecen congeladas.
 
 | Endpoint | Método | Parser estricto | Estado global vigente |
@@ -18,6 +19,21 @@ Las 25 rutas que confían en encabezados heredados permanecen congeladas.
 | `/api/auth/logout` | POST | No acepta body | V2 sigue desactivado |
 | `/api/auth/session/upgrade` | POST | No acepta body | V2 sigue desactivado |
 
+| Consumidor indirecto | Método | Permiso LEGACY existente | Consulta de estado |
+| --- | --- | --- | --- |
+| `/api/users` | GET | `users:view` | Una por solicitud |
+| `/api/users` | POST | `users:create` | Una por solicitud |
+| `/api/clients` | GET | `clients:view` | Una por solicitud |
+| `/api/clients` | POST | `clients:create` | Una por solicitud |
+| `/api/projects` | GET | `projects:view` | Una por solicitud |
+| `/api/projects` | POST | `projects:create` | Una por solicitud |
+
+Para los seis métodos indirectos, un actor `active` conserva permisos y
+contratos; `inactive`, `suspended`, desconocido o eliminado recibe 401. Una
+falla al consultar el estado devuelve `503 AUTH_DATABASE_UNAVAILABLE` sin
+detalles. La autenticación no intercepta un 404 empresarial emitido después de
+autorizar la solicitud. Ni `status` ni `role` del JWT deciden el estado global.
+
 ## Contrato de cuerpos JSON
 
 - JSON malformado: `400 REQUEST_JSON_INVALID`.
@@ -25,10 +41,16 @@ Las 25 rutas que confían en encabezados heredados permanecen congeladas.
 - Valor JSON que no sea objeto: `400 REQUEST_JSON_OBJECT_REQUIRED`.
 - Content-Type explícito incompatible: `415 REQUEST_CONTENT_TYPE_INVALID`.
 - Tamaño superior al límite: `413 REQUEST_BODY_TOO_LARGE`.
+- Content-Length inválido: `400 REQUEST_CONTENT_LENGTH_INVALID`.
+- UTF-8 inválido: `400 REQUEST_JSON_INVALID`.
+- Profundidad superior a 64: `400 REQUEST_JSON_TOO_DEEP`.
+- Claves `__proto__`, `constructor` o `prototype`: `400 REQUEST_JSON_UNSAFE_KEYS`.
 
 Los errores no incluyen el body, contraseñas, tokens ni el stack del parser.
 Los objetos ya parseados por la plataforma se admiten por compatibilidad; los
-cuerpos raw requieren un Content-Type JSON válido.
+cuerpos raw requieren un Content-Type JSON válido. `Content-Length` se valida
+antes de leer y los streams chunked se interrumpen al superar el límite real en
+bytes; el tamaño no se calcula por cantidad de caracteres.
 
 ## Inventario del parser heredado no migrado
 
@@ -50,3 +72,12 @@ invoca más de una vez en esa misma solicitud.
 Un JWT LEGACY aún vigente puede volver a ser aceptado si el administrador
 reactiva al usuario. La revocación definitiva de una familia corresponde a
 V2/AuthSession y permanece fuera de este bloque.
+
+El login siempre ejecuta una comparación bcrypt: para una identidad inexistente
+usa un hash ficticio fijo y no sensible; para una identidad existente compara
+la contraseña antes de evaluar su estado. Esto elimina la bifurcación evidente
+que omitía bcrypt, pero no se presenta como garantía de tiempo constante.
+
+Existe una carrera residual: una suspensión posterior a que `requireAuth`
+resuelva no cancela una escritura ya iniciada. Las operaciones críticas deberán
+revalidar autorización dentro de su transacción en una fase posterior.

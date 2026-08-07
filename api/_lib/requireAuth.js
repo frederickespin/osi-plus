@@ -8,6 +8,11 @@ import { unauthorized } from "./http.js";
 import { isGloballyActiveUser } from "./userStatus.js";
 
 const LEGACY_AUTH_CACHE = Symbol("osi.legacyAuthContext");
+const AUTH_DATABASE_UNAVAILABLE = Symbol("osi.authDatabaseUnavailable");
+
+function databaseUnavailable(res) {
+  return res.status(503).json({ ok: false, error: "AUTH_DATABASE_UNAVAILABLE" });
+}
 
 /**
  * Extrae y verifica el token JWT. Si es válido, adjunta req.user.
@@ -16,6 +21,10 @@ const LEGACY_AUTH_CACHE = Symbol("osi.legacyAuthContext");
 export async function requireAuth(req, res, { prisma = defaultPrisma } = {}) {
   if (req[LEGACY_AUTH_CACHE]) {
     const cached = await req[LEGACY_AUTH_CACHE];
+    if (cached === AUTH_DATABASE_UNAVAILABLE) {
+      databaseUnavailable(res);
+      return null;
+    }
     if (!cached) unauthorized(res);
     else req.user = cached;
     return cached;
@@ -36,19 +45,27 @@ export async function requireAuth(req, res, { prisma = defaultPrisma } = {}) {
   }
 
   req[LEGACY_AUTH_CACHE] = (async () => {
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: { status: true },
-    });
-    if (!user || !isGloballyActiveUser(user.status)) return null;
-    return Object.freeze({
-      id: payload.sub,
-      email: payload.email || "",
-      role: String(payload.role || "").toUpperCase().trim(),
-    });
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { status: true },
+      });
+      if (!user || !isGloballyActiveUser(user.status)) return null;
+      return Object.freeze({
+        id: payload.sub,
+        email: payload.email || "",
+        role: String(payload.role || "").toUpperCase().trim(),
+      });
+    } catch {
+      return AUTH_DATABASE_UNAVAILABLE;
+    }
   })();
 
   const current = await req[LEGACY_AUTH_CACHE];
+  if (current === AUTH_DATABASE_UNAVAILABLE) {
+    databaseUnavailable(res);
+    return null;
+  }
   if (!current) {
     unauthorized(res);
     return null;

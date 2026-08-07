@@ -8,6 +8,7 @@ function setCors(res) {
 }
 
 const DEFAULT_JSON_BODY_MAX_BYTES = 256 * 1024;
+const DEFAULT_JSON_MAX_DEPTH = 64;
 
 class JsonBodyError extends Error {
   constructor(code, status) {
@@ -72,6 +73,11 @@ function contentTypeHeader(req) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function contentLengthHeader(req) {
+  const value = req?.headers?.["content-length"] ?? req?.headers?.["Content-Length"];
+  return Array.isArray(value) ? value[0] : value;
+}
+
 function isJsonContentType(value) {
   if (typeof value !== "string") return false;
   const mediaType = value.split(";", 1)[0].trim().toLowerCase();
@@ -82,6 +88,38 @@ function isJsonContentType(value) {
 function assertBodySize(raw, maxBytes) {
   if (Buffer.byteLength(raw, "utf8") > maxBytes) {
     throw new JsonBodyError("REQUEST_BODY_TOO_LARGE", 413);
+  }
+}
+
+function assertDeclaredBodySize(req, maxBytes) {
+  const value = contentLengthHeader(req);
+  if (value == null || value === "") return;
+  if (!/^\d+$/.test(String(value).trim())) {
+    throw new JsonBodyError("REQUEST_CONTENT_LENGTH_INVALID", 400);
+  }
+  if (Number(value) > maxBytes) throw new JsonBodyError("REQUEST_BODY_TOO_LARGE", 413);
+}
+
+function decodeUtf8(buffer) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    throw new JsonBodyError("REQUEST_JSON_INVALID", 400);
+  }
+}
+
+function assertSafeJsonObject(root, maxDepth = DEFAULT_JSON_MAX_DEPTH) {
+  const queue = [{ value: root, depth: 1 }];
+  while (queue.length) {
+    const { value, depth } = queue.pop();
+    if (depth > maxDepth) throw new JsonBodyError("REQUEST_JSON_TOO_DEEP", 400);
+    for (const key of Object.keys(value)) {
+      if (key === "__proto__" || key === "prototype" || key === "constructor") {
+        throw new JsonBodyError("REQUEST_JSON_UNSAFE_KEYS", 400);
+      }
+      const child = value[key];
+      if (child && typeof child === "object") queue.push({ value: child, depth: depth + 1 });
+    }
   }
 }
 
@@ -100,6 +138,7 @@ function parseJsonObject(raw, { required, maxBytes }) {
   if (value === null || Array.isArray(value) || typeof value !== "object") {
     throw new JsonBodyError("REQUEST_JSON_OBJECT_REQUIRED", 400);
   }
+  assertSafeJsonObject(value);
   return value;
 }
 
@@ -116,6 +155,7 @@ async function readJsonObject(req, {
   if (contentType != null && !isJsonContentType(contentType)) {
     throw new JsonBodyError("REQUEST_CONTENT_TYPE_INVALID", 415);
   }
+  assertDeclaredBodySize(req, maxBytes);
 
   let requestBody;
   try {
@@ -130,7 +170,8 @@ async function readJsonObject(req, {
   if (requestBody !== undefined) {
     if (Buffer.isBuffer(requestBody)) {
       if (contentType == null) throw new JsonBodyError("REQUEST_CONTENT_TYPE_INVALID", 415);
-      return parseJsonObject(requestBody.toString("utf8"), { required, maxBytes });
+      if (requestBody.length > maxBytes) throw new JsonBodyError("REQUEST_BODY_TOO_LARGE", 413);
+      return parseJsonObject(decodeUtf8(requestBody), { required, maxBytes });
     }
     if (typeof requestBody === "string") {
       if (contentType == null) throw new JsonBodyError("REQUEST_CONTENT_TYPE_INVALID", 415);
@@ -140,6 +181,7 @@ async function readJsonObject(req, {
       throw new JsonBodyError("REQUEST_JSON_OBJECT_REQUIRED", 400);
     }
     assertBodySize(JSON.stringify(requestBody), maxBytes);
+    assertSafeJsonObject(requestBody);
     return requestBody;
   }
 
@@ -153,7 +195,7 @@ async function readJsonObject(req, {
       if (bytes > maxBytes) throw new JsonBodyError("REQUEST_BODY_TOO_LARGE", 413);
       chunks.push(buffer);
     }
-    return parseJsonObject(Buffer.concat(chunks).toString("utf8"), { required, maxBytes });
+    return parseJsonObject(decodeUtf8(Buffer.concat(chunks)), { required, maxBytes });
   }
 
   if (!required) return {};

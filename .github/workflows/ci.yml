@@ -98,20 +98,6 @@ jobs:
   canonical-database-validation:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: osi_db01n_ci
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: osi-ci-only-password
-        ports:
-          - 55432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d osi_db01n_ci"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
     env:
       CANONICAL_DB_VALIDATION: "true"
       VERCEL_ENV: development
@@ -137,6 +123,26 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      - name: Start PostgreSQL 18 on host loopback
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name osi-postgres-18 --network host \
+            -e POSTGRES_DB=osi_db01n_ci \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=osi-ci-only-password \
+            postgres:18 \
+            -c listen_addresses=127.0.0.1 \
+            -c port=55432
+          for attempt in {1..30}; do
+            if docker exec osi-postgres-18 pg_isready -h 127.0.0.1 -p 55432 -U postgres -d osi_db01n_ci >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs --tail 40 osi-postgres-18
+          exit 1
 
       - name: Install
         run: npm ci

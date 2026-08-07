@@ -129,6 +129,14 @@ try {
   invariant(employeeProfileRun.assertions === 31, `MT-01C1A esperaba 31 pruebas y obtuvo ${employeeProfileRun.assertions}`);
   invariant(employeeGuardRun.assertions === 3, `MT-01C1A guard esperaba 3 pruebas y obtuvo ${employeeGuardRun.assertions}`);
   invariant(employeeRuntimeGuardRun.report.ok === true, "La guardia runtime MT-01C1A falló");
+  const provisioningDryRun = runJson("mt-01c1b1-email-dry-run.mjs", "MT-01C1B1/EMAIL_DRY_RUN");
+  const provisioningRun = runJson("mt-01c1b1-test.mjs", "MT-01C1B1/PERSISTENCE");
+  const provisioningGuardRun = runJson("validate-mt01c1b1-canonical-guard-test.mjs", "MT-01C1B1/CANONICAL_GUARD");
+  const provisioningRuntimeGuardRun = runJson("validate-mt01c1b1-guard.mjs", "MT-01C1B1/RUNTIME_GUARD");
+  invariant(provisioningDryRun.report.readOnly === true, "MT-01C1B1 dry-run no confirmó modo de sólo lectura");
+  invariant(provisioningRun.assertions === 63, `MT-01C1B1 esperaba 63 pruebas y obtuvo ${provisioningRun.assertions}`);
+  invariant(provisioningGuardRun.assertions === 5, `MT-01C1B1 guard esperaba 5 pruebas y obtuvo ${provisioningGuardRun.assertions}`);
+  invariant(provisioningRuntimeGuardRun.report.ok === true, "La guardia runtime MT-01C1B1 falló");
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
@@ -146,6 +154,13 @@ try {
       runtimeGuard: employeeRuntimeGuardRun.report.ok,
       total: 45,
     },
+    mt01c1b1: {
+      emailDryRunReadOnly: provisioningDryRun.report.readOnly,
+      persistence: provisioningRun.assertions,
+      canonicalGuard: provisioningGuardRun.assertions,
+      runtimeGuard: provisioningRuntimeGuardRun.report.ok,
+      total: 68,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -158,6 +173,10 @@ try {
       "MT-01C1A/EMPLOYEE_PROFILE": { status: "PASS", assertions: employeeProfileRun.assertions, durationMs: employeeProfileRun.durationMs, exitCode: 0 },
       "MT-01C1A/CANONICAL_GUARD": { status: "PASS", assertions: employeeGuardRun.assertions, durationMs: employeeGuardRun.durationMs, exitCode: 0 },
       "MT-01C1A/RUNTIME_GUARD": { status: "PASS", assertions: 0, durationMs: employeeRuntimeGuardRun.durationMs, exitCode: 0 },
+      "MT-01C1B1/EMAIL_DRY_RUN": { status: "PASS", assertions: 0, durationMs: provisioningDryRun.durationMs, exitCode: 0 },
+      "MT-01C1B1/PERSISTENCE": { status: "PASS", assertions: provisioningRun.assertions, durationMs: provisioningRun.durationMs, exitCode: 0 },
+      "MT-01C1B1/CANONICAL_GUARD": { status: "PASS", assertions: provisioningGuardRun.assertions, durationMs: provisioningGuardRun.durationMs, exitCode: 0 },
+      "MT-01C1B1/RUNTIME_GUARD": { status: "PASS", assertions: 0, durationMs: provisioningRuntimeGuardRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

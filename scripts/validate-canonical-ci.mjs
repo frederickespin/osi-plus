@@ -37,6 +37,7 @@ export const CANONICAL_MIGRATIONS = Object.freeze([
   "20260801010000_crate_settings",
   "20260801011000_mt01b_auth_sessions",
   "20260801012000_mt01c1a_employee_profiles",
+  "20260801013000_mt01c1b1_provisioning_persistence",
 ]);
 
 function invariant(condition, message) {

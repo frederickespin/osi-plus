@@ -46,7 +46,7 @@ export default withCommonHeaders(async (req, res) => {
   }
 
   if (req.method === "POST") {
-    const body = await readJsonObject(req);
+    const body = await readJsonObject(req, { requireNonEmptyObject: true });
     const password = String(body.password || "ChangeMe123*");
     const created = await prisma.user.create({
       data: {

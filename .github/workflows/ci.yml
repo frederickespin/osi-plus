@@ -194,6 +194,7 @@ jobs:
           node scripts/mt-01b3a-test.mjs
           node scripts/mt-01b3b1-test.mjs
           node scripts/mt-01c1b2a-test.mjs
+          node scripts/auth-json-02-test.mjs
 
       - name: Build
         run: npm run build

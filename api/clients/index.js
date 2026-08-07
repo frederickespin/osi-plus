@@ -32,7 +32,7 @@ export default withCommonHeaders(async (req, res) => {
   }
 
   if (req.method === "POST") {
-    const body = await readJsonObject(req);
+    const body = await readJsonObject(req, { requireNonEmptyObject: true });
     const created = await prisma.client.create({
       data: {
         code: String(body.code || `CLI${Date.now()}`),

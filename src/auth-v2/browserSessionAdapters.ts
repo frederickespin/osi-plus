@@ -90,8 +90,9 @@ async function responseBody(response: Response): Promise<Record<string, unknown>
 
 function responseError(response: Response, body: Record<string, unknown>) {
   const rawRetry = Number(body.retryAfterMs);
+  const responseCode = typeof body.code === "string" ? body.code : body.error;
   return {
-    code: typeof body.error === "string" ? body.error.slice(0, 120) : `HTTP_${response.status}`,
+    code: typeof responseCode === "string" ? responseCode.slice(0, 120) : `HTTP_${response.status}`,
     recoverable: body.recoverable === true,
     retryAfterMs: Number.isFinite(rawRetry) ? rawRetry : undefined,
     status: response.status,

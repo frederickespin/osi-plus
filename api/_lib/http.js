@@ -10,6 +10,17 @@ function setCors(res) {
 const DEFAULT_JSON_BODY_MAX_BYTES = 256 * 1024;
 const DEFAULT_JSON_MAX_DEPTH = 64;
 
+const JSON_BODY_ERROR_MESSAGES = Object.freeze({
+  REQUEST_JSON_INVALID: "Solicitud JSON inválida",
+  REQUEST_JSON_REQUIRED: "Se requiere una solicitud JSON",
+  REQUEST_JSON_OBJECT_REQUIRED: "La solicitud JSON debe ser un objeto",
+  REQUEST_CONTENT_TYPE_INVALID: "Content-Type debe ser application/json",
+  REQUEST_BODY_TOO_LARGE: "La solicitud JSON excede el tamaño permitido",
+  REQUEST_CONTENT_LENGTH_INVALID: "Content-Length inválido",
+  REQUEST_JSON_TOO_DEEP: "La solicitud JSON excede la profundidad permitida",
+  REQUEST_JSON_UNSAFE_KEYS: "La solicitud JSON contiene claves no permitidas",
+});
+
 class JsonBodyError extends Error {
   constructor(code, status) {
     super(code);
@@ -32,12 +43,18 @@ function withCommonHeaders(handler) {
       return await handler(req, res);
     } catch (err) {
       if (err instanceof JsonBodyError) {
-        return res.status(err.status).json({ ok: false, error: err.code });
+        return res.status(err.status).json({
+          ok: false,
+          code: err.code,
+          error: JSON_BODY_ERROR_MESSAGES[err.code] || "Solicitud JSON inválida",
+        });
       }
-      // Ensure we always get a visible stack trace in Vercel logs.
-      const message =
-        err instanceof Error ? err.stack || err.message : String(err);
-      console.error("handler_error:", message);
+      // Never include the exception message or stack: either may contain request
+      // data, credentials or connection details supplied by a dependency.
+      console.error("handler_error", {
+        category: "UNEXPECTED_HANDLER_ERROR",
+        name: err instanceof Error ? err.name : "UnknownError",
+      });
       return res.status(500).json({ ok: false, error: "Internal Server Error" });
     }
   };
@@ -142,6 +159,27 @@ function parseJsonObject(raw, { required, maxBytes }) {
   return value;
 }
 
+function isMalformedPlatformJsonError(error) {
+  if (!error || typeof error !== "object") return false;
+  if (error instanceof SyntaxError || error.name === "SyntaxError") return true;
+  // Vercel's Node runtime currently throws this generic error from the
+  // IncomingMessage.body getter when its platform parser rejects malformed JSON.
+  // This exact match is intentionally scoped to the getter access below; other
+  // handler/dependency errors must continue through the sanitized 500 path.
+  return error.name === "Error" && error.message === "Invalid JSON";
+}
+
+function readPlatformBodyOnce(req) {
+  try {
+    return req?.body;
+  } catch (error) {
+    if (isMalformedPlatformJsonError(error)) {
+      throw new JsonBodyError("REQUEST_JSON_INVALID", 400);
+    }
+    throw error;
+  }
+}
+
 /**
  * Lector estricto para endpoints migrados de forma explícita. Los objetos ya
  * parseados por la plataforma se aceptan sin volver a consumir el stream; un
@@ -150,6 +188,7 @@ function parseJsonObject(raw, { required, maxBytes }) {
 async function readJsonObject(req, {
   required = true,
   maxBytes = DEFAULT_JSON_BODY_MAX_BYTES,
+  requireNonEmptyObject = false,
 } = {}) {
   const contentType = contentTypeHeader(req);
   if (contentType != null && !isJsonContentType(contentType)) {
@@ -157,14 +196,14 @@ async function readJsonObject(req, {
   }
   assertDeclaredBodySize(req, maxBytes);
 
-  let requestBody;
-  try {
-    requestBody = req?.body;
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new JsonBodyError("REQUEST_JSON_INVALID", 400);
-    }
-    throw error;
+  const requestBody = readPlatformBodyOnce(req);
+
+  // Vercel may expose an HTTP-empty JSON body as an already parsed `{}`.
+  // Preserve the platform getter as the first protected body access, then use
+  // the transport metadata to distinguish that case from an explicit `{}`.
+  const declaredLength = contentLengthHeader(req);
+  if (required && declaredLength != null && String(declaredLength).trim() === "0") {
+    throw new JsonBodyError("REQUEST_JSON_REQUIRED", 400);
   }
 
   if (requestBody !== undefined) {
@@ -182,6 +221,9 @@ async function readJsonObject(req, {
     }
     assertBodySize(JSON.stringify(requestBody), maxBytes);
     assertSafeJsonObject(requestBody);
+    if (requireNonEmptyObject && declaredLength == null && Object.keys(requestBody).length === 0) {
+      throw new JsonBodyError("REQUEST_JSON_REQUIRED", 400);
+    }
     return requestBody;
   }
 
@@ -224,6 +266,7 @@ export {
   readJsonObject,
   JsonBodyError,
   DEFAULT_JSON_BODY_MAX_BYTES,
+  isMalformedPlatformJsonError,
   unauthorized,
   badRequest,
 };

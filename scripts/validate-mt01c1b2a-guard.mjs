@@ -32,11 +32,13 @@ export function validateMt01c1b2aGuard(root = process.cwd()) {
     const routeSource = source(root, route);
     invariant(/requirePilot(?:Auth|Permission)/.test(routeSource), `MT-01C1B2A: ${route} dejó de usar el piloto autenticado`);
     invariant(/readJsonObject/.test(routeSource), `MT-01C1B2A: ${route} perdió el parser estricto`);
+    invariant(/requireNonEmptyObject:\s*true/.test(routeSource), `AUTH-JSON-02-Q2: ${route} debe distinguir body HTTP vacío`);
   }
 
   const loginSource = source(root, "api/auth/login.js");
   invariant(/UNKNOWN_IDENTITY_PASSWORD_HASH/.test(loginSource), "MT-01C1B2A: login debe ejecutar bcrypt para identidad inexistente");
   invariant(/AUTH_DATABASE_UNAVAILABLE/.test(loginSource), "MT-01C1B2A: login debe sanitizar fallas de base");
+  invariant(/requireNonEmptyObject:\s*true/.test(loginSource), "AUTH-JSON-02-Q2: login debe distinguir body HTTP vacío");
   const meSource = source(root, "api/auth/me.js");
   invariant(/isGloballyActiveUser/.test(meSource) && /AUTH_DATABASE_UNAVAILABLE/.test(meSource), "MT-01C1B2A: /auth/me debe revalidar estado y fallas de base");
 
@@ -45,6 +47,9 @@ export function validateMt01c1b2aGuard(root = process.cwd()) {
     invariant(parserSource.includes(marker), `MT-01C1B2A: falta contrato ${marker}`);
   }
   invariant(/TextDecoder\("utf-8",\s*\{\s*fatal:\s*true\s*\}\)/.test(parserSource), "MT-01C1B2A: UTF-8 debe validarse en modo fatal");
+  invariant(/error\.name === "Error" && error\.message === "Invalid JSON"/.test(parserSource), "AUTH-JSON-02: falta reconocer el error exacto del getter Vercel");
+  invariant(/code:\s*err\.code/.test(parserSource) && /JSON_BODY_ERROR_MESSAGES/.test(parserSource), "AUTH-JSON-02: el parser debe separar código estable y mensaje genérico");
+  invariant(/requireNonEmptyObject\s*=\s*false/.test(parserSource), "AUTH-JSON-02-Q2: el cambio no puede alterar globalmente los objetos vacíos");
 
   return {
     migrations: migrations.length,

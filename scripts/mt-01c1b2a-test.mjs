@@ -224,7 +224,7 @@ try {
   ];
   for (const [name, body, status, code, headers] of jsonCases) {
     const response = await invoke(loginHandler, post(body, headers));
-    check(`${name} devuelve ${status}`, response.statusCode === status && response.body?.error === code, response.body);
+    check(`${name} devuelve ${status}`, response.statusCode === status && response.body?.code === code && typeof response.body?.error === "string", response.body);
     check(`${name} no filtra payload`, !safeBody(response).includes("secreto-no-filtrar") && !safeBody(response).includes("sensitive-value"));
   }
   for (const contentType of ["application/json", "application/json; charset=utf-8", "Application/JSON; Charset=UTF-8", "application/problem+json"]) {
@@ -275,12 +275,12 @@ try {
   const parserGetterRequest = { method: "POST", headers: { "content-type": "application/json" } };
   Object.defineProperty(parserGetterRequest, "body", { get() { throw new SyntaxError("secret-parser-stack"); } });
   const parserGetterResponse = await invoke(loginHandler, parserGetterRequest);
-  check("SyntaxError de parser de plataforma devuelve 400", parserGetterResponse.statusCode === 400 && parserGetterResponse.body?.error === "REQUEST_JSON_INVALID");
+  check("SyntaxError de parser de plataforma devuelve 400", parserGetterResponse.statusCode === 400 && parserGetterResponse.body?.code === "REQUEST_JSON_INVALID");
   check("SyntaxError de plataforma queda sanitizado", !safeBody(parserGetterResponse).includes("secret-parser-stack"));
 
   for (const [name, handler] of [["users", usersHandler], ["clients", clientsHandler], ["projects", projectsHandler]]) {
     const response = await invoke(handler, authorized(token, "POST", "{\"password\":\"never-log\""));
-    check(`${name} convierte SyntaxError en 400`, response.statusCode === 400 && response.body?.error === "REQUEST_JSON_INVALID");
+    check(`${name} convierte SyntaxError en 400`, response.statusCode === 400 && response.body?.code === "REQUEST_JSON_INVALID");
     check(`${name} sanitiza parser`, !safeBody(response).includes("never-log") && !safeBody(response).includes("SyntaxError"));
   }
 

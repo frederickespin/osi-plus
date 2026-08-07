@@ -65,7 +65,7 @@ try {
   const valid = await identityWithSession("valid", { role: "V" });
   const validRequest = bearer(valid.session.accessToken);
   const context = await resolveAuthContext(validRequest, { prisma, now });
-  check("V2 válido resuelve identidad completa", context.authType === "V2" && context.userId === valid.identity.userId && context.tenantId === valid.identity.tenantId && context.membershipId === valid.identity.membershipId && context.sessionId === valid.session.identity.sessionId);
+  check("V2 válido resuelve identidad completa", context.authType === "V2" && context.userId === valid.identity.userId && context.email.endsWith("@example.invalid") && context.tenantId === valid.identity.tenantId && context.tenantCode.startsWith("MT01B-") && context.membershipId === valid.identity.membershipId && context.sessionId === valid.session.identity.sessionId);
   let objectMutationRejected = false;
   let arrayMutationRejected = false;
   try { context.role = "A"; } catch { objectMutationRejected = true; }
@@ -173,7 +173,7 @@ try {
   const meV2Req = bearer(valid.session.accessToken);
   const meV2Res = mockResponse();
   await meHandler(meV2Req, meV2Res);
-  check("/auth/me V2 usa backend empresarial", meV2Res.statusCode === 200 && meV2Res.body?.tenant?.id === valid.identity.tenantId && meV2Res.body?.membership?.id === valid.identity.membershipId && meV2Res.body?.membership?.role === "V" && meV2Res.body?.sessionId === valid.session.identity.sessionId);
+  check("/auth/me V2 usa contrato empresarial canónico", meV2Res.statusCode === 200 && meV2Res.body?.auth?.authVersion === "V2" && meV2Res.body?.auth?.tenantId === valid.identity.tenantId && meV2Res.body?.auth?.membershipId === valid.identity.membershipId && meV2Res.body?.auth?.role === "V" && meV2Res.body?.auth?.sessionId === valid.session.identity.sessionId && !Object.hasOwn(meV2Res.body, "token") && !Object.hasOwn(meV2Res.body.auth, "grantedPermissions") && !Object.hasOwn(meV2Res.body.auth, "deniedPermissions"));
 
   await expectCode("tenant switch permanece desactivado", () => Promise.resolve(resolveMt01bAuthPolicy({ ...process.env, MT01B_TENANT_SWITCH_ENABLED: "true" }, now)), "MT01B_TENANT_SWITCH_DISABLED");
 

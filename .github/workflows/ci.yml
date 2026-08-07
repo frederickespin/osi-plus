@@ -179,11 +179,12 @@ jobs:
       - name: Verify canonical history and safe modes
         run: node scripts/validate-canonical-ci.mjs
 
-      - name: Run MT-01A, DB-01D through DB-01J, MT-01B1, inactive MT-01B2A, and MT-01B3A
+      - name: Run MT-01A, DB-01D through DB-01J, MT-01B1, inactive MT-01B2A, MT-01B3A, and MT-01B3B1
         run: |
           node scripts/run-canonical-db-tests.mjs
           node scripts/mt-01b2a-test.ts
           node scripts/mt-01b3a-test.mjs
+          node scripts/mt-01b3b1-test.mjs
 
       - name: Build
         run: npm run build

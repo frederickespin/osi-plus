@@ -39,8 +39,10 @@ function contextFromRow(row) {
     authType: "V2",
     authVersion: "V2",
     userId: row.user_id,
+    email: String(row.user_email || ""),
     sessionId: row.session_id,
     tenantId: row.tenant_id,
+    tenantCode: String(row.tenant_code || ""),
     membershipId: row.membership_id,
     role: upper(row.membership_role),
     effectivePermissions,
@@ -61,8 +63,10 @@ function legacyContext(payload) {
     authType: "LEGACY",
     authVersion: "LEGACY",
     userId: String(payload.sub),
+    email: String(payload.email || ""),
     sessionId: null,
     tenantId: null,
+    tenantCode: null,
     membershipId: null,
     role,
     effectivePermissions,
@@ -105,7 +109,8 @@ async function resolveV2Context(prisma, payload, now) {
     SELECT s."id" AS "session_id", s."tenant_id", s."membership_id", s."user_id",
            s."status"::text AS "session_status", s."expires_at", s."authorization_version_snapshot",
            tm."role"::text AS "membership_role", tm."authorization_version", tm."granted_permissions", tm."denied_permissions",
-           tm."status"::text AS "membership_status", t."status"::text AS "tenant_status", u."status" AS "user_status"
+           tm."status"::text AS "membership_status", t."status"::text AS "tenant_status", t."code" AS "tenant_code",
+           u."status" AS "user_status", u."email" AS "user_email"
     FROM "osi"."auth_sessions" s
     JOIN "osi"."tenant_memberships" tm
       ON tm."tenant_id" = s."tenant_id" AND tm."id" = s."membership_id" AND tm."user_id" = s."user_id"

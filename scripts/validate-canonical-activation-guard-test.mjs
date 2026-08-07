@@ -112,6 +112,24 @@ try {
     ["TenantSwitcher"],
   );
 
+  const pilotRoute = fixture("api/clients/index.js", 'import { requirePilotPermission } from "../_lib/authContextPilot.js";\n');
+  validateMt01bFoundationIsolation({ root, files: [pilotRoute] });
+  check("ruta B3B1 inventariada puede usar sólo el adaptador piloto", true);
+
+  const directContextRoute = fixture("api/clients/index.js", 'import { resolveAuthContext } from "../_lib/authContext.js";\n');
+  rejection(
+    "ruta B3B1 no puede importar contexto interno directamente",
+    () => validateMt01bFoundationIsolation({ root, files: [directContextRoute] }),
+    ["api/clients/index.js"],
+  );
+
+  const unlistedPilotRoute = fixture("api/health.js", 'import { requirePilotPermission } from "./_lib/authContextPilot.js";\n');
+  rejection(
+    "adaptador piloto fuera del inventario rechazado",
+    () => validateMt01bFoundationIsolation({ root, files: [unlistedPilotRoute] }),
+    ["api/health.js"],
+  );
+
   const inactiveCoordinator = fixture("src/auth-v2/sessionCoordinator.ts", "export class SessionCoordinator {}\n");
   validateMt01b2FrontendIsolation({ root, files: [inactiveCoordinator], env: { VITE_MT01B2_CLIENT_ENABLED: "false" } });
   check("fundación frontend desacoplada aprobada", true);

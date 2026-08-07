@@ -139,8 +139,8 @@ try {
   invariant(provisioningRuntimeGuardRun.report.ok === true, "La guardia runtime MT-01C1B1 falló");
   const provisioningDomainRun = runJson("mt-01c1b2b-test.mjs", "MT-01C1B2B/DOMAIN");
   const provisioningDomainGuardRun = runJson("validate-mt01c1b2b-guard-test.mjs", "MT-01C1B2B/GUARD");
-  invariant(provisioningDomainRun.assertions === 30, `MT-01C1B2B esperaba 30 pruebas y obtuvo ${provisioningDomainRun.assertions}`);
-  invariant(provisioningDomainGuardRun.assertions === 6, `MT-01C1B2B guard esperaba 6 pruebas y obtuvo ${provisioningDomainGuardRun.assertions}`);
+  invariant(provisioningDomainRun.assertions === 75, `MT-01C1B2B esperaba 75 pruebas y obtuvo ${provisioningDomainRun.assertions}`);
+  invariant(provisioningDomainGuardRun.assertions === 9, `MT-01C1B2B guard esperaba 9 pruebas y obtuvo ${provisioningDomainGuardRun.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,

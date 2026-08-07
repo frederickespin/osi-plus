@@ -6,6 +6,14 @@ Estado: implementación interna inactiva. No tiene endpoints, UI, invitaciones n
 
 `ApprovalRequest` es la única autoridad de `PENDING`, `APPROVED`, `REJECTED`, `CANCELLED` y `EXPIRED`. `EmployeeProvisioningRequest.lifecycleStatus` permanece `NULL` durante C1B2B. Aprobar fija el rol y los permisos autorizados, pero no crea identidad, membresía ni perfil laboral.
 
+## Reservas e idempotencia
+
+- `normalizedEmail` y `normalizedEmployeeCode` se reservan por tenant mientras `ApprovalRequest` esté `PENDING` o `APPROVED`.
+- `REJECTED`, `CANCELLED` y `EXPIRED` liberan ambos identificadores para una solicitud nueva con otro `requestId`.
+- Los locks se adquieren antes de releer, bajo `READ COMMITTED`, en orden `requestId → email → employeeCode`.
+- La clave del lock sólo coordina espera; las consultas comparan nuevamente tenant e identificadores completos. Una colisión de hash no mezcla solicitudes.
+- El hash idempotente que cubre correo usa HMAC-SHA-256 y exige `MT01C1B2B_PAYLOAD_HASH_PEPPER` de al menos 32 bytes. El pepper no se persiste ni se audita.
+
 ## Permisos
 
 | Operación | Permiso explícito |
@@ -36,3 +44,5 @@ Las operaciones toman advisory locks transaccionales estables por tenant y coman
 - Revocación de sesiones y activación laboral coordinadas.
 - Detección de ciclos de supervisión.
 - Endpoints, UI y activación de modos V2.
+- Los actores `SYSTEM` están diferenciados y rechazados; su política explícita pertenece a C1B3.
+- Get/list reciben un único AuthContext ya resuelto y hacen dos lecturas: revalidación del actor y consulta tenant-scoped. No existe caché entre solicitudes.

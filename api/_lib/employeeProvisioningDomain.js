@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import {
   APPROVAL_PERMISSIONS,
@@ -47,6 +47,13 @@ function canonicalJson(value) {
 
 function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
 function payloadHash(value) { return sha256(canonicalJson(value)); }
+function sensitivePayloadHash(value, options) {
+  const pepper = String(options?.payloadHashPepper || process.env.MT01C1B2B_PAYLOAD_HASH_PEPPER || "");
+  if (Buffer.byteLength(pepper, "utf8") < 32) {
+    throw new EmployeeProvisioningError("Configuración de hash no disponible.", { code: "EMPLOYEE_PROVISIONING_CONFIGURATION_INVALID", status: 503 });
+  }
+  return createHmac("sha256", pepper).update(canonicalJson(value)).digest("hex");
+}
 function upper(value) { return String(value ?? "").trim().toUpperCase(); }
 
 export function normalizeProvisioningEmail(value) {
@@ -81,6 +88,9 @@ function assertDatabase(db) {
 }
 
 function contextMembershipId(context) {
+  if (String(context?.actorKind || "MEMBERSHIP").toUpperCase() === "SYSTEM") {
+    throw new EmployeeProvisioningError("Actor de sistema no habilitado para provisión.", { code: "EMPLOYEE_PROVISIONING_SYSTEM_ACTOR_UNSUPPORTED", status: 403 });
+  }
   return required(context?.membershipId || context?.actorMembershipId, "context.membershipId");
 }
 
@@ -129,11 +139,13 @@ function safeSnapshot(row) {
 }
 
 async function appendAudit(tx, actor, data, auditWriter = appendCommercialAudit) {
+  const { metadataJson, ...event } = data;
   return auditWriter(tx, auditContext(actor), {
     source: SOURCE,
     critical: true,
-    correlationId: data.requestId,
-    ...data,
+    correlationId: event.requestId,
+    ...event,
+    metadataJson: { actorType: "HUMAN", ...(metadataJson || {}) },
   });
 }
 
@@ -153,8 +165,12 @@ function unwrap(result) {
   return result;
 }
 
-async function advisoryLock(tx, tenantId, key) {
-  await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${key}`}, 0))::text AS "locked"`);
+async function advisoryLock(tx, tenantId, key, options) {
+  const canonical = `${tenantId}:${key}`;
+  const lockKey = typeof options?.advisoryLockKeyMapper === "function"
+    ? required(options.advisoryLockKeyMapper({ tenantId, key, canonical }), "advisoryLockKey", 500)
+    : canonical;
+  await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text AS "locked"`);
 }
 
 function transaction(prisma, operation) {
@@ -191,7 +207,6 @@ function normalizeCreate(input) {
   };
   if (!new Set(["NEW_GLOBAL_USER", "EXISTING_GLOBAL_USER"]).has(command.identityMode)) throw new EmployeeProvisioningError("identityMode inválido.", { code: "EMPLOYEE_PROVISIONING_INPUT_INVALID", status: 400 });
   if (!command.employmentStatus || !command.availabilityStatus) throw new EmployeeProvisioningError("Estados laborales explícitos requeridos.", { code: "EMPLOYEE_PROVISIONING_INPUT_INVALID", status: 400 });
-  command.hash = payloadHash({ ...command, hiredAt: command.hiredAt?.toISOString() || null, contractStartsAt: command.contractStartsAt?.toISOString() || null, contractEndsAt: command.contractEndsAt?.toISOString() || null, terminatedAt: command.terminatedAt?.toISOString() || null, dueAt: command.dueAt?.toISOString() || null });
   return command;
 }
 
@@ -209,9 +224,10 @@ async function findRequest(tx, tenantId, id) {
 
 export async function createEmployeeProvisioningRequest(prisma, context, input, options = {}) {
   const command = normalizeCreate(input);
+  command.hash = sensitivePayloadHash({ ...command, hiredAt: command.hiredAt?.toISOString() || null, contractStartsAt: command.contractStartsAt?.toISOString() || null, contractEndsAt: command.contractEndsAt?.toISOString() || null, terminatedAt: command.terminatedAt?.toISOString() || null, dueAt: command.dueAt?.toISOString() || null }, options);
   const result = await transaction(prisma, async (tx) => {
     const actor = await resolveActor(tx, context, P.REQUEST);
-    await advisoryLock(tx, actor.tenantId, `create:${command.requestId}`);
+    await advisoryLock(tx, actor.tenantId, `create:${command.requestId}`, options);
     if (!actor.allowed) return auditedFailure(tx, actor, input, { action: "EMPLOYEE_PROVISIONING_CREATE_UNAUTHORIZED", code: "EMPLOYEE_PROVISIONING_FORBIDDEN", message: "No tiene permiso para solicitar provisión." }, options.auditWriter);
     const priorRows = await tx.$queryRaw(Prisma.sql`
       SELECT a."id" AS "approval_id", a."status"::text AS "approval_status", a."version" AS "approval_version",
@@ -234,27 +250,30 @@ export async function createEmployeeProvisioningRequest(prisma, context, input, 
         idempotent: true,
       };
     }
-    await advisoryLock(tx, actor.tenantId, `employee-code:${command.normalizedEmployeeCode}`);
-    const duplicateCode = await tx.$queryRaw(Prisma.sql`
+    // Orden fijo email -> código evita ciclos entre reservas concurrentes.
+    await advisoryLock(tx, actor.tenantId, `email:${command.normalizedEmail}`, options);
+    await advisoryLock(tx, actor.tenantId, `employee-code:${command.normalizedEmployeeCode}`, options);
+    const duplicateReservation = await tx.$queryRaw(Prisma.sql`
       SELECT p."id"
       FROM "osi"."employee_provisioning_requests" p
       JOIN "osi"."approval_requests" a ON a."tenant_id"=p."tenant_id" AND a."id"=p."approval_request_id"
-      WHERE p."tenant_id"=${actor.tenantId} AND p."normalized_employee_code"=${command.normalizedEmployeeCode}
+      WHERE p."tenant_id"=${actor.tenantId}
+        AND (p."normalized_email"=${command.normalizedEmail} OR p."normalized_employee_code"=${command.normalizedEmployeeCode})
         AND a."status" IN ('PENDING','APPROVED')
       UNION ALL
       SELECT e."id" FROM "osi"."employee_profiles" e
       WHERE e."tenant_id"=${actor.tenantId} AND e."employee_code"=${command.normalizedEmployeeCode}
       LIMIT 1
     `);
-    if (duplicateCode[0]) {
+    if (duplicateReservation[0]) {
       return auditedFailure(tx, actor, input, {
-        action: "EMPLOYEE_PROVISIONING_EMPLOYEE_CODE_CONFLICT",
-        code: "EMPLOYEE_PROVISIONING_EMPLOYEE_CODE_CONFLICT",
-        message: "El código de empleado ya está reservado en esta empresa.",
+        action: "EMPLOYEE_PROVISIONING_RESERVATION_CONFLICT",
+        code: "EMPLOYEE_PROVISIONING_RESERVATION_CONFLICT",
+        message: "La identidad laboral ya está reservada en esta empresa.",
         status: 409,
       }, options.auditWriter);
     }
-    if (command.requestedRole === "A" && actor.userId === command.targetUserId) return auditedFailure(tx, actor, input, { action: "EMPLOYEE_PROVISIONING_CREATE_UNAUTHORIZED", code: "EMPLOYEE_PROVISIONING_SELF_ADMIN_FORBIDDEN", message: "No puede solicitarse rol administrador a sí mismo." }, options.auditWriter);
+    if (actor.userId === command.targetUserId) return auditedFailure(tx, actor, input, { action: "EMPLOYEE_PROVISIONING_CREATE_UNAUTHORIZED", code: "EMPLOYEE_PROVISIONING_SELF_ASSIGNMENT_FORBIDDEN", message: "No puede solicitar una provisión para sí mismo." }, options.auditWriter);
     let supervisor = null;
     if (command.supervisorMembershipId) {
       const rows = await tx.$queryRaw(Prisma.sql`SELECT "id", "user_id" FROM "osi"."tenant_memberships" WHERE "tenant_id"=${actor.tenantId} AND "id"=${command.supervisorMembershipId} AND "status"='ACTIVE' LIMIT 1`);
@@ -298,7 +317,7 @@ export async function createEmployeeProvisioningRequest(prisma, context, input, 
     `);
     await appendAudit(tx, actor, {
       action: "EMPLOYEE_PROVISIONING_REQUEST_CREATED", entity: ENTITY, entityId: id, requestId: command.requestId,
-      afterJson: safeSnapshot(rows[0]), metadataJson: { emailFingerprint: sha256(command.normalizedEmail), employeeCode: command.normalizedEmployeeCode },
+      afterJson: safeSnapshot(rows[0]), metadataJson: { reservationPolicy: "PENDING_OR_APPROVED" },
     }, options.auditWriter);
     return { request: safeSnapshot(rows[0]), approval: approvalResult.approval, idempotent: false };
   });
@@ -314,7 +333,7 @@ export async function proposeEmployeeAdminRole(prisma, context, input, options =
   const hash = payloadHash({ provisioningRequestId, proposedRole: "A", grantedPermissions, deniedPermissions });
   const result = await transaction(prisma, async (tx) => {
     const actor = await resolveActor(tx, context, P.ROLE_A_PROPOSE);
-    await advisoryLock(tx, actor.tenantId, `proposal:${requestId}`);
+    await advisoryLock(tx, actor.tenantId, `proposal:${requestId}`, options);
     const row = await findRequest(tx, actor.tenantId, provisioningRequestId);
     if (!row) throw new EmployeeProvisioningError("Solicitud no encontrada.", { code: "EMPLOYEE_PROVISIONING_NOT_FOUND", status: 404 });
     if (!actor.allowed || actor.role !== "A" || row.requested_role !== "A" || row.approval_status !== "PENDING" || row.requester_membership_id === actor.membershipId) {
@@ -356,7 +375,7 @@ export async function decideEmployeeProvisioningRequest(prisma, context, input, 
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new EmployeeProvisioningError("expectedVersion inválida.", { code: "EMPLOYEE_PROVISIONING_INPUT_INVALID", status: 400 });
   const result = await transaction(prisma, async (tx) => {
     const actor = await resolveActor(tx, context, P.APPROVE);
-    await advisoryLock(tx, actor.tenantId, `decision:${id}`);
+    await advisoryLock(tx, actor.tenantId, `decision:${id}`, options);
     let row = await findRequest(tx, actor.tenantId, id);
     if (!row) throw new EmployeeProvisioningError("Solicitud no encontrada.", { code: "EMPLOYEE_PROVISIONING_NOT_FOUND", status: 404 });
     const requestedProposalId = row.requested_role === "A" && decision === "APPROVED"
@@ -370,6 +389,9 @@ export async function decideEmployeeProvisioningRequest(prisma, context, input, 
       if (row.approval_status === decision && row.decision_request_id === requestId && row.decision_payload_hash === expectedDecisionHash) {
         return { request: safeSnapshot(row), approval: { id: row.approval_request_id, status: decision, version: row.approval_version }, idempotent: true };
       }
+      return decideApprovalRequestInTransaction(tx, internalApprovalContext(actor, APPROVAL_PERMISSIONS.DECIDE), {
+        id: row.approval_request_id, decision, reason: approvalDecisionReason, requestId, expectedVersion,
+      });
     }
     if (!actor.allowed || row.requester_membership_id === actor.membershipId) return auditedFailure(tx, actor, input, { action: "EMPLOYEE_PROVISIONING_DECISION_UNAUTHORIZED", code: "EMPLOYEE_PROVISIONING_FORBIDDEN", message: "No puede decidir esta solicitud." }, options.auditWriter);
     const targetUserId = row.evaluation_snapshot_json?.targetUserId;
@@ -412,7 +434,7 @@ export async function cancelEmployeeProvisioningRequest(prisma, context, input, 
   const id = required(input?.id, "id");
   const result = await transaction(prisma, async (tx) => {
     const actor = await resolveActor(tx, context, P.CANCEL);
-    await advisoryLock(tx, actor.tenantId, `decision:${id}`);
+    await advisoryLock(tx, actor.tenantId, `decision:${id}`, options);
     const row = await findRequest(tx, actor.tenantId, id);
     if (!row) throw new EmployeeProvisioningError("Solicitud no encontrada.", { code: "EMPLOYEE_PROVISIONING_NOT_FOUND", status: 404 });
     const cancellationHash = payloadHash({
@@ -467,6 +489,9 @@ function decodeCursor(value) {
 export async function listEmployeeProvisioningRequests(db, context, filters = {}) {
   const actor = await resolveActor(db, context, P.VIEW);
   if (!actor.allowed) throw new EmployeeProvisioningError("No tiene permiso para consultar.", { code: "EMPLOYEE_PROVISIONING_FORBIDDEN", status: 403 });
+  const allowedFilters = new Set(["limit", "cursor", "status", "requestedRole", "employeeCode"]);
+  const unknownFilter = Object.keys(filters).find((key) => !allowedFilters.has(key));
+  if (unknownFilter) throw new EmployeeProvisioningError("Filtro no permitido.", { code: "EMPLOYEE_PROVISIONING_FILTER_INVALID", status: 400 });
   const limit = Math.min(Math.max(Number.isFinite(Number(filters.limit)) ? Math.trunc(Number(filters.limit)) : 50, 1), MAX_PAGE_SIZE);
   const cursor = decodeCursor(filters.cursor);
   const conditions = [Prisma.sql`p."tenant_id"=${actor.tenantId}`];

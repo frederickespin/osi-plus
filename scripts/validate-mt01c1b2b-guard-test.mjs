@@ -8,7 +8,7 @@ const results = [];
 function check(name, condition) { if (!condition) throw new Error(`MT01C1B2B_GUARD_FAILED: ${name}`); results.push({ name, passed: true }); }
 function write(path, contents) { const full = join(root, path); mkdirSync(full.slice(0, Math.max(full.lastIndexOf("/"), full.lastIndexOf("\\"))), { recursive: true }); writeFileSync(full, contents); }
 function base() {
-  write("api/_lib/employeeProvisioningDomain.js", "export const safe = true;\n");
+  write("api/_lib/employeeProvisioningDomain.js", 'const MT01C1B2B_PAYLOAD_HASH_PEPPER = true; createHmac("sha256", "synthetic"); export const safe = true;\n');
   write("api/_lib/employeeProvisioningPolicy.js", "const NEVER_DELEGABLE = new Set([EMPLOYEE_PROVISIONING_PERMISSIONS.ROLE_A_ASSIGN]);\n");
   write("api/_lib/rbac.js", "export const base = true;\n");
 }
@@ -19,7 +19,9 @@ function expectFailure(name, files, env, pattern) {
 
 try {
   base();
-  const safeFiles = ["api/_lib/employeeProvisioningDomain.js", "api/_lib/employeeProvisioningPolicy.js", "api/_lib/rbac.js"];
+  const migrations = Array.from({ length: 14 }, (_, index) => `prisma/migrations/${String(index).padStart(2, "0")}/migration.sql`);
+  for (const migration of migrations) write(migration, "-- synthetic\n");
+  const safeFiles = ["api/_lib/employeeProvisioningDomain.js", "api/_lib/employeeProvisioningPolicy.js", "api/_lib/rbac.js", ...migrations];
   check("estado inactivo permitido", validateMt01c1b2bGuard({ root, files: safeFiles, env: {} }).ok);
   write("api/users/index.js", 'import "../_lib/employeeProvisioningDomain.js";\n');
   expectFailure("endpoint consumidor rechazado", [...safeFiles, "api/users/index.js"], {}, /consumidores runtime/);
@@ -28,5 +30,13 @@ try {
   expectFailure("cliente V2 rechazado", safeFiles, { VITE_MT01B2_CLIENT_ENABLED: "true" }, /cliente V2/);
   write("api/_lib/rbac.js", 'export const leaked = "employee:role:a:assign";\n');
   expectFailure("assign automático rechazado", safeFiles, {}, /RBAC base/);
+  base();
+  write("api/_lib/employeeProvisioningPolicy.js", "const NEVER_DELEGABLE = new Set([EMPLOYEE_PROVISIONING_PERMISSIONS.ROLE_A_ASSIGN]); const expanded = Object.values(PERMS);\n");
+  expectFailure("catálogo delegable dinámico rechazado", safeFiles, {}, /catálogo delegable/);
+  base();
+  write("api/_lib/employeeProvisioningDomain.js", 'const MT01C1B2B_PAYLOAD_HASH_PEPPER = true; createHmac("sha256", "synthetic"); async function unsafe(tx){ return tx.user.create({data:{}}); }\n');
+  expectFailure("creación de identidad rechazada", safeFiles, {}, /no puede crear User/);
+  base();
+  expectFailure("migración número 15 rechazada", [...safeFiles, "prisma/migrations/15/migration.sql"], {}, /exactamente 14 migraciones/);
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } finally { rmSync(root, { recursive: true, force: true }); }

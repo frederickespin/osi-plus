@@ -1,6 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { performance } from "node:perf_hooks";
 import {
+  formatMt01c1b2bSanitizedIdentity,
+  validateMt01c1b2bTestDatabaseEnv,
+  verifyMt01c1b2bConnectedDatabase,
+} from "./mt-01c1b2b-database-guard.mjs";
+
+const databaseTarget = validateMt01c1b2bTestDatabaseEnv();
+process.env.MT01C1B2B_PAYLOAD_HASH_PEPPER ||= "synthetic-c1b2b-local-only-pepper-48-bytes-minimum-value";
+const { Prisma, PrismaClient } = await import("@prisma/client");
+const prisma = new PrismaClient({ datasourceUrl: databaseTarget.url, log: [{ emit: "event", level: "query" }] });
+const connectedIdentity = await verifyMt01c1b2bConnectedDatabase(prisma, databaseTarget);
+process.stderr.write(`[mt-01c1b2b] database ${formatMt01c1b2bSanitizedIdentity(connectedIdentity)}\n`);
+const {
   EmployeeProvisioningError,
   cancelEmployeeProvisioningRequest,
   createEmployeeProvisioningRequest,
@@ -8,13 +20,11 @@ import {
   getEmployeeProvisioningRequest,
   listEmployeeProvisioningRequests,
   proposeEmployeeAdminRole,
-} from "../api/_lib/employeeProvisioningDomain.js";
-import { EMPLOYEE_PROVISIONING_PERMISSIONS as P } from "../api/_lib/employeeProvisioningPolicy.js";
+} = await import("../api/_lib/employeeProvisioningDomain.js");
+const { EMPLOYEE_PROVISIONING_PERMISSIONS: P } = await import("../api/_lib/employeeProvisioningPolicy.js");
 
-const prisma = new PrismaClient({ log: [{ emit: "event", level: "query" }] });
 let observedQueryCount = 0;
 prisma.$on("query", () => { observedQueryCount += 1; });
-process.env.MT01C1B2B_PAYLOAD_HASH_PEPPER ||= "synthetic-c1b2b-local-only-pepper-48-bytes-minimum-value";
 const run = randomUUID().slice(0, 8);
 const results = [];
 const id = (name) => `c1b2b-${name}-${run}`;

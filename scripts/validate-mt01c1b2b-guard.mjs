@@ -23,6 +23,9 @@ export function validateMt01c1b2bGuard({ root = process.cwd(), files = trackedFi
   const policy = readFileSync(resolve(root, "api/_lib/employeeProvisioningPolicy.js"), "utf8");
   const domain = readFileSync(resolve(root, "api/_lib/employeeProvisioningDomain.js"), "utf8");
   const rbac = readFileSync(resolve(root, "api/_lib/rbac.js"), "utf8");
+  const databaseGuard = readFileSync(resolve(root, "scripts/mt-01c1b2b-database-guard.mjs"), "utf8");
+  const domainSuite = readFileSync(resolve(root, "scripts/mt-01c1b2b-test.mjs"), "utf8");
+  const canonicalRunner = readFileSync(resolve(root, "scripts/run-canonical-db-tests.mjs"), "utf8");
   invariant(!rbac.includes("employee:role:a:assign"), "ROLE_A_ASSIGN no puede agregarse al RBAC base");
   invariant(/NEVER_DELEGABLE[\s\S]*EMPLOYEE_PROVISIONING_PERMISSIONS\.ROLE_A_ASSIGN/.test(policy), "ROLE_A_ASSIGN debe permanecer fuera de la delegación automática");
   invariant(!/Object\.values\s*\(\s*PERMS\s*\)|permsForRole\s*\(/.test(policy), "el catálogo delegable debe ser explícito y cerrado");
@@ -31,6 +34,11 @@ export function validateMt01c1b2bGuard({ root = process.cwd(), files = trackedFi
   invariant(!/(?:\b(?:user|tenantMembership|employeeProfile)\.(?:create|createMany|upsert)|INSERT INTO\s+"osi"\."(?:osi_users|tenant_memberships|employee_profiles)")/i.test(domain), "C1B2B no puede crear User, TenantMembership o EmployeeProfile");
   invariant(!/(?:tokenHmac|token_hmac|refreshToken|passwordHash)/i.test(domain), "C1B2B no puede manejar tokens, invitaciones o contraseñas");
   invariant(/MT01C1B2B_PAYLOAD_HASH_PEPPER/.test(domain) && /createHmac\s*\(\s*"sha256"/.test(domain), "payloadHash sensible debe usar HMAC con pepper externo");
+  invariant(/MT01C1B2B_TEST_DATABASE_URL/.test(databaseGuard) && !/process\.env\.(?:DATABASE_URL|DIRECT_URL)/.test(databaseGuard), "la guardia de base no puede usar DATABASE_URL o DIRECT_URL");
+  const validationIndex = domainSuite.indexOf("validateMt01c1b2bTestDatabaseEnv()");
+  const prismaImportIndex = domainSuite.indexOf('await import("@prisma/client")');
+  invariant(validationIndex >= 0 && prismaImportIndex > validationIndex && !/process\.env\.(?:DATABASE_URL|DIRECT_URL)/.test(domainSuite), "la suite debe validar la URL exclusiva antes de importar Prisma");
+  invariant(/assertCanonicalCiTarget\(\)[\s\S]*process\.env\.MT01C1B2B_TEST_DATABASE_URL\s*=\s*process\.env\.DATABASE_URL/.test(canonicalRunner), "el runner canónico debe transferir explícitamente su URL ya validada");
   const migrations = normalized.filter((file) => /^prisma\/migrations\/[^/]+\/migration\.sql$/.test(file));
   invariant(migrations.length === 14, `la cadena canónica debe conservar exactamente 14 migraciones; encontradas=${migrations.length}`);
   invariant(String(env.MT01B_AUTH_MODE || "LEGACY").toUpperCase() !== "HYBRID", "HYBRID permanece bloqueado");

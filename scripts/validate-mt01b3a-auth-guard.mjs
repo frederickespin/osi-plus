@@ -24,6 +24,12 @@ const LEGACY_HEADER_ROUTES = new Set([
 const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js"]);
 const LEGACY_JWT_ROUTES = new Set(["api/users/index.js", "api/clients/index.js", "api/projects/index.js"]);
 const ROUTE_HELPERS = new Set(["api/k/_lib.js", "api/osis/_helpers.js", "api/templates/_pst.js"]);
+export const B3B1_ACTIVATION_BLOCKERS = Object.freeze([
+  "Client no posee tenantId",
+  "Project no posee tenantId",
+  "La creación de User no crea EmployeeProfile/TenantMembership formal",
+  "No puede garantizarse 404 empresarial para esos recursos",
+]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -69,9 +75,10 @@ export function validateMt01b3aSources({ routeSources, envExample, authContextSo
   invariant(/MT01B_AUTH_MODE=["']?LEGACY["']?/i.test(envExample), "MT-01B3A: LEGACY debe continuar como valor predeterminado");
   invariant(/MT01B_TENANT_SWITCH_ENABLED=["']?false["']?/i.test(envExample), "MT-01B3A: tenant switch debe continuar desactivado");
   invariant(/VITE_MT01B2_CLIENT_ENABLED=["']?false["']?/i.test(envExample), "MT-01B3A: cliente V2 debe continuar desactivado");
+  invariant(B3B1_ACTIVATION_BLOCKERS.length === 4, "MT-01B3B1: los bloqueos de activación no pueden retirarse antes de MT-01C");
   invariant(/export async function resolveAuthContext\(request,/.test(authContextSource), "MT-01B3A: firma canónica resolveAuthContext(request, options) ausente");
   invariant(/Object\.freeze/.test(authContextSource), "MT-01B3A: AuthContext debe ser inmutable");
-  return { routes: routeSources.size, legacyHeaderExceptions: LEGACY_HEADER_ROUTES.size, v2Prepared: V2_PREPARED_ROUTES.size };
+  return { routes: routeSources.size, legacyHeaderExceptions: LEGACY_HEADER_ROUTES.size, v2Prepared: V2_PREPARED_ROUTES.size, activationBlockers: B3B1_ACTIVATION_BLOCKERS.length };
 }
 
 export function validateMt01b3aRepository(root = process.cwd()) {

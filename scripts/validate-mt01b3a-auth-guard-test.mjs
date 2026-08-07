@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { validateMt01b3aRepository, validateMt01b3aSources } from "./validate-mt01b3a-auth-guard.mjs";
+import { B3B1_ACTIVATION_BLOCKERS, validateMt01b3aRepository, validateMt01b3aSources } from "./validate-mt01b3a-auth-guard.mjs";
 
 const root = process.cwd();
 const current = validateMt01b3aRepository(root);
@@ -36,6 +36,9 @@ function check(name, operation, expectedFailure = false) {
 }
 
 check("repositorio actual aprobado", () => validateMt01b3aRepository(root));
+check("bloqueos MT-01C explícitos y congelados", () => {
+  if (current.activationBlockers !== 4 || B3B1_ACTIVATION_BLOCKERS.length !== 4) throw new Error("MT-01B3A: bloqueos empresariales incompletos");
+});
 check("ruta nueva sin inventario rechazada", () => validateMt01b3aSources({ routeSources: new Map([...routeSources, ["api/new-route.js", "export default () => null"]]), envExample, authContextSource }), true);
 check("header manipulable nuevo rechazado", () => validateMt01b3aSources({ routeSources: new Map([...routeSources].map(([key, value]) => [key, key === "api/health.js" ? `${value}\nconst role = req.headers['x-osi-role'];` : value])), envExample, authContextSource }), true);
 check("excepción heredada no puede cambiar sin inventario", () => validateMt01b3aSources({ routeSources: new Map([...routeSources].map(([key, value]) => [key, key === "api/k/signal.js" ? value.replaceAll("requireRoleFromHeaders", "legacyRoleRemoved") : value])), envExample, authContextSource }), true);

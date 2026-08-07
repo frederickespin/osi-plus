@@ -43,3 +43,7 @@ La consulta que resuelve el contexto trae email y código del tenant junto con s
 - MT-01C: agregar pertenencia empresarial a `Client`, `Project` y demás entidades antes de aplicar filtros o `requireTenantResource`.
 - La creación de usuarios continúa siendo global; asociar la nueva identidad a una membresía corresponde al flujo empresarial posterior.
 - HYBRID, tenant switch, broker y eliminación del JWT de `localStorage` permanecen fuera de este lote.
+
+Mientras cualquiera de estos bloqueos exista, CI exige `MT01B_AUTH_MODE=LEGACY`,
+`MT01B_TENANT_SWITCH_ENABLED=false` y `VITE_MT01B2_CLIENT_ENABLED=false`.
+El piloto prepara y prueba el contrato V2, pero no autoriza activarlo.

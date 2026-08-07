@@ -36,4 +36,3 @@ export function validateMt01c1b2bGuard({ root = process.cwd(), files = trackedFi
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   process.stdout.write(`${JSON.stringify(validateMt01c1b2bGuard())}\n`);
 }
-

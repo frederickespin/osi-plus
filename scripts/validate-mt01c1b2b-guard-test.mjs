@@ -30,4 +30,3 @@ try {
   expectFailure("assign automático rechazado", safeFiles, {}, /RBAC base/);
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } finally { rmSync(root, { recursive: true, force: true }); }
-

@@ -137,6 +137,10 @@ try {
   invariant(provisioningRun.assertions === 63, `MT-01C1B1 esperaba 63 pruebas y obtuvo ${provisioningRun.assertions}`);
   invariant(provisioningGuardRun.assertions === 5, `MT-01C1B1 guard esperaba 5 pruebas y obtuvo ${provisioningGuardRun.assertions}`);
   invariant(provisioningRuntimeGuardRun.report.ok === true, "La guardia runtime MT-01C1B1 falló");
+  const provisioningDomainRun = runJson("mt-01c1b2b-test.mjs", "MT-01C1B2B/DOMAIN");
+  const provisioningDomainGuardRun = runJson("validate-mt01c1b2b-guard-test.mjs", "MT-01C1B2B/GUARD");
+  invariant(provisioningDomainRun.assertions === 29, `MT-01C1B2B esperaba 29 pruebas y obtuvo ${provisioningDomainRun.assertions}`);
+  invariant(provisioningDomainGuardRun.assertions === 6, `MT-01C1B2B guard esperaba 6 pruebas y obtuvo ${provisioningDomainGuardRun.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
@@ -161,6 +165,11 @@ try {
       runtimeGuard: provisioningRuntimeGuardRun.report.ok,
       total: 68,
     },
+    mt01c1b2b: {
+      domain: provisioningDomainRun.assertions,
+      guard: provisioningDomainGuardRun.assertions,
+      total: provisioningDomainRun.assertions + provisioningDomainGuardRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -177,6 +186,8 @@ try {
       "MT-01C1B1/PERSISTENCE": { status: "PASS", assertions: provisioningRun.assertions, durationMs: provisioningRun.durationMs, exitCode: 0 },
       "MT-01C1B1/CANONICAL_GUARD": { status: "PASS", assertions: provisioningGuardRun.assertions, durationMs: provisioningGuardRun.durationMs, exitCode: 0 },
       "MT-01C1B1/RUNTIME_GUARD": { status: "PASS", assertions: 0, durationMs: provisioningRuntimeGuardRun.durationMs, exitCode: 0 },
+      "MT-01C1B2B/DOMAIN": { status: "PASS", assertions: provisioningDomainRun.assertions, durationMs: provisioningDomainRun.durationMs, exitCode: 0 },
+      "MT-01C1B2B/GUARD": { status: "PASS", assertions: provisioningDomainGuardRun.assertions, durationMs: provisioningDomainGuardRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

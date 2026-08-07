@@ -84,6 +84,7 @@ jobs:
           node scripts/validate-mt01c1a-guard.mjs
           node scripts/validate-mt01c1b1-guard.mjs
           node scripts/validate-mt01c1b2a-guard.mjs
+          node scripts/validate-mt01c1b2b-guard.mjs
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
@@ -195,6 +196,7 @@ jobs:
           node scripts/mt-01b3b1-test.mjs
           node scripts/mt-01c1b2a-test.mjs
           node scripts/auth-json-02-test.mjs
+          node scripts/validate-mt01c1b2b-guard.mjs
 
       - name: Build
         run: npm run build
@@ -204,4 +206,5 @@ jobs:
           node scripts/validate-canonical-ci.mjs --preflight
           node scripts/validate-mt01c1b1-guard.mjs
           node scripts/validate-mt01c1b2a-guard.mjs
+          node scripts/validate-mt01c1b2b-guard.mjs
           git diff --exit-code

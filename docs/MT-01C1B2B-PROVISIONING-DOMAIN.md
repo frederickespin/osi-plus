@@ -36,4 +36,3 @@ Las operaciones toman advisory locks transaccionales estables por tenant y coman
 - Revocación de sesiones y activación laboral coordinadas.
 - Detección de ciclos de supervisión.
 - Endpoints, UI y activación de modos V2.
-

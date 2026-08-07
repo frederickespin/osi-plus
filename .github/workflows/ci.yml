@@ -83,6 +83,7 @@ jobs:
           node scripts/validate-canonical-activation-guard-test.mjs
           node scripts/validate-mt01c1a-guard.mjs
           node scripts/validate-mt01c1b1-guard.mjs
+          node scripts/validate-mt01c1b2a-guard.mjs
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
@@ -148,6 +149,7 @@ jobs:
           node scripts/validate-mt01c1a-guard.mjs
           node scripts/validate-mt01c1b1-canonical-guard-test.mjs
           node scripts/validate-mt01c1b1-guard.mjs
+          node scripts/validate-mt01c1b2a-guard.mjs
 
       - name: Validate and generate Prisma
         run: |
@@ -191,6 +193,7 @@ jobs:
           node scripts/mt-01b2a-test.ts
           node scripts/mt-01b3a-test.mjs
           node scripts/mt-01b3b1-test.mjs
+          node scripts/mt-01c1b2a-test.mjs
 
       - name: Build
         run: npm run build
@@ -199,4 +202,5 @@ jobs:
         run: |
           node scripts/validate-canonical-ci.mjs --preflight
           node scripts/validate-mt01c1b1-guard.mjs
+          node scripts/validate-mt01c1b2a-guard.mjs
           git diff --exit-code

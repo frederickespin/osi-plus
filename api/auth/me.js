@@ -3,6 +3,7 @@ import { getBearerToken, verifyAccessToken } from "../_lib/auth.js";
 import { MT01B_AUTH_MODES, resolveMt01bAuthPolicy } from "../_lib/authPolicy.js";
 import { methodNotAllowed, unauthorized, withCommonHeaders } from "../_lib/http.js";
 import { requireAuthContext } from "../_lib/authContextMiddleware.js";
+import { isGloballyActiveUser } from "../_lib/userStatus.js";
 
 function legacyUserDto(user) {
   return {
@@ -20,6 +21,18 @@ function legacyUserDto(user) {
   };
 }
 
+async function findCurrentUser(userId) {
+  try {
+    return { user: await prisma.user.findUnique({ where: { id: userId } }), unavailable: false };
+  } catch {
+    return { user: null, unavailable: true };
+  }
+}
+
+function databaseUnavailable(res) {
+  return res.status(503).json({ ok: false, error: "AUTH_DATABASE_UNAVAILABLE" });
+}
+
 export default withCommonHeaders(async (req, res) => {
   if (req.method !== "GET") {
     return methodNotAllowed(res, ["GET"]);
@@ -35,8 +48,10 @@ export default withCommonHeaders(async (req, res) => {
     } catch {
       return unauthorized(res);
     }
-    const legacyUser = await prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!legacyUser) return unauthorized(res);
+    const lookup = await findCurrentUser(payload.sub);
+    if (lookup.unavailable) return databaseUnavailable(res);
+    const legacyUser = lookup.user;
+    if (!legacyUser || !isGloballyActiveUser(legacyUser.status)) return unauthorized(res);
     return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser) });
   }
 
@@ -44,8 +59,10 @@ export default withCommonHeaders(async (req, res) => {
   if (!context) return;
 
   if (context.authType === "LEGACY") {
-    const user = await prisma.user.findUnique({ where: { id: context.userId } });
-    if (!user) return unauthorized(res);
+    const lookup = await findCurrentUser(context.userId);
+    if (lookup.unavailable) return databaseUnavailable(res);
+    const user = lookup.user;
+    if (!user || !isGloballyActiveUser(user.status)) return unauthorized(res);
     const legacyUser = legacyUserDto(user);
     return res.status(200).json({ ok: true, user: legacyUser });
   }

@@ -3,13 +3,33 @@
  * Usado por endpoints que requieren autenticación.
  */
 import { getBearerToken, verifyAccessToken } from "./auth.js";
+import { prisma as defaultPrisma } from "./db.js";
 import { unauthorized } from "./http.js";
+import { isGloballyActiveUser } from "./userStatus.js";
+
+const LEGACY_AUTH_CACHE = Symbol("osi.legacyAuthContext");
+const AUTH_DATABASE_UNAVAILABLE = Symbol("osi.authDatabaseUnavailable");
+
+function databaseUnavailable(res) {
+  return res.status(503).json({ ok: false, error: "AUTH_DATABASE_UNAVAILABLE" });
+}
 
 /**
  * Extrae y verifica el token JWT. Si es válido, adjunta req.user.
  * Retorna null si no hay token o es inválido; en ese caso ya envió 401.
  */
-export function requireAuth(req, res) {
+export async function requireAuth(req, res, { prisma = defaultPrisma } = {}) {
+  if (req[LEGACY_AUTH_CACHE]) {
+    const cached = await req[LEGACY_AUTH_CACHE];
+    if (cached === AUTH_DATABASE_UNAVAILABLE) {
+      databaseUnavailable(res);
+      return null;
+    }
+    if (!cached) unauthorized(res);
+    else req.user = cached;
+    return cached;
+  }
+
   const token = getBearerToken(req);
   if (!token) {
     unauthorized(res);
@@ -24,10 +44,32 @@ export function requireAuth(req, res) {
     return null;
   }
 
-  req.user = {
-    id: payload.sub,
-    email: payload.email || "",
-    role: String(payload.role || "").toUpperCase().trim(),
-  };
-  return req.user;
+  req[LEGACY_AUTH_CACHE] = (async () => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { status: true },
+      });
+      if (!user || !isGloballyActiveUser(user.status)) return null;
+      return Object.freeze({
+        id: payload.sub,
+        email: payload.email || "",
+        role: String(payload.role || "").toUpperCase().trim(),
+      });
+    } catch {
+      return AUTH_DATABASE_UNAVAILABLE;
+    }
+  })();
+
+  const current = await req[LEGACY_AUTH_CACHE];
+  if (current === AUTH_DATABASE_UNAVAILABLE) {
+    databaseUnavailable(res);
+    return null;
+  }
+  if (!current) {
+    unauthorized(res);
+    return null;
+  }
+  req.user = current;
+  return current;
 }

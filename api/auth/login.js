@@ -1,13 +1,33 @@
 import { prisma } from "../_lib/db.js";
 import { comparePassword, signAccessToken } from "../_lib/auth.js";
-import { methodNotAllowed, readJsonBody, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, readJsonObject, withCommonHeaders } from "../_lib/http.js";
+import { isGloballyActiveUser } from "../_lib/userStatus.js";
+
+// Hash fijo y no sensible: obliga una comparación bcrypt aunque la identidad
+// no exista, evitando la bifurcación evidente de retorno antes de bcrypt.
+const UNKNOWN_IDENTITY_PASSWORD_HASH = "$2b$10$KeUIafxBZD3Q2njsJa29s.bgqdTB8KTUI3fQ8PSxS/ajnC2Qm9S9S";
+
+export async function authenticateLegacyCredentials({ email, password, prismaClient = prisma, compare = comparePassword }) {
+  let user;
+  try {
+    user = await prismaClient.user.findUnique({ where: { email } });
+  } catch {
+    return { outcome: "DATABASE_UNAVAILABLE", user: null };
+  }
+
+  const isValid = await compare(password, user?.passwordHash || UNKNOWN_IDENTITY_PASSWORD_HASH);
+  if (!user || !isValid || !isGloballyActiveUser(user.status)) {
+    return { outcome: "INVALID", user: null };
+  }
+  return { outcome: "AUTHENTICATED", user };
+}
 
 export default withCommonHeaders(async (req, res) => {
   if (req.method !== "POST") {
     return methodNotAllowed(res, ["POST"]);
   }
 
-  const body = await readJsonBody(req);
+  const body = await readJsonObject(req, { maxBytes: 16 * 1024 });
   const email = String(body.email || "").toLowerCase().trim();
   const password = String(body.password || "");
 
@@ -18,18 +38,14 @@ export default withCommonHeaders(async (req, res) => {
     });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
-
-  if (!user) {
+  const authentication = await authenticateLegacyCredentials({ email, password });
+  if (authentication.outcome === "DATABASE_UNAVAILABLE") {
+    return res.status(503).json({ ok: false, error: "AUTH_DATABASE_UNAVAILABLE" });
+  }
+  if (authentication.outcome !== "AUTHENTICATED") {
     return res.status(401).json({ ok: false, error: "Credenciales inválidas" });
   }
-
-  const isValid = await comparePassword(password, user.passwordHash);
-  if (!isValid) {
-    return res.status(401).json({ ok: false, error: "Credenciales inválidas" });
-  }
+  const user = authentication.user;
 
   const token = signAccessToken({
     sub: user.id,

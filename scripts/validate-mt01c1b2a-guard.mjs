@@ -45,6 +45,8 @@ export function validateMt01c1b2aGuard(root = process.cwd()) {
     invariant(parserSource.includes(marker), `MT-01C1B2A: falta contrato ${marker}`);
   }
   invariant(/TextDecoder\("utf-8",\s*\{\s*fatal:\s*true\s*\}\)/.test(parserSource), "MT-01C1B2A: UTF-8 debe validarse en modo fatal");
+  invariant(/error\.name === "Error" && error\.message === "Invalid JSON"/.test(parserSource), "AUTH-JSON-02: falta reconocer el error exacto del getter Vercel");
+  invariant(/code:\s*err\.code/.test(parserSource) && /JSON_BODY_ERROR_MESSAGES/.test(parserSource), "AUTH-JSON-02: el parser debe separar código estable y mensaje genérico");
 
   return {
     migrations: migrations.length,

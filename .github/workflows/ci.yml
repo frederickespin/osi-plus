@@ -84,6 +84,7 @@ jobs:
           node scripts/validate-mt01c1a-guard.mjs
           node scripts/validate-mt01c1b1-guard.mjs
           node scripts/validate-mt01c1b2a-guard.mjs
+          node scripts/validate-mt01c1b2b-guard.mjs
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
@@ -97,20 +98,6 @@ jobs:
   canonical-database-validation:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: osi_db01n_ci
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: osi-ci-only-password
-        ports:
-          - 55432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d osi_db01n_ci"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
     env:
       CANONICAL_DB_VALIDATION: "true"
       VERCEL_ENV: development
@@ -123,6 +110,7 @@ jobs:
       DB01H_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       DB01I_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       DB01J_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      MT01C1B2B_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
       VITE_MT01B2_CLIENT_ENABLED: "false"
@@ -135,6 +123,26 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      - name: Start PostgreSQL 18 on host loopback
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name osi-postgres-18 --network host \
+            -e POSTGRES_DB=osi_db01n_ci \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=osi-ci-only-password \
+            postgres:18 \
+            -c listen_addresses=127.0.0.1 \
+            -c port=55432
+          for attempt in {1..30}; do
+            if docker exec osi-postgres-18 pg_isready -h 127.0.0.1 -p 55432 -U postgres -d osi_db01n_ci >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs --tail 40 osi-postgres-18
+          exit 1
 
       - name: Install
         run: npm ci
@@ -195,6 +203,7 @@ jobs:
           node scripts/mt-01b3b1-test.mjs
           node scripts/mt-01c1b2a-test.mjs
           node scripts/auth-json-02-test.mjs
+          node scripts/validate-mt01c1b2b-guard.mjs
 
       - name: Build
         run: npm run build
@@ -204,4 +213,5 @@ jobs:
           node scripts/validate-canonical-ci.mjs --preflight
           node scripts/validate-mt01c1b1-guard.mjs
           node scripts/validate-mt01c1b2a-guard.mjs
+          node scripts/validate-mt01c1b2b-guard.mjs
           git diff --exit-code

@@ -135,6 +135,7 @@ function validateTrackedSecrets(root = process.cwd()) {
 
 export function validateMt01bFoundationIsolation({ root = process.cwd(), files = trackedFiles() } = {}) {
   files = files.map((file) => file.replaceAll("\\", "/"));
+  const contextPilotRoutes = new Set(["api/clients/index.js", "api/projects/index.js", "api/users/index.js"]);
   const forbiddenPaths = files.filter((file) => /(?:select-tenant|switch-tenant|auth\/memberships|tenant(?:selection|switcher))/i.test(file));
   invariant(forbiddenPaths.length === 0, `MT-01B1 no permite selección o cambio de empresa: ${forbiddenPaths.join(", ")}`);
 
@@ -144,11 +145,16 @@ export function validateMt01bFoundationIsolation({ root = process.cwd(), files =
   for (const file of runtime) {
     let source;
     try { source = readFileSync(resolve(root, file), "utf8"); } catch { continue; }
-    if (!file.startsWith("api/_lib/") && !file.startsWith("api/auth/") && /(?:authContext|authSession|membershipAuthorization)/i.test(source)) imports.push(file);
+    if (!file.startsWith("api/_lib/") && !file.startsWith("api/auth/") && /(?:authContext|authSession|membershipAuthorization)/i.test(source)) {
+      const exactPilotImport = /from\s+["']\.\.\/_lib\/authContextPilot\.js["']/.test(source);
+      if (!contextPilotRoutes.has(file) || !exactPilotImport || /from\s+["'][^"']*(?:authContext|authSession|membershipAuthorization)(?!Pilot\.js)[^"']*["']/.test(source)) {
+        imports.push(file);
+      }
+    }
     if (file !== "api/_lib/membershipAuthorization.js" &&
         /(?:tenantMembership\s*\.\s*(?:update|updateMany|upsert|delete)|UPDATE\s+["'`]*tenant_memberships)/i.test(source)) directWrites.push(file);
   }
-  invariant(imports.length === 0, `MT-01B1 fue conectado fuera de auth/_lib: ${imports.join(", ")}`);
+  invariant(imports.length === 0, `MT-01B sólo permite el piloto empresarial explícito en rutas inventariadas: ${imports.join(", ")}`);
   invariant(directWrites.length === 0, `Escritura de membresía fuera del servicio único: ${directWrites.join(", ")}`);
   return runtime.length;
 }

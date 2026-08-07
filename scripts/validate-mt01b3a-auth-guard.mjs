@@ -21,7 +21,7 @@ const LEGACY_HEADER_ROUTES = new Set([
   "api/templates/approve-batch.js", "api/templates/approve.js", "api/templates/draft.js", "api/templates/list.js", "api/templates/pending.js", "api/templates/publish.js", "api/templates/reject.js", "api/templates/submit.js", "api/templates/version.js",
 ]);
 
-const V2_PREPARED_ROUTES = new Set(["api/auth/me.js"]);
+const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js"]);
 const LEGACY_JWT_ROUTES = new Set(["api/users/index.js", "api/clients/index.js", "api/projects/index.js"]);
 const ROUTE_HELPERS = new Set(["api/k/_lib.js", "api/osis/_helpers.js", "api/templates/_pst.js"]);
 
@@ -57,10 +57,11 @@ export function validateMt01b3aSources({ routeSources, envExample, authContextSo
       invariant(trustsHeaders, `MT-01B3A: ${route} cambió su autenticación heredada sin actualizar inventario/allowlist`);
     }
     if (LEGACY_JWT_ROUTES.has(route)) {
-      invariant(/requireAuth/.test(source), `MT-01B3A: ${route} eliminó su autenticación JWT heredada`);
+      invariant(/requirePilot(?:Auth|Permission)/.test(source), `MT-01B3A: ${route} debe usar el adaptador dual explícito B3B1`);
     }
     if (V2_PREPARED_ROUTES.has(route)) {
-      invariant(/requireAuthContext/.test(source), `MT-01B3A: ${route} está marcada V2 pero omite resolveAuthContext/requireAuthContext`);
+      const hasContext = route === "api/auth/me.js" ? /requireAuthContext/.test(source) : /requirePilot(?:Auth|Permission)/.test(source);
+      invariant(hasContext, `MT-01B3A: ${route} está marcada V2 pero omite el contexto empresarial explícito`);
       invariant(!trustsHeaders, `MT-01B3A: ${route} V2 no puede aceptar x-osi-role/x-osi-userid`);
     }
   }

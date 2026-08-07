@@ -9,35 +9,37 @@ datasource db {
 }
 
 model User {
-  id                         String               @id @default(cuid())
-  code                       String               @unique
-  name                       String
-  email                      String               @unique
-  phone                      String
-  role                       String
-  status                     String
-  department                 String?
-  joinDate                   String
-  points                     Int                  @default(0)
-  rating                     Float                @default(0)
-  passwordHash               String
-  createdAt                  DateTime             @default(now())
-  updatedAt                  DateTime             @updatedAt
-  profilePhotoUrl            String?
-  employeeProfile            Json?
-  commercial_audit_logs      CommercialAuditLog[]
-  leadAuditLogs              LeadAuditLog[]       @relation("LeadAuditActor")
-  leadVolumeEstimatesUpdated LeadVolumeEstimate[] @relation("LeadVolumeEstimateUpdatedBy")
-  pipelineCasesOwned         PipelineCase[]
-  projectPgdsApplied         ProjectPgd[]         @relation("ProjectPgdAppliedBy")
-  projectPgdItemsValidated   ProjectPgdItem[]     @relation("ProjectPgdItemValidatedBy")
-  projectSignalsAcked        ProjectSignal[]      @relation("ProjectSignalAckBy")
-  templateVersionsApproved   TemplateVersion[]    @relation("TemplateApprovedBy")
-  templateVersionsCreated    TemplateVersion[]    @relation("TemplateCreatedBy")
-  templateVersionsRejected   TemplateVersion[]    @relation("TemplateRejectedBy")
-  tipoServicioConfigsUpdated TipoServicioConfig[] @relation("TipoServicioConfigUpdatedBy")
-  volumeAreaProfilesUpdated  VolumeAreaProfile[]  @relation("VolumeAreaProfileUpdatedBy")
-  tenantMemberships          TenantMembership[]
+  id                              String                           @id @default(cuid())
+  code                            String                           @unique
+  name                            String
+  email                           String                           @unique
+  normalizedEmail                 String?                          @map("normalized_email") @db.VarChar(320)
+  phone                           String
+  role                            String
+  status                          String
+  department                      String?
+  joinDate                        String
+  points                          Int                              @default(0)
+  rating                          Float                            @default(0)
+  passwordHash                    String
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  profilePhotoUrl                 String?
+  employeeProfile                 Json?
+  commercial_audit_logs           CommercialAuditLog[]
+  leadAuditLogs                   LeadAuditLog[]                   @relation("LeadAuditActor")
+  leadVolumeEstimatesUpdated      LeadVolumeEstimate[]             @relation("LeadVolumeEstimateUpdatedBy")
+  pipelineCasesOwned              PipelineCase[]
+  projectPgdsApplied              ProjectPgd[]                     @relation("ProjectPgdAppliedBy")
+  projectPgdItemsValidated        ProjectPgdItem[]                 @relation("ProjectPgdItemValidatedBy")
+  projectSignalsAcked             ProjectSignal[]                  @relation("ProjectSignalAckBy")
+  templateVersionsApproved        TemplateVersion[]                @relation("TemplateApprovedBy")
+  templateVersionsCreated         TemplateVersion[]                @relation("TemplateCreatedBy")
+  templateVersionsRejected        TemplateVersion[]                @relation("TemplateRejectedBy")
+  tipoServicioConfigsUpdated      TipoServicioConfig[]             @relation("TipoServicioConfigUpdatedBy")
+  volumeAreaProfilesUpdated       VolumeAreaProfile[]              @relation("VolumeAreaProfileUpdatedBy")
+  tenantMemberships               TenantMembership[]
+  acceptedProvisioningInvitations EmployeeProvisioningInvitation[] @relation("EmployeeProvisioningInvitationAcceptedUser")
 
   @@map("osi_users")
 }
@@ -74,6 +76,9 @@ model Tenant {
   risk_engine_settings             risk_engine_settings?
   risk_evaluations                 risk_evaluations[]
   employeeProfiles                 EmployeeProfile[]
+  employeeProvisioningRequests     EmployeeProvisioningRequest[]
+  employeeProvisioningInvitations  EmployeeProvisioningInvitation[]
+  employeeAdminRoleProposals       EmployeeAdminRoleProposal[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -124,7 +129,7 @@ model TenantMembership {
   quote_change_orders_quote_change_orders_tenant_id_requested_by_membership_id_requested_by_user_idTotenant_memberships                         QuoteChangeOrder[]                 @relation("quote_change_orders_tenant_id_requested_by_membership_id_requested_by_user_idTotenant_memberships")
   risk_engine_rules_risk_engine_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                               risk_engine_rules[]                @relation("risk_engine_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
   risk_engine_rules_risk_engine_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                                 risk_engine_rules[]                @relation("risk_engine_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
-  risk_engine_settings                                                                                                                          risk_engine_settings[]              @relation("risk_engine_settings_actor") @ignore
+  risk_engine_settings                                                                                                                          risk_engine_settings[]             @relation("risk_engine_settings_actor") @ignore
   risk_evaluations                                                                                                                              risk_evaluations[]
   tenant                                                                                                                                        Tenant                             @relation(fields: [tenantId], references: [id])
   user                                                                                                                                          User                               @relation(fields: [userId], references: [id])
@@ -133,6 +138,10 @@ model TenantMembership {
   authSessions                                                                                                                                  AuthSession[]                      @relation("AuthSessionMembership")
   employeeProfile                                                                                                                               EmployeeProfile?                   @relation("EmployeeProfileMembership")
   supervisedEmployeeProfiles                                                                                                                    EmployeeProfile[]                  @relation("EmployeeProfileSupervisor")
+  provisionedEmployeeRequests                                                                                                                   EmployeeProvisioningRequest[]      @relation("EmployeeProvisioningRequestProvisionedMembership")
+  issuedProvisioningInvitations                                                                                                                 EmployeeProvisioningInvitation[]   @relation("EmployeeProvisioningInvitationIssuer")
+  proposedEmployeeAdminRoles                                                                                                                    EmployeeAdminRoleProposal[]        @relation("EmployeeAdminRoleProposalProposer")
+  supervisedProvisioningRequests                                                                                                                EmployeeProvisioningRequest[]      @relation("EmployeeProvisioningRequestSupervisor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id, userId])
@@ -180,23 +189,126 @@ model EmployeeProfile {
   @@map("employee_profiles")
 }
 
+model EmployeeProvisioningRequest {
+  id                      String                               @id @default(uuid())
+  tenant_id               String
+  approval_request_id     String
+  identityMode            EmployeeProvisioningIdentityMode     @map("identity_mode")
+  normalizedEmail         String                               @map("normalized_email") @db.VarChar(320)
+  normalizedEmployeeCode  String                               @map("normalized_employee_code") @db.VarChar(64)
+  jobTitle                String?                              @map("job_title") @db.VarChar(120)
+  departmentCode          String?                              @map("department_code") @db.VarChar(64)
+  employmentStatus        EmployeeEmploymentStatus             @map("employment_status")
+  contractType            EmployeeContractType?                @map("contract_type")
+  availabilityStatus      EmployeeAvailabilityStatus           @map("availability_status")
+  supervisorMembershipId  String?                              @map("supervisor_membership_id")
+  supervisorUserId        String?                              @map("supervisor_user_id")
+  hiredAt                 DateTime?                            @map("hired_at") @db.Date
+  contractStartsAt        DateTime?                            @map("contract_starts_at") @db.Date
+  contractEndsAt          DateTime?                            @map("contract_ends_at") @db.Date
+  terminatedAt            DateTime?                            @map("terminated_at") @db.Date
+  requestedRole           TenantMembershipRole                 @map("requested_role")
+  grantedPermissions      String[]                             @default([]) @map("granted_permissions")
+  deniedPermissions       String[]                             @default([]) @map("denied_permissions")
+  lifecycleStatus         EmployeeProvisioningLifecycleStatus? @map("lifecycle_status")
+  lifecycleVersion        Int                                  @default(0) @map("lifecycle_version")
+  provisionedUserId       String?                              @map("provisioned_user_id")
+  provisionedMembershipId String?                              @map("provisioned_membership_id")
+  provisionedAt           DateTime?                            @map("provisioned_at") @db.Timestamptz(6)
+  activatedAt             DateTime?                            @map("activated_at") @db.Timestamptz(6)
+  revokedAt               DateTime?                            @map("revoked_at") @db.Timestamptz(6)
+  terminatedLifecycleAt   DateTime?                            @map("terminated_lifecycle_at") @db.Timestamptz(6)
+  createdAt               DateTime                             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                  Tenant                               @relation(fields: [tenant_id], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "employee_provisioning_requests_tenant_fkey")
+  approvalRequest         ApprovalRequest                      @relation(fields: [tenant_id, approval_request_id], references: [tenant_id, id], onDelete: Restrict, onUpdate: Cascade, map: "employee_provisioning_requests_approval_fkey")
+  supervisorMembership    TenantMembership?                    @relation("EmployeeProvisioningRequestSupervisor", fields: [tenant_id, supervisorMembershipId, supervisorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "employee_provisioning_requests_supervisor_fkey")
+  provisionedMembership   TenantMembership?                    @relation("EmployeeProvisioningRequestProvisionedMembership", fields: [tenant_id, provisionedMembershipId, provisionedUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "employee_provisioning_requests_provisioned_membership_fkey")
+  invitations             EmployeeProvisioningInvitation[]
+  adminRoleProposals      EmployeeAdminRoleProposal[]
+
+  @@unique([tenant_id, id])
+  @@unique([tenant_id, approval_request_id], map: "employee_provisioning_requests_tenant_approval_key")
+  @@index([tenant_id, lifecycleStatus, createdAt(sort: Desc)], map: "employee_provisioning_requests_tenant_lifecycle_created_idx")
+  @@index([tenant_id, normalizedEmail], map: "employee_provisioning_requests_tenant_email_idx")
+  @@index([tenant_id, normalizedEmployeeCode], map: "employee_provisioning_requests_tenant_employee_code_idx")
+  @@index([tenant_id, provisionedMembershipId], map: "employee_provisioning_requests_tenant_provisioned_membership_id")
+  @@map("employee_provisioning_requests")
+}
+
+model EmployeeProvisioningInvitation {
+  id                    String                               @id @default(uuid())
+  tenant_id             String
+  provisioningRequestId String                               @map("provisioning_request_id")
+  tokenHmac             String                               @unique @map("token_hmac") @db.Char(64)
+  status                EmployeeProvisioningInvitationStatus
+  expiresAt             DateTime                             @map("expires_at") @db.Timestamptz(6)
+  attemptCount          Int                                  @default(0) @map("attempt_count")
+  maxAttempts           Int                                  @map("max_attempts")
+  issuedByMembershipId  String                               @map("issued_by_membership_id")
+  issuedByUserId        String                               @map("issued_by_user_id")
+  issueRequestId        String                               @map("issue_request_id") @db.VarChar(191)
+  issuePayloadHash      String                               @map("issue_payload_hash") @db.Char(64)
+  acceptanceRequestId   String?                              @map("acceptance_request_id") @db.VarChar(191)
+  acceptancePayloadHash String?                              @map("acceptance_payload_hash") @db.Char(64)
+  acceptedUserId        String?                              @map("accepted_user_id")
+  acceptedAt            DateTime?                            @map("accepted_at") @db.Timestamptz(6)
+  revokedAt             DateTime?                            @map("revoked_at") @db.Timestamptz(6)
+  expiredAt             DateTime?                            @map("expired_at") @db.Timestamptz(6)
+  createdAt             DateTime                             @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                               @relation(fields: [tenant_id], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "employee_provisioning_invitations_tenant_fkey")
+  provisioningRequest   EmployeeProvisioningRequest          @relation(fields: [tenant_id, provisioningRequestId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Cascade, map: "employee_provisioning_invitations_request_fkey")
+  issuerMembership      TenantMembership                     @relation("EmployeeProvisioningInvitationIssuer", fields: [tenant_id, issuedByMembershipId, issuedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "employee_provisioning_invitations_issuer_fkey")
+  acceptedUser          User?                                @relation("EmployeeProvisioningInvitationAcceptedUser", fields: [acceptedUserId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "employee_provisioning_invitations_accepted_user_fkey")
+
+  @@unique([tenant_id, id])
+  @@unique([tenant_id, issueRequestId], map: "employee_provisioning_invitations_tenant_issue_request_key")
+  @@unique([tenant_id, acceptanceRequestId], map: "employee_provisioning_invitations_tenant_acceptance_request_key")
+  @@index([tenant_id, provisioningRequestId, createdAt(sort: Desc)], map: "employee_provisioning_invitations_tenant_request_created_idx")
+  @@index([tenant_id, status, expiresAt], map: "employee_provisioning_invitations_tenant_status_expires_idx")
+  @@map("employee_provisioning_invitations")
+}
+
+model EmployeeAdminRoleProposal {
+  id                    String                      @id @default(uuid())
+  tenant_id             String
+  provisioningRequestId String                      @map("provisioning_request_id")
+  proposedRole          TenantMembershipRole        @map("proposed_role")
+  proposerMembershipId  String                      @map("proposer_membership_id")
+  proposerUserId        String                      @map("proposer_user_id")
+  requestId             String                      @map("request_id") @db.VarChar(191)
+  payloadHash           String                      @map("payload_hash") @db.Char(64)
+  grantedPermissions    String[]                    @default([]) @map("granted_permissions")
+  deniedPermissions     String[]                    @default([]) @map("denied_permissions")
+  createdAt             DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                      @relation(fields: [tenant_id], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "employee_admin_role_proposals_tenant_fkey")
+  provisioningRequest   EmployeeProvisioningRequest @relation(fields: [tenant_id, provisioningRequestId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Cascade, map: "employee_admin_role_proposals_request_fkey")
+  proposerMembership    TenantMembership            @relation("EmployeeAdminRoleProposalProposer", fields: [tenant_id, proposerMembershipId, proposerUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "employee_admin_role_proposals_proposer_fkey")
+
+  @@unique([tenant_id, id])
+  @@unique([tenant_id, requestId], map: "employee_admin_role_proposals_tenant_request_key")
+  @@index([tenant_id, provisioningRequestId, createdAt(sort: Desc)], map: "employee_admin_role_proposals_tenant_provisioning_created_idx")
+  @@index([tenant_id, proposerMembershipId, createdAt(sort: Desc)], map: "employee_admin_role_proposals_tenant_proposer_created_idx")
+  @@map("employee_admin_role_proposals")
+}
+
 model AuthSession {
-  id                           String                   @id
-  tenantId                     String                   @map("tenant_id")
-  membershipId                 String                   @map("membership_id")
-  userId                       String                   @map("user_id")
-  status                       AuthSessionStatus        @default(ACTIVE)
-  authorizationVersionSnapshot Int                     @map("authorization_version_snapshot")
-  currentRefreshVersion        Int                      @default(0) @map("current_refresh_version")
-  fingerprintHash              String                  @map("fingerprint_hash") @db.Char(64)
-  createdAt                    DateTime                 @default(now()) @map("created_at")
-  updatedAt                    DateTime                 @updatedAt @map("updated_at")
-  lastRefreshedAt              DateTime?                @map("last_refreshed_at")
-  expiresAt                    DateTime                 @map("expires_at")
-  revokedAt                    DateTime?                @map("revoked_at")
-  compromisedAt                DateTime?                @map("compromised_at")
-  revocationReason             String?                  @map("revocation_reason") @db.VarChar(160)
-  membership                   TenantMembership         @relation("AuthSessionMembership", fields: [tenantId, membershipId, userId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade)
+  id                           String             @id
+  tenantId                     String             @map("tenant_id")
+  membershipId                 String             @map("membership_id")
+  userId                       String             @map("user_id")
+  status                       AuthSessionStatus  @default(ACTIVE)
+  authorizationVersionSnapshot Int                @map("authorization_version_snapshot")
+  currentRefreshVersion        Int                @default(0) @map("current_refresh_version")
+  fingerprintHash              String             @map("fingerprint_hash") @db.Char(64)
+  createdAt                    DateTime           @default(now()) @map("created_at")
+  updatedAt                    DateTime           @updatedAt @map("updated_at")
+  lastRefreshedAt              DateTime?          @map("last_refreshed_at")
+  expiresAt                    DateTime           @map("expires_at")
+  revokedAt                    DateTime?          @map("revoked_at")
+  compromisedAt                DateTime?          @map("compromised_at")
+  revocationReason             String?            @map("revocation_reason") @db.VarChar(160)
+  membership                   TenantMembership   @relation("AuthSessionMembership", fields: [tenantId, membershipId, userId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade)
   refreshTokens                AuthRefreshToken[]
 
   @@unique([tenantId, id])
@@ -207,22 +319,22 @@ model AuthSession {
 }
 
 model AuthRefreshToken {
-  id                  String                 @id
-  tenantId            String                 @map("tenant_id")
-  sessionId           String                 @map("session_id")
-  version             Int
-  tokenHash           String                 @unique @map("token_hash") @db.Char(64)
-  fingerprintHash     String                 @map("fingerprint_hash") @db.Char(64)
-  status              AuthRefreshTokenStatus @default(ACTIVE)
-  createdAt           DateTime               @default(now()) @map("created_at")
-  expiresAt           DateTime               @map("expires_at")
-  rotatedAt           DateTime?              @map("rotated_at")
-  revokedAt           DateTime?              @map("revoked_at")
-  reuseDetectedAt     DateTime?              @map("reuse_detected_at")
-  replacedByTokenId   String?                @unique @map("replaced_by_token_id")
-  session             AuthSession            @relation(fields: [tenantId, sessionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade)
-  replacedByToken     AuthRefreshToken?       @relation("AuthRefreshReplacement", fields: [replacedByTokenId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  replacesToken       AuthRefreshToken?       @relation("AuthRefreshReplacement")
+  id                String                 @id
+  tenantId          String                 @map("tenant_id")
+  sessionId         String                 @map("session_id")
+  version           Int
+  tokenHash         String                 @unique @map("token_hash") @db.Char(64)
+  fingerprintHash   String                 @map("fingerprint_hash") @db.Char(64)
+  status            AuthRefreshTokenStatus @default(ACTIVE)
+  createdAt         DateTime               @default(now()) @map("created_at")
+  expiresAt         DateTime               @map("expires_at")
+  rotatedAt         DateTime?              @map("rotated_at")
+  revokedAt         DateTime?              @map("revoked_at")
+  reuseDetectedAt   DateTime?              @map("reuse_detected_at")
+  replacedByTokenId String?                @unique @map("replaced_by_token_id")
+  session           AuthSession            @relation(fields: [tenantId, sessionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade)
+  replacedByToken   AuthRefreshToken?      @relation("AuthRefreshReplacement", fields: [replacedByTokenId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  replacesToken     AuthRefreshToken?      @relation("AuthRefreshReplacement")
 
   @@unique([tenantId, sessionId, version])
   @@index([tenantId, sessionId, status])
@@ -1921,51 +2033,52 @@ model LogisticOverrideApproval {
 }
 
 model ApprovalRequest {
-  id                                                                                                                           String                    @id @default(uuid())
+  id                                                                                                                           String                       @id @default(uuid())
   tenant_id                                                                                                                    String
-  approval_type                                                                                                                String                    @db.VarChar(120)
-  entity                                                                                                                       String                    @db.VarChar(120)
-  entity_id                                                                                                                    String                    @db.VarChar(191)
+  approval_type                                                                                                                String                       @db.VarChar(120)
+  entity                                                                                                                       String                       @db.VarChar(120)
+  entity_id                                                                                                                    String                       @db.VarChar(191)
   requester_user_id                                                                                                            String
   requester_membership_id                                                                                                      String
   assigned_approver_user_id                                                                                                    String?
   assigned_approver_membership_id                                                                                              String?
-  status                                                                                                                       ApprovalRequestStatus     @default(PENDING)
+  status                                                                                                                       ApprovalRequestStatus        @default(PENDING)
   request_reason                                                                                                               String
   evaluation_snapshot_json                                                                                                     Json
-  risk_level                                                                                                                   String?                   @db.VarChar(40)
-  risk_evaluation_ref                                                                                                          String?                   @db.VarChar(191)
-  risk_result                                                                                                                  String?                   @db.VarChar(40)
-  risk_rules_version                                                                                                           String?                   @db.VarChar(120)
-  risk_rules_hash                                                                                                              String?                   @db.Char(64)
+  risk_level                                                                                                                   String?                      @db.VarChar(40)
+  risk_evaluation_ref                                                                                                          String?                      @db.VarChar(191)
+  risk_result                                                                                                                  String?                      @db.VarChar(40)
+  risk_rules_version                                                                                                           String?                      @db.VarChar(120)
+  risk_rules_hash                                                                                                              String?                      @db.Char(64)
   risk_factors_json                                                                                                            Json?
   risk_reasons_json                                                                                                            Json?
-  requires_logistic_override                                                                                                   Boolean                   @default(false)
-  separation_of_duties_required                                                                                                Boolean                   @default(true)
-  policy_snapshot_json                                                                                                         Json                      @default("{}")
-  requested_at                                                                                                                 DateTime                  @default(now())
+  requires_logistic_override                                                                                                   Boolean                      @default(false)
+  separation_of_duties_required                                                                                                Boolean                      @default(true)
+  policy_snapshot_json                                                                                                         Json                         @default("{}")
+  requested_at                                                                                                                 DateTime                     @default(now())
   due_at                                                                                                                       DateTime?
   decider_user_id                                                                                                              String?
   decider_membership_id                                                                                                        String?
   decided_at                                                                                                                   DateTime?
   decision_reason                                                                                                              String?
-  request_id                                                                                                                   String                    @db.VarChar(191)
-  payload_hash                                                                                                                 String                    @db.Char(64)
-  decision_request_id                                                                                                          String?                   @db.VarChar(191)
-  decision_payload_hash                                                                                                        String?                   @db.Char(64)
+  request_id                                                                                                                   String                       @db.VarChar(191)
+  payload_hash                                                                                                                 String                       @db.Char(64)
+  decision_request_id                                                                                                          String?                      @db.VarChar(191)
+  decision_payload_hash                                                                                                        String?                      @db.Char(64)
   previous_request_id                                                                                                          String?
-  version                                                                                                                      Int                       @default(1)
-  createdAt                                                                                                                    DateTime                  @default(now()) @map("created_at")
-  updated_at                                                                                                                   DateTime                  @default(now())
-  tenant_memberships_approval_requests_tenant_id_assigned_approver_membership_id_assigned_approver_user_idTotenant_memberships TenantMembership?         @relation("approval_requests_tenant_id_assigned_approver_membership_id_assigned_approver_user_idTotenant_memberships", fields: [tenant_id, assigned_approver_membership_id, assigned_approver_user_id], references: [tenantId, id, userId], map: "approval_requests_assigned_approver_membership_fkey")
-  tenant_memberships_approval_requests_tenant_id_decider_membership_id_decider_user_idTotenant_memberships                     TenantMembership?         @relation("approval_requests_tenant_id_decider_membership_id_decider_user_idTotenant_memberships", fields: [tenant_id, decider_membership_id, decider_user_id], references: [tenantId, id, userId], map: "approval_requests_decider_membership_fkey")
-  approval_requests                                                                                                            ApprovalRequest?          @relation("approval_requestsToapproval_requests", fields: [tenant_id, previous_request_id], references: [tenant_id, id], map: "approval_requests_previous_request_fkey")
-  other_approval_requests                                                                                                      ApprovalRequest[]         @relation("approval_requestsToapproval_requests")
-  tenant_memberships_approval_requests_tenant_id_requester_membership_id_requester_user_idTotenant_memberships                 TenantMembership          @relation("approval_requests_tenant_id_requester_membership_id_requester_user_idTotenant_memberships", fields: [tenant_id, requester_membership_id, requester_user_id], references: [tenantId, id, userId], map: "approval_requests_requester_membership_fkey")
-  tenants                                                                                                                      Tenant                    @relation(fields: [tenant_id], references: [id])
+  version                                                                                                                      Int                          @default(1)
+  createdAt                                                                                                                    DateTime                     @default(now()) @map("created_at")
+  updated_at                                                                                                                   DateTime                     @default(now())
+  tenant_memberships_approval_requests_tenant_id_assigned_approver_membership_id_assigned_approver_user_idTotenant_memberships TenantMembership?            @relation("approval_requests_tenant_id_assigned_approver_membership_id_assigned_approver_user_idTotenant_memberships", fields: [tenant_id, assigned_approver_membership_id, assigned_approver_user_id], references: [tenantId, id, userId], map: "approval_requests_assigned_approver_membership_fkey")
+  tenant_memberships_approval_requests_tenant_id_decider_membership_id_decider_user_idTotenant_memberships                     TenantMembership?            @relation("approval_requests_tenant_id_decider_membership_id_decider_user_idTotenant_memberships", fields: [tenant_id, decider_membership_id, decider_user_id], references: [tenantId, id, userId], map: "approval_requests_decider_membership_fkey")
+  approval_requests                                                                                                            ApprovalRequest?             @relation("approval_requestsToapproval_requests", fields: [tenant_id, previous_request_id], references: [tenant_id, id], map: "approval_requests_previous_request_fkey")
+  other_approval_requests                                                                                                      ApprovalRequest[]            @relation("approval_requestsToapproval_requests")
+  tenant_memberships_approval_requests_tenant_id_requester_membership_id_requester_user_idTotenant_memberships                 TenantMembership             @relation("approval_requests_tenant_id_requester_membership_id_requester_user_idTotenant_memberships", fields: [tenant_id, requester_membership_id, requester_user_id], references: [tenantId, id, userId], map: "approval_requests_requester_membership_fkey")
+  tenants                                                                                                                      Tenant                       @relation(fields: [tenant_id], references: [id])
   logistic_override_approvals                                                                                                  LogisticOverrideApproval?
   quote_change_orders                                                                                                          QuoteChangeOrder[]
   risk_evaluations                                                                                                             risk_evaluations[]
+  employeeProvisioningRequest                                                                                                  EmployeeProvisioningRequest?
 
   @@unique([tenant_id, id])
   @@unique([tenant_id, request_id], map: "approval_requests_tenant_request_id_key")
@@ -3317,6 +3430,26 @@ enum ApprovalRequestStatus {
   APPROVED
   REJECTED
   CANCELLED
+  EXPIRED
+}
+
+enum EmployeeProvisioningIdentityMode {
+  NEW_GLOBAL_USER
+  EXISTING_GLOBAL_USER
+}
+
+enum EmployeeProvisioningLifecycleStatus {
+  IDENTITY_PENDING
+  PROVISIONED_INACTIVE
+  ACTIVE
+  REVOKED
+  TERMINATED
+}
+
+enum EmployeeProvisioningInvitationStatus {
+  ISSUED
+  ACCEPTED
+  REVOKED
   EXPIRED
 }
 

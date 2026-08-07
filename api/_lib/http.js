@@ -188,6 +188,7 @@ function readPlatformBodyOnce(req) {
 async function readJsonObject(req, {
   required = true,
   maxBytes = DEFAULT_JSON_BODY_MAX_BYTES,
+  requireNonEmptyObject = false,
 } = {}) {
   const contentType = contentTypeHeader(req);
   if (contentType != null && !isJsonContentType(contentType)) {
@@ -196,6 +197,14 @@ async function readJsonObject(req, {
   assertDeclaredBodySize(req, maxBytes);
 
   const requestBody = readPlatformBodyOnce(req);
+
+  // Vercel may expose an HTTP-empty JSON body as an already parsed `{}`.
+  // Preserve the platform getter as the first protected body access, then use
+  // the transport metadata to distinguish that case from an explicit `{}`.
+  const declaredLength = contentLengthHeader(req);
+  if (required && declaredLength != null && String(declaredLength).trim() === "0") {
+    throw new JsonBodyError("REQUEST_JSON_REQUIRED", 400);
+  }
 
   if (requestBody !== undefined) {
     if (Buffer.isBuffer(requestBody)) {
@@ -212,6 +221,9 @@ async function readJsonObject(req, {
     }
     assertBodySize(JSON.stringify(requestBody), maxBytes);
     assertSafeJsonObject(requestBody);
+    if (requireNonEmptyObject && declaredLength == null && Object.keys(requestBody).length === 0) {
+      throw new JsonBodyError("REQUEST_JSON_REQUIRED", 400);
+    }
     return requestBody;
   }
 

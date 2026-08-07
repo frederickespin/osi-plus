@@ -27,7 +27,10 @@ export default withCommonHeaders(async (req, res) => {
     return methodNotAllowed(res, ["POST"]);
   }
 
-  const body = await readJsonObject(req, { maxBytes: 16 * 1024 });
+  const body = await readJsonObject(req, {
+    maxBytes: 16 * 1024,
+    requireNonEmptyObject: true,
+  });
   const email = String(body.email || "").toLowerCase().trim();
   const password = String(body.password || "");
 

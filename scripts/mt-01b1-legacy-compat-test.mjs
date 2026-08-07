@@ -48,7 +48,7 @@ try {
   const { default: upgrade } = await import("../api/auth/session/upgrade.js");
 
   const missingRes = mockResponse();
-  await login({ method: "POST", headers: {}, body: {} }, missingRes);
+  await login({ method: "POST", headers: { "content-length": "2" }, body: {} }, missingRes);
   check("snapshot login sin credenciales", JSON.stringify(normalizedResponse(missingRes, userId)) === JSON.stringify(snapshot.loginMissing));
 
   const invalidRes = mockResponse();

@@ -35,6 +35,20 @@ async function invokeWithBodyGetter(error) {
   return { reads, res, logs };
 }
 
+async function invokeWithPlatformBody(platformBody, headers) {
+  let reads = 0;
+  const request = { method: "POST", headers };
+  Object.defineProperty(request, "body", {
+    get() {
+      reads += 1;
+      return platformBody;
+    },
+  });
+  const res = response();
+  await loginHandler(request, res);
+  return { reads, res };
+}
+
 const cases = [];
 function test(name, condition) {
   assert.equal(condition, true, name);
@@ -55,6 +69,38 @@ test("excepción ajena al parser conserva 500", unexpected.res.statusCode === 50
 test("excepción inesperada conserva contrato sanitizado", unexpected.res.body?.error === "Internal Server Error" && unexpected.res.body?.code === undefined);
 test("excepción inesperada accede body una sola vez", unexpected.reads === 1);
 test("log inesperado no contiene secreto ni stack", !JSON.stringify(unexpected.logs).includes("never-log") && !JSON.stringify(unexpected.logs).includes("TypeError:"));
+
+const normalizedEmpty = await invokeWithPlatformBody({}, {
+  "content-type": "application/json",
+  "content-length": "0",
+});
+test("vacío normalizado por Vercel devuelve REQUIRED", normalizedEmpty.res.statusCode === 400 && normalizedEmpty.res.body?.code === "REQUEST_JSON_REQUIRED");
+test("vacío normalizado accede body una sola vez", normalizedEmpty.reads === 1);
+
+const explicitEmpty = await invokeWithPlatformBody({}, {
+  "content-type": "application/json",
+  "content-length": "2",
+});
+test("objeto explícito vacío conserva validación de campos", explicitEmpty.res.statusCode === 400 && explicitEmpty.res.body?.code === undefined);
+test("objeto explícito vacío accede body una sola vez", explicitEmpty.reads === 1);
+
+const normalizedWithoutLength = await invokeWithPlatformBody({}, {
+  "content-type": "application/json",
+});
+test("vacío normalizado sin Content-Length devuelve REQUIRED", normalizedWithoutLength.res.statusCode === 400 && normalizedWithoutLength.res.body?.code === "REQUEST_JSON_REQUIRED");
+test("vacío sin Content-Length accede body una sola vez", normalizedWithoutLength.reads === 1);
+
+const explicitHelperEmpty = await readJsonObject({
+  headers: { "content-type": "application/json", "content-length": "2" },
+  body: {},
+}, { requireNonEmptyObject: true });
+test("helper distingue objeto explícito vacío", Object.keys(explicitHelperEmpty).length === 0);
+
+const defaultHelperEmpty = await readJsonObject({
+  headers: { "content-type": "application/json" },
+  body: {},
+});
+test("helper no cambia globalmente el significado de objeto vacío", Object.keys(defaultHelperEmpty).length === 0);
 
 for (const [name, body, status, code] of [
   ["truncado", '{"email":', 400, "REQUEST_JSON_INVALID"],
@@ -94,5 +140,20 @@ const streamRequest = {
 };
 const streamed = await readJsonObject(streamRequest);
 test("stream JSON válido se acepta", streamed.ok === true && streamReads === 1);
+
+let emptyStreamReads = 0;
+const emptyChunkedRequest = {
+  headers: { "content-type": "application/json", "transfer-encoding": "chunked" },
+  async *[Symbol.asyncIterator]() {
+    emptyStreamReads += 1;
+  },
+};
+try {
+  await readJsonObject(emptyChunkedRequest, { requireNonEmptyObject: true });
+  assert.fail("stream chunked vacío debió fallar");
+} catch (error) {
+  test("stream chunked vacío devuelve REQUIRED", error.code === "REQUEST_JSON_REQUIRED" && error.status === 400);
+  test("stream chunked vacío se consume una vez", emptyStreamReads === 1);
+}
 
 process.stdout.write(`${JSON.stringify({ ok: true, passed: cases.length })}\n`);

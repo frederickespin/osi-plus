@@ -73,6 +73,7 @@ model Tenant {
   risk_engine_rules                risk_engine_rules[]
   risk_engine_settings             risk_engine_settings?
   risk_evaluations                 risk_evaluations[]
+  employeeProfiles                 EmployeeProfile[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -130,6 +131,8 @@ model TenantMembership {
   vehicle_import_batches_vehicle_import_batches_tenant_id_confirmed_by_membership_id_confirmed_by_user_idTotenant_memberships                   vehicle_import_batches[]           @relation("vehicle_import_batches_tenant_id_confirmed_by_membership_id_confirmed_by_user_idTotenant_memberships")
   vehicle_import_batches_vehicle_import_batches_tenant_id_rolled_back_by_membership_id_rolled_back_by_user_idTotenant_memberships               vehicle_import_batches[]           @relation("vehicle_import_batches_tenant_id_rolled_back_by_membership_id_rolled_back_by_user_idTotenant_memberships")
   authSessions                                                                                                                                  AuthSession[]                      @relation("AuthSessionMembership")
+  employeeProfile                                                                                                                               EmployeeProfile?                   @relation("EmployeeProfileMembership")
+  supervisedEmployeeProfiles                                                                                                                    EmployeeProfile[]                  @relation("EmployeeProfileSupervisor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id, userId])
@@ -138,6 +141,43 @@ model TenantMembership {
   @@index([userId, isDefault])
   @@index([provisioningBatchId])
   @@map("tenant_memberships")
+}
+
+model EmployeeProfile {
+  id                     String                     @id @default(cuid())
+  tenantId               String                     @map("tenant_id")
+  membershipId           String                     @map("membership_id")
+  userId                 String                     @map("user_id")
+  employeeCode           String                     @map("employee_code") @db.VarChar(64)
+  normalizedEmployeeCode String                     @map("normalized_employee_code") @db.VarChar(64)
+  jobTitle               String?                    @map("job_title") @db.VarChar(120)
+  departmentCode         String?                    @map("department_code") @db.VarChar(64)
+  employmentStatus       EmployeeEmploymentStatus   @map("employment_status")
+  contractType           EmployeeContractType?      @map("contract_type")
+  availabilityStatus     EmployeeAvailabilityStatus @map("availability_status")
+  supervisorMembershipId String?                    @map("supervisor_membership_id")
+  supervisorUserId       String?                    @map("supervisor_user_id")
+  hiredAt                DateTime?                  @map("hired_at") @db.Date
+  contractStartsAt       DateTime?                  @map("contract_starts_at") @db.Date
+  contractEndsAt         DateTime?                  @map("contract_ends_at") @db.Date
+  terminatedAt           DateTime?                  @map("terminated_at") @db.Date
+  provisioningSource     TenantProvisioningSource   @default(MANUAL) @map("provisioning_source")
+  provisioningBatchId    String?                    @map("provisioning_batch_id") @db.VarChar(128)
+  createdAt              DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                 Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  membership             TenantMembership           @relation("EmployeeProfileMembership", fields: [tenantId, membershipId, userId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade)
+  supervisorMembership   TenantMembership?          @relation("EmployeeProfileSupervisor", fields: [tenantId, supervisorMembershipId, supervisorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, membershipId])
+  @@unique([tenantId, membershipId, userId])
+  @@unique([tenantId, normalizedEmployeeCode])
+  @@index([tenantId, employmentStatus, departmentCode])
+  @@index([tenantId, availabilityStatus])
+  @@index([tenantId, supervisorMembershipId])
+  @@index([provisioningBatchId])
+  @@map("employee_profiles")
 }
 
 model AuthSession {
@@ -2823,6 +2863,26 @@ enum TenantMembershipRole {
 enum TenantProvisioningSource {
   MANUAL
   BACKFILL
+}
+
+enum EmployeeEmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum EmployeeContractType {
+  PERMANENT
+  MOBILE_STAFF
+  FIXED_TERM
+  CONTRACTOR
+}
+
+enum EmployeeAvailabilityStatus {
+  AVAILABLE
+  LIMITED
+  UNAVAILABLE
 }
 
 enum AuthSessionStatus {

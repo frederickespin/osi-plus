@@ -36,6 +36,7 @@ export const CANONICAL_MIGRATIONS = Object.freeze([
   "20260801009000_logistics_rate_metadata",
   "20260801010000_crate_settings",
   "20260801011000_mt01b_auth_sessions",
+  "20260801012000_mt01c1a_employee_profiles",
 ]);
 
 function invariant(condition, message) {
@@ -64,7 +65,7 @@ export function assertCanonicalCiTarget(raw = process.env.DATABASE_URL) {
   return { database, host: url.hostname, port: url.port, schema: "osi" };
 }
 
-function validateMigrationFiles(root = process.cwd()) {
+export function validateMigrationFiles(root = process.cwd()) {
   const migrationRoot = resolve(root, "prisma/migrations");
   const directories = readdirSync(migrationRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())

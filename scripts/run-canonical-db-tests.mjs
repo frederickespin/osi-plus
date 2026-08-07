@@ -88,6 +88,7 @@ try {
   const mtTests = mtRun.report;
   const rollback = runJson("mt-01a-rollback.mjs", "MT-01A/ROLLBACK").report;
   const reapply = runJson("mt-01a-backfill.mjs", "MT-01A/REAPPLY").report;
+  const employeeIncompleteRun = runJson("mt-01c1a-incomplete-test.mjs", "MT-01C1A/INCOMPLETE_DRY_RUN");
 
   invariant(synthetic.created === 18, "MT-01A no creó 18 usuarios sintéticos");
   invariant(dryRun.membershipsToCreate === 18 && dryRun.unmigratableRows === 0, "Dry-run MT-01A inesperado");
@@ -96,6 +97,7 @@ try {
   invariant(passedCount(mtTests) === 7, "Las siete restricciones MT-01A no pasaron");
   invariant(rollback.membershipsDeleted === 18 && rollback.tenantDeleted === true, "Rollback MT-01A incompleto");
   invariant(reapply.created === 18, "Reaplicación MT-01A incompleta");
+  invariant(employeeIncompleteRun.assertions === 11, `MT-01C1A dry-run esperaba 11 pruebas y obtuvo ${employeeIncompleteRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -121,6 +123,12 @@ try {
   invariant(authFoundationRun.assertions === 37, `MT-01B1 esperaba 37 pruebas y obtuvo ${authFoundationRun.assertions}`);
   invariant(authRaceRun.assertions === 62, `MT-01B1 race esperaba 62 pruebas y obtuvo ${authRaceRun.assertions}`);
   invariant(authAdversarialRun.assertions === 15, `MT-01B1 adversarial esperaba 15 pruebas y obtuvo ${authAdversarialRun.assertions}`);
+  const employeeProfileRun = runJson("mt-01c1a-test.mjs", "MT-01C1A/EMPLOYEE_PROFILE");
+  const employeeGuardRun = runJson("validate-mt01c1a-canonical-guard-test.mjs", "MT-01C1A/CANONICAL_GUARD");
+  const employeeRuntimeGuardRun = runJson("validate-mt01c1a-guard.mjs", "MT-01C1A/RUNTIME_GUARD");
+  invariant(employeeProfileRun.assertions === 31, `MT-01C1A esperaba 31 pruebas y obtuvo ${employeeProfileRun.assertions}`);
+  invariant(employeeGuardRun.assertions === 3, `MT-01C1A guard esperaba 3 pruebas y obtuvo ${employeeGuardRun.assertions}`);
+  invariant(employeeRuntimeGuardRun.report.ok === true, "La guardia runtime MT-01C1A falló");
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
@@ -131,6 +139,13 @@ try {
       adversarial: authAdversarialRun.assertions,
       total: 124,
     },
+    mt01c1a: {
+      incompleteDryRun: employeeIncompleteRun.assertions,
+      employeeProfile: employeeProfileRun.assertions,
+      canonicalGuard: employeeGuardRun.assertions,
+      runtimeGuard: employeeRuntimeGuardRun.report.ok,
+      total: 45,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -139,6 +154,10 @@ try {
       "MT-01B1/FOUNDATION": { status: "PASS", assertions: authFoundationRun.assertions, durationMs: authFoundationRun.durationMs, exitCode: 0 },
       "MT-01B1/REFRESH_RACE": { status: "PASS", assertions: authRaceRun.assertions, durationMs: authRaceRun.durationMs, exitCode: 0 },
       "MT-01B1/ADVERSARIAL": { status: "PASS", assertions: authAdversarialRun.assertions, durationMs: authAdversarialRun.durationMs, exitCode: 0 },
+      "MT-01C1A/INCOMPLETE_DRY_RUN": { status: "PASS", assertions: employeeIncompleteRun.assertions, durationMs: employeeIncompleteRun.durationMs, exitCode: 0 },
+      "MT-01C1A/EMPLOYEE_PROFILE": { status: "PASS", assertions: employeeProfileRun.assertions, durationMs: employeeProfileRun.durationMs, exitCode: 0 },
+      "MT-01C1A/CANONICAL_GUARD": { status: "PASS", assertions: employeeGuardRun.assertions, durationMs: employeeGuardRun.durationMs, exitCode: 0 },
+      "MT-01C1A/RUNTIME_GUARD": { status: "PASS", assertions: 0, durationMs: employeeRuntimeGuardRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

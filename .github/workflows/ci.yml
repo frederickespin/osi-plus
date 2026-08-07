@@ -81,6 +81,7 @@ jobs:
           npm run build
           node scripts/validate-canonical-ci.mjs --preflight
           node scripts/validate-canonical-activation-guard-test.mjs
+          node scripts/validate-mt01c1a-guard.mjs
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
@@ -142,6 +143,8 @@ jobs:
           node scripts/validate-canonical-activation-guard-test.mjs
           node scripts/validate-mt01b3a-auth-guard.mjs
           node scripts/validate-mt01b3a-auth-guard-test.mjs
+          node scripts/validate-mt01c1a-canonical-guard-test.mjs
+          node scripts/validate-mt01c1a-guard.mjs
 
       - name: Validate and generate Prisma
         run: |
@@ -179,7 +182,7 @@ jobs:
       - name: Verify canonical history and safe modes
         run: node scripts/validate-canonical-ci.mjs
 
-      - name: Run MT-01A, DB-01D through DB-01J, MT-01B1, inactive MT-01B2A, MT-01B3A, and MT-01B3B1
+      - name: Run MT-01A, DB-01D through DB-01J, MT-01B1, inactive MT-01B2A, MT-01B3A, MT-01B3B1, and MT-01C1A
         run: |
           node scripts/run-canonical-db-tests.mjs
           node scripts/mt-01b2a-test.ts

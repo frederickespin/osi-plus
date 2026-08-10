@@ -1,8 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import { EmployeeProvisioningError } from "./employeeProvisioningDomain.js";
-import { EMPLOYEE_PROVISIONING_PERMISSIONS as P } from "./employeeProvisioningPolicy.js";
+import { EMPLOYEE_PROVISIONING_PERMISSIONS as P, NEVER_DELEGABLE } from "./employeeProvisioningPolicy.js";
 import { permsForRole } from "./rbac.js";
 
 const SOURCE = "MT01C1B3A_EXECUTOR";
@@ -28,16 +28,17 @@ function canonicalJson(value) {
   return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
 }
 
-function hash(value) {
-  return createHash("sha256").update(canonicalJson(value)).digest("hex");
-}
-
 function upper(value) {
   return String(value ?? "").trim().toUpperCase();
 }
 
 function sameStrings(left, right) {
   return canonicalJson([...(left || [])].map(String).sort()) === canonicalJson([...(right || [])].map(String).sort());
+}
+
+function subsetStrings(subset, superset) {
+  const allowed = new Set((superset || []).map(String));
+  return (subset || []).map(String).every((value) => allowed.has(value));
 }
 
 function assertDatabase(db) {
@@ -62,7 +63,7 @@ function normalizeCommand(input) {
     requestId: required(input?.requestId, "requestId"),
     expectedLifecycleVersion,
   };
-  return Object.freeze({ ...command, commandHash: hash(command) });
+  return Object.freeze(command);
 }
 
 function contextMembershipId(context) {
@@ -172,7 +173,8 @@ async function findApprovalEvidence(tx, row) {
   const evidence = audits[0];
   if (!evidence || evidence.after_json?.requestedRole !== row.requested_role
     || !sameStrings(evidence.after_json?.grantedPermissions, row.granted_permissions)
-    || !sameStrings(evidence.after_json?.deniedPermissions, row.denied_permissions)) {
+    || !sameStrings(evidence.after_json?.deniedPermissions, row.denied_permissions)
+    || (row.granted_permissions || []).some((permission) => (row.denied_permissions || []).includes(permission) || NEVER_DELEGABLE.has(permission))) {
     throw new EmployeeProvisioningError("La decisión aprobada no coincide con la provisión.", {
       code: "EMPLOYEE_PROVISIONING_APPROVAL_EVIDENCE_INVALID",
       status: 409,
@@ -195,7 +197,7 @@ async function assertRoleA(tx, row, evidence) {
   const targetUserId = row.evaluation_snapshot_json?.targetUserId || null;
   if (!proposal || new Set(actors).size !== 3
     || (targetUserId && [row.requester_user_id, proposal.proposer_user_id, row.decider_user_id].includes(targetUserId))
-    || !sameStrings(proposal.granted_permissions, row.granted_permissions)
+    || !subsetStrings(row.granted_permissions, proposal.granted_permissions)
     || !sameStrings(proposal.denied_permissions, row.denied_permissions)) {
     throw new EmployeeProvisioningError("La aprobación de rol A no cumple cuatro ojos.", {
       code: "EMPLOYEE_PROVISIONING_FOUR_EYES_REQUIRED",
@@ -255,7 +257,7 @@ function publicResult(row, ids, idempotent) {
 }
 
 async function idempotentResult(tx, actor, command, audit) {
-  if (audit.metadata_json?.commandHash !== command.commandHash || audit.entity_id !== command.provisioningRequestId) {
+  if (audit.entity_id !== command.provisioningRequestId) {
     throw new EmployeeProvisioningError("requestId fue usado con otro payload.", {
       code: "EMPLOYEE_PROVISIONING_IDEMPOTENCY_CONFLICT",
       status: 409,
@@ -298,7 +300,6 @@ async function appendMaterializationAudit(tx, actor, command, result, proposalId
       accessEnabled: false,
     },
     metadataJson: {
-      commandHash: command.commandHash,
       credentialState: "NOT_PROVISIONED",
       membershipState: "INACTIVE",
       roleAProposalId: proposalId,
@@ -343,6 +344,7 @@ export async function materializeApprovedEmployeeProvisioning(prisma, context, i
       WHERE p."tenant_id"=${actor.tenantId} AND p."id"<>${row.id}
         AND a."status" IN ('PENDING','APPROVED')
         AND (p."normalized_email"=${row.normalized_email} OR p."normalized_employee_code"=${row.normalized_employee_code})
+        AND (p."created_at" < ${row.created_at} OR (p."created_at" = ${row.created_at} AND p."id" < ${row.id}))
       UNION ALL
       SELECT e."id" FROM "osi"."employee_profiles" e
       WHERE e."tenant_id"=${actor.tenantId} AND e."normalized_employee_code"=${row.normalized_employee_code}
@@ -369,10 +371,10 @@ export async function materializeApprovedEmployeeProvisioning(prisma, context, i
       WHERE "tenant_id"=${actor.tenantId} AND "user_id"=${ids.userId}
       LIMIT 1 FOR UPDATE
     `);
-    if (existingMemberships[0]) throw new EmployeeProvisioningError("La identidad ya pertenece a la empresa.", { code: "EMPLOYEE_PROVISIONING_MEMBERSHIP_CONFLICT", status: 409 });
     if (row.supervisor_user_id && row.supervisor_user_id === ids.userId) {
       throw new EmployeeProvisioningError("La autosupervisión no está permitida.", { code: "EMPLOYEE_PROVISIONING_SELF_SUPERVISION_FORBIDDEN", status: 409 });
     }
+    if (existingMemberships[0]) throw new EmployeeProvisioningError("La identidad ya pertenece a la empresa.", { code: "EMPLOYEE_PROVISIONING_MEMBERSHIP_CONFLICT", status: 409 });
     if (row.supervisor_membership_id) {
       const supervisors = await tx.$queryRaw(Prisma.sql`
         SELECT "id" FROM "osi"."tenant_memberships"
@@ -406,6 +408,7 @@ export async function materializeApprovedEmployeeProvisioning(prisma, context, i
         'MANUAL',${batchId},${now}
       )
     `);
+    if (typeof options.beforeLifecycle === "function") await options.beforeLifecycle(tx, row);
     const updated = await tx.$queryRaw(Prisma.sql`
       UPDATE "osi"."employee_provisioning_requests"
       SET "lifecycle_status"='PROVISIONED_INACTIVE', "lifecycle_version"=1,

@@ -27,7 +27,9 @@ La operación usa `READ COMMITTED`, `maxWait=3s` y `timeout=10s`. Adquiere advis
 
 Después de esperar cada coordinación, vuelve a leer las filas y compara sus identificadores completos. Por eso una colisión de la clave hash sólo aumenta la espera y nunca mezcla tenants, solicitudes, correos o códigos.
 
-La auditoría crítica `EMPLOYEE_PROVISIONING_MATERIALIZED` comparte la transacción con `User`, `TenantMembership`, `EmployeeProfile` y el cambio de lifecycle. Su metadata conserva el hash del comando no sensible. Un reintento idéntico devuelve la misma identidad; el mismo `requestId` con otra solicitud o versión devuelve `EMPLOYEE_PROVISIONING_IDEMPOTENCY_CONFLICT`. Si la auditoría falla, toda la materialización se revierte.
+La auditoría crítica `EMPLOYEE_PROVISIONING_MATERIALIZED` comparte la transacción con `User`, `TenantMembership`, `EmployeeProfile` y el cambio de lifecycle. No persiste correo, teléfono, credenciales, tokens ni hashes internos de idempotencia. El par tenant/requestId y la entidad auditada identifican el resultado: un reintento idéntico devuelve la misma identidad y el mismo `requestId` aplicado a otra solicitud devuelve `EMPLOYEE_PROVISIONING_IDEMPOTENCY_CONFLICT`. Si falla User, Membership, Profile, lifecycle o auditoría, toda la materialización se revierte.
+
+Si existen reservas contradictorias anteriores, sólo la primera por `created_at, id` puede continuar. Las demás reciben conflicto empresarial. Esto produce exactamente un ganador para carreras por correo o código sin introducir un índice nuevo en C1B3A.
 
 ## Rol A y separación
 
@@ -73,3 +75,7 @@ Los locks protegen este ejecutor, pero no sustituyen la restricción física fre
 - Detección de ciclos de supervisión más allá de autosupervisión.
 - Política de actores de sistema, endpoint, rate limiting y UX.
 - Consumidores tenant-scoped y eventual activación HYBRID; permanecen bloqueados en esta fase.
+
+## Bypass heredado bloqueante
+
+`POST /api/users` continúa creando `User` directamente, acepta `role` del body y conserva una contraseña predeterminada heredada. C1B3A no cambia ese contrato LEGACY. La guardia CI congela este bypass, exige cero imports runtime del ejecutor y falla si cambia el inventario sin revisión. Su eliminación o migración a provisión empresarial es requisito de C1B3B.

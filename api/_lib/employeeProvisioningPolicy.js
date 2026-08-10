@@ -8,6 +8,7 @@ export const EMPLOYEE_PROVISIONING_PERMISSIONS = Object.freeze({
   CANCEL: "employee:provisioning:cancel",
   ROLE_A_PROPOSE: "employee:role:a:propose",
   ROLE_A_ASSIGN: "employee:role:a:assign",
+  MATERIALIZE: "employee:provisioning:materialize",
 });
 
 export const EMPLOYEE_PROVISIONING_ROLES = Object.freeze([
@@ -18,6 +19,7 @@ export const NEVER_DELEGABLE = new Set([
   "users:create",
   EMPLOYEE_PROVISIONING_PERMISSIONS.ROLE_A_ASSIGN,
   EMPLOYEE_PROVISIONING_PERMISSIONS.ROLE_A_PROPOSE,
+  EMPLOYEE_PROVISIONING_PERMISSIONS.MATERIALIZE,
 ]);
 
 // Catálogo cerrado. Un permiso nuevo en RBAC no se vuelve delegable por accidente.

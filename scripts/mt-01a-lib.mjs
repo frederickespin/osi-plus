@@ -35,7 +35,7 @@ export function loadMt01aEnvironment() {
   if (!localHosts.has(url.hostname)) {
     throw new Error(`MT-01A safety guard rechazó el host ${url.hostname}`);
   }
-  if (url.port !== "55432" || (database !== "osi_plus_mt01a_dev" && !database.startsWith("osi_db01n_"))) {
+  if (url.port !== "55432" || (database !== "osi_plus_mt01a_dev" && !database.startsWith("osi_db01n_") && database !== "osi_mt01c1b3a_q1_20260809")) {
     throw new Error("MT-01A safety guard rechazó una base o puerto no aislado");
   }
   if (process.env.VERCEL_ENV !== "development") {

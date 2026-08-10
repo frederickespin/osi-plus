@@ -36,11 +36,16 @@ El solicitante, el proponente, el decisor y el empleado objetivo (cuando es iden
 
 Las operaciones toman advisory locks transaccionales estables por tenant y comando/recurso, con aislamiento `READ COMMITTED`, `maxWait` de 3 s y transacción máxima de 10 s. La auditoría crítica comparte la transacción empresarial. Los intentos denegados se devuelven como resultado interno para confirmar primero su auditoría y lanzar el error después del commit.
 
-## Reservado para MT-01C1B3
+## Implementado internamente en MT-01C1B3A
 
-- Crear o enlazar `User`, `TenantMembership` y `EmployeeProfile`.
+- Materialización atómica e inactiva de `User`, `TenantMembership` y `EmployeeProfile`.
+- Colisiones globales de correo mediante columna normalizada y expresión heredada.
+- Lifecycle `PROVISIONED_INACTIVE` y auditoría crítica idempotente.
+
+## Reservado para MT-01C1B3B
+
 - Invitación y contraseña.
-- Colisiones globales de correo sin revelar existencia.
+- Índice único parcial y backfill de correo previos a invitaciones.
 - Revocación de sesiones y activación laboral coordinadas.
 - Detección de ciclos de supervisión.
 - Endpoints, UI y activación de modos V2.

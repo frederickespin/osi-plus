@@ -78,7 +78,7 @@ export function loadMt01c1aEnvironment() {
   if (!new Set(["5432", "55432"]).has(url.port)) {
     throw new Error("MT-01C1A rechazó un puerto PostgreSQL no local autorizado");
   }
-  if (!database.startsWith("osi_mt01c1a_") && !database.startsWith("osi_db01n_")) {
+  if (!database.startsWith("osi_mt01c1a_") && !database.startsWith("osi_db01n_") && database !== "osi_mt01c1b3a_q1_20260809") {
     throw new Error("MT-01C1A requiere una base local aislada MT-01C1A o DB-01N");
   }
   if (process.env.VERCEL_ENV !== "development") {

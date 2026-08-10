@@ -85,6 +85,7 @@ jobs:
           node scripts/validate-mt01c1b1-guard.mjs
           node scripts/validate-mt01c1b2a-guard.mjs
           node scripts/validate-mt01c1b2b-guard.mjs
+          node scripts/validate-mt01c1b3a-guard.mjs
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
@@ -214,4 +215,5 @@ jobs:
           node scripts/validate-mt01c1b1-guard.mjs
           node scripts/validate-mt01c1b2a-guard.mjs
           node scripts/validate-mt01c1b2b-guard.mjs
+          node scripts/validate-mt01c1b3a-guard.mjs
           git diff --exit-code

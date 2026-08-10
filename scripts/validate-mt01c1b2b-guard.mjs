@@ -16,7 +16,7 @@ export function validateMt01c1b2bGuard({ root = process.cwd(), files = trackedFi
   for (const file of runtime) {
     if (file.startsWith("api/_lib/")) continue;
     const source = readFileSync(resolve(root, file), "utf8");
-    if (/employeeProvisioning(?:Domain|Policy)/.test(source)) violations.push(file);
+    if (/employeeProvisioning(?:Domain|Executor|Policy)/.test(source)) violations.push(file);
   }
   invariant(violations.length === 0, `MT-01C1B2B no permite consumidores runtime: ${violations.join(", ")}`);
 
@@ -44,7 +44,7 @@ export function validateMt01c1b2bGuard({ root = process.cwd(), files = trackedFi
   invariant(String(env.MT01B_AUTH_MODE || "LEGACY").toUpperCase() !== "HYBRID", "HYBRID permanece bloqueado");
   invariant(String(env.MT01B_TENANT_SWITCH_ENABLED || "false").toLowerCase() !== "true", "tenant switch permanece bloqueado");
   invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "cliente V2 permanece bloqueado");
-  return { ok: true, runtimeFiles: runtime.length, protectedServices: 2 };
+  return { ok: true, runtimeFiles: runtime.length, protectedServices: 3 };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

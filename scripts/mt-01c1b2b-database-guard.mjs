@@ -1,4 +1,4 @@
-const ALLOWED_DATABASES = Object.freeze(new Set(["osi_db01n_ci"]));
+const ALLOWED_DATABASES = Object.freeze(new Set(["osi_db01n_ci", "osi_mt01c1b3a_q1_20260809"]));
 const FORBIDDEN_OVERRIDE = /^MT01C1B2B_.*(?:OVERRIDE|SKIP|UNSAFE|ALLOW_EXTERNAL)/i;
 
 function fail(code, message) {

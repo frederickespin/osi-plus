@@ -137,7 +137,14 @@ function validateTrackedSecrets(root = process.cwd()) {
 
 export function validateMt01bFoundationIsolation({ root = process.cwd(), files = trackedFiles() } = {}) {
   files = files.map((file) => file.replaceAll("\\", "/"));
-  const contextPilotRoutes = new Set(["api/clients/index.js", "api/projects/index.js", "api/users/index.js"]);
+  const contextPilotRoutes = new Set([
+    "api/clients/index.js",
+    "api/k/dashboard.js",
+    "api/osis/[id].js",
+    "api/osis/index.js",
+    "api/projects/index.js",
+    "api/users/index.js",
+  ]);
   const forbiddenPaths = files.filter((file) => /(?:select-tenant|switch-tenant|auth\/memberships|tenant(?:selection|switcher))/i.test(file));
   invariant(forbiddenPaths.length === 0, `MT-01B1 no permite selección o cambio de empresa: ${forbiddenPaths.join(", ")}`);
 

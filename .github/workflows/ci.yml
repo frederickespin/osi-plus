@@ -159,6 +159,8 @@ jobs:
           node scripts/validate-mt01c1b1-canonical-guard-test.mjs
           node scripts/validate-mt01c1b1-guard.mjs
           node scripts/validate-mt01c1b2a-guard.mjs
+          node scripts/validate-sec-com-01a-guard.mjs
+          node scripts/validate-sec-com-01a-guard-test.mjs
 
       - name: Validate and generate Prisma
         run: |
@@ -196,7 +198,7 @@ jobs:
       - name: Verify canonical history and safe modes
         run: node scripts/validate-canonical-ci.mjs
 
-      - name: Run MT-01A, DB-01D through DB-01J, MT-01B1, inactive MT-01B2A, MT-01B3A, MT-01B3B1, MT-01C1A, and MT-01C1B1
+      - name: Run canonical domain suites and SEC-COM-01A route security
         run: |
           node scripts/run-canonical-db-tests.mjs
           node scripts/mt-01b2a-test.ts

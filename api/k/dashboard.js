@@ -1,46 +1,40 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, withCommonHeaders } from "../_lib/http.js";
-import { ensureActorUserId, requireRoleFromHeaders } from "../_lib/rbac.js";
+import { requirePilotPermission } from "../_lib/authContextPilot.js";
+import { databaseUnavailable, methodNotAllowed, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
+import { PERMS } from "../_lib/rbac.js";
 import {
   computePgdBlockingColor,
   computeSignalColor,
-  ensureDefaultSignals,
+  effectiveSignalMap,
   pgdBlockingSummary,
 } from "./_lib.js";
 
 export default withCommonHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
-  const actor = requireRoleFromHeaders(req, res, ["K", "A"]);
-  if (!actor?.role) return;
-  await ensureActorUserId(prisma, actor);
-
-  const projects = await prisma.project.findMany({
-    orderBy: { startDate: "desc" },
-    take: 50,
-    include: {
-      signals: true,
-      pgd: { include: { items: true } },
-    },
-  });
-
-  // MVP: ensure default signals exist for each project (idempotent).
-  // Note: This adds DB writes on first dashboard load, acceptable for MVP.
-  for (const p of projects) {
-    await ensureDefaultSignals(prisma, p.id, p.startDate);
+  setPrivateNoStore(res);
+  const context = await requirePilotPermission(req, res, PERMS.PROJECTS_VIEW, { prisma });
+  if (!context) return;
+  if (!["A", "K"].includes(context.role)) {
+    return res.status(403).json({ ok: false, error: "Forbidden", perm: PERMS.PROJECTS_VIEW });
   }
 
-  const fresh = await prisma.project.findMany({
-    orderBy: { startDate: "desc" },
-    take: 50,
-    include: {
-      signals: true,
-      pgd: { include: { items: true } },
-    },
-  });
+  let projects;
+  try {
+    projects = await prisma.project.findMany({
+      orderBy: { startDate: "desc" },
+      take: 50,
+      include: {
+        signals: true,
+        pgd: { include: { items: true } },
+      },
+    });
+  } catch {
+    return databaseUnavailable(res);
+  }
 
   const now = new Date();
-  const data = fresh.map((p) => {
-    const byKind = new Map(p.signals.map((s) => [s.kind, s]));
+  const data = projects.map((p) => {
+    const byKind = effectiveSignalMap(p.signals, p.startDate);
     const payment = computeSignalColor(byKind.get("PAYMENT"), now);
     const permits = computeSignalColor(byKind.get("PERMITS_PARKING"), now);
     const crates = computeSignalColor(byKind.get("CRATES"), now);

@@ -38,6 +38,8 @@ expectFailure("flag de override rechazado", { MT01C1B2B_TEST_DATABASE_URL: allow
 
 const validated = validateMt01c1b2bTestDatabaseEnv({ MT01C1B2B_TEST_DATABASE_URL: allowed, DATABASE_URL: externalCredentialUrl("example.invalid", "prod") });
 check("la variable exclusiva prevalece sin leer DATABASE_URL", validated.database === "osi_db01n_ci" && validated.host === "127.0.0.1");
+const q1Validated = validateMt01c1b2bTestDatabaseEnv({ MT01C1B2B_TEST_DATABASE_URL: allowed.replace("osi_db01n_ci", "osi_mt01c1b3a_q1_20260809") });
+check("base Q1 exacta pertenece a la allowlist local", q1Validated.database === "osi_mt01c1b3a_q1_20260809");
 
 const localIdentity = await verifyMt01c1b2bConnectedDatabase({ $queryRawUnsafe: async () => [{ database: "osi_db01n_ci", server_address: "127.0.0.1", server_port: 55432, schema: "osi", neon_branch_id: null }] }, validated);
 check("identidad PostgreSQL local autorizada", localIdentity.database === "osi_db01n_ci");

@@ -52,7 +52,7 @@ export function assertCanonicalCiTarget(raw = process.env.DATABASE_URL) {
   invariant(["postgres:", "postgresql:"].includes(url.protocol), "El protocolo debe ser PostgreSQL");
   invariant(new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname), "La base canónica CI debe ser local");
   invariant(url.port === "55432", "La base canónica CI debe usar el puerto aislado 55432");
-  invariant(database === "osi_db01n_ci", "La base canónica CI debe ser osi_db01n_ci");
+  invariant(new Set(["osi_db01n_ci", "osi_mt01c1b3a_q1_20260809"]).has(database), "La base canónica debe pertenecer a la allowlist local exacta");
   invariant(url.searchParams.get("schema") === "osi", "La URL canónica debe incluir schema=osi");
   invariant(!raw.toLowerCase().includes("neon"), "Se rechazó una referencia Neon");
 
@@ -313,7 +313,7 @@ async function validateDatabase(raw) {
   const prisma = new PrismaClient({ datasourceUrl: raw });
   try {
     const identity = await prisma.$queryRawUnsafe(`SELECT current_database() AS database, current_schema() AS schema`);
-    invariant(identity[0]?.database === "osi_db01n_ci" && identity[0]?.schema === "osi", "Identidad PostgreSQL inesperada");
+    invariant(new Set(["osi_db01n_ci", "osi_mt01c1b3a_q1_20260809"]).has(identity[0]?.database) && identity[0]?.schema === "osi", "Identidad PostgreSQL inesperada");
     const historyTables = await prisma.$queryRawUnsafe(`
       SELECT table_schema FROM information_schema.tables
       WHERE table_name = '_prisma_migrations' ORDER BY table_schema

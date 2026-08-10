@@ -147,12 +147,12 @@ try {
   const provisioningDomainRun = runJson("mt-01c1b2b-test.mjs", "MT-01C1B2B/DOMAIN");
   const provisioningDomainGuardRun = runJson("validate-mt01c1b2b-guard-test.mjs", "MT-01C1B2B/GUARD");
   invariant(provisioningDomainRun.assertions === 75, `MT-01C1B2B esperaba 75 pruebas y obtuvo ${provisioningDomainRun.assertions}`);
-  invariant(provisioningDatabaseGuardRun.assertions === 14, `MT-01C1B2B database guard esperaba 14 pruebas y obtuvo ${provisioningDatabaseGuardRun.assertions}`);
+  invariant(provisioningDatabaseGuardRun.assertions === 15, `MT-01C1B2B database guard esperaba 15 pruebas y obtuvo ${provisioningDatabaseGuardRun.assertions}`);
   invariant(provisioningDomainGuardRun.assertions === 12, `MT-01C1B2B guard esperaba 12 pruebas y obtuvo ${provisioningDomainGuardRun.assertions}`);
   const provisioningExecutorRun = runJson("mt-01c1b3a-test.mjs", "MT-01C1B3A/EXECUTOR");
   const provisioningExecutorGuardRun = runJson("validate-mt01c1b3a-guard-test.mjs", "MT-01C1B3A/GUARD");
-  invariant(provisioningExecutorRun.report.failed === 0 && provisioningExecutorRun.assertions === 29, `MT-01C1B3A esperaba 29 pruebas y obtuvo ${provisioningExecutorRun.assertions}`);
-  invariant(provisioningExecutorGuardRun.assertions === 8, `MT-01C1B3A guard esperaba 8 pruebas y obtuvo ${provisioningExecutorGuardRun.assertions}`);
+  invariant(provisioningExecutorRun.report.failed === 0 && provisioningExecutorRun.assertions === 52, `MT-01C1B3A esperaba 52 pruebas y obtuvo ${provisioningExecutorRun.assertions}`);
+  invariant(provisioningExecutorGuardRun.assertions === 11, `MT-01C1B3A guard esperaba 11 pruebas y obtuvo ${provisioningExecutorGuardRun.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,

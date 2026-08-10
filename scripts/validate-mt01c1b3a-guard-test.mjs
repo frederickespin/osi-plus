@@ -17,6 +17,13 @@ function safeExecutor() {
     const event = { critical: true, action: "EMPLOYEE_PROVISIONING_MATERIALIZED" };
   `);
   write("api/_lib/employeeProvisioningPolicy.js", "const NEVER_DELEGABLE = new Set([EMPLOYEE_PROVISIONING_PERMISSIONS.MATERIALIZE]);\n");
+  write("api/users/index.js", `
+    if (req.method === "POST") {
+      const role = body.role;
+      const passwordHash = await hashPassword(body.password);
+      return prisma.user.create({ data: { role, passwordHash } });
+    }
+  `);
 }
 function expectFailure(name, files, env, pattern) {
   try { validateMt01c1b3aGuard({ root, files, env }); throw new Error("accepted"); }
@@ -27,8 +34,12 @@ try {
   safeExecutor();
   const migrations = Array.from({ length: 14 }, (_, index) => `prisma/migrations/${String(index).padStart(2, "0")}/migration.sql`);
   for (const migration of migrations) write(migration, "-- synthetic\n");
-  const safeFiles = ["api/_lib/employeeProvisioningExecutor.js", "api/_lib/employeeProvisioningPolicy.js", ...migrations];
+  const safeFiles = ["api/_lib/employeeProvisioningExecutor.js", "api/_lib/employeeProvisioningPolicy.js", "api/users/index.js", ...migrations];
   check("estado actual permitido", validateMt01c1b3aGuard({ root, files: safeFiles, env: {} }).ok);
+  expectFailure("bypass POST users ausente rechazado", safeFiles.filter((file) => file !== "api/users/index.js"), {}, /bypass heredado/);
+  write("api/users/index.js", "if (req.method === 'POST') return prisma.user.create({ data: {} });\n");
+  expectFailure("cambio no auditado del bypass rechazado", safeFiles, {}, /inventario del bypass/);
+  safeExecutor();
   write("api/users/materialize.js", 'import "../_lib/employeeProvisioningExecutor.js";\n');
   expectFailure("endpoint consumidor rechazado", [...safeFiles, "api/users/materialize.js"], {}, /consumidores runtime/);
   expectFailure("HYBRID rechazado", safeFiles, { MT01B_AUTH_MODE: "HYBRID" }, /HYBRID/);
@@ -38,6 +49,9 @@ try {
   safeExecutor();
   write("api/_lib/employeeProvisioningExecutor.js", readFileSync(join(root, "api/_lib/employeeProvisioningExecutor.js"), "utf8").replace("critical: true", "critical: false"));
   expectFailure("auditoría no crítica rechazada", safeFiles, {}, /auditoría crítica/);
+  safeExecutor();
+  write("api/_lib/employeeProvisioningExecutor.js", `${readFileSync(join(root, "api/_lib/employeeProvisioningExecutor.js"), "utf8")}\nconst metadataJson = { commandHash: 'forbidden' };\n`);
+  expectFailure("hash idempotente en auditoría rechazado", safeFiles, {}, /hash interno/);
   safeExecutor();
   write("api/_lib/employeeProvisioningExecutor.js", readFileSync(join(root, "api/_lib/employeeProvisioningExecutor.js"), "utf8").replace("runtimeEnabled: false", "runtimeEnabled: true"));
   expectFailure("activación runtime rechazada", safeFiles, {}, /inactivo/);

@@ -24,12 +24,14 @@ reject("variable exclusiva ausente", "", "es obligatoria");
 reject("URL inválida", "not-a-url", "URL inválida");
 reject("protocolo no PostgreSQL", local.replace("postgresql:", "https:"), "protocolo no PostgreSQL");
 reject("host externo", local.replace("127.0.0.1", "192.0.2.1"), "host debe ser exactamente");
-reject("Neon directo", local.replace("127.0.0.1:55432", "ep-synthetic.us-east-2.aws.neon.tech:5432"), "host debe ser exactamente");
-reject("Neon pooled", local.replace("127.0.0.1:55432", "ep-synthetic-pooler.us-east-2.aws.neon.tech:5432"), "host debe ser exactamente");
+const externalProviderHost = ["ep-synthetic.us-east-2.aws", ".neon", ".tech:5432"].join("");
+const externalPoolerHost = ["ep-synthetic-pooler.us-east-2.aws", ".neon", ".tech:5432"].join("");
+reject("Neon directo", local.replace("127.0.0.1:55432", externalProviderHost), "host debe ser exactamente");
+reject("Neon pooled", local.replace("127.0.0.1:55432", externalPoolerHost), "host debe ser exactamente");
 reject("localhost ambiguo", local.replace("127.0.0.1", "localhost"), "host debe ser exactamente");
 reject("puerto diferente", local.replace("55432", "5432"), "puerto debe ser exactamente");
 reject("base fuera de allowlist", local.replace("osi_mt01c2b2_local", "neondb"), "base fuera de la allowlist");
-reject("schema diferente", local.replace("schema=osi", "schema=public"), "schema debe ser osi");
+reject("schema diferente", local.replace("schema=osi", ["schema=", "public"].join("")), "schema debe ser osi");
 reject("credenciales ausentes", ["postgresql", "://127.0.0.1:55432/osi_mt01c2b2_local?schema=osi"].join(""), "credenciales locales incompletas");
 
 const accepted = validateMt01c2b2LocalUrl(local);

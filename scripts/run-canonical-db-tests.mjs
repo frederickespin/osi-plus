@@ -75,6 +75,11 @@ invariant(
   "MT01C2B1_TEST_DATABASE_URL no coincide con el destino canónico validado",
 );
 process.env.MT01C2B1_TEST_DATABASE_URL = process.env.DATABASE_URL;
+invariant(
+  !process.env.MT01C2B2_TEST_DATABASE_URL || process.env.MT01C2B2_TEST_DATABASE_URL === process.env.DATABASE_URL,
+  "MT01C2B2_TEST_DATABASE_URL no coincide con el destino canónico validado",
+);
+process.env.MT01C2B2_TEST_DATABASE_URL = process.env.DATABASE_URL;
 const envPath = resolve(".env.mt01a.local");
 invariant(!existsSync(envPath), `${envPath} ya existe; no será sobrescrito`);
 const resultsPath = resolve(tmpdir(), `db01j-ci-results-${process.pid}.json`);
@@ -109,6 +114,14 @@ try {
   invariant(rollback.membershipsDeleted === 18 && rollback.tenantDeleted === true, "Rollback MT-01A incompleto");
   invariant(reapply.created === 18, "Reaplicación MT-01A incompleta");
   invariant(employeeIncompleteRun.assertions === 11, `MT-01C1A dry-run esperaba 11 pruebas y obtuvo ${employeeIncompleteRun.assertions}`);
+  const commercialBackfillRun = runJson("mt-01c2b2-test.mjs", "MT-01C2B2/BACKFILL");
+  const commercialBackfillDatabaseGuardRun = runJson("mt-01c2b2-database-guard-test.mjs", "MT-01C2B2/DATABASE_GUARD");
+  const commercialBackfillGuardRun = runJson("validate-mt01c2b2-guard.mjs", "MT-01C2B2/GUARD");
+  const commercialBackfillGuardTestsRun = runJson("validate-mt01c2b2-guard-test.mjs", "MT-01C2B2/GUARD_TESTS");
+  invariant(commercialBackfillRun.report.ok === true && commercialBackfillRun.assertions >= 25, `MT-01C2B2 esperaba al menos 25 pruebas y obtuvo ${commercialBackfillRun.assertions}`);
+  invariant(commercialBackfillDatabaseGuardRun.assertions >= 14, `MT-01C2B2 database guard esperaba al menos 14 pruebas y obtuvo ${commercialBackfillDatabaseGuardRun.assertions}`);
+  invariant(commercialBackfillGuardRun.report.ok === true, "MT-01C2B2 guard falló");
+  invariant(commercialBackfillGuardTestsRun.assertions >= 5, `MT-01C2B2 guard tests esperaba al menos 5 pruebas y obtuvo ${commercialBackfillGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -218,6 +231,13 @@ try {
       guardTests: commercialTenantGuardTests.assertions,
       total: commercialTenantRun.assertions + commercialTenantGuardTests.assertions,
     },
+    mt01c2b2: {
+      backfill: commercialBackfillRun.assertions,
+      databaseGuard: commercialBackfillDatabaseGuardRun.assertions,
+      guard: commercialBackfillGuardRun.report.ok,
+      guardTests: commercialBackfillGuardTestsRun.assertions,
+      total: commercialBackfillRun.assertions + commercialBackfillDatabaseGuardRun.assertions + commercialBackfillGuardTestsRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -245,6 +265,10 @@ try {
       "MT-01C2B1/DRY_RUN": { status: "PASS", assertions: 0, durationMs: commercialTenantDryRun.durationMs, exitCode: 0 },
       "MT-01C2B1/RUNTIME_GUARD": { status: "PASS", assertions: 0, durationMs: commercialTenantGuardRun.durationMs, exitCode: 0 },
       "MT-01C2B1/GUARD_TESTS": { status: "PASS", assertions: commercialTenantGuardTests.assertions, durationMs: commercialTenantGuardTests.durationMs, exitCode: 0 },
+      "MT-01C2B2/BACKFILL": { status: "PASS", assertions: commercialBackfillRun.assertions, durationMs: commercialBackfillRun.durationMs, exitCode: 0 },
+      "MT-01C2B2/DATABASE_GUARD": { status: "PASS", assertions: commercialBackfillDatabaseGuardRun.assertions, durationMs: commercialBackfillDatabaseGuardRun.durationMs, exitCode: 0 },
+      "MT-01C2B2/GUARD": { status: "PASS", assertions: 0, durationMs: commercialBackfillGuardRun.durationMs, exitCode: 0 },
+      "MT-01C2B2/GUARD_TESTS": { status: "PASS", assertions: commercialBackfillGuardTestsRun.assertions, durationMs: commercialBackfillGuardTestsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

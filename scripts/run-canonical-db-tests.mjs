@@ -70,6 +70,11 @@ invariant(
   "MT01C1B2B_TEST_DATABASE_URL no coincide con el destino canónico validado",
 );
 process.env.MT01C1B2B_TEST_DATABASE_URL = process.env.DATABASE_URL;
+invariant(
+  !process.env.MT01C2B1_TEST_DATABASE_URL || process.env.MT01C2B1_TEST_DATABASE_URL === process.env.DATABASE_URL,
+  "MT01C2B1_TEST_DATABASE_URL no coincide con el destino canónico validado",
+);
+process.env.MT01C2B1_TEST_DATABASE_URL = process.env.DATABASE_URL;
 const envPath = resolve(".env.mt01a.local");
 invariant(!existsSync(envPath), `${envPath} ya existe; no será sobrescrito`);
 const resultsPath = resolve(tmpdir(), `db01j-ci-results-${process.pid}.json`);
@@ -158,6 +163,14 @@ try {
   const secComGuardRun = runJson("validate-sec-com-01a-guard-test.mjs", "SEC-COM-01A/GUARD");
   invariant(secComRun.report.failed === undefined && secComRun.assertions === 30, `SEC-COM-01A esperaba 30 pruebas y obtuvo ${secComRun.assertions}`);
   invariant(secComGuardRun.assertions === 18, `SEC-COM-01A guard esperaba 18 pruebas y obtuvo ${secComGuardRun.assertions}`);
+  const commercialTenantRun = runJson("mt-01c2b1-test.mjs", "MT-01C2B1/FOUNDATION");
+  const commercialTenantDryRun = runJson("mt-01c2b1-dry-run.mjs", "MT-01C2B1/DRY_RUN");
+  const commercialTenantGuardRun = runJson("validate-mt01c2b1-guard.mjs", "MT-01C2B1/RUNTIME_GUARD");
+  const commercialTenantGuardTests = runJson("validate-mt01c2b1-guard-test.mjs", "MT-01C2B1/GUARD_TESTS");
+  invariant(commercialTenantRun.assertions >= 25, `MT-01C2B1 esperaba al menos 25 pruebas y obtuvo ${commercialTenantRun.assertions}`);
+  invariant(commercialTenantDryRun.report.readOnly === true && commercialTenantDryRun.report.wroteRows === 0, "MT-01C2B1 dry-run no fue de sólo lectura");
+  invariant(commercialTenantGuardRun.report.ok === true, "MT-01C2B1 guard falló");
+  invariant(commercialTenantGuardTests.assertions >= 7, `MT-01C2B1 guard esperaba al menos 7 pruebas y obtuvo ${commercialTenantGuardTests.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
@@ -198,6 +211,13 @@ try {
       guard: secComGuardRun.assertions,
       total: secComRun.assertions + secComGuardRun.assertions,
     },
+    mt01c2b1: {
+      foundation: commercialTenantRun.assertions,
+      dryRunReadOnly: commercialTenantDryRun.report.readOnly,
+      runtimeGuard: commercialTenantGuardRun.report.ok,
+      guardTests: commercialTenantGuardTests.assertions,
+      total: commercialTenantRun.assertions + commercialTenantGuardTests.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -221,6 +241,10 @@ try {
       "MT-01C1B3A/GUARD": { status: "PASS", assertions: provisioningExecutorGuardRun.assertions, durationMs: provisioningExecutorGuardRun.durationMs, exitCode: 0 },
       "SEC-COM-01A/ROUTES": { status: "PASS", assertions: secComRun.assertions, durationMs: secComRun.durationMs, exitCode: 0 },
       "SEC-COM-01A/GUARD": { status: "PASS", assertions: secComGuardRun.assertions, durationMs: secComGuardRun.durationMs, exitCode: 0 },
+      "MT-01C2B1/FOUNDATION": { status: "PASS", assertions: commercialTenantRun.assertions, durationMs: commercialTenantRun.durationMs, exitCode: 0 },
+      "MT-01C2B1/DRY_RUN": { status: "PASS", assertions: 0, durationMs: commercialTenantDryRun.durationMs, exitCode: 0 },
+      "MT-01C2B1/RUNTIME_GUARD": { status: "PASS", assertions: 0, durationMs: commercialTenantGuardRun.durationMs, exitCode: 0 },
+      "MT-01C2B1/GUARD_TESTS": { status: "PASS", assertions: commercialTenantGuardTests.assertions, durationMs: commercialTenantGuardTests.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

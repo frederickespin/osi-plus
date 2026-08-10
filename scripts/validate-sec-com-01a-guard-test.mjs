@@ -79,7 +79,7 @@ check("cliente OSI sin Bearer rechazado", () => validateSecCom01aSources({
 }), true);
 check("cliente dashboard sin Bearer rechazado", () => validateSecCom01aSources({
   ...baseline,
-  apiClient: baseline.apiClient.replace('(\n    "/k/dashboard",\n    { token: getToken() || undefined },\n  )', '("/k/dashboard")'),
+  apiClient: baseline.apiClient.replace(/\(\s*"\/k\/dashboard",\s*\{\s*token:\s*getToken\(\)\s*\|\|\s*undefined\s*\},\s*\)/, '("/k/dashboard")'),
 }), true);
 check("HYBRID predeterminado rechazado", () => validateSecCom01aSources({
   ...baseline,

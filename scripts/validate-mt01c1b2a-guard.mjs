@@ -18,7 +18,7 @@ export function validateMt01c1b2aGuard(root = process.cwd()) {
 
   const migrations = fs.readdirSync(path.join(root, "prisma", "migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-  invariant(migrations.length === 14, `MT-01C1B2A: se esperaban 14 migraciones, se encontraron ${migrations.length}`);
+  invariant(migrations.length === 15, `MT-01C1B2A: se esperaban 15 migraciones, se encontraron ${migrations.length}`);
 
   const requireAuthSource = source(root, "api/_lib/requireAuth.js");
   invariant(/select:\s*\{\s*status:\s*true\s*\}/s.test(requireAuthSource), "MT-01C1B2A: requireAuth debe consultar el estado vigente");

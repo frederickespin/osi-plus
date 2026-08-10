@@ -19,6 +19,7 @@ export default withCommonHeaders(async (req, res) => {
 
   const project = await prisma.project.findUnique({
     where: { id },
+    omit: { tenantId: true },
     include: {
       signals: true,
       pgd: { include: { items: { orderBy: { createdAt: "asc" } } } },
@@ -31,6 +32,7 @@ export default withCommonHeaders(async (req, res) => {
 
   const refreshed = await prisma.project.findUnique({
     where: { id },
+    omit: { tenantId: true },
     include: {
       signals: true,
       pgd: { include: { items: { orderBy: { createdAt: "asc" } } } },

@@ -23,6 +23,7 @@ export default withCommonHeaders(async (req, res) => {
     projects = await prisma.project.findMany({
       orderBy: { startDate: "desc" },
       take: 50,
+      omit: { tenantId: true },
       include: {
         signals: true,
         pgd: { include: { items: true } },

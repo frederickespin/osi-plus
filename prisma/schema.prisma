@@ -79,6 +79,10 @@ model Tenant {
   employeeProvisioningRequests     EmployeeProvisioningRequest[]
   employeeProvisioningInvitations  EmployeeProvisioningInvitation[]
   employeeAdminRoleProposals       EmployeeAdminRoleProposal[]
+  clients                          Client[]
+  projects                         Project[]
+  leads                            Lead[]
+  pipelineCases                    PipelineCase[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -142,6 +146,7 @@ model TenantMembership {
   issuedProvisioningInvitations                                                                                                                 EmployeeProvisioningInvitation[]   @relation("EmployeeProvisioningInvitationIssuer")
   proposedEmployeeAdminRoles                                                                                                                    EmployeeAdminRoleProposal[]        @relation("EmployeeAdminRoleProposalProposer")
   supervisedProvisioningRequests                                                                                                                EmployeeProvisioningRequest[]      @relation("EmployeeProvisioningRequestSupervisor")
+  enterpriseOwnedPipelineCases                                                                                                                  PipelineCase[]                     @relation("PipelineCaseEnterpriseOwner")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id, userId])
@@ -343,6 +348,7 @@ model AuthRefreshToken {
 
 model Client {
   id                        String        @id @default(cuid())
+  tenantId                  String?       @map("tenant_id")
   code                      String        @unique
   name                      String
   email                     String
@@ -372,40 +378,52 @@ model Client {
   kycDocuments              KycDocument[]
   leads                     Lead[]
   projects                  Project[]
+  tenant                    Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
+  tenantLeads               Lead[]        @relation("LeadTenantCustomer")
+  tenantProjects            Project[]     @relation("ProjectTenantClient")
   surveys                   Survey[]
 
+  @@unique([tenantId, id], map: "osi_clients_tenant_id_id_key")
+  @@index([tenantId, status], map: "osi_clients_tenant_id_status_idx")
   @@map("osi_clients")
 }
 
 model Project {
-  id             String               @id @default(cuid())
-  code           String               @unique
-  name           String
-  clientId       String
-  clientName     String
-  status         String
-  startDate      String
-  endDate        String?
-  osiCount       Int                  @default(0)
-  totalValue     Float                @default(0)
-  assignedTo     String?
-  notes          String?
-  kReleasedAt    DateTime?
-  kState         ProjectKState        @default(PENDING_VALIDATION)
-  kValidatedAt   DateTime?
-  leadId         String?
-  pstCode        String?
-  pstServiceName String?
-  quoteId        String?
-  fileNumber     String?              @unique
-  leadRecords    Lead[]               @relation("LeadProject")
-  osis           Osi[]
-  coordination   ProjectCoordination?
-  pgd            ProjectPgd?
-  signals        ProjectSignal[]
-  client         Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  surveys        Survey[]
+  id                String               @id @default(cuid())
+  tenantId          String?              @map("tenant_id")
+  code              String               @unique
+  name              String
+  clientId          String
+  clientName        String
+  status            String
+  startDate         String
+  endDate           String?
+  osiCount          Int                  @default(0)
+  totalValue        Float                @default(0)
+  assignedTo        String?
+  notes             String?
+  kReleasedAt       DateTime?
+  kState            ProjectKState        @default(PENDING_VALIDATION)
+  kValidatedAt      DateTime?
+  leadId            String?
+  pstCode           String?
+  pstServiceName    String?
+  quoteId           String?
+  fileNumber        String?              @unique
+  leadRecords       Lead[]               @relation("LeadProject")
+  tenantLeadRecords Lead[]               @relation("LeadTenantProject")
+  osis              Osi[]
+  coordination      ProjectCoordination?
+  pgd               ProjectPgd?
+  signals           ProjectSignal[]
+  client            Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant            Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_projects_tenant_id_fkey")
+  tenantClient      Client?              @relation("ProjectTenantClient", fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "osi_projects_tenant_id_client_id_fkey")
+  surveys           Survey[]
 
+  @@unique([tenantId, id], map: "osi_projects_tenant_id_id_key")
+  @@index([tenantId, status], map: "osi_projects_tenant_id_status_idx")
+  @@index([tenantId, clientId], map: "osi_projects_tenant_id_client_id_idx")
   @@map("osi_projects")
 }
 
@@ -445,6 +463,7 @@ model ProjectCoordinationCommunication {
 
 model Lead {
   id                       String                 @id @default(cuid())
+  tenantId                 String?                @map("tenant_id")
   code                     String                 @unique
   status                   String
   leadType                 LeadType?
@@ -517,8 +536,15 @@ model Lead {
   volumeEstimate           LeadVolumeEstimate?
   customer                 Client?                @relation(fields: [customerId], references: [id])
   project                  Project?               @relation("LeadProject", fields: [projectId], references: [id])
+  tenant                   Tenant?                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_leads_tenant_id_fkey")
+  tenantCustomer           Client?                @relation("LeadTenantCustomer", fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "osi_leads_tenant_id_customer_id_fkey")
+  tenantProject            Project?               @relation("LeadTenantProject", fields: [tenantId, projectId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "osi_leads_tenant_id_project_id_fkey")
   surveys                  Survey[]
 
+  @@unique([tenantId, id], map: "osi_leads_tenant_id_id_key")
+  @@index([tenantId, status, updatedAt], map: "osi_leads_tenant_id_status_updated_at_idx")
+  @@index([tenantId, customerId], map: "osi_leads_tenant_id_customer_id_idx")
+  @@index([tenantId, projectId], map: "osi_leads_tenant_id_project_id_idx")
   @@index([status, updatedAt])
   @@index([stageV2, updatedAt])
   @@index([sourceChannelV2, updatedAt])
@@ -1220,6 +1246,7 @@ model TemplateVersion {
 
 model PipelineCase {
   id                            String                        @id @default(cuid())
+  tenantId                      String?                       @map("tenant_id")
   caseCode                      String                        @unique
   clientName                    String?
   mode                          PipelineMode
@@ -1227,6 +1254,8 @@ model PipelineCase {
   customerType                  PipelineCustomerType
   status                        PipelineCaseStatus            @default(NEW_INBOX)
   ownerId                       String?
+  ownerMembershipId             String?                       @map("owner_membership_id")
+  ownerUserId                   String?                       @map("owner_user_id")
   ownerName                     String
   estimatedCbm                  Float                         @default(0)
   requiresSurvey                Boolean                       @default(false)
@@ -1244,10 +1273,15 @@ model PipelineCase {
   updatedAt                     DateTime                      @default(now()) @updatedAt
   quotes                        PipelineCaseQuote[]
   owner                         User?                         @relation(fields: [ownerId], references: [id])
+  tenant                        Tenant?                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_pipeline_cases_tenant_id_fkey")
+  enterpriseOwner               TenantMembership?             @relation("PipelineCaseEnterpriseOwner", fields: [tenantId, ownerMembershipId, ownerUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "osi_pipeline_cases_enterprise_owner_fkey")
   crating                       PipelineCratingRequest?
   events                        PipelineEvent[]
   quote_change_order_subjects   quote_change_order_subjects[]
 
+  @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
+  @@index([tenantId, status, updatedAt], map: "osi_pipeline_cases_tenant_id_status_updated_at_idx")
+  @@index([tenantId, ownerMembershipId, ownerUserId], map: "osi_pipeline_cases_tenant_owner_idx")
   @@index([mode, status, updatedAt])
   @@index([ownerId, status, updatedAt])
   @@index([createdAt])

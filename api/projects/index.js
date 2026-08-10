@@ -14,6 +14,7 @@ export default withCommonHeaders(async (req, res) => {
     const query = String(req.query?.q || "").toLowerCase().trim();
     const projects = await prisma.project.findMany({
       orderBy: { startDate: "desc" },
+      omit: { tenantId: true },
     });
 
     const filtered = query
@@ -51,6 +52,7 @@ export default withCommonHeaders(async (req, res) => {
         assignedTo: body.assignedTo ? String(body.assignedTo) : null,
         notes: body.notes ? String(body.notes) : null,
       },
+      omit: { tenantId: true },
     });
 
     return res.status(201).json({

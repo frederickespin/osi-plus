@@ -14,6 +14,7 @@ export default withCommonHeaders(async (req, res) => {
     const query = String(req.query?.q || "").toLowerCase().trim();
     const clients = await prisma.client.findMany({
       orderBy: { createdAt: "desc" },
+      omit: { tenantId: true },
     });
 
     const filtered = query
@@ -46,6 +47,7 @@ export default withCommonHeaders(async (req, res) => {
         lastService: body.lastService ? String(body.lastService) : null,
         createdAt: String(body.createdAt || new Date().toISOString().slice(0, 10)),
       },
+      omit: { tenantId: true },
     });
 
     return res.status(201).json({

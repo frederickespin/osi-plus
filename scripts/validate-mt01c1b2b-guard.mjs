@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 function invariant(condition, message) { if (!condition) throw new Error(message); }
 
 function trackedFiles() {
-  return spawnSync("git", ["ls-files"], { encoding: "utf8" }).stdout.split(/\r?\n/).filter(Boolean);
+  return spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" }).stdout.split(/\r?\n/).filter(Boolean);
 }
 
 export function validateMt01c1b2bGuard({ root = process.cwd(), files = trackedFiles(), env = process.env } = {}) {
@@ -40,7 +40,7 @@ export function validateMt01c1b2bGuard({ root = process.cwd(), files = trackedFi
   invariant(validationIndex >= 0 && prismaImportIndex > validationIndex && !/process\.env\.(?:DATABASE_URL|DIRECT_URL)/.test(domainSuite), "la suite debe validar la URL exclusiva antes de importar Prisma");
   invariant(/assertCanonicalCiTarget\(\)[\s\S]*process\.env\.MT01C1B2B_TEST_DATABASE_URL\s*=\s*process\.env\.DATABASE_URL/.test(canonicalRunner), "el runner canónico debe transferir explícitamente su URL ya validada");
   const migrations = normalized.filter((file) => /^prisma\/migrations\/[^/]+\/migration\.sql$/.test(file));
-  invariant(migrations.length === 14, `la cadena canónica debe conservar exactamente 14 migraciones; encontradas=${migrations.length}`);
+  invariant(migrations.length === 15, `la cadena canónica debe conservar exactamente 15 migraciones; encontradas=${migrations.length}`);
   invariant(String(env.MT01B_AUTH_MODE || "LEGACY").toUpperCase() !== "HYBRID", "HYBRID permanece bloqueado");
   invariant(String(env.MT01B_TENANT_SWITCH_ENABLED || "false").toLowerCase() !== "true", "tenant switch permanece bloqueado");
   invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "cliente V2 permanece bloqueado");

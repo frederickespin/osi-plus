@@ -7,6 +7,21 @@ function setCors(res) {
   );
 }
 
+function appendVary(res, field) {
+  const current = typeof res.getHeader === "function" ? res.getHeader("Vary") : undefined;
+  const values = String(current || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!values.some((value) => value.toLowerCase() === field.toLowerCase())) values.push(field);
+  res.setHeader("Vary", values.join(", "));
+}
+
+function setPrivateNoStore(res) {
+  res.setHeader("Cache-Control", "private, no-store");
+  appendVary(res, "Authorization");
+}
+
 const DEFAULT_JSON_BODY_MAX_BYTES = 256 * 1024;
 const DEFAULT_JSON_MAX_DEPTH = 64;
 
@@ -259,8 +274,13 @@ function badRequest(res, error = "Bad Request", detail = null) {
   });
 }
 
+function databaseUnavailable(res) {
+  return res.status(503).json({ ok: false, error: "DATABASE_UNAVAILABLE" });
+}
+
 export {
   withCommonHeaders,
+  setPrivateNoStore,
   methodNotAllowed,
   readJsonBody,
   readJsonObject,
@@ -269,4 +289,5 @@ export {
   isMalformedPlatformJsonError,
   unauthorized,
   badRequest,
+  databaseUnavailable,
 };

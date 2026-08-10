@@ -68,6 +68,18 @@ export async function ensureDefaultSignals(prisma, projectId, startDate) {
   });
 }
 
+export function effectiveSignalMap(signals, startDate) {
+  const byKind = new Map((Array.isArray(signals) ? signals : []).map((signal) => [signal.kind, signal]));
+  const parsed = new Date(String(startDate || "").trim());
+  // Un dato heredado inválido no puede convertir un GET en una función del reloj.
+  // La fecha fija conserva el fallback verde anterior sin escribir ni variar entre solicitudes.
+  const serviceDate = Number.isNaN(parsed.getTime()) ? new Date("2099-12-31T00:00:00.000Z") : parsed;
+  for (const fallback of defaultSignalsForServiceDate(serviceDate)) {
+    if (!byKind.has(fallback.kind)) byKind.set(fallback.kind, fallback);
+  }
+  return byKind;
+}
+
 export function computeSignalColor(signal, now = new Date()) {
   if (!signal) return "AMBER";
   if (signal.doneAt) return "GREEN";

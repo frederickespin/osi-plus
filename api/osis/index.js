@@ -1,6 +1,7 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, readJsonBody, withCommonHeaders } from "../_lib/http.js";
-import { requireRoleFromHeaders } from "../_lib/rbac.js";
+import { databaseUnavailable, methodNotAllowed, readJsonBody, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
+import { requirePilotPermission } from "../_lib/authContextPilot.js";
+import { PERMS, requireRoleFromHeaders } from "../_lib/rbac.js";
 import {
   appendOsiChangeLogs,
   findPstFromProjectFallback,
@@ -36,12 +37,21 @@ function validateRequiredRolesForExternal(input) {
 
 export default withCommonHeaders(async (req, res) => {
   if (req.method === "GET") {
+    setPrivateNoStore(res);
+    const context = await requirePilotPermission(req, res, PERMS.OSI_VIEW, { prisma });
+    if (!context) return;
+
     const status = String(req.query?.status || "").trim();
     const query = String(req.query?.q || "").toLowerCase().trim();
 
-    const osis = await prisma.osi.findMany({
-      orderBy: { scheduledDate: "desc" },
-    });
+    let osis;
+    try {
+      osis = await prisma.osi.findMany({
+        orderBy: { scheduledDate: "desc" },
+      });
+    } catch {
+      return databaseUnavailable(res);
+    }
 
     const filtered = osis.filter((osi) => {
       const statusMatch = status ? osi.status === status : true;

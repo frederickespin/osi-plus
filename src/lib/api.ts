@@ -1,4 +1,4 @@
-import { loadSession, normalizeRole } from "@/lib/sessionStore";
+import { getToken, loadSession, normalizeRole } from "@/lib/sessionStore";
 import type { PstTemplateContent } from "@/lib/templateSchemas";
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -306,7 +306,7 @@ export async function getOsis(query = "", status = "") {
   if (query) params.set("q", query);
   if (status) params.set("status", status);
   const suffix = params.toString() ? `?${params.toString()}` : "";
-  return requestJson<ApiListResponse<OsiDto>>(`/osis${suffix}`);
+  return requestJson<ApiListResponse<OsiDto>>(`/osis${suffix}`, { token: getToken() || undefined });
 }
 
 export async function createOsi(payload: Partial<OsiDto>) {
@@ -324,7 +324,7 @@ export async function getOsiById(osiId: string) {
       handshakes: OsiHandshakeDto[];
       materialReturns: OsiMaterialReturnDto[];
     };
-  }>(`/osis/${encodeURIComponent(osiId)}`);
+  }>(`/osis/${encodeURIComponent(osiId)}`, { token: getToken() || undefined });
 }
 
 export async function updateOsi(osiId: string, payload: Partial<OsiDto> & { changeReason?: string; applySuggestedPtfPet?: boolean }) {
@@ -595,6 +595,7 @@ export type KDashboardProjectDto = ProjectDto & {
 export function getKDashboard() {
   return requestJson<{ ok: boolean; counts: { total: number; byKState: Record<string, number> }; data: KDashboardProjectDto[] }>(
     "/k/dashboard",
+    { token: getToken() || undefined },
   );
 }
 

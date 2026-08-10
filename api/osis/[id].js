@@ -1,6 +1,7 @@
 import { prisma } from "../_lib/db.js";
-import { badRequest, methodNotAllowed, readJsonBody, withCommonHeaders } from "../_lib/http.js";
-import { requireRoleFromHeaders } from "../_lib/rbac.js";
+import { badRequest, databaseUnavailable, methodNotAllowed, readJsonBody, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
+import { requirePilotPermission } from "../_lib/authContextPilot.js";
+import { PERMS, requireRoleFromHeaders } from "../_lib/rbac.js";
 import { appendOsiChangeLogs, diffPlainObjects, suggestPtfPetByPstCode } from "./_helpers.js";
 
 const OPS_ALLOWED_ROLES = ["A", "B", "K", "V", "D", "E", "C1"];
@@ -31,23 +32,33 @@ function validateRequiredRolesForExternal(input) {
 }
 
 export default withCommonHeaders(async (req, res) => {
-  const osiId = asString(req.query?.id || "");
-  if (!osiId) return badRequest(res, "id es obligatorio");
-
   if (req.method === "GET") {
-    const osi = await prisma.osi.findUnique({
-      where: { id: osiId },
-      include: {
-        changeLogs: { orderBy: { createdAt: "desc" }, take: 50 },
-        handshakes: { orderBy: { createdAt: "desc" }, take: 20 },
-        materialReturns: { orderBy: { createdAt: "desc" }, take: 20 },
-      },
-    });
+    setPrivateNoStore(res);
+    const context = await requirePilotPermission(req, res, PERMS.OSI_VIEW, { prisma });
+    if (!context) return;
+
+    const osiId = asString(req.query?.id || "");
+    if (!osiId) return badRequest(res, "id es obligatorio");
+    let osi;
+    try {
+      osi = await prisma.osi.findUnique({
+        where: { id: osiId },
+        include: {
+          changeLogs: { orderBy: { createdAt: "desc" }, take: 50 },
+          handshakes: { orderBy: { createdAt: "desc" }, take: 20 },
+          materialReturns: { orderBy: { createdAt: "desc" }, take: 20 },
+        },
+      });
+    } catch {
+      return databaseUnavailable(res);
+    }
     if (!osi) return res.status(404).json({ ok: false, error: "OSI no encontrada" });
     return res.status(200).json({ ok: true, data: osi });
   }
 
   if (req.method === "PATCH") {
+    const osiId = asString(req.query?.id || "");
+    if (!osiId) return badRequest(res, "id es obligatorio");
     const actor = requireRoleFromHeaders(req, res, OPS_ALLOWED_ROLES);
     if (!actor) return;
 

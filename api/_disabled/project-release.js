@@ -42,6 +42,7 @@ export default withCommonHeaders(async (req, res) => {
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
+    omit: { tenantId: true },
     include: {
       signals: true,
       pgd: { include: { items: true } },
@@ -57,6 +58,7 @@ export default withCommonHeaders(async (req, res) => {
 
   const refreshed = await prisma.project.findUnique({
     where: { id: projectId },
+    omit: { tenantId: true },
     include: {
       signals: true,
       pgd: { include: { items: true } },
@@ -77,6 +79,7 @@ export default withCommonHeaders(async (req, res) => {
   const updated = await prisma.project.update({
     where: { id: projectId },
     data: { kState: "RELEASED", kReleasedAt: new Date() },
+    omit: { tenantId: true },
   });
 
   return res.status(200).json({ ok: true, data: updated });

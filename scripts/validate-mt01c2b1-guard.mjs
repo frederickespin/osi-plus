@@ -143,20 +143,32 @@ export function validateMt01c2b1Guard(root = process.cwd()) {
   }
 
   const contractResults = {};
+  let preparedTenantWriters = 0;
   for (const route of CONTRACT_ROUTES) {
     const source = text(root, route);
     const queryCount = (source.match(/prisma\.(?:client|project)\.(?:findMany|findUnique|create|update)\s*\(/g) || []).length;
     const omitCount = (source.match(/omit:\s*\{\s*tenantId:\s*true\s*\}/g) || []).length;
     invariant(queryCount === omitCount, `${route} puede exponer tenantId (${omitCount}/${queryCount} consultas protegidas)`);
-    invariant(!/(?:where|data)\s*:\s*\{[^}]*tenantId/s.test(source), `${route} usa tenantId como autoridad runtime`);
+    const approvedBridgeAssignments = (source.match(/\btenantId:\s*auth\.tenantId\s*,?/g) || []).length;
+    const sourceWithoutApprovedBridge = source.replace(/\btenantId:\s*auth\.tenantId\s*,?/g, "");
+    invariant(!/(?:where|data)\s*:\s*\{[^}]*tenantId/s.test(sourceWithoutApprovedBridge), `${route} usa tenantId como autoridad runtime`);
+    if (approvedBridgeAssignments > 0) {
+      invariant(new Set(["api/clients/index.js", "api/projects/index.js"]).has(route), `${route} no está autorizado para preparar escritura tenantizada`);
+      invariant(approvedBridgeAssignments === 1, `${route} tiene asignaciones tenantizadas inesperadas`);
+      invariant(/writeMode\s*=\s*resolveCommercialTenancyWriteMode\(\)/.test(source) && /writeMode\s*===\s*COMMERCIAL_TENANCY_WRITE_MODES\.TENANT_WRITE/.test(source), `${route} no limita tenantId a TENANT_WRITE`);
+      invariant(/assertNoBrowserCommercialAuthority\s*\(/.test(source), `${route} no rechaza autoridad empresarial del navegador`);
+      preparedTenantWriters += 1;
+    }
     invariant(!/owner(?:Membership|User)Id/.test(source), `${route} consume owner empresarial antes de activación`);
     contractResults[route] = { prismaQueries: queryCount, explicitOmits: omitCount };
   }
+  invariant(preparedTenantWriters === 2, "el puente inactivo debe limitarse a Client y Project");
 
   const env = text(root, ".env.example");
   invariant(/MT01B_AUTH_MODE=["']?LEGACY["']?/i.test(env), "LEGACY no es el modo predeterminado");
   invariant(/MT01B_TENANT_SWITCH_ENABLED=["']?false["']?/i.test(env), "tenant switch no está desactivado");
   invariant(/VITE_MT01B2_CLIENT_ENABLED=["']?false["']?/i.test(env), "cliente V2 no está desactivado");
+  invariant(/COMMERCIAL_TENANCY_WRITE_MODE=["']?LEGACY_ONLY["']?/i.test(env), "el puente comercial no está en LEGACY_ONLY");
 
   return {
     nullableRoots: 4,
@@ -165,6 +177,7 @@ export function validateMt01c2b1Guard(root = process.cwd()) {
     tenantizedProjectClientDeleteGuard: true,
     previousMigrationHashes: Object.keys(PREVIOUS_MIGRATION_HASHES).length,
     runtimeTenantAuthorityConsumers: 0,
+    preparedTenantWriters,
     contractResults,
     modes: { legacy: true, hybrid: false, tenantSwitch: false, clientV2: false },
   };

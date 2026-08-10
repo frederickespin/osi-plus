@@ -1,13 +1,31 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, readJsonObject, withCommonHeaders } from "../_lib/http.js";
 import { requirePilotAuth, requirePilotPermission } from "../_lib/authContextPilot.js";
+import {
+  assertNoBrowserCommercialAuthority,
+  COMMERCIAL_TENANCY_WRITE_MODES,
+  createTenantClient,
+  requireCommercialWritePermission,
+  resolveCommercialTenancyWriteMode,
+  sendCommercialTenancyError,
+} from "../_lib/commercialTenancyWrite.js";
 import { PERMS } from "../_lib/rbac.js";
 
 export default withCommonHeaders(async (req, res) => {
   const permission = req.method === "GET" ? PERMS.CLIENTS_VIEW : req.method === "POST" ? PERMS.CLIENTS_CREATE : null;
-  const auth = permission
-    ? await requirePilotPermission(req, res, permission, { prisma })
-    : await requirePilotAuth(req, res, { prisma });
+  let writeMode = COMMERCIAL_TENANCY_WRITE_MODES.LEGACY_ONLY;
+  if (req.method === "POST") {
+    try {
+      writeMode = resolveCommercialTenancyWriteMode();
+    } catch (error) {
+      return sendCommercialTenancyError(res, error);
+    }
+  }
+  const auth = req.method === "POST" && writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE
+    ? await requireCommercialWritePermission(req, res, permission, { prisma })
+    : permission
+      ? await requirePilotPermission(req, res, permission, { prisma })
+      : await requirePilotAuth(req, res, { prisma });
   if (!auth) return;
 
   if (req.method === "GET") {
@@ -34,21 +52,35 @@ export default withCommonHeaders(async (req, res) => {
 
   if (req.method === "POST") {
     const body = await readJsonObject(req, { requireNonEmptyObject: true });
-    const created = await prisma.client.create({
-      data: {
-        code: String(body.code || `CLI${Date.now()}`),
-        name: String(body.name || "Cliente"),
-        email: String(body.email || ""),
-        phone: String(body.phone || ""),
-        address: String(body.address || ""),
-        type: String(body.type || "corporate"),
-        status: String(body.status || "active"),
-        totalServices: Number(body.totalServices || 0),
-        lastService: body.lastService ? String(body.lastService) : null,
-        createdAt: String(body.createdAt || new Date().toISOString().slice(0, 10)),
-      },
-      omit: { tenantId: true },
-    });
+    if (writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE) {
+      try {
+        assertNoBrowserCommercialAuthority(body);
+      } catch (error) {
+        return sendCommercialTenancyError(res, error);
+      }
+    }
+    const data = {
+      code: String(body.code || `CLI${Date.now()}`),
+      name: String(body.name || "Cliente"),
+      email: String(body.email || ""),
+      phone: String(body.phone || ""),
+      address: String(body.address || ""),
+      type: String(body.type || "corporate"),
+      status: String(body.status || "active"),
+      totalServices: Number(body.totalServices || 0),
+      lastService: body.lastService ? String(body.lastService) : null,
+      createdAt: String(body.createdAt || new Date().toISOString().slice(0, 10)),
+    };
+    let created;
+    if (writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE) {
+      try {
+        created = await createTenantClient(prisma, { tenantId: auth.tenantId, data });
+      } catch (error) {
+        return sendCommercialTenancyError(res, error);
+      }
+    } else {
+      created = await prisma.client.create({ data: { ...data }, omit: { tenantId: true } });
+    }
 
     return res.status(201).json({
       ok: true,

@@ -83,6 +83,11 @@ try {
   }, /migración histórica/);
   cpSync(resolve("prisma/migrations/20260801013000_mt01c1b1_provisioning_persistence/migration.sql"), join(root, "prisma/migrations/20260801013000_mt01c1b1_provisioning_persistence/migration.sql"), { force: true });
 
+  reject("activación TENANT_WRITE rechazada", () => {
+    const path = join(root, ".env.example");
+    writeFileSync(path, readFileSync(path, "utf8").replace('COMMERCIAL_TENANCY_WRITE_MODE="LEGACY_ONLY"', 'COMMERCIAL_TENANCY_WRITE_MODE="TENANT_WRITE"'), "utf8");
+  }, /puente comercial no está en LEGACY_ONLY/);
+
   const unexpected = join(root, "prisma/migrations/20260801015000_unexpected");
   mkdirSync(unexpected);
   write(join("prisma/migrations/20260801015000_unexpected", "migration.sql"), "SELECT 1;\n");

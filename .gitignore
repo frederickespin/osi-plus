@@ -12,6 +12,7 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+.mt01c2b2-*
 .env.vercel*
 
 # IDE

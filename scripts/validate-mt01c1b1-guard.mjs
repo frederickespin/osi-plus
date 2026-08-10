@@ -23,6 +23,7 @@ export function validateMt01c1b1Guard(root = process.cwd()) {
   const runtimeFiles = [...collect(path.join(root, "api")), ...collect(path.join(root, "src"))];
   const inactiveDomainAllowlist = new Set([
     "api/_lib/employeeProvisioningDomain.js",
+    "api/_lib/employeeProvisioningExecutor.js",
     "api/_lib/employeeProvisioningPolicy.js",
   ]);
   const pattern = /prisma\.(?:employeeProvisioningRequest|employeeProvisioningInvitation|employeeAdminRoleProposal)\b|\bnormalizedEmail\b|\bnormalized_email\b|from\s+["'][^"']*mt-01c1b1|import\s*\([^)]*mt-01c1b1/i;

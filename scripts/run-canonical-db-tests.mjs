@@ -149,6 +149,10 @@ try {
   invariant(provisioningDomainRun.assertions === 75, `MT-01C1B2B esperaba 75 pruebas y obtuvo ${provisioningDomainRun.assertions}`);
   invariant(provisioningDatabaseGuardRun.assertions === 14, `MT-01C1B2B database guard esperaba 14 pruebas y obtuvo ${provisioningDatabaseGuardRun.assertions}`);
   invariant(provisioningDomainGuardRun.assertions === 12, `MT-01C1B2B guard esperaba 12 pruebas y obtuvo ${provisioningDomainGuardRun.assertions}`);
+  const provisioningExecutorRun = runJson("mt-01c1b3a-test.mjs", "MT-01C1B3A/EXECUTOR");
+  const provisioningExecutorGuardRun = runJson("validate-mt01c1b3a-guard-test.mjs", "MT-01C1B3A/GUARD");
+  invariant(provisioningExecutorRun.report.failed === 0 && provisioningExecutorRun.assertions === 29, `MT-01C1B3A esperaba 29 pruebas y obtuvo ${provisioningExecutorRun.assertions}`);
+  invariant(provisioningExecutorGuardRun.assertions === 8, `MT-01C1B3A guard esperaba 8 pruebas y obtuvo ${provisioningExecutorGuardRun.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
@@ -179,6 +183,11 @@ try {
       guard: provisioningDomainGuardRun.assertions,
       total: provisioningDatabaseGuardRun.assertions + provisioningDomainRun.assertions + provisioningDomainGuardRun.assertions,
     },
+    mt01c1b3a: {
+      executor: provisioningExecutorRun.assertions,
+      guard: provisioningExecutorGuardRun.assertions,
+      total: provisioningExecutorRun.assertions + provisioningExecutorGuardRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -198,6 +207,8 @@ try {
       "MT-01C1B2B/DOMAIN": { status: "PASS", assertions: provisioningDomainRun.assertions, durationMs: provisioningDomainRun.durationMs, exitCode: 0 },
       "MT-01C1B2B/DATABASE_GUARD": { status: "PASS", assertions: provisioningDatabaseGuardRun.assertions, durationMs: provisioningDatabaseGuardRun.durationMs, exitCode: 0 },
       "MT-01C1B2B/GUARD": { status: "PASS", assertions: provisioningDomainGuardRun.assertions, durationMs: provisioningDomainGuardRun.durationMs, exitCode: 0 },
+      "MT-01C1B3A/EXECUTOR": { status: "PASS", assertions: provisioningExecutorRun.assertions, durationMs: provisioningExecutorRun.durationMs, exitCode: 0 },
+      "MT-01C1B3A/GUARD": { status: "PASS", assertions: provisioningExecutorGuardRun.assertions, durationMs: provisioningExecutorGuardRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

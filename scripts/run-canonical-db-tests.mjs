@@ -153,6 +153,11 @@ try {
   const provisioningExecutorGuardRun = runJson("validate-mt01c1b3a-guard-test.mjs", "MT-01C1B3A/GUARD");
   invariant(provisioningExecutorRun.report.failed === 0 && provisioningExecutorRun.assertions === 52, `MT-01C1B3A esperaba 52 pruebas y obtuvo ${provisioningExecutorRun.assertions}`);
   invariant(provisioningExecutorGuardRun.assertions === 11, `MT-01C1B3A guard esperaba 11 pruebas y obtuvo ${provisioningExecutorGuardRun.assertions}`);
+  process.env.SECCOM01A_TEST_DATABASE_URL = process.env.DATABASE_URL;
+  const secComRun = runJson("sec-com-01a-test.mjs", "SEC-COM-01A/ROUTES");
+  const secComGuardRun = runJson("validate-sec-com-01a-guard-test.mjs", "SEC-COM-01A/GUARD");
+  invariant(secComRun.report.failed === undefined && secComRun.assertions === 30, `SEC-COM-01A esperaba 30 pruebas y obtuvo ${secComRun.assertions}`);
+  invariant(secComGuardRun.assertions === 18, `SEC-COM-01A guard esperaba 18 pruebas y obtuvo ${secComGuardRun.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
@@ -188,6 +193,11 @@ try {
       guard: provisioningExecutorGuardRun.assertions,
       total: provisioningExecutorRun.assertions + provisioningExecutorGuardRun.assertions,
     },
+    secCom01a: {
+      routes: secComRun.assertions,
+      guard: secComGuardRun.assertions,
+      total: secComRun.assertions + secComGuardRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -209,6 +219,8 @@ try {
       "MT-01C1B2B/GUARD": { status: "PASS", assertions: provisioningDomainGuardRun.assertions, durationMs: provisioningDomainGuardRun.durationMs, exitCode: 0 },
       "MT-01C1B3A/EXECUTOR": { status: "PASS", assertions: provisioningExecutorRun.assertions, durationMs: provisioningExecutorRun.durationMs, exitCode: 0 },
       "MT-01C1B3A/GUARD": { status: "PASS", assertions: provisioningExecutorGuardRun.assertions, durationMs: provisioningExecutorGuardRun.durationMs, exitCode: 0 },
+      "SEC-COM-01A/ROUTES": { status: "PASS", assertions: secComRun.assertions, durationMs: secComRun.durationMs, exitCode: 0 },
+      "SEC-COM-01A/GUARD": { status: "PASS", assertions: secComGuardRun.assertions, durationMs: secComGuardRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

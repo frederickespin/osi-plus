@@ -16,9 +16,9 @@ Estado levantado sobre `f84b5f9377dcdd4f8e842455611cebb49fc05628`. Este document
 | `/api/users` GET/POST | JWT LEGACY | `requireAuth`; Bearer | `users:view` / `users:create` por rol global | Usuarios globales | Sin cambios | Migrar segundo; rol membership | Alto |
 | `/api/clients` GET/POST | JWT LEGACY | `requireAuth`; Bearer | `clients:view` / `clients:create` | Clientes sin `tenantId` | Sin cambios | Migrar tercero tras MT-01C | Alto |
 | `/api/projects` GET/POST | JWT LEGACY | `requireAuth`; Bearer | `projects:view` / `projects:create` | Proyectos/pipeline sin `tenantId` | Sin cambios | Migrar cuarto tras MT-01C | Alto |
-| `/api/osis` GET | Sin protección accidental | Ninguno | Ninguno | Todas las OSI | Sin cambios temporal | `osi:view` + tenant | Crítico |
+| `/api/osis` GET | JWT LEGACY vigente / V2 preparada | Bearer; `requirePilotPermission` | `osi:view` | Todas las OSI; aún sin tenant | Bearer añadido al consumidor LEGACY | Agregar tenant y 404 cruzado en MT-01C2B | Alto |
 | `/api/osis` POST | Headers manipulables | `x-osi-role`, `x-osi-userid` | A,B,K,V,D,E,C1 | OSI/proyecto/cliente | Sin cambios temporal | `osi:create` + tenant | Crítico |
-| `/api/osis/:id` GET | Sin protección accidental | Ninguno | Ninguno | OSI y bitácoras | Sin cambios temporal | `osi:view` + tenant; 404 cruzado | Crítico |
+| `/api/osis/:id` GET | JWT LEGACY vigente / V2 preparada | Bearer; `requirePilotPermission` | `osi:view` | OSI y bitácoras; aún sin tenant | Cliente preparado aunque sin consumidor activo | Agregar tenant y 404 cruzado en MT-01C2B | Alto |
 | `/api/osis/:id` PATCH | Headers manipulables | `x-osi-role`, `x-osi-userid` | A,B,K,V,D,E,C1 | OSI y bitácoras | Sin cambios temporal | `osi:edit` + tenant | Crítico |
 | `/api/osis/:id/handshake` POST | Headers manipulables | `x-osi-role`, `x-osi-userid` | A,B,D,E,G,C1,K | Custodia OSI | Sin cambios temporal | Permiso de custodia + tenant | Crítico |
 | `/api/osis/:id/return` POST | Headers manipulables | `x-osi-role`, `x-osi-userid` | A,B,C1,C,D | Retorno de materiales | Sin cambios temporal | Permiso de retorno + tenant | Crítico |
@@ -36,7 +36,7 @@ Estado levantado sobre `f84b5f9377dcdd4f8e842455611cebb49fc05628`. Este document
 | `/api/ptf/suggestions` GET | Headers manipulables | `x-osi-role`, `x-osi-userid` | A,B,C,C1,I,K | Sugerencias PTF | Sin cambios temporal | Permiso membership + tenant | Alto |
 | `/api/ptf/suggestions/action` POST | Headers manipulables | `x-osi-role`, `x-osi-userid` | A,C,I,B | Decisión PTF | Sin cambios temporal | Permiso membership + auditoría | Crítico |
 | `/api/ptf/suggestions/recompute` POST | Headers manipulables | `x-osi-role`, `x-osi-userid` | A,C,I,B | Recálculo PTF | Sin cambios temporal | Permiso membership + auditoría | Crítico |
-| `/api/k/dashboard` GET | Headers manipulables | `x-osi-role`, `x-osi-userid` | K,A | Proyectos/PGD; escribe señales por GET | Sin cambios temporal | `projects:view` + tenant; separar escritura | Crítico |
+| `/api/k/dashboard` GET | Bearer dual | `requirePilotPermission(projects:view)` + rol servidor A/K | K,A | Proyectos/PGD; estrictamente lectura desde SEC-COM-01A | Respuesta conserva semáforos con fallback determinista en memoria y no-store | Agregar tenantId y 404 empresarial en MT-01C2B | Alto |
 | `/api/k/project` GET | Headers manipulables | `x-osi-role`, `x-osi-userid` | K,A | Proyecto/coord./PGD | Sin cambios temporal | `projects:view` + tenant | Alto |
 | `/api/k/project-validate` POST | Headers manipulables | `x-osi-role`, `x-osi-userid` | K,A | Validación proyecto | Sin cambios temporal | `projects:validate` + auditoría | Crítico |
 | `/api/k/project-release` POST | Headers manipulables | `x-osi-role`, `x-osi-userid` | K,A | Liberación proyecto | Sin cambios temporal | `projects:release` + auditoría | Crítico |
@@ -59,3 +59,5 @@ Los archivos `api/k/_lib.js`, `api/osis/_helpers.js` y `api/templates/_pst.js` s
 9. Eliminación final de confianza en headers heredados.
 
 Clients, Projects, OSI, PST/PTF y K no pueden aplicar aislamiento real hasta que sus recursos tengan pertenencia empresarial formal en MT-01C. El cutover se hará ruta por ruta en B3B/MT-01C, con pruebas de 404 cruzado.
+
+SEC-COM-01A cerró los dos GET de OSI a nivel de método y migró `GET /api/k/dashboard` al adaptador Bearer dual. La allowlist heredada baja de 25 a 24 archivos; `api/osis/index.js` conserva POST por headers y `api/osis/[id].js` conserva PATCH por headers. Dashboard no escribe: la creación persistente de defaults requerirá un comando administrativo explícito posterior.

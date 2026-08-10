@@ -44,7 +44,7 @@ La resolución V2 requiere una consulta/round-trip. `/auth/me` agrega dos lectur
 - Migrar las rutas de headers sin romper LEGACY ni el frontend activo.
 - Agregar `tenantId` a recursos empresariales en MT-01C antes de prometer 404 cruzado real.
 - Retirar `ensureActorUserId`, que actualmente adivina usuarios por correo.
-- Separar la escritura idempotente que hoy ocurre en `GET /api/k/dashboard`.
+- SEC-COM-01A separó la escritura idempotente que ocurría en `GET /api/k/dashboard`, migró ese GET al adaptador Bearer dual y redujo la allowlist heredada a 24 archivos; los defaults se calculan determinísticamente en memoria y la inicialización administrativa persiste como trabajo futuro explícito.
 - Definir CSP y completar el token broker antes de activar HYBRID.
 - Revisar CORS heredado `*`; B3A no lo cambia para evitar alterar contratos activos.
 

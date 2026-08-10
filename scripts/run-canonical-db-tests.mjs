@@ -80,6 +80,11 @@ invariant(
   "MT01C2B2_TEST_DATABASE_URL no coincide con el destino canónico validado",
 );
 process.env.MT01C2B2_TEST_DATABASE_URL = process.env.DATABASE_URL;
+invariant(
+  !process.env.MT01C2B3A_TEST_DATABASE_URL || process.env.MT01C2B3A_TEST_DATABASE_URL === process.env.DATABASE_URL,
+  "MT01C2B3A_TEST_DATABASE_URL no coincide con el destino canónico validado",
+);
+process.env.MT01C2B3A_TEST_DATABASE_URL = process.env.DATABASE_URL;
 const envPath = resolve(".env.mt01a.local");
 invariant(!existsSync(envPath), `${envPath} ya existe; no será sobrescrito`);
 const resultsPath = resolve(tmpdir(), `db01j-ci-results-${process.pid}.json`);
@@ -122,6 +127,12 @@ try {
   invariant(commercialBackfillDatabaseGuardRun.assertions >= 14, `MT-01C2B2 database guard esperaba al menos 14 pruebas y obtuvo ${commercialBackfillDatabaseGuardRun.assertions}`);
   invariant(commercialBackfillGuardRun.report.ok === true, "MT-01C2B2 guard falló");
   invariant(commercialBackfillGuardTestsRun.assertions >= 5, `MT-01C2B2 guard tests esperaba al menos 5 pruebas y obtuvo ${commercialBackfillGuardTestsRun.assertions}`);
+  const commercialWriteBridgeRun = runJson("mt-01c2b3a-test.mjs", "MT-01C2B3A/WRITE_BRIDGE");
+  const commercialWriteBridgeGuardRun = runJson("validate-mt01c2b3a-guard.mjs", "MT-01C2B3A/GUARD");
+  const commercialWriteBridgeGuardTestsRun = runJson("validate-mt01c2b3a-guard-test.mjs", "MT-01C2B3A/GUARD_TESTS");
+  invariant(commercialWriteBridgeRun.report.ok === true && commercialWriteBridgeRun.assertions >= 30, `MT-01C2B3A esperaba al menos 30 pruebas y obtuvo ${commercialWriteBridgeRun.assertions}`);
+  invariant(commercialWriteBridgeGuardRun.report.ok === true, "MT-01C2B3A guard falló");
+  invariant(commercialWriteBridgeGuardTestsRun.assertions >= 12, `MT-01C2B3A guard tests esperaba al menos 12 pruebas y obtuvo ${commercialWriteBridgeGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -238,6 +249,12 @@ try {
       guardTests: commercialBackfillGuardTestsRun.assertions,
       total: commercialBackfillRun.assertions + commercialBackfillDatabaseGuardRun.assertions + commercialBackfillGuardTestsRun.assertions,
     },
+    mt01c2b3a: {
+      writeBridge: commercialWriteBridgeRun.assertions,
+      guard: commercialWriteBridgeGuardRun.report.ok,
+      guardTests: commercialWriteBridgeGuardTestsRun.assertions,
+      total: commercialWriteBridgeRun.assertions + commercialWriteBridgeGuardTestsRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -269,6 +286,9 @@ try {
       "MT-01C2B2/DATABASE_GUARD": { status: "PASS", assertions: commercialBackfillDatabaseGuardRun.assertions, durationMs: commercialBackfillDatabaseGuardRun.durationMs, exitCode: 0 },
       "MT-01C2B2/GUARD": { status: "PASS", assertions: 0, durationMs: commercialBackfillGuardRun.durationMs, exitCode: 0 },
       "MT-01C2B2/GUARD_TESTS": { status: "PASS", assertions: commercialBackfillGuardTestsRun.assertions, durationMs: commercialBackfillGuardTestsRun.durationMs, exitCode: 0 },
+      "MT-01C2B3A/WRITE_BRIDGE": { status: "PASS", assertions: commercialWriteBridgeRun.assertions, durationMs: commercialWriteBridgeRun.durationMs, exitCode: 0 },
+      "MT-01C2B3A/GUARD": { status: "PASS", assertions: 0, durationMs: commercialWriteBridgeGuardRun.durationMs, exitCode: 0 },
+      "MT-01C2B3A/GUARD_TESTS": { status: "PASS", assertions: commercialWriteBridgeGuardTestsRun.assertions, durationMs: commercialWriteBridgeGuardTestsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

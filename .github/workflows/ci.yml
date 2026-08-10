@@ -59,9 +59,11 @@ jobs:
       DB01J_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01C2B1_TEST_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01C2B2_TEST_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      MT01C2B3A_TEST_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
       VITE_MT01B2_CLIENT_ENABLED: "false"
+      COMMERCIAL_TENANCY_WRITE_MODE: LEGACY_ONLY
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -91,6 +93,8 @@ jobs:
           node scripts/validate-mt01c2b1-guard.mjs
           node scripts/validate-mt01c2b2-guard.mjs
           node scripts/validate-mt01c2b2-guard-test.mjs
+          node scripts/validate-mt01c2b3a-guard.mjs
+          node scripts/validate-mt01c2b3a-guard-test.mjs
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
@@ -119,9 +123,11 @@ jobs:
       MT01C1B2B_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01C2B1_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01C2B2_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      MT01C2B3A_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
       VITE_MT01B2_CLIENT_ENABLED: "false"
+      COMMERCIAL_TENANCY_WRITE_MODE: LEGACY_ONLY
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -173,6 +179,8 @@ jobs:
           node scripts/validate-mt01c2b2-guard.mjs
           node scripts/mt-01c2b2-database-guard-test.mjs
           node scripts/validate-mt01c2b2-guard-test.mjs
+          node scripts/validate-mt01c2b3a-guard.mjs
+          node scripts/validate-mt01c2b3a-guard-test.mjs
 
       - name: Validate and generate Prisma
         run: |
@@ -231,4 +239,6 @@ jobs:
           node scripts/validate-mt01c1b2b-guard.mjs
           node scripts/validate-mt01c1b3a-guard.mjs
           node scripts/validate-mt01c2b1-guard.mjs
+          node scripts/validate-mt01c2b3a-guard.mjs
+          node scripts/validate-mt01c2b3a-guard-test.mjs
           git diff --exit-code

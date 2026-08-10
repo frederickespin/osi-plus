@@ -53,7 +53,7 @@ export function assertCanonicalCiTarget(raw = process.env.DATABASE_URL) {
   invariant(["postgres:", "postgresql:"].includes(url.protocol), "El protocolo debe ser PostgreSQL");
   invariant(new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname), "La base canónica CI debe ser local");
   invariant(url.port === "55432", "La base canónica CI debe usar el puerto aislado 55432");
-  invariant(new Set(["osi_db01n_ci", "osi_mt01c1b3a_q1_20260809", "osi_mt01c2b1_local", "osi_db01n_mt01c2b1_local", "osi_mt01c2b2_local", "osi_db01n_mt01c2b2_local"]).has(database), "La base canónica debe pertenecer a la allowlist local exacta");
+  invariant(new Set(["osi_db01n_ci", "osi_mt01c1b3a_q1_20260809", "osi_mt01c2b1_local", "osi_db01n_mt01c2b1_local", "osi_mt01c2b2_local", "osi_db01n_mt01c2b2_local", "osi_mt01c2b3a_local", "osi_db01n_mt01c2b3a_local"]).has(database), "La base canónica debe pertenecer a la allowlist local exacta");
   invariant(url.searchParams.get("schema") === "osi", "La URL canónica debe incluir schema=osi");
   invariant(!raw.toLowerCase().includes("neon"), "Se rechazó una referencia Neon");
 
@@ -61,6 +61,7 @@ export function assertCanonicalCiTarget(raw = process.env.DATABASE_URL) {
     "DATABASE_URL", "DIRECT_URL", "DB01D_DATABASE_URL", "DB01E_DATABASE_URL",
     "DB01F_DATABASE_URL", "DB01G_DATABASE_URL", "DB01H_DATABASE_URL",
     "DB01I_DATABASE_URL", "DB01J_DATABASE_URL", "MT01C2B1_TEST_DATABASE_URL", "MT01C2B2_TEST_DATABASE_URL",
+    "MT01C2B3A_TEST_DATABASE_URL",
   ]) {
     invariant(process.env[key] === raw, `${key} no coincide con la base aislada de CI`);
   }
@@ -171,6 +172,7 @@ export function validateMt01bFoundationIsolation({ root = process.cwd(), files =
 
 export function validateMt01b2FrontendIsolation({ root = process.cwd(), files = trackedFiles(), env = process.env } = {}) {
   invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "MT-01B2A frontend debe permanecer desactivado");
+  invariant(env.COMMERCIAL_TENANCY_WRITE_MODE === undefined || env.COMMERCIAL_TENANCY_WRITE_MODE === "LEGACY_ONLY", "MT-01C2B3A exige LEGACY_ONLY exacto");
   files = files.map((file) => file.replaceAll("\\", "/"));
   const authSourceFiles = files.filter((file) => file.startsWith("src/auth-v2/") && /\.(?:[cm]?[jt]sx?)$/.test(file));
   const persistentMarkers = ["local" + "Storage", "session" + "Storage", "indexed" + "DB"];
@@ -321,7 +323,7 @@ async function validateDatabase(raw) {
   const prisma = new PrismaClient({ datasourceUrl: raw });
   try {
     const identity = await prisma.$queryRawUnsafe(`SELECT current_database() AS database, current_schema() AS schema`);
-    invariant(new Set(["osi_db01n_ci", "osi_mt01c1b3a_q1_20260809", "osi_mt01c2b1_local", "osi_db01n_mt01c2b1_local", "osi_mt01c2b2_local", "osi_db01n_mt01c2b2_local"]).has(identity[0]?.database) && identity[0]?.schema === "osi", "Identidad PostgreSQL inesperada");
+    invariant(new Set(["osi_db01n_ci", "osi_mt01c1b3a_q1_20260809", "osi_mt01c2b1_local", "osi_db01n_mt01c2b1_local", "osi_mt01c2b2_local", "osi_db01n_mt01c2b2_local", "osi_mt01c2b3a_local", "osi_db01n_mt01c2b3a_local"]).has(identity[0]?.database) && identity[0]?.schema === "osi", "Identidad PostgreSQL inesperada");
     const historyTables = await prisma.$queryRawUnsafe(`
       SELECT table_schema FROM information_schema.tables
       WHERE table_name = '_prisma_migrations' ORDER BY table_schema

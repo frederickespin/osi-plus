@@ -88,10 +88,12 @@ export function validateMt01c2b2Guard(root = process.cwd()) {
   }
   for (const endpoint of ["api/clients/index.js", "api/projects/index.js"]) {
     const source = read(endpoint);
-    const create = source.slice(source.indexOf(".create("));
-    const data = create.match(/data:\s*\{([\s\S]*?)\r?\n\s*\},\s*\r?\n\s*omit:/)?.[1];
-    invariant(data !== undefined && !/tenantId\s*:/.test(data), `${endpoint} dejó de evidenciar el bloqueo C2B3`);
+    invariant(/COMMERCIAL_TENANCY_WRITE_MODES\.TENANT_WRITE/.test(source), `${endpoint} no declara el puente C2B3 preparado`);
+    invariant(/tenantId:\s*auth\.tenantId/.test(source), `${endpoint} no deriva tenantId del contexto servidor`);
+    invariant(!/tenantId:\s*(?:body|req\.body|auth\.context)/.test(source), `${endpoint} dejó de evidenciar el bloqueo C2B3`);
   }
+  const envExample = read(".env.example");
+  invariant(/COMMERCIAL_TENANCY_WRITE_MODE=["']?LEGACY_ONLY["']?/.test(envExample), "el puente C2B3 dejó de estar bloqueado en LEGACY_ONLY");
 
   for (const [name, value] of Object.entries({ MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" })) {
     if (process.env[name] !== undefined) invariant(process.env[name] === value, `${name} inseguro`);

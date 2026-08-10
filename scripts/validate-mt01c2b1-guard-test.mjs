@@ -59,7 +59,7 @@ try {
 
   reject("contrato sin omit explícito rechazado", () => {
     const path = join(root, "api/projects/index.js");
-    writeFileSync(path, readFileSync(path, "utf8").replace("      omit: { tenantId: true },\n", ""), "utf8");
+    writeFileSync(path, readFileSync(path, "utf8").replace(/      omit: \{ tenantId: true \},\r?\n/, ""), "utf8");
   }, /puede exponer tenantId/);
 
   reject("CHECK de owner permisivo rechazado", () => {

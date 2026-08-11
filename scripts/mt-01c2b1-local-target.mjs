@@ -6,6 +6,7 @@ const ALLOWED_DATABASES = Object.freeze(new Set([
   "osi_mt01c2b1_local",
   "osi_db01n_mt01c2b2_local",
   "osi_db01n_mt01c2b3a_local",
+  "osi_db01n_mt01c2b3b_local",
 ]));
 
 function invariant(condition, message) {

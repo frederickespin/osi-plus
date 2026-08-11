@@ -97,6 +97,10 @@ function validateUpdateBlocks(path, text) {
   } else if (path === "api/k/project-release.js") {
     invariant(calls.length === 1 && calls[0].model === "project" && calls[0].method === "update", `${path} contiene escrituras no inventariadas`);
     invariant(/\bdata\s*:\s*\{\s*kState:\s*"RELEASED"\s*,\s*kReleasedAt:\s*new Date\(\)\s*\}/.test(calls[0].body), `${path} cambió los campos permitidos`);
+  } else if (path === "api/_lib/commercialTenancyRead.js") {
+    invariant(calls.length === 1 && calls[0].model === "project" && calls[0].method === "updateMany", `${path} contiene updates comerciales no inventariados`);
+    invariant(/tenantId:\s*String\(tenantId\)[\s\S]*updatedAt:\s*expectedUpdatedAt[\s\S]*kState:\s*expectedKState/.test(calls[0].body), `${path} no limita la transición K por tenant, versión y estado`);
+    invariant(/\bdata\s*,/.test(calls[0].body), `${path} cambió el payload cerrado de la transición K`);
   } else if (!path.startsWith("api/_disabled/")) {
     invariant(calls.length === 0, `${path} contiene updates comerciales no inventariados`);
   }
@@ -132,7 +136,7 @@ export function validateMt01c2b3a({
   const runtimeSources = new Map(runtimeFiles.map((path) => [path, source(root, path, overrides)]));
   for (const [path, text] of Object.entries(extraRuntimeSources)) runtimeSources.set(normalized(path), text);
   for (const [path, text] of runtimeSources) {
-    if (/commercialTenancyWrite\.js/.test(text)) consumers.push(path);
+    if (/await\s+createTenant(?:Client|Project)\s*\(/.test(text)) consumers.push(path);
     validateUpdateBlocks(path, text);
     invariant(!/(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO)\s+["']?(?:osi["']?\.)?["']?osi_(?:clients|projects|leads|pipeline_cases)\b/i.test(text), `${path} contiene escritura SQL cruda sobre una raíz comercial`);
   }
@@ -141,7 +145,7 @@ export function validateMt01c2b3a({
   const clients = source(root, "api/clients/index.js", overrides);
   const projects = source(root, "api/projects/index.js", overrides);
   for (const [name, text, permission] of [["Client", clients, "CLIENTS_CREATE"], ["Project", projects, "PROJECTS_CREATE"]]) {
-    invariant(/requireCommercialWritePermission/.test(text), `${name} no exige contexto comercial del servidor`);
+    invariant(/requireCommercial(?:Write)?Permission/.test(text), `${name} no exige contexto comercial del servidor`);
     invariant(new RegExp(`PERMS\\.${permission}`).test(text), `${name} no conserva el permiso existente`);
     invariant(/assertNoBrowserCommercialAuthority\(body\)/.test(text), `${name} no rechaza autoridad empresarial del navegador`);
     invariant(/tenantId:\s*auth\.tenantId/.test(text), `${name} no deriva tenantId del contexto servidor`);

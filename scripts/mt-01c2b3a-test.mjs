@@ -12,6 +12,7 @@ process.env.MT01B_AUTH_MODE = "LEGACY";
 process.env.MT01B_TENANT_SWITCH_ENABLED = "false";
 process.env.VITE_MT01B2_CLIENT_ENABLED = "false";
 process.env.COMMERCIAL_TENANCY_WRITE_MODE = "LEGACY_ONLY";
+process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
 process.env.MT01B_REFRESH_TOKEN_PEPPER = "mt01c2b3a-local-refresh-pepper-at-least-32-characters";
 process.env.MT01B_ALLOWED_ORIGINS = "http://localhost:5173";
 
@@ -132,8 +133,8 @@ async function expectError(name, responsePromise, status, code) {
 try {
   check("destino local verificado", identity.address === "127.0.0.1" && identity.port === 55432 && identity.schema === "osi", identity);
   check("modo predeterminado es LEGACY_ONLY", commercial.resolveCommercialTenancyWriteMode({}) === "LEGACY_ONLY");
-  check("LEGACY_ONLY exacto se permite", commercial.resolveCommercialTenancyWriteMode({ COMMERCIAL_TENANCY_WRITE_MODE: "LEGACY_ONLY" }) === "LEGACY_ONLY");
-  check("TENANT_WRITE exacto se permite sólo localmente", commercial.resolveCommercialTenancyWriteMode({ COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE" }) === "TENANT_WRITE");
+  check("LEGACY_ONLY exacto se permite", commercial.resolveCommercialTenancyWriteMode({ COMMERCIAL_TENANCY_WRITE_MODE: "LEGACY_ONLY", COMMERCIAL_TENANCY_READ_MODE: "LEGACY_ONLY" }) === "LEGACY_ONLY");
+  check("TENANT_WRITE exacto se permite sólo localmente", commercial.resolveCommercialTenancyWriteMode({ COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE", COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ" }) === "TENANT_WRITE");
   for (const [label, value] of [
     ["espacio inicial", " LEGACY_ONLY"], ["espacio final", "LEGACY_ONLY "], ["comillas", '"LEGACY_ONLY"'],
     ["BOM", "\uFEFFLEGACY_ONLY"], ["salto", "LEGACY_ONLY\n"], ["casing", "legacy_only"],
@@ -145,7 +146,7 @@ try {
     check(`configuración inválida rechazada: ${label}`, invalidMode?.code === "COMMERCIAL_TENANCY_CONFIGURATION_INVALID" && invalidMode.status === 503 && valueNotExposed);
   }
   let vercelMode = null;
-  try { commercial.resolveCommercialTenancyWriteMode({ COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE", VERCEL_ENV: "production" }); } catch (error) { vercelMode = error; }
+  try { commercial.resolveCommercialTenancyWriteMode({ COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE", COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ", VERCEL_ENV: "production" }); } catch (error) { vercelMode = error; }
   check("TENANT_WRITE no puede configurarse en Vercel", vercelMode?.code === "COMMERCIAL_TENANCY_CONFIGURATION_INVALID" && vercelMode.status === 503);
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "LEGACY_ONLY ";
   await expectError("configuración HTTP inválida devuelve 503 sanitizado", invoke(clientsHandler, request(null, "POST", clientBody("invalid-mode"))), 503, "COMMERCIAL_TENANCY_CONFIGURATION_INVALID");
@@ -212,6 +213,7 @@ try {
   const legacyBefore = stableHash({ client: legacyClient, project: legacyProject });
 
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "TENANT_WRITE";
+  process.env.COMMERCIAL_TENANCY_READ_MODE = "TENANT_READ";
   await expectError("escritura tenantizada anónima se rechaza", invoke(clientsHandler, request(null, "POST", clientBody("anonymous"))), 401, "COMMERCIAL_AUTH_REQUIRED");
   const tenantOne = await trackedIdentity("tenant-one", { role: "V" });
   const tenantTwo = await trackedIdentity("tenant-two", { role: "V" });
@@ -419,6 +421,7 @@ try {
   process.exitCode = 1;
 } finally {
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "LEGACY_ONLY";
+  process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
   await prisma.project.deleteMany({ where: { id: { in: created.projects } } }).catch(() => {});
   await prisma.client.deleteMany({ where: { id: { in: created.clients } } }).catch(() => {});
   await prisma.authRefreshToken.deleteMany({ where: { sessionId: { in: created.sessions } } }).catch(() => {});

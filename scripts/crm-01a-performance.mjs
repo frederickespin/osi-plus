@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createCrm01aLocalPrisma } from "./crm-01a-local-target.mjs";
 import { listCrmPipelineCases, parsePipelineListQuery } from "../api/_lib/crmPipelineRead.js";
 
-const FIXTURE_COUNT = 2_000;
+const FIXTURE_COUNTS = Object.freeze([2_000, 10_000]);
 const ROUNDS = 30;
 const { prisma, target } = await createCrm01aLocalPrisma();
 const run = `crm01a-perf-${randomUUID().slice(0, 8)}`;
@@ -63,31 +63,39 @@ function summarizePlan(planRows) {
 try {
   await prisma.tenant.create({ data: { id: tenantId, code: run.toUpperCase(), name: "CRM-01A performance local" } });
   const statuses = ["NEW_INBOX", "AWAITING_ICP", "QUOTE_SENT", "NEGOTIATION", "APPROVED"];
-  const fixtures = Array.from({ length: FIXTURE_COUNT }, (_, index) => ({
-    id: `${run}-${String(index).padStart(4, "0")}`,
-    tenantId,
-    caseCode: `${run}-CASE-${String(index).padStart(4, "0")}`.toUpperCase(),
-    clientName: `Cliente rendimiento ${index}`,
-    mode: index % 2 === 0 ? "LOCAL" : "EXPORT",
-    serviceType: index % 2 === 0 ? "MOVING" : "STORAGE",
-    customerType: "L4_PERSONAL",
-    status: statuses[index % statuses.length],
-    ownerName: "Sin asignar",
-    originLocation: `Origen ${index % 20}`,
-    destinationLocation: `Destino ${index % 25}`,
-    updatedAt: new Date(1_800_000_000_000 + index * 1_000),
-  }));
-  await prisma.pipelineCase.createMany({ data: fixtures });
-  check("fixture 2,000 separado de medición", await prisma.pipelineCase.count({ where: { tenantId } }) === FIXTURE_COUNT);
-
-  const metrics = [
-    await measure("lista primera página", { page: "1", pageSize: "50" }),
-    await measure("lista página profunda", { page: "35", pageSize: "50" }),
-    await measure("filtro estado", { status: "QUOTE_SENT", pageSize: "50" }),
-    await measure("filtro unassigned", { unassigned: "true", pageSize: "50" }),
-    await measure("búsqueda comercial", { q: "Cliente rendimiento 1999", pageSize: "50" }),
-  ];
-  check("dos consultas por request y cero N+1", metrics.every((metric) => metric.queriesPerRequest === 2));
+  const fixtureRange = (start, count) => Array.from({ length: count }, (_, offset) => {
+    const index = start + offset;
+    return {
+      id: `${run}-${String(index).padStart(4, "0")}`,
+      tenantId,
+      caseCode: `${run}-CASE-${String(index).padStart(4, "0")}`.toUpperCase(),
+      clientName: `Cliente rendimiento ${index}`,
+      mode: index % 2 === 0 ? "LOCAL" : "EXPORT",
+      serviceType: index % 2 === 0 ? "MOVING" : "STORAGE",
+      customerType: "L4_PERSONAL",
+      status: statuses[index % statuses.length],
+      ownerName: "Sin asignar",
+      originLocation: `Origen ${index % 20}`,
+      destinationLocation: `Destino ${index % 25}`,
+      updatedAt: new Date(1_800_000_000_000 + index * 1_000),
+    };
+  });
+  const datasets = [];
+  let inserted = 0;
+  for (const fixtureCount of FIXTURE_COUNTS) {
+    await prisma.pipelineCase.createMany({ data: fixtureRange(inserted, fixtureCount - inserted) });
+    inserted = fixtureCount;
+    check(`fixture ${fixtureCount.toLocaleString("en-US")} separado de medición`, await prisma.pipelineCase.count({ where: { tenantId } }) === fixtureCount);
+    const metrics = [
+      await measure("lista primera página", { page: "1", pageSize: "50" }),
+      await measure("lista página profunda", { page: String(Math.max(2, Math.floor(fixtureCount / 50) - 5)), pageSize: "50" }),
+      await measure("filtro estado", { status: "QUOTE_SENT", pageSize: "50" }),
+      await measure("filtro unassigned", { unassigned: "true", pageSize: "50" }),
+      await measure("búsqueda comercial", { q: `Cliente rendimiento ${fixtureCount - 1}`, pageSize: "50" }),
+    ];
+    check(`${fixtureCount.toLocaleString("en-US")} mantiene dos consultas y cero N+1`, metrics.every((metric) => metric.queriesPerRequest === 2));
+    datasets.push(Object.freeze({ fixtures: fixtureCount, metrics: Object.freeze(metrics) }));
+  }
 
   const listPlan = summarizePlan(await prisma.$queryRawUnsafe(`
     EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
@@ -117,8 +125,8 @@ try {
   process.stdout.write(`${JSON.stringify({
     ok: true,
     target,
-    fixtures: FIXTURE_COUNT,
-    metrics,
+    fixtureSets: FIXTURE_COUNTS,
+    datasets,
     plans: { list: listPlan, status: statusPlan, search: searchPlan },
     crm01bIndexAssessment: {
       current: ["tenantId,status,updatedAt", "tenantId,ownerMembershipId,ownerUserId"],

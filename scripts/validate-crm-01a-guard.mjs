@@ -45,15 +45,27 @@ export function validateCrm01aGuard({
 
   const servicePath = "api/_lib/crmPipelineRead.js";
   const service = read(servicePath);
+  const backendRbac = read("api/_lib/rbac.js");
   invariant(/DISABLED:\s*"DISABLED"/.test(service) && /READ_ONLY:\s*"READ_ONLY"/.test(service), "modos exactos ausentes");
   invariant(/configured === undefined \? CRM_PIPELINE_RUNTIME_MODES\.DISABLED : configured/.test(service), "DISABLED no es predeterminado");
   invariant(!/(?:trim|toUpperCase|toLowerCase)\s*\(?.{0,60}CRM_PIPELINE_RUNTIME_MODE/.test(service), "el modo no puede normalizarse");
   invariant(/VERCEL_ENV === "preview"/.test(service) && /VERCEL_ENV === "production"/.test(service), "READ_ONLY no está bloqueado en Vercel");
-  invariant(/CRM_PIPELINE_PERMISSION = "clients:view"/.test(service), "se cambió o inventó el permiso");
+  invariant(/PIPELINE_VIEW:\s*"pipeline:view"/.test(backendRbac), "falta el permiso dedicado pipeline:view");
+  invariant(/CRM_PIPELINE_PERMISSION = PERMS\.PIPELINE_VIEW/.test(service), "CRM no usa pipeline:view como autoridad única");
+  invariant(!/CRM_PIPELINE_PERMISSION\s*=\s*["']clients:view["']/.test(service), "clients:view no puede autorizar Pipeline");
+  const roleCatalog = backendRbac.match(/const ROLE_PERMS\s*=\s*\{([\s\S]*?)\n\};/)?.[1] || "";
+  invariant(/A:\s*Object\.values\(PERMS\)/.test(roleCatalog), "rol A no conserva el catálogo empresarial completo");
+  const roleArrays = [...roleCatalog.matchAll(/\n\s{2}([A-Z][A-Z0-9]*):\s*\[([\s\S]*?)\n\s{2}\],?/g)]
+    .map((match) => ({ role: match[1], permissions: match[2] }));
+  const pipelineRoles = roleArrays.filter(({ permissions }) => /PERMS\.PIPELINE_VIEW/.test(permissions)).map(({ role }) => role);
+  const pipelineAssignments = roleCatalog.match(/PERMS\.PIPELINE_VIEW/g) || [];
+  invariant(pipelineAssignments.length === 1 && JSON.stringify(pipelineRoles) === JSON.stringify(["V"]), "pipeline:view sólo puede asignarse por base a A y V");
   invariant(!/\bownerId\b/.test(service), "ownerId heredado no puede ser autoridad");
   invariant((service.match(/tenantId:\s*String\(tenantId\)/g) || []).length >= 3, "hay consultas sin filtro tenantId");
   invariant(/select:\s*CASE_SELECT/.test(service) && /enterpriseOwner:\s*\{\s*select:\s*OWNER_SELECT/.test(service), "falta selección explícita y owner relacional");
   invariant(!/milestonesJson:\s*true|flags:\s*true|ownerUserId:\s*true|tenantId:\s*true/.test(service), "el select expone campos internos");
+  const safeOwner = service.slice(service.indexOf("function safeOwner"), service.indexOf("function safeCase"));
+  invariant(!/membershipId|userStatus|email|phone|userId|tenantId|grantedPermissions|deniedPermissions/.test(safeOwner), "owner expone identidad o estado global innecesario");
   invariant(/MAX_PAGE_SIZE = 100/.test(service) && /updatedAt:\s*"desc"[\s\S]*id:\s*"asc"/.test(service), "paginación u orden estable ausente");
   invariant(/ownerMembershipId:\s*null[\s\S]*ownerUserId:\s*null/.test(service), "filtro unassigned incompleto");
   invariant(/sla:\s*Object\.freeze\(\{ overdue: null, basis: "UNAVAILABLE" \}\)/.test(service), "SLA ambiguo no está explicitado");
@@ -64,14 +76,17 @@ export function validateCrm01aGuard({
   invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES].sort()), "endpoints CRM diferentes a los tres GET autorizados");
   for (const path of CRM_ROUTES) {
     const source = read(path);
-    const handler = source.slice(source.indexOf("export default"));
+    const factoryStart = source.indexOf("export function createPipeline");
+    invariant(factoryStart >= 0, `${path} no expone una fábrica auditable`);
+    const handler = source.slice(factoryStart);
     invariant(/req\.method !== "GET"/.test(handler) && /methodNotAllowed\(res, \["GET"\]\)/.test(handler), `${path} admite métodos de escritura`);
     invariant(!/req\.method\s*===\s*"(?:POST|PATCH|PUT|DELETE)"|readJson|\.create\(|\.update|\.delete|\.upsert/.test(handler), `${path} contiene escritura`);
     const gate = handler.indexOf("requireCrmPipelineReadOnly()");
-    const auth = handler.indexOf("requireCommercialPermission(");
+    const auth = handler.indexOf("requirePermission(req");
     invariant(gate >= 0 && auth > gate, `${path} autentica o consulta antes de la compuerta`);
     invariant(/setPrivateNoStore\(res\)/.test(handler), `${path} permite cache compartida`);
     invariant(!/x-osi-(?:role|userid)|req\.(?:query|body).*(?:tenantId|membershipId|role|permissions)/i.test(handler), `${path} acepta autoridad del navegador`);
+    invariant(!/tenantMembership\s*\.\s*(?:create|update|delete|upsert)/.test(handler), `${path} modifica TenantMembership`);
   }
 
   const runtimeSources = { ...extraSources };
@@ -104,7 +119,8 @@ export function validateCrm01aGuard({
     migrations: migrations.length,
     mode: "DISABLED",
     routes: Object.freeze([...CRM_ROUTES]),
-    permission: "clients:view",
+    permission: "pipeline:view",
+    baseRoles: Object.freeze(["A", "V"]),
     legacyHeaderExceptions: authInventory.legacyHeaderExceptions,
     frontendConsumers: 0,
     writeEndpoints: 0,

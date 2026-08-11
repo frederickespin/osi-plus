@@ -1,11 +1,12 @@
 import { CommercialTenancyError, commercialDatabaseUnavailable } from "./commercialTenancyWrite.js";
+import { PERMS } from "./rbac.js";
 
 export const CRM_PIPELINE_RUNTIME_MODES = Object.freeze({
   DISABLED: "DISABLED",
   READ_ONLY: "READ_ONLY",
 });
 
-export const CRM_PIPELINE_PERMISSION = "clients:view";
+export const CRM_PIPELINE_PERMISSION = PERMS.PIPELINE_VIEW;
 
 const PIPELINE_STATUSES = Object.freeze([
   "NEW_INBOX",
@@ -39,10 +40,9 @@ const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 
 const OWNER_SELECT = Object.freeze({
-  id: true,
   role: true,
   status: true,
-  user: { select: { name: true, status: true } },
+  user: { select: { name: true } },
 });
 
 const CASE_SELECT = Object.freeze({
@@ -191,11 +191,9 @@ function pipelineWhere(tenantId, filters = {}) {
 function safeOwner(owner) {
   if (!owner) return null;
   return Object.freeze({
-    membershipId: String(owner.id),
     displayName: String(owner.user?.name || ""),
     role: String(owner.role),
     membershipStatus: String(owner.status),
-    userStatus: String(owner.user?.status || "unknown"),
   });
 }
 

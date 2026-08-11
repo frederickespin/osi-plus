@@ -168,7 +168,8 @@ try {
   const crmPipelineGuardRun = runJson("validate-crm-01a-guard.mjs", "CRM-01A/GUARD");
   const crmPipelineGuardTestsRun = runJson("validate-crm-01a-guard-test.mjs", "CRM-01A/GUARD_TESTS");
   invariant(crmPipelineRun.report.ok === true && crmPipelineRun.assertions >= 45, `CRM-01A esperaba al menos 45 pruebas y obtuvo ${crmPipelineRun.assertions}`);
-  invariant(crmPipelinePerformanceRun.report.ok === true && crmPipelinePerformanceRun.report.fixtures === 2_000, "CRM-01A rendimiento incompleto");
+  invariant(crmPipelinePerformanceRun.report.ok === true
+    && JSON.stringify(crmPipelinePerformanceRun.report.fixtureSets) === JSON.stringify([2_000, 10_000]), "CRM-01A rendimiento incompleto");
   invariant(crmPipelineDatabaseGuardRun.assertions >= 12, `CRM-01A database guard esperaba 12 pruebas y obtuvo ${crmPipelineDatabaseGuardRun.assertions}`);
   invariant(crmPipelineGuardRun.report.ok === true, "CRM-01A guard falló");
   invariant(crmPipelineGuardTestsRun.assertions >= 11, `CRM-01A guard tests esperaba al menos 11 pruebas y obtuvo ${crmPipelineGuardTestsRun.assertions}`);
@@ -311,7 +312,7 @@ try {
     },
     crm01a: {
       pipelineRead: crmPipelineRun.assertions,
-      performanceFixtures: crmPipelinePerformanceRun.report.fixtures,
+      performanceFixtures: crmPipelinePerformanceRun.report.fixtureSets,
       databaseGuard: crmPipelineDatabaseGuardRun.assertions,
       guard: crmPipelineGuardRun.report.ok,
       guardTests: crmPipelineGuardTestsRun.assertions,

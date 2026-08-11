@@ -18,9 +18,13 @@ function rejected(name, options, pattern) {
 try {
   const baseline = validateCrm01aGuard({ root, env: {} });
   check("estado actual DISABLED aprobado", baseline.ok && baseline.mode === "DISABLED" && baseline.routes.length === 3);
+  check("pipeline:view limitado a A y V", baseline.permission === "pipeline:view" && JSON.stringify(baseline.baseRoles) === JSON.stringify(["A", "V"]));
   rejected("READ_ONLY en CI rechazado", { env: { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" } }, /READ_ONLY/);
   rejected("migración 16 rechazada", { migrations: [...Array.from({ length: 15 }, (_, index) => `m${index}`), "20260801015000_crm01b"] }, /15 migraciones/);
   const service = read("api/_lib/crmPipelineRead.js");
+  rejected("clients:view como autoridad rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("PERMS.PIPELINE_VIEW", '"clients:view"') } }, /pipeline:view/);
+  const rbac = read("api/_lib/rbac.js");
+  rejected("pipeline:view en rol K rechazado", { overrides: { "api/_lib/rbac.js": rbac.replace("  K: [", "  K: [\n    PERMS.PIPELINE_VIEW,") } }, /A y V/);
   rejected("filtro tenant eliminado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replaceAll("tenantId: String(tenantId)", "id: { not: '' }") } }, /tenantId/);
   rejected("ownerId heredado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": `${service}\nconst authority = row.ownerId;` } }, /ownerId/);
   rejected("campo interno expuesto rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("id: true,\n  caseCode", "tenantId: true,\n  id: true,\n  caseCode") } }, /campos internos/);

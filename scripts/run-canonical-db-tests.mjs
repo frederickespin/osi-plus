@@ -90,6 +90,11 @@ invariant(
   "MT01C2B3B_TEST_DATABASE_URL no coincide con el destino canónico validado",
 );
 process.env.MT01C2B3B_TEST_DATABASE_URL = process.env.DATABASE_URL;
+invariant(
+  !process.env.CRM01A_TEST_DATABASE_URL || process.env.CRM01A_TEST_DATABASE_URL === process.env.DATABASE_URL,
+  "CRM01A_TEST_DATABASE_URL no coincide con el destino canónico validado",
+);
+process.env.CRM01A_TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
 const envPath = resolve(".env.mt01a.local");
 invariant(!existsSync(envPath), `${envPath} ya existe; no será sobrescrito`);
@@ -157,6 +162,16 @@ try {
   invariant(commercialActivationGateRun.report.ok === true && commercialActivationGateRun.assertions >= 20, `MT-01C2B3C esperaba al menos 20 pruebas y obtuvo ${commercialActivationGateRun.assertions}`);
   invariant(commercialActivationGateGuardRun.report.ok === true, "MT-01C2B3C guard falló");
   invariant(commercialActivationGateGuardTestsRun.assertions >= 12, `MT-01C2B3C guard tests esperaba al menos 12 pruebas y obtuvo ${commercialActivationGateGuardTestsRun.assertions}`);
+  const crmPipelineRun = runJson("crm-01a-test.mjs", "CRM-01A/PIPELINE_READ");
+  const crmPipelinePerformanceRun = runJson("crm-01a-performance.mjs", "CRM-01A/PERFORMANCE");
+  const crmPipelineDatabaseGuardRun = runJson("crm-01a-local-target-test.mjs", "CRM-01A/DATABASE_GUARD");
+  const crmPipelineGuardRun = runJson("validate-crm-01a-guard.mjs", "CRM-01A/GUARD");
+  const crmPipelineGuardTestsRun = runJson("validate-crm-01a-guard-test.mjs", "CRM-01A/GUARD_TESTS");
+  invariant(crmPipelineRun.report.ok === true && crmPipelineRun.assertions >= 45, `CRM-01A esperaba al menos 45 pruebas y obtuvo ${crmPipelineRun.assertions}`);
+  invariant(crmPipelinePerformanceRun.report.ok === true && crmPipelinePerformanceRun.report.fixtures === 2_000, "CRM-01A rendimiento incompleto");
+  invariant(crmPipelineDatabaseGuardRun.assertions >= 12, `CRM-01A database guard esperaba 12 pruebas y obtuvo ${crmPipelineDatabaseGuardRun.assertions}`);
+  invariant(crmPipelineGuardRun.report.ok === true, "CRM-01A guard falló");
+  invariant(crmPipelineGuardTestsRun.assertions >= 11, `CRM-01A guard tests esperaba al menos 11 pruebas y obtuvo ${crmPipelineGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -294,6 +309,14 @@ try {
       guardTests: commercialActivationGateGuardTestsRun.assertions,
       total: commercialActivationGateRun.assertions + commercialActivationGateGuardTestsRun.assertions,
     },
+    crm01a: {
+      pipelineRead: crmPipelineRun.assertions,
+      performanceFixtures: crmPipelinePerformanceRun.report.fixtures,
+      databaseGuard: crmPipelineDatabaseGuardRun.assertions,
+      guard: crmPipelineGuardRun.report.ok,
+      guardTests: crmPipelineGuardTestsRun.assertions,
+      total: crmPipelineRun.assertions + crmPipelineDatabaseGuardRun.assertions + crmPipelineGuardTestsRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -337,6 +360,11 @@ try {
       "MT-01C2B3C/ACTIVATION_GATE": { status: "PASS", assertions: commercialActivationGateRun.assertions, durationMs: commercialActivationGateRun.durationMs, exitCode: 0 },
       "MT-01C2B3C/GUARD": { status: "PASS", assertions: 0, durationMs: commercialActivationGateGuardRun.durationMs, exitCode: 0 },
       "MT-01C2B3C/GUARD_TESTS": { status: "PASS", assertions: commercialActivationGateGuardTestsRun.assertions, durationMs: commercialActivationGateGuardTestsRun.durationMs, exitCode: 0 },
+      "CRM-01A/PIPELINE_READ": { status: "PASS", assertions: crmPipelineRun.assertions, durationMs: crmPipelineRun.durationMs, exitCode: 0 },
+      "CRM-01A/PERFORMANCE": { status: "PASS", assertions: crmPipelinePerformanceRun.assertions, durationMs: crmPipelinePerformanceRun.durationMs, exitCode: 0 },
+      "CRM-01A/DATABASE_GUARD": { status: "PASS", assertions: crmPipelineDatabaseGuardRun.assertions, durationMs: crmPipelineDatabaseGuardRun.durationMs, exitCode: 0 },
+      "CRM-01A/GUARD": { status: "PASS", assertions: 0, durationMs: crmPipelineGuardRun.durationMs, exitCode: 0 },
+      "CRM-01A/GUARD_TESTS": { status: "PASS", assertions: crmPipelineGuardTestsRun.assertions, durationMs: crmPipelineGuardTestsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

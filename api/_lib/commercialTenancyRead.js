@@ -104,6 +104,43 @@ export async function findTenantProject(prisma, { tenantId, projectId, include }
   }
 }
 
+export async function transitionTenantProject(prisma, {
+  tenantId,
+  projectId,
+  expectedUpdatedAt,
+  expectedKState,
+  data,
+}) {
+  try {
+    const result = await prisma.project.updateMany({
+      where: {
+        id: String(projectId || ""),
+        tenantId: String(tenantId),
+        updatedAt: expectedUpdatedAt,
+        kState: expectedKState,
+        tenantClient: { is: { tenantId: String(tenantId) } },
+      },
+      data,
+    });
+    if (result.count !== 1) {
+      const exists = await prisma.project.count({
+        where: { id: String(projectId || ""), tenantId: String(tenantId) },
+      });
+      throw new CommercialTenancyError(
+        exists === 1 ? "COMMERCIAL_PROJECT_CONCURRENT_MODIFICATION" : "COMMERCIAL_RESOURCE_NOT_FOUND",
+        exists === 1 ? 409 : 404,
+      );
+    }
+    return await prisma.project.findFirst({
+      where: { id: String(projectId || ""), tenantId: String(tenantId) },
+      omit: { tenantId: true },
+    });
+  } catch (cause) {
+    if (cause instanceof CommercialTenancyError) throw cause;
+    throw commercialDatabaseUnavailable(cause);
+  }
+}
+
 export async function listTenantPipelineCases(prisma, { tenantId, page, pageSize, skip }) {
   const where = { tenantId: String(tenantId) };
   try {

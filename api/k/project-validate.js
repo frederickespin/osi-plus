@@ -8,7 +8,7 @@ import {
   resolveCommercialTenancyModes,
   sendCommercialTenancyError,
 } from "../_lib/commercialTenancyWrite.js";
-import { findTenantProject } from "../_lib/commercialTenancyRead.js";
+import { findTenantProject, transitionTenantProject } from "../_lib/commercialTenancyRead.js";
 import { computeSignalColor, computePgdBlockingColor, effectiveSignalMap, ensureDefaultSignals } from "./_lib.js";
 
 function buildBlockers(project, { includeDefaults = false } = {}) {
@@ -113,16 +113,25 @@ export default withCommonHeaders(async (req, res) => {
     });
   }
 
+  if (tenantMode && refreshed.kState !== "PENDING_VALIDATION") {
+    return res.status(409).json({ ok: false, error: "COMMERCIAL_PROJECT_STATE_CONFLICT" });
+  }
+
   let updated;
   try {
-    const where = tenantMode
-      ? { tenantId_id: { tenantId: actor.tenantId, id: projectId } }
-      : { id: projectId };
-    updated = await prisma.project.update({
-      where,
-      data: { kState: "VALIDATED", kValidatedAt: new Date() },
-      omit: { tenantId: true },
-    });
+    updated = tenantMode
+      ? await transitionTenantProject(prisma, {
+          tenantId: actor.tenantId,
+          projectId,
+          expectedUpdatedAt: refreshed.updatedAt,
+          expectedKState: "PENDING_VALIDATION",
+          data: { kState: "VALIDATED", kValidatedAt: new Date() },
+        })
+      : await prisma.project.update({
+          where: { id: projectId },
+          data: { kState: "VALIDATED", kValidatedAt: new Date() },
+          omit: { tenantId: true },
+        });
   } catch (error) {
     if (!tenantMode) throw error;
     const controlled = error?.code === "P2025"

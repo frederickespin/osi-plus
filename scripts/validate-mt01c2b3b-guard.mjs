@@ -18,7 +18,7 @@ const BLOCKED_ROOT_CONSUMERS = Object.freeze([
   "api/k/signal.js",
 ]);
 const ACTIVATION_BLOCKERS = Object.freeze([
-  "PipelineCase runtime endpoint absent",
+  "PipelineCase runtime mutations absent",
   "Lead runtime endpoint absent",
   "OSI root lacks tenant authority",
   "ProjectSignal/ProjectPgd children lack tenant authority",
@@ -120,7 +120,7 @@ export function validateMt01c2b3b({
   };
   for (const [path, source] of Object.entries(runtime)) {
     if (/\bprisma\.(?:lead|pipelineCase)\.(?:findMany|findFirst|findUnique|count|aggregate|groupBy)\s*\(/.test(source)) {
-      invariant(path === "api/_lib/commercialTenancyRead.js", `${path} activa Lead/PipelineCase fuera del servicio preparado`);
+      invariant(["api/_lib/commercialTenancyRead.js", "api/_lib/crmPipelineRead.js"].includes(path), `${path} activa Lead/PipelineCase fuera del servicio preparado`);
     }
   }
 
@@ -140,7 +140,7 @@ export function validateMt01c2b3b({
     migrations: migrationNames.length,
     modes: Object.freeze({ write: "LEGACY_ONLY", read: "LEGACY_ONLY" }),
     preparedRoutes: Object.freeze([...PREPARED_ROUTES]),
-    serviceOnlyRoots: Object.freeze(["PipelineCase", "Lead"]),
+    serviceOnlyRoots: Object.freeze(["Lead"]),
     blockedConsumers: Object.freeze([...BLOCKED_ROOT_CONSUMERS]),
     activationBlockers: Object.freeze([...ACTIVATION_BLOCKERS]),
   });

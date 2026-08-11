@@ -61,15 +61,39 @@ Las transiciones K usan comparación optimista por `tenantId`, `updatedAt` y est
 
 ## Rendimiento local sintético
 
-Se probaron 2,000 Client, 2,000 Project y 2,000 PipelineCase distribuidos entre dos tenants, con página máxima 100. Cada listado ejecutó dos consultas acotadas (count + página), sin N+1. Los planes confirmaron índices tenant-first utilizables.
+Se probaron 2,000 Client, 2,000 Project y 2,000 PipelineCase distribuidos entre dos tenants, con página máxima 100. La cifra inicial de Project (p95 127.11 ms) mezclaba la carga masiva de fixtures con estadísticas todavía no actualizadas y no separaba calentamiento. La reproducción inmediata del runner anterior dio p95 39.88 ms. El perfil controlado ahora ejecuta `ANALYZE` fuera del cronómetro, cinco calentamientos y 30 rondas por escenario.
 
-| Raíz | p50 | p95 | máximo | índice observado |
-|---|---:|---:|---:|---|
-| Client | 4.10 ms | 5.04 ms | 5.44 ms | `osi_clients_tenant_id_status_idx` |
-| Project | 108.40 ms | 127.11 ms | 140.48 ms | `osi_projects_tenant_id_client_id_idx` |
-| PipelineCase | 4.57 ms | 5.40 ms | 6.03 ms | `osi_pipeline_cases_tenant_owner_idx` |
+Además, el listado imponía `tenantClient.is.tenantId` tanto en `count` como en la página. La FK compuesta `osi_projects_tenant_id_client_id_fkey` ya garantiza exactamente esa relación. El filtro redundante producía un `Hash Join`, duplicaba scans y elevaba buffers sin reforzar el aislamiento. Se eliminó sólo esa condición redundante; `Project.tenantId` continúa siendo obligatorio en cada lectura tenant.
 
-Estas cifras son locales, no SLO productivo. Project paga la validación del Client padre en la consulta; permanece acotado y sin N+1.
+| Escenario Project | p50 | p95 | máximo |
+|---|---:|---:|---:|
+| Primera página TENANT_READ | 3.42 ms | 4.40 ms | 4.43 ms |
+| Página profunda (offset 800) | 3.54 ms | 5.11 ms | 5.25 ms |
+| Estado | 3.29 ms | 4.21 ms | 5.34 ms |
+| Código exacto | 1.27 ms | 1.63 ms | 1.77 ms |
+| Nombre textual | 2.92 ms | 3.83 ms | 3.87 ms |
+| Client relacionado | 1.28 ms | 1.95 ms | 2.41 ms |
+| Count aislado | 0.61 ms | 1.09 ms | 1.17 ms |
+| Filas aisladas | 2.64 ms | 3.72 ms | 4.66 ms |
+| Include Client mínimo | 5.83 ms | 7.12 ms | 7.61 ms |
+| LEGACY_ONLY, lista completa | 21.51 ms | 24.73 ms | 25.12 ms |
+
+Client quedó en p95 5.45 ms y PipelineCase en 5.42 ms. Cada listado tenant ejecuta exactamente dos operaciones ORM (count + página), sin N+1.
+
+### Planes PostgreSQL
+
+Los planes se obtienen mediante `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` sin deshabilitar sequential scans.
+
+| Forma | Plan principal | Filas descartadas | Buffers hit | ejecución |
+|---|---|---:|---:|---:|
+| Count anterior | Hash Join + 2 Seq Scan | 2,000 | 456 | 0.577 ms |
+| Count corregido | Seq Scan | 1,000 | 136 | 0.212 ms |
+| Filas anteriores | Hash Join + 2 Seq Scan + Sort | 2,000 | 587 | 0.839 ms |
+| Filas corregidas | Seq Scan + Sort | 1,000 | 204 | 0.322 ms |
+
+Para este volumen PostgreSQL elige correctamente sequential scan en listado, página profunda, estado y búsqueda textual. El índice `osi_projects_tenant_id_status_idx` existe, pero la selectividad sintética de `active` (75 %) hace más barato no usarlo. Código exacto usa el unique heredado de `code`; la relación exacta usa `osi_projects_tenant_id_client_id_idx` y el unique compuesto del Client.
+
+No existe hoy un índice que cubra `tenant_id + startDate DESC + id ASC`, ni uno específico `tenant_id + code`. No se creó migración 16: todos los presupuestos solicitados se cumplen con amplio margen. Si el volumen futuro cambia el plan, el candidato a ensayar separadamente sería `CREATE INDEX CONCURRENTLY ... ON osi.osi_projects (tenant_id, "startDate" DESC, id ASC)`, evaluando antes tamaño, costo de escritura y redundancia.
 
 ## Readiness no automática
 

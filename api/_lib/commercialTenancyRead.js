@@ -48,7 +48,9 @@ export async function listTenantClients(prisma, { tenantId, query, page, pageSiz
 function projectTenantWhere(tenantId, query = "") {
   return {
     tenantId: String(tenantId),
-    tenantClient: { is: { tenantId: String(tenantId) } },
+    // Migration 15 enforces (tenant_id, clientId) against the Client composite
+    // key. Repeating that invariant as a relation filter adds a join to both
+    // count and page queries without strengthening tenant isolation.
     ...searchWhere(query, ["name", "code"]),
   };
 }

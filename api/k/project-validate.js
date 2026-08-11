@@ -51,13 +51,14 @@ function buildBlockers(project, { includeDefaults = false } = {}) {
 
 export default withCommonHeaders(async (req, res) => {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
-  if (process.env.COMMERCIAL_TENANCY_READ_MODE === "TENANT_READ" || process.env.COMMERCIAL_TENANCY_WRITE_MODE === "TENANT_WRITE") setPrivateNoStore(res);
   let modes;
   try {
     modes = resolveCommercialTenancyModes();
   } catch (error) {
+    setPrivateNoStore(res);
     return sendCommercialTenancyError(res, error);
   }
+  if (modes.tenantMode) setPrivateNoStore(res);
   const tenantMode = modes.tenantMode;
   let actor;
   if (tenantMode) {

@@ -14,7 +14,6 @@ import { commercialPagination, listTenantProjects } from "../_lib/commercialTena
 import { PERMS } from "../_lib/rbac.js";
 
 export default withCommonHeaders(async (req, res) => {
-  if (process.env.COMMERCIAL_TENANCY_READ_MODE === "TENANT_READ" || process.env.COMMERCIAL_TENANCY_WRITE_MODE === "TENANT_WRITE") setPrivateNoStore(res);
   const permission = req.method === "GET" ? PERMS.PROJECTS_VIEW : req.method === "POST" ? PERMS.PROJECTS_CREATE : null;
   let modes = {
     writeMode: COMMERCIAL_TENANCY_WRITE_MODES.LEGACY_ONLY,
@@ -24,9 +23,11 @@ export default withCommonHeaders(async (req, res) => {
     try {
       modes = resolveCommercialTenancyModes();
     } catch (error) {
+      setPrivateNoStore(res);
       return sendCommercialTenancyError(res, error);
     }
   }
+  if (modes.tenantMode) setPrivateNoStore(res);
   const tenantRead = req.method === "GET" && modes.readMode === COMMERCIAL_TENANCY_READ_MODES.TENANT_READ;
   const tenantWrite = req.method === "POST" && modes.writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE;
   const auth = tenantRead || tenantWrite

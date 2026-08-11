@@ -18,6 +18,8 @@ export const COMMERCIAL_TENANCY_READ_MODES = Object.freeze({
   TENANT_READ: "TENANT_READ",
 });
 
+export const COMMERCIAL_TENANCY_ACTIVATION_BATCH = "MT-01C2B2-IPACKERS-DO-V1";
+
 export const COMMERCIAL_BROWSER_AUTHORITY_FIELDS = Object.freeze([
   "tenantId",
   "tenant_id",
@@ -84,11 +86,22 @@ export function resolveCommercialTenancyModes(env = process.env) {
   if (!coordinatedLegacy && !coordinatedTenant) {
     throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
   }
-  const vercelEnvironment = upper(env.VERCEL_ENV);
+  const activationBatch = env.COMMERCIAL_TENANCY_ACTIVATION_BATCH;
+  if ((coordinatedLegacy && activationBatch !== undefined)
+    || (coordinatedTenant && activationBatch !== COMMERCIAL_TENANCY_ACTIVATION_BATCH)) {
+    throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
+  }
+  const vercelEnvironment = env.VERCEL_ENV;
+  const normalizedVercelEnvironment = upper(vercelEnvironment);
   const isVercelRuntime = String(env.VERCEL || "").trim() === "1"
-    || vercelEnvironment === "PREVIEW"
-    || vercelEnvironment === "PRODUCTION";
-  if (coordinatedTenant && isVercelRuntime) {
+    || normalizedVercelEnvironment === "PREVIEW"
+    || normalizedVercelEnvironment === "PRODUCTION"
+    || (vercelEnvironment !== undefined && vercelEnvironment !== "development");
+  const productionActivationAllowed = coordinatedTenant
+    && vercelEnvironment === "production"
+    && env.VERCEL_GIT_COMMIT_REF === "main"
+    && activationBatch === COMMERCIAL_TENANCY_ACTIVATION_BATCH;
+  if (coordinatedTenant && isVercelRuntime && !productionActivationAllowed) {
     throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
   }
   return Object.freeze({ writeMode, readMode, tenantMode: coordinatedTenant });

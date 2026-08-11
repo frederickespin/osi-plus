@@ -100,6 +100,9 @@ jobs:
           node scripts/validate-mt01c2b3b-guard.mjs
           node scripts/validate-mt01c2b3b-guard-test.mjs
           node scripts/mt-01c2b3b-local-target-test.mjs
+          node scripts/mt-01c2b3c-test.mjs
+          node scripts/validate-mt01c2b3c-guard.mjs
+          node scripts/validate-mt01c2b3c-guard-test.mjs
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
@@ -190,6 +193,11 @@ jobs:
           node scripts/validate-mt01c2b2-guard-test.mjs
           node scripts/validate-mt01c2b3a-guard.mjs
           node scripts/validate-mt01c2b3a-guard-test.mjs
+          node scripts/validate-mt01c2b3b-guard.mjs
+          node scripts/validate-mt01c2b3b-guard-test.mjs
+          node scripts/mt-01c2b3c-test.mjs
+          node scripts/validate-mt01c2b3c-guard.mjs
+          node scripts/validate-mt01c2b3c-guard-test.mjs
 
       - name: Validate and generate Prisma
         run: |
@@ -250,4 +258,9 @@ jobs:
           node scripts/validate-mt01c2b1-guard.mjs
           node scripts/validate-mt01c2b3a-guard.mjs
           node scripts/validate-mt01c2b3a-guard-test.mjs
+          node scripts/validate-mt01c2b3b-guard.mjs
+          node scripts/validate-mt01c2b3b-guard-test.mjs
+          node scripts/mt-01c2b3c-test.mjs
+          node scripts/validate-mt01c2b3c-guard.mjs
+          node scripts/validate-mt01c2b3c-guard-test.mjs
           git diff --exit-code

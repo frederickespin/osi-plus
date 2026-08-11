@@ -86,6 +86,11 @@ export function resolveCommercialTenancyModes(env = process.env) {
   if (!coordinatedLegacy && !coordinatedTenant) {
     throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
   }
+  const activationBatch = env.COMMERCIAL_TENANCY_ACTIVATION_BATCH;
+  if ((coordinatedLegacy && activationBatch !== undefined)
+    || (coordinatedTenant && activationBatch !== COMMERCIAL_TENANCY_ACTIVATION_BATCH)) {
+    throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
+  }
   const vercelEnvironment = env.VERCEL_ENV;
   const normalizedVercelEnvironment = upper(vercelEnvironment);
   const isVercelRuntime = String(env.VERCEL || "").trim() === "1"
@@ -95,7 +100,7 @@ export function resolveCommercialTenancyModes(env = process.env) {
   const productionActivationAllowed = coordinatedTenant
     && vercelEnvironment === "production"
     && env.VERCEL_GIT_COMMIT_REF === "main"
-    && env.COMMERCIAL_TENANCY_ACTIVATION_BATCH === COMMERCIAL_TENANCY_ACTIVATION_BATCH;
+    && activationBatch === COMMERCIAL_TENANCY_ACTIVATION_BATCH;
   if (coordinatedTenant && isVercelRuntime && !productionActivationAllowed) {
     throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
   }

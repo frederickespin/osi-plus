@@ -156,7 +156,11 @@ try {
   check("modos ausentes equivalen a LEGACY_ONLY", absent.writeMode === "LEGACY_ONLY" && absent.readMode === "LEGACY_ONLY" && absent.tenantMode === false);
   const legacy = commercial.resolveCommercialTenancyModes({ COMMERCIAL_TENANCY_WRITE_MODE: "LEGACY_ONLY", COMMERCIAL_TENANCY_READ_MODE: "LEGACY_ONLY" });
   check("pareja LEGACY exacta permitida", legacy.tenantMode === false);
-  const tenant = commercial.resolveCommercialTenancyModes({ COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE", COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ" });
+  const tenant = commercial.resolveCommercialTenancyModes({
+    COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE",
+    COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ",
+    COMMERCIAL_TENANCY_ACTIVATION_BATCH: commercial.COMMERCIAL_TENANCY_ACTIVATION_BATCH,
+  });
   check("pareja tenant exacta permitida localmente", tenant.tenantMode === true);
 
   for (const [name, env] of [
@@ -240,6 +244,7 @@ try {
 
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "TENANT_WRITE";
   process.env.COMMERCIAL_TENANCY_READ_MODE = "TENANT_READ";
+  process.env.COMMERCIAL_TENANCY_ACTIVATION_BATCH = commercial.COMMERCIAL_TENANCY_ACTIVATION_BATCH;
 
   const firstPage = await invoke(clientsHandler, request(tokenOne, "GET", { query: { page: "1", pageSize: "1", tenantId: tenantTwo.tenantId } }));
   const secondPage = await invoke(clientsHandler, request(tokenOne, "GET", { query: { page: "2", pageSize: "1" } }));
@@ -335,6 +340,7 @@ try {
   check("configuración parcial no permite caché compartida", partialResponse.getHeader("cache-control") === "private, no-store" && /authorization/i.test(String(partialResponse.getHeader("vary"))));
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "TENANT_WRITE";
   process.env.COMMERCIAL_TENANCY_READ_MODE = "TENANT_READ";
+  process.env.COMMERCIAL_TENANCY_ACTIVATION_BATCH = commercial.COMMERCIAL_TENANCY_ACTIVATION_BATCH;
 
   const notReady = await runCommercialReadiness();
   check("readiness detecta raíces NULL sin escribir", notReady.ok === false
@@ -356,10 +362,12 @@ try {
 
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "LEGACY_ONLY";
   process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
+  delete process.env.COMMERCIAL_TENANCY_ACTIVATION_BATCH;
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, target, results }, null, 2)}\n`);
 } finally {
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "LEGACY_ONLY";
   process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
+  delete process.env.COMMERCIAL_TENANCY_ACTIVATION_BATCH;
   await cleanup();
   await prisma.$disconnect();
 }

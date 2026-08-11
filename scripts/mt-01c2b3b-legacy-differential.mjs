@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const BASE = "a592623f5f6db208278295db9143884402b21b7b";
+const BASE = "1ad7b38326a60bc17ab4d5093e45849f9dad6eb3";
 const routes = Object.freeze({
   "api/clients/index.js": ["prisma.client.findMany", "prisma.client.create"],
   "api/projects/index.js": ["prisma.project.findMany", "prisma.project.create"],

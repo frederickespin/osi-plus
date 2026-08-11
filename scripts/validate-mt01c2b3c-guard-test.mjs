@@ -27,7 +27,7 @@ try {
     overrides: { "api/_lib/commercialTenancyWrite.js": bridge.replace("MT-01C2B2-IPACKERS-DO-V1", "MT-01C2B2-IPACKERS-DO-V2") },
   }, /lote/);
   rejected("trim implícito del batch rechazado", {
-    overrides: { "api/_lib/commercialTenancyWrite.js": bridge.replace("env.COMMERCIAL_TENANCY_ACTIVATION_BATCH ===", "env.COMMERCIAL_TENANCY_ACTIVATION_BATCH.trim() ===") },
+    overrides: { "api/_lib/commercialTenancyWrite.js": bridge.replace("env.COMMERCIAL_TENANCY_ACTIVATION_BATCH;", "env.COMMERCIAL_TENANCY_ACTIVATION_BATCH.trim();") },
   }, /normalizarse/);
   rejected("rama distinta de main rechazada por guardia", {
     overrides: { "api/_lib/commercialTenancyWrite.js": bridge.replace('VERCEL_GIT_COMMIT_REF === "main"', 'VERCEL_GIT_COMMIT_REF === "release"') },
@@ -53,6 +53,13 @@ try {
   rejected("lote expuesto al frontend rechazado", {
     extraRuntimeSources: { "src/activation.ts": "export const value = process.env.COMMERCIAL_TENANCY_ACTIVATION_BATCH;" },
   }, /expone|consume/);
+  const clients = read("api/clients/index.js");
+  rejected("lectura directa de modo en ruta rechazada", {
+    overrides: { "api/clients/index.js": clients.replace("const permission", "const unsafe = process.env.COMMERCIAL_TENANCY_READ_MODE;\n  const permission") },
+  }, /interpreta directamente/);
+  rejected("ruta con autenticación antes del resolver rechazada", {
+    overrides: { "api/clients/index.js": clients.replace("const permission", "await requirePilotAuth(req, res, { prisma });\n  const permission") },
+  }, /antes de validar/);
   rejected("readiness conectado a endpoint rechazado", {
     extraRuntimeSources: { "api/activate.js": 'import "../scripts/mt-01c2b3b-readiness.mjs";' },
   }, /administrativa|readiness/);

@@ -18,13 +18,14 @@ import {
 
 export default withCommonHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
-  if (process.env.COMMERCIAL_TENANCY_READ_MODE === "TENANT_READ" || process.env.COMMERCIAL_TENANCY_WRITE_MODE === "TENANT_WRITE") setPrivateNoStore(res);
   let modes;
   try {
     modes = resolveCommercialTenancyModes();
   } catch (error) {
+    setPrivateNoStore(res);
     return sendCommercialTenancyError(res, error);
   }
+  if (modes.tenantMode) setPrivateNoStore(res);
   const tenantRead = modes.readMode === COMMERCIAL_TENANCY_READ_MODES.TENANT_READ;
   let actor;
   if (tenantRead) {

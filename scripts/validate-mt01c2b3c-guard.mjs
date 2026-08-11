@@ -8,6 +8,14 @@ import { validateMt01c2b3b } from "./validate-mt01c2b3b-guard.mjs";
 const EXPECTED_MIGRATIONS = 15;
 const ACTIVATION_BATCH = "MT-01C2B2-IPACKERS-DO-V1";
 const BRIDGE_PATH = "api/_lib/commercialTenancyWrite.js";
+const PREPARED_ROUTES = Object.freeze([
+  "api/clients/index.js",
+  "api/projects/index.js",
+  "api/k/dashboard.js",
+  "api/k/project.js",
+  "api/k/project-validate.js",
+  "api/k/project-release.js",
+]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`MT-01C2B3C: ${message}`);
@@ -49,7 +57,9 @@ export function validateMt01c2b3c({
   invariant(/vercelEnvironment\s*===\s*"production"/.test(bridge), "Production debe validarse con casing exacto");
   invariant(/env\.VERCEL_GIT_COMMIT_REF\s*===\s*"main"/.test(bridge), "la activación debe limitarse a main");
   invariant(!/(?:trim|upper|toUpperCase|toLowerCase)\s*\(\s*env\.COMMERCIAL_TENANCY_ACTIVATION_BATCH|env\.COMMERCIAL_TENANCY_ACTIVATION_BATCH\s*\.\s*(?:trim|toUpperCase|toLowerCase)/.test(bridge), "el lote no puede normalizarse implícitamente");
-  invariant(/env\.COMMERCIAL_TENANCY_ACTIVATION_BATCH\s*===\s*COMMERCIAL_TENANCY_ACTIVATION_BATCH/.test(bridge), "el lote no se compara de forma exacta");
+  invariant(/const activationBatch\s*=\s*env\.COMMERCIAL_TENANCY_ACTIVATION_BATCH/.test(bridge), "el lote debe leerse una sola vez dentro del resolver");
+  invariant(/coordinatedLegacy\s*&&\s*activationBatch\s*!==\s*undefined/.test(bridge), "LEGACY con batch residual no está bloqueado");
+  invariant(/coordinatedTenant\s*&&\s*activationBatch\s*!==\s*COMMERCIAL_TENANCY_ACTIVATION_BATCH/.test(bridge), "el modo tenant no exige el lote exacto");
   invariant(/coordinatedTenant\s*&&\s*isVercelRuntime\s*&&\s*!productionActivationAllowed/.test(bridge), "falta bloqueo Vercel salvo compuerta completa");
   invariant(/!coordinatedLegacy\s*&&\s*!coordinatedTenant/.test(bridge), "los modos parciales deben rechazarse");
   invariant(/COMMERCIAL_TENANCY_CONFIGURATION_INVALID/.test(bridge), "falta error 503 controlado");
@@ -75,9 +85,26 @@ export function validateMt01c2b3c({
   for (const [path, source] of Object.entries(runtimeSources)) {
     if (path !== BRIDGE_PATH) {
       invariant(!source.includes("COMMERCIAL_TENANCY_ACTIVATION_BATCH"), `${path} expone o consume el lote fuera de la compuerta servidor`);
+      invariant(!/process\.env\.COMMERCIAL_TENANCY_(?:WRITE_MODE|READ_MODE)/.test(source), `${path} interpreta directamente los modos comerciales`);
     }
     invariant(!/mt-01c2b2-(?:backfill|rollback|dry-run)|mt-01c2b3b-readiness/i.test(source), `${path} conecta una operación administrativa al runtime`);
   }
+
+  for (const path of PREPARED_ROUTES) {
+    const source = runtimeSources[path];
+    invariant(typeof source === "string" && /commercialTenancyWrite\.js/.test(source), `${path} no importa la autoridad canónica`);
+    const handler = source.slice(source.indexOf("export default"));
+    const resolverAt = handler.indexOf("resolveCommercialTenancyModes()");
+    invariant(resolverAt >= 0, `${path} no invoca el resolver canónico`);
+    const businessPositions = [
+      "requireCommercialPermission(", "requirePilotAuth(", "requirePilotPermission(", "requireRoleFromHeaders(",
+      "prisma.client.", "prisma.project.", "readJson", "ensureDefaultSignals(",
+    ].map((needle) => handler.indexOf(needle)).filter((position) => position >= 0);
+    invariant(businessPositions.every((position) => resolverAt < position), `${path} toca autoridad o datos antes de validar configuración`);
+  }
+
+  invariant(!/console\.(?:log|info|warn|error)[\s\S]{0,160}(?:activationBatch|COMMERCIAL_TENANCY_ACTIVATION_BATCH)/.test(bridge), "la compuerta registra el lote");
+  invariant(/json\(\{\s*ok:\s*false,\s*error:\s*String\(error\.code/.test(bridge), "la respuesta controlada no está sanitizada");
 
   const authInventory = validateMt01b3aRepository(root);
   invariant(authInventory.legacyHeaderExceptions === 24, "aumentaron las excepciones heredadas");
@@ -92,6 +119,7 @@ export function validateMt01c2b3c({
     previewBlocked: true,
     legacyHeaderExceptions: authInventory.legacyHeaderExceptions,
     runtimeActivationConsumers: 0,
+    preparedRoutes: PREPARED_ROUTES.length,
     automaticHooks: 0,
   });
 }

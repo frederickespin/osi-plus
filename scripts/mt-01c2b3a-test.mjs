@@ -134,7 +134,11 @@ try {
   check("destino local verificado", identity.address === "127.0.0.1" && identity.port === 55432 && identity.schema === "osi", identity);
   check("modo predeterminado es LEGACY_ONLY", commercial.resolveCommercialTenancyWriteMode({}) === "LEGACY_ONLY");
   check("LEGACY_ONLY exacto se permite", commercial.resolveCommercialTenancyWriteMode({ COMMERCIAL_TENANCY_WRITE_MODE: "LEGACY_ONLY", COMMERCIAL_TENANCY_READ_MODE: "LEGACY_ONLY" }) === "LEGACY_ONLY");
-  check("TENANT_WRITE exacto se permite sólo localmente", commercial.resolveCommercialTenancyWriteMode({ COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE", COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ" }) === "TENANT_WRITE");
+  check("TENANT_WRITE exacto se permite sólo localmente con lote", commercial.resolveCommercialTenancyWriteMode({
+    COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE",
+    COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ",
+    COMMERCIAL_TENANCY_ACTIVATION_BATCH: commercial.COMMERCIAL_TENANCY_ACTIVATION_BATCH,
+  }) === "TENANT_WRITE");
   for (const [label, value] of [
     ["espacio inicial", " LEGACY_ONLY"], ["espacio final", "LEGACY_ONLY "], ["comillas", '"LEGACY_ONLY"'],
     ["BOM", "\uFEFFLEGACY_ONLY"], ["salto", "LEGACY_ONLY\n"], ["casing", "legacy_only"],
@@ -214,6 +218,7 @@ try {
 
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "TENANT_WRITE";
   process.env.COMMERCIAL_TENANCY_READ_MODE = "TENANT_READ";
+  process.env.COMMERCIAL_TENANCY_ACTIVATION_BATCH = commercial.COMMERCIAL_TENANCY_ACTIVATION_BATCH;
   await expectError("escritura tenantizada anónima se rechaza", invoke(clientsHandler, request(null, "POST", clientBody("anonymous"))), 401, "COMMERCIAL_AUTH_REQUIRED");
   const tenantOne = await trackedIdentity("tenant-one", { role: "V" });
   const tenantTwo = await trackedIdentity("tenant-two", { role: "V" });
@@ -422,6 +427,7 @@ try {
 } finally {
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "LEGACY_ONLY";
   process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
+  delete process.env.COMMERCIAL_TENANCY_ACTIVATION_BATCH;
   await prisma.project.deleteMany({ where: { id: { in: created.projects } } }).catch(() => {});
   await prisma.client.deleteMany({ where: { id: { in: created.clients } } }).catch(() => {});
   await prisma.authRefreshToken.deleteMany({ where: { sessionId: { in: created.sessions } } }).catch(() => {});

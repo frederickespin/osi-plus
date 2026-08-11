@@ -47,6 +47,7 @@ export function validateCrm01b1Guard({
   }
   invariant(/"version"\s+INTEGER\s+NOT NULL\s+DEFAULT\s+1/i.test(sql), "version no inicia explícitamente en uno");
   invariant(/"resulting_version"\s*=\s*"expected_version"\s*\+\s*1/i.test(sql), "cada comando debe incrementar version exactamente una vez");
+  invariant((sql.match(/(?:previous_status|resulting_status)"::text\s*<>\s*'APPROVED'/g) || []).length >= 3, "APPROVED no está congelado para TRANSITION/REOPEN");
   invariant(/BEFORE\s+UPDATE\s+OR\s+DELETE\s+ON\s+"osi"\."pipeline_case_commands"/i.test(sql), "journal no es append-only");
   invariant(/UNIQUE\s*\("tenant_id",\s*"request_id"\)/i.test(sql), "falta idempotencia tenant/requestId");
   invariant(/UNIQUE\s*\("tenant_id",\s*"pipeline_case_id",\s*"resulting_version"\)/i.test(sql), "falta unicidad por versión resultante");

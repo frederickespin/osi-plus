@@ -145,6 +145,16 @@ try {
         payloadHash: payloadHash("transition"), expectedVersion: 3, resultingVersion: 4, resultingStatus: "AWAITING_ICP",
       } });
       check("TRANSITION válido", transition.previousStatus !== transition.resultingStatus);
+      await isolated("TRANSITION hacia APPROVED congelado rechazado", () => tx.pipelineCaseCommand.create({ data: {
+        ...common, id: `${run}-command-to-approved`, requestId: `${run}.request.to-approved`, commandType: "TRANSITION",
+        payloadHash: payloadHash("to-approved"), expectedVersion: 7, resultingVersion: 8,
+        previousStatus: "NEGOTIATION", resultingStatus: "APPROVED",
+      } }), true);
+      await isolated("TRANSITION desde APPROVED congelado rechazado", () => tx.pipelineCaseCommand.create({ data: {
+        ...common, id: `${run}-command-from-approved`, requestId: `${run}.request.from-approved`, commandType: "TRANSITION",
+        payloadHash: payloadHash("from-approved"), expectedVersion: 8, resultingVersion: 9,
+        previousStatus: "APPROVED", resultingStatus: "OPS_HANDOFF",
+      } }), true);
       const lost = await tx.pipelineCaseCommand.create({ data: {
         ...common, id: `${run}-command-lost`, requestId: `${run}.request.lost`, commandType: "TRANSITION",
         payloadHash: payloadHash("lost"), expectedVersion: 4, resultingVersion: 5,
@@ -157,6 +167,11 @@ try {
         previousStatus: "LOST", resultingStatus: "NEW_INBOX", reasonCode: "MANUAL_REVIEW",
       } });
       check("REOPEN válido exige razón canónica", reopen.reasonCode === "MANUAL_REVIEW");
+      await isolated("REOPEN hacia APPROVED congelado rechazado", () => tx.pipelineCaseCommand.create({ data: {
+        ...common, id: `${run}-command-reopen-approved`, requestId: `${run}.request.reopen-approved`, commandType: "REOPEN",
+        payloadHash: payloadHash("reopen-approved"), expectedVersion: 9, resultingVersion: 10,
+        previousStatus: "LOST", resultingStatus: "APPROVED", reasonCode: "MANUAL_REVIEW",
+      } }), true);
       await isolated("UPDATE del journal rechazado", () => tx.pipelineCaseCommand.update({ where: { id: assign.id }, data: { actorRole: "V" } }), true);
       await isolated("DELETE del journal rechazado", () => tx.pipelineCaseCommand.delete({ where: { id: assign.id } }), true);
 

@@ -125,6 +125,8 @@ CREATE TABLE "osi"."pipeline_case_commands" (
           AND "reason_code" IS NULL
         WHEN 'TRANSITION'::"osi"."PipelineCaseCommandType" THEN
           "previous_status" <> "resulting_status"
+          AND "previous_status"::text <> 'APPROVED'
+          AND "resulting_status"::text <> 'APPROVED'
           AND ROW("previous_owner_membership_id", "previous_owner_user_id")
               IS NOT DISTINCT FROM ROW("resulting_owner_membership_id", "resulting_owner_user_id")
           AND (
@@ -144,6 +146,7 @@ CREATE TABLE "osi"."pipeline_case_commands" (
         WHEN 'REOPEN'::"osi"."PipelineCaseCommandType" THEN
           "previous_status"::text = 'LOST'
           AND "resulting_status"::text <> 'LOST'
+          AND "resulting_status"::text <> 'APPROVED'
           AND ROW("previous_owner_membership_id", "previous_owner_user_id")
               IS NOT DISTINCT FROM ROW("resulting_owner_membership_id", "resulting_owner_user_id")
           AND "reason_code" IS NOT NULL

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const INVENTORIED_ROUTES = new Set([
   "api/auth/login.js", "api/auth/logout.js", "api/auth/me.js", "api/auth/refresh.js", "api/auth/session/upgrade.js",
   "api/clients/index.js", "api/health.js", "api/info.js",
+  "api/crm/pipeline-cases/[id].js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js",
   "api/k/dashboard.js", "api/k/pgd/apply.js", "api/k/pgd/item.js", "api/k/project-release.js", "api/k/project-validate.js", "api/k/project.js", "api/k/signal.js",
   "api/osis/[id].js", "api/osis/[id]/handshake.js", "api/osis/[id]/return.js", "api/osis/index.js",
   "api/projects/index.js", "api/pst/[serviceCode].js", "api/pst/active.js",
@@ -21,7 +22,7 @@ const LEGACY_HEADER_ROUTES = new Set([
   "api/templates/approve-batch.js", "api/templates/approve.js", "api/templates/draft.js", "api/templates/list.js", "api/templates/pending.js", "api/templates/publish.js", "api/templates/reject.js", "api/templates/submit.js", "api/templates/version.js",
 ]);
 
-const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js"]);
+const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js", "api/crm/pipeline-cases/[id].js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js"]);
 const LEGACY_JWT_ROUTES = new Set(["api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js"]);
 const ROUTE_HELPERS = new Set(["api/k/_lib.js", "api/osis/_helpers.js", "api/templates/_pst.js"]);
 export const B3B1_ACTIVATION_BLOCKERS = Object.freeze([
@@ -66,7 +67,11 @@ export function validateMt01b3aSources({ routeSources, envExample, authContextSo
       invariant(/requirePilot(?:Auth|Permission)/.test(source), `MT-01B3A: ${route} debe usar el adaptador dual explícito B3B1`);
     }
     if (V2_PREPARED_ROUTES.has(route)) {
-      const hasContext = route === "api/auth/me.js" ? /requireAuthContext/.test(source) : /requirePilot(?:Auth|Permission)/.test(source);
+      const hasContext = route === "api/auth/me.js"
+        ? /requireAuthContext/.test(source)
+        : route.startsWith("api/crm/")
+          ? /requireCommercialPermission/.test(source)
+          : /requirePilot(?:Auth|Permission)/.test(source);
       invariant(hasContext, `MT-01B3A: ${route} está marcada V2 pero omite el contexto empresarial explícito`);
       invariant(!trustsHeaders, `MT-01B3A: ${route} V2 no puede aceptar x-osi-role/x-osi-userid`);
     }

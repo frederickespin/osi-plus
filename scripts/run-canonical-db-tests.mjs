@@ -151,6 +151,12 @@ try {
   invariant(commercialReadBridgeDatabaseGuardRun.assertions >= 14, `MT-01C2B3B database guard esperaba al menos 14 pruebas y obtuvo ${commercialReadBridgeDatabaseGuardRun.assertions}`);
   invariant(commercialReadBridgeGuardRun.report.ok === true, "MT-01C2B3B guard falló");
   invariant(commercialReadBridgeGuardTestsRun.assertions >= 14, `MT-01C2B3B guard tests esperaba al menos 14 pruebas y obtuvo ${commercialReadBridgeGuardTestsRun.assertions}`);
+  const commercialActivationGateRun = runJson("mt-01c2b3c-test.mjs", "MT-01C2B3C/ACTIVATION_GATE");
+  const commercialActivationGateGuardRun = runJson("validate-mt01c2b3c-guard.mjs", "MT-01C2B3C/GUARD");
+  const commercialActivationGateGuardTestsRun = runJson("validate-mt01c2b3c-guard-test.mjs", "MT-01C2B3C/GUARD_TESTS");
+  invariant(commercialActivationGateRun.report.ok === true && commercialActivationGateRun.assertions >= 20, `MT-01C2B3C esperaba al menos 20 pruebas y obtuvo ${commercialActivationGateRun.assertions}`);
+  invariant(commercialActivationGateGuardRun.report.ok === true, "MT-01C2B3C guard falló");
+  invariant(commercialActivationGateGuardTestsRun.assertions >= 12, `MT-01C2B3C guard tests esperaba al menos 12 pruebas y obtuvo ${commercialActivationGateGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -282,6 +288,12 @@ try {
       guardTests: commercialReadBridgeGuardTestsRun.assertions,
       total: commercialReadBridgeRun.assertions + commercialReadBridgeDifferentialRun.assertions + commercialReadBridgePerformanceRun.assertions + commercialReadBridgeDatabaseGuardRun.assertions + commercialReadBridgeGuardTestsRun.assertions,
     },
+    mt01c2b3c: {
+      activationGate: commercialActivationGateRun.assertions,
+      guard: commercialActivationGateGuardRun.report.ok,
+      guardTests: commercialActivationGateGuardTestsRun.assertions,
+      total: commercialActivationGateRun.assertions + commercialActivationGateGuardTestsRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -322,6 +334,9 @@ try {
       "MT-01C2B3B/DATABASE_GUARD": { status: "PASS", assertions: commercialReadBridgeDatabaseGuardRun.assertions, durationMs: commercialReadBridgeDatabaseGuardRun.durationMs, exitCode: 0 },
       "MT-01C2B3B/GUARD": { status: "PASS", assertions: 0, durationMs: commercialReadBridgeGuardRun.durationMs, exitCode: 0 },
       "MT-01C2B3B/GUARD_TESTS": { status: "PASS", assertions: commercialReadBridgeGuardTestsRun.assertions, durationMs: commercialReadBridgeGuardTestsRun.durationMs, exitCode: 0 },
+      "MT-01C2B3C/ACTIVATION_GATE": { status: "PASS", assertions: commercialActivationGateRun.assertions, durationMs: commercialActivationGateRun.durationMs, exitCode: 0 },
+      "MT-01C2B3C/GUARD": { status: "PASS", assertions: 0, durationMs: commercialActivationGateGuardRun.durationMs, exitCode: 0 },
+      "MT-01C2B3C/GUARD_TESTS": { status: "PASS", assertions: commercialActivationGateGuardTestsRun.assertions, durationMs: commercialActivationGateGuardTestsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

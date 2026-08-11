@@ -65,6 +65,63 @@ Condiciones obligatorias:
 - Fusionar este PR sólo bajo una autorización posterior e independiente.
 - Usar el deployment Git producido por el merge para capturar el snapshot ambiental completo.
 
+## Primer intento de activación y contención
+
+El primer intento controlado se realizó después del merge
+`95080ae453be1c3380ab8c4829070eb4b1bdc5c8`. Vercel creó el deployment Git
+Production `dpl_BMhBLGWW6Vs5LUb6p5NVwk2NNXKF`, asociado a `main` y al merge SHA
+correcto. Antes de cualquier autenticación o escritura, `GET /api/clients` y
+`GET /api/projects` respondieron de forma controlada con `503
+COMMERCIAL_TENANCY_CONFIGURATION_INVALID`.
+
+La causa raíz fue un BOM UTF-8 (`EF BB BF`) antepuesto por el `StreamWriter`
+de PowerShell al transmitir cada valor por stdin. Las longitudes observadas
+fueron:
+
+| Variable | Longitud esperada | Longitud transmitida | Primer carácter decodificado |
+| --- | ---: | ---: | --- |
+| WRITE | 12 bytes | 15 bytes | `U+FEFF` |
+| READ | 11 bytes | 14 bytes | `U+FEFF` |
+| BATCH | 24 bytes | 27 bytes | `U+FEFF` |
+
+Vercel CLI 58.9.1 retiraba únicamente un salto de línea final y conservaba el
+BOM. La validación exacta rechazó correctamente la configuración corrupta; no
+debe añadirse `trim`, tolerancia al BOM ni normalización al validador.
+
+La contención se completó sin escrituras empresariales:
+
+- El dominio productivo principal fue restaurado al deployment LEGACY
+  `dpl_A32uHU9HXVKH2FJ4FNxbsUZotcTX`.
+- Las tres variables comerciales fueron retiradas de Production.
+- Los aliases mutables secundarios y `git-main` que todavía resolvían al
+  deployment rechazado fueron reasignados al mismo deployment LEGACY.
+- Cada alias restaurado sirve el SHA
+  `2a49b8017d0b992c2e3d5cd8a5e0f7e18475a798`; Clients y Projects anónimos
+  responden 401, sin 503 ni 500.
+- No se crearon Client, Project, sesiones u otros datos sintéticos.
+- El backfill y sus fingerprints no cambiaron.
+- El respaldo `pre-mt01c2b3c-cutover-20260811` (`br-lat…gsrn`) permanece
+  intacto y sin compute.
+
+## Transporte obligatorio para un próximo intento
+
+Un próximo intento deberá crear un runner Node temporal fuera del repositorio.
+El runner debe:
+
+1. Ejecutar Vercel CLI con `shell: false`.
+2. Construir cada entrada con `Buffer.from(value, "utf8")` y enviarla mediante
+   stdin, sin usar `StreamWriter`.
+3. No colocar nombres acompañados de valores ni valores solos en argumentos del
+   proceso.
+4. Antes de enviar, comprobar la longitud exacta, primer y último byte, ausencia
+   del prefijo `EF BB BF`, ausencia de CR/LF y un SHA-256 sanitizado.
+5. Cerrar stdin inmediatamente después del buffer y exigir código de salida
+   cero.
+6. Eliminar el runner temporal después de utilizarlo.
+
+Este procedimiento operativo no cambia la validación estricta en
+`commercialTenancyWrite.js` y no autoriza por sí solo otra activación.
+
 ## Plan de rollback de código y configuración
 
 1. Reasignar el alias productivo al deployment estable `dpl_A32uHU9HXVKH2FJ4FNxbsUZotcTX`.

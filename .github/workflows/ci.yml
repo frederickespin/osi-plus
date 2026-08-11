@@ -103,12 +103,17 @@ jobs:
           node scripts/mt-01c2b3c-test.mjs
           node scripts/validate-mt01c2b3c-guard.mjs
           node scripts/validate-mt01c2b3c-guard-test.mjs
+          node scripts/validate-sec-dep-01-guard.mjs
+          node scripts/validate-sec-dep-01-guard-test.mjs
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
 
       - name: Validate anonymous sessions in real browsers
         run: npm run test:auth-null:browser
+
+      - name: Validate safe PIC rendering in real browsers
+        run: npm run test:sec-dep-01:browser
 
       - name: Verify repository cleanliness
         run: git diff --exit-code

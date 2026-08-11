@@ -17,7 +17,7 @@ const reject = (name, mutate, expected) => {
 
 check("estado actual aprobado", validateMt01c2b2Guard().ok === true);
 reject("import runtime rechazado", (root) => writeFileSync(join(root, "api", "c2b2.js"), "import '../scripts/mt-01c2b2-lib.mjs';\n"), "consumidores runtime");
-reject("migración 16 rechazada", (root) => cpSync(join(root, "prisma", "migrations", "20260801014000_mt01c2b1_commercial_tenant_foundation"), join(root, "prisma", "migrations", "20260801015000_forbidden"), { recursive: true }), "exactamente 15 migraciones");
+reject("migración 17 rechazada", (root) => cpSync(join(root, "prisma", "migrations", "20260801015000_crm01b_pipeline_mutation_authority"), join(root, "prisma", "migrations", "20260801016000_forbidden"), { recursive: true }), "exactamente 16 migraciones");
 reject("hook build rechazado", (root) => { const path = join(root, "package.json"); const pkg = JSON.parse(readFileSync(path, "utf8")); pkg.scripts.build = "node scripts/mt-01c2b2-backfill.mjs"; writeFileSync(path, JSON.stringify(pkg)); }, "hook automático C2B2");
 reject("activación tenant en POST rechazada", (root) => { const path = join(root, "api", "clients", "index.js"); writeFileSync(path, readFileSync(path, "utf8").replace("data: {", "data: { tenantId: auth.context.tenantId,")); }, "bloqueo C2B3");
 

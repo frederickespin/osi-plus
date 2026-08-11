@@ -238,7 +238,7 @@ try {
     ORDER BY indexname
   `);
   const normalizedIndexDefinitions = mt01c2b1Indexes.map((row) => row.indexdef.replace(/^CREATE UNIQUE INDEX|^CREATE INDEX/, "CREATE INDEX"));
-  check("migración crea exactamente 12 índices tenant y ninguno exacto redundante", mt01c2b1Indexes.length === 12 && new Set(normalizedIndexDefinitions).size === 12, mt01c2b1Indexes.map((row) => row.indexname));
+  check("cadena crea exactamente 13 índices tenant y ninguno exacto redundante", mt01c2b1Indexes.length === 13 && new Set(normalizedIndexDefinitions).size === 13, mt01c2b1Indexes.map((row) => row.indexname));
 
   const timings = [];
   for (let index = 0; index < 100; index += 1) {

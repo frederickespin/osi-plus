@@ -154,8 +154,8 @@ export function validateMt01c2b1Guard(root = process.cwd()) {
     invariant(!/(?:where|data)\s*:\s*\{[^}]*tenantId/s.test(sourceWithoutApprovedBridge), `${route} usa tenantId como autoridad runtime`);
     if (approvedBridgeAssignments > 0) {
       invariant(new Set(["api/clients/index.js", "api/projects/index.js"]).has(route), `${route} no está autorizado para preparar escritura tenantizada`);
-      invariant(approvedBridgeAssignments === 1, `${route} tiene asignaciones tenantizadas inesperadas`);
-      invariant(/writeMode\s*=\s*resolveCommercialTenancyWriteMode\(\)/.test(source) && /writeMode\s*===\s*COMMERCIAL_TENANCY_WRITE_MODES\.TENANT_WRITE/.test(source), `${route} no limita tenantId a TENANT_WRITE`);
+      invariant(approvedBridgeAssignments === 2, `${route} tiene asignaciones tenantizadas inesperadas`);
+      invariant(/modes\s*=\s*resolveCommercialTenancyModes\(\)/.test(source) && /tenantWrite\s*=.*COMMERCIAL_TENANCY_WRITE_MODES\.TENANT_WRITE/.test(source), `${route} no limita tenantId a TENANT_WRITE`);
       invariant(/assertNoBrowserCommercialAuthority\s*\(/.test(source), `${route} no rechaza autoridad empresarial del navegador`);
       preparedTenantWriters += 1;
     }

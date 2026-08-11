@@ -3,6 +3,13 @@ import { requirePilotPermission } from "../_lib/authContextPilot.js";
 import { databaseUnavailable, methodNotAllowed, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
 import { PERMS } from "../_lib/rbac.js";
 import {
+  COMMERCIAL_TENANCY_READ_MODES,
+  requireCommercialPermission,
+  resolveCommercialTenancyModes,
+  sendCommercialTenancyError,
+} from "../_lib/commercialTenancyWrite.js";
+import { listTenantDashboardProjects } from "../_lib/commercialTenancyRead.js";
+import {
   computePgdBlockingColor,
   computeSignalColor,
   effectiveSignalMap,
@@ -12,7 +19,16 @@ import {
 export default withCommonHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
   setPrivateNoStore(res);
-  const context = await requirePilotPermission(req, res, PERMS.PROJECTS_VIEW, { prisma });
+  let modes;
+  try {
+    modes = resolveCommercialTenancyModes();
+  } catch (error) {
+    return sendCommercialTenancyError(res, error);
+  }
+  const tenantRead = modes.readMode === COMMERCIAL_TENANCY_READ_MODES.TENANT_READ;
+  const context = tenantRead
+    ? await requireCommercialPermission(req, res, PERMS.PROJECTS_VIEW, { prisma })
+    : await requirePilotPermission(req, res, PERMS.PROJECTS_VIEW, { prisma });
   if (!context) return;
   if (!["A", "K"].includes(context.role)) {
     return res.status(403).json({ ok: false, error: "Forbidden", perm: PERMS.PROJECTS_VIEW });
@@ -20,17 +36,23 @@ export default withCommonHeaders(async (req, res) => {
 
   let projects;
   try {
-    projects = await prisma.project.findMany({
-      orderBy: { startDate: "desc" },
-      take: 50,
-      omit: { tenantId: true },
-      include: {
+    const include = {
+      signals: true,
+      pgd: { include: { items: true } },
+    };
+    projects = tenantRead
+      ? await listTenantDashboardProjects(prisma, { tenantId: context.tenantId, include })
+      : await prisma.project.findMany({
+        orderBy: { startDate: "desc" },
+        take: 50,
+        omit: { tenantId: true },
+        include: {
         signals: true,
         pgd: { include: { items: true } },
-      },
-    });
-  } catch {
-    return databaseUnavailable(res);
+        },
+      });
+  } catch (error) {
+    return tenantRead ? sendCommercialTenancyError(res, error) : databaseUnavailable(res);
   }
 
   const now = new Date();

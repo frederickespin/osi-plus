@@ -85,6 +85,12 @@ invariant(
   "MT01C2B3A_TEST_DATABASE_URL no coincide con el destino canónico validado",
 );
 process.env.MT01C2B3A_TEST_DATABASE_URL = process.env.DATABASE_URL;
+invariant(
+  !process.env.MT01C2B3B_TEST_DATABASE_URL || process.env.MT01C2B3B_TEST_DATABASE_URL === process.env.DATABASE_URL,
+  "MT01C2B3B_TEST_DATABASE_URL no coincide con el destino canónico validado",
+);
+process.env.MT01C2B3B_TEST_DATABASE_URL = process.env.DATABASE_URL;
+process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
 const envPath = resolve(".env.mt01a.local");
 invariant(!existsSync(envPath), `${envPath} ya existe; no será sobrescrito`);
 const resultsPath = resolve(tmpdir(), `db01j-ci-results-${process.pid}.json`);
@@ -133,6 +139,18 @@ try {
   invariant(commercialWriteBridgeRun.report.ok === true && commercialWriteBridgeRun.assertions >= 30, `MT-01C2B3A esperaba al menos 30 pruebas y obtuvo ${commercialWriteBridgeRun.assertions}`);
   invariant(commercialWriteBridgeGuardRun.report.ok === true, "MT-01C2B3A guard falló");
   invariant(commercialWriteBridgeGuardTestsRun.assertions >= 12, `MT-01C2B3A guard tests esperaba al menos 12 pruebas y obtuvo ${commercialWriteBridgeGuardTestsRun.assertions}`);
+  const commercialReadBridgeRun = runJson("mt-01c2b3b-test.mjs", "MT-01C2B3B/READ_BRIDGE");
+  const commercialReadBridgeDifferentialRun = runJson("mt-01c2b3b-legacy-differential.mjs", "MT-01C2B3B/LEGACY_DIFFERENTIAL");
+  const commercialReadBridgePerformanceRun = runJson("mt-01c2b3b-performance.mjs", "MT-01C2B3B/PERFORMANCE");
+  const commercialReadBridgeDatabaseGuardRun = runJson("mt-01c2b3b-local-target-test.mjs", "MT-01C2B3B/DATABASE_GUARD");
+  const commercialReadBridgeGuardRun = runJson("validate-mt01c2b3b-guard.mjs", "MT-01C2B3B/GUARD");
+  const commercialReadBridgeGuardTestsRun = runJson("validate-mt01c2b3b-guard-test.mjs", "MT-01C2B3B/GUARD_TESTS");
+  invariant(commercialReadBridgeRun.report.ok === true && commercialReadBridgeRun.assertions >= 35, `MT-01C2B3B esperaba al menos 35 pruebas y obtuvo ${commercialReadBridgeRun.assertions}`);
+  invariant(commercialReadBridgeDifferentialRun.report.ok === true && commercialReadBridgeDifferentialRun.assertions >= 10, "MT-01C2B3B diff LEGACY incompleto");
+  invariant(commercialReadBridgePerformanceRun.report.ok === true && commercialReadBridgePerformanceRun.assertions >= 10, "MT-01C2B3B rendimiento incompleto");
+  invariant(commercialReadBridgeDatabaseGuardRun.assertions >= 14, `MT-01C2B3B database guard esperaba al menos 14 pruebas y obtuvo ${commercialReadBridgeDatabaseGuardRun.assertions}`);
+  invariant(commercialReadBridgeGuardRun.report.ok === true, "MT-01C2B3B guard falló");
+  invariant(commercialReadBridgeGuardTestsRun.assertions >= 14, `MT-01C2B3B guard tests esperaba al menos 14 pruebas y obtuvo ${commercialReadBridgeGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -255,6 +273,15 @@ try {
       guardTests: commercialWriteBridgeGuardTestsRun.assertions,
       total: commercialWriteBridgeRun.assertions + commercialWriteBridgeGuardTestsRun.assertions,
     },
+    mt01c2b3b: {
+      readBridge: commercialReadBridgeRun.assertions,
+      legacyDifferential: commercialReadBridgeDifferentialRun.assertions,
+      performance: commercialReadBridgePerformanceRun.assertions,
+      databaseGuard: commercialReadBridgeDatabaseGuardRun.assertions,
+      guard: commercialReadBridgeGuardRun.report.ok,
+      guardTests: commercialReadBridgeGuardTestsRun.assertions,
+      total: commercialReadBridgeRun.assertions + commercialReadBridgeDifferentialRun.assertions + commercialReadBridgePerformanceRun.assertions + commercialReadBridgeDatabaseGuardRun.assertions + commercialReadBridgeGuardTestsRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -289,6 +316,12 @@ try {
       "MT-01C2B3A/WRITE_BRIDGE": { status: "PASS", assertions: commercialWriteBridgeRun.assertions, durationMs: commercialWriteBridgeRun.durationMs, exitCode: 0 },
       "MT-01C2B3A/GUARD": { status: "PASS", assertions: 0, durationMs: commercialWriteBridgeGuardRun.durationMs, exitCode: 0 },
       "MT-01C2B3A/GUARD_TESTS": { status: "PASS", assertions: commercialWriteBridgeGuardTestsRun.assertions, durationMs: commercialWriteBridgeGuardTestsRun.durationMs, exitCode: 0 },
+      "MT-01C2B3B/READ_BRIDGE": { status: "PASS", assertions: commercialReadBridgeRun.assertions, durationMs: commercialReadBridgeRun.durationMs, exitCode: 0 },
+      "MT-01C2B3B/LEGACY_DIFFERENTIAL": { status: "PASS", assertions: commercialReadBridgeDifferentialRun.assertions, durationMs: commercialReadBridgeDifferentialRun.durationMs, exitCode: 0 },
+      "MT-01C2B3B/PERFORMANCE": { status: "PASS", assertions: commercialReadBridgePerformanceRun.assertions, durationMs: commercialReadBridgePerformanceRun.durationMs, exitCode: 0 },
+      "MT-01C2B3B/DATABASE_GUARD": { status: "PASS", assertions: commercialReadBridgeDatabaseGuardRun.assertions, durationMs: commercialReadBridgeDatabaseGuardRun.durationMs, exitCode: 0 },
+      "MT-01C2B3B/GUARD": { status: "PASS", assertions: 0, durationMs: commercialReadBridgeGuardRun.durationMs, exitCode: 0 },
+      "MT-01C2B3B/GUARD_TESTS": { status: "PASS", assertions: commercialReadBridgeGuardTestsRun.assertions, durationMs: commercialReadBridgeGuardTestsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

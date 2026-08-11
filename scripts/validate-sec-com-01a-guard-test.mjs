@@ -43,7 +43,7 @@ check("cache compartida en GET OSI rechazada", () => validateSecCom01aSources({
 }), true);
 check("dashboard por headers heredados rechazado", () => validateSecCom01aSources({
   ...baseline,
-  dashboard: baseline.dashboard.replace(/\s*const context = await requirePilotPermission[\s\S]*?if \(!context\) return;\s*/, '\n  const context = requireRoleFromHeaders(req, res, ["K", "A"]);\n'),
+  dashboard: baseline.dashboard.replace(/\s*const context = tenantRead[\s\S]*?if \(!context\) return;\s*/, '\n  const context = requireRoleFromHeaders(req, res, ["K", "A"]);\n'),
 }), true);
 check("dashboard sin roles A/K rechazado", () => validateSecCom01aSources({
   ...baseline,

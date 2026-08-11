@@ -1,47 +1,71 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, withCommonHeaders } from "../_lib/http.js";
-import { ensureActorUserId, requireRoleFromHeaders } from "../_lib/rbac.js";
+import { methodNotAllowed, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
+import { ensureActorUserId, PERMS, requireRoleFromHeaders } from "../_lib/rbac.js";
+import {
+  COMMERCIAL_TENANCY_READ_MODES,
+  requireCommercialPermission,
+  resolveCommercialTenancyModes,
+  sendCommercialTenancyError,
+} from "../_lib/commercialTenancyWrite.js";
+import { findTenantProject } from "../_lib/commercialTenancyRead.js";
 import {
   computePgdBlockingColor,
   computeSignalColor,
+  effectiveSignalMap,
   ensureDefaultSignals,
   pgdBlockingSummary,
 } from "./_lib.js";
 
 export default withCommonHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
-  const actor = requireRoleFromHeaders(req, res, ["K", "A"]);
-  if (!actor?.role) return;
-  await ensureActorUserId(prisma, actor);
+  if (process.env.COMMERCIAL_TENANCY_READ_MODE === "TENANT_READ" || process.env.COMMERCIAL_TENANCY_WRITE_MODE === "TENANT_WRITE") setPrivateNoStore(res);
+  let modes;
+  try {
+    modes = resolveCommercialTenancyModes();
+  } catch (error) {
+    return sendCommercialTenancyError(res, error);
+  }
+  const tenantRead = modes.readMode === COMMERCIAL_TENANCY_READ_MODES.TENANT_READ;
+  let actor;
+  if (tenantRead) {
+    actor = await requireCommercialPermission(req, res, PERMS.PROJECTS_VIEW, { prisma });
+    if (!actor) return;
+    if (!["K", "A"].includes(actor.role)) {
+      return res.status(403).json({ ok: false, error: "COMMERCIAL_PERMISSION_FORBIDDEN" });
+    }
+  } else {
+    actor = requireRoleFromHeaders(req, res, ["K", "A"]);
+    if (!actor?.role) return;
+    await ensureActorUserId(prisma, actor);
+  }
 
   const id = String(req.query?.id || "").trim();
   if (!id) return res.status(400).json({ ok: false, error: "Missing id" });
 
-  const project = await prisma.project.findUnique({
-    where: { id },
-    omit: { tenantId: true },
-    include: {
-      signals: true,
-      pgd: { include: { items: { orderBy: { createdAt: "asc" } } } },
-      osis: true,
-    },
-  });
+  const include = {
+    signals: true,
+    pgd: { include: { items: { orderBy: { createdAt: "asc" } } } },
+    osis: true,
+  };
+  let project;
+  try {
+    project = tenantRead
+      ? await findTenantProject(prisma, { tenantId: actor.tenantId, projectId: id, include })
+      : await prisma.project.findUnique({ where: { id }, omit: { tenantId: true }, include });
+  } catch (error) {
+    if (!tenantRead) throw error;
+    return sendCommercialTenancyError(res, error);
+  }
   if (!project) return res.status(404).json({ ok: false, error: "Not Found" });
 
-  await ensureDefaultSignals(prisma, project.id, project.startDate);
-
-  const refreshed = await prisma.project.findUnique({
-    where: { id },
-    omit: { tenantId: true },
-    include: {
-      signals: true,
-      pgd: { include: { items: { orderBy: { createdAt: "asc" } } } },
-      osis: true,
-    },
-  });
+  let refreshed = project;
+  if (!tenantRead) {
+    await ensureDefaultSignals(prisma, project.id, project.startDate);
+    refreshed = await prisma.project.findUnique({ where: { id }, omit: { tenantId: true }, include });
+  }
 
   const now = new Date();
-  const byKind = new Map(refreshed.signals.map((s) => [s.kind, s]));
+  const byKind = effectiveSignalMap(refreshed.signals, refreshed.startDate);
   const semaphores = {
     payment: computeSignalColor(byKind.get("PAYMENT"), now),
     permits: computeSignalColor(byKind.get("PERMITS_PARKING"), now),

@@ -13,6 +13,11 @@ export const COMMERCIAL_TENANCY_WRITE_MODES = Object.freeze({
   TENANT_WRITE: "TENANT_WRITE",
 });
 
+export const COMMERCIAL_TENANCY_READ_MODES = Object.freeze({
+  LEGACY_ONLY: "LEGACY_ONLY",
+  TENANT_READ: "TENANT_READ",
+});
+
 export const COMMERCIAL_BROWSER_AUTHORITY_FIELDS = Object.freeze([
   "tenantId",
   "tenant_id",
@@ -57,26 +62,52 @@ function immutableContext(value) {
   });
 }
 
-export function resolveCommercialTenancyWriteMode(env = process.env) {
-  const configured = env.COMMERCIAL_TENANCY_WRITE_MODE;
-  const mode = configured === undefined
+export function resolveCommercialTenancyModes(env = process.env) {
+  const configuredWrite = env.COMMERCIAL_TENANCY_WRITE_MODE;
+  const writeMode = configuredWrite === undefined
     ? COMMERCIAL_TENANCY_WRITE_MODES.LEGACY_ONLY
-    : configured;
-  if (typeof mode !== "string" || !Object.values(COMMERCIAL_TENANCY_WRITE_MODES).includes(mode)) {
+    : configuredWrite;
+  const configuredRead = env.COMMERCIAL_TENANCY_READ_MODE;
+  const readMode = configuredRead === undefined
+    ? COMMERCIAL_TENANCY_READ_MODES.LEGACY_ONLY
+    : configuredRead;
+  if (typeof writeMode !== "string" || !Object.values(COMMERCIAL_TENANCY_WRITE_MODES).includes(writeMode)) {
+    throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
+  }
+  if (typeof readMode !== "string" || !Object.values(COMMERCIAL_TENANCY_READ_MODES).includes(readMode)) {
+    throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
+  }
+  const coordinatedLegacy = writeMode === COMMERCIAL_TENANCY_WRITE_MODES.LEGACY_ONLY
+    && readMode === COMMERCIAL_TENANCY_READ_MODES.LEGACY_ONLY;
+  const coordinatedTenant = writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE
+    && readMode === COMMERCIAL_TENANCY_READ_MODES.TENANT_READ;
+  if (!coordinatedLegacy && !coordinatedTenant) {
     throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
   }
   const vercelEnvironment = upper(env.VERCEL_ENV);
   const isVercelRuntime = String(env.VERCEL || "").trim() === "1"
     || vercelEnvironment === "PREVIEW"
     || vercelEnvironment === "PRODUCTION";
-  if (mode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE && isVercelRuntime) {
+  if (coordinatedTenant && isVercelRuntime) {
     throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
   }
-  return mode;
+  return Object.freeze({ writeMode, readMode, tenantMode: coordinatedTenant });
+}
+
+export function resolveCommercialTenancyWriteMode(env = process.env) {
+  return resolveCommercialTenancyModes(env).writeMode;
+}
+
+export function resolveCommercialTenancyReadMode(env = process.env) {
+  return resolveCommercialTenancyModes(env).readMode;
 }
 
 function databaseUnavailable(cause) {
   return new CommercialTenancyError("COMMERCIAL_CONTEXT_DATABASE_UNAVAILABLE", 503, undefined, { cause });
+}
+
+export function commercialDatabaseUnavailable(cause) {
+  return databaseUnavailable(cause);
 }
 
 async function resolveLegacyCommercialContext(prisma, token) {
@@ -157,7 +188,7 @@ async function resolveV2CommercialContext(prisma, request, env, now) {
   }
 }
 
-export async function resolveCommercialWriteContext(request, {
+export async function resolveCommercialContext(request, {
   prisma,
   env = process.env,
   now = new Date(),
@@ -182,9 +213,11 @@ export async function resolveCommercialWriteContext(request, {
   }
 }
 
-export async function requireCommercialWritePermission(request, response, permission, options = {}) {
+export const resolveCommercialWriteContext = resolveCommercialContext;
+
+export async function requireCommercialPermission(request, response, permission, options = {}) {
   try {
-    const context = await resolveCommercialWriteContext(request, options);
+    const context = await resolveCommercialContext(request, options);
     if (!context.effectivePermissions.includes(String(permission))) {
       throw new CommercialTenancyError("COMMERCIAL_PERMISSION_FORBIDDEN", 403);
     }
@@ -194,6 +227,8 @@ export async function requireCommercialWritePermission(request, response, permis
     return null;
   }
 }
+
+export const requireCommercialWritePermission = requireCommercialPermission;
 
 export function assertNoBrowserCommercialAuthority(body) {
   const forbidden = COMMERCIAL_BROWSER_AUTHORITY_FIELDS.filter((field) => Object.hasOwn(body || {}, field));

@@ -1,28 +1,36 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, readJsonObject, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, readJsonObject, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
 import { requirePilotAuth, requirePilotPermission } from "../_lib/authContextPilot.js";
 import {
   assertNoBrowserCommercialAuthority,
+  COMMERCIAL_TENANCY_READ_MODES,
   COMMERCIAL_TENANCY_WRITE_MODES,
   createTenantClient,
-  requireCommercialWritePermission,
-  resolveCommercialTenancyWriteMode,
+  requireCommercialPermission,
+  resolveCommercialTenancyModes,
   sendCommercialTenancyError,
 } from "../_lib/commercialTenancyWrite.js";
+import { commercialPagination, listTenantClients } from "../_lib/commercialTenancyRead.js";
 import { PERMS } from "../_lib/rbac.js";
 
 export default withCommonHeaders(async (req, res) => {
+  if (process.env.COMMERCIAL_TENANCY_READ_MODE === "TENANT_READ" || process.env.COMMERCIAL_TENANCY_WRITE_MODE === "TENANT_WRITE") setPrivateNoStore(res);
   const permission = req.method === "GET" ? PERMS.CLIENTS_VIEW : req.method === "POST" ? PERMS.CLIENTS_CREATE : null;
-  let writeMode = COMMERCIAL_TENANCY_WRITE_MODES.LEGACY_ONLY;
-  if (req.method === "POST") {
+  let modes = {
+    writeMode: COMMERCIAL_TENANCY_WRITE_MODES.LEGACY_ONLY,
+    readMode: COMMERCIAL_TENANCY_READ_MODES.LEGACY_ONLY,
+  };
+  if (["GET", "POST"].includes(req.method)) {
     try {
-      writeMode = resolveCommercialTenancyWriteMode();
+      modes = resolveCommercialTenancyModes();
     } catch (error) {
       return sendCommercialTenancyError(res, error);
     }
   }
-  const auth = req.method === "POST" && writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE
-    ? await requireCommercialWritePermission(req, res, permission, { prisma })
+  const tenantRead = req.method === "GET" && modes.readMode === COMMERCIAL_TENANCY_READ_MODES.TENANT_READ;
+  const tenantWrite = req.method === "POST" && modes.writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE;
+  const auth = tenantRead || tenantWrite
+    ? await requireCommercialPermission(req, res, permission, { prisma })
     : permission
       ? await requirePilotPermission(req, res, permission, { prisma })
       : await requirePilotAuth(req, res, { prisma });
@@ -30,6 +38,18 @@ export default withCommonHeaders(async (req, res) => {
 
   if (req.method === "GET") {
     const query = String(req.query?.q || "").toLowerCase().trim();
+    if (tenantRead) {
+      try {
+        const result = await listTenantClients(prisma, {
+          tenantId: auth.tenantId,
+          query,
+          ...commercialPagination(req.query),
+        });
+        return res.status(200).json({ ok: true, total: result.total, data: result.data });
+      } catch (error) {
+        return sendCommercialTenancyError(res, error);
+      }
+    }
     const clients = await prisma.client.findMany({
       orderBy: { createdAt: "desc" },
       omit: { tenantId: true },
@@ -52,7 +72,7 @@ export default withCommonHeaders(async (req, res) => {
 
   if (req.method === "POST") {
     const body = await readJsonObject(req, { requireNonEmptyObject: true });
-    if (writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE) {
+    if (tenantWrite) {
       try {
         assertNoBrowserCommercialAuthority(body);
       } catch (error) {
@@ -72,7 +92,7 @@ export default withCommonHeaders(async (req, res) => {
       createdAt: String(body.createdAt || new Date().toISOString().slice(0, 10)),
     };
     let created;
-    if (writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE) {
+    if (tenantWrite) {
       try {
         created = await createTenantClient(prisma, { tenantId: auth.tenantId, data });
       } catch (error) {

@@ -219,6 +219,8 @@ try {
   const disabled = await expectError("endpoint desactivado controlado", invoke(preGateHandler, request(null)), 409, "CRM_PIPELINE_DISABLED");
   checkJsonSnapshot("snapshot 409 DISABLED", disabled.body, { ok: false, error: "CRM_PIPELINE_DISABLED" });
   check("DISABLED no autentica ni consulta", preGateCalls === 0);
+  check("lista CRM desactivada sin CORS permisivo", disabled.getHeader("access-control-allow-origin") === undefined
+    && disabled.getHeader("access-control-allow-credentials") === undefined);
   process.env.CRM_PIPELINE_RUNTIME_MODE = "READ_ONLY";
 
   const tenantOne = await identity("tenant-one", { role: "V" });
@@ -286,6 +288,8 @@ try {
 
   const detail = await invoke(detailHandler, request(tokenOne, "GET", { id: casesOne[0].id }));
   check("detalle mismo tenant", detail.statusCode === 200 && detail.body.data.id === casesOne[0].id);
+  check("detalle CRM sin CORS permisivo", detail.getHeader("access-control-allow-origin") === undefined
+    && detail.getHeader("access-control-allow-credentials") === undefined);
   const snapshotList = await invoke(listHandler, request(tokenOne, "GET", { q: casesOne[0].caseCode, pageSize: "1" }));
   const expectedCaseContract = {
     id: "<id>", caseCode: "<caseCode>", clientName: "Cliente 0", mode: "EXPORT", serviceType: "MOVING",
@@ -316,6 +320,8 @@ try {
 
   const summary = await invoke(summaryHandler, request(tokenOne));
   check("resumen por tenant", summary.statusCode === 200 && summary.body.data.total === 51 && summary.body.data.assigned === 39 && summary.body.data.unassigned === 12);
+  check("resumen CRM sin CORS permisivo", summary.getHeader("access-control-allow-origin") === undefined
+    && summary.getHeader("access-control-allow-credentials") === undefined);
   check("SLA no inventado", summary.body.data.sla.overdue === null && summary.body.data.sla.basis === "UNAVAILABLE");
   check("todos los estados presentes", Object.keys(summary.body.data.byStatus).length === crm.CRM_PIPELINE_STATUS_VALUES.length);
   const expectedByStatus = Object.fromEntries(crm.CRM_PIPELINE_STATUS_VALUES.map((status) => [status, casesOne.filter((item) => item.status === status).length]));

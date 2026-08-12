@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { unsafeCrmRouteMatches, validateCrmCorsGuard } from "./validate-crm-cors-guard.mjs";
+import { inventoryCrmRouteSources, unsafeCrmRouteMatches, validateCrmCorsGuard } from "./validate-crm-cors-guard.mjs";
 
 const baseline = readFileSync("vercel.json", "utf8");
 const results = [];
@@ -9,16 +9,28 @@ function check(name, condition) {
   if (!condition) throw new Error(name);
 }
 
-function rejected(name, vercelText, pattern, routes) {
+function rejected(name, vercelText, pattern, routes, routeSources) {
   let error;
-  try { validateCrmCorsGuard({ vercelText, ...(routes ? { routes } : {}) }); }
+  try { validateCrmCorsGuard({ vercelText, ...(routes ? { routes } : {}), ...(routeSources ? { routeSources } : {}) }); }
   catch (caught) { error = caught; }
   check(name, pattern.test(error?.message || ""));
 }
 
 const current = validateCrmCorsGuard();
-check("namespace CRM completo excluido", current.ok && current.crmRoutes === 7 && current.matchedCrmRoutes === 0);
+check("namespace CRM completo excluido", current.ok && current.crmRoutes === 7 && current.matchedCrmRoutes === 0 && current.handlersChecked === 7);
 check("rutas no CRM conservan la regla heredada", current.nonCrmCompatibilityRoutes === 4);
+
+const routeSources = inventoryCrmRouteSources();
+const listSource = routeSources.find((route) => route.path === "/api/crm/pipeline-cases");
+rejected(
+  "handler de lectura no puede heredar CORS común",
+  baseline,
+  /hereda CORS wildcard/,
+  undefined,
+  routeSources.map((route) => route === listSource
+    ? { ...route, source: route.source.replace("{ cors: false }", "{}") }
+    : route),
+);
 
 const rejectedDeploymentConfig = baseline.replace(
   "(?!crm/)",

@@ -53,6 +53,17 @@ export function inventoryCrmRoutes(root = process.cwd()) {
     .sort();
 }
 
+export function inventoryCrmRouteSources(root = process.cwd()) {
+  const crmRoot = resolve(root, "api", "crm");
+  return filesBelow(crmRoot)
+    .filter((file) => /\.(?:js|ts)$/.test(file))
+    .map((file) => Object.freeze({
+      path: routePath(root, file),
+      source: readFileSync(file, "utf8"),
+    }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+}
+
 export function unsafeCrmRouteMatches({
   root = process.cwd(),
   vercelText = readFileSync(resolve(root, "vercel.json"), "utf8"),
@@ -67,11 +78,21 @@ export function validateCrmCorsGuard({
   root = process.cwd(),
   vercelText = readFileSync(resolve(root, "vercel.json"), "utf8"),
   routes = inventoryCrmRoutes(root),
+  routeSources = inventoryCrmRouteSources(root),
 } = {}) {
   const config = parseConfig(vercelText);
 
   invariant(Array.isArray(config.headers), "vercel.json debe declarar headers");
   invariant(routes.length > 0 && routes.every((path) => path.startsWith("/api/crm/")), "inventario CRM inválido");
+  invariant(routeSources.length > 0, "fuentes de rutas CRM ausentes");
+
+  for (const route of routeSources) {
+    invariant(!/Access-Control-Allow-Origin[^\n]+["']\*["']/.test(route.source), `${route.path} declara CORS wildcard`);
+    invariant(!/Access-Control-Allow-Credentials[^\n]+["']true["']/.test(route.source), `${route.path} declara credenciales CORS`);
+    if (route.source.includes("withCommonHeaders(")) {
+      invariant(/\{\s*cors:\s*false\s*\}\s*\)/.test(route.source), `${route.path} hereda CORS wildcard desde withCommonHeaders`);
+    }
+  }
 
   const unsafeRules = config.headers.filter(isUnsafeRule);
   invariant(unsafeRules.length === 1, "debe conservarse una única regla CORS heredada para rutas no CRM");
@@ -94,6 +115,7 @@ export function validateCrmCorsGuard({
     source: globalRule.source,
     crmRoutes: routes.length,
     matchedCrmRoutes: matched.length,
+    handlersChecked: routeSources.length,
     nonCrmCompatibilityRoutes: 4,
   });
 }

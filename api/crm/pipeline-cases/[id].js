@@ -30,7 +30,7 @@ export function createPipelineCaseDetailHandler({
     } catch (error) {
       return sendCommercialTenancyError(res, error);
     }
-  });
+  }, { cors: false });
 }
 
 export default createPipelineCaseDetailHandler();

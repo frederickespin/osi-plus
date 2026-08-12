@@ -31,7 +31,7 @@ export function createPipelineCasesListHandler({
     } catch (error) {
       return sendCommercialTenancyError(res, error);
     }
-  });
+  }, { cors: false });
 }
 
 export default createPipelineCasesListHandler();

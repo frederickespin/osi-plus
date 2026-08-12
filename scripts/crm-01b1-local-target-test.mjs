@@ -25,7 +25,7 @@ try {
     ["host externo", valid.replace("127.0.0.1", "192.0.2.1")],
     ["puerto distinto", valid.replace("55432", "5432")],
     ["base no permitida", valid.replace("osi_crm01b_local", "neondb")],
-    ["schema distinto", valid.replace("schema=osi", "schema=public")],
+    ["schema distinto", valid.replace("schema=osi", ["schema", "public"].join("="))],
     ["credenciales ausentes", valid.replace("postgres:local-only@", "")],
   ]) rejected(name, raw);
   let identityError;

@@ -7,12 +7,15 @@ import { fileURLToPath } from "node:url";
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const EXPECTED_MIGRATIONS = 16;
 const EXPECTED_MIGRATION_SHA256 = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
-const RUNTIME_SERVICE_ALLOWLIST = Object.freeze([]);
+const RUNTIME_SERVICE_ALLOWLIST = Object.freeze(["api/_lib/pipelineCaseDomain.js"]);
 const JOURNAL_FIXTURE_ALLOWLIST = Object.freeze([
   "scripts/crm-01b1-test.mjs",
   "scripts/crm-01b1-concurrency-test.mjs",
   "scripts/crm-01a-test.mjs",
   "scripts/validate-crm-01b1-guard-test.mjs",
+  "scripts/crm-01b2-test.mjs",
+  "scripts/crm-01b2-concurrency-test.mjs",
+  "scripts/validate-crm-01b2-guard-test.mjs",
 ]);
 
 function invariant(condition, message) {
@@ -72,7 +75,7 @@ export function validateCrm01b1Guard({
   invariant(/version\s+Int\s+@default\(1\)/.test(schema), "falta version en PipelineCase");
   invariant(/pipelineCaseId\s+String\?\s+@map\("pipeline_case_id"\)/.test(schema), "falta Project.pipelineCaseId nullable");
   invariant(!/updatedAt[\s\S]{0,80}(?:version|expectedVersion|resultingVersion)|(?:version|expectedVersion|resultingVersion)[\s\S]{0,80}updatedAt/i.test(sql), "updatedAt no puede usarse como versión");
-  invariant(createHash("sha256").update(sql).digest("hex") === EXPECTED_MIGRATION_SHA256, "checksum de migracion 16 cambio; Q2 debe repetirse");
+  invariant(createHash("sha256").update(sql.replace(/\r\n/g, "\n")).digest("hex") === EXPECTED_MIGRATION_SHA256, "checksum de migracion 16 cambio; Q2 debe repetirse");
 
   const files = repositoryFiles(root);
   const runtime = files.filter((file) => /^(?:api|src)\/.+\.(?:[cm]?[jt]sx?)$/.test(file));
@@ -83,7 +86,7 @@ export function validateCrm01b1Guard({
   for (const path of runtime) {
     const source = extraSources[path] ?? read(path);
     if (/(?:PipelineCaseCommand|pipelineCaseCommand|pipeline_case_commands)/.test(source) && !RUNTIME_SERVICE_ALLOWLIST.includes(path)) runtimeConsumers.push(path);
-    if (/pipelineCase\s*\.\s*(?:create|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(source)) runtimeMutations.push(path);
+    if (/pipelineCase\s*\.\s*(?:create|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(source) && !RUNTIME_SERVICE_ALLOWLIST.includes(path)) runtimeMutations.push(path);
     if (path.startsWith("src/") && /(?:PipelineCaseCommand|QUOTE_DRAFT|lossReasonCode|statusChangedAt)/.test(source)) frontendChanges.push(path);
   }
   const scripts = files.filter((file) => /^scripts\/.+\.mjs$/.test(file));
@@ -95,7 +98,7 @@ export function validateCrm01b1Guard({
   for (const [path, source] of Object.entries(extraSources)) {
     if (!runtime.includes(path) && /^(?:api|src)\//.test(path)) {
       if (/(?:PipelineCaseCommand|pipelineCaseCommand|pipeline_case_commands)/.test(source)) runtimeConsumers.push(path);
-      if (/pipelineCase\s*\.\s*(?:create|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(source)) runtimeMutations.push(path);
+      if (/pipelineCase\s*\.\s*(?:create|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(source) && !RUNTIME_SERVICE_ALLOWLIST.includes(path)) runtimeMutations.push(path);
       if (path.startsWith("src/") && /(?:PipelineCaseCommand|QUOTE_DRAFT|lossReasonCode|statusChangedAt)/.test(source)) frontendChanges.push(path);
     }
     if (/^scripts\/.+\.mjs$/.test(path) && !JOURNAL_FIXTURE_ALLOWLIST.includes(path)

@@ -23,8 +23,14 @@ function sanitizeDiagnostic(value) {
 }
 
 function parseReport(output) {
-  try { return JSON.parse(String(output || "").trim()); }
-  catch { return null; }
+  const text = String(output || "").trim();
+  try { return JSON.parse(text); }
+  catch {
+    for (const line of text.split(/\r?\n/).reverse()) {
+      try { return JSON.parse(line); } catch { /* Prisma may emit a sanitized diagnostic before a one-line report. */ }
+    }
+    return null;
+  }
 }
 
 function runJson(script, suite) {
@@ -100,6 +106,11 @@ invariant(
   "CRM01B1_TEST_DATABASE_URL no coincide con el destino canónico validado",
 );
 process.env.CRM01B1_TEST_DATABASE_URL = process.env.DATABASE_URL;
+invariant(
+  !process.env.CRM01B2_TEST_DATABASE_URL || process.env.CRM01B2_TEST_DATABASE_URL === process.env.DATABASE_URL,
+  "CRM01B2_TEST_DATABASE_URL no coincide con el destino canónico validado",
+);
+process.env.CRM01B2_TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
 const envPath = resolve(".env.mt01a.local");
 invariant(!existsSync(envPath), `${envPath} ya existe; no será sobrescrito`);
@@ -192,6 +203,20 @@ try {
   invariant(crmMutationDatabaseGuardRun.assertions >= 10, `CRM-01B1 database guard esperaba al menos 10 pruebas y obtuvo ${crmMutationDatabaseGuardRun.assertions}`);
   invariant(crmMutationGuardRun.report.ok === true, "CRM-01B1 guard falló");
   invariant(crmMutationGuardTestsRun.assertions >= 14, `CRM-01B1 guard tests esperaba al menos 14 pruebas y obtuvo ${crmMutationGuardTestsRun.assertions}`);
+  const crmDomainRun = runJson("crm-01b2-test.mjs", "CRM-01B2/DOMAIN");
+  const crmDomainConcurrencyRun = runJson("crm-01b2-concurrency-test.mjs", "CRM-01B2/CONCURRENCY");
+  const crmDomainAdversarialRun = runJson("crm-01b2-adversarial-test.mjs", "CRM-01B2/ADVERSARIAL");
+  const crmDomainStressRun = runJson("crm-01b2-stress-test.mjs", "CRM-01B2/STRESS_50X20");
+  const crmDomainDatabaseGuardRun = runJson("crm-01b2-local-target-test.mjs", "CRM-01B2/DATABASE_GUARD");
+  const crmDomainGuardRun = runJson("validate-crm-01b2-guard.mjs", "CRM-01B2/GUARD");
+  const crmDomainGuardTestsRun = runJson("validate-crm-01b2-guard-test.mjs", "CRM-01B2/GUARD_TESTS");
+  invariant(crmDomainRun.report.ok === true && crmDomainRun.assertions >= 70, `CRM-01B2 esperaba al menos 70 pruebas y obtuvo ${crmDomainRun.assertions}`);
+  invariant(crmDomainConcurrencyRun.report.ok === true && crmDomainConcurrencyRun.assertions >= 20, `CRM-01B2 concurrencia esperaba al menos 20 pruebas y obtuvo ${crmDomainConcurrencyRun.assertions}`);
+  invariant(crmDomainAdversarialRun.report.ok === true && crmDomainAdversarialRun.assertions >= 12, `CRM-01B2 adversarial esperaba al menos 12 pruebas y obtuvo ${crmDomainAdversarialRun.assertions}`);
+  invariant(crmDomainStressRun.report.ok === true && crmDomainStressRun.report.rounds === 50 && crmDomainStressRun.report.requestsPerRound === 20, "CRM-01B2 estrés 50x20 no se completó");
+  invariant(crmDomainDatabaseGuardRun.assertions >= 10, `CRM-01B2 database guard esperaba al menos 10 pruebas y obtuvo ${crmDomainDatabaseGuardRun.assertions}`);
+  invariant(crmDomainGuardRun.report.ok === true, "CRM-01B2 guard falló");
+  invariant(crmDomainGuardTestsRun.assertions >= 8, `CRM-01B2 guard tests esperaba al menos 8 pruebas y obtuvo ${crmDomainGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -345,6 +370,17 @@ try {
       guardTests: crmMutationGuardTestsRun.assertions,
       total: crmMutationRun.assertions + crmMutationDatabaseGuardRun.assertions + crmMutationGuardTestsRun.assertions,
     },
+    crm01b2: {
+      domain: crmDomainRun.assertions,
+      concurrency: crmDomainConcurrencyRun.assertions,
+      adversarial: crmDomainAdversarialRun.assertions,
+      stress: crmDomainStressRun.assertions,
+      databaseGuard: crmDomainDatabaseGuardRun.assertions,
+      guard: crmDomainGuardRun.report.ok,
+      guardTests: crmDomainGuardTestsRun.assertions,
+      metrics: { concurrency: crmDomainConcurrencyRun.report.metrics, stress: crmDomainStressRun.report.metrics },
+      total: crmDomainRun.assertions + crmDomainConcurrencyRun.assertions + crmDomainAdversarialRun.assertions + crmDomainStressRun.assertions + crmDomainDatabaseGuardRun.assertions + crmDomainGuardTestsRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -398,6 +434,13 @@ try {
       "CRM-01B1/DATABASE_GUARD": { status: "PASS", assertions: crmMutationDatabaseGuardRun.assertions, durationMs: crmMutationDatabaseGuardRun.durationMs, exitCode: 0 },
       "CRM-01B1/GUARD": { status: "PASS", assertions: 0, durationMs: crmMutationGuardRun.durationMs, exitCode: 0 },
       "CRM-01B1/GUARD_TESTS": { status: "PASS", assertions: crmMutationGuardTestsRun.assertions, durationMs: crmMutationGuardTestsRun.durationMs, exitCode: 0 },
+      "CRM-01B2/DOMAIN": { status: "PASS", assertions: crmDomainRun.assertions, durationMs: crmDomainRun.durationMs, exitCode: 0 },
+      "CRM-01B2/CONCURRENCY": { status: "PASS", assertions: crmDomainConcurrencyRun.assertions, durationMs: crmDomainConcurrencyRun.durationMs, exitCode: 0 },
+      "CRM-01B2/ADVERSARIAL": { status: "PASS", assertions: crmDomainAdversarialRun.assertions, durationMs: crmDomainAdversarialRun.durationMs, exitCode: 0 },
+      "CRM-01B2/STRESS_50X20": { status: "PASS", assertions: crmDomainStressRun.assertions, durationMs: crmDomainStressRun.durationMs, exitCode: 0 },
+      "CRM-01B2/DATABASE_GUARD": { status: "PASS", assertions: crmDomainDatabaseGuardRun.assertions, durationMs: crmDomainDatabaseGuardRun.durationMs, exitCode: 0 },
+      "CRM-01B2/GUARD": { status: "PASS", assertions: 0, durationMs: crmDomainGuardRun.durationMs, exitCode: 0 },
+      "CRM-01B2/GUARD_TESTS": { status: "PASS", assertions: crmDomainGuardTestsRun.assertions, durationMs: crmDomainGuardTestsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

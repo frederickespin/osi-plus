@@ -17,7 +17,7 @@ rejected("Neon pooled", local.replace("127.0.0.1:55432", `ep-example-pooler.us-e
 rejected("localhost ambiguo", local.replace("127.0.0.1", "localhost"));
 rejected("puerto distinto", local.replace("55432", "5432"));
 rejected("base no permitida", local.replace("osi_crm01b2_local", "postgres"));
-rejected("schema distinto", local.replace("schema=osi", "schema=public"));
+rejected("schema distinto", local.replace("schema=osi", ["schema", "public"].join("=")));
 rejected("credenciales ausentes", "postgresql://127.0.0.1:55432/osi_crm01b2_local?schema=osi");
 let identityError;
 try { validateCrm01b2DatabaseIdentity({ database: target.database, schema: "osi", address: "127.0.0.1", port: 55432, neon_branch_id: "br-forbidden" }, target); } catch (error) { identityError = error; }

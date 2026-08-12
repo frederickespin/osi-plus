@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import { createCrm01b2LocalPrisma } from "./crm-01b2-local-target.mjs";
 import { mockResponse } from "./mt-01b1-test-helpers.mjs";
 
-const ROUNDS = 20;
+const ROUNDS = 50;
 const REQUESTS = 20;
 const results = [];
 function check(name, condition) {
@@ -29,7 +29,7 @@ const appPrisma = (await import("../api/_lib/db.js")).prisma;
 const run = `crm01b3a-stress-${randomUUID()}`;
 const prefix = run.toUpperCase();
 const metrics = {};
-const env = { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY" };
+const env = { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" };
 
 function userData(id, role) {
   return { id, code: id.toUpperCase(), name: `Synthetic ${role}`, email: `${id}@example.test`, phone: "0", role, status: "active", joinDate: "2026-08-12", passwordHash: "not-a-login-hash" };
@@ -42,13 +42,21 @@ function key(scenario, round, index = 0) { return `${run}.${scenario}.${round}.$
 function request(caseId, requestId, body) {
   return { method: "POST", query: { id: caseId }, body, headers: { "content-type": "application/json", "idempotency-key": requestId }, rawHeaders: ["content-type", "application/json", "idempotency-key", requestId] };
 }
-async function invoke(handler, req) {
+async function invoke(handler, req, { loseResponse = false } = {}) {
   const started = performance.now();
   const res = mockResponse();
+  if (loseResponse) {
+    res.destroyed = false;
+    res.json = function jsonAfterTransportLoss() {
+      this.destroyed = true;
+      throw new Error("synthetic transport loss after commit");
+    };
+  }
   try {
     await handler(req, res);
     return { status: res.statusCode, body: res.body, setCookie: res.getHeader("set-cookie"), durationMs: performance.now() - started };
   } catch (error) {
+    if (loseResponse && res.destroyed) return { status: 0, transportLost: true, body: null, durationMs: performance.now() - started };
     return { status: 500, body: { code: error.code || error.name }, durationMs: performance.now() - started };
   }
 }
@@ -80,6 +88,9 @@ try {
   const transitionA = createPipelineTransitionHandler({ env, resolveContext: async () => context(tenant.id, admin.id) });
   const assignA = createPipelineAssignOwnerHandler({ env, resolveContext: async () => context(tenant.id, admin.id) });
   const rounds = { transition: [], assignment: [], replay: [], mixed: [] };
+  const lostResponseRetries = [];
+  const lostResponseCommits = [];
+  const lostResponsePostReplays = [];
   const postReplays = [];
 
   for (let round = 0; round < ROUNDS; round += 1) {
@@ -110,21 +121,43 @@ try {
         ? () => invoke(assignA, request(mixedCase.id, key("mixed-assign", round, index), { expectedVersion: 1, ownerMembershipId: sellerTwo.id }))
         : () => invoke(transitionA, request(mixedCase.id, key("mixed-transition", round, index), { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null })),
     )));
+
+    const lostCase = await prisma.pipelineCase.create({ data: caseData(`${run}-lost-response-${round}`, tenant.id, sellerOne) });
+    const lostKey = key("lost-response", round);
+    lostResponseCommits.push(await invoke(
+      transitionV,
+      request(lostCase.id, lostKey, { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null }),
+      { loseResponse: true },
+    ));
+    lostResponseRetries.push(await race(Array.from(
+      { length: REQUESTS },
+      () => () => invoke(transitionV, request(lostCase.id, lostKey, { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null })),
+    )));
+    lostResponsePostReplays.push(await invoke(transitionV, request(lostCase.id, lostKey, { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null })));
   }
 
   for (const [scenario, scenarioRounds] of Object.entries(rounds)) {
     metrics[scenario] = aggregate(scenarioRounds);
-    check(`${scenario}: 20x20`, scenarioRounds.length === ROUNDS && scenarioRounds.every((items) => items.length === REQUESTS));
+    check(`${scenario}: 50x20`, scenarioRounds.length === ROUNDS && scenarioRounds.every((items) => items.length === REQUESTS));
     check(`${scenario}: un ganador exacto`, scenarioRounds.every((items) => items.filter((item) => item.status === 200 && item.body.command.replayed === false).length === 1));
     check(`${scenario}: cero 500 y resultados inesperados`, metrics[scenario].http500 === 0 && metrics[scenario].unexpected === 0);
     check(`${scenario}: perdedores recuperables`, scenarioRounds.flat().filter((item) => item.body?.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS").every((item) => item.body.recoverable === true && item.body.retryAfterMs >= 75 && item.body.retryAfterMs <= 175));
     check(`${scenario}: cero cookies`, scenarioRounds.flat().every((item) => item.setCookie === undefined));
   }
+  metrics.lostResponse = aggregate(lostResponseRetries);
+  metrics.lostResponse.committedTransportLoss = latency(lostResponseCommits.map((item) => item.durationMs));
+  metrics.lostResponse.postContentionReplay = latency(lostResponsePostReplays.map((item) => item.durationMs));
+  check("respuesta perdida: 50x20 reintentos", lostResponseRetries.length === ROUNDS && lostResponseRetries.every((items) => items.length === REQUESTS));
+  check("respuesta perdida: commit único no entrega respuesta", lostResponseCommits.every((item) => item.status === 0 && item.transportLost === true));
+  check("respuesta perdida: un replay exacto por ronda", lostResponseRetries.every((items) => items.filter((item) => item.status === 200 && item.body?.command?.replayed === true).length === 1));
+  check("respuesta perdida: perdedores son contención recuperable", lostResponseRetries.every((items) => items.filter((item) => item.status === 409).every((item) => item.body?.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS" && item.body?.recoverable === true)));
+  check("respuesta perdida: reintento posterior recupera receipt", lostResponsePostReplays.every((item) => item.status === 200 && item.body?.command?.replayed === true));
+  check("respuesta perdida: cero cookies y 500", lostResponseRetries.flat().every((item) => item.setCookie === undefined && item.status !== 500));
   metrics.replay.postCommit = latency(postReplays.map((item) => item.durationMs));
-  check("20 receipts post-commit exactos", postReplays.every((item) => item.status === 200 && item.body.command.replayed === true));
-  check("80 casos quedan en versión dos", await prisma.pipelineCase.count({ where: { id: { startsWith: run }, version: 2 } }) === ROUNDS * 4);
-  check("un journal por caso", await prisma.pipelineCaseCommand.count({ where: { pipelineCaseId: { startsWith: run } } }) === ROUNDS * 4);
-  check("una auditoría por caso", await prisma.commercialAuditLog.count({ where: { source: "CRM_PIPELINE_DOMAIN", entityId: { startsWith: run } } }) === ROUNDS * 4);
+  check("50 receipts post-commit exactos", postReplays.every((item) => item.status === 200 && item.body.command.replayed === true));
+  check("250 casos quedan en versión dos", await prisma.pipelineCase.count({ where: { id: { startsWith: run }, version: 2 } }) === ROUNDS * 5);
+  check("un journal por caso", await prisma.pipelineCaseCommand.count({ where: { pipelineCaseId: { startsWith: run } } }) === ROUNDS * 5);
+  check("una auditoría por caso", await prisma.commercialAuditLog.count({ where: { source: "CRM_PIPELINE_DOMAIN", entityId: { startsWith: run } } }) === ROUNDS * 5);
   check("cero estados parciales", await prisma.pipelineCase.count({ where: { id: { startsWith: run }, version: { not: 2 } } }) === 0);
   check("destino PostgreSQL local exacto", target.address === "127.0.0.1" && target.port === 55432);
 } catch (error) {

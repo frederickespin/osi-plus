@@ -45,9 +45,9 @@ class JsonBodyError extends Error {
   }
 }
 
-function withCommonHeaders(handler, { handleOptions = true } = {}) {
+function withCommonHeaders(handler, { handleOptions = true, cors = true } = {}) {
   return async (req, res) => {
-    setCors(res);
+    if (cors) setCors(res);
 
     if (handleOptions && req.method === "OPTIONS") {
       return res.status(204).end();

@@ -32,7 +32,10 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   for (const signature of [
     'DISABLED: "DISABLED"', 'LOCAL_ONLY: "LOCAL_ONLY"', 'CRM_PIPELINE_MUTATIONS_DISABLED',
     'CRM_PIPELINE_CONFIGURATION_INVALID', 'requireCrmPipelineMutationsLocal(env)',
-    'readJsonObject(req, { maxBytes: BODY_MAX_BYTES', '"idempotency-key"', 'setPrivateNoStore(res)', 'handleOptions: false',
+    'resolveCrmPipelineRuntimeMode(env)', 'CRM_PIPELINE_RUNTIME_MODES.READ_ONLY',
+    'readJsonObject(req, { maxBytes: BODY_MAX_BYTES', '"idempotency-key"', 'setPrivateNoStore(res)',
+    'handleOptions: false, cors: false', '"Authorization", "Content-Type", "Idempotency-Key"',
+    '["POST", "OPTIONS"]', '["GET", "HEAD", "OPTIONS"]', 'mt01bAllowedOrigins(env)',
   ]) invariant(adapter.includes(signature), `adaptador incompleto: ${signature}`);
   invariant(/configured === undefined \? CRM_PIPELINE_MUTATION_MODES\.DISABLED : configured/.test(adapter), "DISABLED no es predeterminado");
   invariant(!/CRM_PIPELINE_MUTATION_MODE[^\n;]*(?:trim|toUpperCase|toLowerCase)\s*\(/.test(adapter), "modo no puede normalizarse");
@@ -43,6 +46,12 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(!/(?:pipelineCase\.|pipelineCaseCommand\.|UPDATE\s+"osi"|INSERT\s+INTO)/i.test(adapter), "adaptador duplica persistencia del dominio");
   invariant(!/(?:TRANSITIONS|pg_try_advisory|appendCommercialAudit|resolveOwner|validateEvidence)/.test(adapter), "adaptador duplica reglas del dominio");
   invariant(!/(?:AUTO_ASSIGN|autoassign|autoAssign|ownerMembershipId\s*=\s*context\.membershipId)/.test(adapter), "autoasignación no autorizada");
+  invariant(!/Access-Control-Allow-Origin[^\n]+\*/.test(adapter), "CORS wildcard prohibido");
+  invariant(!/Access-Control-Allow-Credentials/.test(adapter), "credenciales CORS no autorizadas");
+  invariant(!/x-osi-(?:role|userid)/i.test(adapter), "headers x-osi no permitidos");
+  invariant(/keys\.some\(\(key\) => key !== "id"\)/.test(adapter), "requestId/query adicional no se rechaza");
+  invariant(/rawHeaderCount\(req, "idempotency-key"\)/.test(adapter), "duplicados Idempotency-Key no se detectan en rawHeaders");
+  invariant(/rawHeaderCount\(req, "authorization"\)/.test(adapter), "Authorization ambiguo no se detecta");
   for (const forbidden of ["tenantId", "userId", "actorUserId", "actorMembershipId", "ownerUserId", "ownerId", "role", "permissions", "requestId", "resultingVersion", "payloadHash", "statusChangedAt", "timestamps"]) {
     invariant(adapter.includes(`"${forbidden}"`), `falta protección de ${forbidden}`);
   }
@@ -80,6 +89,11 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   for (const suite of ["crm-01b3a-http-test.mjs", "crm-01b3a-integration-test.mjs", "crm-01b3a-http-stress-test.mjs", "validate-crm-01b3a-guard-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
+  const stress = read("scripts/crm-01b3a-http-stress-test.mjs");
+  invariant(/const ROUNDS = 50;/.test(stress) && /const REQUESTS = 20;/.test(stress), "estrés HTTP debe exigir 50x20");
+  invariant(/lostResponseCommits/.test(stress) && /transportLost/.test(stress), "falta escenario de respuesta perdida post-commit");
+  const domain = read("api/_lib/pipelineCaseDomain.js");
+  invariant(/APPROVED:\s*Object\.freeze\(\[\]\)/.test(domain) && !/APPROVED:\s*Object\.freeze\(\["WON"\]/.test(domain), "APPROVED no puede tratarse como WON");
   return Object.freeze({ ok: true, migrations: 16, mutationMode: "DISABLED", postEndpoints: 3, readEndpoints: 1, runtimeConsumers: 4, frontendConsumers: 0 });
 }
 

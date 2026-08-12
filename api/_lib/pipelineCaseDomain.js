@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db.js";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
@@ -8,6 +8,25 @@ const SOURCE = "CRM_PIPELINE_DOMAIN";
 const ENTITY = "PIPELINE_CASE";
 const MAX_WAIT_MS = 3_000;
 const TRANSACTION_TIMEOUT_MS = 10_000;
+const LOCK_TIMEOUT_MS = 250;
+const STATEMENT_TIMEOUT_MS = 3_000;
+const RETRY_AFTER_MIN_MS = 75;
+const RETRY_AFTER_MAX_MS = 175;
+const TIME_POLICY = Object.freeze({
+  maxWaitMs: MAX_WAIT_MS,
+  transactionTimeoutMs: TRANSACTION_TIMEOUT_MS,
+  lockTimeoutMs: LOCK_TIMEOUT_MS,
+  statementTimeoutMs: STATEMENT_TIMEOUT_MS,
+  retryAfterMinMs: RETRY_AFTER_MIN_MS,
+  retryAfterMaxMs: RETRY_AFTER_MAX_MS,
+});
+
+for (const [name, value] of Object.entries(TIME_POLICY)) {
+  if (!Number.isSafeInteger(value) || value < 1 || value >= 60_000) throw new Error(`CRM_PIPELINE_TIME_POLICY_INVALID:${name}`);
+}
+if (LOCK_TIMEOUT_MS >= STATEMENT_TIMEOUT_MS || STATEMENT_TIMEOUT_MS >= TRANSACTION_TIMEOUT_MS || RETRY_AFTER_MIN_MS > RETRY_AFTER_MAX_MS) {
+  throw new Error("CRM_PIPELINE_TIME_POLICY_INVALID:ordering");
+}
 
 const STATUS = Object.freeze([
   "NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED",
@@ -48,14 +67,16 @@ const EVIDENCE_POLICY = Object.freeze({
 });
 
 class PipelineCaseDomainError extends Error {
-  constructor(code, status, message = "La operación CRM no pudo completarse.") {
+  constructor(code, status, message = "La operación CRM no pudo completarse.", { recoverable = false, retryAfterMs } = {}) {
     super(message);
     this.name = "PipelineCaseDomainError";
     this.code = code;
     this.status = status;
+    this.recoverable = recoverable;
+    if (Number.isSafeInteger(retryAfterMs)) this.retryAfterMs = retryAfterMs;
   }
 }
-function fail(code, status, message) { throw new PipelineCaseDomainError(code, status, message); }
+function fail(code, status, message, options) { throw new PipelineCaseDomainError(code, status, message, options); }
 function requiredText(value, field, max = 191) {
   if (typeof value !== "string" || value.length < 1 || value.length > max || value !== value.trim() || /[\u0000-\u001f\u007f]/.test(value)) {
     fail("CRM_PIPELINE_COMMAND_INVALID", 400, `${field} no es válido.`);
@@ -114,9 +135,17 @@ function payloadHash(command) { return createHash("sha256").update(canonical(pay
 function contextTenantId(context) { return requiredText(context?.tenantId, "context.tenantId"); }
 function contextMembershipId(context) { return requiredText(context?.membershipId || context?.actorMembershipId, "context.membershipId"); }
 
+function retryAfterMs() { return randomInt(RETRY_AFTER_MIN_MS, RETRY_AFTER_MAX_MS + 1); }
+async function setTransactionLimits(tx) {
+  await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '${LOCK_TIMEOUT_MS}ms'`);
+  await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT_MS}ms'`);
+}
 async function advisoryLock(tx, namespace, tenantId, value) {
   const key = `CRM-01B2:${namespace}:${tenantId}:${value}`;
-  await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text AS "locked"`);
+  const rows = await tx.$queryRaw(Prisma.sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${key}, 0)) AS "locked"`);
+  if (rows[0]?.locked !== true) {
+    fail("CRM_PIPELINE_COMMAND_IN_PROGRESS", 409, "Otro comando CRM está en curso.", { recoverable: true, retryAfterMs: retryAfterMs() });
+  }
 }
 async function resolveActor(tx, context, requiredPermission) {
   const tenantId = contextTenantId(context);
@@ -199,15 +228,24 @@ function requireOwnedCase(actor, pipelineCase) {
   if (actor.role === "A") return;
   if (actor.role !== "V" || pipelineCase.owner_membership_id !== actor.membershipId || pipelineCase.owner_user_id !== actor.userId) fail("CRM_PIPELINE_PERMISSION_FORBIDDEN", 403, "El caso no está asignado al actor.");
 }
-function typedCommandMatches(row, command, hash) {
-  if (row.pipeline_case_id !== command.caseId || Number(row.expected_version) !== command.expectedVersion || row.payload_hash !== hash) return false;
+function typedCommandMatches(row, actor, command, hash) {
+  if (row.tenant_id !== actor.tenantId || row.actor_membership_id !== actor.membershipId || row.actor_user_id !== actor.userId || row.actor_role !== actor.role
+    || row.pipeline_case_id !== command.caseId || Number(row.expected_version) !== command.expectedVersion
+    || Number(row.resulting_version) !== command.expectedVersion + 1 || row.payload_hash !== hash) return false;
   if (command.operation === "TRANSITION") {
     const expectedType = row.previous_status === "LOST" && command.toStatus === "NEW_INBOX" ? "REOPEN" : "TRANSITION";
     return row.command_type === expectedType && row.resulting_status === command.toStatus && (row.reason_code || null) === command.reasonCode
+      && row.previous_owner_membership_id === row.resulting_owner_membership_id
+      && row.previous_owner_user_id === row.resulting_owner_user_id
       && (row.evidence_type || null) === (command.evidence?.type || null) && (row.evidence_id || null) === (command.evidence?.id || null);
   }
-  if (command.operation === "ASSIGN_OWNER") return row.command_type === "ASSIGN_OWNER" && row.resulting_owner_membership_id === command.ownerMembershipId;
-  return row.command_type === "UNASSIGN_OWNER";
+  if (command.operation === "ASSIGN_OWNER") {
+    return row.command_type === "ASSIGN_OWNER" && row.previous_status === row.resulting_status
+      && row.resulting_owner_membership_id === command.ownerMembershipId && typeof row.resulting_owner_user_id === "string";
+  }
+  return row.command_type === "UNASSIGN_OWNER" && row.previous_status === row.resulting_status
+    && typeof row.previous_owner_membership_id === "string" && typeof row.previous_owner_user_id === "string"
+    && row.resulting_owner_membership_id === null && row.resulting_owner_user_id === null;
 }
 function receipt(row, replayed) {
   return Object.freeze({ commandId: row.id, requestId: row.request_id, caseId: row.pipeline_case_id, commandType: row.command_type,
@@ -220,8 +258,19 @@ function receipt(row, replayed) {
 async function resolveIdempotency(tx, actor, command, hash) {
   const prior = await findPriorCommand(tx, actor.tenantId, command.requestId);
   if (!prior) return null;
-  if (!typedCommandMatches(prior, command, hash)) fail("CRM_PIPELINE_IDEMPOTENCY_CONFLICT", 409, "requestId ya fue usado con otro comando.");
+  if (!typedCommandMatches(prior, actor, command, hash)) fail("CRM_PIPELINE_IDEMPOTENCY_CONFLICT", 409, "requestId ya fue usado con otro comando.");
   return receipt(prior, true);
+}
+
+function postgresCode(error) {
+  return [error?.meta?.code, error?.cause?.code, error?.code].find((value) => typeof value === "string") || null;
+}
+function sanitizedDatabaseError(error) {
+  const code = postgresCode(error);
+  if (code === "55P03") return new PipelineCaseDomainError("CRM_PIPELINE_COMMAND_IN_PROGRESS", 409, "Otro comando CRM está en curso.", { recoverable: true, retryAfterMs: retryAfterMs() });
+  if (code === "57014") return new PipelineCaseDomainError("CRM_PIPELINE_DATABASE_UNAVAILABLE", 503, "Servicio CRM temporalmente no disponible.", { recoverable: true });
+  if (["23503", "23505", "23514", "23P01", "P0001"].includes(code)) return new PipelineCaseDomainError("CRM_PIPELINE_STATE_INVALID", 409, "El estado CRM no es coherente.");
+  return new PipelineCaseDomainError("CRM_PIPELINE_DATABASE_UNAVAILABLE", 503, "Servicio CRM temporalmente no disponible.", { recoverable: true });
 }
 function assertTransition(actor, pipelineCase, command) {
   requireOwnedCase(actor, pipelineCase);
@@ -273,6 +322,7 @@ async function execute(context, input, permission) {
   const hash = payloadHash(input);
   try {
     return await prisma.$transaction(async (tx) => {
+      await setTransactionLimits(tx);
       await advisoryLock(tx, "REQUEST", tenantId, input.requestId);
       await advisoryLock(tx, "CASE", tenantId, input.caseId);
       const actor = await resolveActor(tx, context, permission);
@@ -280,7 +330,7 @@ async function execute(context, input, permission) {
       if (replay) return replay;
       const pipelineCase = await findCase(tx, actor.tenantId, input.caseId, true);
       if (!pipelineCase) fail("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404, "Recurso no encontrado.");
-      if (Number(pipelineCase.version) !== input.expectedVersion) fail("CRM_PIPELINE_VERSION_CONFLICT", 409, "La versión esperada ya no está vigente.");
+      if (Number(pipelineCase.version) !== input.expectedVersion) fail("CRM_PIPELINE_VERSION_CONFLICT", 409, "La versión esperada ya no está vigente.", { recoverable: true });
       let commandType = input.operation;
       let owner = null;
       if (input.operation === "TRANSITION") {
@@ -305,14 +355,14 @@ async function execute(context, input, permission) {
         UPDATE "osi"."osi_pipeline_cases" SET "version"="version"+1,"status"=CAST(${resultingStatus} AS "osi"."PipelineCaseStatus"),"status_changed_at"=${changedAt},"loss_reason_code"=${lossReason},"owner_membership_id"=${resultingOwner.membershipId},"owner_user_id"=${resultingOwner.userId},"updatedAt"=${now}
         WHERE "tenant_id"=${actor.tenantId} AND "id"=${pipelineCase.id} AND "version"=${input.expectedVersion} RETURNING "id"
       `);
-      if (updated.length !== 1) fail("CRM_PIPELINE_VERSION_CONFLICT", 409, "La versión esperada ya no está vigente.");
+      if (updated.length !== 1) fail("CRM_PIPELINE_VERSION_CONFLICT", 409, "La versión esperada ya no está vigente.", { recoverable: true });
       const journal = await insertJournal(tx, actor, pipelineCase, input, commandType, hash, owner, now);
       await appendAudit(tx, actor, journal);
       return receipt(journal, false);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: MAX_WAIT_MS, timeout: TRANSACTION_TIMEOUT_MS });
   } catch (error) {
     if (error instanceof PipelineCaseDomainError) throw error;
-    throw new PipelineCaseDomainError("CRM_PIPELINE_DATABASE_UNAVAILABLE", 503, "Servicio CRM temporalmente no disponible.");
+    throw sanitizedDatabaseError(error);
   }
 }
 
@@ -323,6 +373,7 @@ export async function getAllowedPipelineTransitions(context, caseId) {
   const normalizedCaseId = requiredText(caseId, "caseId");
   try {
     return await prisma.$transaction(async (tx) => {
+      await setTransactionLimits(tx);
       const actor = await resolveActor(tx, context, PERMS.PIPELINE_TRANSITION);
       const pipelineCase = await findCase(tx, actor.tenantId, normalizedCaseId, false);
       if (!pipelineCase) fail("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404, "Recurso no encontrado.");
@@ -339,6 +390,6 @@ export async function getAllowedPipelineTransitions(context, caseId) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: MAX_WAIT_MS, timeout: TRANSACTION_TIMEOUT_MS });
   } catch (error) {
     if (error instanceof PipelineCaseDomainError) throw error;
-    throw new PipelineCaseDomainError("CRM_PIPELINE_DATABASE_UNAVAILABLE", 503, "Servicio CRM temporalmente no disponible.");
+    throw sanitizedDatabaseError(error);
   }
 }

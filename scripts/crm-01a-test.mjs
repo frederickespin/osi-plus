@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { createCrm01aLocalPrisma } from "./crm-01a-local-target.mjs";
 
@@ -82,6 +82,40 @@ async function expectError(name, promise, status, code) {
   return response;
 }
 
+async function assignOwnerFixture(pipelineCaseId, tenantId, nextOwner, actor, requestLabel) {
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.pipelineCase.findUniqueOrThrow({ where: { id: pipelineCaseId } });
+    const resultingVersion = current.version + 1;
+    await tx.pipelineCase.update({
+      where: { id: pipelineCaseId },
+      data: {
+        version: resultingVersion,
+        ownerMembershipId: nextOwner.membershipId,
+        ownerUserId: nextOwner.userId,
+      },
+    });
+    await tx.pipelineCaseCommand.create({ data: {
+      id: `${run}-read-race-command-${requestLabel}`,
+      tenantId,
+      pipelineCaseId,
+      requestId: `${run}.read-race.${requestLabel}`,
+      commandType: "ASSIGN_OWNER",
+      payloadHash: createHash("sha256").update(`${pipelineCaseId}:${requestLabel}`).digest("hex"),
+      expectedVersion: current.version,
+      resultingVersion,
+      previousStatus: current.status,
+      resultingStatus: current.status,
+      previousOwnerMembershipId: current.ownerMembershipId,
+      previousOwnerUserId: current.ownerUserId,
+      resultingOwnerMembershipId: nextOwner.membershipId,
+      resultingOwnerUserId: nextOwner.userId,
+      actorMembershipId: actor.membershipId,
+      actorUserId: actor.userId,
+      actorRole: actor.role,
+    } });
+  });
+}
+
 function checkJsonSnapshot(name, actual, expected) {
   check(name, JSON.stringify(actual) === JSON.stringify(expected), {
     actual: JSON.stringify(actual),
@@ -130,6 +164,12 @@ async function snapshot() {
 }
 
 async function cleanup() {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`LOCK TABLE "osi"."pipeline_case_commands" IN ACCESS EXCLUSIVE MODE`);
+    await tx.$executeRawUnsafe(`ALTER TABLE "osi"."pipeline_case_commands" DISABLE TRIGGER "pipeline_case_commands_append_only"`);
+    await tx.pipelineCaseCommand.deleteMany({ where: { pipelineCaseId: { in: created.cases } } });
+    await tx.$executeRawUnsafe(`ALTER TABLE "osi"."pipeline_case_commands" ENABLE TRIGGER "pipeline_case_commands_append_only"`);
+  });
   await prisma.pipelineCase.deleteMany({ where: { id: { in: created.cases } } });
   await prisma.authRefreshToken.deleteMany({ where: { sessionId: { in: created.sessions } } });
   await prisma.authSession.deleteMany({ where: { id: { in: created.sessions } } });
@@ -267,18 +307,12 @@ try {
   await prisma.tenantMembership.update({ where: { id: ownerOne.membershipId }, data: { status: "ACTIVE" } });
   const [ownerRace] = await Promise.all([
     invoke(listHandler, request(tokenOne, "GET", { q: casesOne[1].caseCode, pageSize: "1" })),
-    prisma.pipelineCase.update({
-      where: { id: casesOne[1].id },
-      data: { ownerMembershipId: alternateOwner.membershipId, ownerUserId: alternateOwner.userId },
-    }),
+    assignOwnerFixture(casesOne[1].id, tenantOne.tenantId, alternateOwner, adminOne, "assign"),
   ]);
   const allowedOwnerNames = new Set([`Usuario sintético ${run}-owner-one`, `Usuario sintético ${run}-owner-alternate`]);
   check("cambio concurrente de owner no fuga tenant", ownerRace.statusCode === 200 && ownerRace.body.total === 1
     && allowedOwnerNames.has(ownerRace.body.data[0]?.owner?.displayName));
-  await prisma.pipelineCase.update({
-    where: { id: casesOne[1].id },
-    data: { ownerMembershipId: ownerOne.membershipId, ownerUserId: ownerOne.userId },
-  });
+  await assignOwnerFixture(casesOne[1].id, tenantOne.tenantId, ownerOne, adminOne, "restore");
 
   const summary = await invoke(summaryHandler, request(tokenOne));
   check("resumen por tenant", summary.statusCode === 200 && summary.body.data.total === 51 && summary.body.data.assigned === 39 && summary.body.data.unassigned === 12);

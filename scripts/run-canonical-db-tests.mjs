@@ -179,15 +179,19 @@ try {
   invariant(crmPipelineGuardRun.report.ok === true, "CRM-01A guard falló");
   invariant(crmPipelineGuardTestsRun.assertions >= 11, `CRM-01A guard tests esperaba al menos 11 pruebas y obtuvo ${crmPipelineGuardTestsRun.assertions}`);
   const crmMutationDryRun = runJson("crm-01b1-dry-run.mjs", "CRM-01B1/DRY_RUN");
+  const crmMutationFixtureDryRun = runJson("crm-01b1-dry-run-fixture-test.mjs", "CRM-01B1/REPRESENTATIVE_DRY_RUN");
   const crmMutationRun = runJson("crm-01b1-test.mjs", "CRM-01B1/PERSISTENCE");
+  const crmMutationConcurrencyRun = runJson("crm-01b1-concurrency-test.mjs", "CRM-01B1/CONCURRENCY");
   const crmMutationDatabaseGuardRun = runJson("crm-01b1-local-target-test.mjs", "CRM-01B1/DATABASE_GUARD");
   const crmMutationGuardRun = runJson("validate-crm-01b1-guard.mjs", "CRM-01B1/GUARD");
   const crmMutationGuardTestsRun = runJson("validate-crm-01b1-guard-test.mjs", "CRM-01B1/GUARD_TESTS");
   invariant(crmMutationDryRun.report.readOnly === true && crmMutationDryRun.report.wroteRows === 0, "CRM-01B1 dry-run no fue de sólo lectura");
-  invariant(crmMutationRun.report.ok === true && crmMutationRun.assertions >= 20, `CRM-01B1 esperaba al menos 20 pruebas y obtuvo ${crmMutationRun.assertions}`);
+  invariant(crmMutationFixtureDryRun.report.ok === true && crmMutationFixtureDryRun.assertions >= 8, `CRM-01B1 dry-run representativo esperaba 8 pruebas y obtuvo ${crmMutationFixtureDryRun.assertions}`);
+  invariant(crmMutationRun.report.ok === true && crmMutationRun.assertions >= 47, `CRM-01B1 esperaba al menos 47 pruebas y obtuvo ${crmMutationRun.assertions}`);
+  invariant(crmMutationConcurrencyRun.report.ok === true && crmMutationConcurrencyRun.assertions >= 6, `CRM-01B1 concurrencia esperaba 6 pruebas y obtuvo ${crmMutationConcurrencyRun.assertions}`);
   invariant(crmMutationDatabaseGuardRun.assertions >= 10, `CRM-01B1 database guard esperaba al menos 10 pruebas y obtuvo ${crmMutationDatabaseGuardRun.assertions}`);
   invariant(crmMutationGuardRun.report.ok === true, "CRM-01B1 guard falló");
-  invariant(crmMutationGuardTestsRun.assertions >= 8, `CRM-01B1 guard tests esperaba al menos 8 pruebas y obtuvo ${crmMutationGuardTestsRun.assertions}`);
+  invariant(crmMutationGuardTestsRun.assertions >= 14, `CRM-01B1 guard tests esperaba al menos 14 pruebas y obtuvo ${crmMutationGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};

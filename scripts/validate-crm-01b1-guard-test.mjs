@@ -28,6 +28,18 @@ try {
   rejected("backfill de estados rechazado", { overrides: { [sqlPath]: `${sql}\nUPDATE osi.osi_pipeline_cases SET status = 'WON';\n` } }, /DML de datos/);
   rejected("APPROVED a WON rechazado", { overrides: { [sqlPath]: sql.replace("-- Cambio aditivo", "-- APPROVED se convierte en WON\n-- Cambio aditivo") } }, /APPROVED/);
   rejected("relación automática rechazada", { overrides: { [sqlPath]: `${sql}\nUPDATE osi.osi_projects SET pipeline_case_id = 'auto';\n` } }, /DML de datos/);
+  rejected("trigger de coherencia journal/caso congelado", {
+    overrides: { [sqlPath]: sql.replace("pipeline_case_commands_validate_case_state_trigger", "pipeline_case_commands_validation_removed") },
+  }, /validación inmediata/);
+  rejected("constraint trigger de caso congelado", {
+    overrides: { [sqlPath]: sql.replace("pipeline_cases_coherent_command_constraint", "pipeline_cases_constraint_removed") },
+  }, /protección diferida/);
+  rejected("search_path seguro congelado", {
+    overrides: { [sqlPath]: sql.replaceAll("SET search_path = pg_catalog, osi", "SET search_path = osi") },
+  }, /search_path seguro/);
+  rejected("journal fuera de fixture autorizado rechazado", {
+    extraSources: { "scripts/crm-01b1-unauthorized.mjs": "await prisma.pipelineCaseCommand.create({ data });" },
+  }, /fuera de fixtures/);
   rejected("CRM activado rechazado", { env: { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" } }, /CRM debe permanecer DISABLED/);
   rejected("frontend CRM rechazado", { extraSources: { "src/crm/pipelineMutation.ts": "export const lossReasonCode = 'PRICE';" } }, /frontend/);
   const target = read("scripts/crm-01b1-local-target.mjs");

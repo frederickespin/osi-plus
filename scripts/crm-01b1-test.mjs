@@ -82,15 +82,80 @@ try {
         actorUserId: adminOne.id,
         actorRole: "A",
       };
+      await tx.pipelineCase.update({ where: { id: pipelineOne.id }, data: {
+        version: 2,
+        ownerMembershipId: membershipSellerOne.id,
+        ownerUserId: sellerOne.id,
+      } });
       const assign = await tx.pipelineCaseCommand.create({ data: {
         ...common, id: `${run}-command-assign`, requestId: `${run}.request.assign`, commandType: "ASSIGN_OWNER",
         expectedVersion: 1, resultingVersion: 2,
         resultingOwnerMembershipId: membershipSellerOne.id, resultingOwnerUserId: sellerOne.id,
       } });
       check("ASSIGN_OWNER válido", assign.resultingVersion === 2);
+      await isolated("journal sin update del caso rechazado", () => tx.pipelineCaseCommand.create({ data: {
+        ...common, id: `${run}-command-without-update`, requestId: `${run}.request.without-update`, commandType: "ASSIGN_OWNER",
+        expectedVersion: 2, resultingVersion: 3,
+        previousOwnerMembershipId: membershipSellerOne.id, previousOwnerUserId: sellerOne.id,
+        resultingOwnerMembershipId: membershipAdminOne.id, resultingOwnerUserId: adminOne.id,
+      } }), true);
+      await isolated("journal con versión final falsa rechazado", () => tx.pipelineCaseCommand.create({ data: {
+        ...common, id: `${run}-command-false-version`, requestId: `${run}.request.false-version`, commandType: "ASSIGN_OWNER",
+        expectedVersion: 2, resultingVersion: 3,
+        previousOwnerMembershipId: membershipSellerOne.id, previousOwnerUserId: sellerOne.id,
+        resultingOwnerMembershipId: membershipAdminOne.id, resultingOwnerUserId: adminOne.id,
+      } }), true);
+      await isolated("journal con estado final falso rechazado", () => tx.pipelineCaseCommand.create({ data: {
+        ...common, id: `${run}-command-false-status`, requestId: `${run}.request.false-status`, commandType: "TRANSITION",
+        expectedVersion: 1, resultingVersion: 2, resultingStatus: "AWAITING_ICP",
+      } }), true);
+      await isolated("journal con owner final falso rechazado", () => tx.pipelineCaseCommand.create({ data: {
+        ...common, id: `${run}-command-false-owner`, requestId: `${run}.request.false-owner`, commandType: "ASSIGN_OWNER",
+        expectedVersion: 1, resultingVersion: 2,
+        resultingOwnerMembershipId: membershipAdminOne.id, resultingOwnerUserId: adminOne.id,
+      } }), true);
+      await isolated("update del caso sin journal rechazado al validar constraints", async () => {
+        await tx.pipelineCase.update({ where: { id: pipelineOne.id }, data: { version: 3, ownerMembershipId: null, ownerUserId: null } });
+        await tx.$executeRawUnsafe(`SET CONSTRAINTS "pipeline_cases_coherent_command_constraint" IMMEDIATE`);
+      }, true);
+      await isolated("fallo del journal revierte la actualización gobernada", async () => {
+        await tx.pipelineCase.update({ where: { id: pipelineOne.id }, data: { version: 3, ownerMembershipId: null, ownerUserId: null } });
+        await tx.pipelineCaseCommand.create({ data: {
+          ...common, id: `${run}-command-atomic-rollback`, requestId: `${run}.request.atomic-rollback`, commandType: "UNASSIGN_OWNER",
+          expectedVersion: 2, resultingVersion: 3,
+          previousOwnerMembershipId: membershipAdminOne.id, previousOwnerUserId: adminOne.id,
+        } });
+        await tx.$executeRawUnsafe(`SET CONSTRAINTS "pipeline_cases_coherent_command_constraint" IMMEDIATE`);
+      }, true);
+      const afterFailedJournal = await tx.pipelineCase.findUnique({ where: { id: pipelineOne.id } });
+      check("rollback integral conserva versión y owner anteriores", afterFailedJournal.version === 2
+        && afterFailedJournal.ownerMembershipId === membershipSellerOne.id
+        && afterFailedJournal.ownerUserId === sellerOne.id);
+      await isolated("APPROVED también bloquea asignación de owner", async () => {
+        await tx.pipelineCase.update({ where: { id: approved.id }, data: {
+          version: 2, ownerMembershipId: membershipSellerOne.id, ownerUserId: sellerOne.id,
+        } });
+        await tx.pipelineCaseCommand.create({ data: {
+          ...common, id: `${run}-command-approved-owner`, pipelineCaseId: approved.id,
+          requestId: `${run}.request.approved-owner`, commandType: "ASSIGN_OWNER",
+          expectedVersion: 1, resultingVersion: 2, previousStatus: "APPROVED", resultingStatus: "APPROVED",
+          resultingOwnerMembershipId: membershipSellerOne.id, resultingOwnerUserId: sellerOne.id,
+        } });
+      }, true);
       await isolated("requestId único por tenant", () => tx.pipelineCaseCommand.create({ data: {
         ...common, id: `${run}-command-duplicate-request`, requestId: assign.requestId, commandType: "ASSIGN_OWNER",
         expectedVersion: 2, resultingVersion: 3, resultingOwnerMembershipId: membershipSellerOne.id, resultingOwnerUserId: sellerOne.id,
+      } }), true);
+      await isolated("requestId no puede reutilizarse con payload diferente", () => tx.pipelineCaseCommand.create({ data: {
+        ...common, id: `${run}-command-duplicate-request-payload`, requestId: assign.requestId,
+        payloadHash: payloadHash("different-payload"), commandType: "ASSIGN_OWNER",
+        expectedVersion: 2, resultingVersion: 3, resultingOwnerMembershipId: membershipSellerOne.id, resultingOwnerUserId: sellerOne.id,
+      } }), true);
+      await isolated("requestId no puede reutilizarse con caso diferente", () => tx.pipelineCaseCommand.create({ data: {
+        ...common, id: `${run}-command-duplicate-request-case`, pipelineCaseId: approved.id,
+        requestId: assign.requestId, commandType: "ASSIGN_OWNER",
+        expectedVersion: 1, resultingVersion: 2, previousStatus: "APPROVED", resultingStatus: "APPROVED",
+        resultingOwnerMembershipId: membershipSellerOne.id, resultingOwnerUserId: sellerOne.id,
       } }), true);
       await isolated("resultingVersion debe ser expectedVersion más uno", () => tx.pipelineCaseCommand.create({ data: {
         ...common, id: `${run}-command-bad-step`, requestId: `${run}.request.bad-step`, commandType: "ASSIGN_OWNER",
@@ -134,12 +199,19 @@ try {
         resultingOwnerMembershipId: membershipSellerOne.id, resultingOwnerUserId: sellerOne.id,
       } }), true);
 
+      await tx.pipelineCase.update({ where: { id: pipelineOne.id }, data: {
+        version: 3, ownerMembershipId: null, ownerUserId: null,
+      } });
       const unassign = await tx.pipelineCaseCommand.create({ data: {
         ...common, id: `${run}-command-unassign`, requestId: `${run}.request.unassign`, commandType: "UNASSIGN_OWNER",
         payloadHash: payloadHash("unassign"), expectedVersion: 2, resultingVersion: 3,
         previousOwnerMembershipId: membershipSellerOne.id, previousOwnerUserId: sellerOne.id,
       } });
       check("UNASSIGN_OWNER válido", unassign.resultingVersion === 3);
+      const transitionAt = new Date();
+      await tx.pipelineCase.update({ where: { id: pipelineOne.id }, data: {
+        version: 4, status: "AWAITING_ICP", statusChangedAt: transitionAt,
+      } });
       const transition = await tx.pipelineCaseCommand.create({ data: {
         ...common, id: `${run}-command-transition`, requestId: `${run}.request.transition`, commandType: "TRANSITION",
         payloadHash: payloadHash("transition"), expectedVersion: 3, resultingVersion: 4, resultingStatus: "AWAITING_ICP",
@@ -155,12 +227,20 @@ try {
         payloadHash: payloadHash("from-approved"), expectedVersion: 8, resultingVersion: 9,
         previousStatus: "APPROVED", resultingStatus: "OPS_HANDOFF",
       } }), true);
+      const lostAt = new Date();
+      await tx.pipelineCase.update({ where: { id: pipelineOne.id }, data: {
+        version: 5, status: "LOST", statusChangedAt: lostAt, lossReasonCode: "PRICE",
+      } });
       const lost = await tx.pipelineCaseCommand.create({ data: {
         ...common, id: `${run}-command-lost`, requestId: `${run}.request.lost`, commandType: "TRANSITION",
         payloadHash: payloadHash("lost"), expectedVersion: 4, resultingVersion: 5,
         previousStatus: "AWAITING_ICP", resultingStatus: "LOST", reasonCode: "PRICE",
       } });
       check("LOST exige código allowlisted", lost.reasonCode === "PRICE");
+      const reopenAt = new Date();
+      await tx.pipelineCase.update({ where: { id: pipelineOne.id }, data: {
+        version: 6, status: "NEW_INBOX", statusChangedAt: reopenAt, lossReasonCode: null,
+      } });
       const reopen = await tx.pipelineCaseCommand.create({ data: {
         ...common, id: `${run}-command-reopen`, requestId: `${run}.request.reopen`, commandType: "REOPEN",
         payloadHash: payloadHash("reopen"), expectedVersion: 5, resultingVersion: 6,
@@ -175,6 +255,9 @@ try {
       await isolated("UPDATE del journal rechazado", () => tx.pipelineCaseCommand.update({ where: { id: assign.id }, data: { actorRole: "V" } }), true);
       await isolated("DELETE del journal rechazado", () => tx.pipelineCaseCommand.delete({ where: { id: assign.id } }), true);
 
+      await tx.pipelineCase.update({ where: { id: pipelineTwo.id }, data: {
+        version: 2, status: "AWAITING_ICP", statusChangedAt: new Date(),
+      } });
       const crossTenantCommand = await tx.pipelineCaseCommand.create({ data: {
         id: `${run}-command-tenant-2`, tenantId: tenantTwo.id, pipelineCaseId: pipelineTwo.id,
         requestId: assign.requestId, commandType: "TRANSITION", payloadHash: payloadHash("tenant-two"),
@@ -182,6 +265,10 @@ try {
         actorMembershipId: membershipAdminTwo.id, actorUserId: adminTwo.id, actorRole: "A",
       } });
       check("mismo requestId permitido entre tenants", crossTenantCommand.requestId === assign.requestId);
+
+      await tx.$executeRawUnsafe(`SET CONSTRAINTS "pipeline_cases_coherent_command_constraint" IMMEDIATE`);
+      await tx.$executeRawUnsafe(`SET CONSTRAINTS "pipeline_cases_coherent_command_constraint" DEFERRED`);
+      check("updates y journal coherentes validan al cierre", true);
 
       const project = await tx.project.create({ data: {
         id: `${run}-project-1`, tenantId: tenantOne.id, pipelineCaseId: pipelineOne.id, code: `${run}-PROJECT-1`.toUpperCase(),
@@ -192,6 +279,17 @@ try {
         id: `${run}-project-cross`, tenantId: tenantOne.id, pipelineCaseId: pipelineTwo.id, code: `${run}-PROJECT-X`.toUpperCase(),
         name: "Cross", clientId: clientOne.id, clientName: clientOne.name, status: "active", startDate: "2026-08-11",
       } }), true);
+      await isolated("Project con PipelineCase y tenant NULL rechazado", () => tx.project.create({ data: {
+        id: `${run}-project-null-tenant`, tenantId: null, pipelineCaseId: pipelineOne.id, code: `${run}-PROJECT-NULL`.toUpperCase(),
+        name: "No tenant", clientId: clientOne.id, clientName: clientOne.name, status: "active", startDate: "2026-08-11",
+      } }), true);
+      await isolated("PipelineCase inexistente rechazado por Project", () => tx.project.create({ data: {
+        id: `${run}-project-missing-case`, tenantId: tenantOne.id, pipelineCaseId: `${run}-missing`, code: `${run}-PROJECT-MISSING`.toUpperCase(),
+        name: "Missing case", clientId: clientOne.id, clientName: clientOne.name, status: "active", startDate: "2026-08-11",
+      } }), true);
+      await isolated("cambio posterior de tenant del Project rechazado", () => tx.project.update({
+        where: { id: project.id }, data: { tenantId: tenantTwo.id, clientId: clientTwo.id },
+      }), true);
       await isolated("ON DELETE RESTRICT protege PipelineCase relacionado", () => tx.pipelineCase.delete({ where: { id: pipelineOne.id } }), true);
       check("segundo tenant conserva cliente independiente", clientTwo.tenantId === tenantTwo.id);
       throw new Error(rollbackSignal);

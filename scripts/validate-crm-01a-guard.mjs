@@ -9,6 +9,13 @@ const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/[id].js",
   "api/crm/pipeline-summary.js",
 ]);
+const CRM_MUTATION_ROUTES = Object.freeze([
+  "api/crm/pipeline-cases/[id]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[id]/assign-owner.js",
+  "api/crm/pipeline-cases/[id]/transition.js",
+  "api/crm/pipeline-cases/[id]/unassign-owner.js",
+]);
+const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`CRM-01A: ${message}`);
@@ -74,7 +81,7 @@ export function validateCrm01aGuard({
   const actualRoutes = filesBelow(resolve(root, "api/crm"))
     .filter((path) => path.endsWith(".js"))
     .map((path) => relative(root, path).replaceAll("\\", "/")).sort();
-  invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES].sort()), "endpoints CRM diferentes a los tres GET autorizados");
+  invariant(JSON.stringify(actualRoutes) === JSON.stringify([...AUTHORIZED_CRM_ROUTES].sort()), "endpoints CRM fuera del inventario CRM-01A/CRM-01B3A");
   for (const path of CRM_ROUTES) {
     const source = read(path);
     const factoryStart = source.indexOf("export function createPipeline");
@@ -102,7 +109,7 @@ export function validateCrm01aGuard({
     if (path.startsWith("src/")) {
       invariant(!/api\/crm|crmPipelineRead|CRM_PIPELINE_RUNTIME_MODE/.test(source), `${path} conecta CRM-01A al frontend`);
     }
-    if (path.startsWith("api/") && !path.startsWith("api/_lib/") && !CRM_ROUTES.includes(path)) {
+    if (path.startsWith("api/") && !path.startsWith("api/_lib/") && !AUTHORIZED_CRM_ROUTES.includes(path)) {
       invariant(!/crmPipelineRead|api\/crm|CRM_PIPELINE_RUNTIME_MODE/.test(source), `${path} activa CRM-01A fuera de las rutas autorizadas`);
     }
   }

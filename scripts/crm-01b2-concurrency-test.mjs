@@ -16,7 +16,7 @@ async function race(operations) {
   const settled = await Promise.all(operations.map(async (operation) => {
     const started = performance.now();
     try { return { ok: true, value: await operation(), durationMs: performance.now() - started }; }
-    catch (error) { return { ok: false, code: error.code || error.name, durationMs: performance.now() - started }; }
+    catch (error) { return { ok: false, code: error.code || error.name, status: error.status, recoverable: error.recoverable, retryAfterMs: error.retryAfterMs, durationMs: performance.now() - started }; }
     finally { durations.push(performance.now() - started); }
   }));
   return { settled, metrics: { p50: percentile(durations, 0.50), p95: percentile(durations, 0.95), max: Number(Math.max(...durations).toFixed(2)) } };
@@ -58,7 +58,7 @@ try {
   const transitionRace = await race(Array.from({ length: 20 }, (_, index) => () => domain.transitionPipelineCase(ctxV1, { caseId: transitionCase.id, expectedVersion: 1, requestId: request(`transition-${index}`), toStatus: "AWAITING_ICP" })));
   metrics.transition = transitionRace.metrics;
   check("20 transiciones producen un ganador", transitionRace.settled.filter((item) => item.ok).length === 1);
-  check("19 transiciones pierden por versión", countCode(transitionRace.settled, "CRM_PIPELINE_VERSION_CONFLICT") === 19);
+  check("19 transiciones pierden de forma recuperable", countCode(transitionRace.settled, "CRM_PIPELINE_VERSION_CONFLICT") + countCode(transitionRace.settled, "CRM_PIPELINE_COMMAND_IN_PROGRESS") === 19 && transitionRace.settled.filter((item) => !item.ok).every((item) => item.recoverable === true));
   check("transición concurrente crea un journal y una auditoría", await prisma.pipelineCaseCommand.count({ where: { pipelineCaseId: transitionCase.id } }) === 1 && await prisma.commercialAuditLog.count({ where: { entityId: transitionCase.id } }) === 1);
   check("transición concurrente deja versión dos", (await prisma.pipelineCase.findUnique({ where: { id: transitionCase.id } })).version === 2);
 
@@ -66,15 +66,15 @@ try {
   const identicalRequest = request("identical");
   const identicalRace = await race(Array.from({ length: 20 }, () => () => domain.transitionPipelineCase(ctxV1, { caseId: identicalCase.id, expectedVersion: 1, requestId: identicalRequest, toStatus: "AWAITING_ICP" })));
   metrics.identical = identicalRace.metrics;
-  check("20 reintentos idénticos se resuelven sin error", identicalRace.settled.every((item) => item.ok));
-  check("reintentos idénticos tienen un ganador y 19 receipts históricos", identicalRace.settled.filter((item) => item.value.replayed === false).length === 1 && identicalRace.settled.filter((item) => item.value.replayed === true).length === 19);
+  check("reintentos idénticos sólo producen ganador, replay o contención", identicalRace.settled.every((item) => item.ok || item.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS"));
+  check("reintentos idénticos tienen un único ganador real", identicalRace.settled.filter((item) => item.ok && item.value.replayed === false).length === 1 && !identicalRace.settled.some((item) => item.ok && item.value.commandId !== identicalRace.settled.find((entry) => entry.ok)?.value.commandId));
   check("reintentos idénticos crean una sola cadena", await prisma.pipelineCaseCommand.count({ where: { requestId: identicalRequest } }) === 1 && await prisma.commercialAuditLog.count({ where: { request_id: identicalRequest } }) === 1);
 
   const assignCase = await prisma.pipelineCase.create({ data: caseData(`${run}-assign`, t1.id) });
   const assignmentRace = await race(Array.from({ length: 20 }, (_, index) => () => domain.assignPipelineCaseOwner(ctxA1, { caseId: assignCase.id, expectedVersion: 1, requestId: request(`assign-${index}`), ownerMembershipId: index % 2 ? v1.id : v2.id })));
   metrics.assignment = assignmentRace.metrics;
   check("20 asignaciones producen un ganador", assignmentRace.settled.filter((item) => item.ok).length === 1);
-  check("19 asignaciones pierden por versión", countCode(assignmentRace.settled, "CRM_PIPELINE_VERSION_CONFLICT") === 19);
+  check("19 asignaciones pierden de forma recuperable", countCode(assignmentRace.settled, "CRM_PIPELINE_VERSION_CONFLICT") + countCode(assignmentRace.settled, "CRM_PIPELINE_COMMAND_IN_PROGRESS") === 19 && assignmentRace.settled.filter((item) => !item.ok).every((item) => item.recoverable === true));
   const assignAfter = await prisma.pipelineCase.findUnique({ where: { id: assignCase.id } });
   check("asignación concurrente deja pareja coherente", assignAfter.version === 2 && ((assignAfter.ownerMembershipId === v1.id && assignAfter.ownerUserId === v1.userId) || (assignAfter.ownerMembershipId === v2.id && assignAfter.ownerUserId === v2.userId)));
 
@@ -85,7 +85,7 @@ try {
   ]);
   metrics.mixed = mixedRace.metrics;
   check("transición contra asignación produce un ganador", mixedRace.settled.filter((item) => item.ok).length === 1);
-  check("operación mixta perdedora es conflicto de versión", countCode(mixedRace.settled, "CRM_PIPELINE_VERSION_CONFLICT") === 1);
+  check("operación mixta perdedora es conflicto recuperable", countCode(mixedRace.settled, "CRM_PIPELINE_VERSION_CONFLICT") + countCode(mixedRace.settled, "CRM_PIPELINE_COMMAND_IN_PROGRESS") === 1 && mixedRace.settled.find((item) => !item.ok)?.recoverable === true);
   check("operación mixta no genera estado parcial", (await prisma.pipelineCaseCommand.count({ where: { pipelineCaseId: mixedCase.id } })) === 1 && (await prisma.pipelineCase.findUnique({ where: { id: mixedCase.id } })).version === 2);
 
   const requestCaseOne = await prisma.pipelineCase.create({ data: caseData(`${run}-request-case-1`, t1.id, v1) });
@@ -96,7 +96,12 @@ try {
     () => domain.transitionPipelineCase(ctxV1, { caseId: requestCaseTwo.id, expectedVersion: 1, requestId: reusedRequest, toStatus: "AWAITING_ICP" }),
   ]);
   check("requestId igual para dos casos tiene un ganador", requestRace.settled.filter((item) => item.ok).length === 1);
-  check("requestId igual para dos casos detecta conflicto idempotente", countCode(requestRace.settled, "CRM_PIPELINE_IDEMPOTENCY_CONFLICT") === 1);
+  check("requestId igual para dos casos no crea dos comandos", countCode(requestRace.settled, "CRM_PIPELINE_IDEMPOTENCY_CONFLICT") + countCode(requestRace.settled, "CRM_PIPELINE_COMMAND_IN_PROGRESS") === 1);
+  const winningRequestCase = requestRace.settled.find((item) => item.ok).value.caseId;
+  const losingRequestCase = winningRequestCase === requestCaseOne.id ? requestCaseTwo : requestCaseOne;
+  let reusedConflict;
+  try { await domain.transitionPipelineCase(ctxV1, { caseId: losingRequestCase.id, expectedVersion: 1, requestId: reusedRequest, toStatus: "AWAITING_ICP" }); } catch (error) { reusedConflict = error; }
+  check("reintento del requestId para otro caso es conflicto idempotente", reusedConflict?.code === "CRM_PIPELINE_IDEMPOTENCY_CONFLICT");
 
   const tenantOneCase = await prisma.pipelineCase.create({ data: caseData(`${run}-tenant-one-independent`, t1.id, v1) });
   const tenantTwoCase = await prisma.pipelineCase.create({ data: caseData(`${run}-tenant-two-independent`, t2.id, vOther) });
@@ -112,6 +117,8 @@ try {
   const allSettled = [transitionRace, identicalRace, assignmentRace, mixedRace, requestRace, tenantRace].flatMap((item) => item.settled);
   check("cero deadlocks", countCode(allSettled, "P2034") === 0 && !allSettled.some((item) => /deadlock/i.test(item.code || "")));
   check("cero errores 500/503 bajo contención local", !allSettled.some((item) => ["CRM_PIPELINE_DATABASE_UNAVAILABLE", "PrismaClientKnownRequestError"].includes(item.code)));
+  const busy = allSettled.filter((item) => item.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS");
+  check("contención devuelve 409, recoverable y jitter acotado", busy.length > 0 && busy.every((item) => item.status === 409 && item.recoverable === true && item.retryAfterMs >= 75 && item.retryAfterMs <= 175));
   check("identidad local validada antes de escribir", target.address === "127.0.0.1" && target.port === 55432 && ["osi_crm01b2_local", "osi_db01n_ci"].includes(target.database));
 } catch (error) {
   process.stdout.write(`${JSON.stringify({ ok: false, assertions: results.filter((item) => item.passed).length, results, metrics, error: { name: error.name, code: error.code || null, message: error.message } }, null, 2)}\n`);

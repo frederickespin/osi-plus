@@ -26,11 +26,17 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
   const exports = [...domain.matchAll(/export async function\s+(\w+)/g)].map((match) => match[1]).sort();
   invariant(JSON.stringify(exports) === JSON.stringify(["assignPipelineCaseOwner", "getAllowedPipelineTransitions", "transitionPipelineCase", "unassignPipelineCaseOwner"]), "exports públicos del dominio no coinciden");
   for (const signature of [
-    "pg_advisory_xact_lock", "CRM-01B2:${namespace}", "resolveActor", "resolveIdempotency",
+    "pg_try_advisory_xact_lock", "CRM-01B2:${namespace}", "resolveActor", "resolveIdempotency",
     "transaction_timestamp()", "UPDATE \"osi\".\"osi_pipeline_cases\"", "pipeline_case_commands", "appendCommercialAudit",
-    "ReadCommitted", "MAX_WAIT_MS", "TRANSACTION_TIMEOUT_MS", "CRM_PIPELINE_DATABASE_UNAVAILABLE",
+    "ReadCommitted", "MAX_WAIT_MS", "TRANSACTION_TIMEOUT_MS", "LOCK_TIMEOUT_MS", "STATEMENT_TIMEOUT_MS",
+    "RETRY_AFTER_MIN_MS", "RETRY_AFTER_MAX_MS", "CRM_PIPELINE_COMMAND_IN_PROGRESS", "CRM_PIPELINE_DATABASE_UNAVAILABLE",
   ]) invariant(domain.includes(signature), `falta control obligatorio: ${signature}`);
-  invariant(/advisoryLock\(tx, "REQUEST"[\s\S]{0,300}advisoryLock\(tx, "CASE"[\s\S]{0,300}resolveActor\(tx/.test(domain), "orden de locks/actor incorrecto");
+  invariant(!/\bpg_advisory_xact_lock\s*\(/.test(domain), "lock advisory bloqueante no autorizado");
+  invariant(/setTransactionLimits\(tx\)[\s\S]{0,200}advisoryLock\(tx, "REQUEST"[\s\S]{0,300}advisoryLock\(tx, "CASE"[\s\S]{0,300}resolveActor\(tx[\s\S]{0,300}resolveIdempotency\(tx/.test(domain), "orden de locks/actor/idempotencia incorrecto");
+  invariant(/const key = `CRM-01B2:\$\{namespace\}:\$\{tenantId\}:\$\{value\}`/.test(domain), "clave advisory no separa namespace, tenant e identidad");
+  invariant(/SET LOCAL lock_timeout/.test(domain) && /SET LOCAL statement_timeout/.test(domain), "timeouts SQL locales ausentes");
+  invariant(/recoverable: true, retryAfterMs: retryAfterMs\(\)/.test(domain), "contrato de contención recuperable ausente");
+  invariant(/row\.actor_membership_id !== actor\.membershipId/.test(domain) && /row\.actor_user_id !== actor\.userId/.test(domain), "replay no está ligado al actor original");
   invariant(/const updated = await tx\.\$queryRaw[\s\S]{0,1800}insertJournal\(tx[\s\S]{0,300}appendAudit\(tx/.test(domain), "orden update/journal/auditoría incorrecto");
   invariant(!/Date\.now\s*\(|new Date\s*\(/.test(domain), "reloj Node no puede ser autoridad");
   invariant(/pipelineCase\.status === "APPROVED"/.test(domain) && /\["APPROVED", "OPS_HANDOFF"\]/.test(domain), "APPROVED no está congelado completamente");
@@ -44,7 +50,9 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
   }
   const auditBody = domain.match(/async function appendAudit\([\s\S]*?\n\}/)?.[0] || "";
   invariant(auditBody && !/(?:payload_hash|email|phone|password|token|notes)/i.test(auditBody), "auditoría contiene campos prohibidos");
-  invariant(/const MAX_WAIT_MS = 3_000/.test(domain) && /const TRANSACTION_TIMEOUT_MS = 10_000/.test(domain), "presupuesto transaccional no autorizado");
+  invariant(/const MAX_WAIT_MS = 3_000/.test(domain) && /const TRANSACTION_TIMEOUT_MS = 10_000/.test(domain)
+    && /const LOCK_TIMEOUT_MS = 250/.test(domain) && /const STATEMENT_TIMEOUT_MS = 3_000/.test(domain)
+    && /const RETRY_AFTER_MIN_MS = 75/.test(domain) && /const RETRY_AFTER_MAX_MS = 175/.test(domain), "presupuesto transaccional no autorizado");
   const graph = Object.freeze({
     NEW_INBOX: ["AWAITING_ICP"], AWAITING_ICP: ["GOVERNANCE_CONFIRMED"], GOVERNANCE_CONFIRMED: ["REQUIREMENTS_CONFIRMED"],
     REQUIREMENTS_CONFIRMED: ["SURVEY_PLANNING", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS"], SURVEY_PLANNING: ["SURVEY_SCHEDULED"],
@@ -91,11 +99,11 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
   invariant(String(env.MT01B_TENANT_SWITCH_ENABLED || "false").toLowerCase() !== "true", "tenant switch no autorizado");
   invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "cliente V2 no autorizado");
   const canonical = read("scripts/run-canonical-db-tests.mjs");
-  for (const suite of ["crm-01b2-test.mjs", "crm-01b2-concurrency-test.mjs", "crm-01b2-local-target-test.mjs", "validate-crm-01b2-guard-test.mjs"]) invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
+  for (const suite of ["crm-01b2-test.mjs", "crm-01b2-concurrency-test.mjs", "crm-01b2-adversarial-test.mjs", "crm-01b2-stress-test.mjs", "crm-01b2-local-target-test.mjs", "validate-crm-01b2-guard-test.mjs"]) invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   invariant(canonical.includes("process.env.CRM01B2_TEST_DATABASE_URL = process.env.DATABASE_URL"), "runner canónico no transfiere URL local CRM-01B2");
   const target = read("scripts/crm-01b2-local-target.mjs");
   for (const required of ["127.0.0.1", "55432", "osi_crm01b2_local", "neon.branch_id", "no existe fallback"]) invariant(target.includes(required), `guardia local incompleta: ${required}`);
-  return Object.freeze({ ok: true, migrations: 16, runtimeConsumers: 0, mutationBypasses: 0, crmMode: "DISABLED", blockedTransitions: Object.freeze(["SURVEY_SCHEDULED", "WON"]), approved: "FROZEN" });
+  return Object.freeze({ ok: true, migrations: 16, runtimeConsumers: 0, mutationBypasses: 0, crmMode: "DISABLED", advisoryLock: "TRY", lockOrder: Object.freeze(["REQUEST", "CASE"]), blockedTransitions: Object.freeze(["SURVEY_SCHEDULED", "WON"]), approved: "FROZEN" });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

@@ -12,6 +12,7 @@ async function expectCode(name, operation, code) {
   let caught;
   try { await operation(); } catch (error) { caught = error; }
   check(name, caught?.code === code && caught?.cause === undefined && !String(caught?.message || "").includes("postgresql://"));
+  return caught;
 }
 
 const local = await createCrm01b2LocalPrisma();
@@ -72,9 +73,14 @@ try {
   const replay = await domain.transitionPipelineCase(ctxV1, { caseId: basic.id, expectedVersion: 1, requestId: request("transition-basic"), toStatus: "AWAITING_ICP" });
   check("reintento idéntico devuelve receipt histórico", replay.commandId === first.commandId && replay.replayed === true && replay.resultingVersion === 2);
   check("reintento idéntico no duplica journal ni auditoría", await prisma.pipelineCaseCommand.count({ where: { requestId: request("transition-basic") } }) === 1 && await prisma.commercialAuditLog.count({ where: { request_id: request("transition-basic") } }) === 1);
+  await expectCode("otro actor no puede adoptar el mismo requestId", () => domain.transitionPipelineCase(ctxA, { caseId: basic.id, expectedVersion: 1, requestId: request("transition-basic"), toStatus: "AWAITING_ICP" }), "CRM_PIPELINE_IDEMPOTENCY_CONFLICT");
   await expectCode("requestId con payload diferente entra en conflicto", () => domain.transitionPipelineCase(ctxV1, { caseId: basic.id, expectedVersion: 1, requestId: request("transition-basic"), toStatus: "GOVERNANCE_CONFIRMED" }), "CRM_PIPELINE_IDEMPOTENCY_CONFLICT");
-  await expectCode("versión obsoleta entra en conflicto", () => domain.transitionPipelineCase(ctxV1, { caseId: basic.id, expectedVersion: 1, requestId: request("stale"), toStatus: "GOVERNANCE_CONFIRMED" }), "CRM_PIPELINE_VERSION_CONFLICT");
-  await expectCode("otro V no puede mutar caso ajeno", () => domain.transitionPipelineCase(ctxV2, { caseId: basic.id, expectedVersion: 2, requestId: request("other-v"), toStatus: "GOVERNANCE_CONFIRMED" }), "CRM_PIPELINE_PERMISSION_FORBIDDEN");
+  await domain.transitionPipelineCase(ctxV1, { caseId: basic.id, expectedVersion: 2, requestId: request("advance-after-replay"), toStatus: "GOVERNANCE_CONFIRMED" });
+  const historicalReplay = await domain.transitionPipelineCase(ctxV1, { caseId: basic.id, expectedVersion: 1, requestId: request("transition-basic"), toStatus: "AWAITING_ICP" });
+  check("replay tras avance devuelve sólo receipt histórico", historicalReplay.replayed === true && historicalReplay.resultingVersion === 2 && (await prisma.pipelineCase.findUnique({ where: { id: basic.id } })).version === 3);
+  const versionError = await expectCode("versión obsoleta entra en conflicto", () => domain.transitionPipelineCase(ctxV1, { caseId: basic.id, expectedVersion: 1, requestId: request("stale"), toStatus: "GOVERNANCE_CONFIRMED" }), "CRM_PIPELINE_VERSION_CONFLICT");
+  check("conflicto de versión es recuperable", versionError.recoverable === true);
+  await expectCode("otro V no puede mutar caso ajeno", () => domain.transitionPipelineCase(ctxV2, { caseId: basic.id, expectedVersion: 3, requestId: request("other-v"), toStatus: "REQUIREMENTS_CONFIRMED" }), "CRM_PIPELINE_PERMISSION_FORBIDDEN");
   const noOwnerForV = await prisma.pipelineCase.create({ data: caseData(`${run}-case-no-owner-v`, tenantOne.id) });
   await expectCode("V no puede mutar caso sin owner", () => domain.transitionPipelineCase(ctxV1, { caseId: noOwnerForV.id, expectedVersion: 1, requestId: request("no-owner-v"), toStatus: "AWAITING_ICP" }), "CRM_PIPELINE_PERMISSION_FORBIDDEN");
   const adminTransition = await domain.transitionPipelineCase(ctxA, { caseId: noOwnerForV.id, expectedVersion: 1, requestId: request("admin-any-case"), toStatus: "AWAITING_ICP" });
@@ -87,7 +93,8 @@ try {
   await expectCode("membresía suspendida se rechaza", () => domain.transitionPipelineCase(context(tenantOne.id, suspendedSeller.id), { caseId: deniedCase.id, expectedVersion: 1, requestId: request("suspended"), toStatus: "AWAITING_ICP" }), "CRM_PIPELINE_PERMISSION_FORBIDDEN");
   await expectCode("tenant cruzado queda oculto", () => domain.transitionPipelineCase(context(tenantTwo.id, adminTwo.id), { caseId: basic.id, expectedVersion: 2, requestId: request("cross-tenant"), toStatus: "GOVERNANCE_CONFIRMED" }), "CRM_PIPELINE_RESOURCE_NOT_FOUND");
 
-  const unassigned = await prisma.pipelineCase.create({ data: caseData(`${run}-case-owner`, tenantOne.id) });
+  const legacyOwnerId = sellerOneUser.id;
+  const unassigned = await prisma.pipelineCase.create({ data: caseData(`${run}-case-owner`, tenantOne.id, "NEW_INBOX", null, legacyOwnerId) });
   const assigned = await domain.assignPipelineCaseOwner(ctxA, { caseId: unassigned.id, expectedVersion: 1, requestId: request("assign"), ownerMembershipId: sellerOne.id });
   check("A asigna owner V elegible", assigned.commandType === "ASSIGN_OWNER" && assigned.resultingOwnerMembershipId === sellerOne.id);
   await expectCode("V no administra owners", () => domain.assignPipelineCaseOwner(ctxV1, { caseId: unassigned.id, expectedVersion: 2, requestId: request("v-assign"), ownerMembershipId: sellerTwo.id }), "CRM_PIPELINE_PERMISSION_FORBIDDEN");
@@ -102,6 +109,7 @@ try {
   check("desasignación borra pareja empresarial", unassignedReceipt.commandType === "UNASSIGN_OWNER" && unassignedReceipt.resultingOwnerMembershipId === null);
   const unassignedAfter = await prisma.pipelineCase.findUnique({ where: { id: unassigned.id } });
   check("desasignación deja ambos campos NULL", unassignedAfter.ownerMembershipId === null && unassignedAfter.ownerUserId === null && unassignedAfter.version === 4);
+  check("asignar y desasignar preserva ownerId heredado byte por byte", unassignedAfter.ownerId === legacyOwnerId);
 
   const approved = await prisma.pipelineCase.create({ data: caseData(`${run}-case-approved`, tenantOne.id, "APPROVED", sellerOne) });
   await expectCode("APPROVED no transiciona", () => domain.transitionPipelineCase(ctxA, { caseId: approved.id, expectedVersion: 1, requestId: request("approved-transition"), toStatus: "OPS_HANDOFF", evidence: { type: "PROJECT", id: `${run}-missing` } }), "CRM_PIPELINE_STATE_INVALID");
@@ -126,8 +134,12 @@ try {
   }
   const surveyPlanning = await prisma.pipelineCase.create({ data: caseData(`${run}-case-survey-planning`, tenantOne.id, "SURVEY_PLANNING", sellerOne) });
   await expectCode("SURVEY_SCHEDULED bloqueado sin evidencia temporal inequívoca", () => domain.transitionPipelineCase(ctxV1, { caseId: surveyPlanning.id, expectedVersion: 1, requestId: request("survey-scheduled"), toStatus: "SURVEY_SCHEDULED", evidence: { type: "SURVEY", id: `${run}-survey` } }), "CRM_PIPELINE_EVIDENCE_REQUIRED");
+  check("transiciones permitidas omiten SURVEY_SCHEDULED bloqueado", !(await domain.getAllowedPipelineTransitions(ctxV1, surveyPlanning.id)).transitions.some((item) => item.toStatus === "SURVEY_SCHEDULED"));
   const wonBlocked = await prisma.pipelineCase.create({ data: caseData(`${run}-case-won-blocked`, tenantOne.id, "QUOTE_SENT", sellerOne) });
   await expectCode("WON bloqueado sin aprobación inequívoca", () => domain.transitionPipelineCase(ctxV1, { caseId: wonBlocked.id, expectedVersion: 1, requestId: request("won"), toStatus: "WON", evidence: { type: "APPROVAL", id: `${run}-approval` } }), "CRM_PIPELINE_EVIDENCE_REQUIRED");
+  check("transiciones permitidas omiten WON desde QUOTE_SENT", !(await domain.getAllowedPipelineTransitions(ctxV1, wonBlocked.id)).transitions.some((item) => item.toStatus === "WON"));
+  const negotiationWonBlocked = await prisma.pipelineCase.create({ data: caseData(`${run}-case-negotiation-won-blocked`, tenantOne.id, "NEGOTIATION", sellerOne) });
+  check("transiciones permitidas omiten WON desde NEGOTIATION", !(await domain.getAllowedPipelineTransitions(ctxV1, negotiationWonBlocked.id)).transitions.some((item) => item.toStatus === "WON"));
 
   const quoteCase = await prisma.pipelineCase.create({ data: caseData(`${run}-case-quote`, tenantOne.id, "PRICING_IN_PROGRESS", sellerOne) });
   const quote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote`, caseId: quoteCase.id, level: "BASIC", status: "DRAFT" } });
@@ -161,6 +173,7 @@ try {
   const projectBefore = await prisma.project.findUnique({ where: { id: project.id } });
   const ops = await domain.transitionPipelineCase(ctxV1, { caseId: wonCase.id, expectedVersion: 1, requestId: request("ops"), toStatus: "OPS_HANDOFF", evidence: { type: "PROJECT", id: project.id } });
   check("Project enlazado prueba OPS_HANDOFF", ops.resultingStatus === "OPS_HANDOFF" && ops.evidence?.id === project.id);
+  check("OPS_HANDOFF es terminal", (await domain.getAllowedPipelineTransitions(ctxV1, wonCase.id)).transitions.length === 0);
   const projectAfter = await prisma.project.findUnique({ where: { id: project.id } });
   check("Project de evidencia no se modifica", projectAfter.status === projectBefore.status && projectAfter.name === projectBefore.name && projectAfter.clientId === projectBefore.clientId && projectAfter.pipelineCaseId === projectBefore.pipelineCaseId);
 
@@ -183,7 +196,7 @@ try {
   await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "osi"."crm01b2_test_fail_audit"()`);
   await prisma.$executeRawUnsafe(`CREATE FUNCTION "osi"."crm01b2_test_fail_audit"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."request_id" = '${auditFailureRequest}' THEN RAISE EXCEPTION 'synthetic audit failure'; END IF; RETURN NEW; END $$`);
   await prisma.$executeRawUnsafe(`CREATE TRIGGER "crm01b2_test_fail_audit_trigger" BEFORE INSERT ON "osi"."commercial_audit_logs" FOR EACH ROW EXECUTE FUNCTION "osi"."crm01b2_test_fail_audit"()`);
-  await expectCode("fallo de auditoría produce error sanitizado", () => domain.transitionPipelineCase(ctxV1, { caseId: auditFailureCase.id, expectedVersion: 1, requestId: auditFailureRequest, toStatus: "AWAITING_ICP" }), "CRM_PIPELINE_DATABASE_UNAVAILABLE");
+  await expectCode("fallo de auditoría produce error sanitizado", () => domain.transitionPipelineCase(ctxV1, { caseId: auditFailureCase.id, expectedVersion: 1, requestId: auditFailureRequest, toStatus: "AWAITING_ICP" }), "CRM_PIPELINE_STATE_INVALID");
   const afterAuditFailure = await prisma.pipelineCase.findUnique({ where: { id: auditFailureCase.id } });
   check("fallo de auditoría revierte caso", afterAuditFailure.version === 1 && afterAuditFailure.status === "NEW_INBOX");
   check("fallo de auditoría revierte journal", await prisma.pipelineCaseCommand.count({ where: { requestId: auditFailureRequest } }) === 0);
@@ -196,7 +209,7 @@ try {
   await prisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS "osi"."crm01b2_test_fail_journal"()`);
   await prisma.$executeRawUnsafe(`CREATE FUNCTION "osi"."crm01b2_test_fail_journal"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."request_id" = '${journalFailureRequest}' THEN RAISE EXCEPTION 'synthetic journal failure'; END IF; RETURN NEW; END $$`);
   await prisma.$executeRawUnsafe(`CREATE TRIGGER "crm01b2_test_fail_journal_trigger" BEFORE INSERT ON "osi"."pipeline_case_commands" FOR EACH ROW EXECUTE FUNCTION "osi"."crm01b2_test_fail_journal"()`);
-  await expectCode("fallo de journal produce error sanitizado", () => domain.transitionPipelineCase(ctxV1, { caseId: journalFailureCase.id, expectedVersion: 1, requestId: journalFailureRequest, toStatus: "AWAITING_ICP" }), "CRM_PIPELINE_DATABASE_UNAVAILABLE");
+  await expectCode("fallo de journal produce error sanitizado", () => domain.transitionPipelineCase(ctxV1, { caseId: journalFailureCase.id, expectedVersion: 1, requestId: journalFailureRequest, toStatus: "AWAITING_ICP" }), "CRM_PIPELINE_STATE_INVALID");
   const afterJournalFailure = await prisma.pipelineCase.findUnique({ where: { id: journalFailureCase.id } });
   check("fallo de journal revierte caso y auditoría", afterJournalFailure.version === 1 && afterJournalFailure.status === "NEW_INBOX" && await prisma.commercialAuditLog.count({ where: { request_id: journalFailureRequest } }) === 0);
   await prisma.$executeRawUnsafe(`DROP TRIGGER "crm01b2_test_fail_journal_trigger" ON "osi"."pipeline_case_commands"`);

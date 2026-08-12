@@ -23,10 +23,20 @@ El servidor acepta únicamente estos comandos tipados:
 
 ## Orden transaccional
 
-Cada mutación usa `READ COMMITTED`, `maxWait=3,000 ms` y `timeout=10,000 ms`, en este orden:
+Cada mutación usa `READ COMMITTED`. Los límites se validan al cargar el módulo y se aplican de forma explícita; ninguno admite 60 segundos:
 
-1. advisory lock estable por `tenant + requestId`;
-2. advisory lock estable por `tenant + PipelineCase.id`;
+| Límite | Valor | Alcance |
+|---|---:|---|
+| Prisma `maxWait` | 3,000 ms | Adquisición de conexión/transacción |
+| Prisma `timeout` | 10,000 ms | Transacción interactiva completa |
+| PostgreSQL `lock_timeout` | 250 ms | Esperas de row/table locks; `SET LOCAL` |
+| PostgreSQL `statement_timeout` | 3,000 ms | Cada sentencia SQL; `SET LOCAL` |
+| `retryAfterMs` | 75–175 ms | Jitter criptográfico para reintento del cliente |
+
+El orden global es:
+
+1. try-lock advisory estable por namespace `REQUEST + tenant + requestId`;
+2. try-lock advisory estable por namespace `CASE + tenant + PipelineCase.id`;
 3. revalidación de `Tenant`, `TenantMembership`, `User`, rol y permisos;
 4. resolución de idempotencia;
 5. lectura `FOR UPDATE` del caso;
@@ -38,7 +48,18 @@ Cada mutación usa `READ COMMITTED`, `maxWait=3,000 ms` y `timeout=10,000 ms`, e
 11. auditoría comercial crítica;
 12. commit.
 
-Un fallo del update, journal o auditoría revierte el conjunto. Los errores no reconocidos se convierten en `503 CRM_PIPELINE_DATABASE_UNAVAILABLE`; no se propagan SQL, Prisma, URLs ni stacks.
+Los locks usan `pg_try_advisory_xact_lock`: un perdedor no espera en cola dentro de Prisma, no lee un receipt, no actualiza el caso y no inserta journal o auditoría. Devuelve `409 CRM_PIPELINE_COMMAND_IN_PROGRESS`, `recoverable=true` y `retryAfterMs` acotado. Una colisión de hash sólo puede causar ese rechazo adicional: tenant, request, caso, actor y payload se releen y comparan después de adquirir los locks, por lo que no mezcla identidades ni comandos.
+
+| Condición | Contrato sanitizado |
+|---|---|
+| Try-lock ocupado | `409 CRM_PIPELINE_COMMAND_IN_PROGRESS`, recuperable, con jitter |
+| `lock_timeout` | `409 CRM_PIPELINE_COMMAND_IN_PROGRESS`, recuperable, con jitter |
+| Versión obsoleta | `409 CRM_PIPELINE_VERSION_CONFLICT`, recuperable |
+| `statement_timeout` o pérdida de conexión | `503 CRM_PIPELINE_DATABASE_UNAVAILABLE`, recuperable |
+| Constraint/journal incoherente | rollback y `409 CRM_PIPELINE_STATE_INVALID` |
+| Auditoría fallida | rollback total y error controlado |
+
+No se propagan SQL, constraints, Prisma, URLs, stacks ni causas internas.
 
 ## Grafo y evidencia
 
@@ -75,7 +96,9 @@ Motivos `LOST`: `PRICE`, `COMPETITOR`, `NO_RESPONSE`, `CLIENT_CANCELLED`, `TIMIN
 
 ## Idempotencia y auditoría
 
-El SHA-256 cubre sólo la representación canónica de los campos tipados. Después del lock, el servicio compara también cada campo con el journal. Un replay exacto devuelve el receipt histórico con `replayed=true`; no actualiza caso, versión, journal ni auditoría. Cualquier diferencia devuelve `409 CRM_PIPELINE_IDEMPOTENCY_CONFLICT`.
+El SHA-256 cubre sólo la representación canónica de los campos tipados. Después de revalidar `Tenant`, `User`, `TenantMembership` y permisos, el servicio compara con el journal tenant, actor membership/user/role, caso, tipo, versiones, estados, owners, reason, evidencia y payload hash. Un replay exacto devuelve el receipt histórico con `replayed=true`; no actualiza caso, versión, journal ni auditoría. Otro actor o cualquier diferencia devuelve `409 CRM_PIPELINE_IDEMPOTENCY_CONFLICT`.
+
+El receipt de replay describe el commit original, incluso si el caso avanzó después. No representa el estado actual; el cliente debe volver a consultar el caso tras recibirlo.
 
 Acciones críticas: `CRM_PIPELINE_TRANSITIONED`, `CRM_PIPELINE_REOPENED`, `CRM_PIPELINE_OWNER_ASSIGNED`, `CRM_PIPELINE_OWNER_REASSIGNED` y `CRM_PIPELINE_OWNER_UNASSIGNED`. La auditoría incluye únicamente referencias empresariales, versiones, estados, operación, evidencia y reason code canónico. Excluye hash interno, notas libres, PII, JWT y secretos.
 
@@ -83,8 +106,9 @@ Acciones críticas: `CRM_PIPELINE_TRANSITIONED`, `CRM_PIPELINE_REOPENED`, `CRM_P
 
 - PostgreSQL 18, `127.0.0.1:55432`, base allowlist y schema `osi`; `neon.branch_id` debe estar ausente.
 - 16 migraciones desde vacío; segundo deploy sin pendientes y drift vacío.
-- Suite funcional: 73 comprobaciones, incluidos todos los caminos habilitados, bloqueos de evidencia, owners, idempotencia y rollback del journal/auditoría.
-- Concurrencia: 20 comprobaciones; 20 transiciones y 20 asignaciones producen un ganador; 20 replays idénticos producen una escritura y 19 receipts; cero deadlocks, duplicados o estados parciales.
-- Métricas de la corrida canónica final: transición 20-way p50 155.71 ms, p95 215.38 ms, máximo 221.55 ms; asignación p50 34.99 ms, p95 55.30 ms, máximo 57.47 ms. Son métricas locales, no presupuesto Vercel–Neon.
+- Suite funcional: 81 comprobaciones; concurrencia focalizada: 22; adversarial: 12; estrés/consistencia: 23.
+- Estrés obligatorio: 50 rondas × 20 solicitudes para transición, asignación, replay idéntico y transición frente a asignación. La corrida canónica produjo 200 ganadores, 3,796 `COMMAND_IN_PROGRESS`, 4 conflictos de versión, 50 receipts post-commit, cero timeouts inesperados y cero estados parciales.
+- Métricas locales de ganadores: transición p50 12.21 ms, p95 20.25 ms, máximo 74.97 ms; asignación p50 12.60 ms, p95 27.12 ms, máximo 76.82 ms; replay concurrente p50 11.45 ms, p95 27.36 ms, máximo 79.12 ms; mixta p50 12.66 ms, p95 29.80 ms, máximo 74.75 ms.
+- Métricas locales de conflictos: transición p50 7.25 ms, p95 12.13 ms, máximo 147.35 ms; asignación p50 7.09 ms, p95 9.25 ms, máximo 9.88 ms; replay concurrente p50 5.96 ms, p95 7.92 ms, máximo 12.63 ms; mixta p50 7.07 ms, p95 10.16 ms, máximo 13.03 ms. Los 50 replays post-commit tuvieron p50 2.55 ms, p95 4.58 ms y máximo 4.89 ms. Son métricas locales, no un presupuesto Vercel–Neon.
 
 Riesgos reservados para CRM-01B3: contrato empresarial para probar `WON`, evidencia inequívoca de encuesta programada, endpoints protegidos y exposición controlada del servicio. Ninguno se resuelve activando o degradando las comprobaciones actuales.

@@ -25,6 +25,9 @@ export const PERMS = {
 
   // Commercial pipeline
   PIPELINE_VIEW: "pipeline:view",
+  PIPELINE_UPDATE: "pipeline:update",
+  PIPELINE_TRANSITION: "pipeline:transition",
+  PIPELINE_ASSIGN: "pipeline:assign",
 
   // Projects
   PROJECTS_VIEW: "projects:view",
@@ -81,6 +84,8 @@ const ROLE_PERMS = {
     PERMS.CLIENTS_CREATE,
     PERMS.CLIENTS_EDIT,
     PERMS.PIPELINE_VIEW,
+    PERMS.PIPELINE_UPDATE,
+    PERMS.PIPELINE_TRANSITION,
     PERMS.PROJECTS_VIEW,
     PERMS.PROJECTS_CREATE,
     PERMS.PROJECTS_EDIT,

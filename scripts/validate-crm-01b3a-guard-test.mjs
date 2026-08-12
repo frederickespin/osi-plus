@@ -9,6 +9,7 @@ function rejected(name, options, pattern) {
 }
 const adapter = readFileSync("api/_lib/pipelineCaseMutationHttp.js", "utf8");
 const transition = readFileSync("api/crm/pipeline-cases/[id]/transition.js", "utf8");
+const vercel = readFileSync("vercel.json", "utf8");
 check("baseline CRM-01B3A", validateCrm01b3aGuard().ok);
 rejected("LOCAL_ONLY en CI rechazado", { env: { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY" } }, /LOCAL_ONLY/);
 rejected("variable en workflow rechazada", { overrides: { ".github/workflows/ci.yml": `${readFileSync(".github/workflows/ci.yml", "utf8")}\nenv: CRM_PIPELINE_MUTATION_MODE=LOCAL_ONLY` } }, /configura/);
@@ -17,6 +18,7 @@ rejected("normalización de modo rechazada", { overrides: { "api/_lib/pipelineCa
 rejected("Vercel bypass rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace('key === "VERCEL" || key.startsWith("VERCEL_")', 'key === "NOT_VERCEL"') } }, /Vercel/);
 rejected("lectura coordinada obligatoria", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("const readMode = resolveCrmPipelineRuntimeMode(env);", "const readMode = CRM_PIPELINE_RUNTIME_MODES.READ_ONLY;") } }, /resolveCrmPipelineRuntimeMode/);
 rejected("CORS wildcard rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": `${adapter}\nres.setHeader("Access-Control-Allow-Origin", "*");` } }, /wildcard/);
+rejected("CORS global de Vercel sobre mutaciones rechazado", { overrides: { "vercel.json": vercel.replace("(?!crm/pipeline-cases/[^/]+/(transition|assign-owner|unassign-owner|allowed-transitions)/?$)", "") } }, /Vercel/);
 rejected("header x-osi rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace('"Authorization", "Content-Type", "Idempotency-Key"', '"Authorization", "Content-Type", "Idempotency-Key", "x-osi-role"') } }, /x-osi/);
 rejected("detección raw idempotency obligatoria", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace('rawHeaderCount(req, "idempotency-key")', 'null /* duplicate guard removed */') } }, /rawHeaders/);
 rejected("auth antes de gate rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("requireCrmPipelineMutationsLocal(env);", "resolveContext(req); requireCrmPipelineMutationsLocal(env);") } }, /orden/);

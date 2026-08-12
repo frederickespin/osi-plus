@@ -29,6 +29,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
 
   const adapter = read("api/_lib/pipelineCaseMutationHttp.js");
+  const vercel = read("vercel.json");
   for (const signature of [
     'DISABLED: "DISABLED"', 'LOCAL_ONLY: "LOCAL_ONLY"', 'CRM_PIPELINE_MUTATIONS_DISABLED',
     'CRM_PIPELINE_CONFIGURATION_INVALID', 'requireCrmPipelineMutationsLocal(env)',
@@ -52,6 +53,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(/keys\.some\(\(key\) => key !== "id"\)/.test(adapter), "requestId/query adicional no se rechaza");
   invariant(/rawHeaderCount\(req, "idempotency-key"\)/.test(adapter), "duplicados Idempotency-Key no se detectan en rawHeaders");
   invariant(/rawHeaderCount\(req, "authorization"\)/.test(adapter), "Authorization ambiguo no se detecta");
+  invariant(vercel.includes("(?!crm/pipeline-cases/[^/]+/(transition|assign-owner|unassign-owner|allowed-transitions)/?$)"), "Vercel no excluye las rutas CRM-01B3A de CORS global");
   for (const forbidden of ["tenantId", "userId", "actorUserId", "actorMembershipId", "ownerUserId", "ownerId", "role", "permissions", "requestId", "resultingVersion", "payloadHash", "statusChangedAt", "timestamps"]) {
     invariant(adapter.includes(`"${forbidden}"`), `falta protección de ${forbidden}`);
   }

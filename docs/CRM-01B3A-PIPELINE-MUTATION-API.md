@@ -27,7 +27,7 @@ El `caseId` sólo se obtiene del segmento dinámico esperado. Se rechazan query 
 - consulta de acciones: `GET, HEAD, OPTIONS`;
 - headers: `Authorization, Content-Type, Idempotency-Key`.
 
-Sólo se refleja el origen exacto permitido; no hay wildcard ni `Access-Control-Allow-Credentials`, y nunca se aceptan headers `x-osi-*`. Un origen, método o header no autorizado recibe un error controlado sin `Access-Control-Allow-Origin`. Toda respuesta conserva `Vary: Authorization`; cuando se evalúa CORS también conserva `Vary: Origin`. La activación futura no puede reutilizar este modo local: deberá introducir y revisar por separado el origen productivo exacto.
+Sólo se refleja el origen exacto permitido; no hay wildcard ni `Access-Control-Allow-Credentials`, y nunca se aceptan headers `x-osi-*`. `vercel.json` excluye exactamente estos cuatro endpoints de la política CORS global heredada para que la plataforma no reintroduzca esos headers después del handler. Un origen, método o header no autorizado recibe un error controlado sin `Access-Control-Allow-Origin`. Toda respuesta conserva `Vary: Authorization`; cuando se evalúa CORS también conserva `Vary: Origin`. La activación futura no puede reutilizar este modo local: deberá introducir y revisar por separado el origen productivo exacto.
 
 ## Orden de ejecución
 

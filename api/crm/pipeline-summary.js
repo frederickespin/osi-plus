@@ -27,7 +27,7 @@ export function createPipelineSummaryHandler({
     } catch (error) {
       return sendCommercialTenancyError(res, error);
     }
-  });
+  }, { cors: false });
 }
 
 export default createPipelineSummaryHandler();

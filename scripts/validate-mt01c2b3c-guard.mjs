@@ -5,7 +5,7 @@ import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 import { validateMt01c2b2Guard } from "./validate-mt01c2b2-guard.mjs";
 import { validateMt01c2b3b } from "./validate-mt01c2b3b-guard.mjs";
 
-const EXPECTED_MIGRATIONS = 15;
+const EXPECTED_MIGRATIONS = 16;
 const ACTIVATION_BATCH = "MT-01C2B2-IPACKERS-DO-V1";
 const BRIDGE_PATH = "api/_lib/commercialTenancyWrite.js";
 const PREPARED_ROUTES = Object.freeze([
@@ -45,7 +45,8 @@ export function validateMt01c2b3c({
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   invariant(migrations.length === EXPECTED_MIGRATIONS, `se requieren exactamente ${EXPECTED_MIGRATIONS} migraciones`);
-  invariant(!migrations.some((name) => /^20260801015000_|mt01c2b3c/i.test(name)), "migración 16 no autorizada");
+  invariant(migrations.includes("20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1");
+  invariant(!migrations.some((name) => /^20260801016000_/.test(name)), "migración 17 no autorizada");
 
   const envExample = read(".env.example");
   invariant(/^COMMERCIAL_TENANCY_WRITE_MODE="LEGACY_ONLY"$/m.test(envExample), "WRITE debe permanecer LEGACY_ONLY por defecto");

@@ -95,6 +95,11 @@ invariant(
   "CRM01A_TEST_DATABASE_URL no coincide con el destino canónico validado",
 );
 process.env.CRM01A_TEST_DATABASE_URL = process.env.DATABASE_URL;
+invariant(
+  !process.env.CRM01B1_TEST_DATABASE_URL || process.env.CRM01B1_TEST_DATABASE_URL === process.env.DATABASE_URL,
+  "CRM01B1_TEST_DATABASE_URL no coincide con el destino canónico validado",
+);
+process.env.CRM01B1_TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
 const envPath = resolve(".env.mt01a.local");
 invariant(!existsSync(envPath), `${envPath} ya existe; no será sobrescrito`);
@@ -173,6 +178,20 @@ try {
   invariant(crmPipelineDatabaseGuardRun.assertions >= 12, `CRM-01A database guard esperaba 12 pruebas y obtuvo ${crmPipelineDatabaseGuardRun.assertions}`);
   invariant(crmPipelineGuardRun.report.ok === true, "CRM-01A guard falló");
   invariant(crmPipelineGuardTestsRun.assertions >= 11, `CRM-01A guard tests esperaba al menos 11 pruebas y obtuvo ${crmPipelineGuardTestsRun.assertions}`);
+  const crmMutationDryRun = runJson("crm-01b1-dry-run.mjs", "CRM-01B1/DRY_RUN");
+  const crmMutationFixtureDryRun = runJson("crm-01b1-dry-run-fixture-test.mjs", "CRM-01B1/REPRESENTATIVE_DRY_RUN");
+  const crmMutationRun = runJson("crm-01b1-test.mjs", "CRM-01B1/PERSISTENCE");
+  const crmMutationConcurrencyRun = runJson("crm-01b1-concurrency-test.mjs", "CRM-01B1/CONCURRENCY");
+  const crmMutationDatabaseGuardRun = runJson("crm-01b1-local-target-test.mjs", "CRM-01B1/DATABASE_GUARD");
+  const crmMutationGuardRun = runJson("validate-crm-01b1-guard.mjs", "CRM-01B1/GUARD");
+  const crmMutationGuardTestsRun = runJson("validate-crm-01b1-guard-test.mjs", "CRM-01B1/GUARD_TESTS");
+  invariant(crmMutationDryRun.report.readOnly === true && crmMutationDryRun.report.wroteRows === 0, "CRM-01B1 dry-run no fue de sólo lectura");
+  invariant(crmMutationFixtureDryRun.report.ok === true && crmMutationFixtureDryRun.assertions >= 8, `CRM-01B1 dry-run representativo esperaba 8 pruebas y obtuvo ${crmMutationFixtureDryRun.assertions}`);
+  invariant(crmMutationRun.report.ok === true && crmMutationRun.assertions >= 47, `CRM-01B1 esperaba al menos 47 pruebas y obtuvo ${crmMutationRun.assertions}`);
+  invariant(crmMutationConcurrencyRun.report.ok === true && crmMutationConcurrencyRun.assertions >= 6, `CRM-01B1 concurrencia esperaba 6 pruebas y obtuvo ${crmMutationConcurrencyRun.assertions}`);
+  invariant(crmMutationDatabaseGuardRun.assertions >= 10, `CRM-01B1 database guard esperaba al menos 10 pruebas y obtuvo ${crmMutationDatabaseGuardRun.assertions}`);
+  invariant(crmMutationGuardRun.report.ok === true, "CRM-01B1 guard falló");
+  invariant(crmMutationGuardTestsRun.assertions >= 14, `CRM-01B1 guard tests esperaba al menos 14 pruebas y obtuvo ${crmMutationGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -318,6 +337,14 @@ try {
       guardTests: crmPipelineGuardTestsRun.assertions,
       total: crmPipelineRun.assertions + crmPipelineDatabaseGuardRun.assertions + crmPipelineGuardTestsRun.assertions,
     },
+    crm01b1: {
+      dryRunReadOnly: crmMutationDryRun.report.readOnly,
+      persistence: crmMutationRun.assertions,
+      databaseGuard: crmMutationDatabaseGuardRun.assertions,
+      guard: crmMutationGuardRun.report.ok,
+      guardTests: crmMutationGuardTestsRun.assertions,
+      total: crmMutationRun.assertions + crmMutationDatabaseGuardRun.assertions + crmMutationGuardTestsRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -366,6 +393,11 @@ try {
       "CRM-01A/DATABASE_GUARD": { status: "PASS", assertions: crmPipelineDatabaseGuardRun.assertions, durationMs: crmPipelineDatabaseGuardRun.durationMs, exitCode: 0 },
       "CRM-01A/GUARD": { status: "PASS", assertions: 0, durationMs: crmPipelineGuardRun.durationMs, exitCode: 0 },
       "CRM-01A/GUARD_TESTS": { status: "PASS", assertions: crmPipelineGuardTestsRun.assertions, durationMs: crmPipelineGuardTestsRun.durationMs, exitCode: 0 },
+      "CRM-01B1/DRY_RUN": { status: "PASS", assertions: 0, durationMs: crmMutationDryRun.durationMs, exitCode: 0 },
+      "CRM-01B1/PERSISTENCE": { status: "PASS", assertions: crmMutationRun.assertions, durationMs: crmMutationRun.durationMs, exitCode: 0 },
+      "CRM-01B1/DATABASE_GUARD": { status: "PASS", assertions: crmMutationDatabaseGuardRun.assertions, durationMs: crmMutationDatabaseGuardRun.durationMs, exitCode: 0 },
+      "CRM-01B1/GUARD": { status: "PASS", assertions: 0, durationMs: crmMutationGuardRun.durationMs, exitCode: 0 },
+      "CRM-01B1/GUARD_TESTS": { status: "PASS", assertions: crmMutationGuardTestsRun.assertions, durationMs: crmMutationGuardTestsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

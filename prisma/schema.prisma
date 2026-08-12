@@ -83,6 +83,7 @@ model Tenant {
   projects                         Project[]
   leads                            Lead[]
   pipelineCases                    PipelineCase[]
+  pipelineCaseCommands             PipelineCaseCommand[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -147,6 +148,9 @@ model TenantMembership {
   proposedEmployeeAdminRoles                                                                                                                    EmployeeAdminRoleProposal[]        @relation("EmployeeAdminRoleProposalProposer")
   supervisedProvisioningRequests                                                                                                                EmployeeProvisioningRequest[]      @relation("EmployeeProvisioningRequestSupervisor")
   enterpriseOwnedPipelineCases                                                                                                                  PipelineCase[]                     @relation("PipelineCaseEnterpriseOwner")
+  pipelineCaseCommandsAsActor                                                                                                                   PipelineCaseCommand[]              @relation("PipelineCaseCommandActor")
+  pipelineCaseCommandsAsPreviousOwner                                                                                                           PipelineCaseCommand[]              @relation("PipelineCaseCommandPreviousOwner")
+  pipelineCaseCommandsAsResultingOwner                                                                                                          PipelineCaseCommand[]              @relation("PipelineCaseCommandResultingOwner")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, id, userId])
@@ -391,6 +395,7 @@ model Client {
 model Project {
   id                String               @id @default(cuid())
   tenantId          String?              @map("tenant_id")
+  pipelineCaseId    String?              @map("pipeline_case_id")
   code              String               @unique
   name              String
   clientId          String
@@ -419,11 +424,13 @@ model Project {
   client            Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant            Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_projects_tenant_id_fkey")
   tenantClient      Client?              @relation("ProjectTenantClient", fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "osi_projects_tenant_id_client_id_fkey")
+  pipelineCase      PipelineCase?        @relation("PipelineCaseProjects", fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "osi_projects_tenant_id_pipeline_case_id_fkey")
   surveys           Survey[]
 
   @@unique([tenantId, id], map: "osi_projects_tenant_id_id_key")
   @@index([tenantId, status], map: "osi_projects_tenant_id_status_idx")
   @@index([tenantId, clientId], map: "osi_projects_tenant_id_client_id_idx")
+  @@index([tenantId, pipelineCaseId], map: "osi_projects_tenant_id_pipeline_case_id_idx")
   @@map("osi_projects")
 }
 
@@ -1253,6 +1260,9 @@ model PipelineCase {
   serviceType                   String
   customerType                  PipelineCustomerType
   status                        PipelineCaseStatus            @default(NEW_INBOX)
+  version                       Int                           @default(1)
+  statusChangedAt               DateTime?                     @map("status_changed_at") @db.Timestamptz(6)
+  lossReasonCode                String?                       @map("loss_reason_code") @db.VarChar(64)
   ownerId                       String?
   ownerMembershipId             String?                       @map("owner_membership_id")
   ownerUserId                   String?                       @map("owner_user_id")
@@ -1278,6 +1288,8 @@ model PipelineCase {
   crating                       PipelineCratingRequest?
   events                        PipelineEvent[]
   quote_change_order_subjects   quote_change_order_subjects[]
+  commands                      PipelineCaseCommand[]
+  projects                      Project[]                     @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
   @@index([tenantId, status, updatedAt], map: "osi_pipeline_cases_tenant_id_status_updated_at_idx")
@@ -1286,6 +1298,41 @@ model PipelineCase {
   @@index([ownerId, status, updatedAt])
   @@index([createdAt])
   @@map("osi_pipeline_cases")
+}
+
+model PipelineCaseCommand {
+  id                         String                    @id @default(uuid())
+  tenantId                   String                    @map("tenant_id")
+  pipelineCaseId             String                    @map("pipeline_case_id")
+  requestId                  String                    @map("request_id") @db.VarChar(191)
+  commandType                PipelineCaseCommandType   @map("command_type")
+  payloadHash                String                    @map("payload_hash") @db.Char(64)
+  expectedVersion            Int                       @map("expected_version")
+  resultingVersion           Int                       @map("resulting_version")
+  previousStatus             PipelineCaseStatus        @map("previous_status")
+  resultingStatus            PipelineCaseStatus        @map("resulting_status")
+  previousOwnerMembershipId  String?                   @map("previous_owner_membership_id")
+  previousOwnerUserId        String?                   @map("previous_owner_user_id")
+  resultingOwnerMembershipId String?                   @map("resulting_owner_membership_id")
+  resultingOwnerUserId       String?                   @map("resulting_owner_user_id")
+  actorMembershipId          String                    @map("actor_membership_id")
+  actorUserId                String                    @map("actor_user_id")
+  actorRole                  String                    @map("actor_role") @db.VarChar(64)
+  reasonCode                 String?                   @map("reason_code") @db.VarChar(64)
+  evidenceType               PipelineCaseEvidenceType? @map("evidence_type")
+  evidenceId                 String?                   @map("evidence_id") @db.VarChar(191)
+  createdAt                  DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                     Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commands_tenant_id_fkey")
+  pipelineCase               PipelineCase              @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commands_tenant_case_fkey")
+  actorMembership            TenantMembership          @relation("PipelineCaseCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commands_actor_fkey")
+  previousOwnerMembership    TenantMembership?         @relation("PipelineCaseCommandPreviousOwner", fields: [tenantId, previousOwnerMembershipId, previousOwnerUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commands_previous_owner_fkey")
+  resultingOwnerMembership   TenantMembership?         @relation("PipelineCaseCommandResultingOwner", fields: [tenantId, resultingOwnerMembershipId, resultingOwnerUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commands_resulting_owner_fkey")
+
+  @@unique([tenantId, requestId], map: "pipeline_case_commands_tenant_request_key")
+  @@unique([tenantId, pipelineCaseId, resultingVersion], map: "pipeline_case_commands_tenant_case_resulting_version_key")
+  @@index([tenantId, pipelineCaseId, createdAt(sort: Desc), id(sort: Desc)], map: "pipeline_case_commands_tenant_case_created_at_idx")
+  @@index([tenantId, actorMembershipId, createdAt(sort: Desc)], map: "pipeline_case_commands_tenant_actor_created_at_idx")
+  @@map("pipeline_case_commands")
 }
 
 model GeoRegion {
@@ -3143,12 +3190,30 @@ enum PipelineCaseStatus {
   SURVEY_COMPLETED
   CRATING_ESTIMATE_PENDING
   PRICING_IN_PROGRESS
+  QUOTE_DRAFT
   INTERNAL_REVIEW
   QUOTE_SENT
   NEGOTIATION
+  WON
+  LOST
   CHANGE_CONTROL
   APPROVED
   OPS_HANDOFF
+}
+
+enum PipelineCaseCommandType {
+  TRANSITION
+  REOPEN
+  ASSIGN_OWNER
+  UNASSIGN_OWNER
+}
+
+enum PipelineCaseEvidenceType {
+  SURVEY
+  QUOTE
+  PROJECT
+  APPROVAL
+  ADDENDUM
 }
 
 enum PipelineMode {

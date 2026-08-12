@@ -8,12 +8,28 @@ const { prisma, identity } = await createMt01c2b2LocalPrisma();
 const run = `c2b2-${randomUUID().slice(0, 8)}`;
 const manifestPath=resolveMt01c2b2ManifestPath(`.mt01c2b2-${run}.json`);
 const results=[]; const created={tenants:[],users:[],memberships:[],clients:[],projects:[],cases:[]};
+let crm01b1CoherenceTriggerDisabled=false;
 function check(name, condition, detail){results.push({name,passed:Boolean(condition),...(detail===undefined?{}:{detail})});if(!condition)throw new Error(name);}
 async function rejects(fn,code){try{await fn();return false;}catch(error){return !code||error.code===code;}}
 const clientData=(index)=>({id:`${run}-client-${index}`,code:`${run.toUpperCase()}-CLI-${index}`,name:`Cliente ${index}`,email:`client-${index}@example.test`,phone:'000',address:'Local',type:'corporate',status:'active',createdAt:'2026-08-10'});
 const caseData=(index,ownerId)=>({id:`${run}-case-${index}`,caseCode:`${run.toUpperCase()}-CASE-${index}`,mode:'LOCAL',serviceType:'MOVING',customerType:'L3_CORPORATE',ownerId,ownerName:ownerId?'Owner sintético':'Sin asignar',originLocation:'A',destinationLocation:'B',milestonesJson:{marker:index}});
 
 try{
+  const coherenceTriggers=await prisma.$queryRawUnsafe(`
+    SELECT COUNT(*)::integer AS count
+    FROM pg_catalog.pg_trigger trigger
+    JOIN pg_catalog.pg_class relation ON relation.oid = trigger.tgrelid
+    JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'osi'
+      AND relation.relname = 'osi_pipeline_cases'
+      AND trigger.tgname = 'pipeline_cases_coherent_command_constraint'
+      AND trigger.tgenabled = 'O'
+  `);
+  check('fixture histórico confirma constraint CRM-01B1 activa',Number(coherenceTriggers[0]?.count)===1);
+  // C2B2 ocurrió antes de CRM-01B1 en producción. Esta excepción sólo permite
+  // reensayar ese backfill histórico sobre el destino local validado del runner.
+  await prisma.$executeRawUnsafe(`ALTER TABLE "osi"."osi_pipeline_cases" DISABLE TRIGGER "pipeline_cases_coherent_command_constraint"`);
+  crm01b1CoherenceTriggerDisabled=true;
   check('base sin raíces comerciales',await prisma.client.count()===0&&await prisma.project.count()===0&&await prisma.lead.count()===0&&await prisma.pipelineCase.count()===0);
   let tenant=await prisma.tenant.findUnique({where:{code:MT01C2B2.tenantCode}});
   if(!tenant){tenant=await prisma.tenant.create({data:{id:`${run}-tenant-target`,code:MT01C2B2.tenantCode,name:'International Packers SRL'}});created.tenants.push(tenant.id);}
@@ -122,6 +138,10 @@ try{
 }catch(error){process.stdout.write(`${JSON.stringify({ok:false,assertions:results.filter(r=>r.passed).length,error:{name:error.name,code:error.code,message:error.message},results},null,2)}\n`);process.exitCode=1;}
 finally{
   if(existsSync(manifestPath))unlinkSync(manifestPath);
+  if(crm01b1CoherenceTriggerDisabled){
+    await prisma.$executeRawUnsafe(`ALTER TABLE "osi"."osi_pipeline_cases" ENABLE TRIGGER "pipeline_cases_coherent_command_constraint"`);
+    crm01b1CoherenceTriggerDisabled=false;
+  }
   await prisma.pipelineCase.deleteMany({where:{id:{in:created.cases}}}).catch(()=>{});
   await prisma.project.deleteMany({where:{id:{in:created.projects}}}).catch(()=>{});
   await prisma.client.deleteMany({where:{id:{in:created.clients}}}).catch(()=>{});

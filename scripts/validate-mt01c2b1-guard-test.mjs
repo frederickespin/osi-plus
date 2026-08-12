@@ -88,12 +88,12 @@ try {
     writeFileSync(path, readFileSync(path, "utf8").replace('COMMERCIAL_TENANCY_WRITE_MODE="LEGACY_ONLY"', 'COMMERCIAL_TENANCY_WRITE_MODE="TENANT_WRITE"'), "utf8");
   }, /puente comercial no está en LEGACY_ONLY/);
 
-  const unexpected = join(root, "prisma/migrations/20260801015000_unexpected");
+  const unexpected = join(root, "prisma/migrations/20260801016000_unexpected");
   mkdirSync(unexpected);
-  write(join("prisma/migrations/20260801015000_unexpected", "migration.sql"), "SELECT 1;\n");
+  write(join("prisma/migrations/20260801016000_unexpected", "migration.sql"), "SELECT 1;\n");
   let unexpectedError;
   try { validateMigrationFiles(root); } catch (caught) { unexpectedError = caught; }
-  check("migración 16 inesperada rechazada", unexpectedError?.message.includes("15 migraciones canónicas"));
+  check("migración 17 inesperada rechazada", unexpectedError?.message.includes("16 migraciones canónicas"));
 
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } finally {

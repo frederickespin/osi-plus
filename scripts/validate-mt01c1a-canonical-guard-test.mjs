@@ -17,9 +17,9 @@ try {
   cpSync(resolve("prisma", "migrations"), migrationRoot, { recursive: true });
 
   const current = validateMigrationFiles(root);
-  check("MT-01C1A remains migration thirteen in the fifteen-migration chain", current.length === 15 && CANONICAL_MIGRATIONS[12] === "20260801012000_mt01c1a_employee_profiles");
+  check("MT-01C1A remains migration thirteen in the sixteen-migration chain", current.length === 16 && CANONICAL_MIGRATIONS[12] === "20260801012000_mt01c1a_employee_profiles");
 
-  const unexpected = join(migrationRoot, "20260801015000_unexpected_migration");
+  const unexpected = join(migrationRoot, "20260801016000_unexpected_migration");
   mkdirSync(unexpected);
   writeFileSync(join(unexpected, "migration.sql"), "SELECT 1;\n", "utf8");
   let rejected = null;
@@ -28,7 +28,7 @@ try {
   } catch (error) {
     rejected = error;
   }
-  check("unexpected migration sixteen is rejected", rejected?.message.includes("15 migraciones canónicas"));
+  check("unexpected migration seventeen is rejected", rejected?.message.includes("16 migraciones canónicas"));
   check("guard identifies chain mismatch without executing SQL", rejected instanceof Error);
 
   process.stdout.write(`${JSON.stringify({ ok: true, passed: results.length, results }, null, 2)}\n`);

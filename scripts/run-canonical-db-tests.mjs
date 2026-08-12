@@ -222,11 +222,15 @@ try {
   const crmMutationHttpStressRun = runJson("crm-01b3a-http-stress-test.mjs", "CRM-01B3A/STRESS_50X20");
   const crmMutationHttpGuardRun = runJson("validate-crm-01b3a-guard.mjs", "CRM-01B3A/GUARD");
   const crmMutationHttpGuardTestsRun = runJson("validate-crm-01b3a-guard-test.mjs", "CRM-01B3A/GUARD_TESTS");
+  const crmCorsGuardRun = runJson("validate-crm-cors-guard.mjs", "CRM-01B3A/CORS_GUARD");
+  const crmCorsGuardTestsRun = runJson("validate-crm-cors-guard-test.mjs", "CRM-01B3A/CORS_GUARD_TESTS");
   invariant(crmMutationHttpRun.report.ok === true && crmMutationHttpRun.assertions >= 75, `CRM-01B3A HTTP esperaba al menos 75 pruebas y obtuvo ${crmMutationHttpRun.assertions}`);
   invariant(crmMutationHttpIntegrationRun.report.ok === true && crmMutationHttpIntegrationRun.assertions >= 33, `CRM-01B3A integración esperaba al menos 33 pruebas y obtuvo ${crmMutationHttpIntegrationRun.assertions}`);
   invariant(crmMutationHttpStressRun.report.ok === true && crmMutationHttpStressRun.report.rounds === 50 && crmMutationHttpStressRun.report.requestsPerRound === 20, "CRM-01B3A estrés HTTP 50x20 no se completó");
   invariant(crmMutationHttpGuardRun.report.ok === true, "CRM-01B3A guard falló");
   invariant(crmMutationHttpGuardTestsRun.assertions >= 14, `CRM-01B3A guard tests esperaba al menos 14 pruebas y obtuvo ${crmMutationHttpGuardTestsRun.assertions}`);
+  invariant(crmCorsGuardRun.report.ok === true && crmCorsGuardRun.report.crmRoutes === 7 && crmCorsGuardRun.report.matchedCrmRoutes === 0, "CRM-01B3A CORS guard falló");
+  invariant(crmCorsGuardTestsRun.assertions >= 10, `CRM-01B3A CORS guard tests esperaba al menos 10 pruebas y obtuvo ${crmCorsGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -397,8 +401,10 @@ try {
       stress: crmMutationHttpStressRun.assertions,
       guard: crmMutationHttpGuardRun.report.ok,
       guardTests: crmMutationHttpGuardTestsRun.assertions,
+      corsGuard: crmCorsGuardRun.report.ok,
+      corsGuardTests: crmCorsGuardTestsRun.assertions,
       metrics: crmMutationHttpStressRun.report.metrics,
-      total: crmMutationHttpRun.assertions + crmMutationHttpIntegrationRun.assertions + crmMutationHttpStressRun.assertions + crmMutationHttpGuardTestsRun.assertions,
+      total: crmMutationHttpRun.assertions + crmMutationHttpIntegrationRun.assertions + crmMutationHttpStressRun.assertions + crmMutationHttpGuardTestsRun.assertions + crmCorsGuardTestsRun.assertions,
     },
     suites,
     suiteRuns: {
@@ -465,6 +471,8 @@ try {
       "CRM-01B3A/STRESS_50X20": { status: "PASS", assertions: crmMutationHttpStressRun.assertions, durationMs: crmMutationHttpStressRun.durationMs, exitCode: 0 },
       "CRM-01B3A/GUARD": { status: "PASS", assertions: 0, durationMs: crmMutationHttpGuardRun.durationMs, exitCode: 0 },
       "CRM-01B3A/GUARD_TESTS": { status: "PASS", assertions: crmMutationHttpGuardTestsRun.assertions, durationMs: crmMutationHttpGuardTestsRun.durationMs, exitCode: 0 },
+      "CRM-01B3A/CORS_GUARD": { status: "PASS", assertions: 0, durationMs: crmCorsGuardRun.durationMs, exitCode: 0 },
+      "CRM-01B3A/CORS_GUARD_TESTS": { status: "PASS", assertions: crmCorsGuardTestsRun.assertions, durationMs: crmCorsGuardTestsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

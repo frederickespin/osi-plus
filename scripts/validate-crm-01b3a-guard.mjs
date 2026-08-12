@@ -53,7 +53,8 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(/keys\.some\(\(key\) => key !== "id"\)/.test(adapter), "requestId/query adicional no se rechaza");
   invariant(/rawHeaderCount\(req, "idempotency-key"\)/.test(adapter), "duplicados Idempotency-Key no se detectan en rawHeaders");
   invariant(/rawHeaderCount\(req, "authorization"\)/.test(adapter), "Authorization ambiguo no se detecta");
-  invariant(vercel.includes("(?!crm/pipeline-cases/[^/]+/(?:transition|assign-owner|unassign-owner|allowed-transitions)/?$)"), "Vercel no excluye las rutas CRM-01B3A de CORS global con un grupo no capturante válido");
+  invariant(vercel.includes('"source": "/api/((?!crm/).*)"'), "Vercel no excluye el namespace CRM completo del CORS global");
+  invariant(!/(?:transition|assign-owner|unassign-owner|allowed-transitions|pipeline-summary)/.test(JSON.parse(vercel).headers?.[0]?.source || ""), "Vercel no puede mantener una exclusión CRM parcial por endpoint");
   for (const forbidden of ["tenantId", "userId", "actorUserId", "actorMembershipId", "ownerUserId", "ownerId", "role", "permissions", "requestId", "resultingVersion", "payloadHash", "statusChangedAt", "timestamps"]) {
     invariant(adapter.includes(`"${forbidden}"`), `falta protección de ${forbidden}`);
   }
@@ -88,7 +89,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "cliente V2 no autorizado");
 
   const canonical = read("scripts/run-canonical-db-tests.mjs");
-  for (const suite of ["crm-01b3a-http-test.mjs", "crm-01b3a-integration-test.mjs", "crm-01b3a-http-stress-test.mjs", "validate-crm-01b3a-guard-test.mjs"]) {
+  for (const suite of ["crm-01b3a-http-test.mjs", "crm-01b3a-integration-test.mjs", "crm-01b3a-http-stress-test.mjs", "validate-crm-01b3a-guard-test.mjs", "validate-crm-cors-guard.mjs", "validate-crm-cors-guard-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
   const stress = read("scripts/crm-01b3a-http-stress-test.mjs");

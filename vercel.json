@@ -15,7 +15,7 @@
   ],
   "headers": [
     {
-      "source": "/api/((?!crm/pipeline-cases/[^/]+/(transition|assign-owner|unassign-owner|allowed-transitions)/?$).*)",
+      "source": "/api/((?!crm/pipeline-cases/[^/]+/(?:transition|assign-owner|unassign-owner|allowed-transitions)/?$).*)",
       "headers": [
         { "key": "Access-Control-Allow-Credentials", "value": "true" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },

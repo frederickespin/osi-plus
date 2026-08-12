@@ -217,6 +217,16 @@ try {
   invariant(crmDomainDatabaseGuardRun.assertions >= 10, `CRM-01B2 database guard esperaba al menos 10 pruebas y obtuvo ${crmDomainDatabaseGuardRun.assertions}`);
   invariant(crmDomainGuardRun.report.ok === true, "CRM-01B2 guard falló");
   invariant(crmDomainGuardTestsRun.assertions >= 8, `CRM-01B2 guard tests esperaba al menos 8 pruebas y obtuvo ${crmDomainGuardTestsRun.assertions}`);
+  const crmMutationHttpRun = runJson("crm-01b3a-http-test.mjs", "CRM-01B3A/HTTP");
+  const crmMutationHttpIntegrationRun = runJson("crm-01b3a-integration-test.mjs", "CRM-01B3A/INTEGRATION");
+  const crmMutationHttpStressRun = runJson("crm-01b3a-http-stress-test.mjs", "CRM-01B3A/STRESS_20X20");
+  const crmMutationHttpGuardRun = runJson("validate-crm-01b3a-guard.mjs", "CRM-01B3A/GUARD");
+  const crmMutationHttpGuardTestsRun = runJson("validate-crm-01b3a-guard-test.mjs", "CRM-01B3A/GUARD_TESTS");
+  invariant(crmMutationHttpRun.report.ok === true && crmMutationHttpRun.assertions >= 75, `CRM-01B3A HTTP esperaba al menos 75 pruebas y obtuvo ${crmMutationHttpRun.assertions}`);
+  invariant(crmMutationHttpIntegrationRun.report.ok === true && crmMutationHttpIntegrationRun.assertions >= 33, `CRM-01B3A integración esperaba al menos 33 pruebas y obtuvo ${crmMutationHttpIntegrationRun.assertions}`);
+  invariant(crmMutationHttpStressRun.report.ok === true && crmMutationHttpStressRun.report.rounds === 20 && crmMutationHttpStressRun.report.requestsPerRound === 20, "CRM-01B3A estrés HTTP 20x20 no se completó");
+  invariant(crmMutationHttpGuardRun.report.ok === true, "CRM-01B3A guard falló");
+  invariant(crmMutationHttpGuardTestsRun.assertions >= 14, `CRM-01B3A guard tests esperaba al menos 14 pruebas y obtuvo ${crmMutationHttpGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};
@@ -381,6 +391,15 @@ try {
       metrics: { concurrency: crmDomainConcurrencyRun.report.metrics, stress: crmDomainStressRun.report.metrics },
       total: crmDomainRun.assertions + crmDomainConcurrencyRun.assertions + crmDomainAdversarialRun.assertions + crmDomainStressRun.assertions + crmDomainDatabaseGuardRun.assertions + crmDomainGuardTestsRun.assertions,
     },
+    crm01b3a: {
+      http: crmMutationHttpRun.assertions,
+      integration: crmMutationHttpIntegrationRun.assertions,
+      stress: crmMutationHttpStressRun.assertions,
+      guard: crmMutationHttpGuardRun.report.ok,
+      guardTests: crmMutationHttpGuardTestsRun.assertions,
+      metrics: crmMutationHttpStressRun.report.metrics,
+      total: crmMutationHttpRun.assertions + crmMutationHttpIntegrationRun.assertions + crmMutationHttpStressRun.assertions + crmMutationHttpGuardTestsRun.assertions,
+    },
     suites,
     suiteRuns: {
       "MT-01A": { status: "PASS", assertions: 7, durationMs: mtRun.durationMs, exitCode: mtRun.exitCode },
@@ -441,6 +460,11 @@ try {
       "CRM-01B2/DATABASE_GUARD": { status: "PASS", assertions: crmDomainDatabaseGuardRun.assertions, durationMs: crmDomainDatabaseGuardRun.durationMs, exitCode: 0 },
       "CRM-01B2/GUARD": { status: "PASS", assertions: 0, durationMs: crmDomainGuardRun.durationMs, exitCode: 0 },
       "CRM-01B2/GUARD_TESTS": { status: "PASS", assertions: crmDomainGuardTestsRun.assertions, durationMs: crmDomainGuardTestsRun.durationMs, exitCode: 0 },
+      "CRM-01B3A/HTTP": { status: "PASS", assertions: crmMutationHttpRun.assertions, durationMs: crmMutationHttpRun.durationMs, exitCode: 0 },
+      "CRM-01B3A/INTEGRATION": { status: "PASS", assertions: crmMutationHttpIntegrationRun.assertions, durationMs: crmMutationHttpIntegrationRun.durationMs, exitCode: 0 },
+      "CRM-01B3A/STRESS_20X20": { status: "PASS", assertions: crmMutationHttpStressRun.assertions, durationMs: crmMutationHttpStressRun.durationMs, exitCode: 0 },
+      "CRM-01B3A/GUARD": { status: "PASS", assertions: 0, durationMs: crmMutationHttpGuardRun.durationMs, exitCode: 0 },
+      "CRM-01B3A/GUARD_TESTS": { status: "PASS", assertions: crmMutationHttpGuardTestsRun.assertions, durationMs: crmMutationHttpGuardTestsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

@@ -5,6 +5,12 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const DOMAIN = "api/_lib/pipelineCaseDomain.js";
+const AUTHORIZED_CONSUMERS = Object.freeze([
+  "api/crm/pipeline-cases/[id]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[id]/assign-owner.js",
+  "api/crm/pipeline-cases/[id]/transition.js",
+  "api/crm/pipeline-cases/[id]/unassign-owner.js",
+]);
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const MIGRATION_HASH = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
 
@@ -90,10 +96,10 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
     if (/pipelineCase\s*\.\s*(?:update|updateMany|upsert|delete|deleteMany)\s*\(|UPDATE\s+"osi"\."osi_pipeline_cases"/i.test(source)) mutations.push(path);
     if (/pipelineCaseCommand\s*\.\s*create\s*\(|INSERT\s+INTO\s+"osi"\."pipeline_case_commands"/i.test(source)) journalBypasses.push(path);
   }
-  invariant(consumers.length === 0, `consumidores runtime: ${consumers.join(", ")}`);
+  invariant(JSON.stringify([...new Set(consumers)].sort()) === JSON.stringify([...AUTHORIZED_CONSUMERS]), `consumidores runtime: ${consumers.join(", ")}`);
   invariant(mutations.length === 0, `bypass de mutación: ${mutations.join(", ")}`);
   invariant(journalBypasses.length === 0, `bypass de journal: ${journalBypasses.join(", ")}`);
-  invariant(!allFiles.some((path) => /^api\/crm\/.+(?:create|update|transition|assign|command).+\.js$/i.test(path)), "endpoint de mutación no autorizado");
+  invariant(!allFiles.some((path) => /^api\/crm\/.+(?:create|update|transition|assign|command).+\.js$/i.test(path) && !AUTHORIZED_CONSUMERS.includes(path)), "endpoint de mutación no autorizado");
   invariant(env.CRM_PIPELINE_RUNTIME_MODE === undefined || env.CRM_PIPELINE_RUNTIME_MODE === "DISABLED", "CRM debe permanecer DISABLED");
   invariant(String(env.MT01B_AUTH_MODE || "LEGACY").toUpperCase() !== "HYBRID", "HYBRID no autorizado");
   invariant(String(env.MT01B_TENANT_SWITCH_ENABLED || "false").toLowerCase() !== "true", "tenant switch no autorizado");
@@ -103,7 +109,7 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
   invariant(canonical.includes("process.env.CRM01B2_TEST_DATABASE_URL = process.env.DATABASE_URL"), "runner canónico no transfiere URL local CRM-01B2");
   const target = read("scripts/crm-01b2-local-target.mjs");
   for (const required of ["127.0.0.1", "55432", "osi_crm01b2_local", "neon.branch_id", "no existe fallback"]) invariant(target.includes(required), `guardia local incompleta: ${required}`);
-  return Object.freeze({ ok: true, migrations: 16, runtimeConsumers: 0, mutationBypasses: 0, crmMode: "DISABLED", advisoryLock: "TRY", lockOrder: Object.freeze(["REQUEST", "CASE"]), blockedTransitions: Object.freeze(["SURVEY_SCHEDULED", "WON"]), approved: "FROZEN" });
+  return Object.freeze({ ok: true, migrations: 16, runtimeConsumers: AUTHORIZED_CONSUMERS.length, mutationBypasses: 0, crmMode: "DISABLED", advisoryLock: "TRY", lockOrder: Object.freeze(["REQUEST", "CASE"]), blockedTransitions: Object.freeze(["SURVEY_SCHEDULED", "WON"]), approved: "FROZEN" });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

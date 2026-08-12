@@ -9,4 +9,3 @@ export const createPipelineAssignOwnerHandler = (options = {}) => createAssignOw
 });
 
 export default createPipelineAssignOwnerHandler();
-

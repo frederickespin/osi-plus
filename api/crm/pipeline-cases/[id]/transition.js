@@ -9,4 +9,3 @@ export const createPipelineTransitionHandler = (options = {}) => createTransitio
 });
 
 export default createPipelineTransitionHandler();
-

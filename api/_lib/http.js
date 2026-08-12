@@ -45,11 +45,11 @@ class JsonBodyError extends Error {
   }
 }
 
-function withCommonHeaders(handler) {
+function withCommonHeaders(handler, { handleOptions = true } = {}) {
   return async (req, res) => {
     setCors(res);
 
-    if (req.method === "OPTIONS") {
+    if (handleOptions && req.method === "OPTIONS") {
       return res.status(204).end();
     }
 

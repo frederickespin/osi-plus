@@ -42,7 +42,10 @@ try {
     invariant(Number(newStatuses[0].count) === 0, "CRM01B1_ROLLBACK_NEW_STATUS_IN_USE");
     invariant(Number(history[0].count) === 1, "CRM01B1_ROLLBACK_HISTORY_INVALID");
 
+    await tx.$executeRawUnsafe(`DROP TRIGGER "pipeline_cases_coherent_command_constraint" ON "osi"."osi_pipeline_cases"`);
+    await tx.$executeRawUnsafe(`DROP FUNCTION "osi"."pipeline_cases_require_coherent_command"()`);
     await tx.$executeRawUnsafe(`DROP TABLE "osi"."pipeline_case_commands"`);
+    await tx.$executeRawUnsafe(`DROP FUNCTION "osi"."pipeline_case_commands_validate_case_state"()`);
     await tx.$executeRawUnsafe(`DROP FUNCTION "osi"."pipeline_case_commands_reject_mutation"()`);
     await tx.$executeRawUnsafe(`DROP TYPE "osi"."PipelineCaseCommandType"`);
     await tx.$executeRawUnsafe(`DROP TYPE "osi"."PipelineCaseEvidenceType"`);

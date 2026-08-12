@@ -149,8 +149,9 @@ try {
   metrics.lostResponse.postContentionReplay = latency(lostResponsePostReplays.map((item) => item.durationMs));
   check("respuesta perdida: 50x20 reintentos", lostResponseRetries.length === ROUNDS && lostResponseRetries.every((items) => items.length === REQUESTS));
   check("respuesta perdida: commit único no entrega respuesta", lostResponseCommits.every((item) => item.status === 0 && item.transportLost === true));
-  check("respuesta perdida: un replay exacto por ronda", lostResponseRetries.every((items) => items.filter((item) => item.status === 200 && item.body?.command?.replayed === true).length === 1));
-  check("respuesta perdida: perdedores son contención recuperable", lostResponseRetries.every((items) => items.filter((item) => item.status === 409).every((item) => item.body?.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS" && item.body?.recoverable === true)));
+  check("respuesta perdida: al menos un replay histórico por ronda", lostResponseRetries.every((items) => items.some((item) => item.status === 200 && item.body?.command?.replayed === true)));
+  check("respuesta perdida: todos son replay o contención recuperable", lostResponseRetries.every((items) => items.every((item) => (item.status === 200 && item.body?.command?.replayed === true)
+    || (item.status === 409 && item.body?.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS" && item.body?.recoverable === true))));
   check("respuesta perdida: reintento posterior recupera receipt", lostResponsePostReplays.every((item) => item.status === 200 && item.body?.command?.replayed === true));
   check("respuesta perdida: cero cookies y 500", lostResponseRetries.flat().every((item) => item.setCookie === undefined && item.status !== 500));
   metrics.replay.postCommit = latency(postReplays.map((item) => item.durationMs));

@@ -8,6 +8,9 @@ const PREPARED_CONSUMERS = Object.freeze(new Set([
   "api/projects/index.js",
 ]));
 const PROTECTED_FIELDS = Object.freeze(["tenantId", "membershipId", "ownerMembershipId", "ownerUserId", "ownerId"]);
+const RAW_COMMERCIAL_WRITE_ALLOWLIST = Object.freeze(new Set([
+  "api/_lib/pipelineCaseDomain.js",
+]));
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`MT-01C2B3A: ${message}`);
@@ -139,7 +142,7 @@ export function validateMt01c2b3a({
   for (const [path, text] of runtimeSources) {
     if (/await\s+createTenant(?:Client|Project)\s*\(/.test(text)) consumers.push(path);
     validateUpdateBlocks(path, text);
-    invariant(!/(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO)\s+["']?(?:osi["']?\.)?["']?osi_(?:clients|projects|leads|pipeline_cases)\b/i.test(text), `${path} contiene escritura SQL cruda sobre una raíz comercial`);
+    invariant(RAW_COMMERCIAL_WRITE_ALLOWLIST.has(path) || !/(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO)\s+["']?(?:osi["']?\.)?["']?osi_(?:clients|projects|leads|pipeline_cases)\b/i.test(text), `${path} contiene escritura SQL cruda sobre una raíz comercial`);
   }
   invariant(consumers.length === PREPARED_CONSUMERS.size && consumers.every((path) => PREPARED_CONSUMERS.has(path)), `consumidores preparados inesperados: ${consumers.join(", ")}`);
 

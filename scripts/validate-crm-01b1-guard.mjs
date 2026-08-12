@@ -1,10 +1,12 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const EXPECTED_MIGRATIONS = 16;
+const EXPECTED_MIGRATION_SHA256 = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
 const RUNTIME_SERVICE_ALLOWLIST = Object.freeze([]);
 const JOURNAL_FIXTURE_ALLOWLIST = Object.freeze([
   "scripts/crm-01b1-test.mjs",
@@ -70,6 +72,7 @@ export function validateCrm01b1Guard({
   invariant(/version\s+Int\s+@default\(1\)/.test(schema), "falta version en PipelineCase");
   invariant(/pipelineCaseId\s+String\?\s+@map\("pipeline_case_id"\)/.test(schema), "falta Project.pipelineCaseId nullable");
   invariant(!/updatedAt[\s\S]{0,80}(?:version|expectedVersion|resultingVersion)|(?:version|expectedVersion|resultingVersion)[\s\S]{0,80}updatedAt/i.test(sql), "updatedAt no puede usarse como versión");
+  invariant(createHash("sha256").update(sql).digest("hex") === EXPECTED_MIGRATION_SHA256, "checksum de migracion 16 cambio; Q2 debe repetirse");
 
   const files = repositoryFiles(root);
   const runtime = files.filter((file) => /^(?:api|src)\/.+\.(?:[cm]?[jt]sx?)$/.test(file));
@@ -118,6 +121,18 @@ export function validateCrm01b1Guard({
   for (const suite of ["crm-01b1-concurrency-test.mjs", "crm-01b1-dry-run-fixture-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
+  const workflow = read(".github/workflows/ci.yml");
+  invariant(workflow.includes("node scripts/crm-01b1-sql-drift-baseline.mjs"), "CI no exige baseline SQL-only");
+  const driftGuard = read("scripts/crm-01b1-sql-drift-baseline.mjs");
+  for (const signature of [
+    "0983c8c2474f18152b093842104ef9aef25f03fb78861c9e681da2249a64a385",
+    "cf48b58f82cdaa9f2ce4e7bb3f467848ee32a3b83043977d56a896f27888dd35",
+    "f220349f2c2cbdd2ae083f57ba2ae18ee66716873ffbea8057ac60147853dc1d",
+    "4d5959dc99b03a7866bc3e038fcaea611fe665a5412cb235522cc05ab5e011d3",
+  ]) invariant(driftGuard.includes(signature), `baseline ${signature} no esta congelada`);
+  const design = read("docs/CRM-01B1-PIPELINE-MUTATION-AUTHORITY.md");
+  invariant(/servidor PostgreSQL[\s\S]*transaction_timestamp\(\)/i.test(design), "autoridad temporal PostgreSQL no documentada");
+  invariant(/no (?:proviene|acepta)[\s\S]{0,100}(?:navegador|proceso Node)/i.test(design), "relojes cliente/Node no estan prohibidos");
   const historicalBackfillTest = read("scripts/mt-01c2b2-test.mjs");
   invariant(/DISABLE TRIGGER "pipeline_cases_coherent_command_constraint"/.test(historicalBackfillTest)
     && /ENABLE TRIGGER "pipeline_cases_coherent_command_constraint"/.test(historicalBackfillTest)

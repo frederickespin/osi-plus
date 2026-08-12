@@ -253,6 +253,9 @@ jobs:
           test "$diff_status" -eq 0
           grep -Fxq -- "-- This is an empty migration." "$RUNNER_TEMP/canonical-drift.sql"
 
+      - name: Verify explicit SQL-only catalog baseline
+        run: node scripts/crm-01b1-sql-drift-baseline.mjs
+
       - name: Verify canonical history and safe modes
         run: node scripts/validate-canonical-ci.mjs
 

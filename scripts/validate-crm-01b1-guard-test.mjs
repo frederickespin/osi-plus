@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateCrm01b1Guard } from "./validate-crm-01b1-guard.mjs";
+import { validateCrm01b1CatalogSummary } from "./crm-01b1-sql-drift-baseline.mjs";
 
 const results = [];
 const root = process.cwd();
@@ -12,6 +13,12 @@ function check(name, condition) {
 function rejected(name, options, pattern) {
   let error;
   try { validateCrm01b1Guard({ root, ...options }); } catch (caught) { error = caught; }
+  check(name, pattern.test(String(error?.message || "")));
+}
+
+function rejectedCatalog(name, catalog, pattern) {
+  let error;
+  try { validateCrm01b1CatalogSummary(catalog); } catch (caught) { error = caught; }
   check(name, pattern.test(String(error?.message || "")));
 }
 
@@ -27,6 +34,7 @@ try {
   const sql = read(sqlPath);
   rejected("backfill de estados rechazado", { overrides: { [sqlPath]: `${sql}\nUPDATE osi.osi_pipeline_cases SET status = 'WON';\n` } }, /DML de datos/);
   rejected("APPROVED a WON rechazado", { overrides: { [sqlPath]: sql.replace("-- Cambio aditivo", "-- APPROVED se convierte en WON\n-- Cambio aditivo") } }, /APPROVED/);
+  rejected("checksum de migración congelado", { overrides: { [sqlPath]: sql.replace("-- CRM-01B1", "-- CRM-01B1 auditada") } }, /checksum/);
   rejected("relación automática rechazada", { overrides: { [sqlPath]: `${sql}\nUPDATE osi.osi_projects SET pipeline_case_id = 'auto';\n` } }, /DML de datos/);
   rejected("trigger de coherencia journal/caso congelado", {
     overrides: { [sqlPath]: sql.replace("pipeline_case_commands_validate_case_state_trigger", "pipeline_case_commands_validation_removed") },
@@ -44,6 +52,20 @@ try {
   rejected("frontend CRM rechazado", { extraSources: { "src/crm/pipelineMutation.ts": "export const lossReasonCode = 'PRICE';" } }, /frontend/);
   const target = read("scripts/crm-01b1-local-target.mjs");
   rejected("fallback DATABASE_URL rechazado", { overrides: { "scripts/crm-01b1-local-target.mjs": target.replace("process.env.CRM01B1_TEST_DATABASE_URL", "process.env.DATABASE_URL") } }, /fallback/);
+  const workflow = read(".github/workflows/ci.yml");
+  rejected("baseline SQL-only obligatoria en CI", {
+    overrides: { ".github/workflows/ci.yml": workflow.replace("node scripts/crm-01b1-sql-drift-baseline.mjs", "echo baseline-removed") },
+  }, /CI no exige baseline/);
+  rejectedCatalog("objeto agregado a baseline rechazado", {
+    count: 4261,
+    sha256: "f220349f2c2cbdd2ae083f57ba2ae18ee66716873ffbea8057ac60147853dc1d",
+    categories: {},
+  }, /conteo total/);
+  rejectedCatalog("definición cambiada en baseline rechazada", {
+    count: 4260,
+    sha256: "0".repeat(64),
+    categories: {},
+  }, /firma total/);
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } catch (error) {
   process.stdout.write(`${JSON.stringify({ ok: false, assertions: results.filter((item) => item.passed).length, error: error.message, results }, null, 2)}\n`);

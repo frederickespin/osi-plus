@@ -4,7 +4,16 @@ import { randomUUID } from "node:crypto";
 import { Mt01bAuthError, resolveMt01bAuthPolicy } from "./authPolicy.js";
 
 // En producción JWT_SECRET debe estar definido; el fallback es solo para desarrollo local.
-const JWT_SECRET = process.env.JWT_SECRET || "dev-insecure-secret";
+export function legacyJwtSecretMaterial(env = process.env) {
+  const secret = env.JWT_SECRET || "dev-insecure-secret";
+  const production = env.VERCEL_ENV === "production" || env.NODE_ENV === "production";
+  if (production && (!env.JWT_SECRET || secret === "dev-insecure-secret")) {
+    throw new Error("JWT_SECRET must be set in production.");
+  }
+  return secret;
+}
+
+const JWT_SECRET = legacyJwtSecretMaterial(process.env);
 
 const isProduction =
   process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";

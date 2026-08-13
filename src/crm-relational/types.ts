@@ -52,6 +52,20 @@ export type CrmPipelineSummary = Readonly<{
   sla: Readonly<{ overdue: null; basis: "UNAVAILABLE" }>;
 }>;
 
+export type CrmOwnerOption = Readonly<{
+  presentationKey: string;
+  ownerRef: string;
+  displayName: string;
+  role: "V";
+}>;
+
+export type CrmOwnerCatalog = Readonly<{
+  total: number;
+  page: number;
+  pageSize: number;
+  data: readonly CrmOwnerOption[];
+}>;
+
 export type CrmAllowedTransition = Readonly<{
   toStatus: PipelineCaseStatus;
   evidenceType: EvidenceType | null;
@@ -93,7 +107,8 @@ export type TransitionInput = Readonly<{
 export type AssignOwnerInput = Readonly<{
   caseId: string;
   expectedVersion: number;
-  ownerMembershipId: string;
+  ownerRef: string;
+  renewOwnerRef?: (signal: AbortSignal) => Promise<string | null>;
 }>;
 
 export type UnassignOwnerInput = Readonly<{

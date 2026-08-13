@@ -39,7 +39,7 @@ Tras éxito se releen lista, resumen, detalle y transiciones. No hay estado opti
 | Desasignar owner | control visible | oculto | API/dominio |
 | Asignar/reasignar | adaptador tipado disponible; UI bloqueada | no | falta catálogo CRM seguro |
 
-La UI no expone un campo libre de `ownerMembershipId`. Las APIs actuales reciben ese identificador para el comando, pero no publican un catálogo de owners autorizado que permita construir un selector sin exponer IDs internos. Activar esa acción requiere primero un endpoint CRM de referencias opacas/seguras; no se reutiliza `/api/users` ni se pide al operador pegar IDs.
+La UI no expone un campo libre de `ownerMembershipId`. El catálogo B3B3 entrega referencias cifradas de corta duración y el selector usa sólo claves efímeras locales; no se reutiliza `/api/users` ni se pide al operador pegar IDs.
 
 ## Contratos deliberadamente incompletos
 

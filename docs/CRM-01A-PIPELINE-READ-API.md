@@ -58,10 +58,9 @@ Todos los contratos incluyen `Cache-Control: private, no-store` y `Vary: Authori
 | `mode` | `LOCAL`, `EXPORT`, `IMPORT` | Filtro exacto. |
 | `serviceType` | string exacto, máximo 80 | Filtro exacto. |
 | `q` | máximo 100 | Busca sólo caseCode, clientName, origen y destino. |
-| `ownerMembershipId` | máximo 128 | Filtra la FK relacional, nunca `ownerId`. |
 | `unassigned` | `true` o `false` exacto | `true` selecciona el conjunto owner NULL. |
 
-Campos desconocidos, arrays, espacios de borde o combinaciones `ownerMembershipId + unassigned=true` se rechazan. El orden es `updatedAt DESC, id ASC` y count/página contienen siempre `tenantId`.
+Campos desconocidos, arrays o espacios de borde se rechazan. Los IDs internos de owner no son filtros públicos; se admite únicamente `unassigned=true|false`. El orden es `updatedAt DESC, id ASC` y count/página contienen siempre `tenantId`.
 
 ## Riesgos reservados
 

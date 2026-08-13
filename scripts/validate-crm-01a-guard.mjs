@@ -16,6 +16,9 @@ const CRM_MUTATION_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/[id]/unassign-owner.js",
 ]);
 const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES]);
+const AUTHORIZED_FRONTEND_CONSUMERS = Object.freeze([
+  "src/crm-relational/api.ts",
+]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`CRM-01A: ${message}`);
@@ -108,7 +111,11 @@ export function validateCrm01aGuard({
   }
   for (const [path, source] of Object.entries(runtimeSources)) {
     if (path.startsWith("src/")) {
-      invariant(!/api\/crm|crmPipelineRead|CRM_PIPELINE_RUNTIME_MODE/.test(source), `${path} conecta CRM-01A al frontend`);
+      if (AUTHORIZED_FRONTEND_CONSUMERS.includes(path)) {
+        invariant(/API_PREFIX\s*=\s*["']\/api\/crm["']/.test(source), `${path} no usa el adaptador CRM autorizado`);
+      } else {
+        invariant(!/api\/crm|crmPipelineRead|CRM_PIPELINE_RUNTIME_MODE/.test(source), `${path} conecta CRM-01A al frontend fuera del adaptador autorizado`);
+      }
     }
     if (path.startsWith("api/") && !path.startsWith("api/_lib/") && !AUTHORIZED_CRM_ROUTES.includes(path)) {
       invariant(!/crmPipelineRead|api\/crm|CRM_PIPELINE_RUNTIME_MODE/.test(source), `${path} activa CRM-01A fuera de las rutas autorizadas`);
@@ -131,7 +138,7 @@ export function validateCrm01aGuard({
     permission: "pipeline:view",
     baseRoles: Object.freeze(["A", "V"]),
     legacyHeaderExceptions: authInventory.legacyHeaderExceptions,
-    frontendConsumers: 0,
+    frontendConsumers: AUTHORIZED_FRONTEND_CONSUMERS.length,
     writeEndpoints: 0,
   });
 }

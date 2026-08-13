@@ -285,10 +285,15 @@ function assertTransition(actor, pipelineCase, command) {
   } else if (command.reasonCode !== null) fail("CRM_PIPELINE_COMMAND_INVALID", 400, "La transición no admite reasonCode.");
 }
 async function resolveOwner(tx, actor, membershipId) {
+  // Este conjunto sólo vuelve inelegible a un owner; no autoriza acciones.
+  const deniedPermissions = ["pipeline:view", "pipeline:update", "pipeline:transition"];
   const rows = await tx.$queryRaw(Prisma.sql`
-    SELECT m."id", m."user_id", m."role"::text AS "role", m."status"::text AS "membership_status", u."status" AS "user_status"
+    SELECT m."id", m."user_id", m."role"::text AS "role", m."status"::text AS "membership_status",
+      m."denied_permissions", u."status" AS "user_status"
     FROM "osi"."tenant_memberships" m JOIN "osi"."osi_users" u ON u."id"=m."user_id"
-    WHERE m."tenant_id"=${actor.tenantId} AND m."id"=${membershipId} LIMIT 1 FOR KEY SHARE OF m, u
+    WHERE m."tenant_id"=${actor.tenantId} AND m."id"=${membershipId}
+      AND NOT (m."denied_permissions" && ${deniedPermissions}::text[])
+    LIMIT 1 FOR UPDATE OF m, u
   `);
   const row = rows[0];
   if (!row || row.role !== "V" || row.membership_status !== "ACTIVE" || String(row.user_status).toLowerCase() !== "active") fail("CRM_PIPELINE_OWNER_INELIGIBLE", 409, "El owner no es elegible.");

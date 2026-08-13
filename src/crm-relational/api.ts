@@ -254,12 +254,11 @@ export class CrmPipelineApi {
     return Object.freeze({ caseId: text(row.caseId)!, commandType: row.commandType as CrmMutationReceipt["commandType"], previousVersion: integer(row.previousVersion, 1), resultingVersion: integer(row.resultingVersion, 2), previousStatus: status(row.previousStatus), resultingStatus: status(row.resultingStatus), replayed: row.replayed });
   }
 
-  private intent(path: string, initialBody: unknown, renewOwnerRef?: (signal: AbortSignal) => Promise<string | null>): CrmCommandIntent {
+  private intent(path: string, initialBody: unknown): CrmCommandIntent {
     const key = crypto.randomUUID();
-    let body = initialBody;
+    const body = initialBody;
     let cancelled = false;
     let automaticRetryUsed = false;
-    let ownerRefRenewalUsed = false;
     let activeController: AbortController | null = null;
     const run = async (signal?: AbortSignal): Promise<CrmMutationReceipt> => {
       if (cancelled) throw new CrmPipelineError(409, "CRM_PIPELINE_INTENT_CANCELLED");
@@ -268,14 +267,6 @@ export class CrmPipelineApi {
       const unlink = linkedSignal(signal, controller);
       try { return await this.mutate(path, key, body, controller.signal); }
       catch (error) {
-        if (error instanceof CrmPipelineError && error.code === "CRM_PIPELINE_OWNER_REF_EXPIRED"
-          && renewOwnerRef && !ownerRefRenewalUsed) {
-          ownerRefRenewalUsed = true;
-          const renewed = await renewOwnerRef(controller.signal);
-          if (!renewed) throw new CrmPipelineError(409, "CRM_PIPELINE_OWNER_INELIGIBLE");
-          body = { ...(body as Record<string, unknown>), ownerRef: renewed };
-          return this.mutate(path, key, body, controller.signal);
-        }
         if (error instanceof CrmPipelineError && error.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS" && !automaticRetryUsed) {
           automaticRetryUsed = true;
           const retryAfterMs = error.retryAfterMs ?? SAFE_RETRY_AFTER_MS;
@@ -301,11 +292,7 @@ export class CrmPipelineApi {
     return this.intent(`/pipeline-cases/${encodeURIComponent(input.caseId)}/transition`, { expectedVersion: input.expectedVersion, toStatus: input.toStatus, reasonCode: input.reasonCode, evidence: input.evidence });
   }
   assignOwner(input: AssignOwnerInput): CrmCommandIntent {
-    return this.intent(
-      `/pipeline-cases/${encodeURIComponent(input.caseId)}/assign-owner`,
-      { expectedVersion: input.expectedVersion, ownerRef: input.ownerRef },
-      input.renewOwnerRef,
-    );
+    return this.intent(`/pipeline-cases/${encodeURIComponent(input.caseId)}/assign-owner`, { expectedVersion: input.expectedVersion, ownerRef: input.ownerRef });
   }
   unassignOwner(input: UnassignOwnerInput): CrmCommandIntent {
     return this.intent(`/pipeline-cases/${encodeURIComponent(input.caseId)}/unassign-owner`, { expectedVersion: input.expectedVersion });

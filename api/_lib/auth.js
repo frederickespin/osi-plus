@@ -4,7 +4,17 @@ import { randomUUID } from "node:crypto";
 import { Mt01bAuthError, resolveMt01bAuthPolicy } from "./authPolicy.js";
 
 // En producción JWT_SECRET debe estar definido; el fallback es solo para desarrollo local.
-export function legacyJwtSecretMaterial(env = process.env) {
+export function legacyJwtSecretMaterial(env = process.env, { requireConfigured = false } = {}) {
+  if (requireConfigured) {
+    const configured = env.JWT_SECRET;
+    const byteLength = typeof configured === "string" ? Buffer.byteLength(configured, "utf8") : 0;
+    if (typeof configured !== "string" || byteLength < 32 || byteLength > 4_096
+      || configured !== configured.trim() || configured === "dev-insecure-secret"
+      || /[\u0000-\u001f\u007f\ufeff]/.test(configured)) {
+      throw new Error("JWT_SECRET configuration is invalid.");
+    }
+    return configured;
+  }
   const secret = env.JWT_SECRET || "dev-insecure-secret";
   const production = env.VERCEL_ENV === "production" || env.NODE_ENV === "production";
   if (production && (!env.JWT_SECRET || secret === "dev-insecure-secret")) {

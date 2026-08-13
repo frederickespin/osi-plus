@@ -1,16 +1,17 @@
 import { Prisma } from "@prisma/client";
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
-import { issueCrmOwnerRef, readCrmOwnerRef } from "./crmOwnerRef.js";
+import { issueCrmOwnerRefs, readCrmOwnerRef } from "./crmOwnerRef.js";
 import { PERMS } from "./rbac.js";
 
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_SEARCH_LENGTH = 120;
 const OWNER_REQUIRED_PERMISSIONS = Object.freeze([
-  PERMS.PIPELINE_VIEW,
-  PERMS.PIPELINE_UPDATE,
-  PERMS.PIPELINE_TRANSITION,
+  "pipeline:view",
+  "pipeline:update",
+  "pipeline:transition",
 ]);
+const NORMALIZED_OWNER_NAME_SQL = Prisma.sql`lower(normalize(regexp_replace(btrim(u."name"), '[[:space:]]+', ' ', 'g'), NFKC))`;
 
 function fail(code, status) {
   throw new CommercialTenancyError(code, status);
@@ -55,51 +56,51 @@ export async function listCrmPipelineOwnerOptions(context, query, {
   prisma,
   env = process.env,
   now = Date.now,
-  issueOwnerRef = issueCrmOwnerRef,
+  issueOwnerRefs = issueCrmOwnerRefs,
 } = {}) {
   assertCatalogActor(context);
   const tenantId = assertIdentity(context?.tenantId);
   const input = normalizeOwnerCatalogQuery(query);
   const deniedPermissions = OWNER_REQUIRED_PERMISSIONS;
-  const ambiguous = await prisma.$queryRaw(Prisma.sql`
-    SELECT lower(normalize(btrim(u."name"), NFKC)) AS "normalized_name"
-    FROM "osi"."tenant_memberships" m
-    JOIN "osi"."osi_users" u ON u."id" = m."user_id"
-    WHERE m."tenant_id" = ${tenantId}
-      AND m."status"::text = 'ACTIVE'
-      AND m."role"::text = 'V'
-      AND lower(u."status") = 'active'
-      AND btrim(u."name") <> ''
-      AND char_length(btrim(u."name")) <= 191
-      AND u."name" !~ '[[:cntrl:]]'
-      AND NOT (m."denied_permissions" && ${deniedPermissions}::text[])
-    GROUP BY lower(normalize(btrim(u."name"), NFKC))
-    HAVING count(*) > 1
-    LIMIT 1
-  `);
-  if (ambiguous.length > 0) fail("CRM_PIPELINE_OWNER_CATALOG_AMBIGUOUS", 409);
-
   const search = input.search ? `%${input.search.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%` : null;
+  const searchCondition = search === null
+    ? Prisma.empty
+    : Prisma.sql`AND e."display_name" ILIKE ${search} ESCAPE '\\'`;
   const rows = await prisma.$queryRaw(Prisma.sql`
-    SELECT m."id" AS "membership_id", m."user_id", btrim(u."name") AS "display_name",
-      count(*) OVER()::int AS "total"
-    FROM "osi"."tenant_memberships" m
-    JOIN "osi"."osi_users" u ON u."id" = m."user_id"
-    WHERE m."tenant_id" = ${tenantId}
-      AND m."status"::text = 'ACTIVE'
-      AND m."role"::text = 'V'
-      AND lower(u."status") = 'active'
-      AND btrim(u."name") <> ''
-      AND char_length(btrim(u."name")) <= 191
-      AND u."name" !~ '[[:cntrl:]]'
-      AND NOT (m."denied_permissions" && ${deniedPermissions}::text[])
-      AND (${search}::text IS NULL OR normalize(btrim(u."name"), NFKC) ILIKE ${search} ESCAPE '\\')
-    ORDER BY lower(normalize(btrim(u."name"), NFKC)), btrim(u."name"), m."id"
-    LIMIT ${input.pageSize} OFFSET ${input.offset}
+    WITH eligible AS MATERIALIZED (
+      SELECT m."id" AS "membership_id", m."user_id", btrim(u."name") AS "display_name",
+        ${NORMALIZED_OWNER_NAME_SQL} AS "normalized_name"
+      FROM "osi"."tenant_memberships" m
+      JOIN "osi"."osi_users" u ON u."id" = m."user_id"
+      WHERE m."tenant_id" = ${tenantId}
+        AND m."status"::text = 'ACTIVE'
+        AND m."role"::text = 'V'
+        AND lower(u."status") = 'active'
+        AND btrim(u."name") <> ''
+        AND char_length(btrim(u."name")) <= 191
+        AND u."name" !~ '[[:cntrl:]]'
+        AND NOT (m."denied_permissions" && ${deniedPermissions}::text[])
+    ), ambiguity AS (
+      SELECT EXISTS (
+        SELECT 1 FROM eligible GROUP BY "normalized_name" HAVING count(*) > 1 LIMIT 1
+      ) AS "ambiguous"
+    ), page AS (
+      SELECT e."membership_id", e."user_id", e."display_name", count(*) OVER()::int AS "total"
+      FROM eligible e
+      WHERE true ${searchCondition}
+      ORDER BY e."normalized_name", e."display_name", e."membership_id"
+      LIMIT ${input.pageSize} OFFSET ${input.offset}
+    )
+    SELECT page."membership_id", page."user_id", page."display_name", COALESCE(page."total", 0)::int AS "total",
+      ambiguity."ambiguous"
+    FROM ambiguity LEFT JOIN page ON true
   `);
+  if (rows[0]?.ambiguous === true) fail("CRM_PIPELINE_OWNER_CATALOG_AMBIGUOUS", 409);
+  const pageRows = rows.filter((row) => row.membership_id !== null);
   const total = rows.length > 0 ? Number(rows[0].total) : 0;
-  const data = rows.map((row) => Object.freeze({
-    ownerRef: issueOwnerRef({ tenantId, membershipId: row.membership_id, userId: row.user_id }, { env, now }),
+  const ownerRefs = issueOwnerRefs(pageRows.map((row) => ({ tenantId, membershipId: row.membership_id, userId: row.user_id })), { env, now });
+  const data = pageRows.map((row, index) => Object.freeze({
+    ownerRef: ownerRefs[index],
     displayName: row.display_name,
     role: "V",
   }));

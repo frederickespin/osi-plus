@@ -108,7 +108,6 @@ export type AssignOwnerInput = Readonly<{
   caseId: string;
   expectedVersion: number;
   ownerRef: string;
-  renewOwnerRef?: (signal: AbortSignal) => Promise<string | null>;
 }>;
 
 export type UnassignOwnerInput = Readonly<{

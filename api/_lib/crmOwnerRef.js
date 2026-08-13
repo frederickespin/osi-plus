@@ -25,9 +25,15 @@ function requiredIdentity(value) {
 }
 
 function key(env) {
+  let secret;
+  try {
+    secret = legacyJwtSecretMaterial(env, { requireConfigured: true });
+  } catch {
+    throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
+  }
   return Buffer.from(hkdfSync(
     "sha256",
-    Buffer.from(legacyJwtSecretMaterial(env), "utf8"),
+    Buffer.from(secret, "utf8"),
     HKDF_SALT,
     Buffer.from(CRM_OWNER_REF_HKDF_INFO, "utf8"),
     32,
@@ -53,8 +59,7 @@ function decoded(value) {
   } catch { invalid(); }
 }
 
-export function issueCrmOwnerRef(identity, { env = process.env, now = Date.now, random = randomBytes } = {}) {
-  const issuedAt = seconds(typeof now === "function" ? now() : now);
+function issueWithKey(identity, derivedKey, issuedAt, random) {
   const payload = Buffer.from(JSON.stringify({
     v: CRM_OWNER_REF_VERSION,
     aud: CRM_OWNER_REF_AUDIENCE,
@@ -66,10 +71,22 @@ export function issueCrmOwnerRef(identity, { env = process.env, now = Date.now, 
   }), "utf8");
   const iv = Buffer.from(random(IV_BYTES));
   if (iv.length !== IV_BYTES) invalid();
-  const cipher = createCipheriv("aes-256-gcm", key(env), iv);
+  const cipher = createCipheriv("aes-256-gcm", derivedKey, iv);
   cipher.setAAD(Buffer.from(`${PREFIX}.${CRM_OWNER_REF_AUDIENCE}`, "utf8"));
   const ciphertext = Buffer.concat([cipher.update(payload), cipher.final()]);
   return `${PREFIX}.${encoded(iv)}.${encoded(ciphertext)}.${encoded(cipher.getAuthTag())}`;
+}
+
+export function issueCrmOwnerRef(identity, { env = process.env, now = Date.now, random = randomBytes } = {}) {
+  const issuedAt = seconds(typeof now === "function" ? now() : now);
+  return issueWithKey(identity, key(env), issuedAt, random);
+}
+
+export function issueCrmOwnerRefs(identities, { env = process.env, now = Date.now, random = randomBytes } = {}) {
+  if (!Array.isArray(identities) || identities.length > 100) invalid();
+  const issuedAt = seconds(typeof now === "function" ? now() : now);
+  const derivedKey = key(env);
+  return Object.freeze(identities.map((identity) => issueWithKey(identity, derivedKey, issuedAt, random)));
 }
 
 export function readCrmOwnerRef(ownerRef, { env = process.env, now = Date.now } = {}) {

@@ -56,6 +56,7 @@ function errorMessage(error: CrmPipelineError): string {
   if (error.code === "CRM_PIPELINE_VERSION_CONFLICT") return "La oportunidad cambió. Se recargó su estado actual.";
   if (error.code === "CRM_PIPELINE_IDEMPOTENCY_CONFLICT") return "La intención ya fue usada con datos diferentes. Revisa el caso antes de iniciar otra acción.";
   if (error.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS") return "Otra operación sigue en curso. Puedes reintentar esta misma intención.";
+  if (error.code === "CRM_PIPELINE_OWNER_REF_EXPIRED") return "La selección expiró. Abre de nuevo el catálogo y confirma el vendedor otra vez.";
   if (error.status === 503) return "CRM temporalmente no disponible. Los datos visibles pueden estar desactualizados.";
   return "No fue posible completar la operación CRM.";
 }
@@ -122,15 +123,11 @@ function TransitionForm({ transition, disabled, onSubmit }: { transition: CrmAll
   );
 }
 
-function normalizedPresentationName(value: string): string {
-  return value.normalize("NFKC").trim().toLocaleLowerCase("es");
-}
-
 function OwnerSelector({ api, currentOwnerName, disabled, onAssign }: {
   api: CrmPipelineApi;
   currentOwnerName: string | null;
   disabled: boolean;
-  onAssign(option: CrmOwnerOption, renew: (signal: AbortSignal) => Promise<string | null>): void;
+  onAssign(option: CrmOwnerOption): void;
 }) {
   const [authorized, setAuthorized] = useState(false);
   const [open, setOpen] = useState(false);
@@ -173,14 +170,6 @@ function OwnerSelector({ api, currentOwnerName, disabled, onAssign }: {
     setOpen(false); setOptions([]); setSelectedKey(""); setSearch(""); setError(null);
   };
   const selected = options.find((option) => option.presentationKey === selectedKey) ?? null;
-  const renew = useCallback(async (signal: AbortSignal, intent: CrmOwnerOption) => {
-    const result = await api.ownerOptions({ page: 1, pageSize: 100, search: intent.displayName }, signal);
-    const expected = normalizedPresentationName(intent.displayName);
-    const matches = result.data.filter((option) => option.role === intent.role
-      && normalizedPresentationName(option.displayName) === expected);
-    return matches.length === 1 ? matches[0].ownerRef : null;
-  }, [api]);
-
   if (!authorized && loading) return <p className="text-sm text-slate-500">Verificando autorización de asignación…</p>;
   if (!authorized) return error ? <Alert variant="destructive"><AlertCircle /><AlertTitle>{error.code}</AlertTitle><AlertDescription>{errorMessage(error)}<Button className="mt-2" size="sm" variant="outline" onClick={() => void load("", true)}>Reintentar catálogo</Button></AlertDescription></Alert> : null;
   return <AlertDialog open={open} onOpenChange={(next) => { if (!next) close(); else { setOpen(true); if (options.length === 0) void load("", true); } }}>
@@ -193,7 +182,7 @@ function OwnerSelector({ api, currentOwnerName, disabled, onAssign }: {
         <label className="text-xs">Vendedor<select aria-label="Vendedor elegible" className="mt-1 h-10 w-full rounded-md border px-2 text-sm" value={selectedKey} onChange={(event) => setSelectedKey(event.target.value)}>
           <option value="">Selecciona un vendedor</option>{options.map((option) => <option key={option.presentationKey} value={option.presentationKey}>{option.displayName} · {option.role}</option>)}
         </select>{options.length === 0 && <span className="mt-2 block text-slate-500">No hay vendedores elegibles.</span>}</label>}
-      <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction disabled={!selected || loading} onClick={() => { if (selected) { onAssign(selected, (signal) => renew(signal, selected)); close(); } }}>Confirmar</AlertDialogAction></AlertDialogFooter>
+      <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction disabled={!selected || loading} onClick={() => { if (selected) { onAssign(selected); close(); } }}>Confirmar</AlertDialogAction></AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>;
 }
@@ -202,7 +191,7 @@ function DetailDrawer({ api, role, state, open, busy, actionError, retryIntent, 
   api: CrmPipelineApi;
   role: UserRole; state: DetailState; open: boolean; busy: boolean; actionError: CrmPipelineError | null; retryIntent: CrmCommandIntent | null;
   onOpenChange(open: boolean): void; onTransition(transition: CrmAllowedTransition, reason: string | null, evidence: { type: EvidenceType; id: string } | null): void;
-  onAssign(option: CrmOwnerOption, renew: (signal: AbortSignal) => Promise<string | null>): void;
+  onAssign(option: CrmOwnerOption): void;
   onUnassign(): void; onRetryIntent(): void;
 }) {
   const item = state.data;
@@ -351,9 +340,9 @@ export function RelationalPipelineModule({ userRole, onUnauthorized }: { userRol
     const intent = api.unassignOwner({ caseId: selectedId, expectedVersion: detail.allowed.version });
     void executeIntent(intent);
   };
-  const assign = (option: CrmOwnerOption, renewOwnerRef: (signal: AbortSignal) => Promise<string | null>) => {
+  const assign = (option: CrmOwnerOption) => {
     if (!selectedId || !detail.allowed) return;
-    const intent = api.assignOwner({ caseId: selectedId, expectedVersion: detail.allowed.version, ownerRef: option.ownerRef, renewOwnerRef });
+    const intent = api.assignOwner({ caseId: selectedId, expectedVersion: detail.allowed.version, ownerRef: option.ownerRef });
     void executeIntent(intent);
   };
 

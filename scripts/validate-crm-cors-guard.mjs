@@ -100,7 +100,7 @@ export function validateCrmCorsGuard({
   invariant(globalRule.source === CANONICAL_GLOBAL_API_SOURCE, "la regla global debe excluir todo /api/crm/** sin allowlist parcial");
   invariant(headerValue(globalRule, "access-control-allow-origin") === "*", "CORS heredado no CRM cambió inesperadamente");
   invariant(headerValue(globalRule, "access-control-allow-credentials") === "true", "credenciales heredadas no CRM cambiaron inesperadamente");
-  invariant(!/(?:pipeline-cases|pipeline-summary|transition|assign-owner|unassign-owner|allowed-transitions)/.test(globalRule.source), "se prohíben exclusiones CRM parciales por endpoint");
+  invariant(!/(?:pipeline-cases|pipeline-summary|pipeline-owner-options|transition|assign-owner|unassign-owner|allowed-transitions)/.test(globalRule.source), "se prohíben exclusiones CRM parciales por endpoint");
 
   const matched = unsafeCrmRouteMatches({ root, vercelText, routes });
   invariant(matched.length === 0, `rutas CRM cubiertas por CORS permisivo: ${matched.join(", ")}`);

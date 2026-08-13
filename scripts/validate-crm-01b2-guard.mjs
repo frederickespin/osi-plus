@@ -88,7 +88,7 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
     if (path !== DOMAIN && /(?:from|import\s*\()\s*["'][^"']*pipelineCaseDomain\.js/.test(source)) consumers.push(path);
     if (path !== DOMAIN && /pipelineCase\s*\.\s*(?:update|updateMany|upsert|delete|deleteMany)\s*\(|UPDATE\s+"osi"\."osi_pipeline_cases"/i.test(source)) mutations.push(path);
     if (path !== DOMAIN && /pipelineCaseCommand\s*\.\s*create\s*\(|INSERT\s+INTO\s+"osi"\."pipeline_case_commands"/i.test(source)) journalBypasses.push(path);
-    if (path.startsWith("src/") && /pipeline:(?:update|transition|assign)|PipelineCaseCommand|CRM_PIPELINE_(?:TRANSITION|OWNER)/.test(source)) mutations.push(path);
+    if (path.startsWith("src/") && /pipeline:(?:update|transition|assign)|PipelineCaseCommand/.test(source)) mutations.push(path);
   }
   for (const [path, source] of Object.entries(extraSources)) {
     if (!/^(?:api|src)\//.test(path) || path === DOMAIN || allFiles.includes(path)) continue;

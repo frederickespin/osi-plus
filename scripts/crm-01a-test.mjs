@@ -285,7 +285,7 @@ try {
   const assigned = await invoke(listHandler, request(tokenOne, "GET", { unassigned: "false", pageSize: "100" }));
   check("39 asignados", assigned.body.total === 39 && assigned.body.data.every((item) => item.owner?.displayName && item.owner.role === "V"));
   const byOwner = await invoke(listHandler, request(tokenOne, "GET", { ownerMembershipId: ownerOne.membershipId, pageSize: "100" }));
-  check("filtro owner relacional", byOwner.body.total === 39);
+  check("filtro de ID interno rechazado", byOwner.statusCode === 400 && byOwner.body.error === "CRM_PIPELINE_FILTER_INVALID");
   const byStatus = await invoke(listHandler, request(tokenOne, "GET", { status: casesOne[0].status, pageSize: "100" }));
   check("filtro estado tenantizado", byStatus.body.data.every((item) => item.status === casesOne[0].status));
   const bySearch = await invoke(listHandler, request(tokenOne, "GET", { q: "Origen 2", pageSize: "100" }));

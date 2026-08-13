@@ -9,6 +9,7 @@ const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[id].js",
   "api/crm/pipeline-summary.js",
+  "api/crm/pipeline-owner-options.js",
   "api/crm/pipeline-cases/[id]/allowed-transitions.js",
   "api/crm/pipeline-cases/[id]/assign-owner.js",
   "api/crm/pipeline-cases/[id]/transition.js",
@@ -67,10 +68,10 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   }
 
   const actualRoutes = apiFiles.map((path) => relative(root, path).replaceAll("\\", "/")).filter((path) => path.startsWith("api/crm/")).sort();
-  invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES].sort()), "inventario de siete rutas CRM cambió");
+  invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES].sort()), "inventario de rutas CRM cambió");
   for (const path of CRM_ROUTES) {
     const source = read(path);
-    invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp/.test(source), `${path} omite compuerta central`);
+    invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp/.test(source), `${path} omite compuerta central`);
     invariant(!/(?:process\.)?env\.VERCEL_(?:ENV|GIT_COMMIT_REF)/.test(source), `${path} interpreta autoridad Vercel fuera del resolver`);
     invariant(!/x-osi-(?:role|userid)|req\.(?:query|body)[^\n]*(?:tenantId|membershipId|role|permissions)/i.test(source), `${path} acepta autoridad del navegador`);
   }
@@ -120,7 +121,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const suite of ["crm-01b3b1-gate-test.mjs", "crm-01b3b1-adversarial-test.mjs", "validate-crm-01b3b1-guard.mjs", "validate-crm-01b3b1-guard-test.mjs", "crm-01a-test.mjs", "crm-01b3a-integration-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
-  return Object.freeze({ ok: true, migrations: 16, routes: 7, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 1 });
+  return Object.freeze({ ok: true, migrations: 16, routes: 8, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 1 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

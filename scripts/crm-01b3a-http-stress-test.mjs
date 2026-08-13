@@ -86,7 +86,8 @@ try {
   const sellerTwo = await prisma.tenantMembership.create({ data: { id: `${run}-membership-seller-2`, tenantId: tenant.id, userId: sellerTwoUser.id, role: "V" } });
   const transitionV = createPipelineTransitionHandler({ env, resolveContext: async () => context(tenant.id, sellerOne.id) });
   const transitionA = createPipelineTransitionHandler({ env, resolveContext: async () => context(tenant.id, admin.id) });
-  const assignA = createPipelineAssignOwnerHandler({ env, resolveContext: async () => context(tenant.id, admin.id) });
+  const refs = new Map([["owner-ref-one", sellerOne.id], ["owner-ref-two", sellerTwo.id]]);
+  const assignA = createPipelineAssignOwnerHandler({ env, resolveContext: async () => context(tenant.id, admin.id), resolveOwnerRef: async (_context, ref) => refs.get(ref) });
   const rounds = { transition: [], assignment: [], replay: [], mixed: [] };
   const lostResponseRetries = [];
   const lostResponseCommits = [];
@@ -103,7 +104,7 @@ try {
     const assignmentCase = await prisma.pipelineCase.create({ data: caseData(`${run}-assignment-${round}`, tenant.id) });
     rounds.assignment.push(await race(Array.from(
       { length: REQUESTS },
-      (_, index) => () => invoke(assignA, request(assignmentCase.id, key("assignment", round, index), { expectedVersion: 1, ownerMembershipId: index % 2 ? sellerOne.id : sellerTwo.id })),
+      (_, index) => () => invoke(assignA, request(assignmentCase.id, key("assignment", round, index), { expectedVersion: 1, ownerRef: index % 2 ? "owner-ref-one" : "owner-ref-two" })),
     )));
 
     const replayCase = await prisma.pipelineCase.create({ data: caseData(`${run}-replay-${round}`, tenant.id, sellerOne) });
@@ -118,7 +119,7 @@ try {
     rounds.mixed.push(await race(Array.from(
       { length: REQUESTS },
       (_, index) => index % 2
-        ? () => invoke(assignA, request(mixedCase.id, key("mixed-assign", round, index), { expectedVersion: 1, ownerMembershipId: sellerTwo.id }))
+        ? () => invoke(assignA, request(mixedCase.id, key("mixed-assign", round, index), { expectedVersion: 1, ownerRef: "owner-ref-two" }))
         : () => invoke(transitionA, request(mixedCase.id, key("mixed-transition", round, index), { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null })),
     )));
 

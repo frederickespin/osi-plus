@@ -23,10 +23,12 @@ type MockOptions = {
   list?: (route: Route, url: URL) => Promise<void>;
   detail?: (route: Route) => Promise<void>;
   summaryOverride?: (route: Route) => Promise<void>;
+  ownerOptions?: (route: Route, attempt: number) => Promise<void>;
 };
 
 async function mockApi(page: Page, options: MockOptions = {}) {
   let mutationAttempt = 0;
+  let ownerOptionsAttempt = 0;
   const requestLog: Array<{ url: string; method: string; idempotency?: string; body?: string | null }> = [];
   await page.route("**/api/crm/**", async (route) => {
     const request = route.request();
@@ -36,6 +38,14 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     if (url.pathname === "/api/crm/pipeline-summary") {
       if (options.summaryOverride) return options.summaryOverride(route);
       return json({ ok: true, data: summary() });
+    }
+    if (url.pathname === "/api/crm/pipeline-owner-options") {
+      ownerOptionsAttempt += 1;
+      if (options.ownerOptions) return options.ownerOptions(route, ownerOptionsAttempt);
+      return json({ ok: true, total: 2, page: 1, pageSize: 100, data: [
+        { ownerRef: "owner-ref-secret-one", displayName: "Ana Vendedora", role: "V" },
+        { ownerRef: "owner-ref-secret-two", displayName: "Zoë Vendedora", role: "V" },
+      ] });
     }
     if (url.pathname.endsWith("/allowed-transitions")) return json({ ok: true, case: { caseId: "case-001", version: 4, status: options.caseData?.status ?? "NEW_INBOX", transitions: options.allowed ?? [{ toStatus: "AWAITING_ICP", evidenceType: null }] } });
     if (["transition", "assign-owner", "unassign-owner"].some((action) => url.pathname.endsWith(`/${action}`))) {
@@ -214,6 +224,47 @@ test("V no recibe acciones de owner y A puede desasignar", async ({ page }) => {
   await page.goto("/tests/crm-01b3b2/harness.html?role=A");
   await page.getByText("CRM-001").click();
   await expect(page.getByRole("button", { name: /Desasignar owner/ })).toBeVisible();
+});
+
+test("catálogo autorizado usa clave efímera en DOM y renueva ownerRef una sola vez", async ({ page }) => {
+  const secretRefs = ["owner-ref-secret-initial", "owner-ref-secret-renewed"];
+  const requests = await mockApi(page, {
+    caseData: pipelineCase({ owner: null }),
+    ownerOptions: async (route, attempt) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true, total: 1, page: 1, pageSize: 100,
+      data: [{ ownerRef: secretRefs[Math.min(attempt - 1, 1)], displayName: "<b>Ana & Vendedora</b>", role: "V" }],
+    }) }),
+    mutation: async (route, attempt) => route.fulfill({
+      status: attempt === 1 ? 409 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(attempt === 1
+        ? { ok: false, code: "CRM_PIPELINE_OWNER_REF_EXPIRED" }
+        : { ok: true, command: { caseId: "case-001", commandType: "ASSIGN_OWNER", previousVersion: 4, resultingVersion: 5, previousStatus: "NEW_INBOX", resultingStatus: "NEW_INBOX", owner: { assigned: true }, replayed: false } }),
+    }),
+  });
+  await page.goto("/tests/crm-01b3b2/harness.html?role=A");
+  await page.getByText("CRM-001").click();
+  await expect(page.getByRole("button", { name: "Asignar owner" })).toBeVisible();
+  await page.getByRole("button", { name: "Asignar owner" }).click();
+  const option = page.getByRole("option", { name: "<b>Ana & Vendedora</b> · V" });
+  await expect(option).toHaveCount(1);
+  const optionValue = await option.getAttribute("value");
+  expect(optionValue).toBeTruthy();
+  expect(secretRefs).not.toContain(optionValue);
+  expect(await page.locator("body").innerHTML()).not.toContain(secretRefs[0]);
+  expect(await page.locator("body").innerHTML()).not.toContain("<b>Ana & Vendedora</b></b>");
+  await page.getByLabel("Vendedor elegible").selectOption(optionValue!);
+  await page.getByRole("button", { name: "Confirmar", exact: true }).click();
+  await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe(2);
+  const writes = requests.filter((entry) => entry.method === "POST");
+  expect(writes[0].idempotency).toBe(writes[1].idempotency);
+  expect(writes[0].body).toContain(secretRefs[0]);
+  expect(writes[1].body).toContain(secretRefs[1]);
+  expect(page.url()).not.toContain("owner-ref");
+  const storage = await page.evaluate(() => `${JSON.stringify(localStorage)}${JSON.stringify(sessionStorage)}`);
+  expect(storage).not.toContain("owner-ref");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  expect(await page.locator("body").innerHTML()).not.toContain("owner-ref");
 });
 
 test("sólo A puede reabrir LOST cuando el servidor lo autoriza", async ({ page }) => {

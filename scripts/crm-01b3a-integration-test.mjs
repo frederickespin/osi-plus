@@ -27,12 +27,14 @@ const [
   { default: assign },
   { default: unassign },
   { default: allowed },
+  { issueCrmOwnerRef },
 ] = await Promise.all([
   import("../api/_lib/auth.js"),
   import("../api/crm/pipeline-cases/[id]/transition.js"),
   import("../api/crm/pipeline-cases/[id]/assign-owner.js"),
   import("../api/crm/pipeline-cases/[id]/unassign-owner.js"),
   import("../api/crm/pipeline-cases/[id]/allowed-transitions.js"),
+  import("../api/_lib/crmOwnerRef.js"),
 ]);
 const appPrisma = (await import("../api/_lib/db.js")).prisma;
 const run = `crm01b3a-${randomUUID()}`;
@@ -46,6 +48,7 @@ function caseData(id, tenantId, status = "NEW_INBOX", owner = null, ownerId = nu
 }
 function token(user) { return signAccessToken({ sub: user.id, email: user.email, role: user.role }); }
 function key(label) { return `${run}.${label}`; }
+function ownerRef(tenantId, membershipId, userId) { return issueCrmOwnerRef({ tenantId, membershipId, userId }); }
 function request(user, id, body, requestId = key("request"), method = "POST", extraHeaders = {}) {
   const headers = { authorization: `Bearer ${token(user)}`, "content-type": "application/json", ...extraHeaders };
   if (requestId !== null) headers["idempotency-key"] = requestId;
@@ -81,7 +84,8 @@ try {
   const ownRequest = request(sellerUser, own.id, { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null }, key("own"), "POST", { "x-osi-role": "A", "x-osi-userid": foreignAdminUser.id });
   const ownResult = await invoke(transition, ownRequest);
   check("V transiciona su caso con contexto legacy revalidado", ownResult.statusCode === 200 && ownResult.body.command.resultingVersion === 2);
-  check("headers x-osi falsificados no influyen", ownResult.body.command.owner?.membershipId === seller.id && ownResult.body.command.owner?.membershipId !== foreignSeller.id);
+  check("headers x-osi falsificados no influyen", ownResult.body.command.owner?.assigned === true
+    && (await prisma.pipelineCase.findUnique({ where: { id: own.id }, select: { ownerMembershipId: true } }))?.ownerMembershipId === seller.id);
   const replay = await invoke(transition, request(sellerUser, own.id, { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null }, key("own")));
   check("replay HTTP exacto", replay.statusCode === 200 && replay.body.command.replayed === true && replay.body.command.resultingVersion === 2);
   await expect("reutilización distinta", invoke(transition, request(sellerUser, own.id, { expectedVersion: 1, toStatus: "GOVERNANCE_CONFIRMED", reasonCode: null, evidence: null }, key("own"))), 409, "CRM_PIPELINE_IDEMPOTENCY_CONFLICT");
@@ -93,12 +97,25 @@ try {
   check("A transiciona caso del tenant", (await invoke(transition, request(adminUser, noOwner.id, { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null }, key("admin")))).statusCode === 200);
 
   const ownerCase = await prisma.pipelineCase.create({ data: caseData(`${run}-owner`, tenantOne.id, "NEW_INBOX", null, sellerUser.id) });
-  const assigned = await invoke(assign, request(adminUser, ownerCase.id, { expectedVersion: 1, ownerMembershipId: seller.id }, key("assign")));
-  check("A asigna owner y ownerId heredado no se expone", assigned.statusCode === 200 && assigned.body.command.owner.membershipId === seller.id && !JSON.stringify(assigned.body).includes("ownerId"));
-  check("A reasigna owner", (await invoke(assign, request(adminUser, ownerCase.id, { expectedVersion: 2, ownerMembershipId: sellerTwo.id }, key("reassign")))).statusCode === 200);
+  const assigned = await invoke(assign, request(adminUser, ownerCase.id, { expectedVersion: 1, ownerRef: ownerRef(tenantOne.id, seller.id, sellerUser.id) }, key("assign")));
+  check("A asigna owner sin exponer identidad interna", assigned.statusCode === 200 && assigned.body.command.owner.assigned === true && !JSON.stringify(assigned.body).match(/ownerId|membershipId/));
+  check("A reasigna owner", (await invoke(assign, request(adminUser, ownerCase.id, { expectedVersion: 2, ownerRef: ownerRef(tenantOne.id, sellerTwo.id, sellerTwoUser.id) }, key("reassign")))).statusCode === 200);
   check("A desasigna owner", (await invoke(unassign, request(adminUser, ownerCase.id, { expectedVersion: 3 }, key("unassign")))).statusCode === 200);
-  await expect("V no asigna", invoke(assign, request(sellerUser, ownerCase.id, { expectedVersion: 4, ownerMembershipId: seller.id }, key("v-assign"))), 403, "CRM_PIPELINE_PERMISSION_FORBIDDEN");
-  await expect("owner cross-tenant oculto como inelegible", invoke(assign, request(adminUser, ownerCase.id, { expectedVersion: 4, ownerMembershipId: foreignSeller.id }, key("cross-owner"))), 409, "CRM_PIPELINE_OWNER_INELIGIBLE");
+  await expect("V no asigna", invoke(assign, request(sellerUser, ownerCase.id, { expectedVersion: 4, ownerRef: ownerRef(tenantOne.id, seller.id, sellerUser.id) }, key("v-assign"))), 403, "CRM_PIPELINE_PERMISSION_FORBIDDEN");
+  await expect("owner cross-tenant oculto", invoke(assign, request(adminUser, ownerCase.id, { expectedVersion: 4, ownerRef: ownerRef(tenantTwo.id, foreignSeller.id, foreignSellerUser.id) }, key("cross-owner"))), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+
+  const raceCase = await prisma.pipelineCase.create({ data: caseData(`${run}-owner-ref-race`, tenantOne.id) });
+  const raceKey = key("owner-ref-race");
+  const [raceOne, raceTwo] = await Promise.all([
+    invoke(assign, request(adminUser, raceCase.id, { expectedVersion: 1, ownerRef: ownerRef(tenantOne.id, seller.id, sellerUser.id) }, raceKey)),
+    invoke(assign, request(adminUser, raceCase.id, { expectedVersion: 1, ownerRef: ownerRef(tenantOne.id, seller.id, sellerUser.id) }, raceKey)),
+  ]);
+  check("dos refs del mismo owner tienen un único ganador material", [raceOne, raceTwo].filter((response) => response.statusCode === 200).length >= 1);
+  const raceReplay = await invoke(assign, request(adminUser, raceCase.id, { expectedVersion: 1, ownerRef: ownerRef(tenantOne.id, seller.id, sellerUser.id) }, raceKey));
+  check("ref renovada conserva intención e idempotency key", raceReplay.statusCode === 200 && raceReplay.body.command.replayed === true);
+  await expect("misma key con otro owner interno conflictúa", invoke(assign, request(adminUser, raceCase.id, { expectedVersion: 1, ownerRef: ownerRef(tenantOne.id, sellerTwo.id, sellerTwoUser.id) }, raceKey)), 409, "CRM_PIPELINE_IDEMPOTENCY_CONFLICT");
+  check("carrera de refs crea un journal y una auditoría", await prisma.pipelineCaseCommand.count({ where: { tenantId: tenantOne.id, requestId: raceKey } }) === 1
+    && await prisma.commercialAuditLog.count({ where: { source: "CRM_PIPELINE_DOMAIN", entityId: raceCase.id, action: "CRM_PIPELINE_OWNER_ASSIGNED" } }) === 1);
 
   const approved = await prisma.pipelineCase.create({ data: caseData(`${run}-approved`, tenantOne.id, "APPROVED", seller) });
   await expect("APPROVED congelado", invoke(transition, request(adminUser, approved.id, { expectedVersion: 1, toStatus: "OPS_HANDOFF", reasonCode: null, evidence: { type: "PROJECT", id: "missing" } }, key("approved"))), 409, "CRM_PIPELINE_STATE_INVALID");

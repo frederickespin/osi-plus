@@ -17,7 +17,7 @@ function rejected(name, vercelText, pattern, routes, routeSources) {
 }
 
 const current = validateCrmCorsGuard();
-check("namespace CRM completo excluido", current.ok && current.crmRoutes === 7 && current.matchedCrmRoutes === 0 && current.handlersChecked === 7);
+check("namespace CRM completo excluido", current.ok && current.crmRoutes === 8 && current.matchedCrmRoutes === 0 && current.handlersChecked === 8);
 check("rutas no CRM conservan la regla heredada", current.nonCrmCompatibilityRoutes === 4);
 
 const routeSources = inventoryCrmRouteSources();
@@ -41,6 +41,7 @@ check(
   JSON.stringify(unsafeCrmRouteMatches({ vercelText: rejectedDeploymentConfig })) === JSON.stringify([
     "/api/crm/pipeline-cases",
     `/api/crm/pipeline-cases/${"crm-cors-guard-id"}`,
+    "/api/crm/pipeline-owner-options",
     "/api/crm/pipeline-summary",
   ]),
 );

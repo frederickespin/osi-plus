@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
-import type { ModuleId } from '@/App';
+import type { ModuleId } from '@/lib/roleModuleMap';
 import type { UserRole } from '@/types/osi.types';
 import { canAccessModule } from '@/lib/roleModuleMap';
 import { getAppEnv, ENV_LABELS } from '@/lib/env';
@@ -42,6 +42,7 @@ interface SidebarProps {
   userRole?: UserRole;
   userName?: string;
   onLogout?: () => void;
+  crmPipelineClientEnabled?: boolean;
 }
 
 interface MenuItem {
@@ -87,6 +88,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'V'] },
       { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'V'], description: 'Alcance -> cajas -> recursos -> resumen' },
+      { id: 'crm-pipeline', label: 'Pipeline relacional', icon: CaseIcon, roles: ['A', 'V'], description: 'Vista local aislada del prototipo' },
       { id: 'k-templates', label: 'Plantillas PST', icon: FileText, roles: ['A', 'V', 'K'], description: 'Catálogo de servicios técnicos' },
       { id: 'crate-wood', label: 'Cotizador con Nesting', icon: Boxes, roles: ['A', 'V'], description: 'Diseño cajas y pies tablares' },
       { id: 'disenacotiza', label: 'Diseña y Cotiza', icon: Boxes, roles: ['A', 'V'], description: 'Nesting + ingeniería + costos' },
@@ -184,12 +186,15 @@ function getRoleLabel(role: UserRole) {
   return role;
 }
 
-export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName, onLogout }: SidebarProps) {
+export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName, onLogout, crmPipelineClientEnabled = false }: SidebarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
 
-  const visibleGroups = getMenuGroupsByRole(userRole);
+  const visibleGroups = getMenuGroupsByRole(userRole).map((group) => ({
+    ...group,
+    items: group.items.filter((item) => item.id !== 'crm-pipeline' || crmPipelineClientEnabled),
+  })).filter((group) => group.items.length > 0);
 
   const handleModuleClick = (moduleId: ModuleId) => {
     onModuleChange(moduleId);

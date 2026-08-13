@@ -13,6 +13,7 @@ const ROUTES = Object.freeze({
   "api/crm/pipeline-cases/[id]/allowed-transitions.js": "getAllowedPipelineTransitions",
 });
 const POST_ROUTES = Object.freeze(Object.keys(ROUTES).filter((path) => !path.endsWith("allowed-transitions.js")));
+const AUTHORIZED_FRONTEND_ADAPTER = "src/crm-relational/api.ts";
 
 function invariant(condition, message) { if (!condition) throw new Error(`CRM01B3A_GUARD: ${message}`); }
 function inventory(root) {
@@ -79,7 +80,11 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   for (const path of prohibitedConfigFiles) invariant(!read(path).includes("CRM_PIPELINE_MUTATION_MODE"), `${path} configura la compuerta`);
   for (const path of files.filter((path) => path.startsWith("src/") && /\.[cm]?[jt]sx?$/.test(path))) {
     const source = read(path);
-    invariant(!/pipelineCaseMutationHttp|pipelineCaseDomain|assign-owner|unassign-owner|allowed-transitions|CRM_PIPELINE_MUTATION_MODE/.test(source), `${path} conecta frontend`);
+    if (path === AUTHORIZED_FRONTEND_ADAPTER) {
+      invariant(/assign-owner|unassign-owner|allowed-transitions/.test(source), `${path} no contiene el adaptador autorizado`);
+    } else {
+      invariant(!/pipelineCaseMutationHttp|pipelineCaseDomain|assign-owner|unassign-owner|allowed-transitions|CRM_PIPELINE_MUTATION_MODE/.test(source), `${path} conecta frontend fuera del adaptador autorizado`);
+    }
   }
   for (const [path, source] of Object.entries(extraSources)) {
     if (path.startsWith("src/") && /\.[cm]?[jt]sx?$/.test(path)) {
@@ -100,7 +105,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(/lostResponseCommits/.test(stress) && /transportLost/.test(stress), "falta escenario de respuesta perdida post-commit");
   const domain = read("api/_lib/pipelineCaseDomain.js");
   invariant(/APPROVED:\s*Object\.freeze\(\[\]\)/.test(domain) && !/APPROVED:\s*Object\.freeze\(\["WON"\]/.test(domain), "APPROVED no puede tratarse como WON");
-  return Object.freeze({ ok: true, migrations: 16, mutationMode: "DISABLED", postEndpoints: 3, readEndpoints: 1, runtimeConsumers: 4, frontendConsumers: 0 });
+  return Object.freeze({ ok: true, migrations: 16, mutationMode: "DISABLED", postEndpoints: 3, readEndpoints: 1, runtimeConsumers: 4, frontendConsumers: 1 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

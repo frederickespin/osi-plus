@@ -18,6 +18,7 @@ function rejected(name, options, pattern) {
 try {
   const baseline = validateCrm01aGuard({ root, env: {} });
   check("estado actual DISABLED aprobado", baseline.ok && baseline.mode === "DISABLED" && baseline.routes.length === 3);
+  check("adaptador frontend relacional único autorizado", baseline.frontendConsumers === 1);
   check("pipeline:view limitado a A y V", baseline.permission === "pipeline:view" && JSON.stringify(baseline.baseRoles) === JSON.stringify(["A", "V"]));
   rejected("READ_ONLY en CI rechazado", { env: { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" } }, /READ_ONLY/);
   rejected("migración 17 rechazada", { migrations: [...Array.from({ length: 16 }, (_, index) => `m${index}`), "20260801016000_unexpected"] }, /16 migraciones/);

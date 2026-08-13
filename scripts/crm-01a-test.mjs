@@ -138,6 +138,7 @@ function normalizeSuccessContract(value) {
 
 function caseData(label, index, tenantId, owner) {
   const assigned = Boolean(owner);
+  const status = crm.CRM_PIPELINE_STATUS_VALUES[index % crm.CRM_PIPELINE_STATUS_VALUES.length];
   return {
     id: `${run}-case-${label}-${index}`,
     tenantId,
@@ -146,7 +147,8 @@ function caseData(label, index, tenantId, owner) {
     mode: index % 3 === 0 ? "EXPORT" : index % 3 === 1 ? "LOCAL" : "IMPORT",
     serviceType: index % 2 === 0 ? "MOVING" : "STORAGE",
     customerType: "L4_PERSONAL",
-    status: crm.CRM_PIPELINE_STATUS_VALUES[index % crm.CRM_PIPELINE_STATUS_VALUES.length],
+    status,
+    lossReasonCode: status === "LOST" ? "OTHER" : null,
     ownerName: assigned ? "Owner histórico" : "Sin asignar",
     ownerMembershipId: owner?.membershipId || null,
     ownerUserId: owner?.userId || null,

@@ -66,6 +66,7 @@ jobs:
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
       VITE_MT01B2_CLIENT_ENABLED: "false"
+      VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED"
       COMMERCIAL_TENANCY_WRITE_MODE: LEGACY_ONLY
       COMMERCIAL_TENANCY_READ_MODE: LEGACY_ONLY
     steps:
@@ -122,8 +123,13 @@ jobs:
           node scripts/crm-01b3b1-gate-test.mjs
           node scripts/validate-crm-01b3b1-guard.mjs
           node scripts/validate-crm-01b3b1-guard-test.mjs
+          node scripts/validate-crm-01b3b2-guard.mjs
+          node scripts/validate-crm-01b3b2-guard-test.mjs
           node scripts/validate-sec-dep-01-guard.mjs
           node scripts/validate-sec-dep-01-guard-test.mjs
+
+      - name: Typecheck inactive relational CRM client
+        run: npm run typecheck:crm-01b3b2
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
@@ -133,6 +139,9 @@ jobs:
 
       - name: Validate safe PIC rendering in real browsers
         run: npm run test:sec-dep-01:browser
+
+      - name: Validate inactive relational CRM client in real browsers
+        run: npm run test:crm-01b3b2:browser
 
       - name: Verify repository cleanliness
         run: git diff --exit-code
@@ -162,6 +171,7 @@ jobs:
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
       VITE_MT01B2_CLIENT_ENABLED: "false"
+      VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED"
       COMMERCIAL_TENANCY_WRITE_MODE: LEGACY_ONLY
       COMMERCIAL_TENANCY_READ_MODE: LEGACY_ONLY
     steps:
@@ -241,6 +251,8 @@ jobs:
           node scripts/crm-01b3b1-gate-test.mjs
           node scripts/validate-crm-01b3b1-guard.mjs
           node scripts/validate-crm-01b3b1-guard-test.mjs
+          node scripts/validate-crm-01b3b2-guard.mjs
+          node scripts/validate-crm-01b3b2-guard-test.mjs
 
       - name: Validate and generate Prisma
         run: |
@@ -315,6 +327,7 @@ jobs:
           node scripts/validate-crm-01b1-guard-test.mjs
           node scripts/validate-crm-01b2-guard.mjs
           node scripts/validate-crm-01b2-guard-test.mjs
+          node scripts/validate-crm-01b3b2-guard.mjs
           node scripts/crm-01b2-local-target-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs

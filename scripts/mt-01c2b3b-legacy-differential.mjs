@@ -67,7 +67,7 @@ for (const [path, prefixes] of Object.entries(routes)) {
 }
 
 const bridge = readFileSync("api/_lib/commercialTenancyWrite.js", "utf8");
-const resolver = bridge.slice(bridge.indexOf("export function resolveCommercialTenancyModes"), bridge.indexOf("export function resolveCommercialTenancyWriteMode"));
+const resolver = bridge.slice(bridge.indexOf("export function resolveCommercialTenancyModes"), bridge.indexOf("export async function assertCommercialDatabaseIdentity"));
 check("resolver de modos no consulta Prisma ni SQL", !/prisma|queryRaw|findMany|count\s*\(/i.test(resolver));
 check("LEGACY no incorpora cache headers comerciales", Object.keys(routes).every((path) => {
   const source = readFileSync(path, "utf8");

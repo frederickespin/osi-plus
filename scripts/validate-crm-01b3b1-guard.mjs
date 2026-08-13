@@ -62,7 +62,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const absolute of apiFiles) {
     const path = relative(root, absolute).replaceAll("\\", "/");
     const source = read(path);
-    if (path !== "api/_lib/crmPipelineAccess.js") {
+    if (!new Set(["api/_lib/crmPipelineAccess.js", "api/_lib/crmPreviewRehearsal.js"]).has(path)) {
       for (const name of CONFIG_NAMES) invariant(!source.includes(`env.${name}`) && !source.includes(`process.env.${name}`), `${path} interpreta ${name} fuera del resolver único`);
     }
   }

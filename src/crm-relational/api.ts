@@ -4,6 +4,8 @@ import {
   type AssignOwnerInput,
   type CrmAllowedTransitions,
   type CrmMutationReceipt,
+  type CrmOwnerCatalog,
+  type CrmOwnerOption,
   type CrmPipelineCase,
   type CrmPipelineFilters,
   type CrmPipelineList,
@@ -81,6 +83,16 @@ function parseOwner(value: unknown): CrmPipelineCase["owner"] {
   const row = object(value);
   exactKeys(row, ["displayName", "role", "membershipStatus"]);
   return Object.freeze({ displayName: text(row.displayName)!, role: text(row.role)!, membershipStatus: text(row.membershipStatus)! });
+}
+
+function parseOwnerOption(value: unknown): CrmOwnerOption {
+  const row = object(value);
+  exactKeys(row, ["ownerRef", "displayName", "role"]);
+  if (row.role !== "V") throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  const ownerRef = text(row.ownerRef);
+  const displayName = text(row.displayName);
+  if (!ownerRef || !displayName) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  return Object.freeze({ presentationKey: crypto.randomUUID(), ownerRef, displayName, role: "V" });
 }
 
 function parseCase(value: unknown): CrmPipelineCase {
@@ -213,17 +225,38 @@ export class CrmPipelineApi {
     return Object.freeze({ caseId: text(row.caseId)!, version: integer(row.version, 1), status: status(row.status), transitions: Object.freeze(transitions) });
   }
 
+
+  async ownerOptions(filters: { page: number; pageSize: number; search?: string }, signal?: AbortSignal): Promise<CrmOwnerCatalog> {
+    const params = new URLSearchParams({ page: String(filters.page), pageSize: String(Math.min(filters.pageSize, 100)) });
+    if (filters.search) params.set("q", filters.search);
+    const root = object(await this.request(`/pipeline-owner-options?${params}`, { signal }));
+    exactKeys(root, ["ok", "total", "page", "pageSize", "data"]);
+    if (root.ok !== true || !Array.isArray(root.data)) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    return Object.freeze({
+      total: integer(root.total),
+      page: integer(root.page, 1),
+      pageSize: integer(root.pageSize, 1),
+      data: Object.freeze(root.data.map(parseOwnerOption)),
+    });
+  }
+
   private async mutate(path: string, key: string, body: unknown, signal?: AbortSignal): Promise<CrmMutationReceipt> {
     const root = object(await this.request(path, { method: "POST", body, idempotencyKey: key, signal }));
     exactKeys(root, ["ok", "command"]);
     const row = object(root.command);
     exactKeys(row, ["caseId", "commandType", "previousVersion", "resultingVersion", "previousStatus", "resultingStatus", "owner", "replayed"]);
     if (typeof row.commandType !== "string" || !COMMAND.has(row.commandType) || typeof row.replayed !== "boolean") throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    if (row.owner !== null) {
+      const owner = object(row.owner);
+      exactKeys(owner, ["assigned"]);
+      if (owner.assigned !== true) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    }
     return Object.freeze({ caseId: text(row.caseId)!, commandType: row.commandType as CrmMutationReceipt["commandType"], previousVersion: integer(row.previousVersion, 1), resultingVersion: integer(row.resultingVersion, 2), previousStatus: status(row.previousStatus), resultingStatus: status(row.resultingStatus), replayed: row.replayed });
   }
 
-  private intent(path: string, body: unknown): CrmCommandIntent {
+  private intent(path: string, initialBody: unknown): CrmCommandIntent {
     const key = crypto.randomUUID();
+    const body = initialBody;
     let cancelled = false;
     let automaticRetryUsed = false;
     let activeController: AbortController | null = null;
@@ -259,7 +292,7 @@ export class CrmPipelineApi {
     return this.intent(`/pipeline-cases/${encodeURIComponent(input.caseId)}/transition`, { expectedVersion: input.expectedVersion, toStatus: input.toStatus, reasonCode: input.reasonCode, evidence: input.evidence });
   }
   assignOwner(input: AssignOwnerInput): CrmCommandIntent {
-    return this.intent(`/pipeline-cases/${encodeURIComponent(input.caseId)}/assign-owner`, { expectedVersion: input.expectedVersion, ownerMembershipId: input.ownerMembershipId });
+    return this.intent(`/pipeline-cases/${encodeURIComponent(input.caseId)}/assign-owner`, { expectedVersion: input.expectedVersion, ownerRef: input.ownerRef });
   }
   unassignOwner(input: UnassignOwnerInput): CrmCommandIntent {
     return this.intent(`/pipeline-cases/${encodeURIComponent(input.caseId)}/unassign-owner`, { expectedVersion: input.expectedVersion });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight, RefreshCw, UserMinus } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, RefreshCw, UserMinus, UserRoundPlus } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import {
   type CrmPipelineFilters,
   type CrmPipelineList,
   type CrmPipelineSummary,
+  type CrmOwnerOption,
   type EvidenceType,
   type PipelineCaseStatus,
 } from "@/crm-relational/types";
@@ -55,6 +56,7 @@ function errorMessage(error: CrmPipelineError): string {
   if (error.code === "CRM_PIPELINE_VERSION_CONFLICT") return "La oportunidad cambió. Se recargó su estado actual.";
   if (error.code === "CRM_PIPELINE_IDEMPOTENCY_CONFLICT") return "La intención ya fue usada con datos diferentes. Revisa el caso antes de iniciar otra acción.";
   if (error.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS") return "Otra operación sigue en curso. Puedes reintentar esta misma intención.";
+  if (error.code === "CRM_PIPELINE_OWNER_REF_EXPIRED") return "La selección expiró. Abre de nuevo el catálogo y confirma el vendedor otra vez.";
   if (error.status === 503) return "CRM temporalmente no disponible. Los datos visibles pueden estar desactualizados.";
   return "No fue posible completar la operación CRM.";
 }
@@ -121,9 +123,75 @@ function TransitionForm({ transition, disabled, onSubmit }: { transition: CrmAll
   );
 }
 
-function DetailDrawer({ role, state, open, busy, actionError, retryIntent, onOpenChange, onTransition, onUnassign, onRetryIntent }: {
+function OwnerSelector({ api, currentOwnerName, disabled, onAssign }: {
+  api: CrmPipelineApi;
+  currentOwnerName: string | null;
+  disabled: boolean;
+  onAssign(option: CrmOwnerOption): void;
+}) {
+  const [authorized, setAuthorized] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<CrmPipelineError | null>(null);
+  const [options, setOptions] = useState<readonly CrmOwnerOption[]>([]);
+  const [selectedKey, setSelectedKey] = useState("");
+  const [search, setSearch] = useState("");
+  const catalogController = useRef<AbortController | null>(null);
+
+  const load = useCallback(async (query = "", retain = true) => {
+    catalogController.current?.abort();
+    const controller = new AbortController();
+    catalogController.current = controller;
+    setLoading(true); setError(null);
+    try {
+      const result = await api.ownerOptions({ page: 1, pageSize: 100, search: query || undefined }, controller.signal);
+      if (controller.signal.aborted) return;
+      setAuthorized(true);
+      setOptions(retain ? result.data : []);
+      setSelectedKey("");
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      const next = asCrmError(cause);
+      if (next.status === 403 || next.status === 401) setAuthorized(false);
+      else setError(next);
+      setOptions([]);
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void load("", true);
+    return () => { catalogController.current?.abort(); setOptions([]); };
+  }, [load]);
+
+  const close = () => {
+    catalogController.current?.abort();
+    setOpen(false); setOptions([]); setSelectedKey(""); setSearch(""); setError(null);
+  };
+  const selected = options.find((option) => option.presentationKey === selectedKey) ?? null;
+  if (!authorized && loading) return <p className="text-sm text-slate-500">Verificando autorización de asignación…</p>;
+  if (!authorized) return error ? <Alert variant="destructive"><AlertCircle /><AlertTitle>{error.code}</AlertTitle><AlertDescription>{errorMessage(error)}<Button className="mt-2" size="sm" variant="outline" onClick={() => void load("", true)}>Reintentar catálogo</Button></AlertDescription></Alert> : null;
+  return <AlertDialog open={open} onOpenChange={(next) => { if (!next) close(); else { setOpen(true); if (options.length === 0) void load("", true); } }}>
+    <AlertDialogTrigger asChild><Button variant="outline" disabled={disabled}><UserRoundPlus />{currentOwnerName ? "Reasignar owner" : "Asignar owner"}</Button></AlertDialogTrigger>
+    <AlertDialogContent>
+      <AlertDialogHeader><AlertDialogTitle>{currentOwnerName ? "Confirmar reasignación" : "Asignar vendedor"}</AlertDialogTitle><AlertDialogDescription>Elige un vendedor autorizado. La referencia segura permanece sólo en memoria y el servidor revalida la identidad.</AlertDialogDescription></AlertDialogHeader>
+      <label className="text-xs">Buscar por nombre<Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre del vendedor" /></label>
+      <Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => void load(search, true)}>Buscar</Button>
+      {loading ? <p className="text-sm text-slate-500">Cargando vendedores…</p> : error ? <Alert variant="destructive"><AlertCircle /><AlertTitle>{error.code}</AlertTitle><AlertDescription>{errorMessage(error)}</AlertDescription></Alert> :
+        <label className="text-xs">Vendedor<select aria-label="Vendedor elegible" className="mt-1 h-10 w-full rounded-md border px-2 text-sm" value={selectedKey} onChange={(event) => setSelectedKey(event.target.value)}>
+          <option value="">Selecciona un vendedor</option>{options.map((option) => <option key={option.presentationKey} value={option.presentationKey}>{option.displayName} · {option.role}</option>)}
+        </select>{options.length === 0 && <span className="mt-2 block text-slate-500">No hay vendedores elegibles.</span>}</label>}
+      <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction disabled={!selected || loading} onClick={() => { if (selected) { onAssign(selected); close(); } }}>Confirmar</AlertDialogAction></AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>;
+}
+
+function DetailDrawer({ api, role, state, open, busy, actionError, retryIntent, onOpenChange, onTransition, onAssign, onUnassign, onRetryIntent }: {
+  api: CrmPipelineApi;
   role: UserRole; state: DetailState; open: boolean; busy: boolean; actionError: CrmPipelineError | null; retryIntent: CrmCommandIntent | null;
   onOpenChange(open: boolean): void; onTransition(transition: CrmAllowedTransition, reason: string | null, evidence: { type: EvidenceType; id: string } | null): void;
+  onAssign(option: CrmOwnerOption): void;
   onUnassign(): void; onRetryIntent(): void;
 }) {
   const item = state.data;
@@ -153,11 +221,11 @@ function DetailDrawer({ role, state, open, busy, actionError, retryIntent, onOpe
             <section aria-labelledby="crm-transitions-title"><h3 id="crm-transitions-title" className="mb-2 font-semibold">Transiciones autorizadas por el servidor</h3>
               {!state.allowed ? <p className="text-sm text-slate-500">No disponibles.</p> : transitions.length === 0 ? <p className="text-sm text-slate-500">No hay transiciones disponibles.</p> : <div className="space-y-2">{transitions.map((transition) => <TransitionForm key={transition.toStatus} transition={transition} disabled={busy} onSubmit={(reason, evidence) => onTransition(transition, reason, evidence)} />)}</div>}
             </section>
+            {role === "A" && !["APPROVED", "OPS_HANDOFF"].includes(item.status) && <OwnerSelector api={api} currentOwnerName={item.owner?.displayName ?? null} disabled={busy || !state.allowed} onAssign={onAssign} />}
             {role === "A" && item.owner && !["APPROVED", "OPS_HANDOFF"].includes(item.status) && <AlertDialog>
               <AlertDialogTrigger asChild><Button variant="outline" disabled={busy || !state.allowed}><UserMinus />Desasignar owner</Button></AlertDialogTrigger>
               <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirmar desasignación</AlertDialogTitle><AlertDialogDescription>La oportunidad quedará sin owner. El servidor volverá a validar permisos y versión.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={onUnassign}>Confirmar desasignación</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
             </AlertDialog>}
-            {role === "A" && !item.owner && <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-900">La asignación requiere un catálogo CRM de owners que todavía no publica IDs seguros. El cliente no solicita ni expone IDs internos manualmente.</p>}
           </>}
         </div>
       </SheetContent>
@@ -272,6 +340,11 @@ export function RelationalPipelineModule({ userRole, onUnauthorized }: { userRol
     const intent = api.unassignOwner({ caseId: selectedId, expectedVersion: detail.allowed.version });
     void executeIntent(intent);
   };
+  const assign = (option: CrmOwnerOption) => {
+    if (!selectedId || !detail.allowed) return;
+    const intent = api.assignOwner({ caseId: selectedId, expectedVersion: detail.allowed.version, ownerRef: option.ownerRef });
+    void executeIntent(intent);
+  };
 
   const pages = list ? Math.max(1, Math.ceil(list.total / list.pageSize)) : 1;
   return (
@@ -287,7 +360,7 @@ export function RelationalPipelineModule({ userRole, onUnauthorized }: { userRol
       {summaryError && <Alert variant="destructive"><AlertCircle /><AlertTitle>{summaryError.code}</AlertTitle><AlertDescription>{errorMessage(summaryError)}<Button className="mt-2" size="sm" variant="outline" onClick={() => setRefreshVersion((value) => value + 1)}><RefreshCw />Reintentar resumen</Button></AlertDescription></Alert>}
       <div aria-live="polite">{listLoading && <p className="py-2 text-sm text-slate-500">Cargando oportunidades…</p>}{(list || !listError) && <PipelineList value={list} selectedId={selectedId} onSelect={(caseId, trigger) => { detailTrigger.current = trigger; setSelectedId(caseId); }} />}</div>
       <div className="flex items-center justify-between"><Button variant="outline" disabled={(list?.page ?? filters.page) <= 1 || listLoading} onClick={() => setFilters((current) => ({ ...current, page: Math.max(1, (list?.page ?? current.page) - 1) }))}><ChevronLeft />Anterior</Button><span className="text-sm">Página {list?.page ?? filters.page} de {pages} · {list?.total ?? 0} resultados</span><Button variant="outline" disabled={(list?.page ?? filters.page) >= pages || listLoading} onClick={() => setFilters((current) => ({ ...current, page: Math.min(pages, (list?.page ?? current.page) + 1) }))}>Siguiente<ChevronRight /></Button></div>
-      <DetailDrawer role={userRole} state={detail} open={selectedId !== null} busy={busy} actionError={actionError} retryIntent={retryIntent} onOpenChange={(open) => { if (!open) { activeIntent.current?.cancel(); activeIntent.current = null; retryIntent?.cancel(); setSelectedId(null); setRetryIntent(null); setActionError(null); globalThis.setTimeout(() => detailTrigger.current?.focus(), 0); } }} onTransition={transition} onUnassign={unassign} onRetryIntent={() => { if (retryIntent) void executeIntent(retryIntent, true); }} />
+      <DetailDrawer api={api} role={userRole} state={detail} open={selectedId !== null} busy={busy} actionError={actionError} retryIntent={retryIntent} onOpenChange={(open) => { if (!open) { activeIntent.current?.cancel(); activeIntent.current = null; retryIntent?.cancel(); setSelectedId(null); setRetryIntent(null); setActionError(null); globalThis.setTimeout(() => detailTrigger.current?.focus(), 0); } }} onTransition={transition} onAssign={assign} onUnassign={unassign} onRetryIntent={() => { if (retryIntent) void executeIntent(retryIntent, true); }} />
     </div>
   );
 }

@@ -120,7 +120,7 @@ export function controlledAuthPersistenceError(error, policy) {
     });
   }
   if (["P1001", "P1002", "P1017", "P2024", "P2028"].includes(code) ||
-      /connection|server has closed|socket|econn|transaction.*closed/.test(detail)) {
+      /connection|conexi[oó]n|server has closed|socket|econn|transaction.*closed|57p01/.test(detail)) {
     return new Mt01bAuthError("La persistencia de autenticación no está disponible temporalmente.", {
       code: "MT01B_AUTH_DATABASE_UNAVAILABLE",
       status: 503,

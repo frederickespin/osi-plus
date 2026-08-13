@@ -10,6 +10,7 @@ const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-summary.js",
 ]);
 const CRM_MUTATION_ROUTES = Object.freeze([
+  "api/crm/pipeline-owner-options.js",
   "api/crm/pipeline-cases/[id]/allowed-transitions.js",
   "api/crm/pipeline-cases/[id]/assign-owner.js",
   "api/crm/pipeline-cases/[id]/transition.js",

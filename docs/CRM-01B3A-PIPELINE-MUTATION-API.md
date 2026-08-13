@@ -11,7 +11,7 @@ La variable no se configura en `.env.example`, CI o Vercel. No existe integraci�
 | Método y ruta | Body exacto | Operación de dominio |
 | --- | --- | --- |
 | `POST /api/crm/pipeline-cases/:id/transition` | `expectedVersion`, `toStatus`, `reasonCode`, `evidence` | `transitionPipelineCase` |
-| `POST /api/crm/pipeline-cases/:id/assign-owner` | `expectedVersion`, `ownerMembershipId` | `assignPipelineCaseOwner` |
+| `POST /api/crm/pipeline-cases/:id/assign-owner` | `expectedVersion`, `ownerRef` opaco y efímero | `assignPipelineCaseOwner` tras descifrado y revalidación |
 | `POST /api/crm/pipeline-cases/:id/unassign-owner` | `expectedVersion` | `unassignPipelineCaseOwner` |
 | `GET`/`HEAD /api/crm/pipeline-cases/:id/allowed-transitions` | ninguno | `getAllowedPipelineTransitions` (`HEAD` no emite body) |
 

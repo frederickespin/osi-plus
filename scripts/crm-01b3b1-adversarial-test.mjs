@@ -55,7 +55,7 @@ const productionRead = Object.freeze({
   VITE_MT01B2_CLIENT_ENABLED: "false",
   MT01B_ALLOWED_ORIGINS: "http://localhost:5173",
 });
-const productionWrite = Object.freeze({ ...productionRead, CRM_PIPELINE_MUTATION_MODE: "PRODUCTION_WRITE" });
+const productionWrite = Object.freeze({ ...productionRead, CRM_PIPELINE_MUTATION_MODE: "PRODUCTION_WRITE", CRM_PIPELINE_OWNER_REF_SECRET: "A".repeat(64) });
 
 function check(name, condition, detail) {
   results.push({ name, passed: Boolean(condition), ...(detail === undefined ? {} : { detail }) });

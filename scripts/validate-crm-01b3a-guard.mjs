@@ -49,7 +49,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
     && adapter.indexOf('req.method !== "POST"') < adapter.indexOf("resolveContext(req")
     && adapter.indexOf("resolveContext(req") < adapter.indexOf("readJsonObject(req"), "orden gate/método/auth/body incorrecto");
   invariant(!/(?:pipelineCase\.|pipelineCaseCommand\.|UPDATE\s+"osi"|INSERT\s+INTO)/i.test(adapter), "adaptador duplica persistencia del dominio");
-  invariant(!/(?:TRANSITIONS|pg_try_advisory|appendCommercialAudit|resolveOwner|validateEvidence)/.test(adapter), "adaptador duplica reglas del dominio");
+  invariant(!/(?:TRANSITIONS|pg_try_advisory|appendCommercialAudit|resolveOwner\s*\(|validateEvidence)/.test(adapter), "adaptador duplica reglas del dominio");
   invariant(!/(?:AUTO_ASSIGN|autoassign|autoAssign|ownerMembershipId\s*=\s*context\.membershipId)/.test(adapter), "autoasignación no autorizada");
   invariant(!/Access-Control-Allow-Origin[^\n]+\*/.test(adapter), "CORS wildcard prohibido");
   invariant(!/Access-Control-Allow-Credentials/.test(adapter), "credenciales CORS no autorizadas");

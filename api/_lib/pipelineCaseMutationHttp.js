@@ -9,6 +9,7 @@ import {
   resolveCrmPipelineModes,
 } from "./crmPipelineAccess.js";
 import { JsonBodyError, methodNotAllowed, readJsonObject, setPrivateNoStore, withCommonHeaders } from "./http.js";
+import { resolveCrmOwnerRefForAssignment } from "./crmOwnerCatalog.js";
 
 export { CRM_PIPELINE_MUTATION_MODES };
 
@@ -22,6 +23,7 @@ const BROWSER_AUTHORITY_FIELDS = Object.freeze([
   "actorUserId",
   "actorMembershipId",
   "ownerUserId",
+  "ownerMembershipId",
   "ownerId",
   "role",
   "permissions",
@@ -39,6 +41,9 @@ const DOMAIN_CODES = new Set([
   "CRM_PIPELINE_VERSION_CONFLICT",
   "CRM_PIPELINE_IDEMPOTENCY_CONFLICT",
   "CRM_PIPELINE_OWNER_INELIGIBLE",
+  "CRM_PIPELINE_OWNER_REF_INVALID",
+  "CRM_PIPELINE_OWNER_REF_EXPIRED",
+  "CRM_PIPELINE_OWNER_CATALOG_AMBIGUOUS",
   "CRM_PIPELINE_EVIDENCE_REQUIRED",
   "CRM_PIPELINE_EVIDENCE_INVALID",
   "CRM_PIPELINE_COMMAND_IN_PROGRESS",
@@ -142,7 +147,7 @@ function corsError(code = "CRM_PIPELINE_ORIGIN_FORBIDDEN", status = 403) {
   throw new CommercialTenancyError(code, status);
 }
 
-function applyLocalCors(req, res, env, methods, { preflight = false } = {}) {
+export function applyLocalCors(req, res, env, methods, { preflight = false } = {}) {
   appendVary(res, "Origin");
   const rawOrigin = req?.headers?.origin ?? req?.headers?.Origin;
   if (rawOrigin === undefined && !preflight) return;
@@ -182,12 +187,12 @@ function commandResponse(receipt) {
     resultingVersion: receipt.resultingVersion,
     previousStatus: receipt.previousStatus,
     resultingStatus: receipt.resultingStatus,
-    owner: receipt.resultingOwnerMembershipId ? Object.freeze({ membershipId: receipt.resultingOwnerMembershipId }) : null,
+    owner: receipt.resultingOwnerMembershipId ? Object.freeze({ assigned: true }) : null,
     replayed: receipt.replayed === true,
   });
 }
 
-function createMutationHandler({ execute, allowedBodyKeys, routeAction, env = process.env, resolveContext = resolveCrmPipelineContext, prismaClient } = {}) {
+function createMutationHandler({ execute, allowedBodyKeys, routeAction, transformCommand, env = process.env, resolveContext = resolveCrmPipelineContext, prismaClient } = {}) {
   return withCommonHeaders(async (req, res) => {
     setPrivateNoStore(res);
     try {
@@ -218,7 +223,11 @@ function createMutationHandler({ execute, allowedBodyKeys, routeAction, env = pr
       const caseId = routeCaseId(req, routeAction);
       const requestId = idempotencyKey(req);
       const body = exactBody(await readJsonObject(req, { maxBytes: BODY_MAX_BYTES, requireNonEmptyObject: true }), allowedBodyKeys);
-      const receipt = await execute(context, { caseId, requestId, ...body });
+      const publicCommand = { caseId, requestId, ...body };
+      const command = transformCommand
+        ? await transformCommand(context, publicCommand, { prisma: prismaClient, env })
+        : publicCommand;
+      const receipt = await execute(context, command);
       return res.status(200).json({ ok: true, command: commandResponse(receipt) });
     } catch (error) {
       if (error instanceof JsonBodyError) throw error;
@@ -232,7 +241,18 @@ export function createTransitionHandler(options) {
 }
 
 export function createAssignOwnerHandler(options) {
-  return createMutationHandler({ ...options, routeAction: "assign-owner", allowedBodyKeys: new Set(["expectedVersion", "ownerMembershipId"]) });
+  const resolveOwnerRef = options?.resolveOwnerRef ?? resolveCrmOwnerRefForAssignment;
+  return createMutationHandler({
+    ...options,
+    routeAction: "assign-owner",
+    allowedBodyKeys: new Set(["expectedVersion", "ownerRef"]),
+    transformCommand: async (context, command, dependencies) => ({
+      caseId: command.caseId,
+      requestId: command.requestId,
+      expectedVersion: command.expectedVersion,
+      ownerMembershipId: await resolveOwnerRef(context, command.ownerRef, dependencies),
+    }),
+  });
 }
 
 export function createUnassignOwnerHandler(options) {

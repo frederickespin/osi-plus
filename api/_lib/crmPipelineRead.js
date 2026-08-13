@@ -38,7 +38,6 @@ const LIST_QUERY_FIELDS = Object.freeze(new Set([
   "mode",
   "serviceType",
   "q",
-  "ownerMembershipId",
   "unassigned",
 ]));
 const DEFAULT_PAGE_SIZE = 50;
@@ -133,9 +132,7 @@ export function parsePipelineListQuery(query = {}) {
   const mode = strictOptional(query.mode, PIPELINE_MODES);
   const serviceType = boundedOptional(query.serviceType, 80);
   const search = boundedOptional(query.q, 100);
-  const ownerMembershipId = boundedOptional(query.ownerMembershipId, 128);
   const unassigned = exactBoolean(query.unassigned);
-  if (ownerMembershipId && unassigned === true) invalid();
   return Object.freeze({
     page,
     pageSize,
@@ -144,7 +141,6 @@ export function parsePipelineListQuery(query = {}) {
     mode,
     serviceType,
     search,
-    ownerMembershipId,
     unassigned,
   });
 }
@@ -154,7 +150,6 @@ function pipelineWhere(tenantId, filters = {}) {
   if (filters.status) where.status = filters.status;
   if (filters.mode) where.mode = filters.mode;
   if (filters.serviceType) where.serviceType = filters.serviceType;
-  if (filters.ownerMembershipId) where.ownerMembershipId = filters.ownerMembershipId;
   if (filters.unassigned === true) {
     where.ownerMembershipId = null;
     where.ownerUserId = null;

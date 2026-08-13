@@ -31,7 +31,8 @@ async function invoke(handler, req) {
 }
 
 const localRead = { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" };
-const localWrite = { ...localRead, CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY" };
+const ownerRefSecret = { CRM_PIPELINE_OWNER_REF_SECRET: "A".repeat(64) };
+const localWrite = { ...localRead, CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", ...ownerRefSecret };
 const productionBase = {
   VERCEL: "1",
   VERCEL_ENV: "production",
@@ -42,7 +43,7 @@ const productionBase = {
   COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ",
   COMMERCIAL_TENANCY_ACTIVATION_BATCH: "MT-01C2B2-IPACKERS-DO-V1",
 };
-const productionWrite = { ...productionBase, CRM_PIPELINE_MUTATION_MODE: "PRODUCTION_WRITE" };
+const productionWrite = { ...productionBase, CRM_PIPELINE_MUTATION_MODE: "PRODUCTION_WRITE", ...ownerRefSecret };
 
 try {
   check("ausencia total queda DISABLED/DISABLED", JSON.stringify(resolveCrmPipelineModes({})) === JSON.stringify({ readMode: "DISABLED", mutationMode: "DISABLED", production: false }));

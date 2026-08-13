@@ -15,7 +15,7 @@ function check(name, condition, detail) {
   if (!condition) throw new Error(name);
 }
 
-const enabled = { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" };
+const enabled = { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY", CRM_PIPELINE_OWNER_REF_SECRET: "A".repeat(64) };
 const context = Object.freeze({ tenantId: "tenant-server", membershipId: "membership-server" });
 const receipt = Object.freeze({
   caseId: "case-1", commandType: "TRANSITION", previousVersion: 1, resultingVersion: 2,
@@ -135,12 +135,15 @@ const corsSuccess = await invoke(transition, request({ body: { expectedVersion: 
 check("respuesta empresarial aplica CORS sólo al origen permitido", corsSuccess.statusCode === 200 && corsSuccess.getHeader("access-control-allow-origin") === "http://localhost:5173" && /origin/i.test(corsSuccess.getHeader("vary")) && /authorization/i.test(corsSuccess.getHeader("vary")));
 
 const assignReceipt = { ...receipt, commandType: "ASSIGN_OWNER", previousStatus: "NEW_INBOX", resultingStatus: "NEW_INBOX", resultingOwnerMembershipId: "owner-membership" };
-const assign = createAssignOwnerHandler({ env: enabled, resolveContext: async () => context, execute: async (_ctx, command) => {
+const assign = createAssignOwnerHandler({ env: enabled, resolveContext: async () => context, resolveOwnerRef: async (_context, ownerRef) => {
+  check("assign recibe sólo ownerRef público", ownerRef === "owner-ref-opaque");
+  return "owner-membership";
+}, execute: async (_ctx, command) => {
   check("assign compone comando canónico", JSON.stringify(command) === JSON.stringify({ caseId: "case-1", requestId: "crm01b3a.request-0001", expectedVersion: 1, ownerMembershipId: "owner-membership" }));
   return assignReceipt;
 } });
-const assignOk = await invoke(assign, request({ body: { expectedVersion: 1, ownerMembershipId: "owner-membership" } }));
-check("assign expone sólo membership de owner", assignOk.statusCode === 200 && assignOk.body.command.owner?.membershipId === "owner-membership" && !JSON.stringify(assignOk.body).includes("ownerUserId"));
+const assignOk = await invoke(assign, request({ body: { expectedVersion: 1, ownerRef: "owner-ref-opaque" } }));
+check("assign no expone identidad interna", assignOk.statusCode === 200 && assignOk.body.command.owner?.assigned === true && !JSON.stringify(assignOk.body).match(/membershipId|ownerUserId|owner-ref-opaque/));
 
 const unassign = createUnassignOwnerHandler({ env: enabled, resolveContext: async () => context, execute: async (_ctx, command) => {
   check("unassign compone comando canónico", JSON.stringify(command) === JSON.stringify({ caseId: "case-1", requestId: "crm01b3a.request-0001", expectedVersion: 1 }));

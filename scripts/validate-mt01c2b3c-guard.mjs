@@ -84,8 +84,10 @@ export function validateMt01c2b3c({
     }
   }
   for (const [path, source] of Object.entries(runtimeSources)) {
-    if (path !== BRIDGE_PATH) {
+    if (!new Set([BRIDGE_PATH, "api/_lib/crmPreviewRehearsal.js"]).has(path)) {
       invariant(!source.includes("COMMERCIAL_TENANCY_ACTIVATION_BATCH"), `${path} expone o consume el lote fuera de la compuerta servidor`);
+    }
+    if (path !== BRIDGE_PATH) {
       invariant(!/process\.env\.COMMERCIAL_TENANCY_(?:WRITE_MODE|READ_MODE)/.test(source), `${path} interpreta directamente los modos comerciales`);
     }
     invariant(!/mt-01c2b2-(?:backfill|rollback|dry-run)|mt-01c2b3b-readiness/i.test(source), `${path} conecta una operación administrativa al runtime`);

@@ -6,6 +6,15 @@ import { inspectAttr } from 'kimi-plugin-inspect-react'
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
+  define: {
+    __CRM_PREVIEW_BUILD__: JSON.stringify({
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF,
+      VERCEL_GIT_COMMIT_SHA: process.env.VERCEL_GIT_COMMIT_SHA,
+      CRM01C1A_EXPECTED_GIT_SHA: process.env.CRM01C1A_EXPECTED_GIT_SHA,
+      VERCEL_URL: process.env.VERCEL_URL,
+    }),
+  },
   plugins: [inspectAttr(), react()],
   server: {
     proxy: {

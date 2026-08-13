@@ -47,7 +47,7 @@ function rejected(name, env) {
 try {
   check("matriz Preview exacta", isCrm01c1aPreviewRehearsal(valid));
   check("modos CRM Preview coordinados", resolveCrmPipelineModes(valid).preview === true);
-  check("tenancy comercial Preview coordinada", resolveCommercialTenancyModes(valid).preview === true);
+  check("tenancy comercial Preview coordinada", resolveCommercialTenancyModes(valid).tenantMode === true);
   check("origen directo exacto", crm01c1aPreviewOrigin(valid) === `https://${valid.VERCEL_URL}`);
   const localUrl = new URL(`postgresql:${"/".repeat(2)}u:p@127.0.0.1:55432/${CRM01C1A_PREVIEW_DATABASE}`);
   localUrl.searchParams.set("schema", "osi");

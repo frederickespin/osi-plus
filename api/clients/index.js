@@ -13,6 +13,7 @@ import {
 } from "../_lib/commercialTenancyWrite.js";
 import { commercialPagination, listTenantClients } from "../_lib/commercialTenancyRead.js";
 import { PERMS } from "../_lib/rbac.js";
+import { isCrm01c1aPreviewRehearsal } from "../_lib/crmPreviewRehearsal.js";
 
 export default withCommonHeaders(async (req, res) => {
   const permission = req.method === "GET" ? PERMS.CLIENTS_VIEW : req.method === "POST" ? PERMS.CLIENTS_CREATE : null;
@@ -29,7 +30,7 @@ export default withCommonHeaders(async (req, res) => {
     }
   }
   if (modes.tenantMode) setPrivateNoStore(res);
-  if (modes.preview) {
+  if (isCrm01c1aPreviewRehearsal()) {
     try {
       await assertCommercialDatabaseIdentity(req, prisma, process.env);
     } catch (error) {

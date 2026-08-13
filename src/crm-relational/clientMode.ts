@@ -13,6 +13,12 @@ export type CrmPipelineClientModeResult = Readonly<{
 
 type ClientEnvironment = Readonly<Record<string, unknown>>;
 type ClientRuntime = Readonly<{ hostname?: string }>;
+declare const __CRM_PREVIEW_BUILD__: ClientEnvironment;
+
+function defaultClientEnvironment(): ClientEnvironment {
+  const build = typeof __CRM_PREVIEW_BUILD__ === "undefined" ? {} : __CRM_PREVIEW_BUILD__;
+  return Object.freeze({ ...import.meta.env, ...build });
+}
 
 function isLoopback(hostname: string | undefined): boolean {
   return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
@@ -20,7 +26,7 @@ function isLoopback(hostname: string | undefined): boolean {
 
 /** Única autoridad frontend para la compuerta CRM relacional. */
 export function resolveCrmPipelineClientMode(
-  environment: ClientEnvironment = import.meta.env,
+  environment: ClientEnvironment = defaultClientEnvironment(),
   runtime: ClientRuntime = { hostname: typeof window === "undefined" ? undefined : window.location.hostname },
 ): CrmPipelineClientModeResult {
   const raw = environment.VITE_CRM_PIPELINE_CLIENT_MODE;

@@ -112,12 +112,7 @@ export function resolveCommercialTenancyModes(env = process.env) {
   if (coordinatedTenant && isVercelRuntime && !productionActivationAllowed && !previewActivationAllowed) {
     throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
   }
-  return Object.freeze({
-    writeMode,
-    readMode,
-    tenantMode: coordinatedTenant,
-    ...(previewActivationAllowed ? { preview: true } : {}),
-  });
+  return Object.freeze({ writeMode, readMode, tenantMode: coordinatedTenant });
 }
 
 export async function assertCommercialDatabaseIdentity(request, prisma, env = process.env) {

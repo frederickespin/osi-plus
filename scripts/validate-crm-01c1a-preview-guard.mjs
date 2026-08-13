@@ -9,6 +9,7 @@ const access = read("api/_lib/crmPipelineAccess.js");
 const commercial = read("api/_lib/commercialTenancyWrite.js");
 const client = read("src/crm-relational/clientMode.ts");
 const cors = read("api/_lib/pipelineCaseMutationHttp.js");
+const vite = read("vite.config.ts");
 for (const signature of [
   'feature/crm01c1a-integrated-preview-rehearsal', 'crm01c1a_rehearsal',
   'br-mute-credit-ahxnvfx0', 'CRM-01C1A-PREVIEW-20260813-V1',
@@ -22,6 +23,8 @@ invariant(!/DIRECT_URL/.test(preview + commercial + access + client), "fallback 
 invariant(/new Set\(\[previewOrigin\]\)/.test(cors), "CORS no limita origen directo");
 invariant(!/Access-Control-Allow-Credentials/.test(cors), "credenciales CORS prohibidas");
 invariant(!/VITE_(?:CRM_PIPELINE_ACTIVATION_BATCH|CRM01C1A_NEON_BRANCH_ID|CRM01C1A_DATABASE_NAME)/.test(`${preview}\n${client}`), "autoridad backend filtrada al frontend");
+invariant(/__CRM_PREVIEW_BUILD__/.test(vite + client), "metadatos Preview no se fijan en build");
+invariant(!/(?:ACTIVATION_BATCH|DATABASE_URL|DIRECT_URL|OWNER_REF_SECRET|NEON_BRANCH_ID)/.test(vite), "vite expone autoridad o secretos backend");
 invariant(!/CRM01C1A|PREVIEW_REHEARSAL|PREVIEW_READ|PREVIEW_WRITE/.test(read("vercel.json")), "rehearsal no puede configurarse en vercel.json");
 invariant(!/CRM01C1A|PREVIEW_REHEARSAL|PREVIEW_READ|PREVIEW_WRITE/.test(read(".env.example")), "rehearsal no puede quedar activo por ejemplo");
 invariant(!/api\/crm/.test(read("src/lib/salesStore.ts")), "LeadLite no puede llamar CRM");

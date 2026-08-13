@@ -18,6 +18,7 @@ function rejected(name, options, pattern) {
 try {
   const baseline = validateCrm01aGuard({ root, env: {} });
   check("estado actual DISABLED aprobado", baseline.ok && baseline.mode === "DISABLED" && baseline.routes.length === 3);
+  check("OPTIONS desactivado congelado antes del wrapper", baseline.disabledOptionsGate === true);
   check("adaptador frontend relacional único autorizado", baseline.frontendConsumers === 1);
   check("pipeline:view limitado a A y V", baseline.permission === "pipeline:view" && JSON.stringify(baseline.baseRoles) === JSON.stringify(["A", "V"]));
   rejected("READ_ONLY en CI rechazado", { env: { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" } }, /READ_ONLY/);
@@ -30,8 +31,10 @@ try {
   rejected("ownerId heredado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": `${service}\nconst authority = row.ownerId;` } }, /ownerId/);
   rejected("campo interno expuesto rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace(/id: true,\r?\n\s*caseCode/, "tenantId: true,\n  id: true,\n  caseCode") } }, /campos internos/);
   const list = read("api/crm/pipeline-cases/index.js");
-  rejected("POST CRM rechazado", { overrides: { "api/crm/pipeline-cases/index.js": list.replace('req.method !== "GET"', 'req.method !== "POST"') } }, /métodos de escritura/);
-  rejected("compuerta posterior a auth rechazada", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("requireCrmPipelineReadOnly(env);", "void 0;").replace("if (!context) return;", "if (!context) return; requireCrmPipelineReadOnly(env);") } }, /compuerta/);
+  rejected("adaptador de lectura omitido rechazado", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("createCrmPipelineReadHandler({", "({") } }, /adaptador HTTP canónico/);
+  const readHttp = read("api/_lib/crmPipelineReadHttp.js");
+  rejected("fixture exacta OPTIONS 204 antes del gate rechazada", { overrides: { "api/_lib/crmPipelineReadHttp.js": readHttp.replace("{ handleOptions: false, cors: false }", "{ cors: false }") } }, /intercepta OPTIONS/);
+  rejected("compuerta posterior a OPTIONS rechazada", { overrides: { "api/_lib/crmPipelineReadHttp.js": readHttp.replace('if (req.method === "OPTIONS") return res.status(204).end();', 'if (req.method === "OPTIONS") return res.status(204).end();\n    requireCrmPipelineReadOnly(env);').replace("requireCrmPipelineReadOnly(env);", "void 0;") } }, /orden canónico/);
   rejected("import frontend rechazado", { extraSources: { "src/new-crm.ts": 'import "../api/_lib/crmPipelineRead.js";' } }, /frontend/);
   rejected("endpoint adicional rechazado", { extraSources: { "api/crm/write.js": 'import "../_lib/crmPipelineRead.js"; export default function() {}' } }, /fuera de las rutas/);
   const target = read("scripts/crm-01a-local-target.mjs");

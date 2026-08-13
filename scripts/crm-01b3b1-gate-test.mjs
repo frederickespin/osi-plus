@@ -128,9 +128,15 @@ try {
     createPipelineSummaryHandler({ env: {}, prismaClient: readPrisma, requirePermission: permission }),
   ];
   for (const handler of readHandlers) {
-    const response = await invoke(handler, request("POST"));
-    check("lectura DISABLED precede método, auth y Prisma", response.statusCode === 409 && response.body.error === "CRM_PIPELINE_DISABLED" && authCalls === 0 && queryCalls === 0);
-    check("lectura DISABLED no emite cookie", response.getHeader("set-cookie") === undefined && response.getHeader("cache-control") === "private, no-store");
+    for (const method of ["GET", "HEAD", "OPTIONS", "POST"]) {
+      const response = await invoke(handler, request(method));
+      check("lectura DISABLED precede método, auth y Prisma", response.statusCode === 409
+        && (method === "HEAD" ? response.body === undefined : response.body.error === "CRM_PIPELINE_DISABLED")
+        && authCalls === 0 && queryCalls === 0);
+      check("lectura DISABLED no emite cookie", response.getHeader("set-cookie") === undefined && response.getHeader("cache-control") === "private, no-store");
+      check("lectura DISABLED no emite CORS", response.getHeader("access-control-allow-origin") === undefined
+        && response.getHeader("access-control-allow-credentials") === undefined);
+    }
   }
 
   let mutationAuth = 0;

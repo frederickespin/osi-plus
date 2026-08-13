@@ -57,6 +57,8 @@ export function validateCrm01aGuard({
 
   const servicePath = "api/_lib/crmPipelineRead.js";
   const service = read(servicePath);
+  const readHttpPath = "api/_lib/crmPipelineReadHttp.js";
+  const readHttp = read(readHttpPath);
   const access = read("api/_lib/crmPipelineAccess.js");
   const backendRbac = read("api/_lib/rbac.js");
   invariant(/DISABLED:\s*"DISABLED"/.test(access) && /READ_ONLY:\s*"READ_ONLY"/.test(access), "modos exactos ausentes");
@@ -82,6 +84,13 @@ export function validateCrm01aGuard({
   invariant(/MAX_PAGE_SIZE = 100/.test(service) && /updatedAt:\s*"desc"[\s\S]*id:\s*"asc"/.test(service), "paginación u orden estable ausente");
   invariant(/ownerMembershipId:\s*null[\s\S]*ownerUserId:\s*null/.test(service), "filtro unassigned incompleto");
   invariant(/sla:\s*Object\.freeze\(\{ overdue: null, basis: "UNAVAILABLE" \}\)/.test(service), "SLA ambiguo no está explicitado");
+  const readHttpGate = readHttp.indexOf("requireCrmPipelineReadOnly(env)");
+  const readHttpOptions = readHttp.indexOf('req.method === "OPTIONS"');
+  const readHttpAuth = readHttp.indexOf("requirePermission(req");
+  invariant(/withCommonHeaders\([\s\S]*\{ handleOptions: false, cors: false \}\)/.test(readHttp), "wrapper común intercepta OPTIONS antes de la compuerta CRM");
+  invariant(readHttpGate >= 0 && readHttpOptions > readHttpGate && readHttpAuth > readHttpOptions, "orden canónico gate -> método -> auth ausente");
+  invariant(/setPrivateNoStore\(res\)/.test(readHttp), "adaptador de lectura permite cache compartida");
+  invariant(!/setHeader\(["']Access-Control-Allow-(?:Origin|Credentials)/.test(readHttp), "adaptador de lectura reintroduce CORS global");
 
   const actualRoutes = filesBelow(resolve(root, "api/crm"))
     .filter((path) => path.endsWith(".js"))
@@ -92,12 +101,8 @@ export function validateCrm01aGuard({
     const factoryStart = source.indexOf("export function createPipeline");
     invariant(factoryStart >= 0, `${path} no expone una fábrica auditable`);
     const handler = source.slice(factoryStart);
-    invariant(/req\.method !== "GET"/.test(handler) && /methodNotAllowed\(res, \["GET"\]\)/.test(handler), `${path} admite métodos de escritura`);
+    invariant(/createCrmPipelineReadHandler\(\{/.test(handler), `${path} no usa el adaptador HTTP canónico`);
     invariant(!/req\.method\s*===\s*"(?:POST|PATCH|PUT|DELETE)"|readJson|\.create\(|\.update|\.delete|\.upsert/.test(handler), `${path} contiene escritura`);
-    const gate = handler.indexOf("requireCrmPipelineReadOnly(env)");
-    const auth = handler.indexOf("requirePermission(req");
-    invariant(gate >= 0 && auth > gate, `${path} autentica o consulta antes de la compuerta`);
-    invariant(/setPrivateNoStore\(res\)/.test(handler), `${path} permite cache compartida`);
     invariant(!/x-osi-(?:role|userid)|req\.(?:query|body).*(?:tenantId|membershipId|role|permissions)/i.test(handler), `${path} acepta autoridad del navegador`);
     invariant(!/tenantMembership\s*\.\s*(?:create|update|delete|upsert)/.test(handler), `${path} modifica TenantMembership`);
   }
@@ -141,6 +146,7 @@ export function validateCrm01aGuard({
     legacyHeaderExceptions: authInventory.legacyHeaderExceptions,
     frontendConsumers: AUTHORIZED_FRONTEND_CONSUMERS.length,
     writeEndpoints: 0,
+    disabledOptionsGate: true,
   });
 }
 

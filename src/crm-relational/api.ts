@@ -17,6 +17,7 @@ import {
 const API_PREFIX = "/api/crm";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_RETRY_AFTER_MS = 5_000;
+const SAFE_RETRY_AFTER_MS = 150;
 const STATUS = new Set<string>(PIPELINE_CASE_STATUSES);
 const MODE = new Set(["LOCAL", "EXPORT", "IMPORT"]);
 const EVIDENCE = new Set(["SURVEY", "QUOTE", "PROJECT", "APPROVAL", "ADDENDUM"]);
@@ -116,6 +117,13 @@ function linkedSignal(external: AbortSignal | undefined, controller: AbortContro
   return () => external.removeEventListener("abort", abort);
 }
 
+function assertJsonResponse(response: Response): void {
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(contentType)) {
+    throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_CONTENT_TYPE_INVALID");
+  }
+}
+
 export type CrmCommandIntent = Readonly<{
   execute(signal?: AbortSignal): Promise<CrmMutationReceipt>;
   retry(signal?: AbortSignal): Promise<CrmMutationReceipt>;
@@ -138,7 +146,7 @@ export class CrmPipelineApi {
     if (!token) throw new CrmPipelineError(401, "COMMERCIAL_AUTH_REQUIRED");
     const controller = new AbortController();
     const unlink = linkedSignal(options.signal, controller);
-    const timer = window.setTimeout(() => controller.abort(new DOMException("Request timeout", "TimeoutError")), this.timeoutMs);
+    const timer = globalThis.setTimeout(() => controller.abort(new DOMException("Request timeout", "TimeoutError")), this.timeoutMs);
     try {
       const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}` });
       if (options.body !== undefined) headers.set("Content-Type", "application/json");
@@ -147,12 +155,13 @@ export class CrmPipelineApi {
         method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body),
         credentials: "same-origin", cache: "no-store", signal: controller.signal,
       });
+      assertJsonResponse(response);
       let payload: unknown = null;
       try { payload = await response.json(); } catch { throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID"); }
       if (!response.ok) throw parseError(response.status, payload);
       return payload;
     } finally {
-      window.clearTimeout(timer);
+      globalThis.clearTimeout(timer);
       unlink();
     }
   }
@@ -217,24 +226,33 @@ export class CrmPipelineApi {
     const key = crypto.randomUUID();
     let cancelled = false;
     let automaticRetryUsed = false;
+    let activeController: AbortController | null = null;
     const run = async (signal?: AbortSignal): Promise<CrmMutationReceipt> => {
       if (cancelled) throw new CrmPipelineError(409, "CRM_PIPELINE_INTENT_CANCELLED");
-      try { return await this.mutate(path, key, body, signal); }
+      const controller = new AbortController();
+      activeController = controller;
+      const unlink = linkedSignal(signal, controller);
+      try { return await this.mutate(path, key, body, controller.signal); }
       catch (error) {
-        if (error instanceof CrmPipelineError && error.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS" && error.retryAfterMs !== null && !automaticRetryUsed) {
+        if (error instanceof CrmPipelineError && error.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS" && !automaticRetryUsed) {
           automaticRetryUsed = true;
+          const retryAfterMs = error.retryAfterMs ?? SAFE_RETRY_AFTER_MS;
           await new Promise<void>((resolve, reject) => {
-            const finish = () => { signal?.removeEventListener("abort", abort); resolve(); };
-            const timer = window.setTimeout(finish, error.retryAfterMs!);
-            const abort = () => { window.clearTimeout(timer); signal?.removeEventListener("abort", abort); reject(signal?.reason); };
-            signal?.addEventListener("abort", abort, { once: true });
+            const finish = () => { controller.signal.removeEventListener("abort", abort); resolve(); };
+            const timer = globalThis.setTimeout(finish, retryAfterMs);
+            const abort = () => { globalThis.clearTimeout(timer); controller.signal.removeEventListener("abort", abort); reject(controller.signal.reason); };
+            controller.signal.addEventListener("abort", abort, { once: true });
           });
-          return this.mutate(path, key, body, signal);
+          if (cancelled) throw new CrmPipelineError(409, "CRM_PIPELINE_INTENT_CANCELLED");
+          return this.mutate(path, key, body, controller.signal);
         }
         throw error;
+      } finally {
+        unlink();
+        if (activeController === controller) activeController = null;
       }
     };
-    return Object.freeze({ execute: run, retry: run, cancel: () => { cancelled = true; } });
+    return Object.freeze({ execute: run, retry: run, cancel: () => { cancelled = true; activeController?.abort(new DOMException("Intent cancelled", "AbortError")); } });
   }
 
   transition(input: TransitionInput): CrmCommandIntent {

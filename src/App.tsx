@@ -15,8 +15,6 @@ import { isRelationalCrmClientEnabled, resolveCrmPipelineClientMode } from '@/cr
 import type { ModuleId } from '@/lib/roleModuleMap';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
-const CRM_PIPELINE_CLIENT = resolveCrmPipelineClientMode();
-
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
 );
@@ -254,6 +252,7 @@ async function resolveInitialAuthState(): Promise<AuthState> {
 }
 
 function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
+  const crmPipelineClientEnabled = isRelationalCrmClientEnabled(resolveCrmPipelineClientMode());
   const userRole: UserRole = session.role;
   const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
 
@@ -324,7 +323,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
       case 'sales-quote':
         return <SalesQuoteModule userRole={userRole} />;
       case 'crm-pipeline':
-        return isRelationalCrmClientEnabled(CRM_PIPELINE_CLIENT)
+        return crmPipelineClientEnabled
           ? <RelationalPipelineModule userRole={userRole} onUnauthorized={onLogout} />
           : <TowerControl />;
       case 'commercial-calendar':
@@ -392,7 +391,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
         userRole={userRole}
         userName={session.name}
         onLogout={onLogout}
-        crmPipelineClientEnabled={isRelationalCrmClientEnabled(CRM_PIPELINE_CLIENT)}
+        crmPipelineClientEnabled={crmPipelineClientEnabled}
       />
       <main className="flex-1 overflow-auto">
         <AppErrorBoundary>

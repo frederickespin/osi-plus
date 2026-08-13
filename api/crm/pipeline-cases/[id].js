@@ -1,38 +1,25 @@
 import { prisma } from "../../_lib/db.js";
-import { setPrivateNoStore, methodNotAllowed, withCommonHeaders } from "../../_lib/http.js";
-import { sendCommercialTenancyError } from "../../_lib/commercialTenancyWrite.js";
-import { requireCrmPipelinePermissionResponse } from "../../_lib/crmPipelineAccess.js";
 import {
-  CRM_PIPELINE_PERMISSION,
   findCrmPipelineCase,
-  requireCrmPipelineReadOnly,
 } from "../../_lib/crmPipelineRead.js";
+import { requireCrmPipelinePermissionResponse } from "../../_lib/crmPipelineAccess.js";
+import { createCrmPipelineReadHandler } from "../../_lib/crmPipelineReadHttp.js";
 
 export function createPipelineCaseDetailHandler({
   prismaClient = prisma,
   requirePermission = requireCrmPipelinePermissionResponse,
   env = process.env,
 } = {}) {
-  return withCommonHeaders(async (req, res) => {
-    setPrivateNoStore(res);
-    try {
-      requireCrmPipelineReadOnly(env);
-    } catch (error) {
-      return sendCommercialTenancyError(res, error);
-    }
-    if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
-    const context = await requirePermission(req, res, CRM_PIPELINE_PERMISSION, { prisma: prismaClient, env });
-    if (!context) return;
-    try {
-      const data = await findCrmPipelineCase(prismaClient, {
-        tenantId: context.tenantId,
-        caseId: req.query?.id,
-      });
-      return res.status(200).json({ ok: true, data });
-    } catch (error) {
-      return sendCommercialTenancyError(res, error);
-    }
-  }, { cors: false });
+  return createCrmPipelineReadHandler({
+    env,
+    prismaClient,
+    requirePermission,
+    execute: ({ req, context, prisma: database }) => findCrmPipelineCase(database, {
+      tenantId: context.tenantId,
+      caseId: req.query?.id,
+    }),
+    response: (data) => ({ ok: true, data }),
+  });
 }
 
 export default createPipelineCaseDetailHandler();

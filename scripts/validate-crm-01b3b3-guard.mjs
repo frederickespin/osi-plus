@@ -1,12 +1,18 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 function invariant(condition, message) { if (!condition) throw new Error(`CRM01B3B3_GUARD:${message}`); }
 const read = (path) => readFileSync(resolve(path), "utf8");
+function filesBelow(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const target = resolve(directory, entry.name);
+    return entry.isDirectory() ? filesBelow(target) : [target];
+  });
+}
 
-export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, migrationNames } = {}) {
-  const source = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
+export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, extraSources = {}, migrationNames } = {}) {
+  const source = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   invariant(migrations.length === 16 && !migrations.some((name) => /^20260801016000/.test(name)), "migración 17 prohibida");
   const crypto = source("api/_lib/crmOwnerRef.js");
@@ -14,26 +20,39 @@ export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, m
     invariant(crypto.includes(signature), `ownerRef incompleto: ${signature}`);
   }
   invariant(!/createHmac|sign\(|JWT_SECRET[^\n]*createCipheriv/.test(crypto), "ownerRef no puede ser firmado sin cifrar ni usar JWT_SECRET directamente");
+  invariant(/legacyJwtSecretMaterial\(env, \{ requireConfigured: true \}\)/.test(crypto), "ownerRef exige la autoridad JWT legacy configurada");
   const catalog = source("api/_lib/crmOwnerCatalog.js");
   invariant(/context\?\.role !== "A"/.test(catalog) && /PIPELINE_ASSIGN/.test(catalog), "catálogo no exige rol A y pipeline:assign");
   invariant(/m\."tenant_id" = \$\{tenantId\}/.test(catalog) && /m\."role"::text = 'V'/.test(catalog), "catálogo no congela tenant/rol V");
   invariant(/m\."status"::text = 'ACTIVE'/.test(catalog) && /lower\(u\."status"\) = 'active'/.test(catalog), "catálogo no exige identidades activas");
   invariant(/CRM_PIPELINE_OWNER_CATALOG_AMBIGUOUS/.test(catalog), "nombres duplicados no bloquean catálogo");
+  invariant(/regexp_replace\(btrim\(u\."name"\), '\[\[:space:\]\]\+', ' ', 'g'\)/.test(catalog), "ambigüedad no normaliza espacios internos");
+  invariant(/WITH eligible AS MATERIALIZED[\s\S]*ambiguity AS[\s\S]*LEFT JOIN page ON true/.test(catalog), "ambigüedad debe ser global aunque la página esté vacía");
   invariant(!/email|phone|employeeCode|employee_code/i.test(catalog), "catálogo incluye fallback PII o employeeCode");
   const mutation = source("api/_lib/pipelineCaseMutationHttp.js");
   invariant(/allowedBodyKeys: new Set\(\["expectedVersion", "ownerRef"\]\)/.test(mutation), "assign no usa contrato ownerRef");
   invariant(/"ownerMembershipId"/.test(mutation) && /BROWSER_AUTHORITY_FIELDS/.test(mutation), "ownerMembershipId no está prohibido al navegador");
   invariant(/owner: receipt\.resultingOwnerMembershipId \? Object\.freeze\(\{ assigned: true \}\)/.test(mutation), "receipt expone identidad interna");
+  const domain = source("api/_lib/pipelineCaseDomain.js");
+  invariant(/NOT \(m\."denied_permissions" &&/.test(domain) && /FOR UPDATE OF m, u/.test(domain), "owner no se revalida y bloquea dentro de la transacción");
   const frontend = `${source("src/crm-relational/api.ts")}\n${source("src/crm-relational/RelationalPipelineModule.tsx")}`;
   invariant(!/localStorage|sessionStorage|indexedDB/.test(frontend), "ownerRef no puede persistirse");
   invariant(/presentationKey/.test(frontend) && /value=\{option\.presentationKey\}/.test(frontend), "option DOM debe usar clave efímera");
   invariant(!/value=\{option\.ownerRef\}/.test(frontend), "ownerRef no puede aparecer en option.value");
-  invariant(/ownerRefRenewalUsed/.test(frontend) && /CRM_PIPELINE_OWNER_REF_EXPIRED/.test(frontend), "renovación única ausente");
+  invariant(!/renewOwnerRef|normalizedPresentationName/.test(frontend) && /CRM_PIPELINE_OWNER_REF_EXPIRED/.test(frontend), "ownerRef expirado debe exigir nueva selección explícita");
   invariant(!/dangerouslySetInnerHTML/.test(source("src/crm-relational/RelationalPipelineModule.tsx")), "texto hostil no puede renderizar HTML");
   for (const path of ["package.json", ".env.example", "vercel.json", ".github/workflows/ci.yml"]) {
     invariant(!/CRM_PIPELINE_(?:RUNTIME_MODE|MUTATION_MODE)\s*[:=]\s*["']?(?:READ_ONLY|LOCAL_ONLY)/.test(source(path)), `${path} activa CRM`);
   }
-  return Object.freeze({ ok: true, migrations: 16, routes: 8, ttlSeconds: 300 });
+  const discovered = filesBelow(resolve(root, "api/crm"))
+    .filter((path) => path.endsWith(".js"))
+    .map((path) => relative(root, path).replaceAll("\\", "/"));
+  const routes = [...new Set([...discovered, ...Object.keys(extraSources).filter((path) => path.startsWith("api/crm/") && path.endsWith(".js"))])].sort();
+  invariant(routes.length === 8, `inventario recursivo de rutas CRM cambió: ${routes.length}`);
+  for (const path of routes) {
+    invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp/.test(source(path)), `${path} omite la compuerta CRM central`);
+  }
+  return Object.freeze({ ok: true, migrations: 16, routes: routes.length, ttlSeconds: 300 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

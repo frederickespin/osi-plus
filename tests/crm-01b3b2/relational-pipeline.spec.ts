@@ -226,7 +226,7 @@ test("V no recibe acciones de owner y A puede desasignar", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Desasignar owner/ })).toBeVisible();
 });
 
-test("catálogo autorizado usa clave efímera en DOM y renueva ownerRef una sola vez", async ({ page }) => {
+test("catálogo usa clave efímera y una referencia expirada exige selección explícita nueva", async ({ page }) => {
   const secretRefs = ["owner-ref-secret-initial", "owner-ref-secret-renewed"];
   const requests = await mockApi(page, {
     caseData: pipelineCase({ owner: null }),
@@ -255,9 +255,18 @@ test("catálogo autorizado usa clave efímera en DOM y renueva ownerRef una sola
   expect(await page.locator("body").innerHTML()).not.toContain("<b>Ana & Vendedora</b></b>");
   await page.getByLabel("Vendedor elegible").selectOption(optionValue!);
   await page.getByRole("button", { name: "Confirmar", exact: true }).click();
+  await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe(1);
+  await expect(page.getByText("La selección expiró. Abre de nuevo el catálogo y confirma el vendedor otra vez.")).toBeVisible();
+  expect(requests.filter((entry) => entry.url.includes("pipeline-owner-options")).length).toBe(1);
+  await page.getByRole("button", { name: "Asignar owner" }).click();
+  const renewedOption = page.getByRole("option", { name: "<b>Ana & Vendedora</b> · V" });
+  const renewedValue = await renewedOption.getAttribute("value");
+  expect(renewedValue).toBeTruthy();
+  await page.getByLabel("Vendedor elegible").selectOption(renewedValue!);
+  await page.getByRole("button", { name: "Confirmar", exact: true }).click();
   await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe(2);
   const writes = requests.filter((entry) => entry.method === "POST");
-  expect(writes[0].idempotency).toBe(writes[1].idempotency);
+  expect(writes[0].idempotency).not.toBe(writes[1].idempotency);
   expect(writes[0].body).toContain(secretRefs[0]);
   expect(writes[1].body).toContain(secretRefs[1]);
   expect(page.url()).not.toContain("owner-ref");

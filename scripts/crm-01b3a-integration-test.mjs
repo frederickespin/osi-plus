@@ -101,6 +101,13 @@ try {
   check("A asigna owner sin exponer identidad interna", assigned.statusCode === 200 && assigned.body.command.owner.assigned === true && !JSON.stringify(assigned.body).match(/ownerId|membershipId/));
   check("A reasigna owner", (await invoke(assign, request(adminUser, ownerCase.id, { expectedVersion: 2, ownerRef: ownerRef(tenantOne.id, sellerTwo.id, sellerTwoUser.id) }, key("reassign")))).statusCode === 200);
   check("A desasigna owner", (await invoke(unassign, request(adminUser, ownerCase.id, { expectedVersion: 3 }, key("unassign")))).statusCode === 200);
+  const deniedOwnerCase = await prisma.pipelineCase.create({ data: caseData(`${run}-owner-denied-in-domain`, tenantOne.id) });
+  await prisma.tenantMembership.update({ where: { id: seller.id }, data: { deniedPermissions: ["pipeline:view"] } });
+  await expect("dominio revalida deny aunque el adaptador ya descifró la referencia", invoke(assign, request(adminUser, deniedOwnerCase.id, { expectedVersion: 1, ownerRef: ownerRef(tenantOne.id, seller.id, sellerUser.id) }, key("owner-denied-in-domain"))), 409, "CRM_PIPELINE_OWNER_INELIGIBLE");
+  check("deny del owner no deja caso, journal ni auditoría parcial", (await prisma.pipelineCase.findUnique({ where: { id: deniedOwnerCase.id } })).version === 1
+    && await prisma.pipelineCaseCommand.count({ where: { pipelineCaseId: deniedOwnerCase.id } }) === 0
+    && await prisma.commercialAuditLog.count({ where: { source: "CRM_PIPELINE_DOMAIN", entityId: deniedOwnerCase.id } }) === 0);
+  await prisma.tenantMembership.update({ where: { id: seller.id }, data: { deniedPermissions: [] } });
   await expect("V no asigna", invoke(assign, request(sellerUser, ownerCase.id, { expectedVersion: 4, ownerRef: ownerRef(tenantOne.id, seller.id, sellerUser.id) }, key("v-assign"))), 403, "CRM_PIPELINE_PERMISSION_FORBIDDEN");
   await expect("owner cross-tenant oculto", invoke(assign, request(adminUser, ownerCase.id, { expectedVersion: 4, ownerRef: ownerRef(tenantTwo.id, foreignSeller.id, foreignSellerUser.id) }, key("cross-owner"))), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
 

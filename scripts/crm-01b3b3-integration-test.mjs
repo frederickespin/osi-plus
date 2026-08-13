@@ -73,11 +73,12 @@ try {
 
   queryCount = 0;
   const first = await listCrmPipelineOwnerOptions(adminContext, { page: "1", pageSize: "100" }, { prisma: countedPrisma });
-  check("2.000 memberships se filtran sin N+1", first.total === 1_999 && first.data.length === 100 && queryCount === 2, { queries: queryCount });
+  check("2.000 memberships se filtran sin N+1", first.total === 1_999 && first.data.length === 100 && queryCount === 1, { queries: queryCount });
   check("contrato real no expone IDs ni PII", first.data.every((entry) => Object.keys(entry).sort().join(",") === "displayName,ownerRef,role"
     && !JSON.stringify(entry).match(/membershipId|userId|tenantId|email|phone/i)));
   const foreignCatalog = await listCrmPipelineOwnerOptions(Object.freeze({ ...adminContext, tenantId: tenantTwoId }), {}, { prisma });
   check("segundo tenant recibe únicamente su vendedor", foreignCatalog.total === 1 && foreignCatalog.data.length === 1);
+  check("nombre idéntico en otro tenant no vuelve ambiguo el catálogo", foreignCatalog.data[0].displayName === first.data[0].displayName);
 
   await measure("firstPage", 30, () => listCrmPipelineOwnerOptions(adminContext, { page: "1", pageSize: "100" }, { prisma }));
   await measure("deepPage", 30, () => listCrmPipelineOwnerOptions(adminContext, { page: "20", pageSize: "100" }, { prisma }));
@@ -101,11 +102,35 @@ try {
   check("revalidación real rechaza owner suspendido", suspendedCode === "CRM_PIPELINE_OWNER_INELIGIBLE");
   await prisma.tenantMembership.update({ where: { id: selectedMembershipId }, data: { status: "ACTIVE" } });
 
-  await prisma.user.update({ where: { id: `${run}-u-1-2` }, data: { name: "Vendedor 0001" } });
-  let ambiguousCode = null;
-  try { await listCrmPipelineOwnerOptions(adminContext, {}, { prisma }); }
-  catch (error) { ambiguousCode = error.code; }
-  check("nombres duplicados normalizados bloquean catálogo real", ambiguousCode === "CRM_PIPELINE_OWNER_CATALOG_AMBIGUOUS");
+  await prisma.tenantMembership.update({ where: { id: selectedMembershipId }, data: { deniedPermissions: ["pipeline:view"] } });
+  let deniedCode = null;
+  try { await resolveCrmOwnerRefForAssignment(adminContext, first.data[0].ownerRef, { prisma }); }
+  catch (error) { deniedCode = error.code; }
+  check("deny añadido después de emitir ownerRef lo vuelve inelegible", deniedCode === "CRM_PIPELINE_OWNER_INELIGIBLE");
+  await prisma.tenantMembership.update({ where: { id: selectedMembershipId }, data: { deniedPermissions: [] } });
+
+  const duplicateUserId = `${run}-u-1-1500`;
+  const duplicateMembershipId = `${run}-m-1-1500`;
+  for (const [label, firstName, duplicateName] of [
+    ["case y espacios extremos", "Vendedor 0001", "  vEnDeDoR 0001  "],
+    ["espacios internos repetidos", "Ana María", "Ana    María"],
+    ["Unicode canónico NFC/NFD", "José Vendedor", "Jose\u0301 Vendedor"],
+    ["Unicode de compatibilidad NFKC", "Ａｎａ", "Ana"],
+  ]) {
+    await prisma.user.update({ where: { id: `${run}-u-1-1` }, data: { name: firstName } });
+    await prisma.user.update({ where: { id: duplicateUserId }, data: { name: duplicateName } });
+    let ambiguousCode = null;
+    try { await listCrmPipelineOwnerOptions(adminContext, { page: "20", pageSize: "100", q: "Vendedor 19" }, { prisma }); }
+    catch (error) { ambiguousCode = error.code; }
+    check(`duplicado global fuera de página/filtro: ${label}`, ambiguousCode === "CRM_PIPELINE_OWNER_CATALOG_AMBIGUOUS");
+  }
+  await prisma.user.update({ where: { id: `${run}-u-1-1` }, data: { name: "Vendedor 0001" } });
+  await prisma.user.update({ where: { id: duplicateUserId }, data: { name: "Vendedor 0001" } });
+  await prisma.tenantMembership.update({ where: { id: duplicateMembershipId }, data: { status: "SUSPENDED" } });
+  const inactiveDuplicate = await listCrmPipelineOwnerOptions(adminContext, {}, { prisma });
+  check("duplicado inelegible queda fuera de ambigüedad", inactiveDuplicate.total === 1_998);
+  await prisma.tenantMembership.update({ where: { id: duplicateMembershipId }, data: { status: "ACTIVE" } });
+  await prisma.user.update({ where: { id: duplicateUserId }, data: { name: "Vendedor 1500" } });
   check("destino PostgreSQL 18 local exacto", target.address === "127.0.0.1" && target.port === 55432 && !target.neonBranchId);
 } catch (error) {
   process.stdout.write(`${JSON.stringify({ ok: false, assertions: results.filter((entry) => entry.passed).length, error: { name: error.name, code: error.code || null, message: error.message }, metrics }, null, 2)}\n`);

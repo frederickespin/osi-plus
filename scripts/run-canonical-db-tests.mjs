@@ -244,11 +244,11 @@ try {
     && Object.values(crmProductionAdversarialRun.report.performance || {}).every((entry) => entry.requests === 100), "CRM-01B3B1 adversarial/rendimiento no se completó");
   invariant(crmProductionGateGuardRun.report.ok === true && crmProductionGateGuardRun.report.routes === 8, "CRM-01B3B1 guard falló");
   invariant(crmProductionGateGuardTestsRun.assertions >= 15, `CRM-01B3B1 guard tests esperaba al menos 15 pruebas y obtuvo ${crmProductionGateGuardTestsRun.assertions}`);
-  invariant(crmOwnerCatalogRun.assertions >= 13, `CRM-01B3B3 esperaba al menos 13 pruebas y obtuvo ${crmOwnerCatalogRun.assertions}`);
+  invariant(crmOwnerCatalogRun.assertions >= 21, `CRM-01B3B3 esperaba al menos 21 pruebas y obtuvo ${crmOwnerCatalogRun.assertions}`);
   invariant(crmOwnerCatalogIntegrationRun.report.ok === true && crmOwnerCatalogIntegrationRun.report.fixtureMemberships === 2_001
-    && crmOwnerCatalogIntegrationRun.assertions >= 8, "CRM-01B3B3 integración/rendimiento no se completó");
+    && crmOwnerCatalogIntegrationRun.assertions >= 14, "CRM-01B3B3 integración/rendimiento no se completó");
   invariant(crmOwnerCatalogGuardRun.report.ok === true && crmOwnerCatalogGuardRun.report.routes === 8, "CRM-01B3B3 guard falló");
-  invariant(crmOwnerCatalogGuardTestsRun.assertions >= 3, `CRM-01B3B3 guard tests esperaba al menos 3 pruebas y obtuvo ${crmOwnerCatalogGuardTestsRun.assertions}`);
+  invariant(crmOwnerCatalogGuardTestsRun.assertions >= 5, `CRM-01B3B3 guard tests esperaba al menos 5 pruebas y obtuvo ${crmOwnerCatalogGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
   const suites = {};

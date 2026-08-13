@@ -17,7 +17,7 @@ No existe tabla de equivalencias entre esos siete estados y `PipelineCaseStatus`
 
 - `clientMode.ts`: compuerta estricta y única lectura ambiental.
 - `types.ts`: DTO públicos seguros. No incluye tenant, membresía, usuario, claims ni permisos.
-- `api.ts`: único adaptador `/api/crm/**`; Bearer desde `sessionStore.getToken`, `credentials=same-origin`, `cache=no-store`, timeout y `AbortController`. Valida esquemas y campos exactos.
+- `api.ts`: único adaptador `/api/crm/**`; Bearer desde `sessionStore.getToken`, `credentials=same-origin`, `cache=no-store`, timeout y `AbortController`. Valida status, `Content-Type: application/json`, JSON, esquemas y campos exactos.
 - `RelationalPipelineModule.tsx`: lista paginada, resumen y drawer accesible. Mantiene máximo 25 filas por página (la API limita a 100), cancela lecturas al cambiar filtros/desmontar y usa fencing por secuencia para descartar respuestas tardías.
 - `App.tsx`: importación dinámica. Con la compuerta cerrada el chunk no se ejecuta ni se crea estado, timer, listener o request CRM.
 
@@ -25,9 +25,9 @@ El ajuste de `crmPipelineRead.js` agrega `QUOTE_DRAFT`, `WON` y `LOST` a la allo
 
 ## Comandos, recuperación e idempotencia
 
-Cada intención crea una clave sólo en memoria mediante `crypto.randomUUID()`. La misma intención conserva la clave para respuesta perdida, timeout, `COMMAND_IN_PROGRESS` y retry manual. Sólo `COMMAND_IN_PROGRESS` admite un retry automático, con `retryAfterMs` entero entre 0 y 5,000 ms. Conflictos de versión o idempotencia nunca generan otra clave ni retry automático.
+Cada intención crea una clave sólo en memoria mediante `crypto.randomUUID()`. La misma intención conserva la clave para respuesta perdida, timeout, `COMMAND_IN_PROGRESS` y retry manual. Sólo `COMMAND_IN_PROGRESS` admite un retry automático, con `retryAfterMs` entero entre 0 y 5,000 ms; un valor ausente o inválido usa un fallback fijo y seguro de 150 ms. Conflictos de versión o idempotencia nunca generan otra clave ni retry automático.
 
-Tras éxito se releen lista, resumen, detalle y transiciones. No hay estado optimista. Un 401 usa el logout actual; 403 retira acciones del caso; 404 cierra el detalle; 503 conserva datos visibles y ofrece retry. Cerrar el drawer cancela definitivamente la intención pendiente.
+Tras éxito se releen lista, resumen, detalle y transiciones. No hay estado optimista. Un 401 usa el logout actual; 403 obliga a releer autorización antes de mostrar acciones; 404 cierra el detalle; 503 conserva datos visibles y ofrece retry. Cerrar el drawer o desmontar cancela el request y la intención pendiente sin crear otra clave. Las mutaciones exigen un diálogo de confirmación accesible.
 
 ## Matriz A/V
 
@@ -41,12 +41,17 @@ Tras éxito se releen lista, resumen, detalle y transiciones. No hay estado opti
 
 La UI no expone un campo libre de `ownerMembershipId`. Las APIs actuales reciben ese identificador para el comando, pero no publican un catálogo de owners autorizado que permita construir un selector sin exponer IDs internos. Activar esa acción requiere primero un endpoint CRM de referencias opacas/seguras; no se reutiliza `/api/users` ni se pide al operador pegar IDs.
 
+## Contratos deliberadamente incompletos
+
+El cliente no inventa historial de comandos, SLA, catálogo o datos personales de owners, relaciones Client/Project ausentes, métricas no publicadas ni evidencia para `WON`/`SURVEY_SCHEDULED`. Esas transiciones sólo pueden aparecer si el dominio publica evidencia soportada. Estos contratos quedan reservados para CRM-01B3B3 o una fase posterior.
+
 ## Validación local
 
-- Browser suite: 102/102 en Chromium, Firefox y WebKit, escritorio y móvil; flag cerrado, matriz estricta de configuración, 39/12, filtros, drawer, APPROVED, OPS_HANDOFF, A/V, 401/403/404/409/503, respuesta tardía, doble envío, dos pestañas y almacenamiento.
-- Guardias: 16 migraciones exactas; modo productivo/17 prohibidos; variable ambiental central; sin Storage, LeadLite, batches, tenant/actor/owner heredado ni retries peligrosos.
+- Browser suite Q1: 156/156 en Chromium, Firefox y WebKit, escritorio y móvil. Incluye contrato HTTP estricto, fallback de retry, respuesta perdida, cancelación, texto hostil, foco, confirmaciones e idempotencia.
+- Guardias: 16 migraciones exactas; modo productivo/17 prohibidos; variable ambiental central; sin Storage, LeadLite, batches, tenant/actor/owner heredado, CORS global, HTML editable ni retries peligrosos. Cuatro fixtures negativas prueban que la guardia falla.
 - El backend relacional mantiene dos consultas para lista (`count` + página) y no materializa 2,000 filas en el cliente. Las mediciones SQL de CRM-01A para 2,000 filas siguen siendo la referencia backend (p95 local 4.455–7.242 ms según escenario).
-- Paginación frontend con 2,000 resultados y 25 filas montadas: Chromium 50/62/62 ms, Firefox 71/110/110 ms y WebKit 154/177/177 ms p50/p95/máximo en escritorio; 47/50/50 ms, 58/71/71 ms y 136/192/192 ms respectivamente en móvil. Cada cambio de página produjo una sola lectura; el resumen se carga independientemente y no vuelve a pedirse por filtros o paginación. No hubo N+1 frontend.
+- Paginación frontend Q1 con 2,000 resultados, 30 rondas y 25 filas montadas: Chromium desktop 82/101/104 ms y WebKit móvil 166/192/231 ms p50/p95/máximo; todos los proyectos quedaron con p95 menor de 250 ms. Cada cambio produjo una lectura; el resumen se carga independientemente y no vuelve a pedirse por paginación. No hubo N+1 frontend.
+- Bundle DISABLED contra la base exacta: el entry principal aumenta 1,432 bytes raw/521 gzip por la compuerta y navegación; el chunk relacional queda separado (37,003 bytes raw/9,570 gzip) y no se solicita durante navegación real con la variable ausente o `DISABLED`.
 - Regresión: cadena canónica 299/299, CRM-01A/B1/B2/B3A/B3B1, 75/75 navegadores heredados, build, typecheck focalizado y ESLint aprobados.
 
 ## Riesgos reservados

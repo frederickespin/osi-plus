@@ -22,6 +22,7 @@ type MockOptions = {
   mutation?: (route: Route, attempt: number) => Promise<void>;
   list?: (route: Route, url: URL) => Promise<void>;
   detail?: (route: Route) => Promise<void>;
+  summaryOverride?: (route: Route) => Promise<void>;
 };
 
 async function mockApi(page: Page, options: MockOptions = {}) {
@@ -32,7 +33,10 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     const url = new URL(request.url());
     requestLog.push({ url: url.pathname + url.search, method: request.method(), idempotency: request.headers()["idempotency-key"], body: request.postData() });
     const json = (value: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(value) });
-    if (url.pathname === "/api/crm/pipeline-summary") return json({ ok: true, data: summary() });
+    if (url.pathname === "/api/crm/pipeline-summary") {
+      if (options.summaryOverride) return options.summaryOverride(route);
+      return json({ ok: true, data: summary() });
+    }
     if (url.pathname.endsWith("/allowed-transitions")) return json({ ok: true, case: { caseId: "case-001", version: 4, status: options.caseData?.status ?? "NEW_INBOX", transitions: options.allowed ?? [{ toStatus: "AWAITING_ICP", evidenceType: null }] } });
     if (["transition", "assign-owner", "unassign-owner"].some((action) => url.pathname.endsWith(`/${action}`))) {
       mutationAttempt += 1;
@@ -54,6 +58,12 @@ async function mockApi(page: Page, options: MockOptions = {}) {
   return requestLog;
 }
 
+async function confirmTransition(page: Page) {
+  await page.getByRole("button", { name: "Revisar cambio" }).click();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar cambio" }).click();
+}
+
 test.beforeEach(async ({ page }) => {
   page.on("pageerror", (error) => console.error(`browser-error:${error.name}:${error.message}`));
 });
@@ -64,6 +74,21 @@ test("DISABLED no monta cliente ni genera requests CRM", async ({ page }) => {
   await page.goto("/tests/crm-01b3b2/harness.html?disabled=1");
   await expect(page.getByTestId("crm-disabled")).toBeVisible();
   expect(crmRequests).toBe(0);
+});
+
+test("App real DISABLED no muestra menú ni descarga el chunk relacional", async ({ page }) => {
+  const requested: string[] = [];
+  page.on("request", (request) => requested.push(new URL(request.url()).pathname));
+  await page.addInitScript(() => {
+    localStorage.setItem("osi-plus.token", "synthetic.disabled.jwt");
+    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "disabled-user", name: "Actor disabled", role: "A", token: "synthetic.disabled.jwt" }));
+  });
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { id: "disabled-user", name: "Actor disabled", email: "disabled@example.invalid", role: "A", status: "active" } }) }));
+  await page.goto("/");
+  await expect(page.getByText("Actor disabled")).toBeVisible();
+  await expect(page.getByText("Pipeline relacional")).toHaveCount(0);
+  expect(requested.some((path) => /RelationalPipelineModule/i.test(path))).toBe(false);
+  expect(requested.some((path) => path.startsWith("/api/crm/"))).toBe(false);
 });
 
 test("compuerta acepta sólo valores exactos y rechaza LOCAL_ONLY en Vercel", async ({ page }) => {
@@ -84,6 +109,18 @@ test("compuerta acepta sólo valores exactos y rechaza LOCAL_ONLY en Vercel", as
     await expect(page.locator("body")).toHaveAttribute("data-crm-mode", item.mode);
     await expect(page.locator("body")).toHaveAttribute("data-crm-mode-valid", item.valid);
   }
+});
+
+test("rechaza Content-Type no JSON y esquemas con campos internos", async ({ page }) => {
+  await mockApi(page, { summaryOverride: async (route) => route.fulfill({ status: 200, contentType: "text/plain", body: JSON.stringify({ ok: true, data: summary() }) }) });
+  await page.goto("/tests/crm-01b3b2/harness.html");
+  await expect(page.getByText("CRM_PIPELINE_RESPONSE_CONTENT_TYPE_INVALID")).toBeVisible();
+
+  await page.reload();
+  await page.unrouteAll({ behavior: "wait" });
+  await mockApi(page, { list: async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, internalTenantId: "forbidden", data: [pipelineCase()] }) }) });
+  await page.reload();
+  await expect(page.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toBeVisible();
 });
 
 test("lista paginada muestra 39 asignados y 12 sin owner", async ({ page }) => {
@@ -111,7 +148,7 @@ test("OPS_HANDOFF se presenta como terminal", async ({ page }) => {
   await page.goto("/tests/crm-01b3b2/harness.html");
   await page.getByText("CRM-001").click();
   await expect(page.getByText("Estado terminal")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Confirmar cambio/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Revisar cambio/ })).toHaveCount(0);
 });
 
 test("COMMAND_IN_PROGRESS reintenta una vez con la misma Idempotency-Key", async ({ page }) => {
@@ -121,7 +158,7 @@ test("COMMAND_IN_PROGRESS reintenta una vez con la misma Idempotency-Key", async
   } });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await page.getByText("CRM-001").click();
-  await page.getByRole("button", { name: "Confirmar cambio" }).click();
+  await confirmTransition(page);
   await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe(2);
   const writes = requests.filter((entry) => entry.method === "POST");
   expect(writes[0].idempotency).toBeTruthy();
@@ -129,12 +166,41 @@ test("COMMAND_IN_PROGRESS reintenta una vez con la misma Idempotency-Key", async
   expect(writes[1].body).toBe(writes[0].body);
 });
 
+test("retryAfterMs ausente, negativo, enorme, string o no finito usa fallback seguro una sola vez", async ({ page }) => {
+  const invalidRetryValues: unknown[] = [undefined, -1, 5_001, "10", Number.NaN];
+  const requests = await mockApi(page, { mutation: async (route, attempt) => {
+    const isFirstAttempt = attempt % 2 === 1;
+    const invalidValue = invalidRetryValues[Math.floor((attempt - 1) / 2)];
+    const inProgress: Record<string, unknown> = { ok: false, code: "CRM_PIPELINE_COMMAND_IN_PROGRESS", recoverable: true };
+    if (invalidValue !== undefined) inProgress.retryAfterMs = invalidValue;
+    return route.fulfill({
+      status: isFirstAttempt ? 409 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(isFirstAttempt
+        ? inProgress
+        : { ok: true, command: { caseId: "case-001", commandType: "TRANSITION", previousVersion: 4, resultingVersion: 5, previousStatus: "NEW_INBOX", resultingStatus: "AWAITING_ICP", owner: null, replayed: false } }),
+    });
+  } });
+  await page.goto("/tests/crm-01b3b2/harness.html");
+  await page.getByText("CRM-001").click();
+  for (let index = 0; index < invalidRetryValues.length; index += 1) {
+    await confirmTransition(page);
+    await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe((index + 1) * 2);
+    const pair = requests.filter((entry) => entry.method === "POST").slice(index * 2, index * 2 + 2);
+    expect(pair[0].idempotency).toBeTruthy();
+    expect(pair[1].idempotency).toBe(pair[0].idempotency);
+    expect(pair[1].body).toBe(pair[0].body);
+  }
+  await page.waitForTimeout(250);
+  expect(requests.filter((entry) => entry.method === "POST")).toHaveLength(invalidRetryValues.length * 2);
+});
+
 test("VERSION_CONFLICT no reintenta y vuelve a leer el caso", async ({ page }) => {
   const requests = await mockApi(page, { mutation: async (route) => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ ok: false, code: "CRM_PIPELINE_VERSION_CONFLICT", recoverable: true }) }) });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await page.getByText("CRM-001").click();
   const readsBefore = requests.filter((entry) => entry.url === "/api/crm/pipeline-cases/case-001").length;
-  await page.getByRole("button", { name: "Confirmar cambio" }).click();
+  await confirmTransition(page);
   await expect(page.getByText(/La oportunidad cambió/)).toBeVisible();
   expect(requests.filter((entry) => entry.method === "POST")).toHaveLength(1);
   await expect.poll(() => requests.filter((entry) => entry.url === "/api/crm/pipeline-cases/case-001").length).toBeGreaterThan(readsBefore);
@@ -148,6 +214,17 @@ test("V no recibe acciones de owner y A puede desasignar", async ({ page }) => {
   await page.goto("/tests/crm-01b3b2/harness.html?role=A");
   await page.getByText("CRM-001").click();
   await expect(page.getByRole("button", { name: /Desasignar owner/ })).toBeVisible();
+});
+
+test("sólo A puede reabrir LOST cuando el servidor lo autoriza", async ({ page }) => {
+  await mockApi(page, { caseData: pipelineCase({ status: "LOST" }), allowed: [{ toStatus: "NEW_INBOX", evidenceType: null }] });
+  await page.goto("/tests/crm-01b3b2/harness.html?role=V");
+  await page.getByText("CRM-001").click();
+  await expect(page.getByRole("button", { name: "Revisar cambio" })).toHaveCount(0);
+  await page.goto("/tests/crm-01b3b2/harness.html?role=A");
+  await page.getByText("CRM-001").click();
+  await page.getByLabel("Motivo").selectOption("MANUAL_REVIEW");
+  await expect(page.getByRole("button", { name: "Revisar cambio" })).toBeVisible();
 });
 
 test("cliente relacional no escribe storage ni filtra credenciales a URL", async ({ page }) => {
@@ -168,13 +245,25 @@ test("401 delega al flujo de sesión y no degrada a datos vacíos", async ({ pag
   await expect(page.getByText("No hay oportunidades para estos filtros.")).toHaveCount(0);
 });
 
-test("403 retira acciones después del rechazo del servidor", async ({ page }) => {
-  await mockApi(page, { mutation: async (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ ok: false, code: "COMMERCIAL_PERMISSION_DENIED" }) }) });
+test("403 no muta permisos locales y revalida acciones con el servidor", async ({ page }) => {
+  const requests = await mockApi(page, { mutation: async (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ ok: false, code: "COMMERCIAL_PERMISSION_DENIED" }) }) });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await page.getByText("CRM-001").click();
-  await page.getByRole("button", { name: "Confirmar cambio" }).click();
+  const readsBefore = requests.filter((entry) => entry.url === "/api/crm/pipeline-cases/case-001").length;
+  await confirmTransition(page);
   await expect(page.getByText("No tienes permiso para esta operación.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Confirmar cambio" })).toHaveCount(0);
+  await expect.poll(() => requests.filter((entry) => entry.url === "/api/crm/pipeline-cases/case-001").length).toBeGreaterThan(readsBefore);
+  await expect(page.getByRole("button", { name: "Revisar cambio" })).toBeVisible();
+});
+
+test("IDEMPOTENCY_CONFLICT no reintenta ni conserva acción de retry", async ({ page }) => {
+  const requests = await mockApi(page, { mutation: async (route) => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ ok: false, code: "CRM_PIPELINE_IDEMPOTENCY_CONFLICT", recoverable: false }) }) });
+  await page.goto("/tests/crm-01b3b2/harness.html");
+  await page.getByText("CRM-001").click();
+  await confirmTransition(page);
+  await expect(page.getByText(/La intención ya fue usada/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reintentar misma intención" })).toHaveCount(0);
+  expect(requests.filter((entry) => entry.method === "POST")).toHaveLength(1);
 });
 
 test("404 cierra el detalle sin confirmar existencia", async ({ page }) => {
@@ -195,13 +284,44 @@ test("503 de mutación requiere retry manual con la misma intención", async ({ 
   }) });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await page.getByText("CRM-001").click();
-  await page.getByRole("button", { name: "Confirmar cambio" }).click();
+  await confirmTransition(page);
   await expect(page.getByRole("button", { name: "Reintentar misma intención" })).toBeVisible();
   expect(requests.filter((entry) => entry.method === "POST")).toHaveLength(1);
   await page.getByRole("button", { name: "Reintentar misma intención" }).click();
   await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe(2);
   const writes = requests.filter((entry) => entry.method === "POST");
   expect(writes[1].idempotency).toBe(writes[0].idempotency);
+});
+
+test("respuesta perdida conserva la intención y la key para retry manual", async ({ page }) => {
+  const requests = await mockApi(page, { mutation: async (route, attempt) => {
+    if (attempt === 1) return route.abort("connectionreset");
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, command: { caseId: "case-001", commandType: "TRANSITION", previousVersion: 4, resultingVersion: 5, previousStatus: "NEW_INBOX", resultingStatus: "AWAITING_ICP", owner: null, replayed: true } }) });
+  } });
+  await page.goto("/tests/crm-01b3b2/harness.html");
+  await page.getByText("CRM-001").click();
+  await confirmTransition(page);
+  await expect(page.getByRole("button", { name: "Reintentar misma intención" })).toBeVisible();
+  await page.getByRole("button", { name: "Reintentar misma intención" }).click();
+  await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe(2);
+  const writes = requests.filter((entry) => entry.method === "POST");
+  expect(writes[1].idempotency).toBe(writes[0].idempotency);
+});
+
+test("cerrar durante mutación cancela el request sin crear otra intención", async ({ page }) => {
+  const requests = await mockApi(page, { mutation: async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, command: { caseId: "case-001", commandType: "TRANSITION", previousVersion: 4, resultingVersion: 5, previousStatus: "NEW_INBOX", resultingStatus: "AWAITING_ICP", owner: null, replayed: false } }) }).catch(() => undefined);
+  } });
+  await page.goto("/tests/crm-01b3b2/harness.html");
+  await page.getByText("CRM-001").click();
+  await page.getByRole("button", { name: "Revisar cambio" }).click();
+  await page.getByRole("button", { name: "Confirmar cambio" }).click();
+  await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe(1);
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.waitForTimeout(750);
+  expect(requests.filter((entry) => entry.method === "POST")).toHaveLength(1);
+  await expect(page.getByRole("button", { name: "Reintentar misma intención" })).toHaveCount(0);
 });
 
 test("respuesta tardía de filtro anterior no reemplaza la más reciente", async ({ page }) => {
@@ -223,6 +343,29 @@ test("respuesta tardía de filtro anterior no reemplaza la más reciente", async
   await expect(page.getByText("CRM-ANTERIOR")).toHaveCount(0);
 });
 
+test("texto hostil se acota y se renderiza como texto sin ejecutar ni navegar", async ({ page }) => {
+  const hostile = `<img src=x onerror=window.__crmPwned=1><svg onload=window.__crmPwned=2></svg>javascript:alert(1)\u202E${"X".repeat(1200)}`;
+  const external: string[] = [];
+  page.on("request", (request) => { if (!request.url().startsWith("http://127.0.0.1:4182")) external.push(request.url()); });
+  await mockApi(page, { caseData: pipelineCase({ caseCode: hostile, clientName: hostile, owner: { displayName: hostile, role: "V", membershipStatus: "ACTIVE" }, serviceType: hostile, originLocation: hostile, destinationLocation: hostile }) });
+  await page.goto("/tests/crm-01b3b2/harness.html");
+  await expect(page.getByText(hostile, { exact: true }).first()).toBeVisible();
+  expect(await page.evaluate(() => (window as Window & { __crmPwned?: number }).__crmPwned ?? 0)).toBe(0);
+  expect(await page.locator("img[src='x'], [onerror], [onload]").count()).toBe(0);
+  expect(external).toEqual([]);
+  expect(page.url()).toContain("/tests/crm-01b3b2/harness.html");
+});
+
+test("drawer atrapa foco, Escape cierra y restaura el disparador", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/tests/crm-01b3b2/harness.html");
+  await page.getByText("CRM-001").click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator('[role="listitem"]').filter({ hasText: "CRM-001" })).toBeFocused();
+});
+
 test("doble clic no duplica un comando en curso", async ({ page }) => {
   const requests = await mockApi(page, { mutation: async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 150));
@@ -230,6 +373,7 @@ test("doble clic no duplica un comando en curso", async ({ page }) => {
   } });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await page.getByText("CRM-001").click();
+  await page.getByRole("button", { name: "Revisar cambio" }).click();
   const action = page.getByRole("button", { name: "Confirmar cambio" });
   await action.evaluate((element: HTMLButtonElement) => { element.click(); element.click(); });
   await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe(1);
@@ -242,7 +386,7 @@ test("dos pestañas crean intenciones distintas y no persisten sus keys", async 
   for (const target of [page, secondPage]) {
     await target.goto("/tests/crm-01b3b2/harness.html");
     await target.getByText("CRM-001").click();
-    await target.getByRole("button", { name: "Confirmar cambio" }).click();
+    await confirmTransition(target);
   }
   await expect.poll(() => first.filter((entry) => entry.method === "POST").length).toBe(1);
   await expect.poll(() => second.filter((entry) => entry.method === "POST").length).toBe(1);
@@ -266,7 +410,7 @@ test("página de 25 sobre 2,000 mantiene una sola lectura por acción", async ({
   } });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await expect(page.getByText("2000 resultados")).toBeVisible();
-  for (let index = 0; index < 10; index += 1) {
+  for (let index = 0; index < 30; index += 1) {
     const started = Date.now();
     await page.getByRole("button", { name: "Siguiente" }).click();
     await expect(page.getByText(`Página ${index + 2} de 80`)).toBeVisible();
@@ -277,6 +421,6 @@ test("página de 25 sobre 2,000 mantiene una sola lectura por acción", async ({
   const metrics = { project: testInfo.project.name, p50Ms: percentile(0.5), p95Ms: percentile(0.95), maxMs: sorted.at(-1), listRequests };
   testInfo.annotations.push({ type: "performance", description: JSON.stringify(metrics) });
   console.log(`[crm01b3b2-performance] ${JSON.stringify(metrics)}`);
-  expect(listRequests).toBe(11);
+  expect(listRequests).toBe(31);
   expect(await page.getByRole("listitem").count()).toBe(25);
 });

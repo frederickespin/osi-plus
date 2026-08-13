@@ -20,7 +20,7 @@ const mode = forcedDisabled
   ? resolveCrmPipelineClientMode({ VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED" }, { hostname: "127.0.0.1" })
   : gateEnvironment
     ? resolveCrmPipelineClientMode(gateEnvironment, { hostname: params.get("host") || "127.0.0.1" })
-    : resolveCrmPipelineClientMode();
+    : resolveCrmPipelineClientMode({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY" }, { hostname: "127.0.0.1" });
 const root = createRoot(document.getElementById("root")!);
 document.body.dataset.crmMode = mode.mode;
 document.body.dataset.crmModeValid = String(mode.valid);

@@ -30,7 +30,7 @@ export default defineConfig({
     url: "http://127.0.0.1:4182/tests/crm-01b3b2/harness.html",
     reuseExistingServer: false,
     timeout: 120_000,
-    env: { VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" },
+    env: { VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED", MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" },
   },
   projects: [...desktop, ...mobile],
 });

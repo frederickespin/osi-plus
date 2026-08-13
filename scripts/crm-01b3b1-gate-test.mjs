@@ -68,6 +68,12 @@ try {
     ["producción con HYBRID", { ...productionBase, MT01B_AUTH_MODE: "HYBRID" }],
     ["producción con tenant switch", { ...productionBase, MT01B_TENANT_SWITCH_ENABLED: "true" }],
     ["producción con cliente V2", { ...productionBase, VITE_MT01B2_CLIENT_ENABLED: "true" }],
+    ["local con HYBRID", { ...localRead, MT01B_AUTH_MODE: "HYBRID" }],
+    ["local con tenant switch", { ...localRead, MT01B_TENANT_SWITCH_ENABLED: "true" }],
+    ["local con cliente V2", { ...localRead, VITE_MT01B2_CLIENT_ENABLED: "true" }],
+    ["producción sin batch C2B2", { ...productionBase, COMMERCIAL_TENANCY_ACTIVATION_BATCH: undefined }],
+    ["producción con batch C2B2 incorrecto", { ...productionBase, COMMERCIAL_TENANCY_ACTIVATION_BATCH: "MT-01C2B2-IPACKERS-DO-V0" }],
+    ["producción simulada en Development", { ...productionBase, VERCEL_ENV: "development" }],
     ["modo local en Vercel", { ...localRead, VERCEL_ENV: "development" }],
   ]) rejected(name, env);
 
@@ -85,6 +91,7 @@ try {
 
   check("gate lectura habilita ambos modos de lectura", requireCrmPipelineRead(localRead) === "READ_ONLY" && requireCrmPipelineRead(productionBase) === "PRODUCTION_READ");
   check("gate mutación habilita local y producción", requireCrmPipelineMutation(localWrite) === "LOCAL_ONLY" && requireCrmPipelineMutation(productionWrite) === "PRODUCTION_WRITE");
+  check("cambio ambiental entre requests no conserva caché", resolveCrmPipelineModes(localRead).readMode === "READ_ONLY" && resolveCrmPipelineModes({}).readMode === "DISABLED");
   let disabledRead;
   try { requireCrmPipelineRead({}); } catch (error) { disabledRead = error; }
   check("lectura desactivada conserva 409", disabledRead?.status === 409 && disabledRead?.code === "CRM_PIPELINE_DISABLED");
@@ -143,6 +150,20 @@ try {
     check("mutación DISABLED precede método, auth y dominio", response.statusCode === 409 && response.body.code === "CRM_PIPELINE_MUTATIONS_DISABLED" && mutationAuth === 0 && mutationExec === 0);
     check("mutación DISABLED no emite cookie", response.getHeader("set-cookie") === undefined && response.getHeader("cache-control") === "private, no-store");
   }
+  const headDisabled = await invoke(mutationHandlers[3], request("HEAD", {}));
+  check("HEAD desactivado no contiene body", headDisabled.statusCode === 409 && headDisabled.body === undefined && headDisabled.ended === true);
+  const optionsDisabled = await invoke(mutationHandlers[3], request("OPTIONS", {}));
+  check("OPTIONS desactivado respeta gate", optionsDisabled.statusCode === 409 && optionsDisabled.body?.code === "CRM_PIPELINE_MUTATIONS_DISABLED");
+
+  let invalidQueries = 0;
+  let invalidAuth = 0;
+  const invalidHandler = createPipelineCasesListHandler({
+    env: { ...productionBase, VERCEL_GIT_COMMIT_REF: "feature/invalid" },
+    prismaClient: { pipelineCase: { count: () => { invalidQueries += 1; } } },
+    requirePermission: async () => { invalidAuth += 1; return {}; },
+  });
+  const invalidResponse = await invoke(invalidHandler, request("GET"));
+  check("configuración inválida precede auth y Prisma", invalidResponse.statusCode === 503 && invalidResponse.body?.error === "CRM_PIPELINE_CONFIGURATION_INVALID" && invalidAuth === 0 && invalidQueries === 0);
 
   let contextCalls = 0;
   let executeCalls = 0;

@@ -336,7 +336,7 @@ try {
   check("rol A accede", (await invoke(listHandler, request(tokenFor(adminOne)))).statusCode === 200);
   const clientsOnlyDenied = await expectError("clients:view solo no permite Pipeline", invoke(listHandler, request(tokenFor(clientsOnly))), 403, "COMMERCIAL_PERMISSION_FORBIDDEN");
   checkJsonSnapshot("snapshot 403", clientsOnlyDenied.body, { ok: false, error: "COMMERCIAL_PERMISSION_FORBIDDEN" });
-  check("grant explícito pipeline:view permite acceso", (await invoke(listHandler, request(tokenFor(explicitGrant)))).statusCode === 200);
+  await expectError("grant explícito no amplía CRM fuera de A/V", invoke(listHandler, request(tokenFor(explicitGrant))), 403, "COMMERCIAL_PERMISSION_FORBIDDEN");
   await expectError("deniedPermissions prevalece", invoke(listHandler, request(tokenFor(deniedOne))), 403, "COMMERCIAL_PERMISSION_FORBIDDEN");
   await expectError("membresía suspendida", invoke(listHandler, request(tokenFor(suspendedMembership))), 403, "COMMERCIAL_MEMBERSHIP_INACTIVE");
   await expectError("tenant suspendido", invoke(listHandler, request(tokenFor(suspendedTenant))), 403, "COMMERCIAL_TENANT_INACTIVE");
@@ -346,12 +346,12 @@ try {
   await expectError("dos Authorization rechazados", invoke(listHandler, request(null, "GET", {}, { authorization: ["Bearer x", `Bearer ${tokenOne}`] })), 401, "COMMERCIAL_AUTH_INVALID");
   await expectError("Bearer malformado rechazado", invoke(listHandler, request("not-a-jwt")), 401, "COMMERCIAL_AUTH_REQUIRED");
   const expiredLegacy = jwt.sign({ sub: tenantOne.userId, email: "expired@example.invalid", role: "V" }, process.env.JWT_SECRET, { expiresIn: -1 });
-  await expectError("JWT expirado rechazado", invoke(listHandler, request(expiredLegacy)), 401, "MT01B_LEGACY_TOKEN_INVALID");
+  await expectError("JWT expirado rechazado", invoke(listHandler, request(expiredLegacy)), 401, "COMMERCIAL_AUTH_INVALID");
   const wrongSignature = jwt.sign({ sub: tenantOne.userId, email: "invalid@example.invalid", role: "V" }, "wrong-secret", { expiresIn: 60 });
-  await expectError("firma inválida rechazada", invoke(listHandler, request(wrongSignature)), 401, "MT01B_LEGACY_TOKEN_INVALID");
+  await expectError("firma inválida rechazada", invoke(listHandler, request(wrongSignature)), 401, "COMMERCIAL_AUTH_INVALID");
   const invalidV2 = jwt.sign({ ver: 2, typ: "access", membershipId: ownerOne.membershipId, tenantId: tenantOne.tenantId }, "wrong-secret");
   const v2Response = await invoke(listHandler, request(invalidV2));
-  check("V2 inválido no degrada a LEGACY", v2Response.statusCode === 401 && /^MT01B_/.test(String(v2Response.body?.error || "")));
+  check("V2 inválido no degrada a LEGACY", v2Response.statusCode === 401 && v2Response.body?.error === "COMMERCIAL_AUTH_INVALID");
 
   const inactiveUser = await identity("inactive-user", { tenantId: tenantOne.tenantId, role: "V", isDefault: true });
   const inactiveToken = tokenFor(inactiveUser);
@@ -364,7 +364,7 @@ try {
   await expectError("User eliminado rechazado", invoke(listHandler, request(deletedToken)), 401, "COMMERCIAL_AUTH_INVALID");
 
   const v2Identity = await identity("v2-version", { tenantId: tenantOne.tenantId, role: "V", isDefault: true });
-  process.env.MT01B_AUTH_MODE = "HYBRID";
+  process.env.MT01B_AUTH_MODE = "MEMBERSHIP_ONLY";
   const v2Session = await createMembershipAuthSession(prisma, v2Identity, { req: syntheticRequest(), now: new Date() });
   created.sessions.push(v2Session.identity.sessionId);
   check("JWT V2 válido usa pipeline:view del servidor", (await invoke(listHandler, request(v2Session.accessToken))).statusCode === 200);

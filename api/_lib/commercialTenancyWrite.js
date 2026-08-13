@@ -205,6 +205,7 @@ export async function resolveCommercialContext(request, {
   prisma,
   env = process.env,
   now = new Date(),
+  verifiedTokenKind,
 } = {}) {
   if (!prisma) throw new CommercialTenancyError("COMMERCIAL_CONTEXT_DATABASE_UNAVAILABLE", 503);
   if (request[COMMERCIAL_CONTEXT_CACHE]) return request[COMMERCIAL_CONTEXT_CACHE];
@@ -212,7 +213,10 @@ export async function resolveCommercialContext(request, {
   const pending = (async () => {
     const token = getBearerToken(request);
     if (!token) throw new CommercialTenancyError("COMMERCIAL_AUTH_REQUIRED", 401);
-    if (isMembershipAccessTokenCandidate(token)) {
+    if (verifiedTokenKind !== undefined && !["LEGACY", "V2"].includes(verifiedTokenKind)) {
+      throw new CommercialTenancyError("COMMERCIAL_AUTH_INVALID", 401);
+    }
+    if (verifiedTokenKind === "V2" || (verifiedTokenKind === undefined && isMembershipAccessTokenCandidate(token))) {
       return resolveV2CommercialContext(prisma, request, env, now);
     }
     return resolveLegacyCommercialContext(prisma, token);

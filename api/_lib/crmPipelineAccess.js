@@ -5,6 +5,11 @@ import {
   sendCommercialTenancyError,
 } from "./commercialTenancyWrite.js";
 import { Mt01bAuthError } from "./authPolicy.js";
+import {
+  getBearerToken,
+  verifyMembershipAccessToken,
+  verifyStrictLegacyAccessToken,
+} from "./auth.js";
 
 export const CRM_PIPELINE_READ_MODES = Object.freeze({
   DISABLED: "DISABLED",
@@ -20,6 +25,7 @@ export const CRM_PIPELINE_MUTATION_MODES = Object.freeze({
 
 export const CRM_PIPELINE_ACTIVATION_BATCH = "CRM-01B3B1-PRODUCTION-V1";
 export const CRM_PIPELINE_SCHEMA_AUTHORITY = "20260801015000_crm01b_pipeline_mutation_authority";
+export const CRM_PIPELINE_ALLOWED_ROLES = Object.freeze(["A", "V"]);
 
 function invalidConfiguration() {
   throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
@@ -65,6 +71,9 @@ export function resolveCrmPipelineModes(env = process.env) {
     CRM_PIPELINE_MUTATION_MODES.DISABLED,
   );
   const activationBatch = env.CRM_PIPELINE_ACTIVATION_BATCH;
+  const authMode = env.MT01B_AUTH_MODE ?? "LEGACY";
+  const tenantSwitch = env.MT01B_TENANT_SWITCH_ENABLED ?? "false";
+  const clientV2 = env.VITE_MT01B2_CLIENT_ENABLED ?? "false";
 
   const disabled = readMode === CRM_PIPELINE_READ_MODES.DISABLED
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.DISABLED;
@@ -78,6 +87,7 @@ export function resolveCrmPipelineModes(env = process.env) {
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.PRODUCTION_WRITE;
 
   if (!disabled && !localRead && !localWrite && !productionRead && !productionWrite) invalidConfiguration();
+  if (!["LEGACY", "MEMBERSHIP_ONLY"].includes(authMode) || tenantSwitch !== "false" || clientV2 !== "false") invalidConfiguration();
   if ((disabled || localRead || localWrite) && activationBatch !== undefined) invalidConfiguration();
   if ((localRead || localWrite) && hasVercelEnvironment(env)) invalidConfiguration();
   if ((productionRead || productionWrite)) assertProductionAuthority(env);
@@ -118,10 +128,26 @@ export function assertCrmAuthorizationHeader(request) {
   }
 }
 
+function verifiedCrmTokenKind(token) {
+  let legacy = false;
+  let membership = false;
+  try { verifyStrictLegacyAccessToken(token); legacy = true; } catch { /* contrato no LEGACY */ }
+  try { verifyMembershipAccessToken(token); membership = true; } catch { /* contrato no V2 */ }
+  if (legacy === membership) throw new CommercialTenancyError("COMMERCIAL_AUTH_INVALID", 401);
+  return membership ? "V2" : "LEGACY";
+}
+
 export async function resolveCrmPipelineContext(request, options = {}) {
   try {
     assertCrmAuthorizationHeader(request);
-    return await resolveCommercialContext(request, options);
+    const token = getBearerToken(request);
+    if (!token) throw new CommercialTenancyError("COMMERCIAL_AUTH_REQUIRED", 401);
+    const tokenKind = verifiedCrmTokenKind(token);
+    const authMode = options.env?.MT01B_AUTH_MODE ?? process.env.MT01B_AUTH_MODE ?? "LEGACY";
+    if (tokenKind === "V2" && authMode !== "MEMBERSHIP_ONLY") {
+      throw new CommercialTenancyError("COMMERCIAL_AUTH_INVALID", 401);
+    }
+    return await resolveCommercialContext(request, { ...options, verifiedTokenKind: tokenKind });
   } catch (cause) {
     if (cause instanceof CommercialTenancyError) throw cause;
     if (cause instanceof Mt01bAuthError) throw cause;
@@ -131,7 +157,8 @@ export async function resolveCrmPipelineContext(request, options = {}) {
 
 export async function requireCrmPipelinePermission(request, permission, options = {}) {
   const context = await resolveCrmPipelineContext(request, options);
-  if (!context.effectivePermissions.includes(String(permission))) {
+  if (!CRM_PIPELINE_ALLOWED_ROLES.includes(String(context.role))
+    || !context.effectivePermissions.includes(String(permission))) {
     throw new CommercialTenancyError("COMMERCIAL_PERMISSION_FORBIDDEN", 403);
   }
   return context;

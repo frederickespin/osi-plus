@@ -70,17 +70,20 @@ function sendError(res, status, code, options = {}) {
   });
 }
 
-export function sendPipelineMutationError(res, error) {
+export function sendPipelineMutationError(res, error, { head = false } = {}) {
   const code = typeof error?.code === "string" ? error.code : "";
+  let contract;
   if (DOMAIN_CODES.has(code)) {
     const status = Number.isInteger(error.status) ? error.status : 503;
-    return sendError(res, status, code, error);
-  }
-  if (error instanceof CommercialTenancyError || error instanceof Mt01bAuthError || AUTH_CODES.has(code)) {
+    contract = { status, code, options: error };
+  } else if (error instanceof CommercialTenancyError || error instanceof Mt01bAuthError || AUTH_CODES.has(code)) {
     const status = Number.isInteger(error.status) ? error.status : 401;
-    return sendError(res, status, code || "COMMERCIAL_AUTH_INVALID");
+    contract = { status, code: code || "COMMERCIAL_AUTH_INVALID", options: {} };
+  } else {
+    contract = { status: 503, code: "CRM_PIPELINE_DATABASE_UNAVAILABLE", options: { recoverable: true } };
   }
-  return sendError(res, 503, "CRM_PIPELINE_DATABASE_UNAVAILABLE", { recoverable: true });
+  if (head) return res.status(contract.status).end();
+  return sendError(res, contract.status, contract.code, contract.options);
 }
 
 function routeCaseId(req, routeAction) {
@@ -243,7 +246,7 @@ export function createAllowedTransitionsHandler({ execute, env = process.env, re
       requireCrmPipelineMutationsLocal(env);
       requireReadMode(env);
     } catch (error) {
-      return sendPipelineMutationError(res, error);
+      return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
     try {
       if (req.method === "OPTIONS") {
@@ -252,7 +255,7 @@ export function createAllowedTransitionsHandler({ execute, env = process.env, re
       }
       applyLocalCors(req, res, env, ["GET", "HEAD", "OPTIONS"]);
     } catch (error) {
-      return sendPipelineMutationError(res, error);
+      return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
     if (!["GET", "HEAD"].includes(req.method)) return methodNotAllowed(res, ["GET", "HEAD", "OPTIONS"]);
     try {
@@ -271,7 +274,7 @@ export function createAllowedTransitionsHandler({ execute, env = process.env, re
       if (req.method === "HEAD") return res.status(200).end();
       return res.status(200).json(response);
     } catch (error) {
-      return sendPipelineMutationError(res, error);
+      return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
   }, { handleOptions: false, cors: false });
 }

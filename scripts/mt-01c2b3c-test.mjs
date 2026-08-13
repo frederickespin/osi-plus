@@ -97,8 +97,9 @@ try {
   check("headers no participan en la activación", headersIgnored.tenantMode === true && !Object.hasOwn(headersIgnored, "tenantId"));
 
   const source = readFileSync(new URL("../api/_lib/commercialTenancyWrite.js", import.meta.url), "utf8");
-  const v2Branch = source.slice(source.indexOf("if (isMembershipAccessTokenCandidate(token))"), source.indexOf("return resolveLegacyCommercialContext", source.indexOf("if (isMembershipAccessTokenCandidate(token))")));
-  check("JWT V2 candidato no degrada a LEGACY", /return resolveV2CommercialContext/.test(v2Branch) && !/catch/.test(v2Branch));
+  const v2Start = source.indexOf('if (verifiedTokenKind === "V2"');
+  const v2Branch = source.slice(v2Start, source.indexOf("return resolveLegacyCommercialContext", v2Start));
+  check("JWT V2 candidato no degrada a LEGACY", v2Start >= 0 && /return resolveV2CommercialContext/.test(v2Branch) && !/catch/.test(v2Branch));
   check("resultado no expone activation batch", !JSON.stringify(resolveCommercialTenancyModes(production)).includes(COMMERCIAL_TENANCY_ACTIVATION_BATCH));
 
   const changingEnvironment = { ...production };

@@ -158,6 +158,9 @@ try {
     value.rawHeaders = Object.entries(value.headers).flat();
     return value;
   };
+  const v2Disabled = await invoke(allowed, v2RequestFor(v2Token));
+  check("JWT V2 rechazado mientras V2 está desactivado", v2Disabled.statusCode === 401 && (v2Disabled.body?.code || v2Disabled.body?.error) === "COMMERCIAL_AUTH_INVALID");
+  process.env.MT01B_AUTH_MODE = "MEMBERSHIP_ONLY";
   const v2Request = v2RequestFor(v2Token);
   check("JWT V2 válido usa contexto empresarial", (await invoke(allowed, v2Request)).statusCode === 200);
   const invalidV2Parts = v2Token.split(".");
@@ -165,10 +168,11 @@ try {
   const invalidV2 = invalidV2Parts.join(".");
   const invalidV2Request = v2RequestFor(invalidV2);
   const invalidV2Response = await invoke(allowed, invalidV2Request);
-  check(`JWT V2 inválido sin fallback (${invalidV2Response.statusCode}/${invalidV2Response.body?.code || invalidV2Response.body?.error})`, invalidV2Response.statusCode === 401 && (invalidV2Response.body?.code || invalidV2Response.body?.error) === "MT01B_TOKEN_INVALID");
+  check(`JWT V2 inválido sin fallback (${invalidV2Response.statusCode}/${invalidV2Response.body?.code || invalidV2Response.body?.error})`, invalidV2Response.statusCode === 401 && (invalidV2Response.body?.code || invalidV2Response.body?.error) === "COMMERCIAL_AUTH_INVALID");
   await prisma.tenantMembership.update({ where: { id: seller.id }, data: { authorizationVersion: { increment: 1 } } });
   await expect("authorizationVersion obsoleta", invoke(allowed, v2RequestFor(v2Token)), 401, "MT01B_AUTHORIZATION_INVALID");
   await prisma.tenantMembership.update({ where: { id: seller.id }, data: { authorizationVersion: 1 } });
+  process.env.MT01B_AUTH_MODE = "LEGACY";
 
   check("journals y auditorías tienen cardinalidad exacta", await prisma.pipelineCaseCommand.count({ where: { pipelineCaseId: { startsWith: run } } }) === await prisma.commercialAuditLog.count({ where: { source: "CRM_PIPELINE_DOMAIN", entityId: { startsWith: run } } }));
   check("destino local exacto", target.address === "127.0.0.1" && target.port === 55432);

@@ -1,6 +1,7 @@
 export const CRM_PIPELINE_CLIENT_MODES = Object.freeze({
   DISABLED: "DISABLED",
   LOCAL_ONLY: "LOCAL_ONLY",
+  PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL",
 } as const);
 
 export type CrmPipelineClientMode = typeof CRM_PIPELINE_CLIENT_MODES[keyof typeof CRM_PIPELINE_CLIENT_MODES];
@@ -27,6 +28,15 @@ export function resolveCrmPipelineClientMode(
   if (raw === CRM_PIPELINE_CLIENT_MODES.DISABLED) {
     return Object.freeze({ mode: CRM_PIPELINE_CLIENT_MODES.DISABLED, valid: true });
   }
+  if (raw === CRM_PIPELINE_CLIENT_MODES.PREVIEW_REHEARSAL) {
+    const preview = environment.VERCEL_ENV === "preview"
+      && environment.VERCEL_GIT_COMMIT_REF === "feature/crm01c1a-integrated-preview-rehearsal"
+      && typeof environment.VERCEL_GIT_COMMIT_SHA === "string"
+      && environment.VERCEL_GIT_COMMIT_SHA === environment.CRM01C1A_EXPECTED_GIT_SHA
+      && typeof runtime.hostname === "string"
+      && runtime.hostname === environment.VERCEL_URL;
+    return Object.freeze({ mode: preview ? raw : CRM_PIPELINE_CLIENT_MODES.DISABLED, valid: preview });
+  }
   if (raw !== CRM_PIPELINE_CLIENT_MODES.LOCAL_ONLY) {
     return Object.freeze({ mode: CRM_PIPELINE_CLIENT_MODES.DISABLED, valid: false });
   }
@@ -39,5 +49,6 @@ export function resolveCrmPipelineClientMode(
 }
 
 export function isRelationalCrmClientEnabled(result = resolveCrmPipelineClientMode()): boolean {
-  return result.valid && result.mode === CRM_PIPELINE_CLIENT_MODES.LOCAL_ONLY;
+  return result.valid && (result.mode === CRM_PIPELINE_CLIENT_MODES.LOCAL_ONLY
+    || result.mode === CRM_PIPELINE_CLIENT_MODES.PREVIEW_REHEARSAL);
 }

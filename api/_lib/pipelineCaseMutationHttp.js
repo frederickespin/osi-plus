@@ -1,4 +1,4 @@
-import { CommercialTenancyError } from "./commercialTenancyWrite.js";
+import { assertCommercialDatabaseIdentity, CommercialTenancyError } from "./commercialTenancyWrite.js";
 import { Mt01bAuthError } from "./authPolicy.js";
 import { mt01bAllowedOrigins } from "./authOrigin.js";
 import {
@@ -10,6 +10,7 @@ import {
 } from "./crmPipelineAccess.js";
 import { JsonBodyError, methodNotAllowed, readJsonObject, setPrivateNoStore, withCommonHeaders } from "./http.js";
 import { resolveCrmOwnerRefForAssignment } from "./crmOwnerCatalog.js";
+import { crm01c1aPreviewOrigin } from "./crmPreviewRehearsal.js";
 
 export { CRM_PIPELINE_MUTATION_MODES };
 
@@ -152,7 +153,9 @@ export function applyLocalCors(req, res, env, methods, { preflight = false } = {
   const rawOrigin = req?.headers?.origin ?? req?.headers?.Origin;
   if (rawOrigin === undefined && !preflight) return;
   const origin = requestOrigin(req);
-  if (!origin || !mt01bAllowedOrigins(env).has(origin)) corsError();
+  const previewOrigin = crm01c1aPreviewOrigin(env);
+  const allowedOrigins = previewOrigin ? new Set([previewOrigin]) : mt01bAllowedOrigins(env);
+  if (!origin || !allowedOrigins.has(origin)) corsError();
   if (preflight) {
     const requestedMethod = req?.headers?.["access-control-request-method"] ?? req?.headers?.["Access-Control-Request-Method"];
     if (typeof requestedMethod !== "string" || !methods.includes(requestedMethod) || requestedMethod === "OPTIONS") {
@@ -197,6 +200,11 @@ function createMutationHandler({ execute, allowedBodyKeys, routeAction, transfor
     setPrivateNoStore(res);
     try {
       requireCrmPipelineMutationsLocal(env);
+    } catch (error) {
+      return sendPipelineMutationError(res, error);
+    }
+    try {
+      await assertCommercialDatabaseIdentity(req, prismaClient, env);
     } catch (error) {
       return sendPipelineMutationError(res, error);
     }
@@ -265,6 +273,11 @@ export function createAllowedTransitionsHandler({ execute, env = process.env, re
     try {
       requireCrmPipelineMutationsLocal(env);
       requireReadMode(env);
+    } catch (error) {
+      return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
+    }
+    try {
+      await assertCommercialDatabaseIdentity(req, prismaClient, env);
     } catch (error) {
       return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }

@@ -11,17 +11,20 @@ import {
   verifyStrictLegacyAccessToken,
 } from "./auth.js";
 import { assertCrmOwnerRefSecretConfigured } from "./crmOwnerRef.js";
+import { CRM01C1A_PREVIEW_BATCH, isCrm01c1aPreviewRehearsal } from "./crmPreviewRehearsal.js";
 
 export const CRM_PIPELINE_READ_MODES = Object.freeze({
   DISABLED: "DISABLED",
   READ_ONLY: "READ_ONLY",
   PRODUCTION_READ: "PRODUCTION_READ",
+  PREVIEW_READ: "PREVIEW_READ",
 });
 
 export const CRM_PIPELINE_MUTATION_MODES = Object.freeze({
   DISABLED: "DISABLED",
   LOCAL_ONLY: "LOCAL_ONLY",
   PRODUCTION_WRITE: "PRODUCTION_WRITE",
+  PREVIEW_WRITE: "PREVIEW_WRITE",
 });
 
 export const CRM_PIPELINE_ACTIVATION_BATCH = "CRM-01B3B1-PRODUCTION-V1";
@@ -86,15 +89,23 @@ export function resolveCrmPipelineModes(env = process.env) {
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.DISABLED;
   const productionWrite = readMode === CRM_PIPELINE_READ_MODES.PRODUCTION_READ
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.PRODUCTION_WRITE;
+  const previewWrite = readMode === CRM_PIPELINE_READ_MODES.PREVIEW_READ
+    && mutationMode === CRM_PIPELINE_MUTATION_MODES.PREVIEW_WRITE;
 
-  if (!disabled && !localRead && !localWrite && !productionRead && !productionWrite) invalidConfiguration();
+  if (!disabled && !localRead && !localWrite && !productionRead && !productionWrite && !previewWrite) invalidConfiguration();
   if (!["LEGACY", "MEMBERSHIP_ONLY"].includes(authMode) || tenantSwitch !== "false" || clientV2 !== "false") invalidConfiguration();
   if ((disabled || localRead || localWrite) && activationBatch !== undefined) invalidConfiguration();
   if ((localRead || localWrite) && hasVercelEnvironment(env)) invalidConfiguration();
   if ((productionRead || productionWrite)) assertProductionAuthority(env);
-  if (localWrite || productionWrite) assertCrmOwnerRefSecretConfigured(env);
+  if (previewWrite && (!isCrm01c1aPreviewRehearsal(env) || activationBatch !== CRM01C1A_PREVIEW_BATCH)) invalidConfiguration();
+  if (localWrite || productionWrite || previewWrite) assertCrmOwnerRefSecretConfigured(env);
 
-  return Object.freeze({ readMode, mutationMode, production: productionRead || productionWrite });
+  return Object.freeze({
+    readMode,
+    mutationMode,
+    production: productionRead || productionWrite,
+    ...(previewWrite ? { preview: true } : {}),
+  });
 }
 
 export function requireCrmPipelineRead(env = process.env) {

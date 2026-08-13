@@ -3,6 +3,7 @@ import { methodNotAllowed, readJsonObject, setPrivateNoStore, withCommonHeaders 
 import { requirePilotAuth, requirePilotPermission } from "../_lib/authContextPilot.js";
 import {
   assertNoBrowserCommercialAuthority,
+  assertCommercialDatabaseIdentity,
   COMMERCIAL_TENANCY_READ_MODES,
   COMMERCIAL_TENANCY_WRITE_MODES,
   createTenantClient,
@@ -28,6 +29,13 @@ export default withCommonHeaders(async (req, res) => {
     }
   }
   if (modes.tenantMode) setPrivateNoStore(res);
+  if (modes.preview) {
+    try {
+      await assertCommercialDatabaseIdentity(req, prisma, process.env);
+    } catch (error) {
+      return sendCommercialTenancyError(res, error);
+    }
+  }
   const tenantRead = req.method === "GET" && modes.readMode === COMMERCIAL_TENANCY_READ_MODES.TENANT_READ;
   const tenantWrite = req.method === "POST" && modes.writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE;
   const auth = tenantRead || tenantWrite

@@ -1,5 +1,4 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
-import { legacyJwtSecretMaterial } from "./auth.js";
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
 
 export const CRM_OWNER_REF_VERSION = 1;
@@ -13,6 +12,7 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const MAX_REF_LENGTH = 1_024;
 const HKDF_SALT = Buffer.from("osi-plus/crm/pipeline-owner-ref/salt/v1", "utf8");
+const OWNER_REF_SECRET = /^[A-Za-z0-9_-]{64}$/;
 
 function invalid() {
   throw new CommercialTenancyError("CRM_PIPELINE_OWNER_REF_INVALID", 400);
@@ -24,13 +24,21 @@ function requiredIdentity(value) {
   return value;
 }
 
-function key(env) {
-  let secret;
-  try {
-    secret = legacyJwtSecretMaterial(env, { requireConfigured: true });
-  } catch {
+export function crmOwnerRefSecretMaterial(env = process.env) {
+  const secret = env.CRM_PIPELINE_OWNER_REF_SECRET;
+  if (typeof secret !== "string" || Buffer.byteLength(secret, "utf8") !== 64
+    || !OWNER_REF_SECRET.test(secret)) {
     throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
   }
+  return secret;
+}
+
+export function assertCrmOwnerRefSecretConfigured(env = process.env) {
+  crmOwnerRefSecretMaterial(env);
+}
+
+function key(env) {
+  const secret = crmOwnerRefSecretMaterial(env);
   return Buffer.from(hkdfSync(
     "sha256",
     Buffer.from(secret, "utf8"),

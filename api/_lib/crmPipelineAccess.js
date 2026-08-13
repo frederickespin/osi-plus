@@ -10,6 +10,7 @@ import {
   verifyMembershipAccessToken,
   verifyStrictLegacyAccessToken,
 } from "./auth.js";
+import { assertCrmOwnerRefSecretConfigured } from "./crmOwnerRef.js";
 
 export const CRM_PIPELINE_READ_MODES = Object.freeze({
   DISABLED: "DISABLED",
@@ -91,6 +92,7 @@ export function resolveCrmPipelineModes(env = process.env) {
   if ((disabled || localRead || localWrite) && activationBatch !== undefined) invalidConfiguration();
   if ((localRead || localWrite) && hasVercelEnvironment(env)) invalidConfiguration();
   if ((productionRead || productionWrite)) assertProductionAuthority(env);
+  if (localWrite || productionWrite) assertCrmOwnerRefSecretConfigured(env);
 
   return Object.freeze({ readMode, mutationMode, production: productionRead || productionWrite });
 }

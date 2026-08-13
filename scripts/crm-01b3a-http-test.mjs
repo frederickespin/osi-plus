@@ -15,7 +15,7 @@ function check(name, condition, detail) {
   if (!condition) throw new Error(name);
 }
 
-const enabled = { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" };
+const enabled = { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY", CRM_PIPELINE_OWNER_REF_SECRET: "A".repeat(64) };
 const context = Object.freeze({ tenantId: "tenant-server", membershipId: "membership-server" });
 const receipt = Object.freeze({
   caseId: "case-1", commandType: "TRANSITION", previousVersion: 1, resultingVersion: 2,

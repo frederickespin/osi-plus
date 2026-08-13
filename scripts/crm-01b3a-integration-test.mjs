@@ -17,6 +17,7 @@ process.env.MT01B_TENANT_SWITCH_ENABLED = "false";
 process.env.VITE_MT01B2_CLIENT_ENABLED = "false";
 process.env.CRM_PIPELINE_MUTATION_MODE = "LOCAL_ONLY";
 process.env.CRM_PIPELINE_RUNTIME_MODE = "READ_ONLY";
+process.env.CRM_PIPELINE_OWNER_REF_SECRET = "A".repeat(64);
 for (const key of Object.keys(process.env)) {
   if (key === "VERCEL" || key.startsWith("VERCEL_")) delete process.env[key];
 }

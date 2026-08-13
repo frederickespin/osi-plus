@@ -19,8 +19,15 @@ export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, e
   for (const signature of ["aes-256-gcm", "hkdfSync", "randomBytes", "CRM_OWNER_REF_TTL_SECONDS = 300", "CRM_OWNER_REF_CLOCK_SKEW_SECONDS = 30", "osi-plus/crm/pipeline-owner-ref/v1", "setAAD", "setAuthTag"]) {
     invariant(crypto.includes(signature), `ownerRef incompleto: ${signature}`);
   }
-  invariant(!/createHmac|sign\(|JWT_SECRET[^\n]*createCipheriv/.test(crypto), "ownerRef no puede ser firmado sin cifrar ni usar JWT_SECRET directamente");
-  invariant(/legacyJwtSecretMaterial\(env, \{ requireConfigured: true \}\)/.test(crypto), "ownerRef exige la autoridad JWT legacy configurada");
+  invariant(!/createHmac|sign\(|JWT_SECRET|legacyJwtSecretMaterial|from ["']\.\/auth\.js["']/.test(crypto), "ownerRef no puede depender de la autoridad JWT");
+  invariant(/const secret = env\.CRM_PIPELINE_OWNER_REF_SECRET/.test(crypto)
+    && /Buffer\.byteLength\(secret, ["']utf8["']\) !== 64/.test(crypto)
+    && /\^\[A-Za-z0-9_\-\]\{64\}\$/.test(crypto), "ownerRef no valida exactamente 64 caracteres ASCII base64url");
+  invariant(!/const secret\s*=\s*[^;\n]*(?:\?\?|\|\||\?)/.test(crypto), "ownerRef no puede usar fallback de secreto");
+  invariant(/hkdfSync\([\s\S]*Buffer\.from\(secret, ["']utf8["']\)[\s\S]*32/.test(crypto), "ownerRef debe derivar AES-256 mediante HKDF");
+  const access = source("api/_lib/crmPipelineAccess.js");
+  invariant(/if \(localWrite \|\| productionWrite\) assertCrmOwnerRefSecretConfigured\(env\)/.test(access), "secreto ownerRef sólo debe exigirse con mutaciones activas");
+  invariant(!/CRM_PIPELINE_OWNER_REF_SECRET/.test(access), "el resolver no debe leer ni reinterpretar directamente el secreto");
   const catalog = source("api/_lib/crmOwnerCatalog.js");
   invariant(/context\?\.role !== "A"/.test(catalog) && /PIPELINE_ASSIGN/.test(catalog), "catálogo no exige rol A y pipeline:assign");
   invariant(/m\."tenant_id" = \$\{tenantId\}/.test(catalog) && /m\."role"::text = 'V'/.test(catalog), "catálogo no congela tenant/rol V");
@@ -43,6 +50,22 @@ export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, e
   invariant(!/dangerouslySetInnerHTML/.test(source("src/crm-relational/RelationalPipelineModule.tsx")), "texto hostil no puede renderizar HTML");
   for (const path of ["package.json", ".env.example", "vercel.json", ".github/workflows/ci.yml"]) {
     invariant(!/CRM_PIPELINE_(?:RUNTIME_MODE|MUTATION_MODE)\s*[:=]\s*["']?(?:READ_ONLY|LOCAL_ONLY)/.test(source(path)), `${path} activa CRM`);
+    invariant(!source(path).includes("CRM_PIPELINE_OWNER_REF_SECRET"), `${path} no puede configurar la autoridad ownerRef`);
+  }
+  const frontendSources = [
+    ...filesBelow(resolve(root, "src")).filter((path) => /\.(?:js|jsx|ts|tsx)$/.test(path)).map((path) => [relative(root, path).replaceAll("\\", "/"), readFileSync(path, "utf8")]),
+    ...Object.entries(extraSources).filter(([path]) => path.startsWith("src/") && /\.(?:js|jsx|ts|tsx)$/.test(path)),
+  ];
+  for (const [path, text] of frontendSources) {
+    invariant(!text.includes("CRM_PIPELINE_OWNER_REF_SECRET"), `${path} expone la autoridad ownerRef al frontend`);
+  }
+  const serverSources = filesBelow(resolve(root, "api")).filter((path) => path.endsWith(".js"));
+  for (const path of serverSources) {
+    const text = readFileSync(path, "utf8");
+    if (relative(root, path).replaceAll("\\", "/") !== "api/_lib/crmOwnerRef.js") {
+      invariant(!text.includes("CRM_PIPELINE_OWNER_REF_SECRET"), `${relative(root, path)} lee la autoridad fuera del módulo criptográfico`);
+    }
+    invariant(!/console\.(?:log|info|warn|error)[\s\S]{0,160}CRM_PIPELINE_OWNER_REF_SECRET/.test(text), `${relative(root, path)} registra la autoridad ownerRef`);
   }
   const discovered = filesBelow(resolve(root, "api/crm"))
     .filter((path) => path.endsWith(".js"))

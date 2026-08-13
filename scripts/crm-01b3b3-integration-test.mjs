@@ -29,7 +29,7 @@ async function measure(name, rounds, operation) {
 }
 
 const { prisma, target } = await createCrm01b2LocalPrisma();
-process.env.JWT_SECRET = "crm01b3b3-local-owner-ref-secret-not-for-runtime";
+process.env.CRM_PIPELINE_OWNER_REF_SECRET = "A".repeat(64);
 const run = `crm01b3b3-${randomUUID()}`;
 const prefix = run.toUpperCase();
 const tenantOneId = `${run}-tenant-1`;

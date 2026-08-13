@@ -29,7 +29,7 @@ const appPrisma = (await import("../api/_lib/db.js")).prisma;
 const run = `crm01b3a-stress-${randomUUID()}`;
 const prefix = run.toUpperCase();
 const metrics = {};
-const env = { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" };
+const env = { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY", CRM_PIPELINE_OWNER_REF_SECRET: "A".repeat(64) };
 
 function userData(id, role) {
   return { id, code: id.toUpperCase(), name: `Synthetic ${role}`, email: `${id}@example.test`, phone: "0", role, status: "active", joinDate: "2026-08-12", passwordHash: "not-a-login-hash" };

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createCipheriv, hkdfSync } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import {
+  assertCrmOwnerRefSecretConfigured, crmOwnerRefSecretMaterial,
   issueCrmOwnerRef, issueCrmOwnerRefs, readCrmOwnerRef, CRM_OWNER_REF_AUDIENCE, CRM_OWNER_REF_CLOCK_SKEW_SECONDS,
   CRM_OWNER_REF_HKDF_INFO, CRM_OWNER_REF_TTL_SECONDS,
 } from "../api/_lib/crmOwnerRef.js";
@@ -9,8 +10,9 @@ import { listCrmPipelineOwnerOptions, resolveCrmOwnerRefForAssignment } from "..
 import { createCrmOwnerCatalogHandler } from "../api/_lib/crmOwnerCatalogHttp.js";
 import { createAssignOwnerHandler } from "../api/_lib/pipelineCaseMutationHttp.js";
 
-const SECRET = "crm01b3b3-local-test-secret-".repeat(3);
-const ENV = Object.freeze({ JWT_SECRET: SECRET, CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY", CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", MT01B_AUTH_MODE: "LEGACY" });
+const SECRET = "A".repeat(64);
+assert.equal(SECRET.length, 64);
+const ENV = Object.freeze({ CRM_PIPELINE_OWNER_REF_SECRET: SECRET, CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY", CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", MT01B_AUTH_MODE: "LEGACY" });
 const ADMIN = Object.freeze({ tenantId: "tenant-a", membershipId: "admin-a", userId: "user-admin-a", role: "A", effectivePermissions: ["pipeline:assign"] });
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
@@ -64,18 +66,32 @@ test("ownerRef alterado, secreto distinto y versión externa se rechazan sin det
   const offset = Math.floor(parts[2].length / 2);
   parts[2] = `${parts[2].slice(0, offset)}${parts[2][offset] === "A" ? "B" : "A"}${parts[2].slice(offset + 1)}`;
   await rejected(() => Promise.resolve(readCrmOwnerRef(parts.join("."), { env: ENV, now: () => 1_000_000 })), "CRM_PIPELINE_OWNER_REF_INVALID", 400);
-  await rejected(() => Promise.resolve(readCrmOwnerRef(ref, { env: { JWT_SECRET: `${SECRET}other` }, now: () => 1_000_000 })), "CRM_PIPELINE_OWNER_REF_INVALID", 400);
+  await rejected(() => Promise.resolve(readCrmOwnerRef(ref, { env: { CRM_PIPELINE_OWNER_REF_SECRET: `B${SECRET.slice(1)}` }, now: () => 1_000_000 })), "CRM_PIPELINE_OWNER_REF_INVALID", 400);
   await rejected(() => Promise.resolve(readCrmOwnerRef(ref.replace(/^or1\./, "or2."), { env: ENV, now: () => 1_000_000 })), "CRM_PIPELINE_OWNER_REF_INVALID", 400);
 });
 
 test("secreto ausente, vacío, débil o con representación ambigua falla cerrado", async () => {
   const invalidEnvironments = [
-    {}, { JWT_SECRET: "" }, { JWT_SECRET: "short" }, { JWT_SECRET: "dev-insecure-secret" },
-    { JWT_SECRET: ` ${SECRET}` }, { JWT_SECRET: `${SECRET}\n` }, { JWT_SECRET: `\ufeff${SECRET}` },
+    {}, { CRM_PIPELINE_OWNER_REF_SECRET: "" }, { CRM_PIPELINE_OWNER_REF_SECRET: "short" },
+    { CRM_PIPELINE_OWNER_REF_SECRET: ` ${SECRET.slice(1)}` },
+    { CRM_PIPELINE_OWNER_REF_SECRET: `${SECRET.slice(0, -1)} ` },
+    { CRM_PIPELINE_OWNER_REF_SECRET: `${SECRET.slice(0, -1)}\n` },
+    { CRM_PIPELINE_OWNER_REF_SECRET: `\ufeff${SECRET.slice(1)}` },
+    { CRM_PIPELINE_OWNER_REF_SECRET: `${SECRET.slice(0, -1)}\r` },
+    { CRM_PIPELINE_OWNER_REF_SECRET: `${SECRET.slice(0, -1)}\u0000` },
+    { CRM_PIPELINE_OWNER_REF_SECRET: `${SECRET.slice(0, -1)}é` },
+    { CRM_PIPELINE_OWNER_REF_SECRET: `${SECRET.slice(0, -1)}+` },
+    { CRM_PIPELINE_OWNER_REF_SECRET: `${SECRET.slice(0, -1)}/` },
+    { CRM_PIPELINE_OWNER_REF_SECRET: `${SECRET.slice(0, -1)}=` },
   ];
   for (const env of invalidEnvironments) {
     await rejected(() => Promise.resolve(issueCrmOwnerRef({ tenantId: "tenant-a", membershipId: "m", userId: "u" }, { env })), "CRM_PIPELINE_CONFIGURATION_INVALID", 503);
   }
+});
+
+test("autoridad ownerRef acepta únicamente 64 caracteres ASCII base64url", () => {
+  assert.equal(crmOwnerRefSecretMaterial(ENV), SECRET);
+  assert.doesNotThrow(() => assertCrmOwnerRefSecretConfigured(ENV));
 });
 
 test("payload autenticado rechaza versión, audience, tiempo futuro y claves desconocidas", async () => {
@@ -109,13 +125,20 @@ test("formato por bytes rechaza segmentos truncados, añadidos, no canónicos y 
   }
 });
 
-test("replay criptográfico es estable y rotar JWT_SECRET invalida referencias previas", async () => {
+test("replay criptográfico es estable y rotar sólo ownerRef invalida referencias previas", async () => {
   const identity = { tenantId: "tenant-a", membershipId: "m", userId: "u" };
   const ref = issueCrmOwnerRef(identity, { env: ENV, now: () => 1_000_000 });
   assert.deepEqual(readCrmOwnerRef(ref, { env: ENV, now: () => 1_000_000 }), readCrmOwnerRef(ref, { env: ENV, now: () => 1_000_000 }));
-  const rotated = { ...ENV, JWT_SECRET: `${SECRET}rotated` };
+  const rotated = { ...ENV, CRM_PIPELINE_OWNER_REF_SECRET: `B${SECRET.slice(1)}` };
   await rejected(() => Promise.resolve(readCrmOwnerRef(ref, { env: rotated, now: () => 1_000_000 })), "CRM_PIPELINE_OWNER_REF_INVALID", 400);
   assert.equal(readCrmOwnerRef(issueCrmOwnerRef(identity, { env: rotated, now: () => 1_000_000 }), { env: rotated, now: () => 1_000_000 }).membershipId, "m");
+});
+
+test("JWT_SECRET no es fallback ni influye en ownerRef", async () => {
+  const legacyOnly = { JWT_SECRET: "legacy-secret-with-trailing-space " };
+  await rejected(() => Promise.resolve(issueCrmOwnerRef({ tenantId: "tenant-a", membershipId: "m", userId: "u" }, { env: legacyOnly })), "CRM_PIPELINE_CONFIGURATION_INVALID", 503);
+  const first = issueCrmOwnerRef({ tenantId: "tenant-a", membershipId: "m", userId: "u" }, { env: { ...ENV, JWT_SECRET: "legacy-a" }, now: () => 1_000_000 });
+  assert.equal(readCrmOwnerRef(first, { env: { ...ENV, JWT_SECRET: "legacy-b with trailing space " }, now: () => 1_000_000 }).membershipId, "m");
 });
 
 test("tormenta de referencias inválidas queda acotada en tiempo y memoria", async () => {
@@ -187,6 +210,35 @@ test("catálogo DISABLED responde antes de auth y Prisma", async () => {
   assert.equal(contexts, 0); assert.equal(lists, 0);
   assert.equal(res.getHeader("cache-control"), "private, no-store");
   assert.match(res.getHeader("vary"), /Authorization/);
+});
+
+test("JWT legacy con representación heredada no afecta las compuertas desactivadas", async () => {
+  let contexts = 0;
+  const handler = createCrmOwnerCatalogHandler({
+    env: { JWT_SECRET: "legacy-secret-with-trailing-space " }, prismaClient: {},
+    resolveContext: async () => { contexts += 1; }, listOptions: async () => assert.fail("sin catálogo"),
+  });
+  const res = response();
+  await handler(request(), res);
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.code, "CRM_PIPELINE_MUTATIONS_DISABLED");
+  assert.equal(contexts, 0);
+});
+
+test("mutación activa sin autoridad ownerRef falla 503 antes de auth, body y Prisma", async () => {
+  let contexts = 0; let lists = 0;
+  const handler = createCrmOwnerCatalogHandler({
+    env: { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY", CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY", JWT_SECRET: "legacy-still-present" },
+    prismaClient: new Proxy({}, { get() { throw new Error("Prisma no debe alcanzarse"); } }),
+    resolveContext: async () => { contexts += 1; },
+    listOptions: async () => { lists += 1; },
+  });
+  const req = request({ body: new Proxy({}, { ownKeys() { throw new Error("body no debe leerse"); } }) });
+  const res = response();
+  await handler(req, res);
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.body.code, "CRM_PIPELINE_CONFIGURATION_INVALID");
+  assert.equal(contexts, 0); assert.equal(lists, 0);
 });
 
 test("catálogo activo aplica GET/HEAD/OPTIONS y no CORS wildcard", async () => {

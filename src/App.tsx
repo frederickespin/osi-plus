@@ -11,6 +11,11 @@ import {
   saveSession,
   type Session,
 } from '@/lib/sessionStore';
+import { isRelationalCrmClientEnabled, resolveCrmPipelineClientMode } from '@/crm-relational/clientMode';
+import type { ModuleId } from '@/lib/roleModuleMap';
+export type { ModuleId } from '@/lib/roleModuleMap';
+
+const CRM_PIPELINE_CLIENT = resolveCrmPipelineClientMode();
 
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
@@ -136,6 +141,9 @@ const KDashboardModule = lazy(() =>
 const KProjectModule = lazy(() =>
   import('@/components/modules/KProjectModule').then((m) => ({ default: m.KProjectModule }))
 );
+const RelationalPipelineModule = lazy(() =>
+  import('@/crm-relational/RelationalPipelineModule').then((m) => ({ default: m.RelationalPipelineModule }))
+);
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
@@ -167,50 +175,6 @@ class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasErr
     return this.props.children;
   }
 }
-
-export type ModuleId =
-  | 'dashboard'
-  | 'operations'
-  | 'security'
-  | 'driver'
-  | 'supervisor'
-  | 'mechanic'
-  | 'maintenance'
-  | 'osi-editor'
-  | 'supervisor-nota'
-  | 'sales-approvals'
-  | 'dispatch'
-  | 'field'
-  | 'wms'
-  | 'inventory'
-  | 'clients'
-  | 'sales-quote'
-  | 'commercial-calendar'
-  | 'commercial-config'
-  | 'tracking'
-  | 'hr'
-  | 'carpentry'
-  | 'users'
-  | 'billing'
-  | 'fleet'
-  | 'projects'
-  | 'calendar'
-  | 'wall'
-  | 'purchases'
-  | 'kpi'
-  | 'nota'
-  | 'badges'
-  | 'nesting'
-  | 'nestingv2'
-  | 'disenacotiza'
-  | 'crate-wood'
-  | 'crate-settings'
-  | 'k-templates'
-  | 'k-template-editor'
-  | 'a-template-approvals'
-  | 'k-dashboard'
-  | 'k-project'
-  | 'settings';
 
 type AuthState =
   | { status: 'AUTH_LOADING'; session: null }
@@ -359,6 +323,10 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
         return <ClientsModule userRole={userRole} />;
       case 'sales-quote':
         return <SalesQuoteModule userRole={userRole} />;
+      case 'crm-pipeline':
+        return isRelationalCrmClientEnabled(CRM_PIPELINE_CLIENT)
+          ? <RelationalPipelineModule userRole={userRole} onUnauthorized={onLogout} />
+          : <TowerControl />;
       case 'commercial-calendar':
         return <CommercialCalendarModule />;
       case 'commercial-config':
@@ -424,6 +392,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
         userRole={userRole}
         userName={session.name}
         onLogout={onLogout}
+        crmPipelineClientEnabled={isRelationalCrmClientEnabled(CRM_PIPELINE_CLIENT)}
       />
       <main className="flex-1 overflow-auto">
         <AppErrorBoundary>

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.crm-01b3b2.tsbuildinfo"
+  },
+  "include": [
+    "src/crm-relational/**/*.ts",
+    "src/crm-relational/**/*.tsx",
+    "src/components/layout/Sidebar.tsx",
+    "src/lib/roleModuleMap.ts"
+  ]
+}

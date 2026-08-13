@@ -1,6 +1,7 @@
 import { prisma } from "../../_lib/db.js";
 import { setPrivateNoStore, methodNotAllowed, withCommonHeaders } from "../../_lib/http.js";
-import { requireCommercialPermission, sendCommercialTenancyError } from "../../_lib/commercialTenancyWrite.js";
+import { sendCommercialTenancyError } from "../../_lib/commercialTenancyWrite.js";
+import { requireCrmPipelinePermissionResponse } from "../../_lib/crmPipelineAccess.js";
 import {
   CRM_PIPELINE_PERMISSION,
   listCrmPipelineCases,
@@ -10,17 +11,18 @@ import {
 
 export function createPipelineCasesListHandler({
   prismaClient = prisma,
-  requirePermission = requireCommercialPermission,
+  requirePermission = requireCrmPipelinePermissionResponse,
+  env = process.env,
 } = {}) {
   return withCommonHeaders(async (req, res) => {
     setPrivateNoStore(res);
-    if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
     try {
-      requireCrmPipelineReadOnly();
+      requireCrmPipelineReadOnly(env);
     } catch (error) {
       return sendCommercialTenancyError(res, error);
     }
-    const context = await requirePermission(req, res, CRM_PIPELINE_PERMISSION, { prisma: prismaClient });
+    if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
+    const context = await requirePermission(req, res, CRM_PIPELINE_PERMISSION, { prisma: prismaClient, env });
     if (!context) return;
     try {
       const result = await listCrmPipelineCases(prismaClient, {

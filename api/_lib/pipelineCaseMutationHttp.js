@@ -1,13 +1,16 @@
-import { CommercialTenancyError, resolveCommercialContext } from "./commercialTenancyWrite.js";
+import { CommercialTenancyError } from "./commercialTenancyWrite.js";
 import { Mt01bAuthError } from "./authPolicy.js";
 import { mt01bAllowedOrigins } from "./authOrigin.js";
-import { CRM_PIPELINE_RUNTIME_MODES, resolveCrmPipelineRuntimeMode } from "./crmPipelineRead.js";
+import {
+  CRM_PIPELINE_MUTATION_MODES,
+  assertCrmAuthorizationHeader,
+  requireCrmPipelineMutation,
+  resolveCrmPipelineContext,
+  resolveCrmPipelineModes,
+} from "./crmPipelineAccess.js";
 import { JsonBodyError, methodNotAllowed, readJsonObject, setPrivateNoStore, withCommonHeaders } from "./http.js";
 
-export const CRM_PIPELINE_MUTATION_MODES = Object.freeze({
-  DISABLED: "DISABLED",
-  LOCAL_ONLY: "LOCAL_ONLY",
-});
+export { CRM_PIPELINE_MUTATION_MODES };
 
 const BODY_MAX_BYTES = 4 * 1024;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,190}$/;
@@ -49,32 +52,12 @@ const AUTH_CODES = new Set([
   "AUTH_DATABASE_UNAVAILABLE",
 ]);
 
-function hasVercelEnvironment(env) {
-  return Object.keys(env || {}).some((key) => key === "VERCEL" || key.startsWith("VERCEL_"));
-}
-
 export function resolveCrmPipelineMutationMode(env = process.env) {
-  const configured = env.CRM_PIPELINE_MUTATION_MODE;
-  const mode = configured === undefined ? CRM_PIPELINE_MUTATION_MODES.DISABLED : configured;
-  if (typeof mode !== "string" || !Object.values(CRM_PIPELINE_MUTATION_MODES).includes(mode)) {
-    throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
-  }
-  if (mode === CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY && hasVercelEnvironment(env)) {
-    throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
-  }
-  return mode;
+  return resolveCrmPipelineModes(env).mutationMode;
 }
 
 export function requireCrmPipelineMutationsLocal(env = process.env) {
-  const mode = resolveCrmPipelineMutationMode(env);
-  const readMode = resolveCrmPipelineRuntimeMode(env);
-  if (mode !== CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY) {
-    throw new CommercialTenancyError("CRM_PIPELINE_MUTATIONS_DISABLED", 409);
-  }
-  if (readMode !== CRM_PIPELINE_RUNTIME_MODES.READ_ONLY) {
-    throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
-  }
-  return mode;
+  return requireCrmPipelineMutation(env);
 }
 
 function sendError(res, status, code, options = {}) {
@@ -132,14 +115,6 @@ function idempotencyKey(req) {
     throw new CommercialTenancyError("CRM_PIPELINE_COMMAND_INVALID", 400);
   }
   return raw;
-}
-
-function assertUnambiguousAuthorization(req) {
-  const count = rawHeaderCount(req, "authorization");
-  const raw = req.headers?.authorization ?? req.headers?.Authorization;
-  if ((count !== null && count > 1) || Array.isArray(raw) || (typeof raw === "string" && raw.includes(","))) {
-    throw new CommercialTenancyError("COMMERCIAL_AUTH_INVALID", 401);
-  }
 }
 
 function appendVary(res, field) {
@@ -209,7 +184,7 @@ function commandResponse(receipt) {
   });
 }
 
-function createMutationHandler({ execute, allowedBodyKeys, routeAction, env = process.env, resolveContext = resolveCommercialContext, prismaClient } = {}) {
+function createMutationHandler({ execute, allowedBodyKeys, routeAction, env = process.env, resolveContext = resolveCrmPipelineContext, prismaClient } = {}) {
   return withCommonHeaders(async (req, res) => {
     setPrivateNoStore(res);
     try {
@@ -230,8 +205,8 @@ function createMutationHandler({ execute, allowedBodyKeys, routeAction, env = pr
 
     let context;
     try {
-      assertUnambiguousAuthorization(req);
-      context = await resolveContext(req, { prisma: prismaClient });
+      assertCrmAuthorizationHeader(req);
+      context = await resolveContext(req, { prisma: prismaClient, env });
     } catch (error) {
       return sendPipelineMutationError(res, error);
     }
@@ -261,7 +236,7 @@ export function createUnassignOwnerHandler(options) {
   return createMutationHandler({ ...options, routeAction: "unassign-owner", allowedBodyKeys: new Set(["expectedVersion"]) });
 }
 
-export function createAllowedTransitionsHandler({ execute, env = process.env, resolveContext = resolveCommercialContext, requireReadMode, prismaClient } = {}) {
+export function createAllowedTransitionsHandler({ execute, env = process.env, resolveContext = resolveCrmPipelineContext, requireReadMode, prismaClient } = {}) {
   return withCommonHeaders(async (req, res) => {
     setPrivateNoStore(res);
     try {
@@ -281,8 +256,8 @@ export function createAllowedTransitionsHandler({ execute, env = process.env, re
     }
     if (!["GET", "HEAD"].includes(req.method)) return methodNotAllowed(res, ["GET", "HEAD", "OPTIONS"]);
     try {
-      assertUnambiguousAuthorization(req);
-      const context = await resolveContext(req, { prisma: prismaClient });
+      assertCrmAuthorizationHeader(req);
+      const context = await resolveContext(req, { prisma: prismaClient, env });
       const result = await execute(context, routeCaseId(req, "allowed-transitions"));
       const response = {
         ok: true,

@@ -13,6 +13,9 @@ process.env.CRM_PIPELINE_RUNTIME_MODE = "READ_ONLY";
 process.env.MT01B_REFRESH_TOKEN_PEPPER = "crm01a-local-refresh-pepper-with-at-least-32-characters";
 process.env.MT01B_ALLOWED_ORIGINS = "http://localhost:5173";
 process.env.MT01B_LEGACY_TOKEN_ACCEPT_UNTIL = new Date(Date.now() + 24 * 3600_000).toISOString();
+for (const key of Object.keys(process.env)) {
+  if (key === "VERCEL" || key.startsWith("VERCEL_")) delete process.env[key];
+}
 
 const [
   crm,
@@ -340,7 +343,7 @@ try {
   const anonymous = await expectError("anónimo rechazado", invoke(listHandler, request(null)), 401, "COMMERCIAL_AUTH_REQUIRED");
   checkJsonSnapshot("snapshot 401", anonymous.body, { ok: false, error: "COMMERCIAL_AUTH_REQUIRED" });
   await expectError("headers falsificados no autorizan", invoke(listHandler, request(null, "GET", {}, { "x-osi-role": "A", "x-osi-userid": tenantOne.userId })), 401, "COMMERCIAL_AUTH_REQUIRED");
-  await expectError("dos Authorization rechazados", invoke(listHandler, request(null, "GET", {}, { authorization: ["Bearer x", `Bearer ${tokenOne}`] })), 401, "COMMERCIAL_AUTH_REQUIRED");
+  await expectError("dos Authorization rechazados", invoke(listHandler, request(null, "GET", {}, { authorization: ["Bearer x", `Bearer ${tokenOne}`] })), 401, "COMMERCIAL_AUTH_INVALID");
   await expectError("Bearer malformado rechazado", invoke(listHandler, request("not-a-jwt")), 401, "COMMERCIAL_AUTH_REQUIRED");
   const expiredLegacy = jwt.sign({ sub: tenantOne.userId, email: "expired@example.invalid", role: "V" }, process.env.JWT_SECRET, { expiresIn: -1 });
   await expectError("JWT expirado rechazado", invoke(listHandler, request(expiredLegacy)), 401, "MT01B_LEGACY_TOKEN_INVALID");

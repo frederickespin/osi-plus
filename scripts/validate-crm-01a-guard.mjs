@@ -53,11 +53,12 @@ export function validateCrm01aGuard({
 
   const servicePath = "api/_lib/crmPipelineRead.js";
   const service = read(servicePath);
+  const access = read("api/_lib/crmPipelineAccess.js");
   const backendRbac = read("api/_lib/rbac.js");
-  invariant(/DISABLED:\s*"DISABLED"/.test(service) && /READ_ONLY:\s*"READ_ONLY"/.test(service), "modos exactos ausentes");
-  invariant(/configured === undefined \? CRM_PIPELINE_RUNTIME_MODES\.DISABLED : configured/.test(service), "DISABLED no es predeterminado");
-  invariant(!/(?:trim|toUpperCase|toLowerCase)\s*\(?.{0,60}CRM_PIPELINE_RUNTIME_MODE/.test(service), "el modo no puede normalizarse");
-  invariant(/VERCEL_ENV === "preview"/.test(service) && /VERCEL_ENV === "production"/.test(service), "READ_ONLY no está bloqueado en Vercel");
+  invariant(/DISABLED:\s*"DISABLED"/.test(access) && /READ_ONLY:\s*"READ_ONLY"/.test(access), "modos exactos ausentes");
+  invariant(/env\.CRM_PIPELINE_RUNTIME_MODE[\s\S]{0,100}CRM_PIPELINE_READ_MODES[\s\S]{0,100}CRM_PIPELINE_READ_MODES\.DISABLED/.test(access), "DISABLED no es predeterminado");
+  invariant(!/(?:trim|toUpperCase|toLowerCase)\s*\(?.{0,60}CRM_PIPELINE_RUNTIME_MODE/.test(access), "el modo no puede normalizarse");
+  invariant(/hasVercelEnvironment\(env\)/.test(access), "READ_ONLY no está bloqueado en Vercel");
   invariant(/PIPELINE_VIEW:\s*"pipeline:view"/.test(backendRbac), "falta el permiso dedicado pipeline:view");
   invariant(/CRM_PIPELINE_PERMISSION = PERMS\.PIPELINE_VIEW/.test(service), "CRM no usa pipeline:view como autoridad única");
   invariant(!/CRM_PIPELINE_PERMISSION\s*=\s*["']clients:view["']/.test(service), "clients:view no puede autorizar Pipeline");
@@ -89,7 +90,7 @@ export function validateCrm01aGuard({
     const handler = source.slice(factoryStart);
     invariant(/req\.method !== "GET"/.test(handler) && /methodNotAllowed\(res, \["GET"\]\)/.test(handler), `${path} admite métodos de escritura`);
     invariant(!/req\.method\s*===\s*"(?:POST|PATCH|PUT|DELETE)"|readJson|\.create\(|\.update|\.delete|\.upsert/.test(handler), `${path} contiene escritura`);
-    const gate = handler.indexOf("requireCrmPipelineReadOnly()");
+    const gate = handler.indexOf("requireCrmPipelineReadOnly(env)");
     const auth = handler.indexOf("requirePermission(req");
     invariant(gate >= 0 && auth > gate, `${path} autentica o consulta antes de la compuerta`);
     invariant(/setPrivateNoStore\(res\)/.test(handler), `${path} permite cache compartida`);

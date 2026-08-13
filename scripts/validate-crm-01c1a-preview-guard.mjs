@@ -10,6 +10,7 @@ const commercial = read("api/_lib/commercialTenancyWrite.js");
 const client = read("src/crm-relational/clientMode.ts");
 const cors = read("api/_lib/pipelineCaseMutationHttp.js");
 const vite = read("vite.config.ts");
+const fixtures = read("scripts/crm-01c1a-preview-fixtures.mjs");
 for (const signature of [
   'feature/crm01c1a-integrated-preview-rehearsal', 'crm01c1a_rehearsal',
   'br-mute-credit-ahxnvfx0', 'CRM-01C1A-PREVIEW-20260813-V1',
@@ -25,6 +26,9 @@ invariant(!/Access-Control-Allow-Credentials/.test(cors), "credenciales CORS pro
 invariant(!/VITE_(?:CRM_PIPELINE_ACTIVATION_BATCH|CRM01C1A_NEON_BRANCH_ID|CRM01C1A_DATABASE_NAME)/.test(`${preview}\n${client}`), "autoridad backend filtrada al frontend");
 invariant(/__CRM_PREVIEW_BUILD__/.test(vite + client), "metadatos Preview no se fijan en build");
 invariant(!/(?:ACTIVATION_BATCH|DATABASE_URL|DIRECT_URL|OWNER_REF_SECRET|NEON_BRANCH_ID)/.test(vite), "vite expone autoridad o secretos backend");
+invariant(/process\.env\.CRM01C1A_REHEARSAL_DIRECT_URL/.test(fixtures) && !/process\.env\.(?:DATABASE_URL|DIRECT_URL)/.test(fixtures), "fixtures permiten fallback de conexión");
+invariant(/current_database\(\)[\s\S]*neon\.branch_id[\s\S]*pg_namespace[\s\S]*nspname\s*=\s*'osi'/.test(fixtures), "fixtures no verifican identidad SQL");
+invariant(/\['seed', 'status'\]/.test(fixtures) && !/\b(?:drop|truncate|deleteMany)\b/i.test(fixtures), "fixtures permiten limpieza destructiva");
 invariant(!/CRM01C1A|PREVIEW_REHEARSAL|PREVIEW_READ|PREVIEW_WRITE/.test(read("vercel.json")), "rehearsal no puede configurarse en vercel.json");
 invariant(!/CRM01C1A|PREVIEW_REHEARSAL|PREVIEW_READ|PREVIEW_WRITE/.test(read(".env.example")), "rehearsal no puede quedar activo por ejemplo");
 invariant(!/api\/crm/.test(read("src/lib/salesStore.ts")), "LeadLite no puede llamar CRM");

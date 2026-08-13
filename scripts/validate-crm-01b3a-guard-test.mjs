@@ -8,15 +8,16 @@ function rejected(name, options, pattern) {
   check(name, pattern.test(error?.message || ""));
 }
 const adapter = readFileSync("api/_lib/pipelineCaseMutationHttp.js", "utf8");
+const access = readFileSync("api/_lib/crmPipelineAccess.js", "utf8");
 const transition = readFileSync("api/crm/pipeline-cases/[id]/transition.js", "utf8");
 const vercel = readFileSync("vercel.json", "utf8");
 check("baseline CRM-01B3A", validateCrm01b3aGuard().ok);
 rejected("LOCAL_ONLY en CI rechazado", { env: { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY" } }, /LOCAL_ONLY/);
 rejected("variable en workflow rechazada", { overrides: { ".github/workflows/ci.yml": `${readFileSync(".github/workflows/ci.yml", "utf8")}\nenv: CRM_PIPELINE_MUTATION_MODE=LOCAL_ONLY` } }, /configura/);
-rejected("default activo rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("CRM_PIPELINE_MUTATION_MODES.DISABLED : configured", "CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY : configured") } }, /predeterminado/);
-rejected("normalización de modo rechazada", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("const configured = env.CRM_PIPELINE_MUTATION_MODE;", "const configured = env.CRM_PIPELINE_MUTATION_MODE?.trim();") } }, /normalizarse/);
-rejected("Vercel bypass rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace('key === "VERCEL" || key.startsWith("VERCEL_")', 'key === "NOT_VERCEL"') } }, /Vercel/);
-rejected("lectura coordinada obligatoria", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("const readMode = resolveCrmPipelineRuntimeMode(env);", "const readMode = CRM_PIPELINE_RUNTIME_MODES.READ_ONLY;") } }, /resolveCrmPipelineRuntimeMode/);
+rejected("default activo rechazado", { overrides: { "api/_lib/crmPipelineAccess.js": access.replace("CRM_PIPELINE_MUTATION_MODES.DISABLED,", "CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY,") } }, /predeterminado/);
+rejected("normalización de modo rechazada", { overrides: { "api/_lib/crmPipelineAccess.js": access.replace("env.CRM_PIPELINE_MUTATION_MODE,", "env.CRM_PIPELINE_MUTATION_MODE?.trim(),") } }, /normalizarse/);
+rejected("Vercel bypass rechazado", { overrides: { "api/_lib/crmPipelineAccess.js": access.replace('key === "VERCEL" || key.startsWith("VERCEL_")', 'key === "NOT_VERCEL"') } }, /Vercel/);
+rejected("lectura coordinada obligatoria", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("requireCrmPipelineMutation(env)", "CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY") } }, /coordinada/);
 rejected("CORS wildcard rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": `${adapter}\nres.setHeader("Access-Control-Allow-Origin", "*");` } }, /wildcard/);
 rejected("CORS global de Vercel sobre CRM rechazado", { overrides: { "vercel.json": vercel.replace("(?!crm/)", "") } }, /Vercel/);
 rejected("exclusión parcial por endpoint rechazada", { overrides: { "vercel.json": vercel.replace("crm/", "crm/(?:pipeline-cases|pipeline-summary)") } }, /namespace|parcial/);

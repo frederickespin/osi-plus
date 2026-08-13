@@ -80,7 +80,7 @@ export function validateMt01b3aSources({ routeSources, envExample, authContextSo
         : CRM_MUTATION_ROUTES.has(route)
           ? /pipelineCaseMutationHttp\.js/.test(source)
           : route.startsWith("api/crm/")
-          ? /requireCommercialPermission/.test(source)
+          ? /require(?:Commercial|CrmPipeline)Permission/.test(source)
           : /requirePilot(?:Auth|Permission)/.test(source);
       invariant(hasContext, `MT-01B3A: ${route} está marcada V2 pero omite el contexto empresarial explícito`);
       invariant(!trustsHeaders, `MT-01B3A: ${route} V2 no puede aceptar x-osi-role/x-osi-userid`);

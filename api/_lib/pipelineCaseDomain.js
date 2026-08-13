@@ -161,6 +161,7 @@ async function resolveActor(tx, context, requiredPermission) {
   if (!row) fail("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404, "Recurso no encontrado.");
   if (String(row.user_status).toLowerCase() !== "active" || row.membership_status !== "ACTIVE" || row.tenant_status !== "ACTIVE") fail("CRM_PIPELINE_PERMISSION_FORBIDDEN", 403, "La identidad empresarial no está activa.");
   const role = String(row.role).toUpperCase();
+  if (!["A", "V"].includes(role)) fail("CRM_PIPELINE_PERMISSION_FORBIDDEN", 403, "El rol no pertenece al catálogo CRM autorizado.");
   const denied = new Set((row.denied_permissions || []).map(String));
   const effective = new Set([...permsForRole(role), ...(row.granted_permissions || []).map(String)].filter((permission) => !denied.has(permission)));
   if (denied.has(requiredPermission) || !effective.has(requiredPermission)) fail("CRM_PIPELINE_PERMISSION_FORBIDDEN", 403, "Permiso empresarial insuficiente.");

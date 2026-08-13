@@ -29,18 +29,21 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
 
   const adapter = read("api/_lib/pipelineCaseMutationHttp.js");
+  const access = read("api/_lib/crmPipelineAccess.js");
   const vercel = read("vercel.json");
   for (const signature of [
-    'DISABLED: "DISABLED"', 'LOCAL_ONLY: "LOCAL_ONLY"', 'CRM_PIPELINE_MUTATIONS_DISABLED',
-    'CRM_PIPELINE_CONFIGURATION_INVALID', 'requireCrmPipelineMutationsLocal(env)',
-    'resolveCrmPipelineRuntimeMode(env)', 'CRM_PIPELINE_RUNTIME_MODES.READ_ONLY',
+    'requireCrmPipelineMutationsLocal(env)', 'assertCrmAuthorizationHeader(req)',
     'readJsonObject(req, { maxBytes: BODY_MAX_BYTES', '"idempotency-key"', 'setPrivateNoStore(res)',
     'handleOptions: false, cors: false', '"Authorization", "Content-Type", "Idempotency-Key"',
     '["POST", "OPTIONS"]', '["GET", "HEAD", "OPTIONS"]', 'mt01bAllowedOrigins(env)',
   ]) invariant(adapter.includes(signature), `adaptador incompleto: ${signature}`);
-  invariant(/configured === undefined \? CRM_PIPELINE_MUTATION_MODES\.DISABLED : configured/.test(adapter), "DISABLED no es predeterminado");
-  invariant(!/CRM_PIPELINE_MUTATION_MODE[^\n;]*(?:trim|toUpperCase|toLowerCase)\s*\(/.test(adapter), "modo no puede normalizarse");
-  invariant(/key === "VERCEL" \|\| key\.startsWith\("VERCEL_"\)/.test(adapter), "LOCAL_ONLY no bloquea cualquier entorno Vercel");
+  for (const signature of ['DISABLED: "DISABLED"', 'LOCAL_ONLY: "LOCAL_ONLY"', 'PRODUCTION_WRITE: "PRODUCTION_WRITE"', 'CRM_PIPELINE_MUTATIONS_DISABLED', 'CRM_PIPELINE_CONFIGURATION_INVALID']) {
+    invariant(access.includes(signature), `resolver incompleto: ${signature}`);
+  }
+  invariant(/env\.CRM_PIPELINE_MUTATION_MODE[\s\S]{0,100}CRM_PIPELINE_MUTATION_MODES[\s\S]{0,100}CRM_PIPELINE_MUTATION_MODES\.DISABLED/.test(access), "DISABLED no es predeterminado");
+  invariant(!/CRM_PIPELINE_MUTATION_MODE[^\n;]*(?:trim|toUpperCase|toLowerCase)\s*\(/.test(access), "modo no puede normalizarse");
+  invariant(/key === "VERCEL" \|\| key\.startsWith\("VERCEL_"\)/.test(access), "LOCAL_ONLY no bloquea cualquier entorno Vercel");
+  invariant(/resolveCrmPipelineModes\(env\)/.test(access) && /requireCrmPipelineMutation\(env\)/.test(adapter), "lectura coordinada obligatoria ausente");
   invariant(adapter.indexOf("requireCrmPipelineMutationsLocal(env)") < adapter.indexOf('req.method !== "POST"')
     && adapter.indexOf('req.method !== "POST"') < adapter.indexOf("resolveContext(req")
     && adapter.indexOf("resolveContext(req") < adapter.indexOf("readJsonObject(req"), "orden gate/método/auth/body incorrecto");
@@ -52,7 +55,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(!/x-osi-(?:role|userid)/i.test(adapter), "headers x-osi no permitidos");
   invariant(/keys\.some\(\(key\) => key !== "id"\)/.test(adapter), "requestId/query adicional no se rechaza");
   invariant(/rawHeaderCount\(req, "idempotency-key"\)/.test(adapter), "duplicados Idempotency-Key no se detectan en rawHeaders");
-  invariant(/rawHeaderCount\(req, "authorization"\)/.test(adapter), "Authorization ambiguo no se detecta");
+  invariant(/rawHeaderCount\(request, "authorization"\)/.test(access) && /assertCrmAuthorizationHeader\(req\)/.test(adapter), "Authorization ambiguo no se detecta");
   invariant(vercel.includes('"source": "/api/((?!crm/).*)"'), "Vercel no excluye el namespace CRM completo del CORS global");
   invariant(!/(?:transition|assign-owner|unassign-owner|allowed-transitions|pipeline-summary)/.test(JSON.parse(vercel).headers?.[0]?.source || ""), "Vercel no puede mantener una exclusión CRM parcial por endpoint");
   for (const forbidden of ["tenantId", "userId", "actorUserId", "actorMembershipId", "ownerUserId", "ownerId", "role", "permissions", "requestId", "resultingVersion", "payloadHash", "statusChangedAt", "timestamps"]) {

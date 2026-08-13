@@ -119,6 +119,9 @@ jobs:
           node scripts/validate-crm-01b3a-guard-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          node scripts/crm-01b3b1-gate-test.mjs
+          node scripts/validate-crm-01b3b1-guard.mjs
+          node scripts/validate-crm-01b3b1-guard-test.mjs
           node scripts/validate-sec-dep-01-guard.mjs
           node scripts/validate-sec-dep-01-guard-test.mjs
 
@@ -235,6 +238,9 @@ jobs:
           node scripts/validate-crm-01b3a-guard-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          node scripts/crm-01b3b1-gate-test.mjs
+          node scripts/validate-crm-01b3b1-guard.mjs
+          node scripts/validate-crm-01b3b1-guard-test.mjs
 
       - name: Validate and generate Prisma
         run: |

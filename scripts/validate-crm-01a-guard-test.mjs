@@ -30,7 +30,7 @@ try {
   rejected("campo interno expuesto rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace(/id: true,\r?\n\s*caseCode/, "tenantId: true,\n  id: true,\n  caseCode") } }, /campos internos/);
   const list = read("api/crm/pipeline-cases/index.js");
   rejected("POST CRM rechazado", { overrides: { "api/crm/pipeline-cases/index.js": list.replace('req.method !== "GET"', 'req.method !== "POST"') } }, /métodos de escritura/);
-  rejected("compuerta posterior a auth rechazada", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("requireCrmPipelineReadOnly();", "void 0;").replace("if (!context) return;", "if (!context) return; requireCrmPipelineReadOnly();") } }, /compuerta/);
+  rejected("compuerta posterior a auth rechazada", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("requireCrmPipelineReadOnly(env);", "void 0;").replace("if (!context) return;", "if (!context) return; requireCrmPipelineReadOnly(env);") } }, /compuerta/);
   rejected("import frontend rechazado", { extraSources: { "src/new-crm.ts": 'import "../api/_lib/crmPipelineRead.js";' } }, /frontend/);
   rejected("endpoint adicional rechazado", { extraSources: { "api/crm/write.js": 'import "../_lib/crmPipelineRead.js"; export default function() {}' } }, /fuera de las rutas/);
   const target = read("scripts/crm-01a-local-target.mjs");

@@ -1,10 +1,12 @@
 import { CommercialTenancyError, commercialDatabaseUnavailable } from "./commercialTenancyWrite.js";
+import {
+  CRM_PIPELINE_READ_MODES,
+  requireCrmPipelineRead,
+  resolveCrmPipelineModes,
+} from "./crmPipelineAccess.js";
 import { PERMS } from "./rbac.js";
 
-export const CRM_PIPELINE_RUNTIME_MODES = Object.freeze({
-  DISABLED: "DISABLED",
-  READ_ONLY: "READ_ONLY",
-});
+export const CRM_PIPELINE_RUNTIME_MODES = CRM_PIPELINE_READ_MODES;
 
 export const CRM_PIPELINE_PERMISSION = PERMS.PIPELINE_VIEW;
 
@@ -111,32 +113,12 @@ function exactBoolean(value) {
   invalid();
 }
 
-function isVercelRuntime(env) {
-  return env.VERCEL === "1"
-    || env.VERCEL_ENV === "preview"
-    || env.VERCEL_ENV === "production"
-    || env.VERCEL_GIT_COMMIT_REF !== undefined
-    || env.VERCEL_GIT_COMMIT_SHA !== undefined;
-}
-
 export function resolveCrmPipelineRuntimeMode(env = process.env) {
-  const configured = env.CRM_PIPELINE_RUNTIME_MODE;
-  const mode = configured === undefined ? CRM_PIPELINE_RUNTIME_MODES.DISABLED : configured;
-  if (typeof mode !== "string" || !Object.values(CRM_PIPELINE_RUNTIME_MODES).includes(mode)) {
-    throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
-  }
-  if (mode === CRM_PIPELINE_RUNTIME_MODES.READ_ONLY && isVercelRuntime(env)) {
-    throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
-  }
-  return mode;
+  return resolveCrmPipelineModes(env).readMode;
 }
 
 export function requireCrmPipelineReadOnly(env = process.env) {
-  const mode = resolveCrmPipelineRuntimeMode(env);
-  if (mode !== CRM_PIPELINE_RUNTIME_MODES.READ_ONLY) {
-    throw new CommercialTenancyError("CRM_PIPELINE_DISABLED", 409);
-  }
-  return mode;
+  return requireCrmPipelineRead(env);
 }
 
 export function parsePipelineListQuery(query = {}) {

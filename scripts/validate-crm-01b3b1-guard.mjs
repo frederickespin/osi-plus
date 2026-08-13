@@ -44,11 +44,18 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
     '(env.MT01B_TENANT_SWITCH_ENABLED ?? "false") !== "false"',
     '(env.VITE_MT01B2_CLIENT_ENABLED ?? "false") !== "false"',
     'resolveCommercialTenancyModes(env)', 'activationBatch !== undefined',
-    'assertCrmAuthorizationHeader(request)', 'resolveCommercialContext(request, options)',
+    'assertCrmAuthorizationHeader(request)', 'verifiedTokenKind: tokenKind',
+    'verifyStrictLegacyAccessToken(token)', 'verifyMembershipAccessToken(token)',
+    'CRM_PIPELINE_ALLOWED_ROLES = Object.freeze(["A", "V"])',
   ]) invariant(access.includes(signature), `resolver central incompleto: ${signature}`);
   invariant(!/(?:trim|toUpperCase|toLowerCase)\s*\([^)]*(?:CRM_PIPELINE|activationBatch|readMode|mutationMode)/.test(access), "configuración CRM no puede normalizarse");
   invariant(/localRead[\s\S]*localWrite[\s\S]*productionRead[\s\S]*productionWrite/.test(access), "matriz coordinada incompleta");
   invariant(/effectivePermissions\.includes\(String\(permission\)\)/.test(access), "permiso efectivo no se aplica");
+  invariant(/authMode !== "MEMBERSHIP_ONLY"/.test(access), "JWT V2 no queda bloqueado cuando V2 está desactivado");
+  invariant(!/isMembershipAccessTokenCandidate/.test(access), "la selección CRM no puede depender de claims sin verificar");
+
+  const domain = read("api/_lib/pipelineCaseDomain.js");
+  invariant(/!\["A", "V"\]\.includes\(role\)/.test(domain), "el dominio permite roles fuera de A/V");
 
   const apiFiles = filesBelow(resolve(root, "api")).filter((path) => path.endsWith(".js"));
   for (const absolute of apiFiles) {
@@ -77,6 +84,9 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   const adapter = read("api/_lib/pipelineCaseMutationHttp.js");
   invariant(adapter.indexOf("requireCrmPipelineMutationsLocal(env)") < adapter.indexOf('req.method !== "POST"')
     && adapter.indexOf('req.method !== "POST"') < adapter.indexOf("resolveContext(req"), "mutaciones violan orden gate/método/auth");
+  invariant(!/Access-Control-Allow-Origin["']?\s*,\s*["']\*/.test(adapter), "CORS wildcard prohibido en CRM");
+  invariant(!/CLIENTS_VIEW|clients:view/.test(`${access}\n${domain}\n${adapter}`), "clients:view no puede autorizar CRM");
+  invariant(!/PERMS\.PIPELINE_UPDATE/.test(domain), "pipeline:update está reservado y no autoriza acciones actuales");
 
   const srcFiles = filesBelow(resolve(root, "src")).filter((path) => /\.[cm]?[jt]sx?$/.test(path));
   for (const absolute of srcFiles) {
@@ -92,6 +102,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
     const source = read(path);
     invariant(!/CRM_PIPELINE_(?:RUNTIME_MODE|MUTATION_MODE|ACTIVATION_BATCH)\s*[:=]\s*["']?(?:READ_ONLY|LOCAL_ONLY|PRODUCTION_READ|PRODUCTION_WRITE|CRM-01B3B1)/.test(source), `${path} activa CRM`);
   }
+  invariant(!/api\/crm|crmPipelineAccess|pipelineCaseDomain/.test(read("package.json")), "package scripts no pueden ejecutar CRM automáticamente");
   invariant(!/VITE_CRM_PIPELINE_ACTIVATION_BATCH/.test(access), "batch CRM no puede entrar al frontend");
   invariant(env.CRM_PIPELINE_RUNTIME_MODE === undefined || env.CRM_PIPELINE_RUNTIME_MODE === "DISABLED", "lectura CRM activa en validación");
   invariant(env.CRM_PIPELINE_MUTATION_MODE === undefined || env.CRM_PIPELINE_MUTATION_MODE === "DISABLED", "mutación CRM activa en validación");
@@ -101,7 +112,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false") === "false", "cliente V2 debe permanecer desactivado");
 
   const canonical = read("scripts/run-canonical-db-tests.mjs");
-  for (const suite of ["crm-01b3b1-gate-test.mjs", "validate-crm-01b3b1-guard.mjs", "validate-crm-01b3b1-guard-test.mjs", "crm-01a-test.mjs", "crm-01b3a-integration-test.mjs"]) {
+  for (const suite of ["crm-01b3b1-gate-test.mjs", "crm-01b3b1-adversarial-test.mjs", "validate-crm-01b3b1-guard.mjs", "validate-crm-01b3b1-guard-test.mjs", "crm-01a-test.mjs", "crm-01b3a-integration-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
   return Object.freeze({ ok: true, migrations: 16, routes: 7, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 0 });

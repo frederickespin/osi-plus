@@ -14,7 +14,7 @@ Estado: **inactivo**. La ausencia de las variables CRM resuelve `DISABLED/DISABL
 | `/api/crm/pipeline-cases/:id/assign-owner` | POST | LEGACY o V2 por `resolveCrmPipelineContext` | `pipeline:assign` | 1 contexto + transacción del dominio |
 | `/api/crm/pipeline-cases/:id/unassign-owner` | POST | LEGACY o V2 por `resolveCrmPipelineContext` | `pipeline:assign` | 1 contexto + transacción del dominio |
 
-Ninguna ruta era exclusivamente V2: las lecturas y las mutaciones ya convergían en el contexto comercial dual. CRM-01B3B1 congela esa autoridad en un único adaptador, rechaza `Authorization` ambiguo y conserva la clasificación de un JWT V2 candidato sin fallback LEGACY. El contexto LEGACY revalida en una consulta el `User.status`, la membresía predeterminada única y activa, el tenant activo, rol, grants, denies y `authorizationVersion`. El contexto se memoriza sólo dentro del objeto request; el dominio revalida al actor dentro de la transacción antes de escribir.
+Ninguna ruta era exclusivamente V2: las lecturas y las mutaciones convergen en un único adaptador. CRM verifica criptográficamente, contra los contratos estrictos y disjuntos, tanto LEGACY como V2 antes de seleccionar la clase; los claims decodificados sin verificar no eligen el parser. Cero o dos contratos válidos se rechazan. Un JWT V2 sólo se admite en el contexto local explícito `MEMBERSHIP_ONLY`; cuando CRM opera con `LEGACY`, incluso un V2 válido se rechaza sin fallback. El contexto LEGACY revalida en una consulta el `User.status`, la membresía predeterminada única y activa, el tenant activo, rol, grants, denies y `authorizationVersion`. El contexto se memoriza sólo dentro del objeto request; el dominio revalida al actor dentro de la transacción antes de escribir.
 
 Los campos `tenantId`, `membershipId`, `userId`, rol y permisos recibidos desde headers, query o body no son autoridad. `deniedPermissions` prevalece sobre el catálogo del rol y grants explícitos. Los errores controlados se reducen a contratos 401/403/409/503 sin token, SQL, URL, credenciales ni valores ambientales.
 
@@ -28,7 +28,7 @@ Los campos `tenantId`, `membershipId`, `userId`, rol y permisos recibidos desde 
 | `PRODUCTION_READ` | `DISABLED` | Production/main, batch exacto y tenancy comercial activa | lectura gradual |
 | `PRODUCTION_READ` | `PRODUCTION_WRITE` | Production/main, batch exacto y tenancy comercial activa | lectura y mutación productiva |
 
-Cualquier otra combinación responde `503 CRM_PIPELINE_CONFIGURATION_INVALID`. Los valores se comparan byte por byte: BOM, whitespace, comillas, saltos y casing alternativo se rechazan. La activación productiva también exige autenticación `LEGACY`, tenant switch `false` y cliente V2 `false`, usando sus defaults seguros cuando las variables están ausentes. `CRM_PIPELINE_ACTIVATION_BATCH` es server-only, exacto y versionado como `CRM-01B3B1-PRODUCTION-V1`. La autoridad de esquema congelada es `20260801015000_crm01b_pipeline_mutation_authority`; guardias verifican la migración 16 y el modelo `PipelineCaseCommand`, sin consulta de esquema por request.
+Cualquier otra combinación responde `503 CRM_PIPELINE_CONFIGURATION_INVALID`. Los valores se comparan byte por byte: BOM, whitespace, comillas, saltos y casing alternativo se rechazan. `HYBRID`, tenant switch y cliente V2 se rechazan en cualquier modo CRM; `MEMBERSHIP_ONLY` sólo habilita la prueba V2 local. La activación productiva exige autenticación `LEGACY`, tenant switch `false` y cliente V2 `false`, usando sus defaults seguros cuando las variables están ausentes. `CRM_PIPELINE_ACTIVATION_BATCH` es server-only, exacto y versionado como `CRM-01B3B1-PRODUCTION-V1`; es distinto de `COMMERCIAL_TENANCY_ACTIVATION_BATCH=MT-01C2B2-IPACKERS-DO-V1` y no admite aliases. La autoridad de esquema congelada es `20260801015000_crm01b_pipeline_mutation_authority`; guardias verifican la migración 16 y el modelo `PipelineCaseCommand`, sin consulta de esquema por request.
 
 ## Permisos y estados
 
@@ -38,8 +38,22 @@ Cualquier otra combinación responde `503 CRM_PIPELINE_CONFIGURATION_INVALID`. L
 - Asignación y desasignación: `pipeline:assign`.
 - Reapertura de `LOST`: además del permiso de transición, sólo rol efectivo `A` y motivo canónico.
 
-El rol efectivo y los permisos provienen de la membresía vigente. `V` sólo opera casos propios en transiciones autorizadas; `A` conserva las facultades administrativas existentes. `APPROVED` permanece congelado y `OPS_HANDOFF` terminal. No se amplía el catálogo a roles distintos de `A` y `V`.
+El rol efectivo y los permisos provienen de la membresía vigente. Sólo `A` y `V` pertenecen al catálogo CRM: un grant explícito no incorpora otro rol. `V` sólo opera casos propios en transiciones autorizadas; `A` conserva las facultades administrativas existentes. `pipeline:view` no concede mutaciones, `pipeline:transition` no concede asignación y `pipeline:assign` no concede lectura ni transición. `pipeline:update` queda reservado sin acción actual. `APPROVED` permanece congelado y `OPS_HANDOFF` terminal.
 
 ## Orden y compatibilidad
 
 Cada handler aplica: headers privados → resolución estricta → gate → método → contexto/permisos → validación → consulta o dominio → selección segura. Con variables ausentes se conservan `CRM_PIPELINE_DISABLED` para lecturas y `CRM_PIPELINE_MUTATIONS_DISABLED` para las rutas B3A, sin CORS global, cookies, consultas o escrituras. No hay imports frontend, cron, hook de build ni migración 17.
+
+## Rendimiento local observado
+
+PostgreSQL 18 en `127.0.0.1:55432`, 100 solicitudes cálidas por operación, preparación de fixtures excluida:
+
+| Operación | Contexto | Dominio | Total SQL | p50 | p95 | máximo |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Contexto LEGACY | 1 | 0 | 1 | 0.484 ms | 0.820 ms | 0.976 ms |
+| Lista | 0 | 2 | 2 | 1.583 ms | 2.476 ms | 3.720 ms |
+| Detalle | 0 | 1 | 1 | 1.181 ms | 1.567 ms | 1.903 ms |
+| Resumen | 0 | 3 | 3 | 1.418 ms | 2.064 ms | 2.519 ms |
+| Transiciones permitidas | 0 | 4 | 4 | 1.685 ms | 2.327 ms | 2.800 ms |
+
+El total HTTP suma una resolución de contexto por request a las consultas del dominio. No existe N+1 ni caché entre requests.

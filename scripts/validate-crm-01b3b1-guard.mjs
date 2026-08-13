@@ -77,11 +77,17 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   }
   for (const path of CRM_ROUTES.slice(0, 3)) {
     const source = read(path);
-    const gate = source.indexOf("requireCrmPipelineReadOnly(env)");
-    const method = source.indexOf('req.method !== "GET"');
-    const auth = source.indexOf("requirePermission(req");
-    invariant(gate >= 0 && method > gate && auth > method, `${path} viola orden gate/método/auth`);
+    invariant(/createCrmPipelineReadHandler\(\{/.test(source), `${path} omite adaptador de lectura canónico`);
   }
+  const readAdapter = read("api/_lib/crmPipelineReadHttp.js");
+  const readGate = readAdapter.indexOf("requireCrmPipelineReadOnly(env)");
+  const readOptions = readAdapter.indexOf('req.method === "OPTIONS"');
+  const readMethod = readAdapter.indexOf('req.method !== "GET"');
+  const readAuth = readAdapter.indexOf("requirePermission(req");
+  invariant(readGate >= 0 && readOptions > readGate && readMethod > readOptions && readAuth > readMethod,
+    "lecturas violan orden gate/OPTIONS/método/auth");
+  invariant(/withCommonHeaders\([\s\S]*\{ handleOptions: false, cors: false \}\)/.test(readAdapter),
+    "wrapper común puede interceptar OPTIONS antes del gate");
   const adapter = read("api/_lib/pipelineCaseMutationHttp.js");
   invariant(adapter.indexOf("requireCrmPipelineMutationsLocal(env)") < adapter.indexOf('req.method !== "POST"')
     && adapter.indexOf('req.method !== "POST"') < adapter.indexOf("resolveContext(req"), "mutaciones violan orden gate/método/auth");

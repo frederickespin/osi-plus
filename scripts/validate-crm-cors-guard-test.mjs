@@ -28,7 +28,7 @@ rejected(
   /hereda CORS wildcard/,
   undefined,
   routeSources.map((route) => route === listSource
-    ? { ...route, source: route.source.replace("{ cors: false }", "{}") }
+    ? { ...route, source: `${route.source}\nwithCommonHeaders(async () => {}, {});` }
     : route),
 );
 

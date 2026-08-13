@@ -10,6 +10,7 @@ function rejected(name, options, pattern) {
 }
 const access = readFileSync("api/_lib/crmPipelineAccess.js", "utf8");
 const list = readFileSync("api/crm/pipeline-cases/index.js", "utf8");
+const readAdapter = readFileSync("api/_lib/crmPipelineReadHttp.js", "utf8");
 const adapter = readFileSync("api/_lib/pipelineCaseMutationHttp.js", "utf8");
 const domain = readFileSync("api/_lib/pipelineCaseDomain.js", "utf8");
 
@@ -32,7 +33,7 @@ try {
   rejected("CORS wildcard rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": `${adapter}\nres.setHeader("Access-Control-Allow-Origin", "*");` } }, /CORS wildcard/);
   rejected("hook automático rechazado", { overrides: { "package.json": readFileSync("package.json", "utf8").replace('"build":', '"prebuild":"node api/crm/pipeline-cases/index.js", "build":') } }, /automáticamente/);
   rejected("interpretación fuera del resolver rechazada", { overrides: { "api/crm/pipeline-cases/index.js": `${list}\nconst mode = process.env.CRM_PIPELINE_RUNTIME_MODE;` } }, /fuera del resolver/);
-  rejected("auth antes del gate rechazada", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("requireCrmPipelineReadOnly(env);", "void requirePermission(req); requireCrmPipelineReadOnly(env);") } }, /orden/);
+  rejected("auth antes del gate rechazada", { overrides: { "api/_lib/crmPipelineReadHttp.js": readAdapter.replace("requireCrmPipelineReadOnly(env);", "void requirePermission(req); requireCrmPipelineReadOnly(env);") } }, /orden/);
   rejected("mutación antes del gate rechazada", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("requireCrmPipelineMutationsLocal(env);", "resolveContext(req); requireCrmPipelineMutationsLocal(env);") } }, /orden/);
   rejected("frontend CRM rechazado", { extraSources: { "src/crm-runtime.ts": 'fetch("/api/crm/pipeline-cases")' } }, /frontend/);
   rejected("activación en workflow rechazada", { overrides: { ".github/workflows/ci.yml": `${readFileSync(".github/workflows/ci.yml", "utf8")}\nenv: CRM_PIPELINE_RUNTIME_MODE=PRODUCTION_READ` } }, /activa CRM/);

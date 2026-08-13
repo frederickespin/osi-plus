@@ -225,6 +225,7 @@ try {
   const crmCorsGuardRun = runJson("validate-crm-cors-guard.mjs", "CRM-01B3A/CORS_GUARD");
   const crmCorsGuardTestsRun = runJson("validate-crm-cors-guard-test.mjs", "CRM-01B3A/CORS_GUARD_TESTS");
   const crmProductionGateRun = runJson("crm-01b3b1-gate-test.mjs", "CRM-01B3B1/GATE");
+  const crmDisabledOptionsRun = runJson("crm-01b3b3-disabled-options-test.mjs", "CRM-01B3B3/DISABLED_OPTIONS");
   const crmProductionAdversarialRun = runJson("crm-01b3b1-adversarial-test.mjs", "CRM-01B3B1/ADVERSARIAL");
   const crmProductionGateGuardRun = runJson("validate-crm-01b3b1-guard.mjs", "CRM-01B3B1/GUARD");
   const crmProductionGateGuardTestsRun = runJson("validate-crm-01b3b1-guard-test.mjs", "CRM-01B3B1/GUARD_TESTS");
@@ -240,6 +241,7 @@ try {
   invariant(crmCorsGuardRun.report.ok === true && crmCorsGuardRun.report.crmRoutes === 8 && crmCorsGuardRun.report.matchedCrmRoutes === 0, "CRM-01B3A CORS guard falló");
   invariant(crmCorsGuardTestsRun.assertions >= 10, `CRM-01B3A CORS guard tests esperaba al menos 10 pruebas y obtuvo ${crmCorsGuardTestsRun.assertions}`);
   invariant(crmProductionGateRun.report.ok === true && crmProductionGateRun.assertions >= 50, `CRM-01B3B1 gate esperaba al menos 50 pruebas y obtuvo ${crmProductionGateRun.assertions}`);
+  invariant(crmDisabledOptionsRun.report.ok === true && crmDisabledOptionsRun.assertions >= 300, `CRM-01B3B3 OPTIONS esperaba al menos 300 pruebas y obtuvo ${crmDisabledOptionsRun.assertions}`);
   invariant(crmProductionAdversarialRun.report.ok === true && crmProductionAdversarialRun.assertions >= 20
     && Object.values(crmProductionAdversarialRun.report.performance || {}).every((entry) => entry.requests === 100), "CRM-01B3B1 adversarial/rendimiento no se completó");
   invariant(crmProductionGateGuardRun.report.ok === true && crmProductionGateGuardRun.report.routes === 8, "CRM-01B3B1 guard falló");
@@ -491,6 +493,7 @@ try {
       "CRM-01B3A/GUARD_TESTS": { status: "PASS", assertions: crmMutationHttpGuardTestsRun.assertions, durationMs: crmMutationHttpGuardTestsRun.durationMs, exitCode: 0 },
       "CRM-01B3A/CORS_GUARD": { status: "PASS", assertions: 0, durationMs: crmCorsGuardRun.durationMs, exitCode: 0 },
       "CRM-01B3A/CORS_GUARD_TESTS": { status: "PASS", assertions: crmCorsGuardTestsRun.assertions, durationMs: crmCorsGuardTestsRun.durationMs, exitCode: 0 },
+      "CRM-01B3B3/DISABLED_OPTIONS": { status: "PASS", assertions: crmDisabledOptionsRun.assertions, durationMs: crmDisabledOptionsRun.durationMs, exitCode: 0 },
     },
     total,
   }, null, 2)}\n`);

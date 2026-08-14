@@ -2,8 +2,8 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { EvaluatorCanonicalModule } from "@/evaluator-canonical/EvaluatorCanonicalModule";
 import { EvaluatorApi } from "@/evaluator-canonical/api";
-import { getAppEnv, ENV_LABELS } from "@/lib/env";
-import { resolveModuleFromPath } from "@/lib/moduleRouting";
+import { getAppEnv, ENV_LABELS, resolveAppEnvironment } from "@/lib/env";
+import { resolveModuleFromPath, routeForModule } from "@/lib/moduleRouting";
 import { deriveInventoryVolumeM3, deriveWeightFromDensity } from "@/modules/evaluator-app/domain/evaluatorWeight";
 import { deriveEvaluatorAccessPlan } from "@/modules/evaluator-app/domain/evaluatorAccessPolicy";
 import { createEmptyEvaluatorVisitDraft, createInventoryItem, type EvaluatorVisitTask } from "@/modules/evaluator-app/domain/evaluatorVisitDraft";
@@ -53,8 +53,45 @@ void api.listVisits({ page: 1, pageSize: 20 }).then(() => {
   document.documentElement.dataset.apiHeaders = capturedHeaderNames.sort().join(",");
 });
 
+const errorStatuses = [401, 403, 404, 409, 503];
+void Promise.all(errorStatuses.map(async (status) => {
+  const failingApi = new EvaluatorApi(
+    (async () => new Response(JSON.stringify({ code: `EVALUATOR_STATUS_${status}`, secret: "not-exposed" }), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch,
+    () => "synthetic-memory-token",
+  );
+  try {
+    await failingApi.listCatalog();
+    return "unexpected-success";
+  } catch (error) {
+    return error instanceof Error && "status" in error && "code" in error
+      ? `${String((error as { status: unknown }).status)}:${String((error as { code: unknown }).code)}`
+      : "unexpected-error";
+  }
+})).then((results) => {
+  document.documentElement.dataset.evaluatorErrors = results.join(",");
+});
+
 document.documentElement.dataset.environment = ENV_LABELS[getAppEnv()];
+document.documentElement.dataset.environmentMatrix = [
+  resolveAppEnvironment("", "localhost"),
+  resolveAppEnvironment("", "127.0.0.1"),
+  resolveAppEnvironment("", "::1"),
+  resolveAppEnvironment("preview", "example.vercel.app"),
+  resolveAppEnvironment("production", "example.com"),
+  resolveAppEnvironment("unexpected", "example.com"),
+].join(",");
 document.documentElement.dataset.pipelineRoute = resolveModuleFromPath("/sales/pipeline") ?? "";
+document.documentElement.dataset.rejectedRoutes = [
+  "https://evil.invalid/evaluator",
+  "//evil.invalid/evaluator",
+  "/../evaluator",
+  "/sales/%2e%2e/evaluator",
+  "/unknown",
+].map((path) => resolveModuleFromPath(path) ?? "REJECTED").join(",");
+document.documentElement.dataset.nonDeepModuleRoute = routeForModule("dashboard") ?? "/";
 document.documentElement.dataset.volume = String(volume);
 document.documentElement.dataset.weight = String(weight);
 document.documentElement.dataset.accessErrors = String(access.validationErrors.length);

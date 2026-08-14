@@ -20,6 +20,6 @@ export function routeForModule(moduleId: ModuleId): string | null {
 }
 
 export function updateModuleRoute(moduleId: ModuleId, history: Pick<History, "pushState">, location: Pick<Location, "pathname">) {
-  const nextPath = routeForModule(moduleId);
-  if (nextPath && nextPath !== location.pathname) history.pushState({}, "", nextPath);
+  const nextPath = routeForModule(moduleId) ?? "/";
+  if (nextPath !== location.pathname) history.pushState({}, "", nextPath);
 }

@@ -19,7 +19,8 @@ async function fulfillJson(route: Route, status: number, body: unknown) {
 }
 
 async function installShellApi(context: BrowserContext) {
-  const calls = { login: 0, me: 0, crm: 0 };
+  const calls = { login: 0, me: 0, crm: 0, evaluator: 0 };
+  let role = "A";
   await context.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.startsWith("/api/crm/")) {
@@ -27,19 +28,36 @@ async function installShellApi(context: BrowserContext) {
       await fulfillJson(route, 500, { ok: false, error: "CRM no debe consultarse" });
       return;
     }
+    if (path.startsWith("/api/evaluator/")) {
+      calls.evaluator += 1;
+      await fulfillJson(route, 500, { ok: false, error: "Evaluador no debe consultarse" });
+      return;
+    }
+    const currentUser = { ...legacyUser, role };
     if (path === "/api/auth/login") {
       calls.login += 1;
-      await fulfillJson(route, 200, { ok: true, token: "legacy-v17-test", user: legacyUser });
+      await fulfillJson(route, 200, { ok: true, token: "legacy-v17-test", user: currentUser });
       return;
     }
     if (path === "/api/auth/me") {
       calls.me += 1;
-      await fulfillJson(route, 200, { ok: true, user: legacyUser });
+      await fulfillJson(route, 200, { ok: true, user: currentUser });
       return;
     }
     await fulfillJson(route, 200, { ok: true, total: 0, data: [] });
   });
-  return calls;
+  return { calls, setRole(nextRole: string) { role = nextRole; } };
+}
+
+async function login(page: import("@playwright/test").Page) {
+  await page.getByLabel("Correo electrónico").fill("v17@example.invalid");
+  await page.getByLabel("Contraseña").fill("V17-local-test-only");
+  await page.getByRole("button", { name: "Iniciar Sesión" }).click();
+}
+
+async function openMobileNavigationIfNeeded(page: import("@playwright/test").Page) {
+  const trigger = page.getByRole("button", { name: "Abrir navegación" });
+  if (await trigger.isVisible()) await trigger.click();
 }
 
 test("muestra el Evaluador sin presentar mocks como datos reales", async ({ page }) => {
@@ -55,12 +73,19 @@ test("conserva dominio puro y deep link canónico", async ({ page }) => {
   await expect.poll(() => page.locator("html").getAttribute("data-volume")).toBe("1");
   await expect.poll(() => page.locator("html").getAttribute("data-weight")).toBe("100");
   await expect.poll(() => page.locator("html").getAttribute("data-access-errors")).toBe("1");
+  await expect.poll(() => page.locator("html").getAttribute("data-rejected-routes"))
+    .toBe("REJECTED,REJECTED,REJECTED,REJECTED,REJECTED");
+  await expect.poll(() => page.locator("html").getAttribute("data-non-deep-module-route")).toBe("/");
 });
 
 test("usa sólo Bearer en el contrato Evaluador y reconoce desarrollo local", async ({ page }) => {
   await page.goto("/tests/v17-convergence/harness.html");
   await expect.poll(() => page.locator("html").getAttribute("data-environment")).toBe("Desarrollo local");
+  await expect.poll(() => page.locator("html").getAttribute("data-environment-matrix"))
+    .toBe("development,development,development,preview,production,unknown");
   await expect.poll(() => page.locator("html").getAttribute("data-api-headers")).toBe("accept,authorization");
+  await expect.poll(() => page.locator("html").getAttribute("data-evaluator-errors"))
+    .toBe("401:EVALUATOR_STATUS_401,403:EVALUATOR_STATUS_403,404:EVALUATOR_STATUS_404,409:EVALUATOR_STATUS_409,503:EVALUATOR_STATUS_503");
 });
 
 test("adapta asignados y no asignados sin cargar CRM ni solicitar datos", async ({ page }) => {
@@ -74,34 +99,66 @@ test("adapta asignados y no asignados sin cargar CRM ni solicitar datos", async 
 });
 
 test("el shell conserva login, deep links y CRM apagado después de reload", async ({ page, context }) => {
-  const calls = await installShellApi(context);
+  const shellApi = await installShellApi(context);
+  const { calls } = shellApi;
   const crmScripts: string[] = [];
   page.on("response", (response) => {
     if (/RelationalPipelineModule/i.test(response.url())) crmScripts.push(response.url());
   });
 
   await page.goto("/sales/pipeline");
-  await page.getByLabel("Correo electrónico").fill("v17@example.invalid");
-  await page.getByLabel("Contraseña").fill("V17-local-test-only");
-  await page.getByRole("button", { name: "Iniciar Sesión" }).click();
+  await login(page);
 
   await expect(page).toHaveURL(/\/sales\/pipeline$/);
+  await expect(page.getByTestId("crm-pipeline-unavailable")).toBeVisible();
   await expect(page.getByText("Usuario V17", { exact: true })).toBeAttached();
   await expect(page.getByText("Comercial", { exact: true })).toBeAttached();
   await expect(page.getByText("Administración", { exact: true })).toBeAttached();
   await expect(page.getByText("Materiales y Logística", { exact: true })).toBeAttached();
+  const collapseNavigation = page.getByRole("button", { name: "Colapsar navegación" });
+  if ((page.viewportSize()?.width ?? 0) >= 1024) {
+    await collapseNavigation.click();
+    const administrationGroup = page.getByRole("button", { name: "Administración", exact: true });
+    await administrationGroup.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("button", { name: "Usuarios y Roles", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Expandir navegación" }).click();
+  }
   expect(calls.crm).toBe(0);
+  expect(calls.evaluator).toBe(0);
   expect(crmScripts).toEqual([]);
 
   await page.reload();
   await expect(page).toHaveURL(/\/sales\/pipeline$/);
   await expect(page.getByText("Usuario V17", { exact: true })).toBeAttached();
-  expect(calls).toEqual({ login: 1, me: 1, crm: 0 });
+  await expect(page.getByTestId("crm-pipeline-unavailable")).toBeVisible();
+  expect(calls).toEqual({ login: 1, me: 1, crm: 0, evaluator: 0 });
   expect(crmScripts).toEqual([]);
+
+  await openMobileNavigationIfNeeded(page);
+  await page.getByRole("button", { name: "Cerrar Sesión" }).click();
+  await expect(page).toHaveURL(/\/sales\/pipeline$/);
+  await login(page);
+  await expect(page.getByTestId("crm-pipeline-unavailable")).toBeVisible();
 
   await page.goto("/evaluator");
   await expect(page.getByTestId("evaluator-canonical-root")).toBeVisible();
   await expect(page.getByText("Backend del Evaluador no disponible")).toBeVisible();
   await expect(page.getByText("Evaluador", { exact: true })).toBeAttached();
+  await page.reload();
+  await expect(page.getByTestId("evaluator-canonical-root")).toBeVisible();
+  await openMobileNavigationIfNeeded(page);
+  await page.getByRole("button", { name: "Cerrar Sesión" }).click();
+  await expect(page).toHaveURL(/\/evaluator$/);
+  await login(page);
+  await expect(page.getByTestId("evaluator-canonical-root")).toBeVisible();
+
+  shellApi.setRole("C");
+  await page.reload();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("evaluator-canonical-root")).toHaveCount(0);
+  await expect(page.getByText("Evaluador", { exact: true })).toHaveCount(0);
   expect(calls.crm).toBe(0);
+  expect(calls.evaluator).toBe(0);
+  expect(crmScripts).toEqual([]);
 });

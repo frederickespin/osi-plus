@@ -35,11 +35,13 @@ $env:VITE_MT01B2_CLIENT_ENABLED = 'false'
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-`vite.config.ts` continúa siendo el de `main`; el frontend y la API usan puertos diferentes. No debe iniciarse `vercel dev` desde el worktree moderno histórico, porque su Vite interno también intentaría delegar `/api` al puerto 3000.
+El frontend y la API usan puertos diferentes. Sin `VITE_API_PROXY`, Vite sólo intenta `http://127.0.0.1:3000`; nunca usa Production como fallback. No debe iniciarse `vercel dev` desde el worktree moderno histórico, porque su Vite interno también intentaría delegar `/api` al puerto 3000.
+
+Las credenciales de demostración del selector de roles sólo se compilan durante `vite dev` (`import.meta.env.DEV`). No se muestran ni se incluyen en builds Preview o Production.
 
 ## Rutas
 
-- `/sales/pipeline`: restaura `crm-pipeline` después del login y de una recarga. Con la compuerta CRM desactivada no renderiza ni descarga el chunk relacional y no hace solicitudes CRM.
+- `/sales/pipeline`: restaura `crm-pipeline` después del login y de una recarga. Con la compuerta CRM desactivada muestra un estado explícito sin datos, no renderiza ni descarga el chunk relacional y no hace solicitudes CRM.
 - `/evaluator`: abre el Evaluador para roles autorizados. Hasta que exista backend, muestra un estado explícito no disponible.
 
 ## Contratos pendientes del Evaluador

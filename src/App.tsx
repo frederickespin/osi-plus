@@ -146,6 +146,9 @@ const RelationalPipelineModule = lazy(() =>
 const EvaluatorCanonicalModule = lazy(() =>
   import('@/evaluator-canonical/EvaluatorCanonicalModule').then((m) => ({ default: m.EvaluatorCanonicalModule }))
 );
+const CrmPipelineUnavailable = lazy(() =>
+  import('@/components/modules/CrmPipelineUnavailable').then((m) => ({ default: m.CrmPipelineUnavailable }))
+);
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
@@ -285,8 +288,13 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
   useEffect(() => {
     const syncFromLocation = () => {
       const routed = resolveModuleFromPath(window.location.pathname);
-      if (routed && canAccessModule(userRole, routed)) setActiveModule(routed);
+      if (routed && canAccessModule(userRole, routed)) {
+        setActiveModule(routed);
+        return;
+      }
+      if (window.location.pathname !== '/') window.history.replaceState({}, '', '/');
     };
+    syncFromLocation();
     window.addEventListener('popstate', syncFromLocation);
     return () => window.removeEventListener('popstate', syncFromLocation);
   }, [userRole]);
@@ -349,7 +357,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
       case 'crm-pipeline':
         return crmPipelineClientEnabled
           ? <RelationalPipelineModule userRole={userRole} onUnauthorized={onLogout} />
-          : <TowerControl />;
+          : <CrmPipelineUnavailable />;
       case 'evaluator-app':
         return <EvaluatorCanonicalModule />;
       case 'commercial-calendar':
@@ -417,7 +425,6 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
         userRole={userRole}
         userName={session.name}
         onLogout={onLogout}
-        crmPipelineClientEnabled={crmPipelineClientEnabled}
       />
       <main className="flex-1 overflow-auto">
         <AppErrorBoundary>

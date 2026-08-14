@@ -17,6 +17,7 @@ No se portaron stores, colas offline, mocks, Service Worker, PWA ni headers `x-o
 7. La guardia CRM rechazaba una mención documental de identificadores internos dentro del adaptador moderno. Se retiró esa enumeración; la guardia y sus cuatro fixtures negativas pasan sin cambiar comportamiento.
 8. Vite generaba assets relativos: un acceso directo a `/sales/pipeline` en Preview resolvía el bundle bajo `/sales/assets/` y dejaba la aplicación sin montar. La base de producción ahora es `/`; la guardia estática la congela y el punto de entrada falla de forma explícita si un build productivo vuelve a usar otra base.
 9. Las 30 pruebas V17 se ejecutaban localmente pero no formaban parte del job obligatorio de navegadores. `browser-session-validation` ahora exige 5/5 por cada combinación desktop/móvil de Chromium, Firefox y WebKit: 30/30, sin omitidos.
+10. El primer run obligatorio reveló que la guardia dependía de un merge-base ausente en el checkout superficial de Actions. Ahora compara los árboles de `origin/main` y `HEAD` directamente; conserva las mismas prohibiciones y funciona sin ampliar el historial descargado.
 
 ## Matriz efectiva de acceso
 

@@ -26,7 +26,7 @@ const pipelineUnavailable = read("src/components/modules/CrmPipelineUnavailable.
 const pipelineDomain = read("api/_lib/pipelineCaseDomain.js");
 const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory());
 const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
-const branchChanges = execFileSync("git", ["diff", "--name-only", "origin/main...HEAD"], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
+const branchChanges = execFileSync("git", ["diff", "--name-only", "origin/main", "HEAD"], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
 const evaluatorDomain = tracked.filter((path) => path.startsWith("src/modules/evaluator-app/domain/")).map(read).join("\n");
 
 check("exactamente 16 migraciones", migrations.length === 16);

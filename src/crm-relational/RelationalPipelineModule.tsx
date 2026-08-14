@@ -329,12 +329,25 @@ export function RelationalPipelineModule({ userRole, onUnauthorized }: { userRol
     const sequence = ++detailSequence.current;
     const controller = new AbortController();
     setDetail((current) => ({ ...current, loading: true, error: null }));
-    void Promise.all([api.detail(caseId, controller.signal), api.allowedTransitions(caseId, controller.signal)])
-      .then(([data, allowed]) => { if (sequence === detailSequence.current) setDetail({ data, allowed, loading: false, error: null }); })
-      .catch((error: unknown) => {
+    void Promise.allSettled([api.detail(caseId, controller.signal), api.allowedTransitions(caseId, controller.signal)])
+      .then(([detailResult, allowedResult]) => {
         if (controller.signal.aborted || sequence !== detailSequence.current) return;
-        const crmError = handleError(error);
-        setDetail((current) => ({ ...current, loading: false, error: crmError }));
+        if (detailResult.status === "rejected") {
+          const crmError = handleError(detailResult.reason);
+          setDetail((current) => ({ ...current, loading: false, error: crmError }));
+          if (crmError.status === 404) setSelectedId(null);
+          return;
+        }
+        if (allowedResult.status === "fulfilled") {
+          setDetail({ data: detailResult.value, allowed: allowedResult.value, loading: false, error: null });
+          return;
+        }
+        const crmError = handleError(allowedResult.reason);
+        if (crmError.status === 403) {
+          setDetail({ data: detailResult.value, allowed: null, loading: false, error: null });
+          return;
+        }
+        setDetail({ data: detailResult.value, allowed: null, loading: false, error: crmError });
         if (crmError.status === 404) setSelectedId(null);
       });
     return () => controller.abort();

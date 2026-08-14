@@ -29,15 +29,17 @@ function pipelineCase(index: number) {
 const cases = Array.from({ length: 25 }, (_, index) => pipelineCase(index + 1));
 const summary = { total: 51, assigned: 39, unassigned: 12, byStatus: Object.fromEntries(statuses.map((status) => [status, status === "NEW_INBOX" ? 51 : 0])), sla: { overdue: null, basis: "UNAVAILABLE" } };
 
-async function installSyntheticSession(page: Page) {
+async function installSyntheticSession(page: Page, role: "A" | "V" = "A") {
   await page.addInitScript(() => {
     localStorage.setItem("osi-plus.token", "synthetic.visual.jwt");
-    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "visual-user", name: "Actor visual", role: "A", token: "synthetic.visual.jwt" }));
   });
-  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { id: "visual-user", name: "Actor visual", email: "visual@example.invalid", role: "A", status: "active" } }) }));
+  await page.addInitScript((syntheticRole) => {
+    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "visual-user", name: "Actor visual", role: syntheticRole, token: "synthetic.visual.jwt" }));
+  }, role);
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { id: "visual-user", name: "Actor visual", email: "visual@example.invalid", role, status: "active" } }) }));
 }
 
-async function installCrmApi(page: Page) {
+async function installCrmApi(page: Page, options: { forbiddenTransitions?: boolean } = {}) {
   const requests: string[] = [];
   await page.route("**/api/crm/**", async (route: Route) => {
     const url = new URL(route.request().url());
@@ -46,7 +48,9 @@ async function installCrmApi(page: Page) {
     if (url.pathname === "/api/crm/pipeline-summary") return fulfill({ ok: true, data: summary });
     if (url.pathname === "/api/crm/pipeline-cases") return fulfill({ ok: true, total: 51, page: Number(url.searchParams.get("page") || 1), pageSize: 25, data: cases });
     if (url.pathname === "/api/crm/pipeline-cases/case-001") return fulfill({ ok: true, data: cases[0] });
-    if (url.pathname === "/api/crm/pipeline-cases/case-001/allowed-transitions") return fulfill({ ok: true, case: { caseId: "case-001", version: 4, status: "NEW_INBOX", transitions: [{ toStatus: "AWAITING_ICP", evidenceType: null }] } });
+    if (url.pathname === "/api/crm/pipeline-cases/case-001/allowed-transitions") return options.forbiddenTransitions
+      ? fulfill({ ok: false, code: "CRM_PIPELINE_PERMISSION_FORBIDDEN", error: "Acceso denegado" }, 403)
+      : fulfill({ ok: true, case: { caseId: "case-001", version: 4, status: "NEW_INBOX", transitions: [{ toStatus: "AWAITING_ICP", evidenceType: null }] } });
     if (url.pathname === "/api/crm/pipeline-owner-options") return fulfill({ ok: true, total: 2, page: 1, pageSize: 100, data: [
       { ownerRef: "owner-ref-one", displayName: "Vendedor A", role: "V" },
       { ownerRef: "owner-ref-two", displayName: "Vendedor B", role: "V" },
@@ -113,8 +117,8 @@ test("deep link, refresh y menú resuelven el mismo Inbox canónico", async ({ p
 });
 
 test("workspace responsive limita 25 filas y mantiene drawer accesible", async ({ page }, testInfo) => {
-  await installSyntheticSession(page);
-  const requests = await installCrmApi(page);
+  await installSyntheticSession(page, "V");
+  const requests = await installCrmApi(page, { forbiddenTransitions: true });
   await page.goto("/sales/pipeline");
   await expect(page.getByRole("listitem")).toHaveCount(25);
   await expect(page.getByText("Página 1 de 3 · 51 resultados")).toBeVisible();
@@ -127,6 +131,8 @@ test("workspace responsive limita 25 filas y mantiene drawer accesible", async (
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Transiciones autorizadas por el servidor")).toBeVisible();
+  await expect(dialog.getByText("No disponibles.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Asignar owner|Reasignar owner|Desasignar owner/ })).toHaveCount(0);
   const box = await dialog.boundingBox();
   const viewport = page.viewportSize();
   expect(box).not.toBeNull();

@@ -16,7 +16,7 @@ const negatives = [
   ["fallback JWT", { "api/_lib/crmOwnerRef.js": crypto.replace("const secret = env.CRM_PIPELINE_OWNER_REF_SECRET;", "const secret = env.CRM_PIPELINE_OWNER_REF_SECRET || env.JWT_SECRET;") }],
   ["secreto VITE", { "api/_lib/crmOwnerRef.js": crypto.replace("env.CRM_PIPELINE_OWNER_REF_SECRET", "env.VITE_CRM_PIPELINE_OWNER_REF_SECRET") }],
   ["AES sin HKDF", { "api/_lib/crmOwnerRef.js": crypto.replace("Buffer.from(hkdfSync(", "Buffer.from((") }],
-  ["secreto requerido siempre", { "api/_lib/crmPipelineAccess.js": access.replace("if (localWrite || productionWrite) assertCrmOwnerRefSecretConfigured(env);", "assertCrmOwnerRefSecretConfigured(env);") }],
+  ["secreto requerido siempre", { "api/_lib/crmPipelineAccess.js": access.replace("if (localWrite || productionWrite || previewWrite) assertCrmOwnerRefSecretConfigured(env);", "assertCrmOwnerRefSecretConfigured(env);") }],
   ["secreto en frontend", {}, { "src/unsafe-owner-secret.ts": "export const leaked = process.env.CRM_PIPELINE_OWNER_REF_SECRET;" }],
 ];
 for (const [name, overrides, extraSources] of negatives) {

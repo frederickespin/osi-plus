@@ -3,6 +3,7 @@ import { methodNotAllowed, readJsonObject, setPrivateNoStore, withCommonHeaders 
 import { requirePilotAuth, requirePilotPermission } from "../_lib/authContextPilot.js";
 import {
   assertNoBrowserCommercialAuthority,
+  assertCommercialDatabaseIdentity,
   COMMERCIAL_TENANCY_READ_MODES,
   COMMERCIAL_TENANCY_WRITE_MODES,
   createTenantClient,
@@ -12,6 +13,7 @@ import {
 } from "../_lib/commercialTenancyWrite.js";
 import { commercialPagination, listTenantClients } from "../_lib/commercialTenancyRead.js";
 import { PERMS } from "../_lib/rbac.js";
+import { isCrm01c1aPreviewRehearsal } from "../_lib/crmPreviewRehearsal.js";
 
 export default withCommonHeaders(async (req, res) => {
   const permission = req.method === "GET" ? PERMS.CLIENTS_VIEW : req.method === "POST" ? PERMS.CLIENTS_CREATE : null;
@@ -28,6 +30,13 @@ export default withCommonHeaders(async (req, res) => {
     }
   }
   if (modes.tenantMode) setPrivateNoStore(res);
+  if (isCrm01c1aPreviewRehearsal()) {
+    try {
+      await assertCommercialDatabaseIdentity(req, prisma, process.env);
+    } catch (error) {
+      return sendCommercialTenancyError(res, error);
+    }
+  }
   const tenantRead = req.method === "GET" && modes.readMode === COMMERCIAL_TENANCY_READ_MODES.TENANT_READ;
   const tenantWrite = req.method === "POST" && modes.writeMode === COMMERCIAL_TENANCY_WRITE_MODES.TENANT_WRITE;
   const auth = tenantRead || tenantWrite

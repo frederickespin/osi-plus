@@ -1,7 +1,9 @@
-import { CommercialTenancyError, sendCommercialTenancyError } from "./commercialTenancyWrite.js";
+import { assertCommercialDatabaseIdentity, CommercialTenancyError, sendCommercialTenancyError } from "./commercialTenancyWrite.js";
 import { requireCrmPipelinePermissionResponse } from "./crmPipelineAccess.js";
 import { CRM_PIPELINE_PERMISSION, requireCrmPipelineReadOnly } from "./crmPipelineRead.js";
 import { methodNotAllowed, setPrivateNoStore, withCommonHeaders } from "./http.js";
+import { applyLocalCors } from "./pipelineCaseMutationHttp.js";
+import { crm01c1aPreviewOrigin } from "./crmPreviewRehearsal.js";
 
 function sendReadError(res, error, { head = false } = {}) {
   if (!head) return sendCommercialTenancyError(res, error);
@@ -31,6 +33,24 @@ export function createCrmPipelineReadHandler({
       requireCrmPipelineReadOnly(env);
     } catch (error) {
       return sendReadError(res, error, { head: req.method === "HEAD" });
+    }
+
+    try {
+      await assertCommercialDatabaseIdentity(req, prismaClient, env);
+    } catch (error) {
+      return sendReadError(res, error, { head: req.method === "HEAD" });
+    }
+
+    if (crm01c1aPreviewOrigin(env)) {
+      try {
+        if (req.method === "OPTIONS") {
+          applyLocalCors(req, res, env, ["GET", "OPTIONS"], { preflight: true });
+          return res.status(204).end();
+        }
+        applyLocalCors(req, res, env, ["GET", "OPTIONS"]);
+      } catch (error) {
+        return sendReadError(res, error, { head: req.method === "HEAD" });
+      }
     }
 
     if (req.method === "OPTIONS") return res.status(204).end();

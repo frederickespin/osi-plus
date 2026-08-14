@@ -1,4 +1,4 @@
-import { CommercialTenancyError } from "./commercialTenancyWrite.js";
+import { assertCommercialDatabaseIdentity, CommercialTenancyError } from "./commercialTenancyWrite.js";
 import {
   applyLocalCors,
   requireCrmPipelineMutationsLocal,
@@ -18,6 +18,11 @@ export function createCrmOwnerCatalogHandler({
     setPrivateNoStore(res);
     try {
       requireCrmPipelineMutationsLocal(env);
+    } catch (error) {
+      return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
+    }
+    try {
+      await assertCommercialDatabaseIdentity(req, prismaClient, env);
     } catch (error) {
       return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }

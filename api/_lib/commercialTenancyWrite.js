@@ -7,6 +7,12 @@ import {
 import { resolveAuthContext } from "./authContext.js";
 import { Mt01bAuthError } from "./authPolicy.js";
 import { permsForRole } from "./rbac.js";
+import {
+  CRM01C1A_PREVIEW_BRANCH_ID,
+  CRM01C1A_PREVIEW_DATABASE,
+  isCrm01c1aPreviewDatabaseUrl,
+  isCrm01c1aPreviewRehearsal,
+} from "./crmPreviewRehearsal.js";
 
 export const COMMERCIAL_TENANCY_WRITE_MODES = Object.freeze({
   LEGACY_ONLY: "LEGACY_ONLY",
@@ -34,6 +40,7 @@ export const COMMERCIAL_BROWSER_AUTHORITY_FIELDS = Object.freeze([
 ]);
 
 const COMMERCIAL_CONTEXT_CACHE = Symbol("osi.commercialTenancyWriteContext");
+const COMMERCIAL_DATABASE_IDENTITY_CACHE = Symbol("osi.commercialDatabaseIdentity");
 
 export class CommercialTenancyError extends Error {
   constructor(code, status = 400, message = code, { cause } = {}) {
@@ -101,10 +108,48 @@ export function resolveCommercialTenancyModes(env = process.env) {
     && vercelEnvironment === "production"
     && env.VERCEL_GIT_COMMIT_REF === "main"
     && activationBatch === COMMERCIAL_TENANCY_ACTIVATION_BATCH;
-  if (coordinatedTenant && isVercelRuntime && !productionActivationAllowed) {
+  const previewActivationAllowed = coordinatedTenant && isCrm01c1aPreviewRehearsal(env);
+  if (coordinatedTenant && isVercelRuntime && !productionActivationAllowed && !previewActivationAllowed) {
     throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
   }
   return Object.freeze({ writeMode, readMode, tenantMode: coordinatedTenant });
+}
+
+export async function assertCommercialDatabaseIdentity(request, prisma, env = process.env) {
+  const modes = resolveCommercialTenancyModes(env);
+  if (!modes.preview) return;
+  if (!prisma || !isCrm01c1aPreviewDatabaseUrl(env.DATABASE_URL, env)) {
+    throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
+  }
+  if (request?.[COMMERCIAL_DATABASE_IDENTITY_CACHE]) {
+    return request[COMMERCIAL_DATABASE_IDENTITY_CACHE];
+  }
+  const pending = (async () => {
+    let rows;
+    try {
+      rows = await prisma.$queryRaw(Prisma.sql`
+        SELECT current_database() AS database_name,
+               current_schema() AS schema_name,
+               current_setting('neon.branch_id', true) AS branch_id
+      `);
+    } catch (cause) {
+      throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503, undefined, { cause });
+    }
+    const row = rows?.[0];
+    if (row?.database_name !== CRM01C1A_PREVIEW_DATABASE
+      || row?.schema_name !== "osi"
+      || row?.branch_id !== CRM01C1A_PREVIEW_BRANCH_ID) {
+      throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
+    }
+    return Object.freeze({ verified: true });
+  })();
+  if (request) request[COMMERCIAL_DATABASE_IDENTITY_CACHE] = pending;
+  try {
+    return await pending;
+  } catch (error) {
+    if (request) delete request[COMMERCIAL_DATABASE_IDENTITY_CACHE];
+    throw error;
+  }
 }
 
 export function resolveCommercialTenancyWriteMode(env = process.env) {

@@ -26,7 +26,7 @@ export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, e
   invariant(!/const secret\s*=\s*[^;\n]*(?:\?\?|\|\||\?)/.test(crypto), "ownerRef no puede usar fallback de secreto");
   invariant(/hkdfSync\([\s\S]*Buffer\.from\(secret, ["']utf8["']\)[\s\S]*32/.test(crypto), "ownerRef debe derivar AES-256 mediante HKDF");
   const access = source("api/_lib/crmPipelineAccess.js");
-  invariant(/if \(localWrite \|\| productionWrite\) assertCrmOwnerRefSecretConfigured\(env\)/.test(access), "secreto ownerRef sólo debe exigirse con mutaciones activas");
+  invariant(/if \(localWrite \|\| productionWrite \|\| previewWrite\) assertCrmOwnerRefSecretConfigured\(env\)/.test(access), "secreto ownerRef sólo debe exigirse con mutaciones activas");
   invariant(!/CRM_PIPELINE_OWNER_REF_SECRET/.test(access), "el resolver no debe leer ni reinterpretar directamente el secreto");
   const catalog = source("api/_lib/crmOwnerCatalog.js");
   invariant(/context\?\.role !== "A"/.test(catalog) && /PIPELINE_ASSIGN/.test(catalog), "catálogo no exige rol A y pipeline:assign");

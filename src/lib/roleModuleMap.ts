@@ -24,6 +24,7 @@ export type ModuleId =
   | "clients"
   | "sales-quote"
   | "crm-pipeline"
+  | "evaluator-app"
   | "commercial-calendar"
   | "commercial-config"
   | "tracking"
@@ -58,7 +59,7 @@ export type ModuleId =
 export const MODULES_BY_ROLE: Record<UserRole, ModuleId[]> = {
   A: [
     "dashboard", "users", "settings", "fleet", "a-template-approvals",
-    "clients", "sales-quote", "crm-pipeline", "commercial-calendar", "commercial-config", "projects",
+    "clients", "sales-quote", "crm-pipeline", "evaluator-app", "commercial-calendar", "commercial-config", "projects",
     "k-dashboard", "k-templates", "osi-editor",
     "operations", "dispatch", "tracking", "calendar", "wall", "security",
     "field", "supervisor", "supervisor-nota", "mechanic", "maintenance", "carpentry",
@@ -66,14 +67,14 @@ export const MODULES_BY_ROLE: Record<UserRole, ModuleId[]> = {
     "hr", "kpi", "nota", "badges",
   ],
   // V: Pipeline, Cotizador Nesting, Agenda, Historial Cliente (PDF)
-  V: ["clients", "sales-quote", "crm-pipeline", "commercial-calendar", "commercial-config", "projects", "osi-editor", "crate-wood", "disenacotiza"],
+  V: ["clients", "sales-quote", "crm-pipeline", "evaluator-app", "commercial-calendar", "commercial-config", "projects", "osi-editor", "crate-wood", "disenacotiza"],
   // K: Gestor Proyectos, Editor Plantillas, Visor Nesting, Dashboard (PDF)
-  K: ["k-dashboard", "k-project", "clients", "projects", "commercial-calendar", "k-templates", "osi-editor", "tracking", "nesting", "nestingv2"],
+  K: ["k-dashboard", "k-project", "clients", "projects", "evaluator-app", "commercial-calendar", "k-templates", "osi-editor", "tracking", "nesting", "nestingv2"],
   // B: Muro, Gestor OSIs, Calendario, PTF/PET, Validación Documental (PDF)
   B: ["operations", "tracking", "calendar", "wall", "projects", "osi-editor"],
   C: ["wms", "inventory", "purchases", "carpentry"],
   C1: ["dispatch"],
-  D: ["supervisor", "supervisor-nota", "operations", "tracking"],
+  D: ["supervisor", "supervisor-nota", "operations", "tracking", "evaluator-app"],
   E: ["driver"],
   G: ["security"],
   N: ["field"],

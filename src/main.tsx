@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { bootstrapMt01b2Frontend } from './lib/mt01b2FrontendBootstrap.ts'
+import { assertCanonicalAssetBase } from './lib/env.ts'
+
+assertCanonicalAssetBase()
 
 void bootstrapMt01b2Frontend()
 

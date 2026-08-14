@@ -147,6 +147,12 @@ jobs:
       - name: Validate inactive relational CRM client in real browsers
         run: npm run test:crm-01b3b2:browser
 
+      - name: Validate V17 convergence in real browsers
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node scripts/validate-v17-convergence.mjs
+          npx playwright test -c playwright.v17-convergence.config.ts
+
       - name: Verify repository cleanliness
         run: git diff --exit-code
 

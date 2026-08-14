@@ -1,0 +1,76 @@
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+
+const root = resolve(import.meta.dirname, "..");
+let assertions = 0;
+function check(label, condition) {
+  if (!condition) throw new Error(`V17_CONVERGENCE_GUARD_FAILED: ${label}`);
+  assertions += 1;
+}
+const read = (path) => readFileSync(resolve(root, path), "utf8");
+
+const app = read("src/App.tsx");
+const evaluator = read("src/evaluator-canonical/EvaluatorCanonicalModule.tsx");
+const evaluatorApi = read("src/evaluator-canonical/api.ts");
+const crmAdapter = read("src/crm-relational/modernPipelineAdapter.ts");
+const routing = read("src/lib/moduleRouting.ts");
+const env = read("src/lib/env.ts");
+const vite = read("vite.config.ts");
+const workflow = read(".github/workflows/ci.yml");
+const browserConfig = read("playwright.v17-convergence.config.ts");
+const sidebar = read("src/components/layout/Sidebar.tsx");
+const loginScreen = read("src/components/auth/LoginScreen.tsx");
+const main = read("src/main.tsx");
+const pipelineUnavailable = read("src/components/modules/CrmPipelineUnavailable.tsx");
+const pipelineDomain = read("api/_lib/pipelineCaseDomain.js");
+const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory());
+const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
+const branchChanges = execFileSync("git", ["diff", "--name-only", "origin/main", "HEAD"], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
+const evaluatorDomain = tracked.filter((path) => path.startsWith("src/modules/evaluator-app/domain/")).map(read).join("\n");
+
+check("exactamente 16 migraciones", migrations.length === 16);
+check("Evaluador cargado dinámicamente", app.includes("import('@/evaluator-canonical/EvaluatorCanonicalModule')"));
+check("Evaluador no importa adapters heredados", !/evaluatorVisit(LocalStore|Resolver|Api)|evaluatorVisitMock/.test(evaluator));
+check("Evaluador declara backend no disponible", evaluator.includes("Backend del Evaluador no disponible"));
+check("Evaluador declara ausencia de mocks", evaluator.includes("No se consultaron mocks ni almacenamiento local"));
+check("API Evaluador usa Bearer", evaluatorApi.includes("Authorization: `Bearer ${token}`"));
+check("API Evaluador no usa x-osi-role", !evaluatorApi.includes("x-osi-role"));
+check("API Evaluador no usa x-osi-userid", !evaluatorApi.includes("x-osi-userid"));
+check("API Evaluador usa no-store", evaluatorApi.includes('cache: "no-store"'));
+check("deep link pipeline canónico", routing.includes('"/sales/pipeline": "crm-pipeline"'));
+check("deep link evaluador canónico", routing.includes('"/evaluator": "evaluator-app"'));
+check("rutas no canónicas regresan a raíz", routing.includes('routeForModule(moduleId) ?? "/"'));
+check("127.0.0.1 es desarrollo", env.includes('"127.0.0.1"'));
+check("Preview tiene etiqueta exacta", env.includes('preview: "Preview"'));
+check("ambiente desconocido no es Production", env.includes('unknown: "Ambiente desconocido"') && env.includes('return "unknown"'));
+check("Vercel env se fija sin exponer secretos", vite.includes("'import.meta.env.VERCEL_ENV'") && vite.includes("process.env.VERCEL_ENV || ''"));
+check("assets de rutas profundas usan raíz canónica", vite.includes("base: '/'"));
+check("runtime rechaza base productiva no canónica", main.includes("assertCanonicalAssetBase()") && env.includes('throw new Error("APP_ASSET_BASE_INVALID")'));
+check("proxy local nunca cae en Production", vite.includes("process.env.VITE_API_PROXY || 'http://127.0.0.1:3000'") && !vite.includes("target: process.env.VITE_API_PROXY || 'https://"));
+check("CI ejecuta la guardia V17", workflow.includes("node scripts/validate-v17-convergence.mjs"));
+check("CI ejecuta navegadores V17", workflow.includes("npx playwright test -c playwright.v17-convergence.config.ts"));
+check("CI prepara la base exacta para la guardia V17", workflow.includes("git fetch --no-tags --depth=1 origin main"));
+check("V17 usa reporter estricto", browserConfig.includes("v17-convergence-browser-ci-reporter.mjs"));
+check("credenciales demo sólo existen en vite dev", loginScreen.includes("{import.meta.env.DEV && (") && !loginScreen.includes('getAppEnv() !== "production"'));
+check("adaptador CRM sólo usa tipos públicos", crmAdapter.includes('from "@/crm-relational/types"'));
+check("adaptador CRM no importa stores locales", !/^import[^\n]*(salesStore|caseBridge|useCasesStore|localStorage|\/cases)/m.test(crmAdapter));
+check("owner ausente permanece sin asignar", crmAdapter.includes('"Sin asignar"'));
+check("autoridad de versión permanece servidor", crmAdapter.includes('versionAuthority: "SERVER"'));
+check("dominio puro de volumen presente", existsSync(resolve(root, "src/modules/evaluator-app/domain/evaluatorWeight.ts")));
+check("dominio puro de acceso presente", existsSync(resolve(root, "src/modules/evaluator-app/domain/evaluatorAccessPolicy.ts")));
+check("dominio Evaluador permanece puro", !/(?:@prisma|sessionStore|localStorage|sessionStorage|mock|evaluator-canonical\/api)/i.test(evaluatorDomain));
+check("UI Evaluador no instancia transporte", !/EvaluatorApi|fetch\s*\(/.test(evaluator));
+check("Pipeline inactivo es explícito y sin datos", pipelineUnavailable.includes("CRM inactivo en este ambiente") && pipelineUnavailable.includes("no contiene datos simulados"));
+check("Pipeline relacional conserva carga dinámica", app.includes("import('@/crm-relational/RelationalPipelineModule')"));
+check("APPROVED permanece congelado", pipelineDomain.includes('APPROVED: Object.freeze([])'));
+check("OPS_HANDOFF permanece terminal", pipelineDomain.includes('OPS_HANDOFF: Object.freeze([])'));
+check("Sidebar tiene controles de teclado", sidebar.includes("aria-expanded={isExpanded}") && sidebar.includes("aria-label={group.label}") && sidebar.includes("focus-visible:ring-2"));
+check("sin dependencias o lockfile nuevos", !branchChanges.some((path) => path === "package.json" || path === "package-lock.json"));
+check("sin estilos globales portados", !branchChanges.some((path) => path === "src/index.css" || path === "tailwind.config.js"));
+check("DOMPurify seguro permanece fijado", read("package-lock.json").includes('node_modules/dompurify') && read("package-lock.json").includes('dompurify-3.4.13.tgz') && !read("package-lock.json").includes('dompurify-3.3.1.tgz'));
+check("sin Service Worker o PWA", !tracked.some((path) => /(?:service-worker|serviceWorker|sw\.js|manifest\.webmanifest)/i.test(path)) && !read("package.json").includes("vite-plugin-pwa"));
+check("ningún .env sensible versionado", tracked.every((path) => path.endsWith(".env.example") || !/(^|\/)\.env(?:\.|$)/.test(path)));
+check("sin credenciales privadas versionadas", tracked.every((path) => !/\.(pem|key|p12|pfx)$/i.test(path)));
+
+process.stdout.write(JSON.stringify({ ok: true, assertions }, null, 2) + "\n");

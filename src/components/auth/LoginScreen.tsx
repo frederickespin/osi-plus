@@ -143,7 +143,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </Button>
           </form>
 
-          {getAppEnv() !== "production" && (
+          {import.meta.env.DEV && (
             <div className="mt-6 pt-4 border-t border-slate-200">
               <Collapsible open={credsOpen} onOpenChange={setCredsOpen}>
                 <CollapsibleTrigger asChild>

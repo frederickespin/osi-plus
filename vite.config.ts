@@ -5,12 +5,15 @@ import { inspectAttr } from 'kimi-plugin-inspect-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './',
+  base: '/',
+  define: {
+    'import.meta.env.VERCEL_ENV': JSON.stringify(process.env.VERCEL_ENV || ''),
+  },
   plugins: [inspectAttr(), react()],
   server: {
     proxy: {
       '/api': {
-        target: process.env.VITE_API_PROXY || 'https://osi-plus.vercel.app',
+        target: process.env.VITE_API_PROXY || 'http://127.0.0.1:3000',
         changeOrigin: true,
       },
     },

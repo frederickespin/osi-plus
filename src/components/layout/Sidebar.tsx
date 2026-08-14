@@ -27,7 +27,8 @@ import {
   X,
   ChevronRight,
   Briefcase as CaseIcon,
-  Boxes
+  Boxes,
+  ClipboardCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
@@ -42,7 +43,6 @@ interface SidebarProps {
   userRole?: UserRole;
   userName?: string;
   onLogout?: () => void;
-  crmPipelineClientEnabled?: boolean;
 }
 
 interface MenuItem {
@@ -88,7 +88,8 @@ const menuGroups: MenuGroup[] = [
     items: [
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'V'] },
       { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'V'], description: 'Alcance -> cajas -> recursos -> resumen' },
-      { id: 'crm-pipeline', label: 'Pipeline relacional', icon: CaseIcon, roles: ['A', 'V'], description: 'Vista local aislada del prototipo' },
+      { id: 'crm-pipeline', label: 'Pipeline', icon: CaseIcon, roles: ['A', 'V'], description: 'Oportunidades relacionales; el servidor conserva la autoridad' },
+      { id: 'evaluator-app', label: 'Evaluador', icon: ClipboardCheck, roles: ['A', 'V'], description: 'Visitas técnicas; backend pendiente y sin datos simulados' },
       { id: 'k-templates', label: 'Plantillas PST', icon: FileText, roles: ['A', 'V', 'K'], description: 'Catálogo de servicios técnicos' },
       { id: 'crate-wood', label: 'Cotizador con Nesting', icon: Boxes, roles: ['A', 'V'], description: 'Diseño cajas y pies tablares' },
       { id: 'disenacotiza', label: 'Diseña y Cotiza', icon: Boxes, roles: ['A', 'V'], description: 'Nesting + ingeniería + costos' },
@@ -140,7 +141,7 @@ const menuGroups: MenuGroup[] = [
   },
   {
     id: 'logistics',
-    label: 'Logística',
+    label: 'Materiales y Logística',
     icon: Package,
     items: [
       { id: 'wms', label: 'WMS Inventario', icon: Warehouse, roles: ['A', 'C'] },
@@ -186,15 +187,13 @@ function getRoleLabel(role: UserRole) {
   return role;
 }
 
-export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName, onLogout, crmPipelineClientEnabled = false }: SidebarProps) {
+export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName, onLogout }: SidebarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
 
-  const visibleGroups = getMenuGroupsByRole(userRole).map((group) => ({
-    ...group,
-    items: group.items.filter((item) => item.id !== 'crm-pipeline' || crmPipelineClientEnabled),
-  })).filter((group) => group.items.length > 0);
+  const visibleGroups = getMenuGroupsByRole(userRole);
 
   const handleModuleClick = (moduleId: ModuleId) => {
     onModuleChange(moduleId);
@@ -211,6 +210,8 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
         size="icon"
         className="fixed top-4 left-4 z-50 lg:hidden bg-[#003366] text-white hover:bg-[#002244]"
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        aria-label={isMobileMenuOpen ? 'Cerrar navegación' : 'Abrir navegación'}
+        aria-expanded={isMobileMenuOpen}
       >
         {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </Button>
@@ -276,7 +277,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
             {visibleGroups.map((group) => {
               const isActive = isGroupActive(group.items);
               const isHovered = hoveredGroupId === group.id;
-              const isExpanded = isHovered || (isActive && !isCollapsed);
+              const isExpanded = isHovered || expandedGroupId === group.id || (isActive && !isCollapsed);
               
               // Only render spacer for empty groups (safety check)
               if (group.items.length === 0) return null;
@@ -289,16 +290,21 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
                   onMouseLeave={() => setHoveredGroupId(null)}
                 >
                   {/* Group Header */}
-                  <div 
+                  <button
+                    type="button"
                     className={`
-                      flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer
-                      transition-all duration-200
+                      flex w-full items-center gap-3 px-3 py-3 rounded-lg cursor-pointer
+                      transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]
                       ${isCollapsed ? 'justify-center' : ''}
                       ${isActive 
                         ? 'bg-[#D4AF37]/20 text-white' 
                         : 'text-white/80 hover:bg-white/5 hover:text-white'
                       }
                     `}
+                    onClick={() => setExpandedGroupId((current) => current === group.id ? null : group.id)}
+                    aria-label={group.label}
+                    aria-expanded={isExpanded}
+                    aria-controls={`sidebar-group-${group.id}`}
                   >
                     <group.icon className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-[#D4AF37]' : ''}`} />
                     
@@ -311,35 +317,38 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
                       </>
                     )}
 
-                    {/* Collapsed Mode Flyout (Pseudo-tooltip) */}
-                    {isCollapsed && isHovered && (
-                      <div className="absolute left-full top-0 ml-2 w-56 bg-[#002244] border border-white/10 rounded-lg shadow-xl py-2 z-50">
-                        <div className="px-4 py-2 border-b border-white/10 mb-1">
-                          <span className="text-[#D4AF37] font-bold text-sm">{group.label}</span>
-                        </div>
-                        {group.items.map(item => (
-                          <button
-                            key={item.id}
-                            onClick={(e) => { e.stopPropagation(); handleModuleClick(item.id); }}
-                            className={`
-                              w-full flex items-center gap-3 px-4 py-2 text-sm text-left
-                              ${activeModule === item.id 
-                                ? 'bg-[#D4AF37]/20 text-white border-l-2 border-[#D4AF37]' 
-                                : 'text-white/70 hover:bg-white/5 hover:text-white'
-                              }
-                            `}
-                          >
-                            <item.icon className="h-4 w-4" />
-                            {item.label}
-                          </button>
-                        ))}
+                  </button>
+
+                  {/* Collapsed Mode Flyout */}
+                  {isCollapsed && (isHovered || expandedGroupId === group.id) && (
+                    <div id={`sidebar-group-${group.id}`} className="absolute left-full top-0 z-50 ml-2 w-56 rounded-lg border border-white/10 bg-[#002244] py-2 shadow-xl">
+                      <div className="mb-1 border-b border-white/10 px-4 py-2">
+                        <span className="text-sm font-bold text-[#D4AF37]">{group.label}</span>
                       </div>
-                    )}
-                  </div>
+                      {group.items.map(item => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleModuleClick(item.id)}
+                          className={`
+                            flex w-full items-center gap-3 px-4 py-2 text-left text-sm
+                            ${activeModule === item.id
+                              ? 'border-l-2 border-[#D4AF37] bg-[#D4AF37]/20 text-white'
+                              : 'text-white/70 hover:bg-white/5 hover:text-white'
+                            }
+                          `}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Expanded Mode Submenu */}
                   {!isCollapsed && (
                     <div 
+                      id={`sidebar-group-${group.id}`}
                       className={`
                         overflow-hidden transition-all duration-300 ease-in-out
                         ${isExpanded ? 'max-h-[500px] opacity-100 mt-1' : 'max-h-0 opacity-0'}
@@ -354,7 +363,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
                               onClick={() => handleModuleClick(item.id)}
                               className={`
                                 w-full flex items-center gap-3 px-3 py-2 rounded-lg
-                                text-sm transition-all duration-200 border-l-2
+                                text-sm transition-all duration-200 border-l-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]
                                 ${isItemActive
                                   ? 'border-[#D4AF37] text-[#D4AF37] bg-white/5'
                                   : 'border-white/10 text-white/60 hover:text-white hover:bg-white/5 hover:border-white/30'
@@ -379,7 +388,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
         <div className="p-4 border-t border-white/10">
           {isCollapsed && (
             <p className="text-white/40 text-[10px] text-center mb-2 truncate px-1" title={ENV_LABELS[getAppEnv()]}>
-              {getAppEnv() === 'production' ? 'Prod' : getAppEnv() === 'preview' ? 'Preview' : 'Local'}
+              {getAppEnv() === 'production' ? 'Prod' : getAppEnv() === 'preview' ? 'Preview' : getAppEnv() === 'development' ? 'Local' : 'N/D'}
             </p>
           )}
           <Button 
@@ -389,6 +398,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
               ${isCollapsed ? 'justify-center px-2' : ''}
             `}
             onClick={() => setIsCollapsed(!isCollapsed)}
+            aria-label={isCollapsed ? 'Expandir navegación' : 'Colapsar navegación'}
           >
             {isCollapsed ? <Menu className="h-4 w-4" /> : <><Menu className="h-4 w-4" /> Colapsar</>}
           </Button>
@@ -400,6 +410,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
                 ${isCollapsed ? 'justify-center px-2' : ''}
               `}
               onClick={onLogout}
+              aria-label="Cerrar Sesión"
             >
               <LogOut className="h-4 w-4" />
               {!isCollapsed && 'Cerrar Sesión'}

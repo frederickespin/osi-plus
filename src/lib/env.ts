@@ -9,7 +9,7 @@ export function getAppEnv(): "production" | "preview" | "development" {
   if (env === "production") return "production";
   if (env === "preview") return "preview";
   if (env === "development") return "development";
-  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+  if (typeof window !== "undefined" && ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)) {
     return "development";
   }
   return "production";

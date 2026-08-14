@@ -11,6 +11,8 @@ const client = read("src/crm-relational/clientMode.ts");
 const cors = read("api/_lib/pipelineCaseMutationHttp.js");
 const vite = read("vite.config.ts");
 const fixtures = read("scripts/crm-01c1a-preview-fixtures.mjs");
+const appEnv = read("src/lib/env.ts");
+const legacyApi = read("src/lib/api.ts");
 for (const signature of [
   'feature/crm01c1a-integrated-preview-rehearsal', 'crm01c1a_rehearsal',
   'br-mute-credit-ahxnvfx0', 'CRM-01C1A-PREVIEW-20260813-V1',
@@ -26,6 +28,9 @@ invariant(!/Access-Control-Allow-Credentials/.test(cors), "credenciales CORS pro
 invariant(!/VITE_(?:CRM_PIPELINE_ACTIVATION_BATCH|CRM01C1A_NEON_BRANCH_ID|CRM01C1A_DATABASE_NAME)/.test(`${preview}\n${client}`), "autoridad backend filtrada al frontend");
 invariant(/__CRM_PREVIEW_BUILD__/.test(vite + client), "metadatos Preview no se fijan en build");
 invariant(!/(?:ACTIVATION_BATCH|DATABASE_URL|DIRECT_URL|OWNER_REF_SECRET|NEON_BRANCH_ID)/.test(vite), "vite expone autoridad o secretos backend");
+invariant(/target:\s*resolveLocalApiProxy\(\)/.test(vite) && /127\.0\.0\.1:3000/.test(vite) && !/target:[\s\S]{0,120}vercel\.app/.test(vite), "proxy local permite fallback externo");
+invariant(/\["localhost", "127\.0\.0\.1", "::1"\]/.test(appEnv), "loopback puede etiquetarse como Production");
+invariant(/LOCAL_API_CONFIGURATION_INVALID/.test(legacyApi) && /API_CONNECTION_UNAVAILABLE/.test(legacyApi), "errores locales no se distinguen");
 invariant(/process\.env\.CRM01C1A_REHEARSAL_DIRECT_URL/.test(fixtures) && !/process\.env\.(?:DATABASE_URL|DIRECT_URL)/.test(fixtures), "fixtures permiten fallback de conexión");
 invariant(/current_database\(\)[\s\S]*neon\.branch_id[\s\S]*pg_namespace[\s\S]*nspname\s*=\s*'osi'/.test(fixtures), "fixtures no verifican identidad SQL");
 invariant(/\['seed', 'status'\]/.test(fixtures) && !/\b(?:drop|truncate|deleteMany)\b/i.test(fixtures), "fixtures permiten limpieza destructiva");

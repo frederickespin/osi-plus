@@ -70,7 +70,17 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         toast.error('Error en la respuesta del servidor');
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Credenciales inválidas';
+      const status = typeof error === 'object' && error !== null && 'status' in error ? Number((error as { status?: unknown }).status) : null;
+      const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code?: unknown }).code) : '';
+      const message = status === 401
+        ? 'Credenciales inválidas'
+        : status === 503
+          ? 'El servicio de autenticación no está disponible'
+          : code === 'LOCAL_API_CONFIGURATION_INVALID'
+            ? 'La configuración local de la API es inválida'
+            : code === 'API_CONNECTION_UNAVAILABLE' || status === 0
+              ? 'No fue posible conectar con la API'
+              : 'No fue posible iniciar sesión';
       toast.error(message);
     } finally {
       setLoading(false);

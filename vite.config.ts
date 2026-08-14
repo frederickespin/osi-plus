@@ -3,6 +3,20 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { inspectAttr } from 'kimi-plugin-inspect-react'
 
+function resolveLocalApiProxy(value = process.env.VITE_API_PROXY): string {
+  const target = value || 'http://127.0.0.1:3000'
+  let parsed: URL
+  try {
+    parsed = new URL(target)
+  } catch {
+    throw new Error('VITE_API_PROXY_LOCAL_INVALID')
+  }
+  if (parsed.protocol !== 'http:' || parsed.hostname !== '127.0.0.1' || parsed.port !== '3000' || parsed.pathname !== '/' || parsed.search || parsed.hash) {
+    throw new Error('VITE_API_PROXY_LOCAL_INVALID')
+  }
+  return parsed.origin
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
@@ -19,8 +33,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.VITE_API_PROXY || 'https://osi-plus.vercel.app',
-        changeOrigin: true,
+        target: resolveLocalApiProxy(),
+        changeOrigin: false,
       },
     },
   },

@@ -2,6 +2,20 @@ import { getToken, loadSession, normalizeRole } from "@/lib/sessionStore";
 import type { PstTemplateContent } from "@/lib/templateSchemas";
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
+function assertSafeBrowserApiBase(): void {
+  if (typeof window === "undefined" || !["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)) return;
+  if (!/^https?:\/\//i.test(API_BASE)) return;
+  let target: URL;
+  try {
+    target = new URL(API_BASE);
+  } catch {
+    throw Object.assign(new Error("Configuración local de API inválida"), { code: "LOCAL_API_CONFIGURATION_INVALID", status: 0 });
+  }
+  if (target.protocol !== "http:" || target.hostname !== "127.0.0.1" || target.port !== "3000") {
+    throw Object.assign(new Error("Configuración local de API inválida"), { code: "LOCAL_API_CONFIGURATION_INVALID", status: 0 });
+  }
+}
+
 export type HealthResponse = {
   ok: boolean;
   service: string;
@@ -190,6 +204,7 @@ type RequestOptions = {
 };
 
 async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  assertSafeBrowserApiBase();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -215,11 +230,16 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     headers.Authorization = `Bearer ${options.token}`;
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: options.method || "GET",
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: options.method || "GET",
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch {
+    throw Object.assign(new Error("No fue posible conectar con la API"), { code: "API_CONNECTION_UNAVAILABLE", status: 0 });
+  }
 
   if (!response.ok) {
     let body: unknown = null;

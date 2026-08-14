@@ -46,7 +46,7 @@ check("Preview tiene etiqueta exacta", env.includes('preview: "Preview"'));
 check("ambiente desconocido no es Production", env.includes('unknown: "Ambiente desconocido"') && env.includes('return "unknown"'));
 check("Vercel env se fija sin exponer secretos", vite.includes("'import.meta.env.VERCEL_ENV'") && vite.includes("process.env.VERCEL_ENV || ''"));
 check("assets de rutas profundas usan raíz canónica", vite.includes("base: '/'"));
-check("runtime rechaza base productiva no canónica", main.includes("import.meta.env.PROD && import.meta.env.BASE_URL !== '/'") && main.includes("APP_ASSET_BASE_INVALID"));
+check("runtime rechaza base productiva no canónica", main.includes("assertCanonicalAssetBase()") && env.includes('throw new Error("APP_ASSET_BASE_INVALID")'));
 check("proxy local nunca cae en Production", vite.includes("process.env.VITE_API_PROXY || 'http://127.0.0.1:3000'") && !vite.includes("target: process.env.VITE_API_PROXY || 'https://"));
 check("CI ejecuta la guardia V17", workflow.includes("node scripts/validate-v17-convergence.mjs"));
 check("CI ejecuta navegadores V17", workflow.includes("npx playwright test -c playwright.v17-convergence.config.ts"));

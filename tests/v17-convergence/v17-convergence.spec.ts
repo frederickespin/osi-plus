@@ -83,6 +83,8 @@ test("usa sólo Bearer en el contrato Evaluador y reconoce desarrollo local", as
   await expect.poll(() => page.locator("html").getAttribute("data-environment")).toBe("Desarrollo local");
   await expect.poll(() => page.locator("html").getAttribute("data-environment-matrix"))
     .toBe("development,development,development,preview,production,unknown");
+  await expect.poll(() => page.locator("html").getAttribute("data-asset-base-matrix"))
+    .toBe("ALLOWED,APP_ASSET_BASE_INVALID,ALLOWED");
   await expect.poll(() => page.locator("html").getAttribute("data-api-headers")).toBe("accept,authorization");
   await expect.poll(() => page.locator("html").getAttribute("data-evaluator-errors"))
     .toBe("401:EVALUATOR_STATUS_401,403:EVALUATOR_STATUS_403,404:EVALUATOR_STATUS_404,409:EVALUATOR_STATUS_409,503:EVALUATOR_STATUS_503");

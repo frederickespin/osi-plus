@@ -2,7 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { EvaluatorCanonicalModule } from "@/evaluator-canonical/EvaluatorCanonicalModule";
 import { EvaluatorApi } from "@/evaluator-canonical/api";
-import { getAppEnv, ENV_LABELS, resolveAppEnvironment } from "@/lib/env";
+import { assertCanonicalAssetBase, getAppEnv, ENV_LABELS, resolveAppEnvironment } from "@/lib/env";
 import { resolveModuleFromPath, routeForModule } from "@/lib/moduleRouting";
 import { deriveInventoryVolumeM3, deriveWeightFromDensity } from "@/modules/evaluator-app/domain/evaluatorWeight";
 import { deriveEvaluatorAccessPlan } from "@/modules/evaluator-app/domain/evaluatorAccessPolicy";
@@ -83,6 +83,16 @@ document.documentElement.dataset.environmentMatrix = [
   resolveAppEnvironment("production", "example.com"),
   resolveAppEnvironment("unexpected", "example.com"),
 ].join(",");
+const assetBaseMatrix: string[] = [];
+for (const [production, baseUrl] of [[true, "/"], [true, "./"], [false, "./"]] as const) {
+  try {
+    assertCanonicalAssetBase(production, baseUrl);
+    assetBaseMatrix.push("ALLOWED");
+  } catch (error) {
+    assetBaseMatrix.push(error instanceof Error ? error.message : "UNKNOWN_ERROR");
+  }
+}
+document.documentElement.dataset.assetBaseMatrix = assetBaseMatrix.join(",");
 document.documentElement.dataset.pipelineRoute = resolveModuleFromPath("/sales/pipeline") ?? "";
 document.documentElement.dataset.rejectedRoutes = [
   "https://evil.invalid/evaluator",

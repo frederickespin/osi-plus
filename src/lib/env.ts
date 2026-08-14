@@ -23,6 +23,15 @@ export function getAppEnv(): AppEnvironment {
   return resolveAppEnvironment(env, hostname);
 }
 
+export function assertCanonicalAssetBase(
+  production = import.meta.env.PROD,
+  baseUrl = import.meta.env.BASE_URL,
+): void {
+  if (production && baseUrl !== "/") {
+    throw new Error("APP_ASSET_BASE_INVALID");
+  }
+}
+
 export const ENV_LABELS: Record<AppEnvironment, string> = {
   production: "Producción",
   preview: "Preview",

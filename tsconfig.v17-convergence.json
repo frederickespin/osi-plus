@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "src/evaluator-canonical/**/*.ts",
+    "src/evaluator-canonical/**/*.tsx",
+    "src/modules/evaluator-app/domain/**/*.ts",
+    "src/lib/surveyMeasurements.ts",
+    "src/lib/stairCarryPolicy.ts",
+    "src/lib/moduleRouting.ts",
+    "src/crm-relational/modernPipelineAdapter.ts"
+  ]
+}

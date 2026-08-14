@@ -14,6 +14,7 @@ No se portaron stores, colas offline, mocks, Service Worker, PWA ni headers `x-o
 4. Una ruta profunda desconocida o no autorizada podía conservarse en la barra del navegador. Ahora vuelve a `/`; no se aceptan URLs externas, protocol-relative, traversal ni rutas desconocidas.
 5. Los grupos del Sidebar dependían del hover y contenían botones anidados en modo colapsado. Ahora tienen controles semánticos, foco visible, expansión por teclado y navegación móvil etiquetada.
 6. El selector heredado de credenciales de demostración estaba disponible en cualquier ambiente no productivo y sus literales podían entrar al bundle Preview. Ahora sólo existe bajo `import.meta.env.DEV`; se verifica su ausencia del build.
+7. La guardia CRM rechazaba una mención documental de identificadores internos dentro del adaptador moderno. Se retiró esa enumeración; la guardia y sus cuatro fixtures negativas pasan sin cambiar comportamiento.
 
 ## Matriz efectiva de acceso
 

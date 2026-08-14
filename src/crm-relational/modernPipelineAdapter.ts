@@ -15,7 +15,7 @@ export type ModernPipelineRow = Readonly<{
 
 /**
  * Frontera visual: transforma únicamente el contrato público CRM. No acepta
- * LeadLite, /cases, stores locales, tenantId, membershipId ni ownerId crudos.
+ * LeadLite, /cases, stores locales ni identificadores empresariales internos.
  */
 export function toModernPipelineRow(value: CrmPipelineCase): ModernPipelineRow {
   return Object.freeze({

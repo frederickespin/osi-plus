@@ -12,7 +12,8 @@ assert.doesNotMatch(vite, /target:[\s\S]{0,120}osi-plus(?:-erp-v17)?\.vercel\.ap
 assert.match(vite, /parsed\.hostname !== '127\.0\.0\.1'/);
 assert.match(vite, /parsed\.port !== '3000'/);
 assert.match(vite, /changeOrigin:\s*false/);
-assert.match(environment, /\["localhost", "127\.0\.0\.1", "::1"\]/);
+assert.match(environment, /function isLoopback[\s\S]{0,400}hostname === "127\.0\.0\.1"[\s\S]{0,200}hostname === "localhost"[\s\S]{0,200}hostname === "\[::1\]"/);
+assert.match(environment, /return "unknown"/);
 assert.match(api, /LOCAL_API_CONFIGURATION_INVALID/);
 assert.match(api, /API_CONNECTION_UNAVAILABLE/);
 assert.match(login, /status === 401[\s\S]*'Credenciales inválidas'/);

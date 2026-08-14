@@ -132,6 +132,8 @@ jobs:
           node scripts/crm-01c1a-preview-gate-test.mjs
           node scripts/validate-crm-01c1a-preview-guard.mjs
           node scripts/crm-01c1a-local-auth-guard-test.mjs
+          node scripts/validate-crm-01c1b-visual-guard.mjs
+          node scripts/validate-crm-01c1b-visual-guard-test.mjs
           node scripts/validate-sec-dep-01-guard.mjs
           node scripts/validate-sec-dep-01-guard-test.mjs
 
@@ -149,6 +151,9 @@ jobs:
 
       - name: Validate inactive relational CRM client in real browsers
         run: npm run test:crm-01b3b2:browser
+
+      - name: Validate canonical commercial workspace in real browsers
+        run: npm run test:crm-01c1b:browser
 
       - name: Verify repository cleanliness
         run: git diff --exit-code

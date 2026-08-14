@@ -19,7 +19,7 @@ function resolveLocalApiProxy(value = process.env.VITE_API_PROXY): string {
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './',
+  base: '/',
   define: {
     __CRM_PREVIEW_BUILD__: JSON.stringify({
       VERCEL_ENV: process.env.VERCEL_ENV,

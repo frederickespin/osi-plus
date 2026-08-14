@@ -4,6 +4,7 @@ const BANNER_STYLES = {
   development: "bg-sky-600/95 text-white",
   preview: "bg-amber-500/95 text-amber-950",
   production: "bg-emerald-700/95 text-white",
+  unknown: "bg-slate-700/95 text-white",
 } as const;
 
 export function EnvBanner() {

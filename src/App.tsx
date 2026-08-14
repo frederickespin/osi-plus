@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useEffect, useState } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { LoginScreen, type LoginSession } from '@/components/auth/LoginScreen';
 import { Toaster } from '@/components/ui/sonner';
@@ -12,7 +12,7 @@ import {
   type Session,
 } from '@/lib/sessionStore';
 import { isRelationalCrmClientEnabled, resolveCrmPipelineClientMode } from '@/crm-relational/clientMode';
-import type { ModuleId } from '@/lib/roleModuleMap';
+import { canAccessModule, type ModuleId } from '@/lib/roleModuleMap';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const TowerControl = lazy(() =>
@@ -224,6 +224,15 @@ function AuthLoadingScreen() {
   );
 }
 
+const CRM_PIPELINE_PATH = '/sales/pipeline';
+
+function resolveModuleFromPath(role: UserRole, crmPipelineClientEnabled: boolean, pathname: string): ModuleId {
+  if (pathname === CRM_PIPELINE_PATH && crmPipelineClientEnabled && canAccessModule(role, 'crm-pipeline')) {
+    return 'crm-pipeline';
+  }
+  return getDefaultModuleForRole(role);
+}
+
 async function resolveInitialAuthState(): Promise<AuthState> {
   const stored = inspectStoredSession();
   if (stored.kind === 'EMPTY') {
@@ -254,38 +263,55 @@ async function resolveInitialAuthState(): Promise<AuthState> {
 function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const crmPipelineClientEnabled = isRelationalCrmClientEnabled(resolveCrmPipelineClientMode());
   const userRole: UserRole = session.role;
-  const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
+  const [activeModule, setActiveModule] = useState<ModuleId>(() => resolveModuleFromPath(userRole, crmPipelineClientEnabled, window.location.pathname));
+
+  const handleModuleChange = useCallback((moduleId: ModuleId) => {
+    const nextPath = moduleId === 'crm-pipeline' ? CRM_PIPELINE_PATH : '/';
+    if (window.location.pathname !== nextPath) window.history.pushState({}, '', nextPath);
+    setActiveModule(moduleId);
+  }, []);
+
+  useEffect(() => {
+    if (window.location.pathname === CRM_PIPELINE_PATH && activeModule !== 'crm-pipeline') {
+      window.history.replaceState({}, '', '/');
+    }
+    const handlePopState = () => {
+      setActiveModule(resolveModuleFromPath(userRole, crmPipelineClientEnabled, window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeModule, crmPipelineClientEnabled, userRole]);
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {
     const handleChangeModule = (e: CustomEvent<ModuleId>) => {
-      setActiveModule(e.detail);
+      handleModuleChange(e.detail);
     };
     window.addEventListener('changeModule', handleChangeModule as EventListener);
     return () => {
       window.removeEventListener('changeModule', handleChangeModule as EventListener);
     };
-  }, []);
+  }, [handleModuleChange]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const payload = (e as CustomEvent).detail;
       localStorage.setItem("osi-plus.crateWood.openContext", JSON.stringify(payload));
-      setActiveModule("crate-wood");
+      handleModuleChange("crate-wood");
     };
     window.addEventListener("osi:cratewood:open", handler as EventListener);
     return () => window.removeEventListener("osi:cratewood:open", handler as EventListener);
-  }, []);
+  }, [handleModuleChange]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const payload = (e as CustomEvent).detail;
       localStorage.setItem("osi-plus.salesQuote.openContext", JSON.stringify(payload));
-      setActiveModule("sales-quote");
+      handleModuleChange("sales-quote");
     };
     window.addEventListener("osi:salesquote:open", handler as EventListener);
     return () => window.removeEventListener("osi:salesquote:open", handler as EventListener);
-  }, []);
+  }, [handleModuleChange]);
 
   const renderModule = () => {
     switch (activeModule) {
@@ -387,7 +413,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
     <div className="flex h-screen bg-slate-50">
       <Sidebar 
         activeModule={activeModule} 
-        onModuleChange={setActiveModule} 
+        onModuleChange={handleModuleChange}
         userRole={userRole}
         userName={session.name}
         onLogout={onLogout}

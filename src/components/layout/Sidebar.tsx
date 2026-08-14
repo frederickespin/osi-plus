@@ -86,9 +86,9 @@ const menuGroups: MenuGroup[] = [
     label: 'Comercial',
     icon: CaseIcon,
     items: [
+      { id: 'crm-pipeline', label: 'Pipeline CRM', icon: CaseIcon, roles: ['A', 'V'], description: 'Inbox Comercial relacional' },
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'V'] },
       { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'V'], description: 'Alcance -> cajas -> recursos -> resumen' },
-      { id: 'crm-pipeline', label: 'Pipeline relacional', icon: CaseIcon, roles: ['A', 'V'], description: 'Vista local aislada del prototipo' },
       { id: 'k-templates', label: 'Plantillas PST', icon: FileText, roles: ['A', 'V', 'K'], description: 'Catálogo de servicios técnicos' },
       { id: 'crate-wood', label: 'Cotizador con Nesting', icon: Boxes, roles: ['A', 'V'], description: 'Diseño cajas y pies tablares' },
       { id: 'disenacotiza', label: 'Diseña y Cotiza', icon: Boxes, roles: ['A', 'V'], description: 'Nesting + ingeniería + costos' },
@@ -379,7 +379,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
         <div className="p-4 border-t border-white/10">
           {isCollapsed && (
             <p className="text-white/40 text-[10px] text-center mb-2 truncate px-1" title={ENV_LABELS[getAppEnv()]}>
-              {getAppEnv() === 'production' ? 'Prod' : getAppEnv() === 'preview' ? 'Preview' : 'Local'}
+              {getAppEnv() === 'production' ? 'Prod' : getAppEnv() === 'preview' ? 'Preview' : getAppEnv() === 'development' ? 'Local' : 'Desconocido'}
             </p>
           )}
           <Button 

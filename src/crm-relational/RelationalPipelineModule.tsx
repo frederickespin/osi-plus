@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight, RefreshCw, UserMinus, UserRoundPlus } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  BriefcaseBusiness,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  RefreshCw,
+  Search,
+  UserCheck,
+  UserMinus,
+  UserRoundPlus,
+  UsersRound,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -62,34 +75,63 @@ function errorMessage(error: CrmPipelineError): string {
 }
 
 function Summary({ value }: { value: CrmPipelineSummary | null }) {
+  const items = [
+    { label: "Oportunidades", count: value?.total, icon: BriefcaseBusiness, tone: "border-sky-200 bg-sky-50/80 text-sky-800" },
+    { label: "Asignadas", count: value?.assigned, icon: UserCheck, tone: "border-emerald-200 bg-emerald-50/80 text-emerald-800" },
+    { label: "Sin asignar", count: value?.unassigned, icon: UsersRound, tone: "border-amber-200 bg-amber-50/80 text-amber-800" },
+  ] as const;
   return (
-    <div className="grid grid-cols-3 gap-3" aria-label="Resumen del Pipeline">
-      {[["Total", value?.total], ["Asignadas", value?.assigned], ["Sin asignar", value?.unassigned]].map(([label, count]) => (
-        <Card key={String(label)}><CardContent className="p-4"><p className="text-xs text-slate-500">{label}</p><p className="text-2xl font-semibold">{count ?? "—"}</p></CardContent></Card>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label="Resumen del Pipeline">
+      {items.map(({ label, count, icon: Icon, tone }) => (
+        <Card key={label} className={tone}>
+          <CardContent className="flex items-center justify-between gap-3 p-4">
+            <div><p className="text-xs font-medium opacity-75">{label}</p><p className="text-2xl font-semibold tabular-nums">{count ?? "—"}</p></div>
+            <span className="rounded-full bg-white/80 p-2 shadow-sm" aria-hidden="true"><Icon className="size-4" /></span>
+          </CardContent>
+        </Card>
       ))}
     </div>
   );
 }
 
-function statusTone(status: PipelineCaseStatus): "default" | "secondary" | "outline" | "destructive" {
-  if (status === "LOST") return "destructive";
-  if (status === "APPROVED" || status === "OPS_HANDOFF" || status === "WON") return "default";
-  return "secondary";
+function statusClass(status: PipelineCaseStatus): string {
+  if (status === "LOST") return "border-red-200 bg-red-50 text-red-700";
+  if (status === "WON" || status === "APPROVED" || status === "OPS_HANDOFF") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "NEW_INBOX" || status === "AWAITING_ICP") return "border-sky-200 bg-sky-50 text-sky-700";
+  if (status === "CHANGE_CONTROL" || status === "INTERNAL_REVIEW") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function modeClass(mode: CrmPipelineCase["mode"]): string {
+  if (mode === "EXPORT") return "border-sky-200 bg-sky-50 text-sky-700";
+  if (mode === "IMPORT") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Fecha no disponible" : date.toLocaleDateString("es-DO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function PipelineList({ value, selectedId, onSelect }: { value: CrmPipelineList | null; selectedId: string | null; onSelect(id: string, trigger: HTMLButtonElement): void }) {
-  if (!value || value.data.length === 0) return <div className="rounded-lg border border-dashed p-10 text-center text-slate-500">No hay oportunidades para estos filtros.</div>;
+  if (!value || value.data.length === 0) return <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">No hay oportunidades para estos filtros.</div>;
   return (
-    <div className="overflow-hidden rounded-lg border bg-white" role="list" aria-label="Oportunidades CRM relacionales">
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" role="list" aria-label="Oportunidades CRM relacionales">
+      <div className="hidden grid-cols-[minmax(8rem,1fr)_minmax(10rem,1.3fr)_minmax(13rem,1.5fr)_minmax(9rem,1fr)_minmax(10rem,1fr)_2.5rem] gap-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 via-sky-50/70 to-emerald-50/50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:grid" aria-hidden="true">
+        <span>Caso</span><span>Cliente</span><span>Ruta</span><span>Tipo</span><span>Estado y owner</span><span />
+      </div>
       {value.data.map((item) => (
         <button key={item.id} type="button" role="listitem" onClick={(event) => onSelect(item.id, event.currentTarget)}
-          className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 border-b p-4 text-left last:border-b-0 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 ${selectedId === item.id ? "bg-blue-50" : ""}`}>
-          <span className="min-w-0">
-            <span className="flex min-w-0 flex-wrap items-center gap-2"><strong className="max-w-full truncate">{item.caseCode}</strong><Badge variant={statusTone(item.status)}>{STATUS_LABELS[item.status]}</Badge></span>
-            <span className="mt-1 block truncate text-sm text-slate-700">{item.clientName || "Cliente sin nombre publicado"}</span>
-            <span className="mt-1 block truncate text-xs text-slate-500">{item.serviceType} · {item.originLocation} → {item.destinationLocation}</span>
+          className={`grid w-full grid-cols-1 gap-3 border-b border-slate-100 p-4 text-left transition-colors last:border-b-0 hover:bg-sky-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-600 md:grid-cols-[minmax(8rem,1fr)_minmax(10rem,1.3fr)_minmax(13rem,1.5fr)_minmax(9rem,1fr)_minmax(10rem,1fr)_2.5rem] md:items-center ${selectedId === item.id ? "bg-sky-50" : ""}`}>
+          <span className="min-w-0"><strong className="block truncate font-mono text-sm text-slate-900">{item.caseCode}</strong><span className="mt-1 block text-xs text-slate-500">{formatDate(item.createdAt)}</span></span>
+          <span className="min-w-0"><span className="block truncate text-sm font-medium text-slate-900">{item.clientName || "Cliente no publicado"}</span><span className="mt-1 block text-xs text-slate-500">{item.quoteCount} cotizaciones · {item.eventCount} eventos</span></span>
+          <span className="min-w-0"><span className="flex items-center gap-1 truncate text-sm text-slate-800"><MapPin className="size-3.5 shrink-0 text-slate-400" aria-hidden="true" />{item.originLocation || "Origen no publicado"}</span><span className="mt-1 flex items-center gap-1 truncate text-xs text-slate-500"><ArrowRight className="size-3.5 shrink-0" aria-hidden="true" />{item.destinationLocation || "Destino no publicado"}</span></span>
+          <span className="min-w-0"><Badge variant="outline" className={modeClass(item.mode)}>{item.mode}</Badge><span className="mt-1 block truncate text-xs text-slate-600">{item.serviceType}</span></span>
+          <span className="min-w-0"><Badge variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="mt-1 block truncate text-xs text-slate-500">{item.owner?.displayName || "Sin asignar"}</span></span>
+          <span className="hidden justify-self-end rounded-full border border-slate-200 bg-white p-1.5 text-slate-500 shadow-sm md:inline-flex" aria-hidden="true"><ChevronRight className="size-4" /></span>
+          <span className="flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500 md:hidden">
+            <span>Owner: {item.owner?.displayName || "Sin asignar"}</span><span className="inline-flex items-center gap-1 font-medium text-sky-700">Ver detalle<ChevronRight className="size-3.5" /></span>
           </span>
-          <span className="max-w-40 self-center truncate text-right text-xs text-slate-500">{item.owner?.displayName || "Sin asignar"}<br />{item.quoteCount} cotizaciones</span>
         </button>
       ))}
     </div>
@@ -200,25 +242,29 @@ function DetailDrawer({ api, role, state, open, busy, actionError, retryIntent, 
     : state.allowed?.transitions ?? [];
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-none md:w-[60vw]" aria-describedby="crm-detail-description">
-        <SheetHeader><SheetTitle className="line-clamp-2 break-all">{item?.caseCode || "Detalle CRM"}</SheetTitle><SheetDescription id="crm-detail-description">Vista relacional; no usa ni modifica LeadLite.</SheetDescription></SheetHeader>
-        <div className="space-y-4 px-4 pb-8" aria-live="polite">
+      <SheetContent side="right" className="w-full overflow-y-auto border-l-slate-200 bg-slate-50 sm:max-w-none md:w-[60vw]" aria-describedby="crm-detail-description">
+        <SheetHeader className="border-b border-slate-200 bg-white pr-12">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Detalle de oportunidad</p>
+          <SheetTitle className="line-clamp-2 break-all text-xl text-slate-950">{item?.caseCode || "Detalle CRM"}</SheetTitle>
+          <SheetDescription id="crm-detail-description">Información relacional publicada por el servidor.</SheetDescription>
+        </SheetHeader>
+        <div className="space-y-4 px-4 pb-8 md:px-6" aria-live="polite">
           {state.loading && <p>Actualizando detalle…</p>}
           {state.error && <Alert variant="destructive"><AlertCircle /><AlertTitle>Error</AlertTitle><AlertDescription>{errorMessage(state.error)}</AlertDescription></Alert>}
           {item && <>
-            <div className="flex flex-wrap items-center gap-2"><Badge variant={statusTone(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="text-sm text-slate-500">Versión {state.allowed?.version ?? "—"}</span></div>
-            <dl className="grid grid-cols-1 gap-3 rounded-lg border p-4 sm:grid-cols-2">
-              <div><dt className="text-xs text-slate-500">Cliente</dt><dd>{item.clientName || "No publicado"}</dd></div>
-              <div><dt className="text-xs text-slate-500">Owner</dt><dd>{item.owner?.displayName || "Sin asignar"}</dd></div>
-              <div><dt className="text-xs text-slate-500">Servicio</dt><dd>{item.serviceType}</dd></div>
-              <div><dt className="text-xs text-slate-500">Modo</dt><dd>{item.mode}</dd></div>
-              <div><dt className="text-xs text-slate-500">Origen</dt><dd>{item.originLocation}</dd></div>
-              <div><dt className="text-xs text-slate-500">Destino</dt><dd>{item.destinationLocation}</dd></div>
+            <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><Badge variant="outline" className={modeClass(item.mode)}>{item.mode}</Badge><span className="ml-auto text-sm tabular-nums text-slate-500">Versión {state.allowed?.version ?? "—"}</span></div>
+            <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 sm:grid-cols-2">
+              <div className="bg-white p-4"><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Cliente</dt><dd className="mt-1 text-sm text-slate-900">{item.clientName || "No publicado"}</dd></div>
+              <div className="bg-white p-4"><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Owner</dt><dd className="mt-1 text-sm text-slate-900">{item.owner?.displayName || "Sin asignar"}</dd></div>
+              <div className="bg-white p-4"><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Servicio</dt><dd className="mt-1 text-sm text-slate-900">{item.serviceType}</dd></div>
+              <div className="bg-white p-4"><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Volumen estimado</dt><dd className="mt-1 text-sm text-slate-900">{item.estimatedCbm} m³</dd></div>
+              <div className="bg-white p-4"><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Origen</dt><dd className="mt-1 text-sm text-slate-900">{item.originLocation}</dd></div>
+              <div className="bg-white p-4"><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Destino</dt><dd className="mt-1 text-sm text-slate-900">{item.destinationLocation}</dd></div>
             </dl>
             {item.status === "APPROVED" && <Alert><AlertTitle>Oportunidad congelada</AlertTitle><AlertDescription>APPROVED no admite comandos en esta fase.</AlertDescription></Alert>}
             {item.status === "OPS_HANDOFF" && <Alert><AlertTitle>Estado terminal</AlertTitle><AlertDescription>La oportunidad ya fue entregada a Operaciones.</AlertDescription></Alert>}
             {actionError && <Alert variant="destructive"><AlertCircle /><AlertTitle>{actionError.code}</AlertTitle><AlertDescription>{errorMessage(actionError)}{retryIntent && <Button className="mt-2" size="sm" variant="outline" onClick={onRetryIntent}>Reintentar misma intención</Button>}</AlertDescription></Alert>}
-            <section aria-labelledby="crm-transitions-title"><h3 id="crm-transitions-title" className="mb-2 font-semibold">Transiciones autorizadas por el servidor</h3>
+            <section className="rounded-xl border border-slate-200 bg-white p-4" aria-labelledby="crm-transitions-title"><h3 id="crm-transitions-title" className="mb-2 font-semibold text-slate-900">Transiciones autorizadas por el servidor</h3>
               {!state.allowed ? <p className="text-sm text-slate-500">No disponibles.</p> : transitions.length === 0 ? <p className="text-sm text-slate-500">No hay transiciones disponibles.</p> : <div className="space-y-2">{transitions.map((transition) => <TransitionForm key={transition.toStatus} transition={transition} disabled={busy} onSubmit={(reason, evidence) => onTransition(transition, reason, evidence)} />)}</div>}
             </section>
             {role === "A" && !["APPROVED", "OPS_HANDOFF"].includes(item.status) && <OwnerSelector api={api} currentOwnerName={item.owner?.displayName ?? null} disabled={busy || !state.allowed} onAssign={onAssign} />}
@@ -348,19 +394,25 @@ export function RelationalPipelineModule({ userRole, onUnauthorized }: { userRol
 
   const pages = list ? Math.max(1, Math.ceil(list.total / list.pageSize)) : 1;
   return (
-    <div className="space-y-5 p-4 md:p-6" data-testid="crm-relational-root">
-      <header><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Vista relacional local</p><h1 className="text-2xl font-bold">Pipeline CRM</h1><p className="text-sm text-slate-500">Separado del prototipo LeadLite; el servidor conserva la autoridad.</p></header>
-      <Summary value={summary} />
-      <Card><CardHeader><CardTitle className="text-base">Filtros</CardTitle></CardHeader><CardContent className="grid gap-3 md:grid-cols-3">
-        <label className="text-xs">Buscar<Input value={filters.search || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, search: event.target.value || undefined }))} placeholder="Código, cliente o ubicación" /></label>
-        <label className="text-xs">Estado<select className="mt-1 h-9 w-full rounded-md border px-2 text-sm" value={filters.status || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, status: (event.target.value || undefined) as PipelineCaseStatus | undefined }))}><option value="">Todos</option>{PIPELINE_CASE_STATUSES.map((item) => <option key={item} value={item}>{STATUS_LABELS[item]}</option>)}</select></label>
-        <label className="text-xs">Owner<select className="mt-1 h-9 w-full rounded-md border px-2 text-sm" value={filters.owner || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, owner: (event.target.value || undefined) as CrmPipelineFilters["owner"] }))}><option value="">Todos</option><option value="assigned">Con owner</option><option value="unassigned">Sin asignar</option></select></label>
+    <div className="min-h-full bg-slate-50/80 p-3 sm:p-4 md:p-6" data-testid="crm-relational-root">
+      <div className="mx-auto max-w-[1600px] space-y-4">
+      <header className="overflow-hidden rounded-xl border border-sky-200 bg-gradient-to-br from-white via-sky-50/60 to-emerald-50/40 p-5 shadow-sm md:p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">CRM relacional</p><h1 className="mt-1 text-2xl font-semibold text-slate-950 md:text-3xl">Inbox Comercial</h1><p className="mt-1 max-w-2xl text-sm text-slate-600">Oportunidades publicadas por el servidor, con estado, owner y acciones autorizadas.</p></div>
+          <div className="w-full xl:max-w-2xl"><Summary value={summary} /></div>
+        </div>
+      </header>
+      <Card className="border-slate-200 shadow-sm"><CardHeader className="pb-3"><CardTitle className="text-base text-slate-900">Buscar y filtrar</CardTitle></CardHeader><CardContent className="grid gap-3 md:grid-cols-[minmax(14rem,1.5fr)_minmax(12rem,1fr)_minmax(11rem,.8fr)]">
+        <label className="text-xs font-medium text-slate-600">Buscar<span className="relative mt-1 block"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><Input className="pl-9" value={filters.search || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, search: event.target.value || undefined }))} placeholder="Código, cliente o ubicación" /></span></label>
+        <label className="text-xs font-medium text-slate-600">Estado<select className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900" value={filters.status || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, status: (event.target.value || undefined) as PipelineCaseStatus | undefined }))}><option value="">Todos los estados</option>{PIPELINE_CASE_STATUSES.map((item) => <option key={item} value={item}>{STATUS_LABELS[item]}</option>)}</select></label>
+        <label className="text-xs font-medium text-slate-600">Asignación<select aria-label="Owner" className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900" value={filters.owner || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, owner: (event.target.value || undefined) as CrmPipelineFilters["owner"] }))}><option value="">Todas</option><option value="assigned">Asignadas</option><option value="unassigned">Sin asignar</option></select></label>
       </CardContent></Card>
       {listError && <Alert variant="destructive"><AlertCircle /><AlertTitle>{listError.code}</AlertTitle><AlertDescription>{errorMessage(listError)}<Button className="mt-2" size="sm" variant="outline" onClick={() => setRefreshVersion((value) => value + 1)}><RefreshCw />Reintentar lectura</Button></AlertDescription></Alert>}
       {summaryError && <Alert variant="destructive"><AlertCircle /><AlertTitle>{summaryError.code}</AlertTitle><AlertDescription>{errorMessage(summaryError)}<Button className="mt-2" size="sm" variant="outline" onClick={() => setRefreshVersion((value) => value + 1)}><RefreshCw />Reintentar resumen</Button></AlertDescription></Alert>}
-      <div aria-live="polite">{listLoading && <p className="py-2 text-sm text-slate-500">Cargando oportunidades…</p>}{(list || !listError) && <PipelineList value={list} selectedId={selectedId} onSelect={(caseId, trigger) => { detailTrigger.current = trigger; setSelectedId(caseId); }} />}</div>
-      <div className="flex items-center justify-between"><Button variant="outline" disabled={(list?.page ?? filters.page) <= 1 || listLoading} onClick={() => setFilters((current) => ({ ...current, page: Math.max(1, (list?.page ?? current.page) - 1) }))}><ChevronLeft />Anterior</Button><span className="text-sm">Página {list?.page ?? filters.page} de {pages} · {list?.total ?? 0} resultados</span><Button variant="outline" disabled={(list?.page ?? filters.page) >= pages || listLoading} onClick={() => setFilters((current) => ({ ...current, page: Math.min(pages, (list?.page ?? current.page) + 1) }))}>Siguiente<ChevronRight /></Button></div>
+      <div aria-live="polite">{listLoading && !list && <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">Cargando oportunidades…</div>}{listLoading && list && <p className="pb-2 text-sm text-slate-500">Actualizando oportunidades…</p>}{(list || !listError) && <PipelineList value={list} selectedId={selectedId} onSelect={(caseId, trigger) => { detailTrigger.current = trigger; setSelectedId(caseId); }} />}</div>
+      <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row"><Button variant="outline" disabled={(list?.page ?? filters.page) <= 1 || listLoading} onClick={() => setFilters((current) => ({ ...current, page: Math.max(1, (list?.page ?? current.page) - 1) }))}><ChevronLeft />Anterior</Button><span className="text-center text-sm tabular-nums text-slate-600">Página {list?.page ?? filters.page} de {pages} · {list?.total ?? 0} resultados</span><Button variant="outline" disabled={(list?.page ?? filters.page) >= pages || listLoading} onClick={() => setFilters((current) => ({ ...current, page: Math.min(pages, (list?.page ?? current.page) + 1) }))}>Siguiente<ChevronRight /></Button></div>
       <DetailDrawer api={api} role={userRole} state={detail} open={selectedId !== null} busy={busy} actionError={actionError} retryIntent={retryIntent} onOpenChange={(open) => { if (!open) { activeIntent.current?.cancel(); activeIntent.current = null; retryIntent?.cancel(); setSelectedId(null); setRetryIntent(null); setActionError(null); globalThis.setTimeout(() => detailTrigger.current?.focus(), 0); } }} onTransition={transition} onAssign={assign} onUnassign={unassign} onRetryIntent={() => { if (retryIntent) void executeIntent(retryIntent, true); }} />
+      </div>
     </div>
   );
 }

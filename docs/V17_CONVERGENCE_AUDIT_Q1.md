@@ -15,6 +15,8 @@ No se portaron stores, colas offline, mocks, Service Worker, PWA ni headers `x-o
 5. Los grupos del Sidebar dependían del hover y contenían botones anidados en modo colapsado. Ahora tienen controles semánticos, foco visible, expansión por teclado y navegación móvil etiquetada.
 6. El selector heredado de credenciales de demostración estaba disponible en cualquier ambiente no productivo y sus literales podían entrar al bundle Preview. Ahora sólo existe bajo `import.meta.env.DEV`; se verifica su ausencia del build.
 7. La guardia CRM rechazaba una mención documental de identificadores internos dentro del adaptador moderno. Se retiró esa enumeración; la guardia y sus cuatro fixtures negativas pasan sin cambiar comportamiento.
+8. Vite generaba assets relativos: un acceso directo a `/sales/pipeline` en Preview resolvía el bundle bajo `/sales/assets/` y dejaba la aplicación sin montar. La base de producción ahora es `/`, y la guardia congela esta propiedad.
+9. Las 30 pruebas V17 se ejecutaban localmente pero no formaban parte del job obligatorio de navegadores. `browser-session-validation` ahora exige 5/5 por cada combinación desktop/móvil de Chromium, Firefox y WebKit: 30/30, sin omitidos.
 
 ## Matriz efectiva de acceso
 
@@ -49,8 +51,8 @@ Las capturas desktop y móvil se generaron con APIs locales interceptadas y dato
 | Shell y Sidebar | Adaptado deliberadamente | Conserva la jerarquía visual moderna con autoridad de `roleModuleMap`, navegación por teclado y drawer móvil. |
 | Inbox Comercial / Pipeline | Adaptado deliberadamente | Presentación moderna, pero estado inactivo explícito y sin datos hasta activar el cliente CRM en una fase autorizada. |
 | Evaluador | Adaptado deliberadamente | Presentación moderna y dominio puro; backend, catálogo, drafts y submissions siguen pendientes. |
-| Administración | Equivalente | Se conservan los módulos canónicos; no se portaron stores ni permisos del snapshot. |
-| Materiales | Equivalente | Se conservan WMS, inventario, compras y carpintería actuales según rol. |
+| Administración | Pendiente heredado | Se conserva el módulo canónico. Sus fixtures y mocks anteriores a la convergencia quedan fuera de este cambio y deben retirarse antes de afirmar cero datos simulados en toda la aplicación. |
+| Materiales | Pendiente heredado | Se conservan WMS, inventario, compras y carpintería actuales según rol; algunos módulos heredados todavía consumen fixtures locales. |
 
 En desktop no se observaron desbordamientos del shell. En móvil el contenido usa el drawer y navegación inferior del Evaluador; los controles mantienen foco visible y etiquetas accesibles.
 
@@ -58,10 +60,10 @@ En desktop no se observaron desbordamientos del shell. En móvil el contenido us
 
 | Artefacto | Tamaño raw | Gzip |
 | --- | ---: | ---: |
-| Entrada `index` | 47,920 B | 13.96 kB |
+| Entrada `index` | 47,555 B | 13.95 kB |
 | Pipeline inactivo | 2,926 B | 1.00 kB |
 | Evaluador | 4,441 B | 1.50 kB |
-| Pipeline relacional lazy | 42,904 B | 10.59 kB |
+| Pipeline relacional lazy | 42,904 B | 10.60 kB |
 | Vendor | 800,930 B | 246.86 kB |
 
 No se agregaron dependencias ni duplicados. DOMPurify resuelve 3.4.13; 3.3.1, PWA y Service Worker están ausentes.
@@ -70,7 +72,7 @@ No se agregaron dependencias ni duplicados. DOMPurify resuelve 3.4.13; 3.3.1, PW
 
 - 16 migraciones desde PostgreSQL 18 vacío; segundo deploy sin pendientes; status y drift vacíos.
 - Suite canónica: 299 validaciones, 0 fallos.
-- Guardias V17: 37/37.
+- Guardias V17: 42/42.
 - Navegadores existentes: 75/75 (Chromium, Firefox y WebKit).
 - Navegadores V17: 30/30 (desktop y móvil en los tres motores).
 - Build, TypeScript focalizado y ESLint focalizado aprobados.

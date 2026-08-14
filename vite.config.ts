@@ -5,7 +5,7 @@ import { inspectAttr } from 'kimi-plugin-inspect-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './',
+  base: '/',
   define: {
     'import.meta.env.VERCEL_ENV': JSON.stringify(process.env.VERCEL_ENV || ''),
   },

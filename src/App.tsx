@@ -12,7 +12,8 @@ import {
   type Session,
 } from '@/lib/sessionStore';
 import { isRelationalCrmClientEnabled, resolveCrmPipelineClientMode } from '@/crm-relational/clientMode';
-import type { ModuleId } from '@/lib/roleModuleMap';
+import { canAccessModule, type ModuleId } from '@/lib/roleModuleMap';
+import { resolveModuleFromPath, updateModuleRoute } from '@/lib/moduleRouting';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const TowerControl = lazy(() =>
@@ -142,6 +143,9 @@ const KProjectModule = lazy(() =>
 const RelationalPipelineModule = lazy(() =>
   import('@/crm-relational/RelationalPipelineModule').then((m) => ({ default: m.RelationalPipelineModule }))
 );
+const EvaluatorCanonicalModule = lazy(() =>
+  import('@/evaluator-canonical/EvaluatorCanonicalModule').then((m) => ({ default: m.EvaluatorCanonicalModule }))
+);
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
@@ -254,18 +258,38 @@ async function resolveInitialAuthState(): Promise<AuthState> {
 function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const crmPipelineClientEnabled = isRelationalCrmClientEnabled(resolveCrmPipelineClientMode());
   const userRole: UserRole = session.role;
-  const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
+  const [activeModule, setActiveModule] = useState<ModuleId>(() => {
+    const routed = typeof window === 'undefined' ? null : resolveModuleFromPath(window.location.pathname);
+    return routed && canAccessModule(userRole, routed) ? routed : getDefaultModuleForRole(userRole);
+  });
+
+  const selectModule = (moduleId: ModuleId) => {
+    if (!canAccessModule(userRole, moduleId)) return;
+    setActiveModule(moduleId);
+    if (typeof window !== 'undefined') updateModuleRoute(moduleId, window.history, window.location);
+  };
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {
     const handleChangeModule = (e: CustomEvent<ModuleId>) => {
+      if (!canAccessModule(userRole, e.detail)) return;
       setActiveModule(e.detail);
+      updateModuleRoute(e.detail, window.history, window.location);
     };
     window.addEventListener('changeModule', handleChangeModule as EventListener);
     return () => {
       window.removeEventListener('changeModule', handleChangeModule as EventListener);
     };
-  }, []);
+  }, [userRole]);
+
+  useEffect(() => {
+    const syncFromLocation = () => {
+      const routed = resolveModuleFromPath(window.location.pathname);
+      if (routed && canAccessModule(userRole, routed)) setActiveModule(routed);
+    };
+    window.addEventListener('popstate', syncFromLocation);
+    return () => window.removeEventListener('popstate', syncFromLocation);
+  }, [userRole]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -326,6 +350,8 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
         return crmPipelineClientEnabled
           ? <RelationalPipelineModule userRole={userRole} onUnauthorized={onLogout} />
           : <TowerControl />;
+      case 'evaluator-app':
+        return <EvaluatorCanonicalModule />;
       case 'commercial-calendar':
         return <CommercialCalendarModule />;
       case 'commercial-config':
@@ -385,9 +411,9 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
 
   return (
     <div className="flex h-screen bg-slate-50">
-      <Sidebar 
-        activeModule={activeModule} 
-        onModuleChange={setActiveModule} 
+      <Sidebar
+        activeModule={activeModule}
+        onModuleChange={selectModule}
         userRole={userRole}
         userName={session.name}
         onLogout={onLogout}

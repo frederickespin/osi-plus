@@ -27,7 +27,8 @@ import {
   X,
   ChevronRight,
   Briefcase as CaseIcon,
-  Boxes
+  Boxes,
+  ClipboardCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
@@ -88,7 +89,8 @@ const menuGroups: MenuGroup[] = [
     items: [
       { id: 'clients', label: 'Clientes', icon: UserCircle, roles: ['A', 'V'] },
       { id: 'sales-quote', label: 'Cotizador Tecnico', icon: FileText, roles: ['A', 'V'], description: 'Alcance -> cajas -> recursos -> resumen' },
-      { id: 'crm-pipeline', label: 'Pipeline relacional', icon: CaseIcon, roles: ['A', 'V'], description: 'Vista local aislada del prototipo' },
+      { id: 'crm-pipeline', label: 'Pipeline', icon: CaseIcon, roles: ['A', 'V'], description: 'Oportunidades relacionales; el servidor conserva la autoridad' },
+      { id: 'evaluator-app', label: 'Evaluador', icon: ClipboardCheck, roles: ['A', 'V'], description: 'Visitas técnicas; backend pendiente y sin datos simulados' },
       { id: 'k-templates', label: 'Plantillas PST', icon: FileText, roles: ['A', 'V', 'K'], description: 'Catálogo de servicios técnicos' },
       { id: 'crate-wood', label: 'Cotizador con Nesting', icon: Boxes, roles: ['A', 'V'], description: 'Diseño cajas y pies tablares' },
       { id: 'disenacotiza', label: 'Diseña y Cotiza', icon: Boxes, roles: ['A', 'V'], description: 'Nesting + ingeniería + costos' },
@@ -140,7 +142,7 @@ const menuGroups: MenuGroup[] = [
   },
   {
     id: 'logistics',
-    label: 'Logística',
+    label: 'Materiales y Logística',
     icon: Package,
     items: [
       { id: 'wms', label: 'WMS Inventario', icon: Warehouse, roles: ['A', 'C'] },

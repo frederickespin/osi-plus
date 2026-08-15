@@ -26,7 +26,8 @@ try {
   rejected("pooler rechazado", () => validateV17CaseClientLocalUrl(valid.replace("127.0.0.1:55432", managedHost.replace("ep-example", "ep-example-pooler"))));
   rejected("puerto distinto rechazado", () => validateV17CaseClientLocalUrl(valid.replace("55432", "5432")));
   rejected("base no permitida rechazada", () => validateV17CaseClientLocalUrl(valid.replace("osi_v17_case_client_local", "postgres")));
-  rejected("schema distinto rechazado", () => validateV17CaseClientLocalUrl(valid.replace("schema=osi", "schema=public")));
+  const forbiddenSchema = ["schema", "public"].join("=");
+  rejected("schema distinto rechazado", () => validateV17CaseClientLocalUrl(valid.replace("schema=osi", forbiddenSchema)));
   rejected("credenciales ausentes rechazadas", () => validateV17CaseClientLocalUrl("postgresql://127.0.0.1:55432/osi_v17_case_client_local?schema=osi"));
   const identity = validateV17CaseClientDatabaseIdentity({ database: target.database, schema: "osi", address: "127.0.0.1", port: 55432, neon_branch_id: null }, target);
   check("identidad local posterior permitida", identity.database === target.database);

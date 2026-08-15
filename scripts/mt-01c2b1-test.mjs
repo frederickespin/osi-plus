@@ -238,7 +238,14 @@ try {
     ORDER BY indexname
   `);
   const normalizedIndexDefinitions = mt01c2b1Indexes.map((row) => row.indexdef.replace(/^CREATE UNIQUE INDEX|^CREATE INDEX/, "CREATE INDEX"));
-  check("cadena crea exactamente 13 índices tenant y ninguno exacto redundante", mt01c2b1Indexes.length === 13 && new Set(normalizedIndexDefinitions).size === 13, mt01c2b1Indexes.map((row) => row.indexname));
+  const tenantIndexNames = new Set(mt01c2b1Indexes.map((row) => row.indexname));
+  check("cadena crea exactamente 15 índices tenant y ninguno exacto redundante",
+    mt01c2b1Indexes.length === 15
+      && new Set(normalizedIndexDefinitions).size === 15
+      && tenantIndexNames.has("osi_pipeline_cases_tenant_id_client_id_status_updated_at_idx")
+      && tenantIndexNames.has("osi_pipeline_cases_tenant_id_id_client_id_key")
+      && tenantIndexNames.has("osi_projects_tenant_id_pipeline_case_id_client_id_idx"),
+    mt01c2b1Indexes.map((row) => row.indexname));
 
   const timings = [];
   for (let index = 0; index < 100; index += 1) {

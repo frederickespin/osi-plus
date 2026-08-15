@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const EXPECTED_MIGRATIONS = 16;
+const EXPECTED_MIGRATIONS = 17;
 const PREPARED_CONSUMERS = Object.freeze(new Set([
   "api/clients/index.js",
   "api/projects/index.js",
@@ -118,7 +118,7 @@ export function validateMt01c2b3a({
 } = {}) {
   invariant(migrations.length === EXPECTED_MIGRATIONS, `se esperaban exactamente ${EXPECTED_MIGRATIONS} migraciones`);
   invariant(migrations.includes("20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1");
-  invariant(!migrations.some((name) => /^20260801016000_/.test(name)), "migración 17 no autorizada");
+  invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
 
   const envExample = source(root, ".env.example", overrides);
   invariant(/^COMMERCIAL_TENANCY_WRITE_MODE=(?:"LEGACY_ONLY"|'LEGACY_ONLY'|LEGACY_ONLY)$/m.test(envExample), "LEGACY_ONLY debe ser el modo comercial predeterminado exacto");

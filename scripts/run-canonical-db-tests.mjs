@@ -111,6 +111,11 @@ invariant(
   "CRM01B2_TEST_DATABASE_URL no coincide con el destino canónico validado",
 );
 process.env.CRM01B2_TEST_DATABASE_URL = process.env.DATABASE_URL;
+invariant(
+  !process.env.V17_CASE_CLIENT_TEST_DATABASE_URL || process.env.V17_CASE_CLIENT_TEST_DATABASE_URL === process.env.DATABASE_URL,
+  "V17_CASE_CLIENT_TEST_DATABASE_URL no coincide con el destino canónico validado",
+);
+process.env.V17_CASE_CLIENT_TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
 const envPath = resolve(".env.mt01a.local");
 invariant(!existsSync(envPath), `${envPath} ya existe; no será sobrescrito`);
@@ -313,6 +318,16 @@ try {
   invariant(commercialTenantDryRun.report.readOnly === true && commercialTenantDryRun.report.wroteRows === 0, "MT-01C2B1 dry-run no fue de sólo lectura");
   invariant(commercialTenantGuardRun.report.ok === true, "MT-01C2B1 guard falló");
   invariant(commercialTenantGuardTests.assertions >= 7, `MT-01C2B1 guard esperaba al menos 7 pruebas y obtuvo ${commercialTenantGuardTests.assertions}`);
+  const v17CaseClientRun = runJson("v17-case-client-test.mjs", "V17-CASE-CLIENT/RELATIONS");
+  const v17CaseClientPerformanceRun = runJson("v17-case-client-performance.mjs", "V17-CASE-CLIENT/PERFORMANCE");
+  const v17CaseClientDatabaseGuardRun = runJson("v17-case-client-local-target-test.mjs", "V17-CASE-CLIENT/DATABASE_GUARD");
+  const v17CaseClientGuardRun = runJson("validate-v17-case-client-guard.mjs", "V17-CASE-CLIENT/GUARD");
+  const v17CaseClientGuardTestsRun = runJson("validate-v17-case-client-guard-test.mjs", "V17-CASE-CLIENT/GUARD_TESTS");
+  invariant(v17CaseClientRun.report.ok === true && v17CaseClientRun.assertions >= 16, `V17-CASE-CLIENT esperaba al menos 16 pruebas y obtuvo ${v17CaseClientRun.assertions}`);
+  invariant(v17CaseClientPerformanceRun.report.ok === true && v17CaseClientPerformanceRun.report.fixtureCases === 10_000, "V17-CASE-CLIENT rendimiento incompleto");
+  invariant(v17CaseClientDatabaseGuardRun.assertions >= 13, `V17-CASE-CLIENT database guard esperaba al menos 13 pruebas y obtuvo ${v17CaseClientDatabaseGuardRun.assertions}`);
+  invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === 17, "V17-CASE-CLIENT guard falló");
+  invariant(v17CaseClientGuardTestsRun.assertions >= 10, `V17-CASE-CLIENT guard tests esperaba al menos 10 pruebas y obtuvo ${v17CaseClientGuardTestsRun.assertions}`);
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,
@@ -359,6 +374,14 @@ try {
       runtimeGuard: commercialTenantGuardRun.report.ok,
       guardTests: commercialTenantGuardTests.assertions,
       total: commercialTenantRun.assertions + commercialTenantGuardTests.assertions,
+    },
+    v17CaseClient: {
+      relations: v17CaseClientRun.assertions,
+      performance: v17CaseClientPerformanceRun.assertions,
+      databaseGuard: v17CaseClientDatabaseGuardRun.assertions,
+      guard: v17CaseClientGuardRun.report.ok,
+      guardTests: v17CaseClientGuardTestsRun.assertions,
+      total: v17CaseClientRun.assertions + v17CaseClientPerformanceRun.assertions + v17CaseClientDatabaseGuardRun.assertions + v17CaseClientGuardTestsRun.assertions,
     },
     mt01c2b2: {
       backfill: commercialBackfillRun.assertions,

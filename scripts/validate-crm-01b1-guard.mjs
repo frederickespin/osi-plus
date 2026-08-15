@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
-const EXPECTED_MIGRATIONS = 16;
+const EXPECTED_MIGRATIONS = 17;
 const EXPECTED_MIGRATION_SHA256 = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
 const RUNTIME_SERVICE_ALLOWLIST = Object.freeze(["api/_lib/pipelineCaseDomain.js"]);
 const JOURNAL_FIXTURE_ALLOWLIST = Object.freeze([
@@ -41,7 +41,7 @@ export function validateCrm01b1Guard({
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   invariant(migrations.length === EXPECTED_MIGRATIONS, `se requieren exactamente ${EXPECTED_MIGRATIONS} migraciones`);
   invariant(migrations.filter((name) => name === MIGRATION).length === 1, "la migración 16 exacta debe existir una sola vez");
-  invariant(!migrations.some((name) => /^20260801016000_/.test(name)), "migración 17 no autorizada");
+  invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
 
   const sqlPath = `prisma/migrations/${MIGRATION}/migration.sql`;
   const sql = read(sqlPath);

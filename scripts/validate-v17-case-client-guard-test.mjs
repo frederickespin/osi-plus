@@ -21,6 +21,8 @@ try {
   check("baseline V17 aprobada", validateV17CaseClientGuard().ok);
   rejected("migración 18 rechazada", { migrationNames: [...migrations, "20260801021000_v17_forbidden"] }, /17 migraciones/);
   rejected("clientId obligatorio rechazado", { schemaSource: schema.replace("clientId                      String?", "clientId                      String ") }, /nullable/);
+  rejected("Project.clientId nullable rechazado", { schemaSource: schema.replace(/(model Project\s*\{[\s\S]*?\n\s*clientId\s+)String(\s*)/, "$1String?$2") }, /Project\.clientId/);
+  rejected("CHECK previo contra tenantId NULL es obligatorio", { projectAuthorityMigrationSource: "SELECT 1;" }, /migración 16/);
   rejected("default clientId rechazado", { schemaSource: schema.replace('@map("client_id")', '@default("forced") @map("client_id")') }, /nullable/);
   rejected("backfill rechazado", { migrationSource: `${sql}\nUPDATE "osi"."osi_pipeline_cases" SET "client_id" = 'forced';\n` }, /DML/);
   rejected("inferencia textual rechazada", { migrationSource: `${sql}\n-- infer by email similarity\n` }, /inferencia/);

@@ -320,11 +320,13 @@ try {
   invariant(commercialTenantGuardTests.assertions >= 7, `MT-01C2B1 guard esperaba al menos 7 pruebas y obtuvo ${commercialTenantGuardTests.assertions}`);
   const v17CaseClientRun = runJson("v17-case-client-test.mjs", "V17-CASE-CLIENT/RELATIONS");
   const v17CaseClientPerformanceRun = runJson("v17-case-client-performance.mjs", "V17-CASE-CLIENT/PERFORMANCE");
+  const v17CaseClientAdversarialRun = runJson("v17-case-client-adversarial-test.mjs", "V17-CASE-CLIENT/ADVERSARIAL");
   const v17CaseClientDatabaseGuardRun = runJson("v17-case-client-local-target-test.mjs", "V17-CASE-CLIENT/DATABASE_GUARD");
   const v17CaseClientGuardRun = runJson("validate-v17-case-client-guard.mjs", "V17-CASE-CLIENT/GUARD");
   const v17CaseClientGuardTestsRun = runJson("validate-v17-case-client-guard-test.mjs", "V17-CASE-CLIENT/GUARD_TESTS");
   invariant(v17CaseClientRun.report.ok === true && v17CaseClientRun.assertions >= 16, `V17-CASE-CLIENT esperaba al menos 16 pruebas y obtuvo ${v17CaseClientRun.assertions}`);
   invariant(v17CaseClientPerformanceRun.report.ok === true && v17CaseClientPerformanceRun.report.fixtureCases === 10_000, "V17-CASE-CLIENT rendimiento incompleto");
+  invariant(v17CaseClientAdversarialRun.report.ok === true && v17CaseClientAdversarialRun.report.raceMetrics?.operations === 160, "V17-CASE-CLIENT adversarial incompleto");
   invariant(v17CaseClientDatabaseGuardRun.assertions >= 13, `V17-CASE-CLIENT database guard esperaba al menos 13 pruebas y obtuvo ${v17CaseClientDatabaseGuardRun.assertions}`);
   invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === 17, "V17-CASE-CLIENT guard falló");
   invariant(v17CaseClientGuardTestsRun.assertions >= 10, `V17-CASE-CLIENT guard tests esperaba al menos 10 pruebas y obtuvo ${v17CaseClientGuardTestsRun.assertions}`);
@@ -378,10 +380,11 @@ try {
     v17CaseClient: {
       relations: v17CaseClientRun.assertions,
       performance: v17CaseClientPerformanceRun.assertions,
+      adversarial: v17CaseClientAdversarialRun.assertions,
       databaseGuard: v17CaseClientDatabaseGuardRun.assertions,
       guard: v17CaseClientGuardRun.report.ok,
       guardTests: v17CaseClientGuardTestsRun.assertions,
-      total: v17CaseClientRun.assertions + v17CaseClientPerformanceRun.assertions + v17CaseClientDatabaseGuardRun.assertions + v17CaseClientGuardTestsRun.assertions,
+      total: v17CaseClientRun.assertions + v17CaseClientPerformanceRun.assertions + v17CaseClientAdversarialRun.assertions + v17CaseClientDatabaseGuardRun.assertions + v17CaseClientGuardTestsRun.assertions,
     },
     mt01c2b2: {
       backfill: commercialBackfillRun.assertions,

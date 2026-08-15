@@ -351,16 +351,16 @@ model AuthRefreshToken {
 }
 
 model Client {
-  id                        String        @id @default(cuid())
-  tenantId                  String?       @map("tenant_id")
-  code                      String        @unique
+  id                        String         @id @default(cuid())
+  tenantId                  String?        @map("tenant_id")
+  code                      String         @unique
   name                      String
   email                     String
   phone                     String
   address                   String
   type                      String
   status                    String
-  totalServices             Int           @default(0)
+  totalServices             Int            @default(0)
   lastService               String?
   createdAt                 String
   fiscalName                String?
@@ -373,18 +373,19 @@ model Client {
   accountsPayableEmail      String?
   accountsPayablePhone      String?
   complianceNotes           String?
-  kycCompleted              Boolean       @default(false)
+  kycCompleted              Boolean        @default(false)
   normalizedPhone           String?
   billingTaxId              String?
   serviceOriginAddress      String?
   serviceDestinationAddress String?
-  updatedAt                 DateTime      @default(now()) @updatedAt
+  updatedAt                 DateTime       @default(now()) @updatedAt
   kycDocuments              KycDocument[]
   leads                     Lead[]
   projects                  Project[]
-  tenant                    Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
-  tenantLeads               Lead[]        @relation("LeadTenantCustomer")
-  tenantProjects            Project[]     @relation("ProjectTenantClient")
+  tenant                    Tenant?        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
+  tenantLeads               Lead[]         @relation("LeadTenantCustomer")
+  tenantProjects            Project[]      @relation("ProjectTenantClient")
+  pipelineCases             PipelineCase[] @relation("PipelineCaseServiceClient")
   surveys                   Survey[]
 
   @@unique([tenantId, id], map: "osi_clients_tenant_id_id_key")
@@ -424,13 +425,13 @@ model Project {
   client            Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tenant            Tenant?              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_projects_tenant_id_fkey")
   tenantClient      Client?              @relation("ProjectTenantClient", fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "osi_projects_tenant_id_client_id_fkey")
-  pipelineCase      PipelineCase?        @relation("PipelineCaseProjects", fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "osi_projects_tenant_id_pipeline_case_id_fkey")
+  pipelineCase      PipelineCase?        @relation("PipelineCaseProjects", fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Restrict, map: "osi_projects_tenant_id_pipeline_case_id_client_id_fkey")
   surveys           Survey[]
 
   @@unique([tenantId, id], map: "osi_projects_tenant_id_id_key")
   @@index([tenantId, status], map: "osi_projects_tenant_id_status_idx")
   @@index([tenantId, clientId], map: "osi_projects_tenant_id_client_id_idx")
-  @@index([tenantId, pipelineCaseId], map: "osi_projects_tenant_id_pipeline_case_id_idx")
+  @@index([tenantId, pipelineCaseId, clientId], map: "osi_projects_tenant_id_pipeline_case_id_client_id_idx")
   @@map("osi_projects")
 }
 
@@ -1254,6 +1255,7 @@ model TemplateVersion {
 model PipelineCase {
   id                            String                        @id @default(cuid())
   tenantId                      String?                       @map("tenant_id")
+  clientId                      String?                       @map("client_id")
   caseCode                      String                        @unique
   clientName                    String?
   mode                          PipelineMode
@@ -1284,6 +1286,7 @@ model PipelineCase {
   quotes                        PipelineCaseQuote[]
   owner                         User?                         @relation(fields: [ownerId], references: [id])
   tenant                        Tenant?                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_pipeline_cases_tenant_id_fkey")
+  client                        Client?                       @relation("PipelineCaseServiceClient", fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict, map: "osi_pipeline_cases_tenant_id_client_id_fkey")
   enterpriseOwner               TenantMembership?             @relation("PipelineCaseEnterpriseOwner", fields: [tenantId, ownerMembershipId, ownerUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "osi_pipeline_cases_enterprise_owner_fkey")
   crating                       PipelineCratingRequest?
   events                        PipelineEvent[]
@@ -1292,7 +1295,9 @@ model PipelineCase {
   projects                      Project[]                     @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
+  @@unique([tenantId, id, clientId], map: "osi_pipeline_cases_tenant_id_id_client_id_key")
   @@index([tenantId, status, updatedAt], map: "osi_pipeline_cases_tenant_id_status_updated_at_idx")
+  @@index([tenantId, clientId, status, updatedAt], map: "osi_pipeline_cases_tenant_id_client_id_status_updated_at_idx")
   @@index([tenantId, ownerMembershipId, ownerUserId], map: "osi_pipeline_cases_tenant_owner_idx")
   @@index([mode, status, updatedAt])
   @@index([ownerId, status, updatedAt])

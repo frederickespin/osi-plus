@@ -22,9 +22,9 @@ function filesBelow(root) {
 export function validateMt01c2b2Guard(root = process.cwd()) {
   const read = (path) => readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  invariant(migrations.length === 16, "deben existir exactamente 16 migraciones");
+  invariant(migrations.length === 17, "deben existir exactamente 17 migraciones");
   invariant(migrations.some((entry) => entry.name === "20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1");
-  invariant(!migrations.some((entry) => /^20260801016/.test(entry.name)), "migración 17 no autorizada");
+  invariant(migrations.some((entry) => entry.name === "20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT");
 
   const target = read("scripts/mt-01c2b2-local-target.mjs");
   invariant(target.includes("MT01C2B2_TEST_DATABASE_URL"), "falta variable exclusiva");
@@ -99,7 +99,7 @@ export function validateMt01c2b2Guard(root = process.cwd()) {
   for (const [name, value] of Object.entries({ MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" })) {
     if (process.env[name] !== undefined) invariant(process.env[name] === value, `${name} inseguro`);
   }
-  return { ok: true, migrations: 16, runtimeConsumers: 0, automaticHooks: 0, c2b3Blocked: true, expected: { ...{ clients: 7, projects: 2, leads: 0, pipelineCases: 51, mappedOwners: 39, unassigned: 12 } }, modes: { legacy: true, hybrid: false, tenantSwitch: false, clientV2: false } };
+  return { ok: true, migrations: 17, runtimeConsumers: 0, automaticHooks: 0, c2b3Blocked: true, expected: { ...{ clients: 7, projects: 2, leads: 0, pipelineCases: 51, mappedOwners: 39, unassigned: 12 } }, modes: { legacy: true, hybrid: false, tenantSwitch: false, clientV2: false } };
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

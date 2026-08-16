@@ -51,7 +51,7 @@ export function validateMt01c1b3aGuard({ root = process.cwd(), files = trackedFi
   invariant(/EMPLOYEE_PROVISIONING_PERMISSIONS\.MATERIALIZE/.test(policy), "materialize debe permanecer no delegable");
 
   const migrations = normalized.filter((file) => /^prisma\/migrations\/[^/]+\/migration\.sql$/.test(file));
-  invariant(migrations.length === 16, `MT-01C1B3A conserva exactamente 16 migraciones; encontradas=${migrations.length}`);
+  invariant(migrations.length === 17, `MT-01C1B3A conserva exactamente 17 migraciones; encontradas=${migrations.length}`);
   invariant(String(env.MT01B_AUTH_MODE || "LEGACY").toUpperCase() !== "HYBRID", "HYBRID permanece bloqueado");
   invariant(String(env.MT01B_TENANT_SWITCH_ENABLED || "false").toLowerCase() !== "true", "tenant switch permanece bloqueado");
   invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "cliente V2 permanece bloqueado");

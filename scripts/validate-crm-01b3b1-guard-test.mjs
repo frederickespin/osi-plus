@@ -16,7 +16,7 @@ const domain = readFileSync("api/_lib/pipelineCaseDomain.js", "utf8");
 
 try {
   check("baseline CRM-01B3B1", validateCrm01b3b1Guard({ env: {} }).ok);
-  rejected("migración 17 rechazada", { migrationNames: [...Array.from({ length: 16 }, (_, index) => `m${index}`), "20260801016000_unexpected"] }, /16 migraciones/);
+  rejected("migración 18 rechazada", { migrationNames: [...Array.from({ length: 17 }, (_, index) => `m${index}`), "20260801021000_unexpected"] }, /17 migraciones/);
   rejected("producción CRM en CI rechazada", { env: { CRM_PIPELINE_RUNTIME_MODE: "PRODUCTION_READ" } }, /lectura CRM/);
   rejected("batch residual en CI rechazado", { env: { CRM_PIPELINE_ACTIVATION_BATCH: "CRM-01B3B1-PRODUCTION-V1" } }, /batch CRM/);
   rejected("HYBRID rechazado", { env: { MT01B_AUTH_MODE: "HYBRID" } }, /LEGACY/);

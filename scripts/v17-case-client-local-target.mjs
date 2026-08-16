@@ -1,17 +1,16 @@
 const ALLOWED_DATABASES = Object.freeze(new Set([
   "osi_db01n_ci",
-  "osi_crm01b_local",
   "osi_v17_case_client_local",
 ]));
 
 function invariant(condition, message) {
-  if (!condition) throw new Error(`CRM01B1_LOCAL_TARGET_REJECTED: ${message}`);
+  if (!condition) throw new Error(`V17_CASE_CLIENT_LOCAL_TARGET_REJECTED: ${message}`);
 }
 
-export function validateCrm01b1LocalUrl(raw = process.env.CRM01B1_TEST_DATABASE_URL) {
-  invariant(raw, "CRM01B1_TEST_DATABASE_URL es obligatoria; no existe fallback");
+export function validateV17CaseClientLocalUrl(raw = process.env.V17_CASE_CLIENT_TEST_DATABASE_URL) {
+  invariant(raw, "V17_CASE_CLIENT_TEST_DATABASE_URL es obligatoria; no existe fallback");
   let url;
-  try { url = new URL(raw); } catch { throw new Error("CRM01B1_LOCAL_TARGET_REJECTED: URL inválida"); }
+  try { url = new URL(raw); } catch { throw new Error("V17_CASE_CLIENT_LOCAL_TARGET_REJECTED: URL inválida"); }
   const database = decodeURIComponent(url.pathname.replace(/^\//, ""));
   invariant(["postgres:", "postgresql:"].includes(url.protocol), "protocolo no PostgreSQL");
   invariant(url.hostname === "127.0.0.1", "host debe ser exactamente 127.0.0.1");
@@ -23,7 +22,7 @@ export function validateCrm01b1LocalUrl(raw = process.env.CRM01B1_TEST_DATABASE_
   return Object.freeze({ raw, host: "127.0.0.1", port: 55432, database, schema: "osi" });
 }
 
-export function validateCrm01b1DatabaseIdentity(identity, target) {
+export function validateV17CaseClientDatabaseIdentity(identity, target) {
   const address = String(identity?.address || "").split("/")[0];
   invariant(identity?.database === target.database, "current_database no coincide");
   invariant(identity?.schema === "osi", "current_schema no coincide");
@@ -33,8 +32,8 @@ export function validateCrm01b1DatabaseIdentity(identity, target) {
   return Object.freeze({ database: identity.database, schema: identity.schema, address, port: Number(identity.port) });
 }
 
-export async function createCrm01b1LocalPrisma(raw = process.env.CRM01B1_TEST_DATABASE_URL) {
-  const target = validateCrm01b1LocalUrl(raw);
+export async function createV17CaseClientLocalPrisma(raw = process.env.V17_CASE_CLIENT_TEST_DATABASE_URL) {
+  const target = validateV17CaseClientLocalUrl(raw);
   const { PrismaClient } = await import("@prisma/client");
   const prisma = new PrismaClient({ datasourceUrl: target.raw });
   try {
@@ -43,7 +42,7 @@ export async function createCrm01b1LocalPrisma(raw = process.env.CRM01B1_TEST_DA
              inet_server_addr()::text AS address, inet_server_port() AS port,
              current_setting('neon.branch_id', true) AS neon_branch_id
     `);
-    return { prisma, target: validateCrm01b1DatabaseIdentity(identity, target) };
+    return { prisma, target: validateV17CaseClientDatabaseIdentity(identity, target) };
   } catch (error) {
     await prisma.$disconnect();
     throw error;

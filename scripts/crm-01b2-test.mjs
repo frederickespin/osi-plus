@@ -162,13 +162,13 @@ try {
   check("CHANGE_CONTROL vuelve a QUOTE_DRAFT con Quote compatible", changeToDraft.resultingStatus === "QUOTE_DRAFT");
 
   const client = await prisma.client.create({ data: { id: `${run}-client`, tenantId: tenantOne.id, code: `${prefix}-CLIENT`, name: "Synthetic client", email: `${run}-client@example.test`, phone: "0", address: "Synthetic", type: "PERSON", status: "active", createdAt: "2026-08-12" } });
-  const surveyCase = await prisma.pipelineCase.create({ data: caseData(`${run}-case-survey-completed`, tenantOne.id, "SURVEY_SCHEDULED", sellerOne) });
+  const surveyCase = await prisma.pipelineCase.create({ data: { ...caseData(`${run}-case-survey-completed`, tenantOne.id, "SURVEY_SCHEDULED", sellerOne), clientId: client.id } });
   const surveyProject = await prisma.project.create({ data: { id: `${run}-survey-project`, tenantId: tenantOne.id, pipelineCaseId: surveyCase.id, code: `${prefix}-SURVEY-PROJECT`, name: "Synthetic survey project", clientId: client.id, clientName: client.name, status: "active", startDate: "2026-08-12" } });
   const lead = await prisma.lead.create({ data: { id: `${run}-lead`, tenantId: tenantOne.id, code: `${prefix}-LEAD`, status: "active", clientName: "Synthetic" } });
   const survey = await prisma.survey.create({ data: { id: `${run}-survey-complete`, leadId: lead.id, projectId: surveyProject.id, status: "SUBMITTED", submittedAt: new Date() } });
   const surveyCompleted = await domain.transitionPipelineCase(ctxV1, { caseId: surveyCase.id, expectedVersion: 1, requestId: request("survey-completed"), toStatus: "SURVEY_COMPLETED", evidence: { type: "SURVEY", id: survey.id } });
   check("Survey enviado prueba SURVEY_COMPLETED", surveyCompleted.resultingStatus === "SURVEY_COMPLETED" && surveyCompleted.evidence?.id === survey.id);
-  const wonCase = await prisma.pipelineCase.create({ data: caseData(`${run}-case-won`, tenantOne.id, "WON", sellerOne) });
+  const wonCase = await prisma.pipelineCase.create({ data: { ...caseData(`${run}-case-won`, tenantOne.id, "WON", sellerOne), clientId: client.id } });
   const project = await prisma.project.create({ data: { id: `${run}-project`, tenantId: tenantOne.id, pipelineCaseId: wonCase.id, code: `${prefix}-PROJECT`, name: "Synthetic project", clientId: client.id, clientName: client.name, status: "active", startDate: "2026-08-12" } });
   const projectBefore = await prisma.project.findUnique({ where: { id: project.id } });
   const ops = await domain.transitionPipelineCase(ctxV1, { caseId: wonCase.id, expectedVersion: 1, requestId: request("ops"), toStatus: "OPS_HANDOFF", evidence: { type: "PROJECT", id: project.id } });
@@ -242,8 +242,8 @@ try {
       await tx.survey.deleteMany({ where: { id: { startsWith: run } } });
       await tx.project.deleteMany({ where: { id: { startsWith: run } } });
       await tx.lead.deleteMany({ where: { id: { startsWith: run } } });
-      await tx.client.deleteMany({ where: { id: { startsWith: run } } });
       await tx.pipelineCase.deleteMany({ where: { id: { startsWith: run } } });
+      await tx.client.deleteMany({ where: { id: { startsWith: run } } });
       await tx.tenantMembership.deleteMany({ where: { id: { startsWith: run } } });
       await tx.user.deleteMany({ where: { id: { startsWith: run } } });
       await tx.tenant.deleteMany({ where: { id: { startsWith: run } } });

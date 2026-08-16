@@ -61,6 +61,7 @@ try {
         id: `${run}-client-2`, tenantId: tenantTwo.id, code: `${run}-CLIENT-2`.toUpperCase(), name: "Synthetic client two",
         email: `${run}-client-2@example.test`, phone: "0000000000", address: "Synthetic", type: "PERSON", status: "active", createdAt: "2026-08-11",
       } });
+      await tx.pipelineCase.update({ where: { id: pipelineOne.id }, data: { clientId: clientOne.id } });
       fixtureIds = { tenantOne: tenantOne.id, tenantTwo: tenantTwo.id };
 
       check("filas legacy reciben versión uno", pipelineOne.version === 1 && pipelineOne.statusChangedAt === null && pipelineOne.lossReasonCode === null);

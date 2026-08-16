@@ -9,8 +9,8 @@ function files(root) {
 }
 
 const migrationNames = readdirSync("prisma/migrations", { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => item.name);
-invariant(migrationNames.length === 16, "se exigen exactamente 16 migraciones");
-invariant(!migrationNames.some((name) => /^20260801016000|migration.?17/i.test(name)), "migración 17 prohibida");
+invariant(migrationNames.length === 17, "se exigen exactamente 17 migraciones");
+invariant(migrationNames.includes("20260801020000_v17_pipeline_case_client_authority"), "migración 17 V17-CASE-CLIENT ausente");
 
 const clientRoot = "src/crm-relational";
 const clientFiles = files(clientRoot).filter((path) => /\.(?:ts|tsx)$/.test(path));

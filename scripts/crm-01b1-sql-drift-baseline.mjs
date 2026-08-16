@@ -7,19 +7,20 @@ import { createCrm01b1LocalPrisma } from "./crm-01b1-local-target.mjs";
 export const PRISMA_EMPTY_DIFF_SHA256 = "0983c8c2474f18152b093842104ef9aef25f03fb78861c9e681da2249a64a385";
 export const LOCAL_15_CATALOG_SHA256 = "cf48b58f82cdaa9f2ce4e7bb3f467848ee32a3b83043977d56a896f27888dd35";
 export const LOCAL_16_CATALOG_SHA256 = "f220349f2c2cbdd2ae083f57ba2ae18ee66716873ffbea8057ac60147853dc1d";
+export const LOCAL_17_CATALOG_SHA256 = "2fd393729897916bdb3a7135d73e69f8efeefa8cb5b708505dc08323eaef42f9";
 export const RESTORED_NEON_15_CATALOG_SHA256 = "4d5959dc99b03a7866bc3e038fcaea611fe665a5412cb235522cc05ab5e011d3";
 
 const EXPECTED_CATALOG = Object.freeze({
-  count: 4260,
-  sha256: LOCAL_16_CATALOG_SHA256,
+  count: 4265,
+  sha256: LOCAL_17_CATALOG_SHA256,
   categories: Object.freeze({
-    check: Object.freeze({ count: 154, sha256: "41f72526eb8dea1eeeb4cab36285f794f005ca199cfde6f1452bb0f879b53324" }),
-    column: Object.freeze({ count: 1702, sha256: "9bf8f077a56286b2536058672d116a11920a60b98e4f2468e2dc7c7fc59f06a0" }),
+    check: Object.freeze({ count: 155, sha256: "81b32a33efc0c24c760d871165ad15179674913e02ba465cd07d3d0f6209080f" }),
+    column: Object.freeze({ count: 1703, sha256: "829187d26e7d59d9d437adfd5dbefa88887cc2bff29835d9fa6706c349eb9123" }),
     constraint: Object.freeze({ count: 1251, sha256: "c1f2854097ad6628e0b6876b6cb88aef31a23c2f68319d1b36aed67733fafd7f" }),
     enum: Object.freeze({ count: 442, sha256: "1d576d17b8ec777d73cb19cb8c5e6179bf1eb08966a483bee884a2fa4a8e2319" }),
-    foreign_key: Object.freeze({ count: 209, sha256: "8c5b1d42e7f03dba1c916911d1122152fb30c03d93ea12f50ef369a72fa8cb61" }),
+    foreign_key: Object.freeze({ count: 210, sha256: "e927d1e37e0b1ceedda9c78da6b4e0d40d8d8c874188d92babec9087c9698ec0" }),
     function: Object.freeze({ count: 28, sha256: "bea675390e2405d8921d5c53a8e3733838b1ea5693e7bf1604272dc201175d79" }),
-    index: Object.freeze({ count: 441, sha256: "c1be351be4a1bbccd165155d6cce61f979fc1891cb35ec357f46b071db8f13fd" }),
+    index: Object.freeze({ count: 443, sha256: "e903f3cb4883de4810e09bba88c12088b66e9dc1f650a58a9dbeb85e4f31bf47" }),
     trigger: Object.freeze({ count: 33, sha256: "46a656f501dd37ca44e79ded5cdf16360b4109077b24406be0eded22b164d5c6" }),
   }),
 });
@@ -41,6 +42,7 @@ const EXPECTED_SQL_ONLY_COUNTS = Object.freeze({
   "20260801013000_mt01c1b1_provisioning_persistence": Object.freeze({ check: 21, function: 3, special_index: 1, trigger: 3 }),
   "20260801014000_mt01c2b1_commercial_tenant_foundation": Object.freeze({ check: 1, function: 1, trigger: 1 }),
   "20260801015000_crm01b_pipeline_mutation_authority": Object.freeze({ check: 13, function: 3, trigger: 3 }),
+  "20260801020000_v17_pipeline_case_client_authority": Object.freeze({ check: 1 }),
 });
 
 const CATALOG_SQL = `
@@ -183,7 +185,7 @@ export async function inspectCrm01b1SqlDriftBaseline({ root = process.cwd(), raw
         FROM "osi"."_prisma_migrations"
         WHERE rolled_back_at IS NULL
       `);
-      invariant(history.complete === 16 && history.failed === 0, "historial no es 16/16 completo");
+      invariant(history.complete === 17 && history.failed === 0, "historial no es 17/17 completo");
       const rows = (await tx.$queryRawUnsafe(CATALOG_SQL)).map((row) => Object.freeze({
         kind: row.kind,
         schema: row.schema_name,

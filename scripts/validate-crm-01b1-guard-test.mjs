@@ -24,10 +24,10 @@ function rejectedCatalog(name, catalog, pattern) {
 
 try {
   const baseline = validateCrm01b1Guard({ root });
-  check("fundación inactiva aprobada", baseline.ok && baseline.migrations === 16 && baseline.approved === "FROZEN_LEGACY_AMBIGUOUS");
-  rejected("migración 17 rechazada", {
-    migrations: [...Array.from({ length: 16 }, (_, index) => `m${index}`), "20260801016000_unexpected"],
-  }, /16 migraciones/);
+  check("fundación inactiva aprobada", baseline.ok && baseline.migrations === 17 && baseline.approved === "FROZEN_LEGACY_AMBIGUOUS");
+  rejected("migración 18 rechazada", {
+    migrations: [...Array.from({ length: 17 }, (_, index) => `m${index}`), "20260801021000_unexpected"],
+  }, /17 migraciones/);
   rejected("consumidor runtime rechazado", { extraSources: { "api/crm/mutate.js": "await prisma.pipelineCaseCommand.create({ data });" } }, /consumidores runtime/);
   rejected("mutación runtime rechazada", { extraSources: { "api/crm/mutate.js": "await prisma.pipelineCase.update({ where, data });" } }, /mutaciones PipelineCase/);
   const sqlPath = "prisma/migrations/20260801015000_crm01b_pipeline_mutation_authority/migration.sql";
@@ -57,12 +57,12 @@ try {
     overrides: { ".github/workflows/ci.yml": workflow.replace("node scripts/crm-01b1-sql-drift-baseline.mjs", "echo baseline-removed") },
   }, /CI no exige baseline/);
   rejectedCatalog("objeto agregado a baseline rechazado", {
-    count: 4261,
-    sha256: "f220349f2c2cbdd2ae083f57ba2ae18ee66716873ffbea8057ac60147853dc1d",
+    count: 4266,
+    sha256: "2fd393729897916bdb3a7135d73e69f8efeefa8cb5b708505dc08323eaef42f9",
     categories: {},
   }, /conteo total/);
   rejectedCatalog("definición cambiada en baseline rechazada", {
-    count: 4260,
+    count: 4265,
     sha256: "0".repeat(64),
     categories: {},
   }, /firma total/);

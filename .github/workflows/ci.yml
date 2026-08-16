@@ -63,6 +63,7 @@ jobs:
       MT01C2B3B_TEST_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
       CRM01A_TEST_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
       CRM01B1_TEST_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      V17_CASE_CLIENT_TEST_DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
       VITE_MT01B2_CLIENT_ENABLED: "false"
@@ -172,6 +173,7 @@ jobs:
       MT01C2B3B_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       CRM01A_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       CRM01B1_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      V17_CASE_CLIENT_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       CRM01B2_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
@@ -229,6 +231,9 @@ jobs:
           node scripts/validate-sec-com-01a-guard-test.mjs
           node scripts/validate-mt01c2b1-guard.mjs
           node scripts/validate-mt01c2b1-guard-test.mjs
+          node scripts/validate-v17-case-client-guard.mjs
+          node scripts/validate-v17-case-client-guard-test.mjs
+          node scripts/v17-case-client-local-target-test.mjs
           node scripts/validate-mt01c2b2-guard.mjs
           node scripts/mt-01c2b2-database-guard-test.mjs
           node scripts/validate-mt01c2b2-guard-test.mjs
@@ -323,6 +328,8 @@ jobs:
           node scripts/validate-mt01c1b2b-guard.mjs
           node scripts/validate-mt01c1b3a-guard.mjs
           node scripts/validate-mt01c2b1-guard.mjs
+          node scripts/validate-v17-case-client-guard.mjs
+          node scripts/validate-v17-case-client-guard-test.mjs
           node scripts/validate-mt01c2b3a-guard.mjs
           node scripts/validate-mt01c2b3a-guard-test.mjs
           node scripts/validate-mt01c2b3b-guard.mjs

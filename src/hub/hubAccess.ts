@@ -41,8 +41,6 @@ export function evaluateHubAccess(application: HubApplication, context: HubAcces
     reason: permissionAllowed ? "ALLOWED" : "PERMISSION_MISSING",
   });
 }
-
 export function visibleHubApplications(applications: readonly HubApplication[], context: HubAccessContext) {
   return applications.filter((application) => evaluateHubAccess(application, context).allowed);
 }
-

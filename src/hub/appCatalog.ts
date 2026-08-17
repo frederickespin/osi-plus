@@ -43,4 +43,3 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
 export function findHubApplicationByRoute(pathname: string) {
   return HUB_APPLICATIONS.find((application) => application.route === pathname) ?? null;
 }
-

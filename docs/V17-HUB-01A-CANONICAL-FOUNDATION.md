@@ -7,4 +7,3 @@ La compuerta `VITE_OSI_HUB_MODE` acepta exclusivamente `DISABLED` y `LOCAL_ONLY`
 Las ocho aplicaciones registradas permanecen inactivas. Comercial/CRM será el primer módulo conectado en un lote independiente. OSi Survey conserva únicamente descriptor, ruta y pantalla sin backend, asignaciones, drafts, autosave o persistencia.
 
 Portal Cliente IP queda fuera del catálogo de empleados. Requerirá frontend y URL externos, identidad y sesiones propias, `AccessGrant` y scopes de servidor; nunca reutilizará una sesión de empleado.
-

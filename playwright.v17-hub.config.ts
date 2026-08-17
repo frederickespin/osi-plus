@@ -28,4 +28,3 @@ export default defineConfig({
     { name: "webkit-mobile", use: { ...devices["iPhone 13"] } },
   ],
 });
-

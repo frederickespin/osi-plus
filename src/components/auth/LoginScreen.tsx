@@ -25,6 +25,8 @@ export interface LoginSession {
   userId: string;
   name: string;
   role: UserRole;
+  permissions?: readonly string[];
+  deniedPermissions?: readonly string[];
 }
 
 interface LoginScreenProps {
@@ -56,6 +58,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           userId: response.user.id,
           name: response.user.name,
           role: response.user.role as UserRole,
+          permissions: Array.isArray(response.user.permissions) ? response.user.permissions : undefined,
+          deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
         };
         
         // Store session in localStorage

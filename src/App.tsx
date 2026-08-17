@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useEffect, useState } from 'react';
+import { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { LoginScreen, type LoginSession } from '@/components/auth/LoginScreen';
 import { Toaster } from '@/components/ui/sonner';
@@ -13,6 +13,8 @@ import {
 } from '@/lib/sessionStore';
 import { isRelationalCrmClientEnabled, resolveCrmPipelineClientMode } from '@/crm-relational/clientMode';
 import type { ModuleId } from '@/lib/roleModuleMap';
+import { resolveOsiHubMode } from '@/hub/hubMode';
+import type { HubAccessContext } from '@/hub/hubAccess';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const TowerControl = lazy(() =>
@@ -142,6 +144,7 @@ const KProjectModule = lazy(() =>
 const RelationalPipelineModule = lazy(() =>
   import('@/crm-relational/RelationalPipelineModule').then((m) => ({ default: m.RelationalPipelineModule }))
 );
+const HubWorkspace = lazy(() => import('@/hub/HubWorkspace'));
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
@@ -205,6 +208,8 @@ function validateLegacySession(session: Session): Promise<Session> {
       userId: response.user.id,
       name: response.user.name,
       role,
+      permissions: Array.isArray(response.user.permissions) ? response.user.permissions : undefined,
+      deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
     };
   });
   const entry = { token, promise };
@@ -252,9 +257,16 @@ async function resolveInitialAuthState(): Promise<AuthState> {
 }
 
 function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
+  const hubMode = resolveOsiHubMode();
   const crmPipelineClientEnabled = isRelationalCrmClientEnabled(resolveCrmPipelineClientMode());
   const userRole: UserRole = session.role;
   const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
+  const hubAccessContext = useMemo<HubAccessContext>(() => ({
+    role: userRole,
+    effectivePermissions: session.permissions ?? null,
+    deniedPermissions: session.deniedPermissions ?? [],
+    source: session.permissions ? 'SERVER_EFFECTIVE_PERMISSIONS' : 'SERVER_VALIDATED_ROLE',
+  }), [session.deniedPermissions, session.permissions, userRole]);
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {
@@ -382,6 +394,26 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
         return <TowerControl />;
     }
   };
+
+  if (!hubMode.valid) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-slate-950 p-6 text-white">
+        <section className="max-w-lg rounded-2xl border border-red-400/40 bg-slate-900 p-7 text-center">
+          <h1 className="text-xl font-bold">Configuración Hub rechazada</h1>
+          <p className="mt-2 text-sm text-slate-300">VITE_OSI_HUB_MODE sólo admite LOCAL_ONLY en un host loopback.</p>
+          <button onClick={onLogout} className="mt-5 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-950">Cerrar sesión</button>
+        </section>
+      </main>
+    );
+  }
+
+  if (hubMode.enabled) {
+    return (
+      <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
+        <HubWorkspace userName={session.name} accessContext={hubAccessContext} onLogout={onLogout} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-50">

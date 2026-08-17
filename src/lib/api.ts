@@ -31,6 +31,8 @@ export type UserDto = {
   joinDate: string;
   points: number;
   rating: number;
+  permissions?: string[];
+  deniedPermissions?: string[];
 };
 
 export type ClientDto = {

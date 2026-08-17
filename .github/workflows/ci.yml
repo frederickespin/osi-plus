@@ -132,6 +132,7 @@ jobs:
           node scripts/validate-crm-01b3b3-guard-test.mjs
           node scripts/validate-sec-dep-01-guard.mjs
           node scripts/validate-sec-dep-01-guard-test.mjs
+          node scripts/validate-v17-hub-guard.mjs
 
       - name: Typecheck inactive relational CRM client
         run: npm run typecheck:crm-01b3b2
@@ -147,6 +148,9 @@ jobs:
 
       - name: Validate inactive relational CRM client in real browsers
         run: npm run test:crm-01b3b2:browser
+
+      - name: Validate inactive OSi Plus Hub in real browsers
+        run: npm run test:v17-hub:browser
 
       - name: Verify repository cleanliness
         run: git diff --exit-code
@@ -233,6 +237,7 @@ jobs:
           node scripts/validate-mt01c2b1-guard-test.mjs
           node scripts/validate-v17-case-client-guard.mjs
           node scripts/validate-v17-case-client-guard-test.mjs
+          node scripts/validate-v17-hub-guard.mjs
           node scripts/v17-case-client-local-target-test.mjs
           node scripts/validate-mt01c2b2-guard.mjs
           node scripts/mt-01c2b2-database-guard-test.mjs
@@ -330,6 +335,7 @@ jobs:
           node scripts/validate-mt01c2b1-guard.mjs
           node scripts/validate-v17-case-client-guard.mjs
           node scripts/validate-v17-case-client-guard-test.mjs
+          node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-mt01c2b3a-guard.mjs
           node scripts/validate-mt01c2b3a-guard-test.mjs
           node scripts/validate-mt01c2b3b-guard.mjs

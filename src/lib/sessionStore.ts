@@ -5,6 +5,8 @@ export type Session = {
   name?: string;
   role: UserRole; // 'A','V','K',...
   token?: string;
+  permissions?: readonly string[];
+  deniedPermissions?: readonly string[];
 };
 
 export type StoredSessionInspection =

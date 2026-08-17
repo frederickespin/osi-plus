@@ -12,6 +12,7 @@
     "test:mt01b2b:browser": "playwright test",
     "test:sec-dep-01:browser": "playwright test -c playwright.sec-dep.config.ts",
     "test:crm-01b3b2:browser": "playwright test -c playwright.crm-01b3b2.config.ts",
+    "test:v17-hub:browser": "playwright test -c playwright.v17-hub.config.ts",
     "typecheck:crm-01b3b2": "tsc -p tsconfig.crm-01b3b2.json --pretty false",
     "preview": "vite preview",
     "db:generate": "prisma generate",

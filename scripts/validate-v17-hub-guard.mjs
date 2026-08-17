@@ -15,6 +15,8 @@ if (migrationChanges) fail("canonical migrations changed");
 const mode = text(join("src", "hub", "hubMode.ts"));
 if (!mode.includes('DISABLED: "DISABLED"') || !mode.includes('LOCAL_ONLY: "LOCAL_ONLY"')) fail("strict gate values missing");
 if (!mode.includes('raw === undefined || raw === OSI_HUB_MODES.DISABLED')) fail("DISABLED is not the default");
+if (!mode.includes('key.startsWith("VERCEL")')) fail("gate does not reject every VERCEL* environment key");
+if (!mode.includes('hostname === "[::1]"')) fail("gate does not require the literal IPv6 loopback hostname");
 const app = text(join("src", "App.tsx"));
 if (!app.includes("const HubWorkspace = lazy(() => import('@/hub/HubWorkspace'))")) fail("Hub is not lazy");
 if (/import\s+HubWorkspace\s+from/.test(app)) fail("Hub has an eager runtime import");
@@ -30,6 +32,11 @@ for (const appId of requiredApps) if (!catalog.includes(`appId: "${appId}"`)) fa
 if (/portal.client|portal-cliente|client-portal/i.test(catalog)) fail("employee catalog contains Client Portal");
 const hubSources = ["appCatalog.ts", "hubAccess.ts", "HubWorkspace.tsx", "OsiSurveyInactive.tsx"].map((name) => text(join("src", "hub", name))).join("\n");
 if (/x-osi-|localStorage|sessionStorage|URLSearchParams|\/api\//i.test(hubSources)) fail("Hub trusts browser authority or calls an API");
+if (/ADD_TAGS|ADD_ATTR|dangerouslySetInnerHTML|fixture|mock|offline.?queue|password|token/i.test(hubSources)) fail("Hub source contains unsafe rendering, fixtures, queues, or credentials");
+
+const catalogRoutes = [...catalog.matchAll(/route:\s*"([^"]+)"/g)].map((match) => match[1]);
+if (catalogRoutes.length !== requiredApps.length || catalogRoutes.some((route) => !/^\/[a-z][a-z-]*$/.test(route))) fail("catalog contains a missing or unsafe route");
+if (!catalog.includes('appId: "osi-survey"') || !catalog.includes("baselineRoles: []")) fail("OSi Survey has implicit role authorization");
 
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
 if (changed.some((path) => path.startsWith("api/") || path.startsWith("prisma/") || path.startsWith("src/data/"))) fail("forbidden backend, schema, migration, or mock change");

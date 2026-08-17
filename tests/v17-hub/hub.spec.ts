@@ -18,21 +18,34 @@ async function authenticate(page: Page, actor: Actor) {
 
 test("compuerta acepta sólo DISABLED/LOCAL_ONLY exactos y LOCAL_ONLY sólo en loopback", async ({ page }) => {
   const cases = [
-    ["__ABSENT__", "127.0.0.1", "DISABLED", "false", "true"],
-    ["DISABLED", "127.0.0.1", "DISABLED", "false", "true"],
-    ["LOCAL_ONLY", "127.0.0.1", "LOCAL_ONLY", "true", "true"],
-    ["LOCAL_ONLY", "localhost", "LOCAL_ONLY", "true", "true"],
-    ["LOCAL_ONLY", "preview.example.test", "DISABLED", "false", "false"],
-    ["LOCAL_ONLY&vercel=1", "127.0.0.1", "DISABLED", "false", "false"],
-    ["local_only", "127.0.0.1", "DISABLED", "false", "false"],
-    ["%20LOCAL_ONLY", "127.0.0.1", "DISABLED", "false", "false"],
-    ["%EF%BB%BFLOCAL_ONLY", "127.0.0.1", "DISABLED", "false", "false"],
+    { gate: "__ABSENT__", host: "127.0.0.1", mode: "DISABLED", enabled: false, valid: true },
+    { gate: "DISABLED", host: "127.0.0.1", mode: "DISABLED", enabled: false, valid: true },
+    { gate: "LOCAL_ONLY", host: "127.0.0.1", mode: "LOCAL_ONLY", enabled: true, valid: true },
+    { gate: "LOCAL_ONLY", host: "localhost", mode: "LOCAL_ONLY", enabled: true, valid: true },
+    { gate: "LOCAL_ONLY", host: "[::1]", mode: "LOCAL_ONLY", enabled: true, valid: true },
+    { gate: "LOCAL_ONLY", host: "::1", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY", host: "127.0.0.1.evil.test", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY", host: "localhost.example.test", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY", host: "127.0.0.10", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY", host: "preview.example.test", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "local_only", host: "127.0.0.1", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY ", host: "127.0.0.1", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "\"LOCAL_ONLY\"", host: "127.0.0.1", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "\uFEFFLOCAL_ONLY", host: "127.0.0.1", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY\r\n", host: "127.0.0.1", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "UNKNOWN", host: "127.0.0.1", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY", host: "127.0.0.1", vercelKey: "VERCEL", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY", host: "127.0.0.1", vercelKey: "VERCEL_ENV", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY", host: "127.0.0.1", vercelKey: "VERCEL_GIT_COMMIT_REF", mode: "DISABLED", enabled: false, valid: false },
+    { gate: "LOCAL_ONLY", host: "127.0.0.1", vercelKey: "VERCEL_URL", mode: "DISABLED", enabled: false, valid: false },
   ];
-  for (const [gate, host, mode, enabled, valid] of cases) {
-    await page.goto(`/tests/v17-hub/mode-harness.html?gate=${gate}&host=${host}`);
+  for (const { gate, host, vercelKey, mode, enabled, valid } of cases) {
+    const params = new URLSearchParams({ gate, host });
+    if (vercelKey) params.set("vercelKey", vercelKey);
+    await page.goto(`/tests/v17-hub/mode-harness.html?${params}`);
     await expect(page.locator("body")).toHaveAttribute("data-mode", mode);
-    await expect(page.locator("body")).toHaveAttribute("data-enabled", enabled);
-    await expect(page.locator("body")).toHaveAttribute("data-valid", valid);
+    await expect(page.locator("body")).toHaveAttribute("data-enabled", String(enabled));
+    await expect(page.locator("body")).toHaveAttribute("data-valid", String(valid));
   }
 });
 
@@ -45,6 +58,36 @@ test("DISABLED conserva la aplicación actual y no descarga el chunk Hub", async
   await expect(page.getByText("OSi Plus Hub", { exact: true })).toHaveCount(0);
   expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|appCatalog/i.test(path))).toBe(false);
   expect(requests.filter((path) => path.startsWith("/api/"))).toEqual(["/api/auth/me"]);
+});
+
+test("DISABLED también bloquea deep links sin prefetch, listeners ni timers del Hub", async ({ page }) => {
+  const resources: string[] = [];
+  await page.addInitScript(() => {
+    const originalAddEventListener = window.addEventListener.bind(window);
+    const originalSetTimeout = window.setTimeout.bind(window);
+    const audit = { listeners: [] as string[], timers: [] as string[] };
+    Object.defineProperty(window, "__v17HubDisabledAudit", { value: audit });
+    window.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+      const stack = new Error().stack || "";
+      if (/src[\\/]hub|HubWorkspace|OsiSurveyInactive/i.test(stack)) audit.listeners.push(type);
+      return originalAddEventListener(type, listener, options);
+    }) as typeof window.addEventListener;
+    window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      const stack = new Error().stack || "";
+      if (/src[\\/]hub|HubWorkspace|OsiSurveyInactive/i.test(stack)) audit.timers.push(String(timeout));
+      return originalSetTimeout(handler, timeout, ...args);
+    }) as typeof window.setTimeout;
+  });
+  page.on("request", (request) => resources.push(new URL(request.url()).pathname));
+  await authenticate(page, { role: "A", name: "Actor disabled" });
+  await page.goto("http://127.0.0.1:4184/survey");
+  await expect(page.getByText("Actor disabled")).toBeVisible();
+  await expect(page.getByText("OSi Plus Hub", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("osi-survey-inactive")).toHaveCount(0);
+  const audit = await page.evaluate(() => (window as typeof window & { __v17HubDisabledAudit: { listeners: string[]; timers: string[] } }).__v17HubDisabledAudit);
+  expect(audit).toEqual({ listeners: [], timers: [] });
+  expect(resources.some((path) => /HubWorkspace|OsiSurveyInactive|appCatalog|hubAccess/i.test(path))).toBe(false);
+  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /HubWorkspace|OsiSurveyInactive|appCatalog|hubAccess/i.test(entry.name)))).toBe(false);
 });
 
 test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) => {
@@ -80,6 +123,47 @@ test("query, storage y x-osi-* no elevan un contexto validado", async ({ page })
   await page.goto("/hub");
   await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Operaciones" })).toBeVisible();
+});
+
+test("hash, URL, sessionStorage y headers de proxy no alteran autoridad", async ({ page }) => {
+  await page.setExtraHTTPHeaders({
+    "x-forwarded-host": "127.0.0.1",
+    "x-osi-role": "A",
+    "x-osi-userid": "forged",
+  });
+  await authenticate(page, { role: "RB" });
+  await page.addInitScript(() => {
+    sessionStorage.setItem("role", "A");
+    sessionStorage.setItem("permissions", "clients:view,survey:assigned:view");
+  });
+  await page.goto("/commercial?role=A#permission=clients:view");
+  await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  await page.goto("/survey?permission=survey:assigned:view#role=A");
+  await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+});
+
+test("rutas desconocidas y traversal permanecen cerrados; back/forward conserva la guardia", async ({ page }) => {
+  await authenticate(page, { role: "A" });
+  for (const pathname of ["/unknown-hub-route", "/survey/%252e%252e/commercial", "/%2F%2Fevil.example.test"]) {
+    await page.goto(pathname);
+    await expect(page.getByText("404 · Ruta del Hub no registrada")).toBeVisible();
+  }
+  await page.goto("/hub");
+  await page.locator("main").getByRole("button", { name: /Comercial y CRM/ }).click();
+  await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByText("Hola, Actor A")).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toBeVisible();
+});
+
+test("denegar Survey no descarga el módulo destino", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(new URL(request.url()).pathname));
+  await authenticate(page, { role: "A", deniedPermissions: ["survey:assigned:view"] });
+  await page.goto("/survey");
+  await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  expect(requests.some((path) => /OsiSurveyInactive/i.test(path))).toBe(false);
 });
 
 test("OSi Survey exige autorización explícita y permanece sin API ni persistencia", async ({ page }) => {

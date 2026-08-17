@@ -16,7 +16,11 @@ type HubEnvironment = Record<string, unknown>;
 type HubRuntime = { hostname?: string };
 
 function isLoopback(hostname: string) {
-  return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1";
+  return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
+}
+
+function containsVercelEnvironment(environment: HubEnvironment) {
+  return Object.keys(environment).some((key) => key.startsWith("VERCEL"));
 }
 
 export function resolveOsiHubMode(
@@ -30,7 +34,7 @@ export function resolveOsiHubMode(
   if (raw !== OSI_HUB_MODES.LOCAL_ONLY) {
     return Object.freeze({ mode: OSI_HUB_MODES.DISABLED, enabled: false, valid: false, reason: "VALUE_INVALID" });
   }
-  if (environment.VERCEL === "1" || environment.VERCEL_ENV !== undefined) {
+  if (containsVercelEnvironment(environment)) {
     return Object.freeze({ mode: OSI_HUB_MODES.DISABLED, enabled: false, valid: false, reason: "VERCEL_FORBIDDEN" });
   }
   if (!isLoopback(String(runtime.hostname || ""))) {

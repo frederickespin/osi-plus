@@ -38,7 +38,7 @@ function statusLabel(application: HubApplication) {
 }
 
 function environmentLabel() {
-  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)
+  return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)
     ? "Desarrollo local"
     : ENV_LABELS[getAppEnv()];
 }

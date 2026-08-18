@@ -75,7 +75,8 @@ async function mockCrm(page: Page, options: { total?: number; cases?: ReturnType
     if (url.pathname === "/api/crm/pipeline-cases") {
       const pageNumber = Number(url.searchParams.get("page") || 1);
       const pageSize = Number(url.searchParams.get("pageSize") || 25);
-      const generated = rows.length ? rows : Array.from({ length: Math.min(pageSize, total) }, (_, index) => pipelineCase({ id: `internal-${pageNumber}-${index}`, caseCode: `CRM-${String((pageNumber - 1) * pageSize + index + 1).padStart(5, "0")}` }));
+      const expectedRows = Math.min(pageSize, Math.max(0, total - ((pageNumber - 1) * pageSize)));
+      const generated = Array.from({ length: expectedRows }, (_, index) => rows[index] ?? pipelineCase({ id: `internal-${pageNumber}-${index}`, caseCode: `CRM-${String((pageNumber - 1) * pageSize + index + 1).padStart(5, "0")}` }));
       return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total, page: pageNumber, pageSize, data: generated }) });
     }
     const id = decodeURIComponent(url.pathname.split("/").at(-1) || "");
@@ -147,7 +148,12 @@ test("aliases, deep links, reload y regreso al Hub conservan la misma guardia", 
 });
 
 test("rol no elegible y deniedPermissions bloquean antes de descargar el módulo o consultar CRM", async ({ browser }) => {
-  for (const actor of [{ role: "K", permissions: ["pipeline:view"] }, { role: "A", permissions: ["pipeline:view"], deniedPermissions: ["pipeline:view"] }]) {
+  for (const actor of [
+    { role: "K", permissions: ["pipeline:view"] },
+    { role: "A" },
+    { role: "V" },
+    { role: "A", permissions: ["pipeline:view"], deniedPermissions: ["pipeline:view"] },
+  ]) {
     const context = await browser.newContext();
     const page = await context.newPage();
     const resources: string[] = [];
@@ -159,6 +165,56 @@ test("rol no elegible y deniedPermissions bloquean antes de descargar el módulo
     expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
     await context.close();
   }
+});
+
+test("toda combinación parcial de compuertas evita chunk y requests del Inbox", async ({ browser }) => {
+  const configurations = [
+    { port: 4186, label: "todo desactivado" },
+    { port: 4187, label: "cliente desactivado" },
+    { port: 4188, label: "lectura desactivada" },
+    { port: 4189, label: "Hub desactivado" },
+  ];
+  for (const configuration of configurations) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const resources: string[] = [];
+    page.on("request", (request) => resources.push(new URL(request.url()).pathname));
+    await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
+    await page.goto(`http://127.0.0.1:${configuration.port}/commercial`);
+    await expect(page.getByTestId("commercial-crm-inbox"), configuration.label).toHaveCount(0);
+    expect(resources.some((path) => /CommercialInboxModule/i.test(path)), configuration.label).toBe(false);
+    expect(resources.some((path) => path.startsWith("/api/crm/")), configuration.label).toBe(false);
+    await context.close();
+  }
+});
+
+test("resolvers fallan cerrado ante valores y entornos ambiguos", async ({ page }) => {
+  await page.goto("/tests/v17-commercial-crm/read-api-harness.html");
+  const result = await page.evaluate(async () => {
+    const crm = await import("/src/crm-relational/clientMode.ts");
+    const hub = await import("/src/hub/hubMode.ts");
+    const loopbacks = ["localhost", "127.0.0.1", "[::1]"];
+    const invalidValues = ["local_only", " LOCAL_ONLY", "LOCAL_ONLY ", "\"LOCAL_ONLY\"", "\ufeffLOCAL_ONLY", "LOCAL_ONLY\r", "LOCAL_ONLY\n", "UNKNOWN"];
+    const remoteHosts = ["127.0.0.1.evil.test", "127.0.0.10", "localhost.example", "::1", "example.test"];
+    return {
+      loopbacks: loopbacks.every((hostname) => crm.isRelationalCrmReadEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY" }, { hostname })),
+      invalid: invalidValues.every((value) => !crm.isRelationalCrmReadEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: value, VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY" }, { hostname: "127.0.0.1" })
+        && !crm.isRelationalCrmReadEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: value }, { hostname: "127.0.0.1" })
+        && !hub.resolveOsiHubMode({ VITE_OSI_HUB_MODE: value }, { hostname: "127.0.0.1" }).enabled),
+      remote: remoteHosts.every((hostname) => !crm.isRelationalCrmReadEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY" }, { hostname })),
+      vercel: ["VERCEL", "VERCEL_ENV", "VERCELX"].every((key) => !crm.isRelationalCrmReadEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", [key]: "1" }, { hostname: "127.0.0.1" })
+        && !hub.resolveOsiHubMode({ VITE_OSI_HUB_MODE: "LOCAL_ONLY", [key]: "1" }, { hostname: "127.0.0.1" }).enabled),
+    };
+  });
+  expect(result).toEqual({ loopbacks: true, invalid: true, remote: true, vercel: true });
+});
+
+test("adaptador HTTP rechaza contratos adversariales y conserva Bearer sólo en header", async ({ page }) => {
+  await page.goto("/tests/v17-commercial-crm/read-api-adversarial-harness.html");
+  await expect(page.locator("body")).toHaveAttribute("data-result", "passed");
+  const result = await page.evaluate(() => JSON.parse(document.body.dataset.details || "{}"));
+  expect(result.failed).toEqual([]);
+  expect(result.passed).toBe(23);
 });
 
 test("compuerta CRM desactivada mantiene descriptor inactivo sin chunk ni requests", async ({ page }) => {

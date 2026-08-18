@@ -13,7 +13,10 @@ invariant(!changed.some((path) => path.startsWith("api/") || path.startsWith("pr
 
 const catalog = read("src/hub/appCatalog.ts");
 invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");
-invariant(/appId: "commercial-crm"[\s\S]{0,500}requiredPermissions: \["pipeline:view"\][\s\S]{0,100}permissionMode: "ALL"[\s\S]{0,100}baselineRoles: \["A", "V"\]/.test(catalog), "autoridad exacta A/V + pipeline:view ausente");
+invariant(/appId: "commercial-crm"[\s\S]{0,500}requiredPermissions: \["pipeline:view"\][\s\S]{0,100}permissionMode: "ALL"[\s\S]{0,100}requiresExplicitPermissions: true[\s\S]{0,100}baselineRoles: \["A", "V"\]/.test(catalog), "autoridad explícita A/V + pipeline:view ausente");
+
+const access = read("src/hub/hubAccess.ts");
+invariant(/application\.requiresExplicitPermissions[\s\S]{0,150}PERMISSION_MISSING/.test(access), "rol baseline no puede sustituir permiso explícito");
 
 const hub = read("src/hub/HubWorkspace.tsx");
 invariant(/lazy\(\(\) => import\("@\/commercial-crm\/CommercialInboxModule"\)\)/.test(hub), "Inbox no es lazy");
@@ -29,6 +32,8 @@ for (const endpoint of ["/pipeline-cases?", "/pipeline-cases/", "/pipeline-summa
 invariant(/method: "GET"/.test(adapter) && !/method: "(?:POST|PATCH|PUT|DELETE)"/.test(adapter), "adaptador no es exclusivamente GET");
 invariant(/AbortController/.test(adapter) && /cache: "no-store"/.test(adapter), "cancelación/no-store ausentes");
 invariant(/cacheControl\.includes\("private"\)[\s\S]*cacheControl\.includes\("no-store"\)[\s\S]*vary\.includes\("authorization"\)/.test(adapter), "headers privados no se validan");
+invariant(/response\.status !== 200/.test(adapter) && /MAX_RESPONSE_BYTES/.test(adapter) && /credentials: "omit"/.test(adapter), "status/tamaño/cookies no fallan cerrado");
+invariant(!/getToken|sessionStore|localStorage|sessionStorage|indexedDB|Idempotency-Key/.test(adapter), "adaptador obtiene autoridad desde storage o prepara mutación");
 
 const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");
 invariant(/Inbox Comercial/.test(inbox) && /Disponible en una fase posterior/.test(inbox), "presentación read-only incompleta");
@@ -41,4 +46,8 @@ invariant(!/dangerouslySetInnerHTML/.test(inbox), "HTML editable inseguro");
 const packageJson = JSON.parse(read("package.json"));
 invariant(packageJson.scripts?.["test:v17-commercial-crm:browser"] === "playwright test -c playwright.v17-commercial-crm.config.ts", "suite browser no está congelada");
 invariant(packageJson.scripts?.["typecheck:v17-commercial-crm"] === "tsc -p tsconfig.v17-commercial-crm.json --pretty false", "typecheck focalizado ausente");
+const ci = read(".github/workflows/ci.yml");
+for (const command of ["npm run typecheck:v17-commercial-crm", "npm run test:v17-commercial-crm:browser", "node scripts/validate-v17-commercial-crm-guard.mjs"]) {
+  invariant(ci.includes(command), `CI no exige: ${command}`);
+}
 console.log(JSON.stringify({ ok: true, migrations: 17, routes: 3, methods: ["GET"], changedFiles: changed.length }));

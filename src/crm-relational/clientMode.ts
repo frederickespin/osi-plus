@@ -36,7 +36,7 @@ export function resolveCrmPipelineClientMode(
     return Object.freeze({ mode: CRM_PIPELINE_CLIENT_MODES.DISABLED, valid: false });
   }
 
-  const vercelMarker = Object.keys(environment).some((key) => key === "VERCEL" || key.startsWith("VERCEL_"));
+  const vercelMarker = Object.keys(environment).some((key) => key.startsWith("VERCEL"));
   if (vercelMarker || !isLoopback(runtime.hostname)) {
     return Object.freeze({ mode: CRM_PIPELINE_CLIENT_MODES.DISABLED, valid: false });
   }
@@ -64,7 +64,7 @@ export function resolveCrmPipelineReadClientMode(
   if (raw !== CRM_PIPELINE_READ_CLIENT_MODES.READ_ONLY) {
     return Object.freeze({ mode: CRM_PIPELINE_READ_CLIENT_MODES.DISABLED, valid: false });
   }
-  const vercelMarker = Object.keys(environment).some((key) => key === "VERCEL" || key.startsWith("VERCEL_"));
+  const vercelMarker = Object.keys(environment).some((key) => key.startsWith("VERCEL"));
   if (vercelMarker || !isLoopback(runtime.hostname)) {
     return Object.freeze({ mode: CRM_PIPELINE_READ_CLIENT_MODES.DISABLED, valid: false });
   }

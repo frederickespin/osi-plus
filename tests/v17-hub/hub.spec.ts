@@ -92,8 +92,8 @@ test("DISABLED también bloquea deep links sin prefetch, listeners ni timers del
 
 test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) => {
   const expected: Record<string, string[]> = {
-    A: ["Comercial y CRM", "Coordinación", "Operaciones", "Materiales y Equipos", "Taller y Carpintería", "Administración", "Recursos Humanos"],
-    V: ["Comercial y CRM"], K: ["Coordinación"], B: ["Operaciones"], C: ["Materiales y Equipos"], C1: ["Operaciones"], D: ["Operaciones"], E: ["Operaciones"], G: ["Operaciones"], N: ["Operaciones"],
+    A: ["Coordinación", "Operaciones", "Materiales y Equipos", "Taller y Carpintería", "Administración", "Recursos Humanos"],
+    V: [], K: ["Coordinación"], B: ["Operaciones"], C: ["Materiales y Equipos"], C1: ["Operaciones"], D: ["Operaciones"], E: ["Operaciones"], G: ["Operaciones"], N: ["Operaciones"],
     PA: ["Taller y Carpintería"], PB: ["Taller y Carpintería"], PC: ["Taller y Carpintería"], PD: ["Taller y Carpintería"], PF: ["Taller y Carpintería"], I: ["Recursos Humanos"], PE: ["Operaciones"], RB: [],
   };
   for (const [role, apps] of Object.entries(expected)) {
@@ -143,7 +143,7 @@ test("hash, URL, sessionStorage y headers de proxy no alteran autoridad", async 
 });
 
 test("rutas desconocidas y traversal permanecen cerrados; back/forward conserva la guardia", async ({ page }) => {
-  await authenticate(page, { role: "A" });
+  await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
   for (const pathname of ["/unknown-hub-route", "/survey/%252e%252e/commercial", "/%2F%2Fevil.example.test"]) {
     await page.goto(pathname);
     await expect(page.getByText("404 · Ruta del Hub no registrada")).toBeVisible();

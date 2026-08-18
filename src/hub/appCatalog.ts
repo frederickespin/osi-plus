@@ -24,6 +24,7 @@ export type HubApplication = Readonly<{
   status: HubAppStatus;
   requiredPermissions: readonly string[];
   permissionMode: "ANY" | "ALL";
+  requiresExplicitPermissions?: boolean;
   baselineRoles: readonly UserRole[];
   mobileAvailability: HubMobileAvailability;
   directAccessAllowed: boolean;
@@ -31,7 +32,7 @@ export type HubApplication = Readonly<{
 }>;
 
 export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
-  { appId: "commercial-crm", name: "Comercial y CRM", description: "Clientes, oportunidades y continuidad comercial.", icon: "briefcase", route: "/commercial", routeAliases: ["/crm", "/sales/pipeline"], status: "REGISTERED_INACTIVE", requiredPermissions: ["pipeline:view"], permissionMode: "ALL", baselineRoles: ["A", "V"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
+  { appId: "commercial-crm", name: "Comercial y CRM", description: "Clientes, oportunidades y continuidad comercial.", icon: "briefcase", route: "/commercial", routeAliases: ["/crm", "/sales/pipeline"], status: "REGISTERED_INACTIVE", requiredPermissions: ["pipeline:view"], permissionMode: "ALL", requiresExplicitPermissions: true, baselineRoles: ["A", "V"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
   { appId: "coordination", name: "Coordinación", description: "Planificación, proyectos y seguimiento operativo.", icon: "route", route: "/coordination", status: "REGISTERED_INACTIVE", requiredPermissions: ["projects:view", "ops:view"], permissionMode: "ANY", baselineRoles: ["A", "K"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
   { appId: "operations", name: "Operaciones", description: "Servicios, despacho, supervisión, choferes y control de acceso.", icon: "truck", route: "/operations", status: "REGISTERED_INACTIVE", requiredPermissions: ["ops:view", "osi:view", "security:view"], permissionMode: "ANY", baselineRoles: ["A", "B", "C1", "D", "PE", "N", "E", "G"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
   { appId: "materials-equipment", name: "Materiales y Equipos", description: "Inventario, reservas, entradas y salidas.", icon: "warehouse", route: "/materials", status: "REGISTERED_INACTIVE", requiredPermissions: ["wms:view", "inventory:view"], permissionMode: "ANY", baselineRoles: ["A", "C"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },

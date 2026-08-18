@@ -21,6 +21,7 @@ const ICONS: Record<HubIconId, ElementType> = {
 
 type Props = {
   userName?: string;
+  accessToken?: string;
   accessContext: HubAccessContext;
   onLogout: () => void;
 };
@@ -78,7 +79,7 @@ function RegisteredApplication({ application }: { application: HubApplication })
   return <section className="mx-auto max-w-3xl px-5 py-12"><div className="rounded-3xl border bg-white p-8 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Icon className="h-7 w-7" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-indigo-600">Aplicación registrada</p><h1 className="mt-2 text-3xl font-black">{application.name}</h1><p className="mt-3 text-sm leading-6 text-slate-600">{application.description}</p><div className="mt-7 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>Fundación inactiva.</strong> La conexión funcional se realizará en un lote separado; esta vista no ejecuta APIs ni monta el módulo heredado.</div></div></section>;
 }
 
-export default function HubWorkspace({ userName, accessContext, onLogout }: Props) {
+export default function HubWorkspace({ userName, accessToken, accessContext, onLogout }: Props) {
   const [pathname, setPathname] = useState(currentPath);
   const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
@@ -103,7 +104,7 @@ export default function HubWorkspace({ userName, accessContext, onLogout }: Prop
       ? !decision?.allowed
         ? <AccessDenied application={selected} />
         : selected.appId === "commercial-crm" && crmReadEnabled
-          ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando Inbox Comercial…</div>}><CommercialInboxModule onBack={() => navigate("/hub")} onUnauthorized={onLogout} /></Suspense>
+          ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando Inbox Comercial…</div>}><CommercialInboxModule accessToken={accessToken} onBack={() => navigate("/hub")} onUnauthorized={onLogout} /></Suspense>
           : selected.appId === "osi-survey"
             ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>
             : <RegisteredApplication application={selected} />

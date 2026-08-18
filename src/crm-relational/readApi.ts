@@ -1,4 +1,3 @@
-import { getToken } from "@/lib/sessionStore";
 import {
   PIPELINE_CASE_STATUSES,
   type CrmPipelineCase,
@@ -10,8 +9,23 @@ import {
 
 const API_PREFIX = "/api/crm";
 const DEFAULT_TIMEOUT_MS = 10_000;
+const MAX_RESPONSE_BYTES = 1_000_000;
 const STATUSES = new Set<string>(PIPELINE_CASE_STATUSES);
 const MODES = new Set(["LOCAL", "EXPORT", "IMPORT"]);
+const PUBLIC_ERROR_CODES = Object.freeze({
+  401: new Set(["COMMERCIAL_AUTH_REQUIRED"]),
+  403: new Set(["CRM_PIPELINE_PERMISSION_FORBIDDEN"]),
+  404: new Set(["CRM_PIPELINE_RESOURCE_NOT_FOUND"]),
+  409: new Set(["CRM_PIPELINE_DISABLED"]),
+  503: new Set(["CRM_PIPELINE_CONFIGURATION_INVALID", "CRM_PIPELINE_DATABASE_UNAVAILABLE"]),
+} as const);
+const FALLBACK_ERROR_CODES = Object.freeze({
+  401: "COMMERCIAL_AUTH_REQUIRED",
+  403: "CRM_PIPELINE_PERMISSION_FORBIDDEN",
+  404: "CRM_PIPELINE_RESOURCE_NOT_FOUND",
+  409: "CRM_PIPELINE_DISABLED",
+  503: "CRM_PIPELINE_DATABASE_UNAVAILABLE",
+} as const);
 
 type JsonRecord = Record<string, unknown>;
 type FetchLike = typeof fetch;
@@ -36,14 +50,23 @@ function record(value: unknown): JsonRecord {
 }
 
 function exactKeys(value: JsonRecord, allowed: readonly string[]) {
-  if (Object.keys(value).some((key) => !allowed.includes(key))) {
+  const actual = Object.keys(value).sort();
+  const expected = [...allowed].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   }
 }
 
+function hasControlCharacters(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 31 || code === 127 || code === 0xfeff;
+  });
+}
+
 function text(value: unknown, nullable = false): string | null {
   if (nullable && value === null) return null;
-  if (typeof value !== "string" || value.length > 2_000) {
+  if (typeof value !== "string" || value.length > 2_000 || hasControlCharacters(value)) {
     throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   }
   return value;
@@ -142,8 +165,30 @@ function assertResponseHeaders(response: Response) {
 function responseError(statusCode: number, value: unknown) {
   const body = value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
   const candidate = typeof body.code === "string" ? body.code : typeof body.error === "string" ? body.error : "";
-  const code = /^[A-Z][A-Z0-9_]{2,100}$/.test(candidate) ? candidate : "CRM_PIPELINE_REQUEST_FAILED";
-  return new CrmPipelineReadError(statusCode, code);
+  if (!Object.hasOwn(PUBLIC_ERROR_CODES, statusCode)) {
+    return new CrmPipelineReadError(503, "CRM_PIPELINE_REQUEST_FAILED");
+  }
+  const status = statusCode as keyof typeof PUBLIC_ERROR_CODES;
+  const code = PUBLIC_ERROR_CODES[status].has(candidate as never)
+    ? candidate
+    : FALLBACK_ERROR_CODES[status];
+  return new CrmPipelineReadError(status, code);
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const length = response.headers.get("content-length");
+  if (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_RESPONSE_BYTES)) {
+    throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  }
+  const raw = await response.text();
+  if (!raw || new TextEncoder().encode(raw).byteLength > MAX_RESPONSE_BYTES) {
+    throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  }
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  }
 }
 
 function linkSignal(external: AbortSignal | undefined, controller: AbortController) {
@@ -161,7 +206,7 @@ export class CrmPipelineReadApi {
 
   constructor(options: { fetchImpl?: FetchLike; tokenProvider?: () => string | null; timeoutMs?: number } = {}) {
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
-    this.tokenProvider = options.tokenProvider ?? getToken;
+    this.tokenProvider = options.tokenProvider ?? (() => null);
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
@@ -175,18 +220,17 @@ export class CrmPipelineReadApi {
       const response = await this.fetchImpl(`${API_PREFIX}${path}`, {
         method: "GET",
         headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-        credentials: "same-origin",
+        credentials: "omit",
         cache: "no-store",
+        referrerPolicy: "no-referrer",
         signal: controller.signal,
       });
       assertResponseHeaders(response);
-      let payload: unknown;
-      try {
-        payload = await response.json();
-      } catch {
-        throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+      const payload = await readJson(response);
+      if (response.status !== 200) {
+        if (response.ok) throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+        throw responseError(response.status, payload);
       }
-      if (!response.ok) throw responseError(response.status, payload);
       return payload;
     } catch (error) {
       if (controller.signal.aborted && !signal?.aborted) {
@@ -200,7 +244,16 @@ export class CrmPipelineReadApi {
   }
 
   async list(filters: CrmPipelineFilters, signal?: AbortSignal): Promise<CrmPipelineList> {
-    const query = new URLSearchParams({ page: String(filters.page), pageSize: String(Math.min(filters.pageSize, 100)) });
+    if (!Number.isSafeInteger(filters.page) || filters.page < 1
+      || !Number.isSafeInteger(filters.pageSize) || filters.pageSize < 1
+      || (filters.status !== undefined && !STATUSES.has(filters.status))
+      || (filters.mode !== undefined && !MODES.has(filters.mode))
+      || (filters.owner !== undefined && !["assigned", "unassigned"].includes(filters.owner))
+      || (filters.search !== undefined && (!filters.search || filters.search.length > 100 || filters.search !== filters.search.trim() || hasControlCharacters(filters.search)))) {
+      throw new CrmPipelineReadError(400, "CRM_PIPELINE_FILTER_INVALID");
+    }
+    const requestedPageSize = Math.min(filters.pageSize, 100);
+    const query = new URLSearchParams({ page: String(filters.page), pageSize: String(requestedPageSize) });
     if (filters.status) query.set("status", filters.status);
     if (filters.mode) query.set("mode", filters.mode);
     if (filters.owner) query.set("unassigned", filters.owner === "unassigned" ? "true" : "false");
@@ -208,24 +261,31 @@ export class CrmPipelineReadApi {
     const root = record(await this.get(`/pipeline-cases?${query}`, signal));
     exactKeys(root, ["ok", "total", "page", "pageSize", "data"]);
     if (root.ok !== true || !Array.isArray(root.data)) throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
-    return Object.freeze({
-      total: integer(root.total),
-      page: integer(root.page, 1),
-      pageSize: integer(root.pageSize, 1),
-      data: Object.freeze(root.data.map(pipelineCase)),
-    });
+    const total = integer(root.total);
+    const page = integer(root.page, 1);
+    const pageSize = integer(root.pageSize, 1);
+    const data = root.data.map(pipelineCase);
+    const expectedRows = Math.min(pageSize, Math.max(0, total - ((page - 1) * pageSize)));
+    if (page !== filters.page || pageSize !== requestedPageSize || data.length !== expectedRows
+      || new Set(data.map((item) => item.id)).size !== data.length) {
+      throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    }
+    return Object.freeze({ total, page, pageSize, data: Object.freeze(data) });
   }
 
   async detail(caseId: string, signal?: AbortSignal): Promise<CrmPipelineCase> {
     const root = record(await this.get(`/pipeline-cases/${encodeURIComponent(caseId)}`, signal));
     exactKeys(root, ["ok", "data"]);
     if (root.ok !== true) throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
-    return pipelineCase(root.data);
+    const result = pipelineCase(root.data);
+    if (result.id !== caseId) throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    return result;
   }
 
   async summary(signal?: AbortSignal): Promise<CrmPipelineSummary> {
     const root = record(await this.get("/pipeline-summary", signal));
     exactKeys(root, ["ok", "data"]);
+    if (root.ok !== true) throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
     const data = record(root.data);
     exactKeys(data, ["total", "assigned", "unassigned", "byStatus", "sla"]);
     const byStatus = record(data.byStatus);
@@ -234,10 +294,17 @@ export class CrmPipelineReadApi {
     const sla = record(data.sla);
     exactKeys(sla, ["overdue", "basis"]);
     if (sla.overdue !== null || sla.basis !== "UNAVAILABLE") throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    const total = integer(data.total);
+    const assigned = integer(data.assigned);
+    const unassigned = integer(data.unassigned);
+    const statusTotal = Object.values(counts).reduce((sum, value) => sum + value, 0);
+    if (assigned + unassigned !== total || statusTotal !== total) {
+      throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    }
     return Object.freeze({
-      total: integer(data.total),
-      assigned: integer(data.assigned),
-      unassigned: integer(data.unassigned),
+      total,
+      assigned,
+      unassigned,
       byStatus: Object.freeze(counts),
       sla: Object.freeze({ overdue: null, basis: "UNAVAILABLE" }),
     });

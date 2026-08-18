@@ -70,7 +70,6 @@ jobs:
       VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED"
       COMMERCIAL_TENANCY_WRITE_MODE: LEGACY_ONLY
       COMMERCIAL_TENANCY_READ_MODE: LEGACY_ONLY
-      AUTH_NULL_ARTIFACT_DIR: ${{ runner.temp }}/auth-null-playwright-artifacts
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -151,6 +150,8 @@ jobs:
         run: npm run test:mt01b2b:browser
 
       - name: Validate anonymous sessions in real browsers
+        env:
+          AUTH_NULL_ARTIFACT_DIR: ${{ runner.temp }}/auth-null-playwright-artifacts
         run: npm run test:auth-null:browser
 
       - name: Validate safe PIC rendering in real browsers
@@ -174,7 +175,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: auth-null-failure-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.AUTH_NULL_ARTIFACT_DIR }}
+          path: ${{ runner.temp }}/auth-null-playwright-artifacts
           if-no-files-found: warn
           retention-days: 7
 

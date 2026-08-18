@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.v17-commercial-crm.tsbuildinfo"
+  },
+  "include": [
+    "src/commercial-crm/**/*.tsx",
+    "src/crm-relational/**/*.ts",
+    "src/hub/**/*.ts",
+    "src/hub/**/*.tsx"
+  ]
+}

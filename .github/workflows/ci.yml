@@ -135,9 +135,12 @@ jobs:
           node scripts/validate-sec-dep-01-guard.mjs
           node scripts/validate-sec-dep-01-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
+          node scripts/validate-v17-commercial-crm-guard.mjs
 
       - name: Typecheck inactive relational CRM client
-        run: npm run typecheck:crm-01b3b2
+        run: |
+          npm run typecheck:crm-01b3b2
+          npm run typecheck:v17-commercial-crm
 
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
@@ -153,6 +156,9 @@ jobs:
 
       - name: Validate inactive OSi Plus Hub in real browsers
         run: npm run test:v17-hub:browser
+
+      - name: Validate inactive V17 Commercial Inbox in real browsers
+        run: npm run test:v17-commercial-crm:browser
 
       - name: Verify repository cleanliness
         run: git diff --exit-code

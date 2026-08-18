@@ -92,6 +92,7 @@ export type CrmPipelineFilters = Readonly<{
   page: number;
   pageSize: number;
   status?: PipelineCaseStatus;
+  mode?: PipelineMode;
   owner?: "assigned" | "unassigned";
   search?: string;
 }>;

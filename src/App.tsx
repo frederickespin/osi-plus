@@ -410,7 +410,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
   if (hubMode.enabled) {
     return (
       <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
-        <HubWorkspace userName={session.name} accessContext={hubAccessContext} onLogout={onLogout} />
+        <HubWorkspace userName={session.name} authorization={session.token} accessContext={hubAccessContext} onLogout={onLogout} />
       </Suspense>
     );
   }

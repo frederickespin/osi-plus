@@ -26,6 +26,9 @@ export function evaluateHubAccess(application: HubApplication, context: HubAcces
   }
 
   if (context.effectivePermissions === null) {
+    if (application.requiresExplicitPermissions) {
+      return Object.freeze({ allowed: false, reason: "PERMISSION_MISSING" });
+    }
     return Object.freeze({
       allowed: roleEligible,
       reason: roleEligible ? "ALLOWED" : "PERMISSION_MISSING",

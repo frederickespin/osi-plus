@@ -19,6 +19,7 @@ const CRM_MUTATION_ROUTES = Object.freeze([
 const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES]);
 const AUTHORIZED_FRONTEND_CONSUMERS = Object.freeze([
   "src/crm-relational/api.ts",
+  "src/crm-relational/readApi.ts",
 ]);
 
 function invariant(condition, message) {

@@ -3,8 +3,10 @@ import { BriefcaseBusiness, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Ro
 import { ENV_LABELS, getAppEnv } from "@/lib/env";
 import { HUB_APPLICATIONS, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
 import { evaluateHubAccess, visibleHubApplications, type HubAccessContext } from "./hubAccess";
+import { isRelationalCrmReadEnabled } from "@/crm-relational/clientMode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
+const CommercialInboxModule = lazy(() => import("@/commercial-crm/CommercialInboxModule"));
 
 const ICONS: Record<HubIconId, ElementType> = {
   briefcase: BriefcaseBusiness,
@@ -19,6 +21,7 @@ const ICONS: Record<HubIconId, ElementType> = {
 
 type Props = {
   userName?: string;
+  authorization?: string;
   accessContext: HubAccessContext;
   onLogout: () => void;
 };
@@ -76,7 +79,7 @@ function RegisteredApplication({ application }: { application: HubApplication })
   return <section className="mx-auto max-w-3xl px-5 py-12"><div className="rounded-3xl border bg-white p-8 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Icon className="h-7 w-7" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-indigo-600">Aplicación registrada</p><h1 className="mt-2 text-3xl font-black">{application.name}</h1><p className="mt-3 text-sm leading-6 text-slate-600">{application.description}</p><div className="mt-7 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>Fundación inactiva.</strong> La conexión funcional se realizará en un lote separado; esta vista no ejecuta APIs ni monta el módulo heredado.</div></div></section>;
 }
 
-export default function HubWorkspace({ userName, accessContext, onLogout }: Props) {
+export default function HubWorkspace({ userName, authorization, accessContext, onLogout }: Props) {
   const [pathname, setPathname] = useState(currentPath);
   const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
@@ -87,13 +90,24 @@ export default function HubWorkspace({ userName, accessContext, onLogout }: Prop
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
   const selected = findHubApplicationByRoute(pathname);
   const decision = selected ? evaluateHubAccess(selected, accessContext) : null;
+  const crmReadEnabled = isRelationalCrmReadEnabled();
   const sidebar = (
     <aside className="flex h-full w-72 flex-col bg-slate-950 text-white">
       <button onClick={() => navigate("/hub")} className="flex items-center gap-3 border-b border-white/10 p-5 text-left"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500"><LayoutGrid className="h-5 w-5" /></span><span><strong className="block">OSi Plus</strong><small className="text-slate-400">Hub canónico local</small></span></button>
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Aplicaciones OSi Plus"><button onClick={() => navigate("/hub")} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/hub" ? "bg-white/15" : "text-slate-300 hover:bg-white/10"}`}>Inicio</button>{visible.map((application) => { const Icon = ICONS[application.icon]; return <button key={application.appId} onClick={() => navigate(application.route)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${pathname === application.route ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Icon className="h-4 w-4" />{application.name}</button>; })}</nav>
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Aplicaciones OSi Plus"><button onClick={() => navigate("/hub")} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/hub" ? "bg-white/15" : "text-slate-300 hover:bg-white/10"}`}>Inicio</button>{visible.map((application) => { const Icon = ICONS[application.icon]; const active = pathname === application.route || application.routeAliases?.includes(pathname); return <button key={application.appId} onClick={() => navigate(application.route)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${active ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Icon className="h-4 w-4" />{application.name}</button>; })}</nav>
       <div className="border-t border-white/10 p-4"><p className="mb-3 text-xs text-slate-400">{userName || "Usuario"}<br />{environmentLabel()}</p><button onClick={onLogout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-500/10"><LogOut className="h-4 w-4" />Cerrar sesión</button></div>
     </aside>
   );
-  const content = pathname === "/hub" ? <HubHome applications={visible} userName={userName} /> : selected ? !decision?.allowed ? <AccessDenied application={selected} /> : selected.appId === "osi-survey" ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense> : <RegisteredApplication application={selected} /> : <section className="p-12 text-center"><p className="font-bold">404 · Ruta del Hub no registrada</p></section>;
+  const content = pathname === "/hub"
+    ? <HubHome applications={visible} userName={userName} />
+    : selected
+      ? !decision?.allowed
+        ? <AccessDenied application={selected} />
+        : selected.appId === "commercial-crm" && crmReadEnabled
+          ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando Inbox Comercial…</div>}><CommercialInboxModule authorization={authorization} onBack={() => navigate("/hub")} onUnauthorized={onLogout} /></Suspense>
+          : selected.appId === "osi-survey"
+            ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>
+            : <RegisteredApplication application={selected} />
+      : <section className="p-12 text-center"><p className="font-bold">404 · Ruta del Hub no registrada</p></section>;
   return <div className="flex min-h-screen bg-slate-50"><div className="hidden lg:block">{sidebar}</div>{mobileOpen && <div className="fixed inset-0 z-50 flex lg:hidden"><div className="h-full">{sidebar}</div><button aria-label="Cerrar navegación" className="flex-1 bg-black/50" onClick={() => setMobileOpen(false)} /></div>}<div className="min-w-0 flex-1"><header className="flex h-16 items-center justify-between border-b bg-white px-4 sm:px-6"><button aria-label="Abrir navegación" className="rounded-lg border p-2 lg:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></button><button onClick={() => navigate("/hub")} className="text-sm font-bold text-slate-900">OSi Plus Hub</button><span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">LOCAL_ONLY</span></header><main>{content}</main></div></div>;
 }

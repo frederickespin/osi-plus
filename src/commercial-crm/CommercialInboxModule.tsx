@@ -28,7 +28,7 @@ const STATUS_LABELS: Readonly<Record<PipelineCaseStatus, string>> = {
   APPROVED: "Aprobado · legacy congelado", OPS_HANDOFF: "Handoff a Operaciones · terminal",
 };
 
-type Props = Readonly<{ accessToken?: string; onBack(): void; onUnauthorized(): void; api?: CrmPipelineReadApi }>;
+type Props = Readonly<{ authorization?: string; onBack(): void; onUnauthorized(): void; api?: CrmPipelineReadApi }>;
 type DetailState = Readonly<{ loading: boolean; value: CrmPipelineCase | null; error: CrmPipelineReadError | null }>;
 
 function formatDate(value: string) {
@@ -87,10 +87,10 @@ function DetailDrawer({ state, open, onOpenChange }: { state: DetailState; open:
   return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl" aria-describedby="commercial-case-description"><SheetHeader><SheetTitle>{item?.caseCode || "Detalle de oportunidad"}</SheetTitle><SheetDescription id="commercial-case-description">Información publicada por el dominio relacional del tenant.</SheetDescription></SheetHeader><div className="space-y-5 px-4 pb-8" aria-live="polite">{state.loading && <p className="text-sm text-slate-500">Cargando detalle…</p>}{state.error && <Alert variant="destructive"><AlertCircle /><AlertTitle>{state.error.code}</AlertTitle><AlertDescription>{errorCopy(state.error)}</AlertDescription></Alert>}{item && <><div className="flex flex-wrap gap-2"><Badge variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><Badge variant="outline">{item.mode}</Badge></div><dl className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:grid-cols-2"><div><dt className="text-xs text-slate-500">Receptor publicado</dt><dd className="mt-1 text-sm font-medium">{item.clientName || "No publicado"}</dd></div><div><dt className="text-xs text-slate-500">Asignación</dt><dd className="mt-1 text-sm font-medium">{item.owner?.displayName || "Sin asignar"}</dd></div><div><dt className="text-xs text-slate-500">Servicio</dt><dd className="mt-1 text-sm">{item.serviceType}</dd></div><div><dt className="text-xs text-slate-500">Volumen estimado</dt><dd className="mt-1 text-sm">{item.estimatedCbm.toLocaleString("es-DO")} m³</dd></div><div><dt className="text-xs text-slate-500">Origen</dt><dd className="mt-1 text-sm">{item.originLocation || "Pendiente"}</dd></div><div><dt className="text-xs text-slate-500">Destino</dt><dd className="mt-1 text-sm">{item.destinationLocation || "Pendiente"}</dd></div><div><dt className="text-xs text-slate-500">Survey</dt><dd className="mt-1 text-sm">{item.requiresSurvey ? item.surveyMethod : "No requerido"}</dd></div><div><dt className="text-xs text-slate-500">Actividad publicada</dt><dd className="mt-1 text-sm">{item.eventCount} eventos · {item.quoteCount} cotizaciones</dd></div></dl>{item.status === "APPROVED" && <Alert><AlertTitle>Legacy congelado</AlertTitle><AlertDescription>APPROVED permanece visible, pero no admite acciones en esta fase.</AlertDescription></Alert>}{item.status === "OPS_HANDOFF" && <Alert><AlertTitle>Estado terminal</AlertTitle><AlertDescription>La oportunidad ya fue entregada a Operaciones.</AlertDescription></Alert>}<div className="rounded-2xl border border-dashed border-slate-300 p-4"><p className="text-sm font-semibold text-slate-800">Transiciones, asignación y edición</p><p className="mt-1 text-sm text-slate-500">Disponible en una fase posterior.</p></div></>}</div></SheetContent></Sheet>;
 }
 
-export default function CommercialInboxModule({ accessToken, onBack, onUnauthorized, api: suppliedApi }: Props) {
+export default function CommercialInboxModule({ authorization, onBack, onUnauthorized, api: suppliedApi }: Props) {
   const api = useMemo(
-    () => suppliedApi ?? new CrmPipelineReadApi({ tokenProvider: () => accessToken ?? null }),
-    [accessToken, suppliedApi],
+    () => suppliedApi ?? new CrmPipelineReadApi({ tokenProvider: () => authorization ?? null }),
+    [authorization, suppliedApi],
   );
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState<CrmPipelineFilters>({ page: 1, pageSize: PAGE_SIZE });

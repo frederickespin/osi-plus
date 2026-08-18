@@ -3,6 +3,11 @@ export const CRM_PIPELINE_CLIENT_MODES = Object.freeze({
   LOCAL_ONLY: "LOCAL_ONLY",
 } as const);
 
+export const CRM_PIPELINE_READ_CLIENT_MODES = Object.freeze({
+  DISABLED: "DISABLED",
+  READ_ONLY: "READ_ONLY",
+} as const);
+
 export type CrmPipelineClientMode = typeof CRM_PIPELINE_CLIENT_MODES[keyof typeof CRM_PIPELINE_CLIENT_MODES];
 
 export type CrmPipelineClientModeResult = Readonly<{
@@ -40,4 +45,39 @@ export function resolveCrmPipelineClientMode(
 
 export function isRelationalCrmClientEnabled(result = resolveCrmPipelineClientMode()): boolean {
   return result.valid && result.mode === CRM_PIPELINE_CLIENT_MODES.LOCAL_ONLY;
+}
+
+export type CrmPipelineReadClientModeResult = Readonly<{
+  mode: (typeof CRM_PIPELINE_READ_CLIENT_MODES)[keyof typeof CRM_PIPELINE_READ_CLIENT_MODES];
+  valid: boolean;
+}>;
+
+/** Compuerta declarativa de lectura. El backend sigue siendo la autoridad READ_ONLY definitiva. */
+export function resolveCrmPipelineReadClientMode(
+  environment: ClientEnvironment = import.meta.env,
+  runtime: ClientRuntime = { hostname: typeof window === "undefined" ? undefined : window.location.hostname },
+): CrmPipelineReadClientModeResult {
+  const raw = environment.VITE_CRM_PIPELINE_READ_MODE;
+  if (raw === undefined || raw === CRM_PIPELINE_READ_CLIENT_MODES.DISABLED) {
+    return Object.freeze({ mode: CRM_PIPELINE_READ_CLIENT_MODES.DISABLED, valid: true });
+  }
+  if (raw !== CRM_PIPELINE_READ_CLIENT_MODES.READ_ONLY) {
+    return Object.freeze({ mode: CRM_PIPELINE_READ_CLIENT_MODES.DISABLED, valid: false });
+  }
+  const vercelMarker = Object.keys(environment).some((key) => key === "VERCEL" || key.startsWith("VERCEL_"));
+  if (vercelMarker || !isLoopback(runtime.hostname)) {
+    return Object.freeze({ mode: CRM_PIPELINE_READ_CLIENT_MODES.DISABLED, valid: false });
+  }
+  return Object.freeze({ mode: CRM_PIPELINE_READ_CLIENT_MODES.READ_ONLY, valid: true });
+}
+
+export function isRelationalCrmReadEnabled(
+  environment: ClientEnvironment = import.meta.env,
+  runtime: ClientRuntime = { hostname: typeof window === "undefined" ? undefined : window.location.hostname },
+): boolean {
+  const client = resolveCrmPipelineClientMode(environment, runtime);
+  const read = resolveCrmPipelineReadClientMode(environment, runtime);
+  return isRelationalCrmClientEnabled(client)
+    && read.valid
+    && read.mode === CRM_PIPELINE_READ_CLIENT_MODES.READ_ONLY;
 }

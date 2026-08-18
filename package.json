@@ -9,6 +9,7 @@
     "postinstall": "prisma generate",
     "lint": "eslint .",
     "test:auth-null:browser": "playwright test -c playwright.auth-null.config.ts",
+    "test:webkit-internal-recovery": "node scripts/validate-webkit-internal-goto-recovery-test.mjs",
     "test:mt01b2b:browser": "playwright test",
     "test:sec-dep-01:browser": "playwright test -c playwright.sec-dep.config.ts",
     "test:crm-01b3b2:browser": "playwright test -c playwright.crm-01b3b2.config.ts",

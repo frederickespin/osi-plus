@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
+import { navigateWithWebKitInternalRecovery } from "../../scripts/webkit-internal-goto-recovery.mjs";
 
 const SESSION_KEY = "osi-plus.session";
 const TOKEN_KEY = "osi-plus.token";
@@ -8,6 +9,7 @@ const RELEVANT_ROLES = [
 ] as const;
 
 type ApiMode = "OK" | "UNAUTHORIZED";
+type ApiCalls = { me: number; v2: number; other: number };
 
 function user(role: string) {
   return {
@@ -45,8 +47,10 @@ async function configureApi(context: BrowserContext, options: {
   mode?: ApiMode;
   role?: () => string;
   delayMeMs?: number;
+  calls?: ApiCalls;
 } = {}) {
-  const calls = { me: 0, v2: 0, other: 0 };
+  await blockExternalRequests(context);
+  const calls = options.calls ?? { me: 0, v2: 0, other: 0 };
   await context.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (V2_PATH.test(path)) {
@@ -76,9 +80,15 @@ async function configureApi(context: BrowserContext, options: {
   return calls;
 }
 
-function capturePageErrors(page: Page) {
-  const errors: string[] = [];
+function capturePageErrors(page: Page, errors: string[] = []) {
   page.on("pageerror", (error) => errors.push(String(error.stack || error.message)));
+  return errors;
+}
+
+function captureConsoleErrors(page: Page, errors: string[] = []) {
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push("console.error");
+  });
   return errors;
 }
 
@@ -87,7 +97,7 @@ async function expectLogin(page: Page) {
   await expect(page.getByRole("button", { name: "Iniciar Sesión" })).toBeVisible();
 }
 
-test.beforeEach(async ({ context }) => {
+async function blockExternalRequests(context: BrowserContext) {
   await context.route("**/*", async (route) => {
     const requested = new URL(route.request().url());
     if (requested.protocol === "http:" && requested.hostname === "127.0.0.1" && requested.port === "4175") {
@@ -97,7 +107,7 @@ test.beforeEach(async ({ context }) => {
     await route.abort("blockedbyclient");
     throw new Error(`Solicitud externa bloqueada: ${requested.origin}`);
   });
-});
+}
 
 test("navegación limpia y recarga permanecen anónimas sin errores", async ({ page, context }) => {
   const calls = await configureApi(context);
@@ -186,25 +196,71 @@ test("login y logout LEGACY conservan el contrato sin llamadas V2", async ({ pag
   expect(calls.v2).toBe(0);
 });
 
-test("cada rol legacy sólo entra al shell después de AUTHENTICATED", async ({ page, context }) => {
+test("cada rol legacy sólo entra al shell después de AUTHENTICATED", async ({ browser, browserName }) => {
   let role = "A";
-  const calls = await configureApi(context, { role: () => role });
-  const errors = capturePageErrors(page);
-  await installLegacySession(page, role);
+  const calls: ApiCalls = { me: 0, v2: 0, other: 0 };
+
   for (const selectedRole of RELEVANT_ROLES) {
     role = selectedRole;
-    await page.goto("/");
-    await expect(page.getByText(`Usuario ${selectedRole}`, { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Cerrar Sesión" })).toBeVisible();
-    await page.evaluate(({ sessionKey, tokenKey, nextRole }) => {
-      const token = `legacy-${nextRole}`;
-      localStorage.setItem(sessionKey, JSON.stringify({
-        userId: `user-${nextRole}`, name: `Usuario ${nextRole}`, role: nextRole, token,
-      }));
-      localStorage.setItem(tokenKey, token);
-    }, { sessionKey: SESSION_KEY, tokenKey: TOKEN_KEY, nextRole: selectedRole });
+    const errors: string[] = [];
+    const consoleErrors: string[] = [];
+    let activeContext = await browser.newContext();
+    await configureApi(activeContext, { role: () => role, calls });
+    let activePage = await activeContext.newPage();
+    capturePageErrors(activePage, errors);
+    captureConsoleErrors(activePage, consoleErrors);
+    await installLegacySession(activePage, role);
+
+    try {
+      let responseReceived = false;
+      let functionalAssertionsStarted = false;
+      const attemptedPage = activePage;
+      const onResponse = (response: { request(): { isNavigationRequest(): boolean } }) => {
+        if (response.request().isNavigationRequest()) responseReceived = true;
+      };
+      attemptedPage.on("response", onResponse);
+
+      const navigation = await (async () => {
+        try {
+          return await navigateWithWebKitInternalRecovery({
+            browserName,
+            navigate: () => attemptedPage.goto("/"),
+            responseReceived: () => responseReceived,
+            functionalAssertionsStarted: () => functionalAssertionsStarted,
+            recoverAndNavigate: async () => {
+              attemptedPage.off("response", onResponse);
+              if (!attemptedPage.isClosed()) await attemptedPage.close();
+              await activeContext.close();
+
+              activeContext = await browser.newContext();
+              await configureApi(activeContext, { role: () => role, calls });
+              activePage = await activeContext.newPage();
+              capturePageErrors(activePage, errors);
+              captureConsoleErrors(activePage, consoleErrors);
+              await installLegacySession(activePage, role);
+              return activePage.goto("/");
+            },
+          });
+        } finally {
+          if (!attemptedPage.isClosed()) attemptedPage.off("response", onResponse);
+        }
+      })();
+
+      if (!navigation.response || !navigation.response.ok()) {
+        throw new Error(`Unexpected navigation HTTP status ${navigation.response?.status() ?? "none"}`);
+      }
+
+      functionalAssertionsStarted = true;
+      await expect(activePage.getByText(`Usuario ${selectedRole}`, { exact: true })).toBeVisible();
+      await expect(activePage.getByRole("button", { name: "Cerrar Sesión" })).toBeVisible();
+      expect(errors).toEqual([]);
+      expect(consoleErrors).toEqual([]);
+    } finally {
+      if (!activePage.isClosed()) await activePage.close();
+      await activeContext.close();
+    }
   }
-  expect(errors).toEqual([]);
+
   expect(calls.me).toBe(RELEVANT_ROLES.length);
   expect(calls.v2).toBe(0);
 });

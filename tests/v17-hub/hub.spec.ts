@@ -108,7 +108,7 @@ test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) 
 });
 
 test("deniedPermissions prevalece y ruta directa usa la misma decisión 403", async ({ page }) => {
-  await authenticate(page, { role: "A", deniedPermissions: ["clients:view"] });
+  await authenticate(page, { role: "A", deniedPermissions: ["pipeline:view"] });
   await page.goto("/hub?app=commercial-crm", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toHaveCount(0);
   await page.goto("/commercial?role=A");

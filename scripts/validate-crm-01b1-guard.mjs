@@ -82,12 +82,13 @@ export function validateCrm01b1Guard({
   const runtimeConsumers = [];
   const runtimeMutations = [];
   const frontendChanges = [];
+  const authorizedReadPresentations = new Set(["src/commercial-crm/CommercialInboxModule.tsx"]);
   const unauthorizedJournalFixtures = [];
   for (const path of runtime) {
     const source = extraSources[path] ?? read(path);
     if (/(?:PipelineCaseCommand|pipelineCaseCommand|pipeline_case_commands)/.test(source) && !RUNTIME_SERVICE_ALLOWLIST.includes(path)) runtimeConsumers.push(path);
     if (/pipelineCase\s*\.\s*(?:create|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(source) && !RUNTIME_SERVICE_ALLOWLIST.includes(path)) runtimeMutations.push(path);
-    if (path.startsWith("src/") && !path.startsWith("src/crm-relational/") && /(?:PipelineCaseCommand|QUOTE_DRAFT|lossReasonCode|statusChangedAt)/.test(source)) frontendChanges.push(path);
+    if (path.startsWith("src/") && !path.startsWith("src/crm-relational/") && !authorizedReadPresentations.has(path) && /(?:PipelineCaseCommand|QUOTE_DRAFT|lossReasonCode|statusChangedAt)/.test(source)) frontendChanges.push(path);
   }
   const scripts = files.filter((file) => /^scripts\/.+\.mjs$/.test(file));
   for (const path of scripts) {
@@ -99,7 +100,7 @@ export function validateCrm01b1Guard({
     if (!runtime.includes(path) && /^(?:api|src)\//.test(path)) {
       if (/(?:PipelineCaseCommand|pipelineCaseCommand|pipeline_case_commands)/.test(source)) runtimeConsumers.push(path);
       if (/pipelineCase\s*\.\s*(?:create|update|updateMany|upsert|delete|deleteMany)\s*\(/.test(source) && !RUNTIME_SERVICE_ALLOWLIST.includes(path)) runtimeMutations.push(path);
-      if (path.startsWith("src/") && !path.startsWith("src/crm-relational/") && /(?:PipelineCaseCommand|QUOTE_DRAFT|lossReasonCode|statusChangedAt)/.test(source)) frontendChanges.push(path);
+      if (path.startsWith("src/") && !path.startsWith("src/crm-relational/") && !authorizedReadPresentations.has(path) && /(?:PipelineCaseCommand|QUOTE_DRAFT|lossReasonCode|statusChangedAt)/.test(source)) frontendChanges.push(path);
     }
     if (/^scripts\/.+\.mjs$/.test(path) && !JOURNAL_FIXTURE_ALLOWLIST.includes(path)
       && /pipelineCaseCommand\s*\.\s*(?:create|createMany)\s*\(/.test(source)) unauthorizedJournalFixtures.push(path);

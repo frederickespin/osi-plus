@@ -95,12 +95,12 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   invariant(!/CLIENTS_VIEW|clients:view/.test(`${access}\n${domain}\n${adapter}`), "clients:view no puede autorizar CRM");
   invariant(!/PERMS\.PIPELINE_UPDATE/.test(domain), "pipeline:update está reservado y no autoriza acciones actuales");
 
-  const authorizedFrontendAdapter = "src/crm-relational/api.ts";
+  const authorizedFrontendAdapters = new Set(["src/crm-relational/api.ts", "src/crm-relational/readApi.ts"]);
   const srcFiles = filesBelow(resolve(root, "src")).filter((path) => /\.[cm]?[jt]sx?$/.test(path));
   for (const absolute of srcFiles) {
     const path = relative(root, absolute).replaceAll("\\", "/");
     const source = read(path);
-    if (path === authorizedFrontendAdapter) {
+    if (authorizedFrontendAdapters.has(path)) {
       invariant(/API_PREFIX\s*=\s*["']\/api\/crm["']/.test(source), `${path} no contiene el adaptador autorizado`);
     } else {
       invariant(!/api\/crm|crmPipelineAccess|CRM_PIPELINE_(?:RUNTIME|MUTATION|ACTIVATION)/.test(source), `${path} conecta frontend CRM fuera del adaptador autorizado`);
@@ -127,7 +127,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const suite of ["crm-01b3b1-gate-test.mjs", "crm-01b3b1-adversarial-test.mjs", "validate-crm-01b3b1-guard.mjs", "validate-crm-01b3b1-guard-test.mjs", "crm-01a-test.mjs", "crm-01b3a-integration-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
-  return Object.freeze({ ok: true, migrations: 17, routes: 8, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 1 });
+  return Object.freeze({ ok: true, migrations: 17, routes: 8, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 2 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

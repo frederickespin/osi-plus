@@ -45,7 +45,7 @@ jobs:
 
   browser-session-validation:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       CANONICAL_DB_VALIDATION: "true"
       DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
@@ -87,6 +87,9 @@ jobs:
 
       - name: Install isolated browsers
         run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Report browser infrastructure before validation
+        run: node scripts/report-browser-ci-diagnostics.mjs before
 
       - name: Build LEGACY and verify inactive bundle
         run: |
@@ -136,6 +139,7 @@ jobs:
           node scripts/validate-sec-dep-01-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-commercial-crm-guard.mjs
+          npm run test:webkit-internal-recovery
 
       - name: Typecheck inactive relational CRM client
         run: |
@@ -146,6 +150,8 @@ jobs:
         run: npm run test:mt01b2b:browser
 
       - name: Validate anonymous sessions in real browsers
+        env:
+          AUTH_NULL_ARTIFACT_DIR: ${{ runner.temp }}/auth-null-playwright-artifacts
         run: npm run test:auth-null:browser
 
       - name: Validate safe PIC rendering in real browsers
@@ -159,6 +165,19 @@ jobs:
 
       - name: Validate inactive V17 Commercial Inbox in real browsers
         run: npm run test:v17-commercial-crm:browser
+
+      - name: Report browser infrastructure after validation
+        if: always()
+        run: node scripts/report-browser-ci-diagnostics.mjs after
+
+      - name: Upload AUTH-NULL failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-null-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/auth-null-playwright-artifacts
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify repository cleanliness
         run: git diff --exit-code

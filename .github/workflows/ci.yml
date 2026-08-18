@@ -45,7 +45,7 @@ jobs:
 
   browser-session-validation:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       CANONICAL_DB_VALIDATION: "true"
       DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi

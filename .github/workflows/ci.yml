@@ -70,6 +70,7 @@ jobs:
       VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED"
       COMMERCIAL_TENANCY_WRITE_MODE: LEGACY_ONLY
       COMMERCIAL_TENANCY_READ_MODE: LEGACY_ONLY
+      AUTH_NULL_ARTIFACT_DIR: ${{ runner.temp }}/auth-null-playwright-artifacts
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,6 +88,9 @@ jobs:
 
       - name: Install isolated browsers
         run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Report browser infrastructure before validation
+        run: node scripts/report-browser-ci-diagnostics.mjs before
 
       - name: Build LEGACY and verify inactive bundle
         run: |
@@ -136,6 +140,7 @@ jobs:
           node scripts/validate-sec-dep-01-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-commercial-crm-guard.mjs
+          npm run test:webkit-internal-recovery
 
       - name: Typecheck inactive relational CRM client
         run: |
@@ -159,6 +164,19 @@ jobs:
 
       - name: Validate inactive V17 Commercial Inbox in real browsers
         run: npm run test:v17-commercial-crm:browser
+
+      - name: Report browser infrastructure after validation
+        if: always()
+        run: node scripts/report-browser-ci-diagnostics.mjs after
+
+      - name: Upload AUTH-NULL failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-null-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.AUTH_NULL_ARTIFACT_DIR }}
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify repository cleanliness
         run: git diff --exit-code

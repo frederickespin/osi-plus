@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 export default defineConfig({
   testDir: "./tests/auth-null",
-  outputDir: process.env.RUNNER_TEMP ?? join(tmpdir(), `auth-null-playwright-${process.pid}`),
+  outputDir: process.env.AUTH_NULL_ARTIFACT_DIR ?? join(tmpdir(), `auth-null-playwright-${process.pid}`),
   timeout: 45_000,
   globalTimeout: 8 * 60_000,
   expect: { timeout: 8_000 },
@@ -15,8 +15,8 @@ export default defineConfig({
   reporter: [["list"], ["./scripts/auth-null-browser-ci-reporter.mjs"]],
   use: {
     baseURL: "http://127.0.0.1:4175",
-    trace: "off",
-    screenshot: "off",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
     video: "off",
     serviceWorkers: "block",
   },

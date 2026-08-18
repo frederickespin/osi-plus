@@ -50,4 +50,6 @@ const ci = read(".github/workflows/ci.yml");
 for (const command of ["npm run typecheck:v17-commercial-crm", "npm run test:v17-commercial-crm:browser", "node scripts/validate-v17-commercial-crm-guard.mjs"]) {
   invariant(ci.includes(command), `CI no exige: ${command}`);
 }
+const vite = read("vite.config.ts");
+invariant(/base:\s*["']\/["']/.test(vite), "assets deben usar raíz absoluta para deep links anidados");
 console.log(JSON.stringify({ ok: true, migrations: 17, routes: 3, methods: ["GET"], changedFiles: changed.length }));

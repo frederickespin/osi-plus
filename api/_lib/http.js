@@ -279,6 +279,7 @@ function databaseUnavailable(res) {
 }
 
 export {
+  appendVary,
   withCommonHeaders,
   setPrivateNoStore,
   methodNotAllowed,

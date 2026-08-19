@@ -50,6 +50,8 @@ export function syntheticRequest({ userAgent = "MT01B-Test/1.0", clientId = "mt0
       "user-agent": userAgent,
       "x-osi-client-id": clientId,
       origin,
+      host: new URL(origin).host,
+      "x-forwarded-proto": new URL(origin).protocol.slice(0, -1),
       ...(cookie ? { cookie } : {}),
       ...(authorization ? { authorization } : {}),
     },

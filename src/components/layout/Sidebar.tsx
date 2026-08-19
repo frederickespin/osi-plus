@@ -34,7 +34,7 @@ import { useState } from 'react';
 import type { ModuleId } from '@/lib/roleModuleMap';
 import type { UserRole } from '@/types/osi.types';
 import { canAccessModule } from '@/lib/roleModuleMap';
-import { getAppEnv, ENV_LABELS } from '@/lib/env';
+import { getAppEnv, ENV_LABELS, ENV_SHORT_LABELS } from '@/lib/env';
 
 interface SidebarProps {
   activeModule: ModuleId;
@@ -379,7 +379,7 @@ export function Sidebar({ activeModule, onModuleChange, userRole = 'A', userName
         <div className="p-4 border-t border-white/10">
           {isCollapsed && (
             <p className="text-white/40 text-[10px] text-center mb-2 truncate px-1" title={ENV_LABELS[getAppEnv()]}>
-              {getAppEnv() === 'production' ? 'Prod' : getAppEnv() === 'preview' ? 'Preview' : 'Local'}
+              {ENV_SHORT_LABELS[getAppEnv()]}
             </p>
           )}
           <Button 

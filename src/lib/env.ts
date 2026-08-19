@@ -1,22 +1,23 @@
-/**
- * Detecta el ambiente actual: production | preview | development
- * - production: VITE_APP_ENV=production (Vercel prod)
- * - preview: VITE_APP_ENV=preview (Vercel PR/preview)
- * - development: localhost o VITE_APP_ENV=development
- */
-export function getAppEnv(): "production" | "preview" | "development" {
-  const env = import.meta.env.VITE_APP_ENV || "";
-  if (env === "production") return "production";
-  if (env === "preview") return "preview";
-  if (env === "development") return "development";
-  if (typeof window !== "undefined" && window.location.hostname === "localhost") {
-    return "development";
-  }
-  return "production";
+import { resolveAppEnvironment, type AppEnvironment } from "../../shared/appEnvironment.js";
+
+export function getAppEnv(): AppEnvironment {
+  return resolveAppEnvironment({
+    appEnvironment: import.meta.env.VITE_APP_ENV,
+    vercelEnvironment: typeof __V17_VERCEL_ENV__ === "undefined" ? null : __V17_VERCEL_ENV__,
+    hostname: typeof window === "undefined" ? undefined : window.location.hostname,
+  });
 }
 
-export const ENV_LABELS: Record<"production" | "preview" | "development", string> = {
+export const ENV_LABELS: Record<AppEnvironment, string> = {
   production: "Producción",
-  preview: "Pruebas (Preview)",
+  preview: "Preview",
   development: "Desarrollo local",
+  unknown: "Ambiente desconocido",
+};
+
+export const ENV_SHORT_LABELS: Record<AppEnvironment, string> = {
+  production: "Prod",
+  preview: "Preview",
+  development: "Local",
+  unknown: "Desconocido",
 };

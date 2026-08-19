@@ -11,7 +11,7 @@ import {
   saveSession,
   type Session,
 } from '@/lib/sessionStore';
-import { isRelationalCrmClientEnabled, resolveCrmPipelineClientMode } from '@/crm-relational/clientMode';
+import { isRelationalCrmReadEnabled } from '@/crm-relational/clientMode';
 import type { ModuleId } from '@/lib/roleModuleMap';
 import { resolveOsiHubMode } from '@/hub/hubMode';
 import type { HubAccessContext } from '@/hub/hubAccess';
@@ -210,6 +210,7 @@ function validateLegacySession(session: Session): Promise<Session> {
       role,
       permissions: Array.isArray(response.user.permissions) ? response.user.permissions : undefined,
       deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
+      commercialCrmPreviewAuthorized: response.user.commercialCrmPreviewAuthorized === true,
     };
   });
   const entry = { token, promise };
@@ -258,7 +259,8 @@ async function resolveInitialAuthState(): Promise<AuthState> {
 
 function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const hubMode = resolveOsiHubMode();
-  const crmPipelineClientEnabled = isRelationalCrmClientEnabled(resolveCrmPipelineClientMode());
+  const previewConfirmed = hubMode.mode !== 'PREVIEW_REHEARSAL' || session.commercialCrmPreviewAuthorized === true;
+  const crmPipelineClientEnabled = isRelationalCrmReadEnabled() && previewConfirmed;
   const userRole: UserRole = session.role;
   const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
   const hubAccessContext = useMemo<HubAccessContext>(() => ({
@@ -395,12 +397,12 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
     }
   };
 
-  if (!hubMode.valid) {
+  if (!hubMode.valid || !previewConfirmed) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-950 p-6 text-white">
         <section className="max-w-lg rounded-2xl border border-red-400/40 bg-slate-900 p-7 text-center">
           <h1 className="text-xl font-bold">Configuración Hub rechazada</h1>
-          <p className="mt-2 text-sm text-slate-300">VITE_OSI_HUB_MODE sólo admite LOCAL_ONLY en un host loopback.</p>
+          <p className="mt-2 text-sm text-slate-300">La compuerta exige un modo local loopback o un Preview exacto confirmado por el servidor.</p>
           <button onClick={onLogout} className="mt-5 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-950">Cerrar sesión</button>
         </section>
       </main>
@@ -410,7 +412,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
   if (hubMode.enabled) {
     return (
       <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
-        <HubWorkspace userName={session.name} authorization={session.token} accessContext={hubAccessContext} onLogout={onLogout} />
+        <HubWorkspace userName={session.name} authorization={session.token} accessContext={hubAccessContext} crmReadEnabled={crmPipelineClientEnabled} mode={hubMode.mode} onLogout={onLogout} />
       </Suspense>
     );
   }
@@ -449,9 +451,21 @@ function App() {
     return () => { active = false; };
   }, []);
 
-  const handleLoginSuccess = (session: LoginSession) => {
-    saveSession(session);
-    setAuthState({ status: 'AUTHENTICATED', session });
+  const handleLoginSuccess = async (session: LoginSession) => {
+    const hubMode = resolveOsiHubMode();
+    try {
+      const validated = hubMode.mode === 'PREVIEW_REHEARSAL'
+        ? await validateLegacySession(session)
+        : session;
+      if (hubMode.mode === 'PREVIEW_REHEARSAL' && validated.commercialCrmPreviewAuthorized !== true) {
+        throw Object.assign(new Error('El servidor no confirmó el ensayo CRM.'), { status: 503 });
+      }
+      saveSession(validated);
+      setAuthState({ status: 'AUTHENTICATED', session: validated });
+    } catch (error) {
+      clearSession();
+      throw error;
+    }
   };
 
   const handleLogout = () => {

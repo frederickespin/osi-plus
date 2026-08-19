@@ -82,7 +82,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   const readAdapter = read("api/_lib/crmPipelineReadHttp.js");
   const readGate = readAdapter.indexOf("requireCrmPipelineReadOnly(env)");
   const readOptions = readAdapter.indexOf('req.method === "OPTIONS"');
-  const readMethod = readAdapter.indexOf('req.method !== "GET"');
+  const readMethod = readAdapter.indexOf('["GET", "HEAD"].includes(req.method)');
   const readAuth = readAdapter.indexOf("requirePermission(req");
   invariant(readGate >= 0 && readOptions > readGate && readMethod > readOptions && readAuth > readMethod,
     "lecturas violan orden gate/OPTIONS/método/auth");

@@ -7,6 +7,7 @@ import {
 import { resolveAuthContext } from "./authContext.js";
 import { Mt01bAuthError } from "./authPolicy.js";
 import { permsForRole } from "./rbac.js";
+import { isExactV17CommercialCrmPreviewServerEnvironment } from "../../shared/v17CommercialCrmPreview.js";
 
 export const COMMERCIAL_TENANCY_WRITE_MODES = Object.freeze({
   LEGACY_ONLY: "LEGACY_ONLY",
@@ -61,6 +62,7 @@ function immutableContext(value) {
     ...value,
     effectivePermissions: Object.freeze([...(value.effectivePermissions || [])]),
     permissions: Object.freeze([...(value.effectivePermissions || [])]),
+    deniedPermissions: Object.freeze([...(value.deniedPermissions || [])]),
   });
 }
 
@@ -101,7 +103,9 @@ export function resolveCommercialTenancyModes(env = process.env) {
     && vercelEnvironment === "production"
     && env.VERCEL_GIT_COMMIT_REF === "main"
     && activationBatch === COMMERCIAL_TENANCY_ACTIVATION_BATCH;
-  if (coordinatedTenant && isVercelRuntime && !productionActivationAllowed) {
+  const previewActivationAllowed = coordinatedTenant
+    && isExactV17CommercialCrmPreviewServerEnvironment(env);
+  if (coordinatedTenant && isVercelRuntime && !productionActivationAllowed && !previewActivationAllowed) {
     throw new CommercialTenancyError("COMMERCIAL_TENANCY_CONFIGURATION_INVALID", 503);
   }
   return Object.freeze({ writeMode, readMode, tenantMode: coordinatedTenant });
@@ -179,6 +183,7 @@ async function resolveLegacyCommercialContext(prisma, token) {
     membershipId: String(row.membership_id),
     role,
     authorizationVersion: Number(row.authorization_version),
+    deniedPermissions: Array.isArray(row.denied_permissions) ? row.denied_permissions.map(String) : [],
     effectivePermissions: effectivePermissions(role, row.granted_permissions, row.denied_permissions),
   });
 }

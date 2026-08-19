@@ -2,7 +2,18 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const BASE = "5c2c9a1fd0581f5386b79ab97c7289d4cd2e2b3d";
+const BASE = "de5e8460c5da4e7f1c1fe42836b7ab488f67dd42";
+const allowedBackendChanges = new Set([
+  "api/_lib/authHttp.js",
+  "api/_lib/authOrigin.js",
+  "api/_lib/commercialTenancyWrite.js",
+  "api/_lib/crmPipelineAccess.js",
+  "api/_lib/crmPipelineReadHttp.js",
+  "api/_lib/http.js",
+  "api/_lib/v17CommercialCrmPreviewAuth.js",
+  "api/auth/login.js",
+  "api/auth/me.js",
+]);
 const requiredApps = ["commercial-crm", "coordination", "operations", "materials-equipment", "workshop", "administration", "human-resources", "osi-survey"];
 function fail(message) { throw new Error(`V17_HUB_GUARD_FAILED: ${message}`); }
 function text(path) { return readFileSync(path, "utf8"); }
@@ -13,7 +24,7 @@ const migrationChanges = execFileSync("git", ["diff", "--name-only", BASE, "--",
 if (migrationChanges) fail("canonical migrations changed");
 
 const mode = text(join("src", "hub", "hubMode.ts"));
-if (!mode.includes('DISABLED: "DISABLED"') || !mode.includes('LOCAL_ONLY: "LOCAL_ONLY"')) fail("strict gate values missing");
+if (!mode.includes('DISABLED: "DISABLED"') || !mode.includes('LOCAL_ONLY: "LOCAL_ONLY"') || !mode.includes('PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE')) fail("strict gate values missing");
 if (!mode.includes('raw === undefined || raw === OSI_HUB_MODES.DISABLED')) fail("DISABLED is not the default");
 if (!mode.includes('key.startsWith("VERCEL")')) fail("gate does not reject every VERCEL* environment key");
 if (!mode.includes('hostname === "[::1]"')) fail("gate does not require the literal IPv6 loopback hostname");
@@ -39,15 +50,5 @@ if (catalogRoutes.length !== requiredApps.length || catalogRoutes.some((route) =
 if (!catalog.includes('appId: "osi-survey"') || !catalog.includes("baselineRoles: []")) fail("OSi Survey has implicit role authorization");
 
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-const postFoundationBackendAllowlist = new Set([
-  "api/_lib/authHttp.js",
-  "api/_lib/authOrigin.js",
-  "api/auth/login.js",
-  "api/auth/me.js",
-]);
-if (changed.some((path) => (
-  (path.startsWith("api/") && !postFoundationBackendAllowlist.has(path))
-  || path.startsWith("prisma/")
-  || path.startsWith("src/data/")
-))) fail("forbidden backend, schema, migration, or mock change");
+if (changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || path.startsWith("prisma/") || path.startsWith("src/data/"))) fail("forbidden backend, schema, migration, or mock change");
 console.log(JSON.stringify({ ok: true, migrations: migrations.length, applications: requiredApps.length, changedFiles: changed.length }));

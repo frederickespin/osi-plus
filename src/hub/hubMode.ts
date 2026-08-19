@@ -1,6 +1,12 @@
+import {
+  V17_COMMERCIAL_CRM_PREVIEW_MODE,
+  resolveV17CommercialCrmPreviewClientAuthority,
+} from "../../shared/v17CommercialCrmPreview.js";
+
 export const OSI_HUB_MODES = Object.freeze({
   DISABLED: "DISABLED",
   LOCAL_ONLY: "LOCAL_ONLY",
+  PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE,
 } as const);
 
 export type OsiHubMode = (typeof OSI_HUB_MODES)[keyof typeof OSI_HUB_MODES];
@@ -9,11 +15,11 @@ export type OsiHubModeResolution = Readonly<{
   mode: OsiHubMode;
   enabled: boolean;
   valid: boolean;
-  reason: "DISABLED" | "LOCAL_LOOPBACK" | "VALUE_INVALID" | "REMOTE_FORBIDDEN" | "VERCEL_FORBIDDEN";
+  reason: "DISABLED" | "LOCAL_LOOPBACK" | "AUTHORIZED_PREVIEW" | "VALUE_INVALID" | "REMOTE_FORBIDDEN" | "VERCEL_FORBIDDEN" | "PREVIEW_CONFIGURATION_INVALID";
 }>;
 
 type HubEnvironment = Record<string, unknown>;
-type HubRuntime = { hostname?: string };
+type HubRuntime = { hostname?: string; vercelEnvironment?: string | null; gitBranch?: string | null };
 
 function isLoopback(hostname: string) {
   return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
@@ -25,16 +31,37 @@ function containsVercelEnvironment(environment: HubEnvironment) {
 
 export function resolveOsiHubMode(
   environment: HubEnvironment = import.meta.env,
-  runtime: HubRuntime = { hostname: typeof window === "undefined" ? undefined : window.location.hostname },
+  runtime: HubRuntime = {
+    hostname: typeof window === "undefined" ? undefined : window.location.hostname,
+    vercelEnvironment: typeof __V17_VERCEL_ENV__ === "undefined" ? null : __V17_VERCEL_ENV__,
+    gitBranch: typeof __V17_VERCEL_GIT_COMMIT_REF__ === "undefined" ? null : __V17_VERCEL_GIT_COMMIT_REF__,
+  },
 ): OsiHubModeResolution {
   const raw = environment.VITE_OSI_HUB_MODE;
   if (raw === undefined || raw === OSI_HUB_MODES.DISABLED) {
     return Object.freeze({ mode: OSI_HUB_MODES.DISABLED, enabled: false, valid: true, reason: "DISABLED" });
   }
+  if (raw === OSI_HUB_MODES.PREVIEW_REHEARSAL) {
+    const preview = resolveV17CommercialCrmPreviewClientAuthority({
+      hubMode: raw,
+      clientMode: environment.VITE_CRM_PIPELINE_CLIENT_MODE,
+      readMode: environment.VITE_CRM_PIPELINE_READ_MODE,
+      batch: environment.VITE_V17_COMMERCIAL_CRM_PREVIEW_BATCH,
+      vercelEnvironment: runtime.vercelEnvironment,
+      gitBranch: runtime.gitBranch,
+      hostname: runtime.hostname,
+    });
+    return Object.freeze({
+      mode: preview.enabled ? OSI_HUB_MODES.PREVIEW_REHEARSAL : OSI_HUB_MODES.DISABLED,
+      enabled: preview.enabled,
+      valid: preview.valid,
+      reason: preview.reason === "AUTHORIZED_PREVIEW" ? "AUTHORIZED_PREVIEW" : "PREVIEW_CONFIGURATION_INVALID",
+    });
+  }
   if (raw !== OSI_HUB_MODES.LOCAL_ONLY) {
     return Object.freeze({ mode: OSI_HUB_MODES.DISABLED, enabled: false, valid: false, reason: "VALUE_INVALID" });
   }
-  if (containsVercelEnvironment(environment)) {
+  if (containsVercelEnvironment(environment) || runtime.vercelEnvironment != null || runtime.gitBranch != null) {
     return Object.freeze({ mode: OSI_HUB_MODES.DISABLED, enabled: false, valid: false, reason: "VERCEL_FORBIDDEN" });
   }
   if (!isLoopback(String(runtime.hostname || ""))) {

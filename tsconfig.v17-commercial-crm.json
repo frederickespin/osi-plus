@@ -4,6 +4,7 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.v17-commercial-crm.tsbuildinfo"
   },
   "include": [
+    "src/v17-preview-env.d.ts",
     "src/commercial-crm/**/*.tsx",
     "src/crm-relational/**/*.ts",
     "src/hub/**/*.ts",

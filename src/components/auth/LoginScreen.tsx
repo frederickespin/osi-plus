@@ -27,10 +27,11 @@ export interface LoginSession {
   role: UserRole;
   permissions?: readonly string[];
   deniedPermissions?: readonly string[];
+  commercialCrmPreviewAuthorized?: boolean;
 }
 
 interface LoginScreenProps {
-  onLoginSuccess: (session: LoginSession) => void;
+  onLoginSuccess: (session: LoginSession) => void | Promise<void>;
 }
 
 export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
@@ -38,6 +39,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [credsOpen, setCredsOpen] = useState(false);
+  const appEnvironment = getAppEnv();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,13 +64,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
         };
         
-        // Store session in localStorage
-        localStorage.setItem('osi-plus.session', JSON.stringify(session));
-        localStorage.setItem('osi-plus.token', response.token);
-
+        await onLoginSuccess(session);
         void notifyMt01b2LegacyLogin();
-        
-        onLoginSuccess(session);
         toast.success(`Bienvenido, ${response.user.name}`);
       } else {
         toast.error('Error en la respuesta del servidor');
@@ -92,15 +89,17 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <p className="text-slate-500 text-sm">Sistema de Gestión Integral</p>
           <p
             className={`text-xs font-medium px-2 py-1 rounded inline-block ${
-              getAppEnv() === 'production'
+              appEnvironment === 'production'
                 ? 'bg-emerald-100 text-emerald-800'
-                : getAppEnv() === 'preview'
+                : appEnvironment === 'preview'
                   ? 'bg-amber-100 text-amber-800'
-                  : 'bg-sky-100 text-sky-800'
+                  : appEnvironment === 'development'
+                    ? 'bg-sky-100 text-sky-800'
+                    : 'bg-slate-200 text-slate-800'
             }`}
             title="Ambiente actual"
           >
-            {ENV_LABELS[getAppEnv()]}
+            {ENV_LABELS[appEnvironment]}
           </p>
         </CardHeader>
         <CardContent>
@@ -147,7 +146,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </Button>
           </form>
 
-          {getAppEnv() !== "production" && (
+          {(appEnvironment === "preview" || appEnvironment === "development") && (
             <div className="mt-6 pt-4 border-t border-slate-200">
               <Collapsible open={credsOpen} onOpenChange={setCredsOpen}>
                 <CollapsibleTrigger asChild>

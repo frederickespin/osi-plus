@@ -53,7 +53,7 @@ invariant(!/ownerMembershipId|ownerUserId|tenantId/.test(module), "la UI no pued
 
 const app = read("src/App.tsx");
 invariant(/lazy\(\(\)\s*=>\s*\n?\s*import\('@\/crm-relational\/RelationalPipelineModule'\)/.test(app), "el módulo debe ser dinámico");
-invariant(/isRelationalCrmClientEnabled/.test(app), "App debe respetar la compuerta");
+invariant(/isRelationalCrmReadEnabled/.test(app), "App debe respetar la compuerta coordinada de lectura");
 invariant(!/const\s+CRM_PIPELINE_CLIENT\s*=/.test(app), "la compuerta no puede congelarse en caché global");
 const salesStore = read("src/lib/salesStore.ts");
 invariant(/const LS_LEADS = "osi-plus\.leads"/.test(salesStore), "LeadLite debe permanecer intacto");

@@ -5,20 +5,30 @@ import { methodNotAllowed, unauthorized, withCommonHeaders } from "../_lib/http.
 import { withLegacyAuthHeaders } from "../_lib/authHttp.js";
 import { requireAuthContext } from "../_lib/authContextMiddleware.js";
 import { isGloballyActiveUser } from "../_lib/userStatus.js";
+import { sendCommercialTenancyError } from "../_lib/commercialTenancyWrite.js";
+import {
+  requireV17CommercialCrmPreviewSessionMode,
+  resolveV17CommercialCrmPreviewSessionContext,
+} from "../_lib/v17CommercialCrmPreviewAuth.js";
 
-function legacyUserDto(user) {
+function legacyUserDto(user, authorization = null) {
   return {
     id: user.id,
     code: user.code,
     name: user.name,
     email: user.email,
     phone: user.phone,
-    role: user.role,
+    role: authorization?.role ?? user.role,
     status: user.status,
     department: user.department,
     joinDate: user.joinDate,
     points: user.points,
     rating: user.rating,
+    ...(authorization ? {
+      permissions: authorization.effectivePermissions,
+      deniedPermissions: authorization.deniedPermissions,
+      commercialCrmPreviewAuthorized: true,
+    } : {}),
   };
 }
 
@@ -39,6 +49,13 @@ const legacyMeHandler = withCommonHeaders(async (req, res) => {
     return methodNotAllowed(res, ["GET"]);
   }
 
+  let previewRequested;
+  try {
+    previewRequested = requireV17CommercialCrmPreviewSessionMode(process.env);
+  } catch (error) {
+    return sendCommercialTenancyError(res, error);
+  }
+
   const policy = resolveMt01bAuthPolicy();
   if (policy.mode === MT01B_AUTH_MODES.LEGACY) {
     const token = getBearerToken(req);
@@ -53,6 +70,14 @@ const legacyMeHandler = withCommonHeaders(async (req, res) => {
     if (lookup.unavailable) return databaseUnavailable(res);
     const legacyUser = lookup.user;
     if (!legacyUser || !isGloballyActiveUser(legacyUser.status)) return unauthorized(res);
+    if (previewRequested) {
+      try {
+        const context = await resolveV17CommercialCrmPreviewSessionContext(req, { env: process.env, prisma });
+        return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, context) });
+      } catch (error) {
+        return sendCommercialTenancyError(res, error);
+      }
+    }
     return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser) });
   }
 

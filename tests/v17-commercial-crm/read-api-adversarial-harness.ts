@@ -1,6 +1,6 @@
 import { CrmPipelineReadApi } from "/src/crm-relational/readApi";
 
-const headers = { "Content-Type": "application/json", "Cache-Control": "private, no-store", Vary: "Authorization" };
+const headers = { "Content-Type": "application/json", "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 const statuses = ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"];
 const row = { id: "case-1", caseCode: "CASE-1", clientName: null, mode: "LOCAL", serviceType: "Servicio", customerType: "PERSON", status: "NEW_INBOX", estimatedCbm: 1, requiresSurvey: false, surveyMethod: "NONE", originLocation: "Origen", destinationLocation: "Destino", destinationContracted: false, assetsCount: 0, owner: null, quoteCount: 0, eventCount: 0, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
 const validList = { ok: true, total: 1, page: 1, pageSize: 25, data: [row] };
@@ -11,6 +11,9 @@ const scenarios: Scenario[] = [
   { name: "status-201", response: () => json(validList, 201) },
   { name: "status-204", response: () => new Response(null, { status: 204, headers }) },
   { name: "content-type", response: () => json(validList, 200, { ...headers, "Content-Type": "text/plain" }) },
+  { name: "vary-origin-missing", response: () => json(validList, 200, { ...headers, Vary: "Authorization" }) },
+  { name: "vary-authorization-missing", response: () => json(validList, 200, { ...headers, Vary: "Origin" }) },
+  { name: "vary-wildcard", response: () => json(validList, 200, { ...headers, Vary: "Authorization, Origin, *" }) },
   { name: "empty", response: () => new Response("", { status: 200, headers }) },
   { name: "truncated", response: () => new Response("{", { status: 200, headers }) },
   { name: "array", response: () => json([]) },

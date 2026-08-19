@@ -2,6 +2,7 @@ import { prisma } from "../_lib/db.js";
 import { getBearerToken, verifyAccessToken } from "../_lib/auth.js";
 import { MT01B_AUTH_MODES, resolveMt01bAuthPolicy } from "../_lib/authPolicy.js";
 import { methodNotAllowed, unauthorized, withCommonHeaders } from "../_lib/http.js";
+import { withLegacyAuthHeaders } from "../_lib/authHttp.js";
 import { requireAuthContext } from "../_lib/authContextMiddleware.js";
 import { isGloballyActiveUser } from "../_lib/userStatus.js";
 
@@ -33,7 +34,7 @@ function databaseUnavailable(res) {
   return res.status(503).json({ ok: false, error: "AUTH_DATABASE_UNAVAILABLE" });
 }
 
-export default withCommonHeaders(async (req, res) => {
+const legacyMeHandler = withCommonHeaders(async (req, res) => {
   if (req.method !== "GET") {
     return methodNotAllowed(res, ["GET"]);
   }
@@ -82,5 +83,7 @@ export default withCommonHeaders(async (req, res) => {
       sessionId: context.sessionId,
     },
   });
-});
+}, { handleOptions: false, cors: false });
+
+export default withLegacyAuthHeaders(legacyMeHandler, { methods: ["GET"] });
 

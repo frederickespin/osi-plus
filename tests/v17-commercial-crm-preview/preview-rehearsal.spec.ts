@@ -72,6 +72,13 @@ async function openActor(browser: Browser, actor: Actor, route = "/commercial") 
 }
 
 test("A y V autorizados ven Hub e Inbox en las tres rutas con datos vacíos", async ({ browser }) => {
+  const labelContext = await browser.newContext();
+  const labelPage = await labelContext.newPage();
+  await labelPage.goto("/");
+  await expect(labelPage.getByText("Preview", { exact: true })).toBeVisible();
+  await expect(labelPage.getByText("Producción", { exact: true })).toHaveCount(0);
+  await labelContext.close();
+
   for (const role of ["A", "V"]) {
     const { context, page, audit } = await openActor(browser, { role, permissions: ["pipeline:view"] }, "/hub");
     await expect(page.getByText("PREVIEW_REHEARSAL", { exact: true })).toBeVisible();

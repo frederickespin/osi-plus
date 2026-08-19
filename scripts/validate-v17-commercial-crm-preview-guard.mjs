@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const BASE = "de5e8460c5da4e7f1c1fe42836b7ab488f67dd42";
+const BASE = "e7128e170188c2fab93ebc5c2768a5e656cb510f";
 const read = (path) => readFileSync(path, "utf8");
 const fail = (message) => { throw new Error(`V17_COMMERCIAL_CRM_PREVIEW_GUARD:${message}`); };
 const requireText = (source, signature, message) => { if (!source.includes(signature)) fail(message); };
@@ -27,6 +27,7 @@ const allowed = new Set([
   "playwright.v17-commercial-crm-preview.config.ts",
   "scripts/v17-commercial-crm-preview-browser-ci-reporter.mjs",
   "scripts/v17-commercial-crm-preview-http-test.mjs",
+  "scripts/v17-app-environment-test.mjs",
   "scripts/v17-commercial-crm-preview-test.mjs",
   "scripts/mt-01b1-test-helpers.mjs",
   "scripts/validate-crm-01b3b1-guard.mjs",
@@ -36,12 +37,17 @@ const allowed = new Set([
   "scripts/validate-v17-hub-guard.mjs",
   "shared/v17CommercialCrmPreview.d.ts",
   "shared/v17CommercialCrmPreview.js",
+  "shared/appEnvironment.d.ts",
+  "shared/appEnvironment.js",
   "src/App.tsx",
+  "src/components/EnvBanner.tsx",
   "src/components/auth/LoginScreen.tsx",
+  "src/components/layout/Sidebar.tsx",
   "src/crm-relational/clientMode.ts",
   "src/hub/HubWorkspace.tsx",
   "src/hub/hubMode.ts",
   "src/lib/api.ts",
+  "src/lib/env.ts",
   "src/lib/sessionStore.ts",
   "src/v17-preview-env.d.ts",
   "tests/v17-commercial-crm-preview/preview-rehearsal.spec.ts",
@@ -100,6 +106,13 @@ requireText(app, "isRelationalCrmReadEnabled() && previewConfirmed", "carga CRM 
 const vite = read("vite.config.ts");
 requireText(vite, "__V17_VERCEL_ENV__", "metadata Vercel de build ausente");
 requireText(vite, "__V17_VERCEL_GIT_COMMIT_REF__", "Git ref de build ausente");
+const appEnvironment = read("shared/appEnvironment.js");
+requireText(appEnvironment, 'UNKNOWN: "unknown"', "entorno desconocido no falla cerrado");
+requireText(appEnvironment, "LOOPBACK_HOSTNAMES.includes(hostname)", "loopback no tiene precedencia");
+if (/\.trim\(|toUpperCase|toLowerCase/.test(appEnvironment)) fail("resolver ambiental normaliza señales inválidas");
+const environmentUi = read("src/lib/env.ts");
+requireText(environmentUi, 'preview: "Preview"', "etiqueta Preview no es exacta");
+requireText(environmentUi, 'unknown: "Ambiente desconocido"', "fallback desconocido ausente");
 
 const workflow = read(".github/workflows/ci.yml");
 if (workflow.includes("V17-COMMERCIAL-CRM-PREVIEW-01") || workflow.includes("PREVIEW_REHEARSAL")) fail("workflow activa el ensayo");
@@ -107,6 +120,7 @@ for (const signature of [
   "npm run guard:v17-commercial-crm-preview",
   "npm run test:v17-commercial-crm-preview",
   "npm run test:v17-commercial-crm-preview:http",
+  "npm run test:v17-app-environment",
   "npm run test:v17-commercial-crm-preview:browser",
 ]) requireText(workflow, signature, `CI no exige ${signature}`);
 const reporter = read("scripts/v17-commercial-crm-preview-browser-ci-reporter.mjs");

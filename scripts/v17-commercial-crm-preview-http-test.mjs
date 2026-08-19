@@ -207,24 +207,34 @@ try {
     && authCalls === beforeOwnerAuth && databaseCalls === beforeOwnerDatabase);
 
   const loginOptions = await request("/api/auth/login", { method: "OPTIONS", origin: "https://external.invalid" });
-  check("Auth LEGACY login conserva wildcard heredado", loginOptions.response.status === 204
-    && loginOptions.response.headers.get("access-control-allow-origin") === "*"
-    && loginOptions.response.headers.get("cache-control") !== "private, no-store");
+  check("Auth LEGACY OPTIONS falla cerrado", loginOptions.response.status === 405
+    && loginOptions.response.headers.get("allow") === "POST");
+  check("Auth LEGACY OPTIONS conserva contrato privado", loginOptions.response.headers.get("cache-control") === "private, no-store"
+    && loginOptions.response.headers.get("vary") === "Authorization, Origin"
+    && !loginOptions.response.headers.has("access-control-allow-origin")
+    && !loginOptions.response.headers.has("access-control-allow-credentials")
+    && !loginOptions.response.headers.has("set-cookie"));
   const loginInvalid = await request("/api/auth/login", { method: "POST", origin: "https://external.invalid", body: {} });
-  check("Auth LEGACY login inválido sin DB", loginInvalid.response.status === 400
-    && loginInvalid.response.headers.get("access-control-allow-origin") === "*"
-    && loginInvalid.response.headers.get("cache-control") !== "private, no-store");
+  check("Auth LEGACY login inválido sin DB", loginInvalid.response.status === 400);
+  check("Auth LEGACY login inválido conserva contrato privado", loginInvalid.response.headers.get("cache-control") === "private, no-store"
+    && loginInvalid.response.headers.get("vary") === "Authorization, Origin"
+    && !loginInvalid.response.headers.has("access-control-allow-origin")
+    && !loginInvalid.response.headers.has("access-control-allow-credentials")
+    && !loginInvalid.response.headers.has("set-cookie"));
   const authMe = await request("/api/auth/me", { origin: "https://external.invalid" });
-  check("Auth LEGACY auth/me conserva wildcard y cache heredados", authMe.response.status === 401
-    && authMe.response.headers.get("access-control-allow-origin") === "*"
-    && authMe.response.headers.get("cache-control") !== "private, no-store");
+  check("Auth LEGACY auth/me anónimo", authMe.response.status === 401);
+  check("Auth LEGACY auth/me conserva contrato privado", authMe.response.headers.get("cache-control") === "private, no-store"
+    && authMe.response.headers.get("vary") === "Authorization, Origin"
+    && !authMe.response.headers.has("access-control-allow-origin")
+    && !authMe.response.headers.has("access-control-allow-credentials")
+    && !authMe.response.headers.has("set-cookie"));
 
   console.log(JSON.stringify({
     ok: true,
     assertions,
     crm: { methods: ["GET", "HEAD", "OPTIONS"], sameOrigin: true, externalOriginRejected: true, privateNoStore: true },
     mutations: { disabled: true, authCalls: 0, bodyReads, prismaCalls: 0 },
-    legacyAuthBlocker: { wildcardCors: true, privateNoStore: false },
+    legacyAuth: { wildcardCors: false, privateNoStore: true, optionsPermissive: false },
   }));
 } finally {
   server.close();

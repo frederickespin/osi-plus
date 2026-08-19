@@ -6,7 +6,8 @@ import {
 } from "./pipelineCaseMutationHttp.js";
 import { assertCrmAuthorizationHeader, resolveCrmPipelineContext } from "./crmPipelineAccess.js";
 import { listCrmPipelineOwnerOptions } from "./crmOwnerCatalog.js";
-import { methodNotAllowed, setPrivateNoStore, withCommonHeaders } from "./http.js";
+import { methodNotAllowed, withCommonHeaders } from "./http.js";
+import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 
 export function createCrmOwnerCatalogHandler({
   env = process.env,
@@ -15,7 +16,7 @@ export function createCrmOwnerCatalogHandler({
   listOptions = listCrmPipelineOwnerOptions,
 } = {}) {
   return withCommonHeaders(async (req, res) => {
-    setPrivateNoStore(res);
+    setCrmPrivateHeaders(res);
     try {
       requireCrmPipelineMutationsLocal(env);
     } catch (error) {

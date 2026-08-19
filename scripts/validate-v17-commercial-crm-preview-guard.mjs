@@ -30,6 +30,7 @@ const allowed = new Set([
   "scripts/v17-commercial-crm-preview-test.mjs",
   "scripts/mt-01b1-test-helpers.mjs",
   "scripts/validate-crm-01b3b1-guard.mjs",
+  "scripts/validate-crm-01b3b2-guard.mjs",
   "scripts/validate-v17-commercial-crm-guard.mjs",
   "scripts/validate-v17-commercial-crm-preview-guard.mjs",
   "scripts/validate-v17-hub-guard.mjs",

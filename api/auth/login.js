@@ -35,7 +35,8 @@ const legacyLoginHandler = withCommonHeaders(async (req, res) => {
   if (Object.keys(body).some((key) => key !== "email" && key !== "password")) {
     return res.status(400).json({ ok: false, error: "Solicitud de autenticación inválida" });
   }
-  if (typeof body.email !== "string" || typeof body.password !== "string") {
+  if ((Object.hasOwn(body, "email") && typeof body.email !== "string")
+    || (Object.hasOwn(body, "password") && typeof body.password !== "string")) {
     return res.status(400).json({ ok: false, error: "Solicitud de autenticación inválida" });
   }
   const email = String(body.email || "").toLowerCase().trim();

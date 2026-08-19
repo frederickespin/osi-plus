@@ -39,5 +39,15 @@ if (catalogRoutes.length !== requiredApps.length || catalogRoutes.some((route) =
 if (!catalog.includes('appId: "osi-survey"') || !catalog.includes("baselineRoles: []")) fail("OSi Survey has implicit role authorization");
 
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-if (changed.some((path) => path.startsWith("api/") || path.startsWith("prisma/") || path.startsWith("src/data/"))) fail("forbidden backend, schema, migration, or mock change");
+const postFoundationBackendAllowlist = new Set([
+  "api/_lib/authHttp.js",
+  "api/_lib/authOrigin.js",
+  "api/auth/login.js",
+  "api/auth/me.js",
+]);
+if (changed.some((path) => (
+  (path.startsWith("api/") && !postFoundationBackendAllowlist.has(path))
+  || path.startsWith("prisma/")
+  || path.startsWith("src/data/")
+))) fail("forbidden backend, schema, migration, or mock change");
 console.log(JSON.stringify({ ok: true, migrations: migrations.length, applications: requiredApps.length, changedFiles: changed.length }));

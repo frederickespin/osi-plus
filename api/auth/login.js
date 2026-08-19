@@ -1,6 +1,7 @@
 import { prisma } from "../_lib/db.js";
 import { comparePassword, signAccessToken } from "../_lib/auth.js";
 import { methodNotAllowed, readJsonObject, withCommonHeaders } from "../_lib/http.js";
+import { withLegacyAuthHeaders } from "../_lib/authHttp.js";
 import { isGloballyActiveUser } from "../_lib/userStatus.js";
 
 // Hash fijo y no sensible: obliga una comparación bcrypt aunque la identidad
@@ -22,7 +23,7 @@ export async function authenticateLegacyCredentials({ email, password, prismaCli
   return { outcome: "AUTHENTICATED", user };
 }
 
-export default withCommonHeaders(async (req, res) => {
+const legacyLoginHandler = withCommonHeaders(async (req, res) => {
   if (req.method !== "POST") {
     return methodNotAllowed(res, ["POST"]);
   }
@@ -31,6 +32,13 @@ export default withCommonHeaders(async (req, res) => {
     maxBytes: 16 * 1024,
     requireNonEmptyObject: true,
   });
+  if (Object.keys(body).some((key) => key !== "email" && key !== "password")) {
+    return res.status(400).json({ ok: false, error: "Solicitud de autenticación inválida" });
+  }
+  if ((Object.hasOwn(body, "email") && typeof body.email !== "string")
+    || (Object.hasOwn(body, "password") && typeof body.password !== "string")) {
+    return res.status(400).json({ ok: false, error: "Solicitud de autenticación inválida" });
+  }
   const email = String(body.email || "").toLowerCase().trim();
   const password = String(body.password || "");
 
@@ -73,5 +81,7 @@ export default withCommonHeaders(async (req, res) => {
       rating: user.rating,
     },
   });
-});
+}, { handleOptions: false, cors: false });
+
+export default withLegacyAuthHeaders(legacyLoginHandler, { methods: ["POST"] });
 

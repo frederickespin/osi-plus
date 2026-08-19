@@ -19,7 +19,7 @@ rejected("normalización de modo rechazada", { overrides: { "api/_lib/crmPipelin
 rejected("Vercel bypass rechazado", { overrides: { "api/_lib/crmPipelineAccess.js": access.replace('key === "VERCEL" || key.startsWith("VERCEL_")', 'key === "NOT_VERCEL"') } }, /Vercel/);
 rejected("lectura coordinada obligatoria", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("requireCrmPipelineMutation(env)", "CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY") } }, /coordinada/);
 rejected("CORS wildcard rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": `${adapter}\nres.setHeader("Access-Control-Allow-Origin", "*");` } }, /wildcard/);
-rejected("CORS global de Vercel sobre CRM rechazado", { overrides: { "vercel.json": vercel.replace("(?!crm/)", "") } }, /Vercel/);
+rejected("CORS global de Vercel sobre CRM rechazado", { overrides: { "vercel.json": vercel.replace("(?!auth/|crm/)", "(?!auth/)") } }, /Vercel/);
 rejected("exclusión parcial por endpoint rechazada", { overrides: { "vercel.json": vercel.replace("crm/", "crm/(?:pipeline-cases|pipeline-summary)") } }, /namespace|parcial/);
 rejected("header x-osi rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace('"Authorization", "Content-Type", "Idempotency-Key"', '"Authorization", "Content-Type", "Idempotency-Key", "x-osi-role"') } }, /x-osi/);
 rejected("detección raw idempotency obligatoria", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace('rawHeaderCount(req, "idempotency-key")', 'null /* duplicate guard removed */') } }, /rawHeaders/);

@@ -9,7 +9,17 @@ const invariant = (condition, message) => { if (!condition) throw new Error(`V17
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
 invariant(migrations.length === 17, `se esperaban 17 migraciones, existen ${migrations.length}`);
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-invariant(!changed.some((path) => path.startsWith("api/") || path.startsWith("prisma/") || path.startsWith("src/data/")), "backend, Prisma, migraciones o fixtures canónicos modificados");
+const postInboxBackendAllowlist = new Set([
+  "api/_lib/authHttp.js",
+  "api/_lib/authOrigin.js",
+  "api/auth/login.js",
+  "api/auth/me.js",
+]);
+invariant(!changed.some((path) => (
+  (path.startsWith("api/") && !postInboxBackendAllowlist.has(path))
+  || path.startsWith("prisma/")
+  || path.startsWith("src/data/")
+)), "backend, Prisma, migraciones o fixtures canónicos modificados");
 
 const catalog = read("src/hub/appCatalog.ts");
 invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");

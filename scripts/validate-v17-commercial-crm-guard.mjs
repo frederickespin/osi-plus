@@ -2,14 +2,22 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const BASE = "ab224a79e4deafa6882e353b1025720058630ca2";
+const BASE = "de5e8460c5da4e7f1c1fe42836b7ab488f67dd42";
+const allowedBackendChanges = new Set([
+  "api/_lib/commercialTenancyWrite.js",
+  "api/_lib/crmPipelineAccess.js",
+  "api/_lib/crmPipelineReadHttp.js",
+  "api/_lib/http.js",
+  "api/_lib/v17CommercialCrmPreviewAuth.js",
+  "api/auth/me.js",
+]);
 const read = (path) => readFileSync(path, "utf8");
 const invariant = (condition, message) => { if (!condition) throw new Error(`V17_COMMERCIAL_CRM_GUARD:${message}`); };
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
 invariant(migrations.length === 17, `se esperaban 17 migraciones, existen ${migrations.length}`);
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-invariant(!changed.some((path) => path.startsWith("api/") || path.startsWith("prisma/") || path.startsWith("src/data/")), "backend, Prisma, migraciones o fixtures canónicos modificados");
+invariant(!changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || path.startsWith("prisma/") || path.startsWith("src/data/")), "backend ajeno al ensayo, Prisma, migraciones o fixtures canónicos modificados");
 
 const catalog = read("src/hub/appCatalog.ts");
 invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");
@@ -23,9 +31,9 @@ invariant(/lazy\(\(\) => import\("@\/commercial-crm\/CommercialInboxModule"\)\)/
 invariant(/!decision\?\.allowed[\s\S]*commercial-crm" && crmReadEnabled/.test(hub), "guardia de ruta no precede carga CRM");
 
 const mode = read("src/crm-relational/clientMode.ts");
-for (const signature of ['LOCAL_ONLY: "LOCAL_ONLY"', 'READ_ONLY: "READ_ONLY"', "VITE_CRM_PIPELINE_CLIENT_MODE", "VITE_CRM_PIPELINE_READ_MODE", "isRelationalCrmReadEnabled"]) invariant(mode.includes(signature), `compuerta incompleta: ${signature}`);
+for (const signature of ['LOCAL_ONLY: "LOCAL_ONLY"', 'READ_ONLY: "READ_ONLY"', 'PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE', "VITE_CRM_PIPELINE_CLIENT_MODE", "VITE_CRM_PIPELINE_READ_MODE", "isRelationalCrmReadEnabled"]) invariant(mode.includes(signature), `compuerta incompleta: ${signature}`);
 invariant(!/(?:trim|toUpperCase|toLowerCase)\s*\(/.test(mode), "compuertas normalizan valores inválidos");
-invariant(/vercelMarker \|\| !isLoopback/.test(mode), "compuerta no rechaza Vercel/remoto");
+invariant(/vercelMarker \|\| runtime\.vercelEnvironment != null \|\| runtime\.gitBranch != null \|\| !isLoopback/.test(mode), "compuerta no rechaza Vercel/remoto");
 
 const adapter = read("src/crm-relational/readApi.ts");
 for (const endpoint of ["/pipeline-cases?", "/pipeline-cases/", "/pipeline-summary"]) invariant(adapter.includes(endpoint), `contrato GET ausente: ${endpoint}`);

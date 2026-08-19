@@ -57,7 +57,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(/keys\.some\(\(key\) => key !== "id"\)/.test(adapter), "requestId/query adicional no se rechaza");
   invariant(/rawHeaderCount\(req, "idempotency-key"\)/.test(adapter), "duplicados Idempotency-Key no se detectan en rawHeaders");
   invariant(/rawHeaderCount\(request, "authorization"\)/.test(access) && /assertCrmAuthorizationHeader\(req\)/.test(adapter), "Authorization ambiguo no se detecta");
-  invariant(vercel.includes('"source": "/api/((?!crm/).*)"'), "Vercel no excluye el namespace CRM completo del CORS global");
+  invariant(vercel.includes('"source": "/api/((?!auth/|crm/).*)"'), "Vercel no excluye los namespaces Auth y CRM completos del CORS global");
   invariant(!/(?:transition|assign-owner|unassign-owner|allowed-transitions|pipeline-summary)/.test(JSON.parse(vercel).headers?.[0]?.source || ""), "Vercel no puede mantener una exclusión CRM parcial por endpoint");
   for (const forbidden of ["tenantId", "userId", "actorUserId", "actorMembershipId", "ownerUserId", "ownerId", "role", "permissions", "requestId", "resultingVersion", "payloadHash", "statusChangedAt", "timestamps"]) {
     invariant(adapter.includes(`"${forbidden}"`), `falta protección de ${forbidden}`);

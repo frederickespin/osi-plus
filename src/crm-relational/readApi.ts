@@ -157,7 +157,9 @@ function assertResponseHeaders(response: Response) {
   if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(contentType)
     || !cacheControl.includes("private")
     || !cacheControl.includes("no-store")
-    || !vary.includes("authorization")) {
+    || !vary.includes("authorization")
+    || !vary.includes("origin")
+    || vary.includes("*")) {
     throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_HEADERS_INVALID");
   }
 }

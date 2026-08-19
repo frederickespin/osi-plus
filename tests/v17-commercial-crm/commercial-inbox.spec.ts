@@ -214,7 +214,7 @@ test("adaptador HTTP rechaza contratos adversariales y conserva Bearer sólo en 
   await expect(page.locator("body")).toHaveAttribute("data-result", "passed");
   const result = await page.evaluate(() => JSON.parse(document.body.dataset.details || "{}"));
   expect(result.failed).toEqual([]);
-  expect(result.passed).toBe(23);
+  expect(result.passed).toBe(26);
 });
 
 test("compuerta CRM desactivada mantiene descriptor inactivo sin chunk ni requests", async ({ page }) => {

@@ -65,6 +65,8 @@ const exactPreview = Object.freeze({
 });
 
 check("defaults CRM disabled", resolveCrmPipelineModes({}).readMode === "DISABLED" && resolveCrmPipelineModes({}).mutationMode === "DISABLED");
+check("production without variables remains fully disabled", resolveCrmPipelineModes({ VERCEL_ENV: "production", VERCEL_GIT_COMMIT_REF: "main" }).readMode === "DISABLED"
+  && resolveCrmPipelineModes({ VERCEL_ENV: "production", VERCEL_GIT_COMMIT_REF: "main" }).mutationMode === "DISABLED");
 check("local read remains available off Vercel", resolveCrmPipelineModes({ CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" }).readMode === "READ_ONLY");
 check("exact preview certified", isExactV17CommercialCrmPreviewServerEnvironment(exactPreview));
 check("preview read only enabled", resolveCrmPipelineModes(exactPreview).readMode === CRM_PIPELINE_READ_MODES.PREVIEW_REHEARSAL && resolveCrmPipelineModes(exactPreview).preview === true);
@@ -151,7 +153,15 @@ const validRead = await invoke(createPipelineCasesListHandler({
   env: exactPreview,
   prismaClient: readDatabase,
   requirePermission: async () => ({ tenantId: "tenant-synthetic" }),
-}), { method: "GET", headers: { origin: "https://preview.example.test" }, query: {} });
+}), {
+  method: "GET",
+  headers: {
+    origin: "https://preview.example.test",
+    host: "preview.example.test",
+    "x-forwarded-proto": "https",
+  },
+  query: {},
+});
 check("valid preview list is read only", validRead.statusCode === 200 && validRead.body?.total === 0);
 check("protected cache and vary headers", validRead.getHeader("cache-control") === "private, no-store" && validRead.getHeader("vary") === "Authorization, Origin");
 check("no permissive CORS or credentials", !validRead.getHeader("access-control-allow-origin") && !validRead.getHeader("access-control-allow-credentials"));

@@ -60,4 +60,4 @@ for (const command of ["npm run typecheck:v17-commercial-crm", "npm run test:v17
 }
 const vite = read("vite.config.ts");
 invariant(/base:\s*["']\/["']/.test(vite), "assets deben usar raíz absoluta para deep links anidados");
-console.log(JSON.stringify({ ok: true, migrations: 17, routes: 3, methods: ["GET"], changedFiles: changed.length }));
+console.log(JSON.stringify({ ok: true, migrations: 17, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], changedFiles: changed.length }));

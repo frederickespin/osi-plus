@@ -126,6 +126,9 @@ jobs:
           node scripts/validate-crm-01b3a-guard-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          node scripts/v17-crm-vary-contract-test.mjs
+          node scripts/validate-v17-crm-vary-guard.mjs
+          node scripts/validate-v17-crm-vary-guard-test.mjs
           npm run guard:auth-legacy-private-headers
           node scripts/crm-01b3b1-gate-test.mjs
           node scripts/crm-01b3b3-disabled-options-test.mjs
@@ -299,6 +302,9 @@ jobs:
           node scripts/validate-crm-01b3a-guard-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          node scripts/v17-crm-vary-contract-test.mjs
+          node scripts/validate-v17-crm-vary-guard.mjs
+          node scripts/validate-v17-crm-vary-guard-test.mjs
           node scripts/crm-01b3b1-gate-test.mjs
           node scripts/crm-01b3b3-disabled-options-test.mjs
           node scripts/validate-crm-01b3b1-guard.mjs
@@ -393,5 +399,8 @@ jobs:
           node scripts/crm-01b2-local-target-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          node scripts/v17-crm-vary-contract-test.mjs
+          node scripts/validate-v17-crm-vary-guard.mjs
+          node scripts/validate-v17-crm-vary-guard-test.mjs
           npm run guard:auth-legacy-private-headers
           git diff --exit-code

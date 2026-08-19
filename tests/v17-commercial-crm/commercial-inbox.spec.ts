@@ -9,7 +9,7 @@ const STATUSES = [
 type Actor = { role: string; permissions?: string[]; deniedPermissions?: string[]; token?: string };
 type RequestAudit = { method: string; pathname: string; search: string; authorization: string | null };
 
-const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization" };
+const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 
 function pipelineCase(overrides: Record<string, unknown> = {}) {
   return {

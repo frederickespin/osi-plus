@@ -37,7 +37,14 @@ function privateContract(name, response, { status, code, empty = false } = {}) {
   check(`${name}: estado`, response.statusCode === status, response.statusCode);
   check(`${name}: código`, empty ? response.body === undefined : (response.body?.code ?? response.body?.error) === code, response.body);
   check(`${name}: cache`, response.getHeader("cache-control") === "private, no-store");
-  check(`${name}: vary`, /authorization/i.test(String(response.getHeader("vary"))));
+  const varyTokens = String(response.getHeader("vary") || "")
+    .split(",").map((token) => token.trim()).filter(Boolean);
+  const varyLower = varyTokens.map((token) => token.toLowerCase());
+  check(`${name}: vary exacto`, varyLower.includes("authorization")
+    && varyLower.includes("origin")
+    && varyLower.filter((token) => token === "authorization").length === 1
+    && varyLower.filter((token) => token === "origin").length === 1
+    && !varyLower.includes("*"), response.getHeader("vary"));
   check(`${name}: sin CORS`, response.getHeader("access-control-allow-origin") === undefined
     && response.getHeader("access-control-allow-credentials") === undefined);
   check(`${name}: sin cookie`, response.getHeader("set-cookie") === undefined);
@@ -62,7 +69,7 @@ try {
   ];
 
   for (const [route, handler] of reads) {
-    for (const method of ["GET", "HEAD", "OPTIONS"]) {
+    for (const method of ["GET", "HEAD", "POST", "OPTIONS"]) {
       const response = await invoke(handler, request(method));
       privateContract(`${route} ${method} DISABLED`, response, {
         status: 409,
@@ -88,7 +95,7 @@ try {
       ["detalle", createPipelineCaseDetailHandler],
       ["resumen", createPipelineSummaryHandler],
     ]) {
-      for (const method of ["GET", "HEAD", "OPTIONS"]) {
+      for (const method of ["GET", "HEAD", "POST", "OPTIONS"]) {
         const response = await invoke(factory({ env: malformed, prismaClient, requirePermission }), request(method));
         privateContract(`${route} ${method} configuración inválida`, response, {
           status: 503,
@@ -174,12 +181,35 @@ try {
     ["unassign owner", createUnassignOwnerHandler(mutationOptions)],
   ];
   for (const [route, handler] of mutations) {
-    const response = await invoke(handler, request("OPTIONS"));
-    privateContract(`${route} OPTIONS DISABLED`, response, { status: 409, code: "CRM_PIPELINE_MUTATIONS_DISABLED" });
+    for (const method of ["GET", "HEAD", "POST", "OPTIONS"]) {
+      const response = await invoke(handler, request(method));
+      privateContract(`${route} ${method} DISABLED`, response, {
+        status: 409,
+        code: "CRM_PIPELINE_MUTATIONS_DISABLED",
+        empty: method === "HEAD",
+      });
+    }
   }
-  for (const [route, handler] of mutations.slice(0, 2)) {
-    const response = await invoke(handler, request("HEAD"));
-    privateContract(`${route} HEAD DISABLED`, response, { status: 409, code: "CRM_PIPELINE_MUTATIONS_DISABLED", empty: true });
+  const invalidMutationOptions = {
+    ...mutationOptions,
+    env: { CRM_PIPELINE_MUTATION_MODE: "\uFEFFLOCAL_ONLY" },
+  };
+  const invalidMutations = [
+    ["owner options", createPipelineOwnerOptionsHandler(invalidMutationOptions)],
+    ["allowed transitions", createAllowedTransitionsHandler({ ...invalidMutationOptions, requireReadMode: () => {} })],
+    ["transition", createTransitionHandler(invalidMutationOptions)],
+    ["assign owner", createAssignOwnerHandler(invalidMutationOptions)],
+    ["unassign owner", createUnassignOwnerHandler(invalidMutationOptions)],
+  ];
+  for (const [route, handler] of invalidMutations) {
+    for (const method of ["GET", "HEAD", "POST", "OPTIONS"]) {
+      const response = await invoke(handler, request(method));
+      privateContract(`${route} ${method} configuración inválida`, response, {
+        status: 503,
+        code: "CRM_PIPELINE_CONFIGURATION_INVALID",
+        empty: method === "HEAD",
+      });
+    }
   }
   check("mutaciones DISABLED preceden auth", mutationAuth === 0, mutationAuth);
   check("mutaciones DISABLED preceden dominio", mutationExec === 0, mutationExec);

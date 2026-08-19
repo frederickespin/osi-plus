@@ -33,6 +33,7 @@ export type UserDto = {
   rating: number;
   permissions?: string[];
   deniedPermissions?: string[];
+  commercialCrmPreviewAuthorized?: boolean;
 };
 
 export type ClientDto = {

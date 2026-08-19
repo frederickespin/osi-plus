@@ -1,7 +1,7 @@
 import { CommercialTenancyError, sendCommercialTenancyError } from "./commercialTenancyWrite.js";
 import { requireCrmPipelinePermissionResponse } from "./crmPipelineAccess.js";
 import { CRM_PIPELINE_PERMISSION, requireCrmPipelineReadOnly } from "./crmPipelineRead.js";
-import { methodNotAllowed, setPrivateNoStore, withCommonHeaders } from "./http.js";
+import { appendVary, methodNotAllowed, setPrivateNoStore, withCommonHeaders } from "./http.js";
 
 function sendReadError(res, error, { head = false } = {}) {
   if (!head) return sendCommercialTenancyError(res, error);
@@ -27,6 +27,7 @@ export function createCrmPipelineReadHandler({
 } = {}) {
   return withCommonHeaders(async (req, res) => {
     setPrivateNoStore(res);
+    appendVary(res, "Origin");
     try {
       requireCrmPipelineReadOnly(env);
     } catch (error) {

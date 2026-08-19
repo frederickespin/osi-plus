@@ -27,10 +27,11 @@ export interface LoginSession {
   role: UserRole;
   permissions?: readonly string[];
   deniedPermissions?: readonly string[];
+  commercialCrmPreviewAuthorized?: boolean;
 }
 
 interface LoginScreenProps {
-  onLoginSuccess: (session: LoginSession) => void;
+  onLoginSuccess: (session: LoginSession) => void | Promise<void>;
 }
 
 export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
@@ -62,13 +63,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
         };
         
-        // Store session in localStorage
-        localStorage.setItem('osi-plus.session', JSON.stringify(session));
-        localStorage.setItem('osi-plus.token', response.token);
-
+        await onLoginSuccess(session);
         void notifyMt01b2LegacyLogin();
-        
-        onLoginSuccess(session);
         toast.success(`Bienvenido, ${response.user.name}`);
       } else {
         toast.error('Error en la respuesta del servidor');

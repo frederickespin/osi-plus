@@ -126,6 +126,7 @@ jobs:
           node scripts/validate-crm-01b3a-guard-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          npm run guard:auth-legacy-private-headers
           node scripts/crm-01b3b1-gate-test.mjs
           node scripts/crm-01b3b3-disabled-options-test.mjs
           node scripts/validate-crm-01b3b1-guard.mjs
@@ -264,6 +265,7 @@ jobs:
           node scripts/validate-mt01c1b1-canonical-guard-test.mjs
           node scripts/validate-mt01c1b1-guard.mjs
           node scripts/validate-mt01c1b2a-guard.mjs
+          npm run guard:auth-legacy-private-headers
           node scripts/validate-sec-com-01a-guard.mjs
           node scripts/validate-sec-com-01a-guard-test.mjs
           node scripts/validate-mt01c2b1-guard.mjs
@@ -353,6 +355,7 @@ jobs:
           node scripts/mt-01b3b1-test.mjs
           node scripts/mt-01c1b2a-test.mjs
           node scripts/auth-json-02-test.mjs
+          npm run test:auth-legacy-private-headers
           node scripts/validate-mt01c1b2b-guard.mjs
 
       - name: Build
@@ -389,4 +392,5 @@ jobs:
           node scripts/crm-01b2-local-target-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          npm run guard:auth-legacy-private-headers
           git diff --exit-code

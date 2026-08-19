@@ -1,4 +1,5 @@
 import { Mt01bAuthError, assertMt01bV2Enabled } from "./authPolicy.js";
+import { setAuthPrivateHeaders } from "./authHttp.js";
 
 const LOCAL_ORIGINS = Object.freeze(["http://localhost:5173", "http://127.0.0.1:5173"]);
 
@@ -39,28 +40,20 @@ export function validateMt01bMutationOrigin(req, env = process.env) {
   return candidate;
 }
 
-export function setMt01bCors(req, res, env = process.env) {
-  const origin = normalizedOrigin(req?.headers?.origin);
-  const allowed = mt01bAllowedOrigins(env);
-  if (origin && allowed.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader("Vary", "Origin");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-osi-client-id");
-}
-
 export function withMt01bAuthHeaders(handler) {
   return async (req, res) => {
+    setAuthPrivateHeaders(res);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    if (req.method === "HEAD") {
+      res.setHeader("Allow", "POST");
+      return res.status(405).end();
+    }
     try {
       assertMt01bV2Enabled();
-      setMt01bCors(req, res);
       if (req.method === "OPTIONS") {
-        validateMt01bMutationOrigin(req);
-        return res.status(204).end();
+        res.setHeader("Allow", "POST");
+        return res.status(405).json({ ok: false, error: "Method Not Allowed", allowed: ["POST"] });
       }
-      res.setHeader("Content-Type", "application/json; charset=utf-8");
       return await handler(req, res);
     } catch (error) {
       const status = Number(error?.status) || 500;

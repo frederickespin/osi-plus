@@ -4,11 +4,14 @@ import { join } from "node:path";
 
 const BASE = "de5e8460c5da4e7f1c1fe42836b7ab488f67dd42";
 const allowedBackendChanges = new Set([
+  "api/_lib/authHttp.js",
+  "api/_lib/authOrigin.js",
   "api/_lib/commercialTenancyWrite.js",
   "api/_lib/crmPipelineAccess.js",
   "api/_lib/crmPipelineReadHttp.js",
   "api/_lib/http.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
+  "api/auth/login.js",
   "api/auth/me.js",
 ]);
 const requiredApps = ["commercial-crm", "coordination", "operations", "materials-equipment", "workshop", "administration", "human-resources", "osi-survey"];

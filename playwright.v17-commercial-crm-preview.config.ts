@@ -24,7 +24,10 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   forbidOnly: true,
-  reporter: "list",
+  reporter: [
+    ["list"],
+    ["./scripts/v17-commercial-crm-preview-browser-ci-reporter.mjs"],
+  ],
   use: {
     baseURL: "http://preview.localhost:4290",
     trace: "retain-on-failure",

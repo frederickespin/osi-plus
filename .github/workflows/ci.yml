@@ -139,6 +139,9 @@ jobs:
           node scripts/validate-sec-dep-01-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-commercial-crm-guard.mjs
+          npm run guard:v17-commercial-crm-preview
+          npm run test:v17-commercial-crm-preview
+          npm run test:v17-commercial-crm-preview:http
           npm run test:webkit-internal-recovery
 
       - name: Typecheck inactive relational CRM client
@@ -165,6 +168,9 @@ jobs:
 
       - name: Validate inactive V17 Commercial Inbox in real browsers
         run: npm run test:v17-commercial-crm:browser
+
+      - name: Validate isolated CRM Preview rehearsal in real browsers (24/24)
+        run: npm run test:v17-commercial-crm-preview:browser
 
       - name: Report browser infrastructure after validation
         if: always()

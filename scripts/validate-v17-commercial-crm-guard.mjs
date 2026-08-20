@@ -7,9 +7,12 @@ const allowedBackendChanges = new Set([
   "api/_lib/authHttp.js",
   "api/_lib/authOrigin.js",
   "api/_lib/commercialTenancyWrite.js",
+  "api/_lib/crmHttpHeaders.js",
+  "api/_lib/crmOwnerCatalogHttp.js",
   "api/_lib/crmPipelineAccess.js",
   "api/_lib/crmPipelineReadHttp.js",
   "api/_lib/http.js",
+  "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
   "api/auth/login.js",
   "api/auth/me.js",
@@ -42,7 +45,7 @@ const adapter = read("src/crm-relational/readApi.ts");
 for (const endpoint of ["/pipeline-cases?", "/pipeline-cases/", "/pipeline-summary"]) invariant(adapter.includes(endpoint), `contrato GET ausente: ${endpoint}`);
 invariant(/method: "GET"/.test(adapter) && !/method: "(?:POST|PATCH|PUT|DELETE)"/.test(adapter), "adaptador no es exclusivamente GET");
 invariant(/AbortController/.test(adapter) && /cache: "no-store"/.test(adapter), "cancelación/no-store ausentes");
-invariant(/cacheControl\.includes\("private"\)[\s\S]*cacheControl\.includes\("no-store"\)[\s\S]*vary\.includes\("authorization"\)/.test(adapter), "headers privados no se validan");
+invariant(/cacheControl\.includes\("private"\)[\s\S]*cacheControl\.includes\("no-store"\)[\s\S]*vary\.includes\("authorization"\)[\s\S]*vary\.includes\("origin"\)[\s\S]*vary\.includes\("\*"\)/.test(adapter), "headers privados no se validan");
 invariant(/response\.status !== 200/.test(adapter) && /MAX_RESPONSE_BYTES/.test(adapter) && /credentials: "omit"/.test(adapter), "status/tamaño/cookies no fallan cerrado");
 invariant(!/getToken|sessionStore|localStorage|sessionStorage|indexedDB|Idempotency-Key/.test(adapter), "adaptador obtiene autoridad desde storage o prepara mutación");
 

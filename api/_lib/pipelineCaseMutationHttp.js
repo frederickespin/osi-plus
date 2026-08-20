@@ -8,7 +8,8 @@ import {
   resolveCrmPipelineContext,
   resolveCrmPipelineModes,
 } from "./crmPipelineAccess.js";
-import { JsonBodyError, methodNotAllowed, readJsonObject, setPrivateNoStore, withCommonHeaders } from "./http.js";
+import { JsonBodyError, methodNotAllowed, readJsonObject, withCommonHeaders } from "./http.js";
+import { ensureCrmVaryHeaders, setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { resolveCrmOwnerRefForAssignment } from "./crmOwnerCatalog.js";
 
 export { CRM_PIPELINE_MUTATION_MODES };
@@ -125,13 +126,6 @@ function idempotencyKey(req) {
   return raw;
 }
 
-function appendVary(res, field) {
-  const current = typeof res.getHeader === "function" ? res.getHeader("Vary") : undefined;
-  const values = String(current || "").split(",").map((value) => value.trim()).filter(Boolean);
-  if (!values.some((value) => value.toLowerCase() === field.toLowerCase())) values.push(field);
-  res.setHeader("Vary", values.join(", "));
-}
-
 function requestOrigin(req) {
   const raw = req?.headers?.origin ?? req?.headers?.Origin;
   if (Array.isArray(raw) || typeof raw !== "string" || raw.length === 0 || raw !== raw.trim()) return null;
@@ -148,7 +142,7 @@ function corsError(code = "CRM_PIPELINE_ORIGIN_FORBIDDEN", status = 403) {
 }
 
 export function applyLocalCors(req, res, env, methods, { preflight = false } = {}) {
-  appendVary(res, "Origin");
+  ensureCrmVaryHeaders(res);
   const rawOrigin = req?.headers?.origin ?? req?.headers?.Origin;
   if (rawOrigin === undefined && !preflight) return;
   const origin = requestOrigin(req);
@@ -194,11 +188,11 @@ function commandResponse(receipt) {
 
 function createMutationHandler({ execute, allowedBodyKeys, routeAction, transformCommand, env = process.env, resolveContext = resolveCrmPipelineContext, prismaClient } = {}) {
   return withCommonHeaders(async (req, res) => {
-    setPrivateNoStore(res);
+    setCrmPrivateHeaders(res);
     try {
       requireCrmPipelineMutationsLocal(env);
     } catch (error) {
-      return sendPipelineMutationError(res, error);
+      return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
     try {
       if (req.method === "OPTIONS") {
@@ -207,16 +201,22 @@ function createMutationHandler({ execute, allowedBodyKeys, routeAction, transfor
       }
       applyLocalCors(req, res, env, ["POST", "OPTIONS"]);
     } catch (error) {
-      return sendPipelineMutationError(res, error);
+      return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
-    if (req.method !== "POST") return methodNotAllowed(res, ["POST", "OPTIONS"]);
+    if (req.method !== "POST") {
+      if (req.method === "HEAD") {
+        res.setHeader("Allow", "POST, OPTIONS");
+        return res.status(405).end();
+      }
+      return methodNotAllowed(res, ["POST", "OPTIONS"]);
+    }
 
     let context;
     try {
       assertCrmAuthorizationHeader(req);
       context = await resolveContext(req, { prisma: prismaClient, env });
     } catch (error) {
-      return sendPipelineMutationError(res, error);
+      return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
 
     try {
@@ -231,7 +231,7 @@ function createMutationHandler({ execute, allowedBodyKeys, routeAction, transfor
       return res.status(200).json({ ok: true, command: commandResponse(receipt) });
     } catch (error) {
       if (error instanceof JsonBodyError) throw error;
-      return sendPipelineMutationError(res, error);
+      return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
   }, { handleOptions: false, cors: false });
 }
@@ -261,7 +261,7 @@ export function createUnassignOwnerHandler(options) {
 
 export function createAllowedTransitionsHandler({ execute, env = process.env, resolveContext = resolveCrmPipelineContext, requireReadMode, prismaClient } = {}) {
   return withCommonHeaders(async (req, res) => {
-    setPrivateNoStore(res);
+    setCrmPrivateHeaders(res);
     try {
       requireCrmPipelineMutationsLocal(env);
       requireReadMode(env);

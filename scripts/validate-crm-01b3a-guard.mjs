@@ -34,7 +34,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   const vercel = read("vercel.json");
   for (const signature of [
     'requireCrmPipelineMutationsLocal(env)', 'assertCrmAuthorizationHeader(req)',
-    'readJsonObject(req, { maxBytes: BODY_MAX_BYTES', '"idempotency-key"', 'setPrivateNoStore(res)',
+    'readJsonObject(req, { maxBytes: BODY_MAX_BYTES', '"idempotency-key"', 'setCrmPrivateHeaders(res)',
     'handleOptions: false, cors: false', '"Authorization", "Content-Type", "Idempotency-Key"',
     '["POST", "OPTIONS"]', '["GET", "HEAD", "OPTIONS"]', 'mt01bAllowedOrigins(env)',
   ]) invariant(adapter.includes(signature), `adaptador incompleto: ${signature}`);

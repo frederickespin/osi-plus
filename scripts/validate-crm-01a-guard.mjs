@@ -90,7 +90,7 @@ export function validateCrm01aGuard({
   const readHttpAuth = readHttp.indexOf("requirePermission(req");
   invariant(/withCommonHeaders\([\s\S]*\{ handleOptions: false, cors: false \}\)/.test(readHttp), "wrapper común intercepta OPTIONS antes de la compuerta CRM");
   invariant(readHttpGate >= 0 && readHttpOptions > readHttpGate && readHttpAuth > readHttpOptions, "orden canónico gate -> método -> auth ausente");
-  invariant(/setPrivateNoStore\(res\)/.test(readHttp), "adaptador de lectura permite cache compartida");
+  invariant(/setCrmPrivateHeaders\(res\)/.test(readHttp), "adaptador de lectura permite cache compartida");
   invariant(!/setHeader\(["']Access-Control-Allow-(?:Origin|Credentials)/.test(readHttp), "adaptador de lectura reintroduce CORS global");
 
   const actualRoutes = filesBelow(resolve(root, "api/crm"))

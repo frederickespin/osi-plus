@@ -56,6 +56,7 @@ const allowed = new Set([
   "src/components/EnvBanner.tsx",
   "src/components/auth/LoginScreen.tsx",
   "src/components/layout/Sidebar.tsx",
+  "src/commercial-crm/CommercialInboxModule.tsx",
   "src/crm-relational/clientMode.ts",
   "src/crm-relational/RelationalPipelineModule.tsx",
   "src/crm-relational/api.ts",

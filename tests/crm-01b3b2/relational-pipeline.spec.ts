@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 
 const statuses = ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"];
 
@@ -74,6 +74,46 @@ async function confirmTransition(page: Page) {
   await page.getByRole("button", { name: "Confirmar cambio" }).click();
 }
 
+async function expectInvalidListResponse(context: BrowserContext, payload: unknown) {
+  const page = await context.newPage();
+  try {
+    await mockApi(page, { list: async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) }) });
+    await page.goto("/tests/crm-01b3b2/harness.html");
+    await expect(page.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reintentar lectura" })).toBeVisible();
+    await expect(page.getByText("CRM-001", { exact: true })).toHaveCount(0);
+  } finally {
+    await page.close();
+  }
+}
+
+async function expectInvalidSummaryResponse(context: BrowserContext, payload: unknown) {
+  const page = await context.newPage();
+  try {
+    await mockApi(page, { summaryOverride: async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) }) });
+    await page.goto("/tests/crm-01b3b2/harness.html");
+    await expect(page.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reintentar resumen" })).toBeVisible();
+    await expect(page.getByLabel("Resumen del Pipeline").getByText("—")).toHaveCount(3);
+  } finally {
+    await page.close();
+  }
+}
+
+async function expectInvalidDetailResponse(context: BrowserContext, payload: unknown) {
+  const page = await context.newPage();
+  try {
+    await mockApi(page, { detail: async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) }) });
+    await page.goto("/tests/crm-01b3b2/harness.html");
+    await page.getByText("CRM-001", { exact: true }).click();
+    await expect(page.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reintentar detalle" })).toBeVisible();
+    await expect(page.getByRole("dialog").getByText("Cliente sintético", { exact: true })).toHaveCount(0);
+  } finally {
+    await page.close();
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   page.on("pageerror", (error) => console.error(`browser-error:${error.name}:${error.message}`));
 });
@@ -121,16 +161,62 @@ test("compuerta acepta sólo valores exactos y rechaza LOCAL_ONLY en Vercel", as
   }
 });
 
-test("rechaza Content-Type no JSON y esquemas con campos internos", async ({ page }) => {
+test("rechaza Content-Type no JSON", async ({ page }) => {
   await mockApi(page, { summaryOverride: async (route) => route.fulfill({ status: 200, contentType: "text/plain", body: JSON.stringify({ ok: true, data: summary() }) }) });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await expect(page.getByText("CRM_PIPELINE_RESPONSE_CONTENT_TYPE_INVALID")).toBeVisible();
+});
 
-  await page.reload();
-  await page.unrouteAll({ behavior: "wait" });
+test("rechaza esquemas con campos internos sin reutilizar interceptores", async ({ page }) => {
   await mockApi(page, { list: async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, internalTenantId: "forbidden", data: [pipelineCase()] }) }) });
-  await page.reload();
+  await page.goto("/tests/crm-01b3b2/harness.html");
   await expect(page.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toBeVisible();
+  await expect(page.getByText("CRM-001", { exact: true })).toHaveCount(0);
+});
+
+test("lista rechaza autoridad interna, parciales, tipos y arrays excesivos", async ({ context }) => {
+  const missingCaseCode = pipelineCase();
+  delete missingCaseCode.caseCode;
+  const ownerWithInternalId = { ...pipelineCase(), owner: { ...pipelineCase().owner as Record<string, unknown>, ownerMembershipId: "internal-membership" } };
+  const excessive = Array.from({ length: 26 }, (_, index) => pipelineCase({ id: `case-${index}`, caseCode: `CRM-${index}` }));
+  const variants = [
+    { ok: true, total: 1, page: 1, pageSize: 25, tenantId: "internal-tenant", data: [pipelineCase()] },
+    { ok: true, total: 1, page: 1, pageSize: 25, permissions: ["pipeline:view"], data: [pipelineCase()] },
+    { ok: true, total: 1, page: 1, pageSize: 25, deniedPermissions: [], data: [pipelineCase()] },
+    { ok: true, total: 1, page: 1, pageSize: 25, data: [{ ...pipelineCase(), clientId: "internal-client" }] },
+    { ok: true, total: 1, page: 1, pageSize: 25, data: [ownerWithInternalId] },
+    { ok: true, total: 1, page: 1, pageSize: 25, data: [missingCaseCode] },
+    { ok: true, total: "1", page: 1, pageSize: 25, data: [pipelineCase()] },
+    { ok: true, total: 26, page: 1, pageSize: 25, data: excessive },
+  ];
+  for (const payload of variants) await expectInvalidListResponse(context, payload);
+});
+
+test("detalle rechaza IDs internos, parciales y tipos incorrectos", async ({ context }) => {
+  const missingStatus = pipelineCase();
+  delete missingStatus.status;
+  const variants = [
+    { ok: true, data: { ...pipelineCase(), tenantId: "internal-tenant" } },
+    { ok: true, data: { ...pipelineCase(), ownerMembershipId: "internal-membership" } },
+    { ok: true, data: { ...pipelineCase(), clientId: "internal-client" } },
+    { ok: true, data: missingStatus },
+    { ok: true, data: { ...pipelineCase(), estimatedCbm: "12.5" } },
+  ];
+  for (const payload of variants) await expectInvalidDetailResponse(context, payload);
+});
+
+test("resumen rechaza autoridad, parciales, tipos y conteos incompatibles", async ({ context }) => {
+  const value = summary();
+  const variants = [
+    { ok: true, tenantId: "internal-tenant", data: value },
+    { data: value },
+    { ok: false, data: value },
+    { ok: true, data: { ...value, permissions: ["pipeline:view"] } },
+    { ok: true, data: { ...value, total: "51" } },
+    { ok: true, data: { ...value, assigned: 40 } },
+    { ok: true, data: { ...value, byStatus: { ...value.byStatus, INTERNAL: 1 } } },
+  ];
+  for (const payload of variants) await expectInvalidSummaryResponse(context, payload);
 });
 
 test("lista paginada muestra 39 asignados y 12 sin owner", async ({ page }) => {
@@ -401,6 +487,83 @@ test("respuesta tardía de filtro anterior no reemplaza la más reciente", async
   await expect(page.getByText("CRM-RECIENTE")).toBeVisible();
   await page.waitForTimeout(300);
   await expect(page.getByText("CRM-ANTERIOR")).toHaveCount(0);
+});
+
+test("error tardío de una lectura abortada no reemplaza una respuesta válida", async ({ page }) => {
+  let signalOldStarted!: () => void;
+  let releaseOld!: () => void;
+  let signalOldFinished!: () => void;
+  const oldStarted = new Promise<void>((resolve) => { signalOldStarted = resolve; });
+  const oldRelease = new Promise<void>((resolve) => { releaseOld = resolve; });
+  const oldFinished = new Promise<void>((resolve) => { signalOldFinished = resolve; });
+  await mockApi(page, { list: async (route, url) => {
+    const q = url.searchParams.get("q") || "";
+    if (q === "anterior") {
+      signalOldStarted();
+      await oldRelease;
+      try {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, tenantId: "forbidden", data: [pipelineCase()] }) });
+      } finally {
+        signalOldFinished();
+      }
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      ok: true, total: 1, page: 1, pageSize: 25,
+      data: [pipelineCase({ caseCode: q === "reciente" ? "CRM-RECIENTE" : "CRM-001" })],
+    }) });
+  } });
+  await page.goto("/tests/crm-01b3b2/harness.html");
+  const search = page.getByPlaceholder("Código, cliente o ubicación");
+  await search.fill("anterior");
+  await oldStarted;
+  await search.fill("reciente");
+  await expect(page.getByText("CRM-RECIENTE")).toBeVisible();
+  releaseOld();
+  await oldFinished;
+  await expect(page.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toHaveCount(0);
+  await expect(page.getByText("CRM-RECIENTE")).toBeVisible();
+});
+
+test("respuesta válida tardía no reemplaza el error contractual vigente", async ({ page }) => {
+  let signalOldStarted!: () => void;
+  let releaseOld!: () => void;
+  let signalOldFinished!: () => void;
+  const oldStarted = new Promise<void>((resolve) => { signalOldStarted = resolve; });
+  const oldRelease = new Promise<void>((resolve) => { releaseOld = resolve; });
+  const oldFinished = new Promise<void>((resolve) => { signalOldFinished = resolve; });
+  await mockApi(page, { list: async (route, url) => {
+    const q = url.searchParams.get("q") || "";
+    if (q === "anterior") {
+      signalOldStarted();
+      await oldRelease;
+      try {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          ok: true, total: 1, page: 1, pageSize: 25, data: [pipelineCase({ caseCode: "CRM-ANTERIOR" })],
+        }) });
+      } finally {
+        signalOldFinished();
+      }
+      return;
+    }
+    if (q === "reciente") {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        ok: true, total: 1, page: 1, pageSize: 25, clientId: "forbidden", data: [pipelineCase()],
+      }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, data: [pipelineCase()] }) });
+  } });
+  await page.goto("/tests/crm-01b3b2/harness.html");
+  const search = page.getByPlaceholder("Código, cliente o ubicación");
+  await search.fill("anterior");
+  await oldStarted;
+  await search.fill("reciente");
+  await expect(page.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toBeVisible();
+  releaseOld();
+  await oldFinished;
+  await expect(page.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toBeVisible();
+  await expect(page.getByText("CRM-ANTERIOR")).toHaveCount(0);
+  await expect(page.getByText("CRM-001", { exact: true })).toHaveCount(0);
 });
 
 test("texto hostil se acota y se renderiza como texto sin ejecutar ni navegar", async ({ page }) => {

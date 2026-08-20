@@ -23,7 +23,9 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   forbidOnly: true,
-  reporter: "list",
+  reporter: process.env.CI === "true"
+    ? [["list"], ["./scripts/v17-crm-schema-browser-ci-reporter.mjs"]]
+    : "list",
   use: { baseURL: "http://127.0.0.1:4182", trace: "off", screenshot: "off", video: "off", serviceWorkers: "block" },
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 4182",

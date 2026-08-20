@@ -67,6 +67,26 @@ El rol baseline no concede el permiso. La misma función decide tarjeta, ruta di
 
 ServiceCase, Lead, Account, BusinessEntity y stores históricos no son fallback.
 
+## Disponibilidad real de datos
+
+### Disponibles mediante las APIs actuales
+
+Los tres GET vigentes publican lista, resumen y detalle con el mismo DTO de caso. Están disponibles: `id` opaco de transporte, `caseCode`, `clientName` heredado nullable, `mode`, `serviceType`, `customerType`, `status`, `estimatedCbm`, `requiresSurvey`, `surveyMethod`, origen/destino resumidos, `destinationContracted`, `assetsCount`, owner sanitizado, conteos de eventos/cotizaciones y fechas de creación/actualización. El resumen publica total, asignadas, sin asignar y conteo por estado; SLA declara `UNAVAILABLE`.
+
+### Ausentes en los contratos actuales
+
+- La relación canónica `PipelineCase.client` y una proyección pública verificable del Client receptor. El `clientName` heredado no demuestra que `clientId` esté vinculado.
+- `statusChangedAt`, versión y una historia pública ordenada.
+- Datos generales adicionales de la Ficha que no estén en el DTO anterior.
+- Project/handoff publicado, ubicaciones múltiples, partes comerciales, compliance y componentes de servicio.
+- Survey, Quote, materiales, cajas, costos, PIC y documentos.
+
+Para cumplir “Client vinculado”, el primer vertical necesita una ampliación GET mínima y estricta, por ejemplo `serviceClient: { displayName, kind, status } | null`, construida desde la FK tenant-first. No debe publicar `clientId` ni usar `clientName` como sustituto. Hasta que exista, la UI mostrará “Client receptor no vinculado” y podrá presentar el nombre histórico sólo con una etiqueta inequívoca de dato legado.
+
+### Campos que no deben inventarse
+
+No derivar Client, pagador, aprobador, institución, Lead Account, perfil diplomático, owner, estado, SLA, Project, Survey, Quote, direcciones múltiples, modo nacional/aéreo/marítimo, moneda, costo ni actividad desde textos, conteos, nombres, ServiceCase, Lead, storage o presencia de tabs. Un conteo `quoteCount` no concede acceso ni permite reconstruir una cotización. `originLocation` y `destinationLocation` son resúmenes históricos, no una colección de ubicaciones.
+
 ## Contratos GET
 
 ### Existentes y obligatorios
@@ -83,6 +103,7 @@ ServiceCase, Lead, Account, BusinessEntity y stores históricos no son fallback.
 - Tenant scoping obligatorio.
 - Cross-tenant y ausente producen el mismo 404.
 - No publica tenantId, clientId, ownerMembershipId, ownerUserId, permisos ni objeto Prisma.
+- Debe ampliarse con la proyección pública del Client receptor antes de declarar completo el alcance “Client vinculado”.
 
 `GET /api/crm/pipeline-summary`
 
@@ -115,7 +136,7 @@ No publicar payload, requestId, hashes, membershipId, userId, tenantId, evidence
 | Grupo | Campos permitidos | Regla |
 |---|---|---|
 | Identidad del caso | caseCode | Nunca mostrar PK interna |
-| Receptor | nombre publicado o “Receptor no publicado” | No inferir desde `clientName` si el backend decide no publicarlo |
+| Receptor | `serviceClient` canónico o “Client receptor no vinculado”; opcionalmente nombre histórico etiquetado | No confundir `clientName` heredado con la FK Client |
 | Servicio | mode, serviceType, customerType | Enumeraciones estrictas |
 | Estado | status, statusChangedAt si se publica | Etiquetas exactas, sin LeadLite mapping |
 | Asignación | owner displayName y rol publicado | Nunca membershipId/userId |
@@ -231,6 +252,16 @@ Una ampliación a otros roles requiere decisión empresarial separada; no basta 
 4. La historia puede mezclar PipelineEvent y Command. Sólo se agrega si existe un DTO y orden canónico; no se concatena en el cliente.
 5. El snapshot tiene rutas internas y estado persistido. El vertical nuevo debe usar el router/guardia canónicos sin importar ese comportamiento.
 6. El empty state de Production será legítimo tras la limpieza sintética; nunca debe activar fixtures o fallback.
+
+## Bloqueadores exactos antes de implementación
+
+1. Acordar y versionar la proyección pública mínima del Client receptor; el contrato vigente sólo entrega `clientName` heredado.
+2. Decidir si la historia básica entra en 01A. Si entra, crear su GET paginado y DTO sanitizado; si no, mantener el placeholder explícito.
+3. Definir el identificador de navegación pública del detalle. El `id` actual es opaco pero sigue siendo PK; no debe expandirse a otros contratos sin decisión.
+4. Congelar la lista exacta de campos generales de la Ficha a los disponibles arriba; cualquier campo adicional requiere contrato backend, no adaptación frontend.
+5. Confirmar mediante guardia de imports que ningún componente portado arrastra `useCasesStore`, `salesStore`, `caseBridge`, mocks, `NewCaseModal` o storage.
+6. Aprobar la comparación visual desktop/móvil del Inbox y Ficha contra el snapshot, aceptando que tabs Survey/Quote/Materiales no aparecen todavía.
+7. Mantener las compuertas inactivas por defecto y contar con PostgreSQL aislado y fixtures sintéticos para pruebas; Production vacía no es fuente de ensayo.
 
 ## Criterio de aceptación final
 

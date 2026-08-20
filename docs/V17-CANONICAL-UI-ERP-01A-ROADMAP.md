@@ -44,7 +44,7 @@ Permisos propuestos: `survey:assigned:view`, `survey:schedule`, `survey:draft:wr
 
 ### 3. Materiales y cajas
 
-Hacer tenant-first catálogo clonado, almacenes, stock, costo, reservas, movimientos y ubicaciones. Conectar Survey item → material need → reservation. Unificar solicitud, diseño, snapshot y fabricación de cajas sin borrar fuentes históricas.
+Hacer tenant-first catálogo clonado, almacenes, stock, costo, reservas, movimientos y ubicaciones. Conectar Survey item → material need → reservation. Unificar solicitud, diseño, snapshot y fabricación de cajas sin borrar fuentes históricas. Modelar necesidades de mano de obra, cuadrillas, equipos y terceros como recursos explícitos; ningún nombre libre o proveedor histórico se convierte automáticamente en autoridad.
 
 Permisos propuestos: `materials:view/manage/reserve`, `crating:view/design/approve/workshop`.
 
@@ -58,7 +58,7 @@ Permisos propuestos: `tariff:view/manage/apply`, `logistics:view/manage`, `cost:
 
 PipelineCase → Quote 1:N, alternativas AIR/SEA_LCL/SEA_FCL/LOCAL/NATIONAL/CUSTOM y varios ServiceComponent por alternativa. QuoteVersion inmutable. Estados DRAFT, INTERNAL_REVIEW, SENT, ACCEPTED, REJECTED y SUPERSEDED; aceptar una alternativa no borra las demás.
 
-Cada Quote conserva `quoteCurrency`, `tariffCurrency`, política FX y snapshot cuando aplique. Moneda base inicial DOP. Proveedor, fecha, vigencia y redondeo son obligatorios. Umbrales de margen son configurables. Pagos futuros pertenecen a Invoice/AR/Payment/Allocation y nunca mutan la QuoteVersion.
+Cada Quote conserva `quoteCurrency`, `tariffCurrency`, política FX y snapshot cuando aplique. Moneda base inicial DOP. Proveedor, fecha, vigencia, redondeo y política de comisión cambiaria son obligatorios. Las políticas iniciales contempladas son FIXED_AT_QUOTE, RATE_AT_INVOICE y RATE_AT_PAYMENT; sólo la primera congela necesariamente una tasa en la Quote. Umbrales de margen son configurables. Pagos y comisiones efectivamente cobradas pertenecen a Invoice/AR/Payment/Allocation y nunca mutan la QuoteVersion.
 
 Permisos propuestos: `quote:view/create/edit/version/send/accept`, `quote:margin:view`, `quote:approve`.
 
@@ -106,11 +106,14 @@ La numeración definitiva se asigna al iniciar cada lote sobre `main`. No se agr
 - Autoridad existente que se ampliará como CommercialParty: Client, BusinessEntity, Account u otra; no duplicar organizaciones.
 - Reglas de unicidad e identidad para persona/organización por tenant.
 - Catálogo de ServiceComponent y combinaciones válidas por CaseMode.
+- Cardinalidad, orden y validación de direcciones/ubicaciones múltiples por modo de servicio.
 - Políticas de Survey requerido, revisitas y aprobación técnica.
 - Unidad canónica, precisión y redondeo para volumen/peso/distancia.
 - Ownership de materiales globales clonables y vigencia de costos.
 - Alcance de alternativas de Quote y regla de alternativa aceptada.
 - Proveedores FX, vigencia, redondeo y excepciones manuales auditadas.
+- Base, tipo y contabilización de la comisión cambiaria sin alterar QuoteVersion.
+- Catálogo y costos de mano de obra, recursos y terceros por tenant.
 - Umbrales de margen por tenant/servicio y matriz de aprobación.
 - Contrato PIC, canales, retención documental y confirmación de entrega.
 - Condiciones exactas de handoff a Project/OSI.

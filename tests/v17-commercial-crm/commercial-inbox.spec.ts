@@ -118,6 +118,71 @@ test("filtros, paginación, resumen y drawer usan contratos públicos sin IDs vi
   expect(audit.every(({ method }) => method === "GET")).toBe(true);
 });
 
+test("drawer conserva descripción semántica, foco y cero warnings en detalle válido o fallido", async ({ page }) => {
+  const item = pipelineCase();
+  const consoleIssues: string[] = [];
+  const pageErrors: string[] = [];
+  let detailFails = false;
+  page.on("console", (message) => {
+    if (message.type() === "warning" || message.type() === "error") consoleIssues.push(`${message.type()}:${message.text()}`);
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await authenticate(page);
+  await page.route("**/api/crm/**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/crm/pipeline-summary") {
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(summary(1)) });
+    }
+    if (url.pathname === "/api/crm/pipeline-cases") {
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, data: [item] }) });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: privateHeaders,
+      body: JSON.stringify(detailFails ? { ok: true, data: { ...item, tenantId: "internal-authority" } } : { ok: true, data: item }),
+    });
+  });
+
+  await page.goto("/commercial");
+  const trigger = page.getByRole("button", { name: "Ver detalle" }).first();
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  const labelledBy = await dialog.getAttribute("aria-labelledby");
+  const describedBy = await dialog.getAttribute("aria-describedby");
+  expect(labelledBy).toBeTruthy();
+  expect(describedBy).toBeTruthy();
+  await expect(page.locator(`#${labelledBy}`)).toHaveText("CRM-DEMO-001");
+  await expect(page.locator(`#${describedBy}`)).toHaveText("Detalle de la oportunidad comercial seleccionada.");
+  await expect(page.locator(`#${describedBy}`)).toHaveClass(/sr-only/);
+  await page.keyboard.press("Tab");
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  detailFails = true;
+  await trigger.click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toBeVisible();
+  await expect(page.locator(`#${await dialog.getAttribute("aria-describedby")}`)).toHaveText("Detalle de la oportunidad comercial seleccionada.");
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+
+  detailFails = false;
+  await page.reload();
+  const reloadedTrigger = page.getByRole("button", { name: "Ver detalle" }).first();
+  await reloadedTrigger.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(reloadedTrigger).toBeFocused();
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(consoleIssues).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
 test("APPROVED permanece legacy congelado y OPS_HANDOFF terminal sin controles de mutación", async ({ page }) => {
   const rows = [pipelineCase({ id: "approved", caseCode: "CRM-APPROVED", status: "APPROVED" }), pipelineCase({ id: "handoff", caseCode: "CRM-HANDOFF", status: "OPS_HANDOFF" })];
   await authenticate(page);

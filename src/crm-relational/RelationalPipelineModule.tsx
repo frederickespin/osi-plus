@@ -49,6 +49,10 @@ function asCrmError(error: unknown): CrmPipelineError {
   return new CrmPipelineError(503, "CRM_PIPELINE_REQUEST_FAILED", { recoverable: true });
 }
 
+function isResponseContractError(error: CrmPipelineError): boolean {
+  return error.code.startsWith("CRM_PIPELINE_RESPONSE_");
+}
+
 function errorMessage(error: CrmPipelineError): string {
   if (error.status === 401) return "La sesión ya no es válida.";
   if (error.status === 403) return "No tienes permiso para esta operación.";
@@ -187,10 +191,10 @@ function OwnerSelector({ api, currentOwnerName, disabled, onAssign }: {
   </AlertDialog>;
 }
 
-function DetailDrawer({ api, role, state, open, busy, actionError, retryIntent, onOpenChange, onTransition, onAssign, onUnassign, onRetryIntent }: {
+function DetailDrawer({ api, role, state, open, busy, actionError, retryIntent, onOpenChange, onReload, onTransition, onAssign, onUnassign, onRetryIntent }: {
   api: CrmPipelineApi;
   role: UserRole; state: DetailState; open: boolean; busy: boolean; actionError: CrmPipelineError | null; retryIntent: CrmCommandIntent | null;
-  onOpenChange(open: boolean): void; onTransition(transition: CrmAllowedTransition, reason: string | null, evidence: { type: EvidenceType; id: string } | null): void;
+  onOpenChange(open: boolean): void; onReload(): void; onTransition(transition: CrmAllowedTransition, reason: string | null, evidence: { type: EvidenceType; id: string } | null): void;
   onAssign(option: CrmOwnerOption): void;
   onUnassign(): void; onRetryIntent(): void;
 }) {
@@ -204,7 +208,7 @@ function DetailDrawer({ api, role, state, open, busy, actionError, retryIntent, 
         <SheetHeader><SheetTitle className="line-clamp-2 break-all">{item?.caseCode || "Detalle CRM"}</SheetTitle><SheetDescription id="crm-detail-description">Vista relacional; no usa ni modifica LeadLite.</SheetDescription></SheetHeader>
         <div className="space-y-4 px-4 pb-8" aria-live="polite">
           {state.loading && <p>Actualizando detalle…</p>}
-          {state.error && <Alert variant="destructive"><AlertCircle /><AlertTitle>Error</AlertTitle><AlertDescription>{errorMessage(state.error)}</AlertDescription></Alert>}
+          {state.error && <Alert variant="destructive"><AlertCircle /><AlertTitle>{state.error.code}</AlertTitle><AlertDescription>{errorMessage(state.error)}<Button className="mt-2" size="sm" variant="outline" onClick={onReload}><RefreshCw />Reintentar detalle</Button></AlertDescription></Alert>}
           {item && <>
             <div className="flex flex-wrap items-center gap-2"><Badge variant={statusTone(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="text-sm text-slate-500">Versión {state.allowed?.version ?? "—"}</span></div>
             <dl className="grid grid-cols-1 gap-3 rounded-lg border p-4 sm:grid-cols-2">
@@ -248,6 +252,7 @@ export function RelationalPipelineModule({ userRole, onUnauthorized }: { userRol
   const [actionError, setActionError] = useState<CrmPipelineError | null>(null);
   const [retryIntent, setRetryIntent] = useState<CrmCommandIntent | null>(null);
   const listSequence = useRef(0);
+  const summarySequence = useRef(0);
   const detailSequence = useRef(0);
   const commandInFlight = useRef(false);
   const activeIntent = useRef<CrmCommandIntent | null>(null);
@@ -265,17 +270,28 @@ export function RelationalPipelineModule({ userRole, onUnauthorized }: { userRol
     setListLoading(true); setListError(null);
     void api.list(filters, controller.signal)
       .then((nextList) => { if (sequence === listSequence.current) setList(nextList); })
-      .catch((error: unknown) => { if (!controller.signal.aborted && sequence === listSequence.current) setListError(handleError(error)); })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || sequence !== listSequence.current) return;
+        const next = handleError(error);
+        if (isResponseContractError(next)) setList(null);
+        setListError(next);
+      })
       .finally(() => { if (sequence === listSequence.current) setListLoading(false); });
     return () => controller.abort();
   }, [api, filters, refreshVersion, handleError]);
 
   useEffect(() => {
+    const sequence = ++summarySequence.current;
     const controller = new AbortController();
     setSummaryError(null);
     void api.summary(controller.signal)
-      .then(setSummary)
-      .catch((error: unknown) => { if (!controller.signal.aborted) setSummaryError(handleError(error)); });
+      .then((nextSummary) => { if (sequence === summarySequence.current) setSummary(nextSummary); })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || sequence !== summarySequence.current) return;
+        const next = handleError(error);
+        if (isResponseContractError(next)) setSummary(null);
+        setSummaryError(next);
+      });
     return () => controller.abort();
   }, [api, refreshVersion, handleError]);
 
@@ -288,7 +304,9 @@ export function RelationalPipelineModule({ userRole, onUnauthorized }: { userRol
       .catch((error: unknown) => {
         if (controller.signal.aborted || sequence !== detailSequence.current) return;
         const crmError = handleError(error);
-        setDetail((current) => ({ ...current, loading: false, error: crmError }));
+        setDetail((current) => isResponseContractError(crmError)
+          ? { data: null, allowed: null, loading: false, error: crmError }
+          : { ...current, loading: false, error: crmError });
         if (crmError.status === 404) setSelectedId(null);
       });
     return () => controller.abort();
@@ -358,9 +376,9 @@ export function RelationalPipelineModule({ userRole, onUnauthorized }: { userRol
       </CardContent></Card>
       {listError && <Alert variant="destructive"><AlertCircle /><AlertTitle>{listError.code}</AlertTitle><AlertDescription>{errorMessage(listError)}<Button className="mt-2" size="sm" variant="outline" onClick={() => setRefreshVersion((value) => value + 1)}><RefreshCw />Reintentar lectura</Button></AlertDescription></Alert>}
       {summaryError && <Alert variant="destructive"><AlertCircle /><AlertTitle>{summaryError.code}</AlertTitle><AlertDescription>{errorMessage(summaryError)}<Button className="mt-2" size="sm" variant="outline" onClick={() => setRefreshVersion((value) => value + 1)}><RefreshCw />Reintentar resumen</Button></AlertDescription></Alert>}
-      <div aria-live="polite">{listLoading && <p className="py-2 text-sm text-slate-500">Cargando oportunidades…</p>}{(list || !listError) && <PipelineList value={list} selectedId={selectedId} onSelect={(caseId, trigger) => { detailTrigger.current = trigger; setSelectedId(caseId); }} />}</div>
+      <div aria-live="polite">{listLoading && <p className="py-2 text-sm text-slate-500">Cargando oportunidades…</p>}{!listError && <PipelineList value={list} selectedId={selectedId} onSelect={(caseId, trigger) => { detailTrigger.current = trigger; setSelectedId(caseId); }} />}</div>
       <div className="flex items-center justify-between"><Button variant="outline" disabled={(list?.page ?? filters.page) <= 1 || listLoading} onClick={() => setFilters((current) => ({ ...current, page: Math.max(1, (list?.page ?? current.page) - 1) }))}><ChevronLeft />Anterior</Button><span className="text-sm">Página {list?.page ?? filters.page} de {pages} · {list?.total ?? 0} resultados</span><Button variant="outline" disabled={(list?.page ?? filters.page) >= pages || listLoading} onClick={() => setFilters((current) => ({ ...current, page: Math.min(pages, (list?.page ?? current.page) + 1) }))}>Siguiente<ChevronRight /></Button></div>
-      <DetailDrawer api={api} role={userRole} state={detail} open={selectedId !== null} busy={busy} actionError={actionError} retryIntent={retryIntent} onOpenChange={(open) => { if (!open) { activeIntent.current?.cancel(); activeIntent.current = null; retryIntent?.cancel(); setSelectedId(null); setRetryIntent(null); setActionError(null); globalThis.setTimeout(() => detailTrigger.current?.focus(), 0); } }} onTransition={transition} onAssign={assign} onUnassign={unassign} onRetryIntent={() => { if (retryIntent) void executeIntent(retryIntent, true); }} />
+      <DetailDrawer api={api} role={userRole} state={detail} open={selectedId !== null} busy={busy} actionError={actionError} retryIntent={retryIntent} onOpenChange={(open) => { if (!open) { activeIntent.current?.cancel(); activeIntent.current = null; retryIntent?.cancel(); setSelectedId(null); setRetryIntent(null); setActionError(null); globalThis.setTimeout(() => detailTrigger.current?.focus(), 0); } }} onReload={() => { if (selectedId) loadDetail(selectedId); }} onTransition={transition} onAssign={assign} onUnassign={unassign} onRetryIntent={() => { if (retryIntent) void executeIntent(retryIntent, true); }} />
     </div>
   );
 }

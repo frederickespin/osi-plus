@@ -56,6 +56,8 @@ invariant(!/localStorage|sessionStorage|indexedDB|useCasesStore|caseBridge|LeadL
 invariant(!/assign-owner|unassign-owner|allowed-transitions|\/transition|method:\s*"POST"/i.test(inbox), "mutación conectada al Inbox");
 invariant(!/\bclientId\b|\btenantId\b|\bownerId\b|\bownerUserId\b|\bmembershipId\b/.test(inbox), "ID interno expuesto en presentación");
 invariant(!/dangerouslySetInnerHTML/.test(inbox), "HTML editable inseguro");
+invariant(/<SheetDescription className="sr-only">Detalle de la oportunidad comercial seleccionada\.<\/SheetDescription>/.test(inbox), "drawer sin descripción accesible canónica");
+invariant(!/<SheetContent[^>]*aria-describedby/.test(inbox) && !/<SheetDescription[^>]*\sid=/.test(inbox), "drawer sobrescribe IDs administrados por Radix");
 
 const packageJson = JSON.parse(read("package.json"));
 invariant(packageJson.scripts?.["test:v17-commercial-crm:browser"] === "playwright test -c playwright.v17-commercial-crm.config.ts", "suite browser no está congelada");

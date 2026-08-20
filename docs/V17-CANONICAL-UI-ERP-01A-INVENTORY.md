@@ -37,6 +37,20 @@ No existe todavía autoridad canónica completa para Survey 1:N del PipelineCase
 7. No se permiten mocks runtime, dual writes, fallback silencioso, inferencias por texto ni reaprovechamiento de ServiceCase como autoridad nueva.
 8. Se porta por superficie visual, no por árbol de imports. Un componente con store inseguro se reimplementa aunque su aspecto se conserve.
 
+## Auditoría de rutas y portabilidad directa
+
+La columna `Ruta histórica` distingue tres casos: URL real (`/sales/pipeline`, `/admin/logistic-engine`, `/admin/evaluator-catalog`), identificador real del `switch` de `src/App.tsx` (`commercial-relations`, `sales-quote-v3`, `evaluator-app`, etc.) y subcomponente sin ruta propia, marcado expresamente con `—`. Las secciones y tabs internos ya no se presentan como rutas independientes. Las tres rutas canónicas del Inbox (`/commercial`, `/crm` y `/sales/pipeline`) se verificaron en `src/hub/appCatalog.ts`.
+
+Las tres filas clasificadas `Directa` fueron revisadas con sus dependencias transitivas relevantes:
+
+| Superficie | Grafo revisado | Resultado |
+|---|---|---|
+| Hub de aplicaciones | `HubWorkspace` → `appCatalog`, `hubAccess`, `hubMode`, resolver Preview y etiqueta ambiental | Reutilizable como fundación canónica; no importa mocks, stores empresariales ni storage. `src/App.tsx` contiene usos locales de otros módulos y no forma parte de esta clasificación directa. |
+| Resumen y filtros | `CommercialInboxModule` → `CrmPipelineReadApi`, tipos estrictos y primitivas UI | Reutilizable; la fuente es GET relacional, con abort/fencing y sin fallback. |
+| Drawer de detalle | Mismo grafo del Inbox + `Sheet` accesible | Reutilizable; no carga stores, bridges, mutaciones ni IDs Prisma adicionales. |
+
+`Directa` significa “reutilizar la implementación canónica existente”, no copiar el archivo aislado a otra arquitectura. Cualquier cambio futuro en ese grafo obliga a reauditar la clasificación.
+
 ## Inventario de navegación y shell
 
 La aplicación avanzada usa `src/App.tsx` como coordinador de módulos, `src/components/layout/Sidebar.tsx` para navegación y `src/lib/roleModuleMap.ts` como mapa visual. También usa `pushState`, eventos y persistencia local para conservar módulos. Estos tres archivos son referencia visual, no autoridad reusable completa.
@@ -124,7 +138,9 @@ Tenant
      └─ Project ─ coordinación ─ OSI ─ ejecución/handoff
 ```
 
-Un caso puede tener varios orígenes/destinos/paradas, varios componentes (AIR, SEA_LCL, SEA_FCL, transporte, packing, storage, crating, tecnología y otros) y varias alternativas de cotización. El perfil diplomático es ortogonal a la relación comercial y al pagador. Registrar factura o pago nunca modifica una QuoteVersion aceptada.
+Un caso puede tener varias direcciones y ubicaciones de tipo origen, destino, parada adicional, almacenamiento, puerto, aeropuerto o aduana. `CaseMode` deberá distinguir EXPORT, IMPORT, LOCAL, NATIONAL y COMMERCIAL; los componentes combinables incluyen AIR, SEA_LCL, SEA_FCL, transporte nacional, packing, unpacking, storage, crating, manejo tecnológico, manejo especializado, mano de obra y otros. Terceros y proveedores logísticos son partes/recursos explícitos, nunca texto que se convierta en autoridad. Puede haber varias alternativas de cotización.
+
+El perfil diplomático es ortogonal a la relación comercial y al pagador. Un cliente comercial puede ser una organización receptora, pero una institución, Lead Account, aprobador o pagador no se convierte automáticamente en Client. Cada Quote conserva moneda cotizada, moneda tarifaria, política y snapshot de conversión; la política de comisión cambiaria se congela en la versión. Registrar factura, comisión efectiva o pago nunca modifica una QuoteVersion aceptada.
 
 ## Estado de autoridades actuales
 

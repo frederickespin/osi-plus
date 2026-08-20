@@ -22,6 +22,7 @@
     "test:v17-app-environment": "node scripts/v17-app-environment-test.mjs",
     "test:v17-commercial-crm-preview:browser": "playwright test -c playwright.v17-commercial-crm-preview.config.ts",
     "guard:v17-commercial-crm-preview": "node scripts/validate-v17-commercial-crm-preview-guard.mjs",
+    "test:v17-commercial-crm-preview:guard": "node scripts/validate-v17-commercial-crm-preview-guard-test.mjs",
     "test:v17-crm-vary": "node scripts/v17-crm-vary-contract-test.mjs && node scripts/crm-01b3b3-disabled-options-test.mjs",
     "guard:v17-crm-vary": "node scripts/validate-v17-crm-vary-guard.mjs && node scripts/validate-v17-crm-vary-guard-test.mjs",
     "typecheck:v17-commercial-crm": "tsc -p tsconfig.v17-commercial-crm.json --pretty false",

@@ -1,11 +1,28 @@
-import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
-const BASE = "e7128e170188c2fab93ebc5c2768a5e656cb510f";
-const read = (path) => readFileSync(path, "utf8");
-const fail = (message) => { throw new Error(`V17_COMMERCIAL_CRM_PREVIEW_GUARD:${message}`); };
-const requireText = (source, signature, message) => { if (!source.includes(signature)) fail(message); };
+const PREFIX = "V17_COMMERCIAL_CRM_PREVIEW_GUARD";
+
+export const PREVIEW_GUARD_FILES = Object.freeze([
+  ".github/workflows/ci.yml",
+  "api/_lib/crmPipelineAccess.js",
+  "api/auth/me.js",
+  "shared/appEnvironment.js",
+  "shared/v17CommercialCrmPreview.js",
+  "scripts/validate-v17-commercial-crm-preview-guard.mjs",
+  "src/App.tsx",
+  "src/commercial-crm/CommercialInboxModule.tsx",
+  "src/crm-relational/clientMode.ts",
+  "src/crm-relational/readApi.ts",
+  "src/hub/HubWorkspace.tsx",
+  "src/hub/appCatalog.ts",
+  "src/hub/hubAccess.ts",
+  "src/hub/hubMode.ts",
+  "src/lib/env.ts",
+  "vercel.json",
+  "vite.config.ts",
+]);
 
 function filesBelow(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -14,181 +31,193 @@ function filesBelow(directory) {
   });
 }
 
-const allowed = new Set([
-  ".github/workflows/ci.yml",
-  "api/_lib/commercialTenancyWrite.js",
-  "api/_lib/crmHttpHeaders.js",
-  "api/_lib/crmOwnerCatalogHttp.js",
-  "api/_lib/crmPipelineAccess.js",
-  "api/_lib/crmPipelineReadHttp.js",
-  "api/_lib/http.js",
-  "api/_lib/pipelineCaseMutationHttp.js",
-  "api/_lib/v17CommercialCrmPreviewAuth.js",
-  "api/auth/me.js",
-  "docs/V17-COMMERCIAL-CRM-PREVIEW-01B-AUDIT.md",
-  "package.json",
-  "playwright.crm-01b3b2.config.ts",
-  "playwright.v17-commercial-crm-preview.config.ts",
-  "scripts/v17-commercial-crm-preview-browser-ci-reporter.mjs",
-  "scripts/v17-crm-schema-browser-ci-reporter.mjs",
-  "scripts/v17-commercial-crm-preview-http-test.mjs",
-  "scripts/v17-app-environment-test.mjs",
-  "scripts/v17-commercial-crm-preview-test.mjs",
-  "scripts/v17-crm-vary-contract-test.mjs",
-  "scripts/mt-01b1-test-helpers.mjs",
-  "scripts/crm-01b3b3-disabled-options-test.mjs",
-  "scripts/validate-crm-01a-guard-test.mjs",
-  "scripts/validate-crm-01a-guard.mjs",
-  "scripts/validate-crm-01b3a-guard-test.mjs",
-  "scripts/validate-crm-01b3a-guard.mjs",
-  "scripts/validate-crm-01b3b1-guard.mjs",
-  "scripts/validate-crm-01b3b2-guard.mjs",
-  "scripts/validate-v17-commercial-crm-guard.mjs",
-  "scripts/validate-v17-commercial-crm-preview-guard.mjs",
-  "scripts/validate-v17-crm-vary-guard-test.mjs",
-  "scripts/validate-v17-crm-vary-guard.mjs",
-  "scripts/validate-v17-hub-guard.mjs",
-  "shared/v17CommercialCrmPreview.d.ts",
-  "shared/v17CommercialCrmPreview.js",
-  "shared/appEnvironment.d.ts",
-  "shared/appEnvironment.js",
-  "src/App.tsx",
-  "src/components/EnvBanner.tsx",
-  "src/components/auth/LoginScreen.tsx",
-  "src/components/layout/Sidebar.tsx",
-  "src/commercial-crm/CommercialInboxModule.tsx",
-  "src/crm-relational/clientMode.ts",
-  "src/crm-relational/RelationalPipelineModule.tsx",
-  "src/crm-relational/api.ts",
-  "src/crm-relational/readApi.ts",
-  "src/hub/HubWorkspace.tsx",
-  "src/hub/hubMode.ts",
-  "src/lib/api.ts",
-  "src/lib/env.ts",
-  "src/lib/sessionStore.ts",
-  "src/v17-preview-env.d.ts",
-  "tests/v17-commercial-crm-preview/preview-rehearsal.spec.ts",
-  "tests/v17-commercial-crm/commercial-inbox.spec.ts",
-  "tests/v17-commercial-crm/read-api-adversarial-harness.ts",
-  "tests/crm-01b3b2/relational-pipeline.spec.ts",
-  "tests/v17-hub/mode-harness.ts",
-  "tsconfig.crm-01b3b2.json",
-  "tsconfig.v17-commercial-crm.json",
-  "vite.config.ts",
-]);
-const changed = [...new Set([
-  ...execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean),
-  ...execFileSync("git", ["ls-files", "--others", "--exclude-standard"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean),
-])];
-for (const path of changed) if (!allowed.has(path)) fail(`archivo fuera de alcance: ${path}`);
+function fail(message) {
+  throw new Error(`${PREFIX}:${message}`);
+}
 
-const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-if (migrations.length !== 17) fail(`se esperaban 17 migraciones, existen ${migrations.length}`);
-if (changed.some((path) => path.startsWith("prisma/") || path === "package-lock.json")) fail("Prisma, migraciones o lockfile modificados");
+function requireText(files, path, signature, message) {
+  const source = files[path];
+  if (typeof source !== "string") fail(`archivo protegido ausente: ${path}`);
+  if (!source.includes(signature)) fail(message);
+}
 
-const basePackage = JSON.parse(execFileSync("git", ["show", `${BASE}:package.json`], { encoding: "utf8" }));
-const currentPackage = JSON.parse(read("package.json"));
-if (JSON.stringify(basePackage.dependencies) !== JSON.stringify(currentPackage.dependencies)
-  || JSON.stringify(basePackage.devDependencies) !== JSON.stringify(currentPackage.devDependencies)) fail("dependencias modificadas");
+function forbidText(files, path, expression, message) {
+  const source = files[path];
+  if (typeof source !== "string") fail(`archivo protegido ausente: ${path}`);
+  if (expression.test(source)) fail(message);
+}
 
-const shared = read("shared/v17CommercialCrmPreview.js");
-for (const signature of [
-  '"PREVIEW_REHEARSAL"',
-  '"V17-COMMERCIAL-CRM-PREVIEW-01"',
-  '"feature/v17-commercial-crm-preview"',
-  'environment.VERCEL_ENV === "preview"',
-  'environment.COMMERCIAL_TENANCY_WRITE_MODE === TENANT_WRITE',
-  'environment.COMMERCIAL_TENANCY_READ_MODE === TENANT_READ',
-]) requireText(shared, signature, `autoridad compartida incompleta: ${signature}`);
-if (/(?:trim|toUpperCase|toLowerCase)\s*\(/.test(shared)) fail("la autoridad normaliza configuración inválida");
+function requirePattern(files, path, expression, message) {
+  const source = files[path];
+  if (typeof source !== "string") fail(`archivo protegido ausente: ${path}`);
+  if (!expression.test(source)) fail(message);
+}
 
-const access = read("api/_lib/crmPipelineAccess.js");
-requireText(access, "isExactV17CommercialCrmPreviewServerEnvironment", "backend no usa autoridad canónica");
-requireText(access, "CRM_PIPELINE_MUTATION_MODES.DISABLED", "mutaciones no quedan desactivadas");
-const authMe = read("api/auth/me.js");
-if (authMe.indexOf("requireV17CommercialCrmPreviewSessionMode(process.env)") > authMe.indexOf("findCurrentUser(payload.sub)")) fail("configuración Preview se evalúa después de Prisma");
-requireText(authMe, "commercialCrmPreviewAuthorized: true", "servidor no confirma autorización al cliente");
+function validateCspAndCors(files) {
+  let configuration;
+  try {
+    configuration = JSON.parse(files["vercel.json"]);
+  } catch {
+    fail("vercel.json inválido");
+  }
+  const apiRules = (configuration.headers || []).filter((rule) => String(rule.source || "").startsWith("/api/"));
+  const safeRule = apiRules.find((rule) => rule.source === "/api/((?!auth/|crm/).*)");
+  if (!safeRule) fail("Auth y CRM no están excluidos del CORS global");
+  for (const rule of apiRules) {
+    const wildcard = (rule.headers || []).some((header) => header.key === "Access-Control-Allow-Origin" && header.value === "*");
+    if (wildcard && rule.source !== "/api/((?!auth/|crm/).*)") fail("CORS wildcard puede alcanzar Auth o CRM");
+  }
+}
 
-const readHttp = read("api/_lib/crmPipelineReadHttp.js");
-  requireText(readHttp, "setCrmPrivateHeaders(res)", "headers privados CRM ausentes");
-requireText(readHttp, "cors: false", "CRM read no está restringido a mismo origen");
-requireText(readHttp, "assertSameOrigin(req)", "CRM read omite validación de origen");
-requireText(readHttp, '["GET", "HEAD"]', "CRM read no congela GET/HEAD");
-if (/Access-Control-Allow-Origin|Access-Control-Allow-Credentials/.test(readHttp)) fail("CORS permisivo en CRM read");
+function validateInboxIsolation(files) {
+  for (const path of [
+    "src/commercial-crm/CommercialInboxModule.tsx",
+    "src/crm-relational/readApi.ts",
+  ]) {
+    forbidText(files, path, /\b(?:localStorage|sessionStorage|indexedDB)\b/, `storage empresarial importado por Inbox: ${path}`);
+    forbidText(
+      files,
+      path,
+      /(?:import|from)\s*(?:\([^)]*)?["'][^"']*(?:mocks?|useCasesStore|salesStore|caseBridge|Store)[^"']*["']/i,
+      `mock, bridge o store importado por Inbox: ${path}`,
+    );
+  }
+}
 
-const clientMode = read("src/crm-relational/clientMode.ts");
-const hubMode = read("src/hub/hubMode.ts");
-for (const source of [clientMode, hubMode]) requireText(source, "resolveV17CommercialCrmPreviewClientAuthority", "frontend omite autoridad compartida");
-const app = read("src/App.tsx");
-requireText(app, "commercialCrmPreviewAuthorized === true", "frontend no exige confirmación del servidor");
-requireText(app, "isRelationalCrmReadEnabled() && previewConfirmed", "carga CRM no coordina compuertas");
+export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
+  const files = snapshot?.files || {};
+  const migrations = snapshot?.migrations || [];
 
-const relationalApi = read("src/crm-relational/api.ts");
-for (const signature of [
-  "actual.length !== expected.length",
-  "MAX_RESPONSE_BYTES = 1_000_000",
-  "data.length > pageSize",
-  "root.ok !== true",
-  "assigned + unassigned !== total",
-]) requireText(relationalApi, signature, `contrato CRM estricto ausente: ${signature}`);
-const relationalModule = read("src/crm-relational/RelationalPipelineModule.tsx");
-for (const signature of [
-  'error.code.startsWith("CRM_PIPELINE_RESPONSE_")',
-  "const summarySequence = useRef(0)",
-  "Reintentar detalle",
-  "!listError && <PipelineList",
-]) requireText(relationalModule, signature, `estado CRM determinista ausente: ${signature}`);
-const responseSchemaTests = read("tests/crm-01b3b2/relational-pipeline.spec.ts");
-if (responseSchemaTests.includes("unrouteAll")) fail("prueba de esquema reutiliza interceptores entre recargas");
-for (const signature of [
-  "sin reutilizar interceptores",
-  "lista rechaza autoridad interna, parciales, tipos y arrays excesivos",
-  "detalle rechaza IDs internos, parciales y tipos incorrectos",
-  "resumen rechaza autoridad, parciales, tipos y conteos incompatibles",
-  "respuesta válida tardía no reemplaza el error contractual vigente",
-]) requireText(responseSchemaTests, signature, `cobertura adversarial CRM ausente: ${signature}`);
-const crmBrowserConfig = read("playwright.crm-01b3b2.config.ts");
-const crmBrowserReporter = read("scripts/v17-crm-schema-browser-ci-reporter.mjs");
-requireText(crmBrowserConfig, "v17-crm-schema-browser-ci-reporter.mjs", "CRM browser CI no exige reporter estricto");
-requireText(crmBrowserReporter, "EXPECTED_PER_PROJECT = 33", "CRM browser CI no congela 33 pruebas por proyecto");
-requireText(crmBrowserReporter, "EXPECTED_TOTAL = 198", "CRM browser CI no congela 198/198");
-requireText(crmBrowserReporter, "skipped !== 0", "CRM browser CI no rechaza omisiones");
+  if (migrations.length !== 17) fail(`se esperaban 17 migraciones, existen ${migrations.length}`);
 
-const vite = read("vite.config.ts");
-requireText(vite, "__V17_VERCEL_ENV__", "metadata Vercel de build ausente");
-requireText(vite, "__V17_VERCEL_GIT_COMMIT_REF__", "Git ref de build ausente");
-const appEnvironment = read("shared/appEnvironment.js");
-requireText(appEnvironment, 'UNKNOWN: "unknown"', "entorno desconocido no falla cerrado");
-requireText(appEnvironment, "LOOPBACK_HOSTNAMES.includes(hostname)", "loopback no tiene precedencia");
-if (/\.trim\(|toUpperCase|toLowerCase/.test(appEnvironment)) fail("resolver ambiental normaliza señales inválidas");
-const environmentUi = read("src/lib/env.ts");
-requireText(environmentUi, 'preview: "Preview"', "etiqueta Preview no es exacta");
-requireText(environmentUi, 'unknown: "Ambiente desconocido"', "fallback desconocido ausente");
+  const shared = "shared/v17CommercialCrmPreview.js";
+  for (const signature of [
+    'V17_COMMERCIAL_CRM_PREVIEW_MODE = "PREVIEW_REHEARSAL"',
+    'V17_COMMERCIAL_CRM_PREVIEW_BATCH = "V17-COMMERCIAL-CRM-PREVIEW-01"',
+    'V17_COMMERCIAL_CRM_PREVIEW_BRANCH = "feature/v17-commercial-crm-preview"',
+    'environment.VERCEL_ENV === "preview"',
+    "environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",
+    "absentOrExact(environment.CRM_PIPELINE_MUTATION_MODE, DISABLED)",
+    "configuration.gitBranch === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",
+  ]) requireText(files, shared, signature, `autoridad Preview incompleta: ${signature}`);
+  forbidText(files, shared, /(?:\.trim\(|toUpperCase|toLowerCase)/, "la autoridad Preview normaliza configuración inválida");
 
-const workflow = read(".github/workflows/ci.yml");
-if (workflow.includes("V17-COMMERCIAL-CRM-PREVIEW-01") || workflow.includes("PREVIEW_REHEARSAL")) fail("workflow activa el ensayo");
-for (const signature of [
-  "npm run guard:v17-commercial-crm-preview",
-  "npm run test:v17-commercial-crm-preview",
-  "npm run test:v17-commercial-crm-preview:http",
-  "npm run test:v17-app-environment",
-  "npm run test:v17-commercial-crm-preview:browser",
-]) requireText(workflow, signature, `CI no exige ${signature}`);
-const reporter = read("scripts/v17-commercial-crm-preview-browser-ci-reporter.mjs");
-requireText(reporter, "EXPECTED_PER_PROJECT = 4", "reporter no congela cuatro pruebas por proyecto");
-requireText(reporter, "EXPECTED_TOTAL = 24", "reporter no congela 24/24");
-requireText(reporter, "skipped !== 0", "reporter no rechaza omisiones");
-if (!existsSync("dist")) fail("bundle no construido antes de la guardia");
-const bundle = filesBelow("dist").filter((path) => path.endsWith(".js")).map(read).join("\n");
-for (const forbidden of [
-  "CRM_PIPELINE_ACTIVATION_BATCH",
-  "COMMERCIAL_TENANCY_ACTIVATION_BATCH",
-  "DATABASE_URL",
-  "DIRECT_URL",
-  "JWT_SECRET",
-  "postgresql://",
-]) if (bundle.includes(forbidden)) fail(`configuración servidor empaquetada: ${forbidden}`);
-const mutations = execFileSync("git", ["diff", "--name-only", BASE, "--", "api/crm", "api/_lib/crmPipelineMutationHttp.js", "api/_lib/pipelineCaseDomain.js"], { encoding: "utf8" }).trim();
-if (mutations) fail("rutas o dominio de mutación modificados");
+  const access = "api/_lib/crmPipelineAccess.js";
+  for (const signature of [
+    'DISABLED: "DISABLED"',
+    "CRM_PIPELINE_READ_MODES.DISABLED",
+    "CRM_PIPELINE_MUTATION_MODES.DISABLED",
+    "isExactV17CommercialCrmPreviewServerEnvironment(env)",
+    "readMode === CRM_PIPELINE_READ_MODES.PREVIEW_REHEARSAL",
+    "mutationMode === CRM_PIPELINE_MUTATION_MODES.DISABLED",
+  ]) requireText(files, access, signature, `compuerta backend incompleta: ${signature}`);
+  const mutationBlock = files[access]?.match(/export const CRM_PIPELINE_MUTATION_MODES[\s\S]*?\}\);/)?.[0] || "";
+  if (mutationBlock.includes("PREVIEW_REHEARSAL")) fail("mutaciones Preview habilitadas");
 
-console.log(JSON.stringify({ ok: true, migrations: 17, changedFiles: changed.length, mutationsChanged: 0, externalActivation: false }));
+  const hubMode = "src/hub/hubMode.ts";
+  for (const signature of [
+    'DISABLED: "DISABLED"',
+    "raw === undefined || raw === OSI_HUB_MODES.DISABLED",
+    "resolveV17CommercialCrmPreviewClientAuthority",
+  ]) requireText(files, hubMode, signature, `default Hub inseguro: ${signature}`);
+  requirePattern(files, hubMode, /if \(raw === undefined \|\| raw === OSI_HUB_MODES\.DISABLED\)\s*\{\s*return Object\.freeze\(\{ mode: OSI_HUB_MODES\.DISABLED, enabled: false, valid: true, reason: "DISABLED" \}\)/, "default Hub no falla cerrado");
+
+  const clientMode = "src/crm-relational/clientMode.ts";
+  for (const signature of [
+    'DISABLED: "DISABLED"',
+    "if (raw === undefined)",
+    "raw === undefined || raw === CRM_PIPELINE_READ_CLIENT_MODES.DISABLED",
+    "resolveV17CommercialCrmPreviewClientAuthority",
+  ]) requireText(files, clientMode, signature, `default cliente/lectura inseguro: ${signature}`);
+  requirePattern(files, clientMode, /if \(raw === undefined\)\s*return Object\.freeze\(\{ mode: CRM_PIPELINE_CLIENT_MODES\.DISABLED, valid: true \}\)/, "default cliente CRM no falla cerrado");
+  requirePattern(files, clientMode, /if \(raw === undefined \|\| raw === CRM_PIPELINE_READ_CLIENT_MODES\.DISABLED\)\s*\{\s*return Object\.freeze\(\{ mode: CRM_PIPELINE_READ_CLIENT_MODES\.DISABLED, valid: true \}\)/, "default lectura CRM no falla cerrado");
+
+  const authMe = "api/auth/me.js";
+  requireText(files, authMe, "requireV17CommercialCrmPreviewSessionMode(process.env)", "Auth omite compuerta Preview");
+  requireText(files, authMe, "commercialCrmPreviewAuthorized: true", "Auth no confirma Preview al frontend");
+  if (files[authMe].indexOf("requireV17CommercialCrmPreviewSessionMode(process.env)") > files[authMe].indexOf("findCurrentUser(payload.sub)")) {
+    fail("configuración Preview se evalúa después de Prisma");
+  }
+
+  const catalog = "src/hub/appCatalog.ts";
+  requireText(files, catalog, 'route: "/commercial", routeAliases: ["/crm", "/sales/pipeline"]', "rutas CRM equivalentes divergentes");
+  const workspace = "src/hub/HubWorkspace.tsx";
+  requireText(files, workspace, "findHubApplicationByRoute(pathname)", "ruta directa omite catálogo común");
+  requireText(files, workspace, "evaluateHubAccess(selected, accessContext)", "ruta directa omite decisión común");
+  requireText(files, workspace, "selected.appId === \"commercial-crm\" && crmReadEnabled", "Inbox se carga sin compuerta de lectura");
+
+  const accessUi = "src/hub/hubAccess.ts";
+  requireText(files, accessUi, "application.requiredPermissions.some((permission) => denied.has(permission))", "deniedPermissions no prevalece");
+  requireText(files, accessUi, "application.baselineRoles.includes(context.role)", "baseline de rol ausente");
+  if (files[accessUi].indexOf("application.requiredPermissions.some") > files[accessUi].indexOf("application.baselineRoles.includes")) {
+    fail("deniedPermissions se evalúa después del rol");
+  }
+
+  const app = "src/App.tsx";
+  requireText(files, app, "commercialCrmPreviewAuthorized === true", "frontend no exige confirmación del servidor");
+  requireText(files, app, "isRelationalCrmReadEnabled() && previewConfirmed", "frontend no coordina Hub/cliente/lectura");
+
+  const workflow = ".github/workflows/ci.yml";
+  for (const signature of [
+    "npm run guard:v17-commercial-crm-preview",
+    "npm run test:v17-commercial-crm-preview:guard",
+    "npm run test:v17-commercial-crm-preview",
+    "npm run test:v17-commercial-crm-preview:http",
+    "npm run test:v17-commercial-crm-preview:browser",
+  ]) requireText(files, workflow, signature, `CI no exige ${signature}`);
+  forbidText(files, workflow, /V17-COMMERCIAL-CRM-PREVIEW-01|PREVIEW_REHEARSAL/, "workflow activa el ensayo Preview");
+
+  validateCspAndCors(files);
+  validateInboxIsolation(files);
+
+  const vite = "vite.config.ts";
+  requireText(files, vite, "__V17_VERCEL_ENV__", "metadata Vercel de build ausente");
+  requireText(files, vite, "__V17_VERCEL_GIT_COMMIT_REF__", "Git ref de build ausente");
+  const appEnvironment = "shared/appEnvironment.js";
+  requireText(files, appEnvironment, 'UNKNOWN: "unknown"', "entorno desconocido no falla cerrado");
+  requireText(files, appEnvironment, "LOOPBACK_HOSTNAMES.includes(hostname)", "loopback no tiene precedencia");
+  forbidText(files, appEnvironment, /(?:\.trim\(|toUpperCase|toLowerCase)/, "resolver ambiental normaliza señales inválidas");
+  requireText(files, "src/lib/env.ts", 'preview: "Preview"', "etiqueta Preview no es exacta");
+  requireText(files, "src/lib/env.ts", 'unknown: "Ambiente desconocido"', "fallback desconocido ausente");
+
+  if (!snapshot.bundlePresent) fail("bundle no construido antes de la guardia");
+  for (const forbidden of [
+    "CRM_PIPELINE_ACTIVATION_BATCH",
+    "COMMERCIAL_TENANCY_ACTIVATION_BATCH",
+    "DATABASE_URL",
+    "DIRECT_URL",
+    "JWT_SECRET",
+    "postgresql://",
+  ]) if (String(snapshot.bundleText || "").includes(forbidden)) fail(`configuración servidor empaquetada: ${forbidden}`);
+
+  return Object.freeze({
+    ok: true,
+    migrations: migrations.length,
+    protectedFiles: PREVIEW_GUARD_FILES.length,
+    historyRequired: false,
+    diffRequired: false,
+    externalActivation: false,
+  });
+}
+
+export function loadV17CommercialCrmPreviewSnapshot(root = process.cwd()) {
+  const files = Object.fromEntries(PREVIEW_GUARD_FILES.map((path) => [path, readFileSync(resolve(root, path), "utf8")]));
+  const migrationDirectory = resolve(root, "prisma", "migrations");
+  const migrations = readdirSync(migrationDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d/.test(entry.name))
+    .map((entry) => entry.name);
+  const dist = resolve(root, "dist");
+  const bundlePresent = existsSync(dist);
+  const bundleText = bundlePresent
+    ? filesBelow(dist).filter((path) => path.endsWith(".js")).map((path) => readFileSync(path, "utf8")).join("\n")
+    : "";
+  return Object.freeze({ files: Object.freeze(files), migrations: Object.freeze(migrations), bundlePresent, bundleText });
+}
+
+function isMainModule() {
+  return process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+}
+
+if (isMainModule()) {
+  console.log(JSON.stringify(validateV17CommercialCrmPreviewSnapshot(loadV17CommercialCrmPreviewSnapshot())));
+}

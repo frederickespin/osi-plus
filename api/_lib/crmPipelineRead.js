@@ -70,6 +70,28 @@ const CASE_SELECT = Object.freeze({
   _count: { select: { quotes: true, events: true } },
 });
 
+const CASE_DETAIL_SELECT = Object.freeze({
+  id: true,
+  caseCode: true,
+  mode: true,
+  serviceType: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  client: {
+    select: {
+      name: true,
+      type: true,
+      status: true,
+    },
+  },
+  enterpriseOwner: {
+    select: {
+      user: { select: { name: true } },
+    },
+  },
+});
+
 function invalid(code = "CRM_PIPELINE_FILTER_INVALID", status = 400) {
   throw new CommercialTenancyError(code, status);
 }
@@ -201,6 +223,28 @@ function safeCase(row) {
   });
 }
 
+function safeCaseDetail(row) {
+  return Object.freeze({
+    caseRef: row.id,
+    caseNumber: row.caseCode,
+    status: row.status,
+    mode: row.mode,
+    serviceType: row.serviceType,
+    client: row.client
+      ? Object.freeze({
+        displayName: String(row.client.name),
+        type: String(row.client.type),
+        status: String(row.client.status),
+      })
+      : null,
+    owner: row.enterpriseOwner?.user?.name
+      ? Object.freeze({ displayName: String(row.enterpriseOwner.user.name) })
+      : null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
 export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
   const where = pipelineWhere(tenantId, filters);
   try {
@@ -232,10 +276,10 @@ export async function findCrmPipelineCase(prisma, { tenantId, caseId }) {
   try {
     const row = await prisma.pipelineCase.findFirst({
       where: { id, tenantId: String(tenantId) },
-      select: CASE_SELECT,
+      select: CASE_DETAIL_SELECT,
     });
     if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
-    return safeCase(row);
+    return safeCaseDetail(row);
   } catch (cause) {
     if (cause instanceof CommercialTenancyError) throw cause;
     throw commercialDatabaseUnavailable(cause);

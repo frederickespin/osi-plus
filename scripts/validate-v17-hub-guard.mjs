@@ -18,13 +18,17 @@ const allowedBackendChanges = new Set([
   "api/auth/me.js",
 ]);
 const requiredApps = ["commercial-crm", "coordination", "operations", "materials-equipment", "workshop", "administration", "human-resources", "osi-survey"];
+const allowedPrismaChanges = new Set([
+  "prisma/schema.prisma",
+  "prisma/migrations/20260821010000_v17_pipeline_case_public_ref/migration.sql",
+]);
 function fail(message) { throw new Error(`V17_HUB_GUARD_FAILED: ${message}`); }
 function text(path) { return readFileSync(path, "utf8"); }
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-if (migrations.length !== 17) fail(`expected 17 migrations, found ${migrations.length}`);
-const migrationChanges = execFileSync("git", ["diff", "--name-only", BASE, "--", "prisma/migrations"], { encoding: "utf8" }).trim();
-if (migrationChanges) fail("canonical migrations changed");
+if (migrations.length !== 18) fail(`expected 18 migrations, found ${migrations.length}`);
+const migrationChanges = execFileSync("git", ["diff", "--name-only", BASE, "--", "prisma/migrations"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
+if (migrationChanges.some((path) => !allowedPrismaChanges.has(path))) fail("canonical migrations changed outside V17-CASE-PUBLIC-REF");
 
 const mode = text(join("src", "hub", "hubMode.ts"));
 if (!mode.includes('DISABLED: "DISABLED"') || !mode.includes('LOCAL_ONLY: "LOCAL_ONLY"') || !mode.includes('PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE')) fail("strict gate values missing");
@@ -53,5 +57,5 @@ if (catalogRoutes.length !== requiredApps.length || catalogRoutes.some((route) =
 if (!catalog.includes('appId: "osi-survey"') || !catalog.includes("baselineRoles: []")) fail("OSi Survey has implicit role authorization");
 
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-if (changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || path.startsWith("prisma/") || path.startsWith("src/data/"))) fail("forbidden backend, schema, migration, or mock change");
+if (changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || (path.startsWith("prisma/") && !allowedPrismaChanges.has(path)) || path.startsWith("src/data/"))) fail("forbidden backend, unauthorized Prisma, or mock change");
 console.log(JSON.stringify({ ok: true, migrations: migrations.length, applications: requiredApps.length, changedFiles: changed.length }));

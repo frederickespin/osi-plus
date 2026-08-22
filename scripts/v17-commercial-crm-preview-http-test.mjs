@@ -67,9 +67,9 @@ const detailDatabase = {
       databaseCalls += 1;
       if (where.id === "cross-tenant-case") return null;
       return {
-        id: "visible-case", caseCode: "DEMO-HTTP", clientName: "Synthetic",
-        mode: "LOCAL", serviceType: "MOVING", customerType: "L4_PERSONAL",
-        status: "NEW_INBOX", enterpriseOwner: null, _count: { quotes: 0, events: 0 },
+        id: "visible-case", caseCode: "DEMO-HTTP", mode: "LOCAL", serviceType: "MOVING",
+        status: "NEW_INBOX", client: null, enterpriseOwner: null,
+        createdAt: new Date("2026-08-18T10:00:00.000Z"), updatedAt: new Date("2026-08-18T10:00:00.000Z"),
       };
     },
   },

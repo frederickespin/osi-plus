@@ -82,7 +82,11 @@ export function validateCrm01b1Guard({
   const runtimeConsumers = [];
   const runtimeMutations = [];
   const frontendChanges = [];
-  const authorizedReadPresentations = new Set(["src/commercial-crm/CommercialInboxModule.tsx"]);
+  const authorizedReadPresentations = new Set([
+    "src/commercial-crm/CommercialInboxModule.tsx",
+    "src/commercial-crm/CommercialCaseDetail.tsx",
+    "src/commercial-crm/presentation.ts",
+  ]);
   const unauthorizedJournalFixtures = [];
   for (const path of runtime) {
     const source = extraSources[path] ?? read(path);

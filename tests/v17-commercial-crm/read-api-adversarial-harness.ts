@@ -3,6 +3,7 @@ import { CrmPipelineReadApi } from "/src/crm-relational/readApi";
 const headers = { "Content-Type": "application/json", "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 const statuses = ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"];
 const row = { id: "case-1", caseCode: "CASE-1", clientName: null, mode: "LOCAL", serviceType: "Servicio", customerType: "PERSON", status: "NEW_INBOX", estimatedCbm: 1, requiresSurvey: false, surveyMethod: "NONE", originLocation: "Origen", destinationLocation: "Destino", destinationContracted: false, assetsCount: 0, owner: null, quoteCount: 0, eventCount: 0, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
+const detail = { caseRef: "case-1", caseNumber: "CASE-1", status: "NEW_INBOX", mode: "LOCAL", serviceType: "Servicio", client: null, owner: null, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
 const validList = { ok: true, total: 1, page: 1, pageSize: 25, data: [row] };
 const validSummary = { ok: true, data: { total: 1, assigned: 0, unassigned: 1, byStatus: Object.fromEntries(statuses.map((status) => [status, status === "NEW_INBOX" ? 1 : 0])), sla: { overdue: null, basis: "UNAVAILABLE" } } };
 type Scenario = { name: string; response: () => Response; operation?: "list" | "detail" | "summary"; expectedStatus?: number };
@@ -27,7 +28,11 @@ const scenarios: Scenario[] = [
   { name: "duplicate-id", response: () => json({ ...validList, total: 2, data: [row, row] }) },
   { name: "summary-ok-false", operation: "summary", response: () => json({ ...validSummary, ok: false }) },
   { name: "summary-counts", operation: "summary", response: () => json({ ...validSummary, data: { ...validSummary.data, assigned: 1 } }) },
-  { name: "detail-id", operation: "detail", response: () => json({ ok: true, data: { ...row, id: "wrong" } }) },
+  { name: "detail-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, caseRef: "wrong" } }) },
+  { name: "detail-tenant-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, tenantId: "forbidden" } }) },
+  { name: "detail-legacy-client-name", operation: "detail", response: () => json({ ok: true, data: { ...detail, clientName: "forbidden" } }) },
+  { name: "detail-client-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, client: { displayName: "Client", type: "PERSON", status: "active", clientId: "forbidden" } } }) },
+  { name: "detail-owner-membership", operation: "detail", response: () => json({ ok: true, data: { ...detail, owner: { displayName: "Owner", membershipId: "forbidden" } } }) },
   { name: "oversized", response: () => new Response(JSON.stringify({ ...validList, padding: "x".repeat(1_000_001) }), { status: 200, headers }) },
   ...([401, 403, 404, 409, 503] as const).map((status) => ({ name: `error-${status}`, expectedStatus: status, response: () => json({ ok: false, error: "INTERNAL_DETAIL_MUST_NOT_ESCAPE" }, status) })),
 ];

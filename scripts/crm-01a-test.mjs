@@ -39,7 +39,7 @@ const [
 
 const run = `crm01a-${randomUUID().slice(0, 8)}`;
 const results = [];
-const created = { cases: [], memberships: [], users: [], tenants: [], sessions: [] };
+const created = { cases: [], clients: [], memberships: [], users: [], tenants: [], sessions: [] };
 
 function check(name, condition, detail) {
   results.push({ name, passed: Boolean(condition), ...(detail === undefined ? {} : { detail }) });
@@ -129,6 +129,8 @@ function checkJsonSnapshot(name, actual, expected) {
 function normalizeSuccessContract(value) {
   return JSON.parse(JSON.stringify(value, (key, item) => {
     if (key === "id") return "<id>";
+    if (key === "caseRef") return "<caseRef>";
+    if (key === "caseNumber") return "<caseNumber>";
     if (key === "caseCode") return "<caseCode>";
     if (key === "displayName") return "<displayName>";
     if (key === "createdAt" || key === "updatedAt") return "<timestamp>";
@@ -176,6 +178,7 @@ async function cleanup() {
     await tx.$executeRawUnsafe(`ALTER TABLE "osi"."pipeline_case_commands" ENABLE TRIGGER "pipeline_case_commands_append_only"`);
   });
   await prisma.pipelineCase.deleteMany({ where: { id: { in: created.cases } } });
+  await prisma.client.deleteMany({ where: { id: { in: created.clients } } });
   await prisma.authRefreshToken.deleteMany({ where: { sessionId: { in: created.sessions } } });
   await prisma.authSession.deleteMany({ where: { id: { in: created.sessions } } });
   await prisma.tenantMembership.deleteMany({ where: { id: { in: created.memberships } } });
@@ -244,8 +247,23 @@ try {
   const suspendedTenant = await identity("suspended-tenant", { role: "V" });
   await prisma.tenant.update({ where: { id: suspendedTenant.tenantId }, data: { status: "SUSPENDED" } });
 
+  const serviceClientOne = await prisma.client.create({ data: {
+    id: `${run}-client-one`, tenantId: tenantOne.tenantId, code: `${run}-CLIENT-ONE`.toUpperCase(),
+    name: "Receptor relacional confirmado", email: "receiver-one@example.invalid", phone: "0000000000",
+    address: "Dirección sintética", type: "PERSON", status: "active", createdAt: "2026-08-21",
+  } });
+  const serviceClientTwo = await prisma.client.create({ data: {
+    id: `${run}-client-two`, tenantId: tenantTwo.tenantId, code: `${run}-CLIENT-TWO`.toUpperCase(),
+    name: "Receptor de otro tenant", email: "receiver-two@example.invalid", phone: "0000000000",
+    address: "Dirección sintética", type: "ORGANIZATION", status: "inactive", createdAt: "2026-08-21",
+  } });
+  created.clients.push(serviceClientOne.id, serviceClientTwo.id);
+
   const casesOne = Array.from({ length: 51 }, (_, index) => caseData("one", index, tenantOne.tenantId, index < 39 ? ownerOne : null));
   const casesTwo = Array.from({ length: 4 }, (_, index) => caseData("two", index, tenantTwo.tenantId, ownerTwo));
+  casesOne[0].clientId = serviceClientOne.id;
+  casesOne[0].clientName = "<img src=x onerror=legacy-authority>";
+  casesTwo[0].clientId = serviceClientTwo.id;
   await prisma.pipelineCase.createMany({ data: [...casesOne, ...casesTwo] });
   created.cases.push(...casesOne.map((item) => item.id), ...casesTwo.map((item) => item.id));
 
@@ -260,6 +278,12 @@ try {
     await prisma.pipelineCase.create({ data: caseData("cross-owner", 0, tenantOne.tenantId, ownerTwo) });
   } catch (error) { crossOwnerError = error; }
   check("FK rechaza owner de otro tenant", crossOwnerError?.code === "P2003");
+
+  let crossClientError;
+  try {
+    await prisma.pipelineCase.create({ data: { ...caseData("cross-client", 0, tenantOne.tenantId, ownerOne), clientId: serviceClientTwo.id } });
+  } catch (error) { crossClientError = error; }
+  check("FK tenant-first rechaza Client de otro tenant", crossClientError?.code === "P2003");
 
   const tokenOne = tokenFor(tenantOne);
   const list = await invoke(listHandler, request(tokenOne, "GET", { page: "1", pageSize: "20" }));
@@ -292,12 +316,15 @@ try {
   check("búsqueda allowlist tenantizada", bySearch.body.total > 0 && bySearch.body.data.every((item) => item.originLocation === "Origen 2"));
 
   const detail = await invoke(detailHandler, request(tokenOne, "GET", { id: casesOne[0].id }));
-  check("detalle mismo tenant", detail.statusCode === 200 && detail.body.data.id === casesOne[0].id);
+  check("detalle mismo tenant", detail.statusCode === 200 && detail.body.data.caseRef === casesOne[0].id);
+  check("Client relacional prevalece sobre clientName legacy", detail.body.data.client?.displayName === serviceClientOne.name
+    && !JSON.stringify(detail.body.data).includes(casesOne[0].clientName));
+  check("detalle no expone clientId", !Object.hasOwn(detail.body.data, "clientId") && !Object.hasOwn(detail.body.data, "id"));
   check("detalle CRM sin CORS permisivo", detail.getHeader("access-control-allow-origin") === undefined
     && detail.getHeader("access-control-allow-credentials") === undefined);
   const snapshotList = await invoke(listHandler, request(tokenOne, "GET", { q: casesOne[0].caseCode, pageSize: "1" }));
   const expectedCaseContract = {
-    id: "<id>", caseCode: "<caseCode>", clientName: "Cliente 0", mode: "EXPORT", serviceType: "MOVING",
+    id: "<id>", caseCode: "<caseCode>", clientName: "<img src=x onerror=legacy-authority>", mode: "EXPORT", serviceType: "MOVING",
     customerType: "L4_PERSONAL", status: "NEW_INBOX", estimatedCbm: 0.5, requiresSurvey: true,
     surveyMethod: "PRESENCIAL", originLocation: "Origen 0", destinationLocation: "Destino 0",
     destinationContracted: true, assetsCount: 0,
@@ -305,14 +332,25 @@ try {
     quoteCount: 0, eventCount: 0, createdAt: "<timestamp>", updatedAt: "<timestamp>",
   };
   checkJsonSnapshot("snapshot lista", normalizeSuccessContract(snapshotList.body), { ok: true, total: 1, page: 1, pageSize: 1, data: [expectedCaseContract] });
-  checkJsonSnapshot("snapshot detalle", normalizeSuccessContract(detail.body), { ok: true, data: expectedCaseContract });
+  checkJsonSnapshot("snapshot detalle", normalizeSuccessContract(detail.body), { ok: true, data: {
+    caseRef: "<caseRef>", caseNumber: "<caseNumber>", status: "NEW_INBOX", mode: "EXPORT", serviceType: "MOVING",
+    client: { displayName: "<displayName>", type: "PERSON", status: "active" },
+    owner: { displayName: "<displayName>" }, createdAt: "<timestamp>", updatedAt: "<timestamp>",
+  } });
+  const noClient = await invoke(detailHandler, request(tokenOne, "GET", { id: casesOne[1].id }));
+  check("clientId NULL produce client null sin inferencia", noClient.statusCode === 200 && noClient.body.data.client === null
+    && !JSON.stringify(noClient.body.data).includes(casesOne[1].clientName));
   const crossTenant = await expectError("cross-tenant indistinguible", invoke(detailHandler, request(tokenOne, "GET", { id: casesTwo[0].id })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
   checkJsonSnapshot("snapshot 404", crossTenant.body, { ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" });
+  const inactiveClient = await invoke(detailHandler, request(tokenFor(tenantTwo), "GET", { id: casesTwo[0].id }));
+  check("Client inactivo conserva estado explícito sin fallback", inactiveClient.statusCode === 200
+    && inactiveClient.body.data.client?.displayName === serviceClientTwo.name
+    && inactiveClient.body.data.client?.status === "inactive");
   await expectError("id repetido rechazado", invoke(detailHandler, request(tokenOne, "GET", { id: [casesOne[0].id, casesOne[1].id] })), 400, "CRM_PIPELINE_FILTER_INVALID");
   await prisma.tenantMembership.update({ where: { id: ownerOne.membershipId }, data: { status: "SUSPENDED" } });
   const historical = await invoke(detailHandler, request(tokenOne, "GET", { id: casesOne[0].id }));
-  check("owner suspendido se muestra histórico mínimo", historical.body.data.owner.membershipStatus === "SUSPENDED"
-    && !Object.hasOwn(historical.body.data.owner, "membershipId") && !Object.hasOwn(historical.body.data.owner, "userStatus"));
+  check("owner se publica con presentación mínima", Object.keys(historical.body.data.owner).length === 1
+    && historical.body.data.owner.displayName && !Object.hasOwn(historical.body.data.owner, "membershipId"));
   await prisma.tenantMembership.update({ where: { id: ownerOne.membershipId }, data: { status: "ACTIVE" } });
   const [ownerRace] = await Promise.all([
     invoke(listHandler, request(tokenOne, "GET", { q: casesOne[1].caseCode, pageSize: "1" })),

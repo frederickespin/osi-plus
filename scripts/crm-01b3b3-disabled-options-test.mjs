@@ -142,14 +142,14 @@ try {
     requirePermission: activePermission,
     prismaClient: {
       pipelineCase: { findFirst: async () => ({
-        id: "case-1", caseCode: "CASE-1", clientName: "Cliente", mode: "LOCAL",
-        serviceType: "MOVING", customerType: "L4_PERSONAL", status: "NEW_INBOX",
-        enterpriseOwner: null, _count: { quotes: 0, events: 0 },
+        id: "case-1", caseCode: "CASE-1", mode: "LOCAL", serviceType: "MOVING",
+        status: "NEW_INBOX", client: null, enterpriseOwner: null,
+        createdAt: new Date("2026-08-21T10:00:00.000Z"), updatedAt: new Date("2026-08-21T10:00:00.000Z"),
       }) },
     },
   }), request("GET"));
   check("detalle GET activo conserva contrato", activeDetail.statusCode === 200
-    && activeDetail.body?.ok === true && activeDetail.body?.data?.id === "case-1"
+    && activeDetail.body?.ok === true && activeDetail.body?.data?.caseRef === "case-1"
     && activeDetail.body?.data?.owner === null);
 
   const activeSummary = await invoke(createPipelineSummaryHandler({

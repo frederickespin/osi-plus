@@ -36,6 +36,21 @@ function pipelineCase(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function pipelineCaseDetail(item = pipelineCase(), overrides: Record<string, unknown> = {}) {
+  return {
+    caseRef: item.id,
+    caseNumber: item.caseCode,
+    status: item.status,
+    mode: item.mode,
+    serviceType: item.serviceType,
+    client: { displayName: "Client Relacional Sintético", type: "PERSON", status: "active" },
+    owner: item.owner ? { displayName: item.owner.displayName } : null,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    ...overrides,
+  };
+}
+
 function summary(total: number, assigned = 0) {
   return {
     ok: true,
@@ -81,7 +96,7 @@ async function mockCrm(page: Page, options: { total?: number; cases?: ReturnType
     }
     const id = decodeURIComponent(url.pathname.split("/").at(-1) || "");
     const item = rows.find((candidate) => candidate.id === id);
-    return route.fulfill({ status: item ? 200 : 404, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(item ? { ok: true, data: item } : { ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }) });
+    return route.fulfill({ status: item ? 200 : 404, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(item ? { ok: true, data: pipelineCaseDetail(item) } : { ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }) });
   });
   return audit;
 }
@@ -96,29 +111,28 @@ test("cero casos presenta estado empresarial vacío y sólo ejecuta GET canónic
   expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => /crm|pipeline|case/i.test(key) && !key.startsWith("osi-plus.")))).toEqual([]);
 });
 
-test("filtros, paginación, resumen y drawer usan contratos públicos sin IDs visibles", async ({ page }) => {
+test("filtros, paginación y Ficha usan Client relacional sin IDs o clientName legacy visibles", async ({ page }) => {
   const hostile = pipelineCase({ clientName: "<img src=x onerror=globalThis.__hostile=1>", owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" } });
   await authenticate(page, { role: "V", permissions: ["pipeline:view"] });
   const audit = await mockCrm(page, { total: 2_000, cases: [hostile] });
   await page.goto("/crm");
   await expect(page.getByText("2000 resultados")).toBeVisible();
-  await page.getByPlaceholder("Caso, receptor o ruta").fill("CRM-DEMO");
+  await page.getByPlaceholder("Caso o ruta").fill("CRM-DEMO");
   await expect.poll(() => audit.some(({ search }) => search.includes("q=CRM-DEMO"))).toBe(true);
   await page.getByRole("button", { name: "IMPORT" }).click();
   await expect.poll(() => audit.some(({ search }) => search.includes("mode=IMPORT"))).toBe(true);
   await page.getByLabel("Asignación").selectOption("assigned");
   await expect.poll(() => audit.some(({ search }) => search.includes("unassigned=false"))).toBe(true);
-  await page.getByRole("button", { name: "Ver detalle" }).first().click();
-  await expect(page.getByRole("heading", { name: "CRM-DEMO-001" })).toBeVisible();
-  await expect(
-    page.getByRole("dialog").getByText("<img src=x onerror=globalThis.__hostile=1>", { exact: true }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await expect(page.getByText("Client Relacional Sintético", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("<img src=x onerror=globalThis.__hostile=1>", { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => (globalThis as typeof globalThis & { __hostile?: number }).__hostile)).toBeUndefined();
   await expect(page.getByText("internal-case-id-not-for-display")).toHaveCount(0);
   expect(audit.every(({ method }) => method === "GET")).toBe(true);
 });
 
-test("drawer conserva descripción semántica, foco y cero warnings en detalle válido o fallido", async ({ page }) => {
+test("Ficha soporta deep link, reload, error accesible y regreso preservando filtros", async ({ page }) => {
   const item = pipelineCase();
   const consoleIssues: string[] = [];
   const pageErrors: string[] = [];
@@ -140,44 +154,26 @@ test("drawer conserva descripción semántica, foco y cero warnings en detalle v
       status: 200,
       contentType: "application/json",
       headers: privateHeaders,
-      body: JSON.stringify(detailFails ? { ok: true, data: { ...item, tenantId: "internal-authority" } } : { ok: true, data: item }),
+      body: JSON.stringify(detailFails ? { ok: true, data: { ...pipelineCaseDetail(item), tenantId: "internal-authority" } } : { ok: true, data: pipelineCaseDetail(item) }),
     });
   });
 
   await page.goto("/commercial");
-  const trigger = page.getByRole("button", { name: "Ver detalle" }).first();
-  await trigger.focus();
-  await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible();
-  const labelledBy = await dialog.getAttribute("aria-labelledby");
-  const describedBy = await dialog.getAttribute("aria-describedby");
-  expect(labelledBy).toBeTruthy();
-  expect(describedBy).toBeTruthy();
-  await expect(page.locator(`#${labelledBy}`)).toHaveText("CRM-DEMO-001");
-  await expect(page.locator(`#${describedBy}`)).toHaveText("Detalle de la oportunidad comercial seleccionada.");
-  await expect(page.locator(`#${describedBy}`)).toHaveClass(/sr-only/);
-  await page.keyboard.press("Tab");
-  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
-  await expect(trigger).toBeFocused();
+  await page.getByPlaceholder("Caso o ruta").fill("CRM-DEMO");
+  await expect(page.getByRole("button", { name: "Abrir ficha" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await expect(page).toHaveURL(/\/commercial\/cases\/internal-case-id-not-for-display$/);
+  await expect(page.getByTestId("commercial-case-detail")).toBeVisible();
+  await page.getByRole("button", { name: "Volver al Pipeline" }).click();
+  await expect(page.getByPlaceholder("Caso o ruta")).toHaveValue("CRM-DEMO");
+  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
 
   detailFails = true;
-  await trigger.click();
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("CRM_PIPELINE_RESPONSE_INVALID")).toBeVisible();
-  await expect(page.locator(`#${await dialog.getAttribute("aria-describedby")}`)).toHaveText("Detalle de la oportunidad comercial seleccionada.");
-  await page.keyboard.press("Escape");
-  await expect(trigger).toBeFocused();
-
-  detailFails = false;
-  await page.reload();
-  const reloadedTrigger = page.getByRole("button", { name: "Ver detalle" }).first();
-  await reloadedTrigger.click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(reloadedTrigger).toBeFocused();
+  await page.goto("/commercial/cases/internal-case-id-not-for-display");
+  await expect(page.getByRole("alert")).toContainText("CRM_PIPELINE_RESPONSE_INVALID");
+  await expect(page.getByRole("button", { name: "Reintentar lectura" })).toBeVisible();
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   expect(consoleIssues).toEqual([]);
   expect(pageErrors).toEqual([]);
@@ -192,7 +188,7 @@ test("APPROVED permanece legacy congelado y OPS_HANDOFF terminal sin controles d
   await expect(page.locator('[data-status="OPS_HANDOFF"]:visible').first()).toContainText(
     "Handoff a Operaciones · terminal",
   );
-  await page.getByRole("button", { name: "Ver detalle" }).first().click();
+  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
   await expect(page.getByText("Legacy congelado", { exact: true })).toBeVisible();
   await expect(page.getByText("Disponible en una fase posterior.")).toBeVisible();
   for (const label of ["Asignar", "Desasignar", "Transicionar", "Editar", "Crear caso"]) await expect(page.getByRole("button", { name: label })).toHaveCount(0);
@@ -201,13 +197,18 @@ test("APPROVED permanece legacy congelado y OPS_HANDOFF terminal sin controles d
 
 test("aliases, deep links, reload y regreso al Hub conservan la misma guardia", async ({ page }) => {
   await authenticate(page);
-  await mockCrm(page);
+  await mockCrm(page, { cases: [pipelineCase()] });
   for (const route of ["/commercial", "/crm", "/sales/pipeline"]) {
     await page.goto(route);
     await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
     await page.reload();
     await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
   }
+  await page.goto("/commercial/cases/internal-case-id-not-for-display");
+  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await page.getByRole("button", { name: "Volver al Pipeline" }).click();
   await page.getByRole("button", { name: "Regresar al Hub" }).click();
   await expect(page.getByText("Hola, Actor sintético")).toBeVisible();
 });
@@ -224,12 +225,24 @@ test("rol no elegible y deniedPermissions bloquean antes de descargar el módulo
     const resources: string[] = [];
     page.on("request", (request) => resources.push(new URL(request.url()).pathname));
     await authenticate(page, actor);
-    await page.goto("/commercial?role=A#permission=pipeline:view");
+    await page.goto("/commercial/cases/opaque-case-ref?role=A#permission=pipeline:view");
     await expect(page.getByTestId("hub-forbidden")).toBeVisible();
     expect(resources.some((path) => /CommercialInboxModule/i.test(path))).toBe(false);
     expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
     await context.close();
   }
+});
+
+test("rutas de Ficha ambiguas o manipuladas quedan fuera del descriptor sin descargar chunks", async ({ page }) => {
+  const resources: string[] = [];
+  page.on("request", (request) => resources.push(new URL(request.url()).pathname));
+  await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
+  for (const route of ["/commercial/cases", "/commercial/cases/a/b", "/commercial/cases/%2F%2Fevil.invalid", "/commercial/cases/%2e%2e"]) {
+    await page.goto(route);
+    await expect(page.getByText("404 · Ruta del Hub no registrada")).toBeVisible();
+  }
+  expect(resources.some((path) => /CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
 });
 
 test("toda combinación parcial de compuertas evita chunk y requests del Inbox", async ({ browser }) => {
@@ -279,7 +292,7 @@ test("adaptador HTTP rechaza contratos adversariales y conserva Bearer sólo en 
   await expect(page.locator("body")).toHaveAttribute("data-result", "passed");
   const result = await page.evaluate(() => JSON.parse(document.body.dataset.details || "{}"));
   expect(result.failed).toEqual([]);
-  expect(result.passed).toBe(26);
+  expect(result.passed).toBe(30);
 });
 
 test("compuerta CRM desactivada mantiene descriptor inactivo sin chunk ni requests", async ({ page }) => {
@@ -331,5 +344,5 @@ test("10,000 casos conservan paginación server-side y una lectura por página",
   const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1];
   testInfo.annotations.push({ type: "performance", description: JSON.stringify({ records: 10_000, p50Ms: sorted[Math.floor(sorted.length / 2)], p95Ms: p95, maxMs: sorted.at(-1) }) });
   expect(audit.filter(({ pathname }) => pathname === "/api/crm/pipeline-cases")).toHaveLength(9);
-  expect(await page.getByRole("button", { name: "Ver detalle" }).count()).toBe(25);
+  expect(await page.getByRole("button", { name: "Abrir ficha" }).count()).toBe(25);
 });

@@ -22,6 +22,7 @@ async function expectRejected(tx, name, operation) {
   await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${savepoint}`);
   await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${savepoint}`);
   check(name, Boolean(error), error ? { code: error.code || "POSTGRES_REJECTED" } : undefined);
+  return error;
 }
 
 const { prisma, target } = await createV17CasePublicRefLocalPrisma();
@@ -45,24 +46,54 @@ try {
     await tx.pipelineCase.create({ data: { ...caseData(`${run}-case-other-tenant`, tenantTwo.id), publicRef: explicit } });
     check("unicidad es tenant-first", true);
     await expectRejected(tx, "duplicado explícito dentro del tenant rechazado", () => tx.pipelineCase.create({ data: { ...caseData(`${run}-case-duplicate`, tenantOne.id), publicRef: explicit } }));
+    await expectRejected(tx, "UUID explícito inválido rechazado por PostgreSQL", () => tx.$executeRawUnsafe(`
+      INSERT INTO "osi"."osi_pipeline_cases"
+        ("id", "tenant_id", "public_ref", "caseCode", "clientName", "mode", "serviceType", "customerType", "ownerName", "originLocation", "destinationLocation")
+      VALUES ($1, $2, 'not-a-uuid', $3, 'Synthetic', 'LOCAL', 'MOVING', 'L4_PERSONAL', 'Unassigned', 'Synthetic origin', 'Synthetic destination')
+    `, `${run}-case-invalid-uuid`, tenantOne.id, `${run}-INVALID`.toUpperCase()));
 
-    const statusUpdate = await tx.pipelineCase.update({ where: { id: first.id }, data: { status: "AWAITING_ICP" } });
-    check("UPDATE empresarial conserva referencia", statusUpdate.status === "AWAITING_ICP" && statusUpdate.publicRef === first.publicRef);
+    const businessUpdate = await tx.pipelineCase.update({ where: { id: first.id }, data: { clientName: "Synthetic updated" } });
+    check("UPDATE empresarial conserva referencia", businessUpdate.clientName === "Synthetic updated" && businessUpdate.publicRef === first.publicRef);
     const sameRef = await tx.pipelineCase.update({ where: { id: first.id }, data: { publicRef: first.publicRef } });
     check("UPDATE con referencia idéntica permitido", sameRef.publicRef === first.publicRef);
-    await expectRejected(tx, "cambio de publicRef rechazado", () => tx.pipelineCase.update({ where: { id: first.id }, data: { publicRef: randomUUID() } }));
+    const changedRef = randomUUID();
+    const immutableError = await expectRejected(tx, "cambio de publicRef rechazado", () => tx.$executeRawUnsafe(
+      `UPDATE "osi"."osi_pipeline_cases" SET "public_ref" = $2::uuid WHERE "id" = $1`, first.id, changedRef,
+    ));
+    const immutableMessage = JSON.stringify(immutableError);
+    const immutableEvidence = {
+      stableCode: immutableMessage.includes("V17_PIPELINE_CASE_PUBLIC_REF_IMMUTABLE"),
+      leaksId: immutableMessage.includes(first.id),
+      leaksCurrentRef: immutableMessage.includes(first.publicRef),
+      leaksAttemptedRef: immutableMessage.includes(changedRef),
+    };
+    check("error de inmutabilidad sanitizado", immutableEvidence.stableCode
+      && !immutableEvidence.leaksId && !immutableEvidence.leaksCurrentRef && !immutableEvidence.leaksAttemptedRef, immutableEvidence);
     await expectRejected(tx, "asignación NULL rechazada", () => tx.$executeRawUnsafe(`UPDATE "osi"."osi_pipeline_cases" SET "public_ref" = NULL WHERE "id" = $1`, first.id));
 
     const objects = await tx.$queryRawUnsafe(`
       SELECT
+        (SELECT udt_name FROM information_schema.columns WHERE table_schema='osi' AND table_name='osi_pipeline_cases' AND column_name='public_ref') AS physical_type,
         (SELECT is_nullable FROM information_schema.columns WHERE table_schema='osi' AND table_name='osi_pipeline_cases' AND column_name='public_ref') AS nullable,
         (SELECT column_default FROM information_schema.columns WHERE table_schema='osi' AND table_name='osi_pipeline_cases' AND column_name='public_ref') AS default_value,
         (SELECT COUNT(*)::integer FROM pg_constraint WHERE connamespace='osi'::regnamespace AND conname='osi_pipeline_cases_tenant_id_public_ref_key') AS constraint_count,
+        (SELECT COUNT(*)::integer FROM pg_index i
+          JOIN pg_class t ON t.oid=i.indrelid JOIN pg_namespace n ON n.oid=t.relnamespace
+          WHERE n.nspname='osi' AND t.relname='osi_pipeline_cases'
+            AND (SELECT array_agg(a.attname::text ORDER BY k.ordinality)
+                 FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ordinality)
+                 JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.attnum)
+                = ARRAY['tenant_id','public_ref']) AS matching_index_count,
         (SELECT COUNT(*)::integer FROM pg_trigger WHERE tgname='osi_pipeline_cases_public_ref_immutable_trg' AND NOT tgisinternal) AS trigger_count,
-        (SELECT COUNT(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='osi' AND p.proname='osi_prevent_pipeline_case_public_ref_change') AS function_count
+        (SELECT COUNT(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='osi' AND p.proname='osi_prevent_pipeline_case_public_ref_change') AS function_count,
+        (SELECT prosecdef FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='osi' AND p.proname='osi_prevent_pipeline_case_public_ref_change') AS security_definer,
+        (SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='osi' AND p.proname='osi_prevent_pipeline_case_public_ref_change') AS function_definition
     `);
-    check("columna NOT NULL con default PostgreSQL", objects[0].nullable === "NO" && /gen_random_uuid\(\)/.test(objects[0].default_value));
+    check("columna física UUID NOT NULL con default PostgreSQL", objects[0].physical_type === "uuid" && objects[0].nullable === "NO" && /gen_random_uuid\(\)/.test(objects[0].default_value));
     check("constraint, función y trigger exactos presentes", objects[0].constraint_count === 1 && objects[0].trigger_count === 1 && objects[0].function_count === 1);
+    check("único índice tenant-first sin redundancia", objects[0].matching_index_count === 1);
+    check("función SECURITY INVOKER sin SQL dinámico", objects[0].security_definer === false
+      && /IS DISTINCT FROM/.test(objects[0].function_definition) && !/\bEXECUTE\b/i.test(objects[0].function_definition));
     throw new Error("V17_PUBLIC_REF_ROLLBACK");
   }, { maxWait: 5_000, timeout: 30_000 }).catch((error) => {
     if (error.message !== "V17_PUBLIC_REF_ROLLBACK") throw error;
@@ -80,6 +111,21 @@ try {
   check("creación concurrente completa sin filas parciales", fulfilled.length === attempts && settled.every((entry) => entry.status === "fulfilled"));
   check("creación concurrente sin UUID duplicados", new Set(fulfilled).size === attempts);
   check("creación concurrente entrega UUID v4", fulfilled.every((value) => uuidV4.test(value)));
+  const concurrentTarget = `${run}-race-000`;
+  const stableRef = fulfilled[0];
+  const updateSettled = await Promise.allSettled([
+    ...Array.from({ length: 20 }, () => prisma.pipelineCase.update({ where: { id: concurrentTarget }, data: { publicRef: stableRef } })),
+    ...Array.from({ length: 20 }, () => prisma.pipelineCase.update({ where: { id: concurrentTarget }, data: { publicRef: randomUUID() } })),
+  ]);
+  const updateEvidence = {
+    sameReferenceAccepted: updateSettled.slice(0, 20).filter((entry) => entry.status === "fulfilled").length,
+    changedReferenceRejected: updateSettled.slice(20, 40).filter((entry) => entry.status === "rejected").length,
+  };
+  check("updates concurrentes coherentes", updateEvidence.sameReferenceAccepted === 20
+    && updateEvidence.changedReferenceRejected === 20, updateEvidence);
+  const businessAfterRace = await prisma.pipelineCase.update({ where: { id: concurrentTarget }, data: { clientName: "Synthetic updated after race" } });
+  check("update empresarial posterior a la carrera permitido", businessAfterRace.clientName === "Synthetic updated after race");
+  check("updates concurrentes conservan referencia", (await prisma.pipelineCase.findUniqueOrThrow({ where: { id: concurrentTarget }, select: { publicRef: true } })).publicRef === stableRef);
   await prisma.pipelineCase.deleteMany({ where: { id: { startsWith: `${run}-race-` } } });
   await prisma.tenant.delete({ where: { id: tenant.id } });
   check("fixtures concurrentes eliminados", await prisma.pipelineCase.count({ where: { id: { startsWith: run } } }) === 0);

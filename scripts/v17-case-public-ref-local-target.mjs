@@ -2,6 +2,7 @@ const ALLOWED_DATABASES = Object.freeze(new Set([
   "osi_db01n_ci",
   "osi_v17_case_public_ref_local",
   "osi_v17_case_public_ref_populated",
+  "osi_v17_case_public_ref_race",
 ]));
 
 function invariant(condition, message) {

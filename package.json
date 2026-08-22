@@ -29,6 +29,7 @@
     "guard:v17-commercial-crm": "node scripts/validate-v17-commercial-crm-guard.mjs",
     "test:v17-case-public-ref": "node scripts/v17-case-public-ref-test.mjs",
     "test:v17-case-public-ref:populated": "node scripts/v17-case-public-ref-populated-test.mjs",
+    "test:v17-case-public-ref:race": "node scripts/v17-case-public-ref-migration-race-test.mjs",
     "test:v17-case-public-ref:performance": "node scripts/v17-case-public-ref-performance.mjs",
     "guard:v17-case-public-ref": "node scripts/validate-v17-case-public-ref-guard.mjs && node scripts/validate-v17-case-public-ref-guard-test.mjs",
     "typecheck:crm-01b3b2": "tsc -p tsconfig.crm-01b3b2.json --pretty false",

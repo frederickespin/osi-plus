@@ -17,7 +17,7 @@ try {
   mkdirSync(migrationRoot, { recursive: true });
   cpSync(resolve("prisma", "migrations"), migrationRoot, { recursive: true });
   const current = validateMigrationFiles(root);
-  check("canonical chain contains exactly seventeen migrations", current.length === 17 && CANONICAL_MIGRATIONS.length === 17);
+  check("canonical chain contains exactly eighteen migrations", current.length === 18 && CANONICAL_MIGRATIONS.length === 18);
   check("MT-01C1B1 remains migration fourteen", current[13] === "20260801013000_mt01c1b1_provisioning_persistence");
 
   const unexpected = join(migrationRoot, "20260801021000_unexpected_migration");
@@ -25,7 +25,7 @@ try {
   writeFileSync(join(unexpected, "migration.sql"), "SELECT 1;\n", "utf8");
   let rejected = null;
   try { validateMigrationFiles(root); } catch (error) { rejected = error; }
-  check("unexpected migration eighteen is rejected", rejected?.message.includes("17 migraciones canónicas"));
+  check("unexpected migration nineteen is rejected", rejected?.message.includes("18 migraciones canónicas"));
   check("guard rejects before executing unexpected SQL", rejected instanceof Error);
 
   mkdirSync(join(root, "api"), { recursive: true });

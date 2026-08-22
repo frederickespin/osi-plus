@@ -14,7 +14,7 @@ function filesBelow(directory) {
 export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, extraSources = {}, migrationNames } = {}) {
   const source = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 17 && migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "se exige migración 17 V17-CASE-CLIENT exacta");
+  invariant(migrations.length === 18 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "se exigen 18 migraciones canónicas exactas");
   const crypto = source("api/_lib/crmOwnerRef.js");
   for (const signature of ["aes-256-gcm", "hkdfSync", "randomBytes", "CRM_OWNER_REF_TTL_SECONDS = 300", "CRM_OWNER_REF_CLOCK_SKEW_SECONDS = 30", "osi-plus/crm/pipeline-owner-ref/v1", "setAAD", "setAuthTag"]) {
     invariant(crypto.includes(signature), `ownerRef incompleto: ${signature}`);
@@ -75,7 +75,7 @@ export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, e
   for (const path of routes) {
     invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp/.test(source(path)), `${path} omite la compuerta CRM central`);
   }
-  return Object.freeze({ ok: true, migrations: 17, routes: routes.length, ttlSeconds: 300 });
+  return Object.freeze({ ok: true, migrations: 18, routes: routes.length, ttlSeconds: 300 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

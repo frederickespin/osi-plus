@@ -68,6 +68,9 @@ export function validateV17CasePublicRefGuard({
   invariant(!/publicRef\s+String\?/.test(pipeline), "publicRef no puede ser nullable");
   invariant(!/(?:@default\(cuid|@default\(uuid)/.test(pipeline.match(/^\s*publicRef.*$/m)?.[0] || ""), "Prisma no puede generar publicRef");
 
+  invariant((sql.match(/^BEGIN;$/gm) || []).length === 1 && (sql.match(/^COMMIT;$/gm) || []).length === 1,
+    "la migración debe declarar una única transacción explícita");
+  invariant(/^COMMIT;\s*$/.test(sql.slice(sql.lastIndexOf("COMMIT;"))), "COMMIT debe cerrar el archivo");
   invariant(/to_regprocedure\('pg_catalog\.gen_random_uuid\(\)'\)/.test(sql), "preflight de gen_random_uuid ausente");
   invariant(/ADD COLUMN "public_ref" UUID;/.test(sql), "expansión nullable UUID ausente");
   invariant(/UPDATE "osi"\."osi_pipeline_cases"\s+SET "public_ref" = pg_catalog\.gen_random_uuid\(\)\s+WHERE "public_ref" IS NULL;/m.test(sql), "backfill UUID aleatorio exacto ausente");
@@ -76,9 +79,23 @@ export function validateV17CasePublicRefGuard({
   invariant(/ADD CONSTRAINT "osi_pipeline_cases_tenant_id_public_ref_key"\s+UNIQUE \("tenant_id", "public_ref"\)/m.test(sql), "constraint tenant-first ausente");
   invariant(/CREATE FUNCTION "osi"\."osi_prevent_pipeline_case_public_ref_change"\(\)/.test(sql), "función de inmutabilidad ausente");
   invariant(/NEW\."public_ref" IS DISTINCT FROM OLD\."public_ref"/.test(sql), "comparación inmutable incorrecta");
+  invariant(/RAISE EXCEPTION 'V17_PIPELINE_CASE_PUBLIC_REF_IMMUTABLE'\s+USING ERRCODE = '23514'/.test(sql), "rechazo inmutable sanitizado ausente");
   invariant(/CREATE TRIGGER "osi_pipeline_cases_public_ref_immutable_trg"\s+BEFORE UPDATE OF "public_ref"/m.test(sql), "trigger de inmutabilidad ausente");
-  invariant(!/(?:CREATE EXTENSION|session_replication_role|DISABLE TRIGGER|id::uuid|digest\(|jwt|secret)/i.test(sql), "fallback, extensión o debilitamiento prohibido");
+  invariant(!/(?:CREATE EXTENSION|session_replication_role|DISABLE TRIGGER|SECURITY DEFINER|id::uuid|digest\(|jwt|secret)/i.test(sql), "fallback, extensión o debilitamiento prohibido");
+  invariant(!/\bEXECUTE\s+(?!FUNCTION\b)/i.test(sql), "SQL dinámico prohibido");
   invariant((sql.match(/^UPDATE\b/gm) || []).length === 1, "sólo se permite el UPDATE técnico de backfill");
+  const orderedSteps = [
+    "BEGIN;", "to_regprocedure('pg_catalog.gen_random_uuid()')", 'ADD COLUMN "public_ref" UUID;',
+    'UPDATE "osi"."osi_pipeline_cases"', "V17_PIPELINE_CASE_PUBLIC_REF_BACKFILL_INCOMPLETE",
+    'ALTER COLUMN "public_ref" SET DEFAULT', 'ADD CONSTRAINT "osi_pipeline_cases_tenant_id_public_ref_key"',
+    'CREATE FUNCTION "osi"."osi_prevent_pipeline_case_public_ref_change"()',
+    'CREATE TRIGGER "osi_pipeline_cases_public_ref_immutable_trg"', "COMMIT;",
+  ].map((step) => sql.indexOf(step));
+  invariant(orderedSteps.every((position) => position >= 0)
+    && orderedSteps.every((position, index) => index === 0 || position > orderedSteps[index - 1]),
+  "orden expansión/backfill/validación/default/unique/trigger/transacción incorrecto");
+  const mutatedTables = [...sql.matchAll(/(?:ALTER TABLE|UPDATE)\s+"osi"\."([^"]+)"/g)].map((match) => match[1]);
+  invariant(mutatedTables.length > 0 && mutatedTables.every((table) => table === "osi_pipeline_cases"), "la migración sólo puede modificar PipelineCase");
 
   const oldSources = previousMigrationSources ?? Object.fromEntries(Object.keys(PREVIOUS_MIGRATION_HASHES).map((name) => [name, readFileSync(resolve(root, "prisma/migrations", name, "migration.sql"), "utf8")]));
   for (const [name, expected] of Object.entries(PREVIOUS_MIGRATION_HASHES)) invariant(normalizedSha(oldSources[name] || "") === expected, `migración previa modificada: ${name}`);
@@ -86,7 +103,7 @@ export function validateV17CasePublicRefGuard({
   const runtime = extraRuntimeSources ?? runtimeSources(root);
   const violations = Object.entries(runtime).filter(([, source]) => /\bpublicRef\b|\bpublic_ref\b/.test(source)).map(([path]) => path);
   invariant(violations.length === 0, `consumidores o exposición runtime prematura: ${violations.join(", ")}`);
-  return Object.freeze({ ok: true, migrations: 18, runtimeConsumers: 0, immutable: true, tenantFirst: true, migration: V17_CASE_PUBLIC_REF_MIGRATION });
+  return Object.freeze({ ok: true, migrations: 18, runtimeConsumers: 0, atomic: true, immutable: true, tenantFirst: true, migration: V17_CASE_PUBLIC_REF_MIGRATION });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

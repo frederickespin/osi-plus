@@ -1,6 +1,10 @@
 -- V17-CASE-PUBLIC-REF-01A — identidad pública UUID independiente e inmutable.
 -- Backfill técnico: no modifica autoridad empresarial ni expone la referencia por HTTP.
 
+-- La transacción explícita conserva el ACCESS EXCLUSIVE adquirido por ADD COLUMN
+-- hasta que default, NOT NULL, unicidad e inmutabilidad quedan instalados.
+BEGIN;
+
 DO $v17_public_ref$
 BEGIN
   IF to_regprocedure('pg_catalog.gen_random_uuid()') IS NULL THEN
@@ -68,3 +72,5 @@ CREATE TRIGGER "osi_pipeline_cases_public_ref_immutable_trg"
 BEFORE UPDATE OF "public_ref" ON "osi"."osi_pipeline_cases"
 FOR EACH ROW
 EXECUTE FUNCTION "osi"."osi_prevent_pipeline_case_public_ref_change"();
+
+COMMIT;

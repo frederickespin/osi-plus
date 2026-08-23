@@ -92,7 +92,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   const files = snapshot?.files || {};
   const migrations = snapshot?.migrations || [];
 
-  if (migrations.length !== 17) fail(`se esperaban 17 migraciones, existen ${migrations.length}`);
+  if (migrations.length !== 18) fail(`se esperaban 18 migraciones, existen ${migrations.length}`);
 
   const shared = "shared/v17CommercialCrmPreview.js";
   for (const signature of [

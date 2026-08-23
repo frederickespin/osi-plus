@@ -20,11 +20,15 @@ const allowedBackendChanges = new Set([
 ]);
 const read = (path) => readFileSync(path, "utf8");
 const invariant = (condition, message) => { if (!condition) throw new Error(`V17_COMMERCIAL_CRM_GUARD:${message}`); };
+const allowedPrismaChanges = new Set([
+  "prisma/schema.prisma",
+  "prisma/migrations/20260821010000_v17_pipeline_case_public_ref/migration.sql",
+]);
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-invariant(migrations.length === 17, `se esperaban 17 migraciones, existen ${migrations.length}`);
+invariant(migrations.length === 18, `se esperaban 18 migraciones, existen ${migrations.length}`);
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-invariant(!changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || path.startsWith("prisma/") || path.startsWith("src/data/")), "backend ajeno al ensayo, Prisma, migraciones o fixtures canónicos modificados");
+invariant(!changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || (path.startsWith("prisma/") && !allowedPrismaChanges.has(path)) || path.startsWith("src/data/")), "backend ajeno al ensayo, Prisma no autorizado o fixtures canónicos modificados");
 
 const catalog = read("src/hub/appCatalog.ts");
 invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");
@@ -75,4 +79,4 @@ for (const command of ["npm run typecheck:v17-commercial-crm", "npm run test:v17
 }
 const vite = read("vite.config.ts");
 invariant(/base:\s*["']\/["']/.test(vite), "assets deben usar raíz absoluta para deep links anidados");
-console.log(JSON.stringify({ ok: true, migrations: 17, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], changedFiles: changed.length }));
+console.log(JSON.stringify({ ok: true, migrations: 18, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], changedFiles: changed.length }));

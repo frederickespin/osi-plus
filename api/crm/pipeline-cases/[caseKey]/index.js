@@ -1,9 +1,9 @@
-import { prisma } from "../../_lib/db.js";
+import { prisma } from "../../../_lib/db.js";
 import {
   findCrmPipelineCase,
-} from "../../_lib/crmPipelineRead.js";
-import { requireCrmPipelinePermissionResponse } from "../../_lib/crmPipelineAccess.js";
-import { createCrmPipelineReadHandler } from "../../_lib/crmPipelineReadHttp.js";
+} from "../../../_lib/crmPipelineRead.js";
+import { requireCrmPipelinePermissionResponse } from "../../../_lib/crmPipelineAccess.js";
+import { createCrmPipelineReadHandler } from "../../../_lib/crmPipelineReadHttp.js";
 
 export function createPipelineCaseDetailHandler({
   prismaClient = prisma,
@@ -16,7 +16,7 @@ export function createPipelineCaseDetailHandler({
     requirePermission,
     execute: ({ req, context, prisma: database }) => findCrmPipelineCase(database, {
       tenantId: context.tenantId,
-      caseId: req.query?.id,
+      caseRef: req.query?.caseKey,
     }),
     response: (data) => ({ ok: true, data }),
   });

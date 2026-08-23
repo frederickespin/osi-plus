@@ -86,11 +86,11 @@ function PipelineList({ value, selectedId, onSelect }: { value: CrmPipelineList 
   return (
     <div className="overflow-hidden rounded-lg border bg-white" role="list" aria-label="Oportunidades CRM relacionales">
       {value.data.map((item) => (
-        <button key={item.id} type="button" role="listitem" onClick={(event) => onSelect(item.id, event.currentTarget)}
-          className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 border-b p-4 text-left last:border-b-0 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 ${selectedId === item.id ? "bg-blue-50" : ""}`}>
+        <button key={item.caseRef} type="button" role="listitem" onClick={(event) => onSelect(item.caseRef, event.currentTarget)}
+          className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 border-b p-4 text-left last:border-b-0 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 ${selectedId === item.caseRef ? "bg-blue-50" : ""}`}>
           <span className="min-w-0">
             <span className="flex min-w-0 flex-wrap items-center gap-2"><strong className="max-w-full truncate">{item.caseCode}</strong><Badge variant={statusTone(item.status)}>{STATUS_LABELS[item.status]}</Badge></span>
-            <span className="mt-1 block truncate text-sm text-slate-700">{item.clientName || "Cliente sin nombre publicado"}</span>
+            <span className="mt-1 block truncate text-sm text-slate-700">{item.client?.displayName || "Sin Client vinculado"}</span>
             <span className="mt-1 block truncate text-xs text-slate-500">{item.serviceType} · {item.originLocation} → {item.destinationLocation}</span>
           </span>
           <span className="max-w-40 self-center truncate text-right text-xs text-slate-500">{item.owner?.displayName || "Sin asignar"}<br />{item.quoteCount} cotizaciones</span>
@@ -212,7 +212,7 @@ function DetailDrawer({ api, role, state, open, busy, actionError, retryIntent, 
           {item && <>
             <div className="flex flex-wrap items-center gap-2"><Badge variant={statusTone(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="text-sm text-slate-500">Versión {state.allowed?.version ?? "—"}</span></div>
             <dl className="grid grid-cols-1 gap-3 rounded-lg border p-4 sm:grid-cols-2">
-              <div><dt className="text-xs text-slate-500">Cliente</dt><dd>{item.clientName || "No publicado"}</dd></div>
+              <div><dt className="text-xs text-slate-500">Cliente</dt><dd>{item.client?.displayName || "Sin Client vinculado"}</dd></div>
               <div><dt className="text-xs text-slate-500">Owner</dt><dd>{item.owner?.displayName || "Sin asignar"}</dd></div>
               <div><dt className="text-xs text-slate-500">Servicio</dt><dd>{item.serviceType}</dd></div>
               <div><dt className="text-xs text-slate-500">Modo</dt><dd>{item.mode}</dd></div>

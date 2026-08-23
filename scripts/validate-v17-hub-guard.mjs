@@ -10,12 +10,18 @@ const allowedBackendChanges = new Set([
   "api/_lib/crmHttpHeaders.js",
   "api/_lib/crmOwnerCatalogHttp.js",
   "api/_lib/crmPipelineAccess.js",
+  "api/_lib/crmPipelineRead.js",
   "api/_lib/crmPipelineReadHttp.js",
   "api/_lib/http.js",
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
   "api/auth/login.js",
   "api/auth/me.js",
+  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/index.js",
+  "api/crm/pipeline-cases/[caseKey]/transition.js",
+  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
 const requiredApps = ["commercial-crm", "coordination", "operations", "materials-equipment", "workshop", "administration", "human-resources", "osi-survey"];
 const allowedPrismaChanges = new Set([

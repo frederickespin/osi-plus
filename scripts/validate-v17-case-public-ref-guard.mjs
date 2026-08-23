@@ -101,9 +101,62 @@ export function validateV17CasePublicRefGuard({
   for (const [name, expected] of Object.entries(PREVIOUS_MIGRATION_HASHES)) invariant(normalizedSha(oldSources[name] || "") === expected, `migración previa modificada: ${name}`);
 
   const runtime = extraRuntimeSources ?? runtimeSources(root);
-  const violations = Object.entries(runtime).filter(([, source]) => /\bpublicRef\b|\bpublic_ref\b/.test(source)).map(([path]) => path);
-  invariant(violations.length === 0, `consumidores o exposición runtime prematura: ${violations.join(", ")}`);
-  return Object.freeze({ ok: true, migrations: 18, runtimeConsumers: 0, atomic: true, immutable: true, tenantFirst: true, migration: V17_CASE_PUBLIC_REF_MIGRATION });
+  const canonicalReadPath = "api/_lib/crmPipelineRead.js";
+  const publicRefConsumers = Object.entries(runtime)
+    .filter(([, source]) => /\bpublicRef\b|\bpublic_ref\b/.test(source))
+    .map(([path]) => path);
+  invariant(publicRefConsumers.length === 1 && publicRefConsumers[0] === canonicalReadPath,
+    `publicRef sólo puede consumirse en el backend canónico de lectura: ${publicRefConsumers.join(", ")}`);
+
+  const canonicalRead = runtime[canonicalReadPath];
+  invariant((canonicalRead.match(/publicRef:\s*true/g) || []).length === 2,
+    "lista y detalle deben seleccionar publicRef de forma explícita");
+  invariant((canonicalRead.match(/caseRef:\s*row\.publicRef/g) || []).length === 2,
+    "lista y detalle deben serializar publicRef exclusivamente como caseRef");
+  invariant((canonicalRead.match(/caseCode:\s*row\.caseCode/g) || []).length === 2 && !/\bcaseNumber\b/.test(canonicalRead),
+    "lista y detalle deben publicar un único caseCode");
+  invariant(!/\bclientName\b/.test(canonicalRead),
+    "clientName legacy no puede seleccionarse, buscarse ni publicarse");
+  invariant((canonicalRead.match(/client:\s*\{\s*select:\s*CLIENT_SELECT\s*\}/g) || []).length === 2
+    && (canonicalRead.match(/client:\s*safeClient\(row\.client\)/g) || []).length === 2,
+  "lista y detalle deben proyectar exclusivamente Client relacional");
+  invariant(/client:\s*\{\s*is:\s*\{\s*name:\s*\{\s*contains:\s*filters\.search/.test(canonicalRead),
+    "búsqueda de receptor debe usar Client relacional");
+  invariant(/findUnique\(\{[\s\S]{0,250}tenantId_publicRef:\s*\{[\s\S]{0,120}tenantId:\s*String\(tenantId\),[\s\S]{0,80}publicRef/.test(canonicalRead),
+    "detalle debe consultar el índice único tenant-first");
+  invariant(!/where:\s*\{\s*publicRef\b/.test(canonicalRead), "consulta únicamente por publicRef prohibida");
+  invariant(!/caseRef:\s*row\.id\b|\bid:\s*row\.id\b|\bid:\s*true\b|\bcaseId\b/.test(canonicalRead),
+    "PK CUID o alias interno prohibido en lectura pública");
+  invariant(!/\bpublic_ref\b/.test(canonicalRead), "nombre SQL public_ref prohibido en contratos runtime");
+  invariant(/PUBLIC_CASE_REF_PATTERN[\s\S]*CRM_PIPELINE_RESOURCE_NOT_FOUND/.test(canonicalRead),
+    "UUID v4 canónico debe rechazarse como 404 antes de Prisma");
+
+  const routePaths = Object.keys(runtime).filter((path) => path.startsWith("api/crm/pipeline-cases/") && /\.js$/.test(path));
+  invariant(routePaths.includes("api/crm/pipeline-cases/[caseKey]/index.js"), "ruta pública [caseRef] ausente");
+  const dynamicSegments = new Set(routePaths.flatMap((path) => path.match(/\[[^\]]+\]/g) || []));
+  invariant(dynamicSegments.size === 1 && dynamicSegments.has("[caseKey]"),
+    "Vercel exige un segmento dinámico físico único y neutral para lectura y mutaciones");
+  invariant(/req\.query\?\.caseKey/.test(runtime["api/crm/pipeline-cases/[caseKey]/index.js"] || ""),
+    "la ruta de detalle debe interpretar caseKey exclusivamente como caseRef");
+  invariant(!routePaths.includes("api/crm/pipeline-cases/[id].js"), "alias ambiguo [id] de lectura todavía presente");
+  invariant(!Object.entries(runtime).some(([path, source]) => path.startsWith("src/") && /\bpublicRef\b|\bpublic_ref\b/.test(source)),
+    "frontend debe usar únicamente caseRef");
+  const protectedPublicFrontend = Object.entries(runtime)
+    .filter(([path]) => path.startsWith("src/crm-relational/") || path.startsWith("src/commercial-crm/"));
+  invariant(!protectedPublicFrontend.some(([, source]) => /\bclientName\b|\bcaseNumber\b/.test(source)),
+    "frontend público no puede reintroducir clientName legacy ni caseNumber");
+
+  return Object.freeze({
+    ok: true,
+    migrations: 18,
+    runtimeConsumers: 1,
+    runtimeConsumer: canonicalReadPath,
+    publicContract: "caseRef",
+    atomic: true,
+    immutable: true,
+    tenantFirst: true,
+    migration: V17_CASE_PUBLIC_REF_MIGRATION,
+  });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

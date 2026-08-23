@@ -15,10 +15,16 @@ export type CrmOwner = Readonly<{
   membershipStatus: string;
 }>;
 
+export type CrmServiceClient = Readonly<{
+  displayName: string;
+  type: string | null;
+  status: string;
+}>;
+
 export type CrmPipelineCase = Readonly<{
-  id: string;
+  caseRef: string;
   caseCode: string;
-  clientName: string | null;
+  client: CrmServiceClient | null;
   mode: PipelineMode;
   serviceType: string;
   customerType: string;
@@ -33,6 +39,18 @@ export type CrmPipelineCase = Readonly<{
   owner: CrmOwner | null;
   quoteCount: number;
   eventCount: number;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
+export type CrmPipelineCaseDetail = Readonly<{
+  caseRef: string;
+  caseCode: string;
+  status: PipelineCaseStatus;
+  mode: PipelineMode | null;
+  serviceType: string | null;
+  client: CrmServiceClient | null;
+  owner: Readonly<{ displayName: string }> | null;
   createdAt: string;
   updatedAt: string;
 }>;

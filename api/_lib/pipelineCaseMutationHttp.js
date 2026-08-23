@@ -94,8 +94,10 @@ export function sendPipelineMutationError(res, error, { head = false } = {}) {
 
 function routeCaseId(req, routeAction) {
   const keys = Object.keys(req.query || {});
-  if (keys.some((key) => key !== "id")) throw new CommercialTenancyError("CRM_PIPELINE_COMMAND_INVALID", 400);
-  const value = req.query?.id;
+  if (keys.some((key) => !["id", "caseKey"].includes(key)) || (keys.includes("id") && keys.includes("caseKey"))) {
+    throw new CommercialTenancyError("CRM_PIPELINE_COMMAND_INVALID", 400);
+  }
+  const value = req.query?.id ?? req.query?.caseKey;
   const rawUrl = typeof req.url === "string" ? req.url.split("?", 1)[0] : null;
   const expectedPath = routeAction && rawUrl
     ? new RegExp(`^/api/crm/pipeline-cases/[^/]+/${routeAction}/?$`)

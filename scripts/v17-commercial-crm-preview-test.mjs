@@ -8,7 +8,7 @@ import {
 } from "../api/_lib/crmPipelineAccess.js";
 import { resolveCommercialTenancyModes } from "../api/_lib/commercialTenancyWrite.js";
 import { createPipelineCasesListHandler } from "../api/crm/pipeline-cases/index.js";
-import { createPipelineTransitionHandler } from "../api/crm/pipeline-cases/[id]/transition.js";
+import { createPipelineTransitionHandler } from "../api/crm/pipeline-cases/[caseKey]/transition.js";
 import { createPipelineOwnerOptionsHandler } from "../api/crm/pipeline-owner-options.js";
 import {
   V17_COMMERCIAL_CRM_PREVIEW_BATCH,

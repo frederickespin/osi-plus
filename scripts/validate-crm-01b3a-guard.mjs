@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -7,10 +7,10 @@ import { spawnSync } from "node:child_process";
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const MIGRATION_HASH = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
 const ROUTES = Object.freeze({
-  "api/crm/pipeline-cases/[id]/transition.js": "transitionPipelineCase",
-  "api/crm/pipeline-cases/[id]/assign-owner.js": "assignPipelineCaseOwner",
-  "api/crm/pipeline-cases/[id]/unassign-owner.js": "unassignPipelineCaseOwner",
-  "api/crm/pipeline-cases/[id]/allowed-transitions.js": "getAllowedPipelineTransitions",
+  "api/crm/pipeline-cases/[caseKey]/transition.js": "transitionPipelineCase",
+  "api/crm/pipeline-cases/[caseKey]/assign-owner.js": "assignPipelineCaseOwner",
+  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js": "unassignPipelineCaseOwner",
+  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js": "getAllowedPipelineTransitions",
 });
 const POST_ROUTES = Object.freeze(Object.keys(ROUTES).filter((path) => !path.endsWith("allowed-transitions.js")));
 const AUTHORIZED_FRONTEND_ADAPTER = "src/crm-relational/api.ts";
@@ -19,7 +19,10 @@ function invariant(condition, message) { if (!condition) throw new Error(`CRM01B
 function inventory(root) {
   const result = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   invariant(result.status === 0, "inventario Git falló");
-  return result.stdout.split("\0").filter(Boolean).map((path) => path.replaceAll("\\", "/"));
+  return result.stdout.split("\0")
+    .filter(Boolean)
+    .map((path) => path.replaceAll("\\", "/"))
+    .filter((path) => existsSync(resolve(root, path)));
 }
 
 export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env } = {}) {
@@ -54,7 +57,9 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(!/Access-Control-Allow-Origin[^\n]+\*/.test(adapter), "CORS wildcard prohibido");
   invariant(!/Access-Control-Allow-Credentials/.test(adapter), "credenciales CORS no autorizadas");
   invariant(!/x-osi-(?:role|userid)/i.test(adapter), "headers x-osi no permitidos");
-  invariant(/keys\.some\(\(key\) => key !== "id"\)/.test(adapter), "requestId/query adicional no se rechaza");
+  invariant(/keys\.some\(\(key\) => !\["id", "caseKey"\]\.includes\(key\)\)/.test(adapter)
+    && /keys\.includes\("id"\) && keys\.includes\("caseKey"\)/.test(adapter),
+  "requestId/query adicional o identidad ambigua no se rechaza");
   invariant(/rawHeaderCount\(req, "idempotency-key"\)/.test(adapter), "duplicados Idempotency-Key no se detectan en rawHeaders");
   invariant(/rawHeaderCount\(request, "authorization"\)/.test(access) && /assertCrmAuthorizationHeader\(req\)/.test(adapter), "Authorization ambiguo no se detecta");
   invariant(vercel.includes('"source": "/api/((?!auth/|crm/).*)"'), "Vercel no excluye los namespaces Auth y CRM completos del CORS global");
@@ -71,7 +76,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
     invariant(!/(?:x-osi-role|x-osi-userid|localStorage|sessionStorage|ownerId)/.test(source), `${path} acepta autoridad heredada`);
   }
   const mutationFiles = [...files, ...Object.keys(extraSources)].filter((path, index, all) => all.indexOf(path) === index
-    && /^api\/crm\/pipeline-cases\/\[id\]\/(?:transition|assign-owner|unassign-owner|allowed-transitions|.+)\.js$/.test(path));
+    && /^api\/crm\/pipeline-cases\/\[caseKey\]\/(?!index\.js$).+\.js$/.test(path));
   invariant(JSON.stringify(mutationFiles.sort()) === JSON.stringify(Object.keys(ROUTES).sort()), `endpoints no autorizados: ${mutationFiles.join(", ")}`);
   invariant(POST_ROUTES.length === 3, "deben existir exactamente tres POST");
   invariant(!files.some((path) => /^api\/crm\/.+\.(?:js|ts)$/.test(path) && /(?:PATCH|PUT|DELETE)/.test(extraSources[path] ?? read(path))), "método mutante alternativo detectado");

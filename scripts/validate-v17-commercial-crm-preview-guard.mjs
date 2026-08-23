@@ -13,6 +13,8 @@ export const PREVIEW_GUARD_FILES = Object.freeze([
   "scripts/validate-v17-commercial-crm-preview-guard.mjs",
   "src/App.tsx",
   "src/commercial-crm/CommercialInboxModule.tsx",
+  "src/commercial-crm/CommercialCaseDetail.tsx",
+  "src/commercial-crm/presentation.ts",
   "src/crm-relational/clientMode.ts",
   "src/crm-relational/readApi.ts",
   "src/hub/HubWorkspace.tsx",
@@ -72,6 +74,8 @@ function validateCspAndCors(files) {
 function validateInboxIsolation(files) {
   for (const path of [
     "src/commercial-crm/CommercialInboxModule.tsx",
+    "src/commercial-crm/CommercialCaseDetail.tsx",
+    "src/commercial-crm/presentation.ts",
     "src/crm-relational/readApi.ts",
   ]) {
     forbidText(files, path, /\b(?:localStorage|sessionStorage|indexedDB)\b/, `storage empresarial importado por Inbox: ${path}`);

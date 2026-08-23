@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const DOMAIN = "api/_lib/pipelineCaseDomain.js";
 const AUTHORIZED_CONSUMERS = Object.freeze([
-  "api/crm/pipeline-cases/[id]/allowed-transitions.js",
-  "api/crm/pipeline-cases/[id]/assign-owner.js",
-  "api/crm/pipeline-cases/[id]/transition.js",
-  "api/crm/pipeline-cases/[id]/unassign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/transition.js",
+  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const MIGRATION_HASH = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
@@ -18,7 +18,10 @@ function invariant(condition, message) { if (!condition) throw new Error(`CRM01B
 function files(root) {
   const result = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   invariant(result.status === 0, "no se pudo inventariar el repositorio");
-  return result.stdout.split("\0").filter(Boolean).map((entry) => entry.replaceAll("\\", "/"));
+  return result.stdout.split("\0")
+    .filter(Boolean)
+    .map((entry) => entry.replaceAll("\\", "/"))
+    .filter((entry) => existsSync(resolve(root, entry)));
 }
 
 export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env } = {}) {

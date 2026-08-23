@@ -1,5 +1,5 @@
 import { createPipelineCasesListHandler } from "../api/crm/pipeline-cases/index.js";
-import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[id].js";
+import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[caseKey]/index.js";
 import { createPipelineSummaryHandler } from "../api/crm/pipeline-summary.js";
 import { createPipelineOwnerOptionsHandler } from "../api/crm/pipeline-owner-options.js";
 import {
@@ -11,6 +11,7 @@ import {
 import { mockResponse } from "./mt-01b1-test-helpers.mjs";
 
 const results = [];
+const CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 function check(name, condition, detail) {
   results.push({ name, passed: Boolean(condition), ...(detail === undefined ? {} : { detail }) });
   if (!condition) throw new Error(name);
@@ -19,8 +20,8 @@ function check(name, condition, detail) {
 function request(method, overrides = {}) {
   return {
     method,
-    url: "/api/crm/pipeline-cases/case-1",
-    query: { id: "case-1" },
+    url: `/api/crm/pipeline-cases/${CASE_REF}`,
+    query: { id: "case-1", caseRef: CASE_REF },
     headers: {},
     rawHeaders: [],
     ...overrides,
@@ -137,20 +138,63 @@ try {
     && activeList.body?.page === 1 && activeList.body?.pageSize === 50
     && Array.isArray(activeList.body?.data));
 
+  let activeDetailWhere;
   const activeDetail = await invoke(createPipelineCaseDetailHandler({
     env: localRead,
     requirePermission: activePermission,
     prismaClient: {
-      pipelineCase: { findFirst: async () => ({
-        id: "case-1", caseCode: "CASE-1", clientName: "Cliente", mode: "LOCAL",
-        serviceType: "MOVING", customerType: "L4_PERSONAL", status: "NEW_INBOX",
-        enterpriseOwner: null, _count: { quotes: 0, events: 0 },
-      }) },
+      pipelineCase: { findUnique: async ({ where }) => {
+        activeDetailWhere = where;
+        return {
+          publicRef: CASE_REF, caseCode: "CASE-1", mode: "LOCAL", serviceType: "MOVING",
+          status: "NEW_INBOX", client: null, enterpriseOwner: null,
+          createdAt: new Date("2026-08-21T10:00:00.000Z"), updatedAt: new Date("2026-08-21T10:00:00.000Z"),
+        };
+      } },
     },
-  }), request("GET"));
+  }), request("GET", { query: { caseKey: CASE_REF } }));
   check("detalle GET activo conserva contrato", activeDetail.statusCode === 200
-    && activeDetail.body?.ok === true && activeDetail.body?.data?.id === "case-1"
+    && activeDetail.body?.ok === true && activeDetail.body?.data?.caseRef === CASE_REF
     && activeDetail.body?.data?.owner === null);
+  check("detalle usa índice único tenant-first", JSON.stringify(activeDetailWhere) === JSON.stringify({
+    tenantId_publicRef: { tenantId: "tenant-active", publicRef: CASE_REF },
+  }));
+
+  let invalidRefPrismaCalls = 0;
+  let invalidRefAuthCalls = 0;
+  const invalidRefHandler = createPipelineCaseDetailHandler({
+    env: localRead,
+    requirePermission: async () => {
+      invalidRefAuthCalls += 1;
+      return Object.freeze({ tenantId: "tenant-active" });
+    },
+    prismaClient: {
+      pipelineCase: { findUnique: async () => { invalidRefPrismaCalls += 1; return null; } },
+    },
+  });
+  const invalidRefs = [
+    undefined,
+    "",
+    "cmf0historicalcuid123456789",
+    CASE_REF.toUpperCase(),
+    ` ${CASE_REF}`,
+    `${CASE_REF} `,
+    `\uFEFF${CASE_REF}`,
+    `${CASE_REF}\r\n`,
+    "%2F%2Fevil.invalid",
+    "%252F%252Fevil.invalid",
+    "../case",
+    "x".repeat(10_000),
+    [CASE_REF, CASE_REF],
+  ];
+  for (const invalidRef of invalidRefs) {
+    const response = await invoke(invalidRefHandler, request("GET", { query: { caseKey: invalidRef } }));
+    check("referencia pública inválida produce 404 uniforme", response.statusCode === 404
+      && response.body?.error === "CRM_PIPELINE_RESOURCE_NOT_FOUND"
+      && JSON.stringify(response.body) === JSON.stringify({ ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }));
+  }
+  check("auth precede validación de referencia", invalidRefAuthCalls === invalidRefs.length, invalidRefAuthCalls);
+  check("referencia inválida se rechaza antes de Prisma", invalidRefPrismaCalls === 0, invalidRefPrismaCalls);
 
   const activeSummary = await invoke(createPipelineSummaryHandler({
     env: localRead,

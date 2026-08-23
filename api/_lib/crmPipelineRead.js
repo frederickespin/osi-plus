@@ -42,6 +42,7 @@ const LIST_QUERY_FIELDS = Object.freeze(new Set([
 ]));
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
+const PUBLIC_CASE_REF_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const OWNER_SELECT = Object.freeze({
   role: true,
@@ -49,10 +50,15 @@ const OWNER_SELECT = Object.freeze({
   user: { select: { name: true } },
 });
 
+const CLIENT_SELECT = Object.freeze({
+  name: true,
+  type: true,
+  status: true,
+});
+
 const CASE_SELECT = Object.freeze({
-  id: true,
+  publicRef: true,
   caseCode: true,
-  clientName: true,
   mode: true,
   serviceType: true,
   customerType: true,
@@ -66,8 +72,25 @@ const CASE_SELECT = Object.freeze({
   assetsCount: true,
   createdAt: true,
   updatedAt: true,
+  client: { select: CLIENT_SELECT },
   enterpriseOwner: { select: OWNER_SELECT },
   _count: { select: { quotes: true, events: true } },
+});
+
+const CASE_DETAIL_SELECT = Object.freeze({
+  publicRef: true,
+  caseCode: true,
+  mode: true,
+  serviceType: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  client: { select: CLIENT_SELECT },
+  enterpriseOwner: {
+    select: {
+      user: { select: { name: true } },
+    },
+  },
 });
 
 function invalid(code = "CRM_PIPELINE_FILTER_INVALID", status = 400) {
@@ -105,6 +128,13 @@ function boundedOptional(value, maximum) {
   const text = scalar(value);
   if (!text || text.length > maximum) invalid();
   return text;
+}
+
+function canonicalCaseRef(value) {
+  if (typeof value !== "string" || !PUBLIC_CASE_REF_PATTERN.test(value)) {
+    invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
+  }
+  return value;
 }
 
 function exactBoolean(value) {
@@ -160,7 +190,7 @@ function pipelineWhere(tenantId, filters = {}) {
   if (filters.search) {
     where.OR = [
       { caseCode: { contains: filters.search, mode: "insensitive" } },
-      { clientName: { contains: filters.search, mode: "insensitive" } },
+      { client: { is: { name: { contains: filters.search, mode: "insensitive" } } } },
       { originLocation: { contains: filters.search, mode: "insensitive" } },
       { destinationLocation: { contains: filters.search, mode: "insensitive" } },
     ];
@@ -177,11 +207,20 @@ function safeOwner(owner) {
   });
 }
 
+function safeClient(client) {
+  if (!client) return null;
+  return Object.freeze({
+    displayName: String(client.name),
+    type: client.type === null ? null : String(client.type),
+    status: String(client.status),
+  });
+}
+
 function safeCase(row) {
   return Object.freeze({
-    id: row.id,
+    caseRef: row.publicRef,
     caseCode: row.caseCode,
-    clientName: row.clientName,
+    client: safeClient(row.client),
     mode: row.mode,
     serviceType: row.serviceType,
     customerType: row.customerType,
@@ -201,6 +240,22 @@ function safeCase(row) {
   });
 }
 
+function safeCaseDetail(row) {
+  return Object.freeze({
+    caseRef: row.publicRef,
+    caseCode: row.caseCode,
+    status: row.status,
+    mode: row.mode,
+    serviceType: row.serviceType,
+    client: safeClient(row.client),
+    owner: row.enterpriseOwner?.user?.name
+      ? Object.freeze({ displayName: String(row.enterpriseOwner.user.name) })
+      : null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
 export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
   const where = pipelineWhere(tenantId, filters);
   try {
@@ -209,7 +264,7 @@ export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
       prisma.pipelineCase.findMany({
         where,
         select: CASE_SELECT,
-        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        orderBy: [{ updatedAt: "desc" }, { publicRef: "asc" }],
         skip: filters.skip,
         take: filters.pageSize,
       }),
@@ -226,16 +281,20 @@ export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
   }
 }
 
-export async function findCrmPipelineCase(prisma, { tenantId, caseId }) {
-  const id = boundedOptional(caseId, 128);
-  if (!id) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
+export async function findCrmPipelineCase(prisma, { tenantId, caseRef }) {
+  const publicRef = canonicalCaseRef(caseRef);
   try {
-    const row = await prisma.pipelineCase.findFirst({
-      where: { id, tenantId: String(tenantId) },
-      select: CASE_SELECT,
+    const row = await prisma.pipelineCase.findUnique({
+      where: {
+        tenantId_publicRef: {
+          tenantId: String(tenantId),
+          publicRef,
+        },
+      },
+      select: CASE_DETAIL_SELECT,
     });
     if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
-    return safeCase(row);
+    return safeCaseDetail(row);
   } catch (cause) {
     if (cause instanceof CommercialTenancyError) throw cause;
     throw commercialDatabaseUnavailable(cause);

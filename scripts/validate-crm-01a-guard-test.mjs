@@ -29,7 +29,7 @@ try {
   rejected("pipeline:view en rol K rechazado", { overrides: { "api/_lib/rbac.js": rbac.replace("  K: [", "  K: [\n    PERMS.PIPELINE_VIEW,") } }, /A y V/);
   rejected("filtro tenant eliminado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replaceAll("tenantId: String(tenantId)", "id: { not: '' }") } }, /tenantId/);
   rejected("ownerId heredado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": `${service}\nconst authority = row.ownerId;` } }, /ownerId/);
-  rejected("campo interno expuesto rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace(/id: true,\r?\n\s*caseCode/, "tenantId: true,\n  id: true,\n  caseCode") } }, /campos internos/);
+  rejected("campo interno expuesto rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("publicRef: true,", "tenantId: true,\n  publicRef: true,") } }, /campos internos/);
   const list = read("api/crm/pipeline-cases/index.js");
   rejected("adaptador de lectura omitido rechazado", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("createCrmPipelineReadHandler({", "({") } }, /adaptador HTTP canónico/);
   const readHttp = read("api/_lib/crmPipelineReadHttp.js");

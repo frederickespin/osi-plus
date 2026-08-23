@@ -329,7 +329,7 @@ try {
   const byLegacyClient = await invoke(listHandler, request(tokenOne, "GET", { q: casesOne[0].clientName, pageSize: "100" }));
   check("clientName legacy no participa en búsqueda", byLegacyClient.body.total === 0);
 
-  const detail = await invoke(detailHandler, request(tokenOne, "GET", { caseRef: casesOne[0].publicRef }));
+  const detail = await invoke(detailHandler, request(tokenOne, "GET", { caseKey: casesOne[0].publicRef }));
   check("detalle mismo tenant", detail.statusCode === 200 && detail.body.data.caseRef === casesOne[0].publicRef);
   check("Client relacional prevalece sobre clientName legacy", detail.body.data.client?.displayName === serviceClientOne.name
     && !JSON.stringify(detail.body.data).includes(casesOne[0].clientName));
@@ -351,18 +351,18 @@ try {
     client: { displayName: "<displayName>", type: "PERSON", status: "active" },
     owner: { displayName: "<displayName>" }, createdAt: "<timestamp>", updatedAt: "<timestamp>",
   } });
-  const noClient = await invoke(detailHandler, request(tokenOne, "GET", { caseRef: casesOne[1].publicRef }));
+  const noClient = await invoke(detailHandler, request(tokenOne, "GET", { caseKey: casesOne[1].publicRef }));
   check("clientId NULL produce client null sin inferencia", noClient.statusCode === 200 && noClient.body.data.client === null
     && !JSON.stringify(noClient.body.data).includes(casesOne[1].clientName));
-  const crossTenant = await expectError("cross-tenant indistinguible", invoke(detailHandler, request(tokenOne, "GET", { caseRef: casesTwo[0].publicRef })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+  const crossTenant = await expectError("cross-tenant indistinguible", invoke(detailHandler, request(tokenOne, "GET", { caseKey: casesTwo[0].publicRef })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
   checkJsonSnapshot("snapshot 404", crossTenant.body, { ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" });
-  const inactiveClient = await invoke(detailHandler, request(tokenFor(tenantTwo), "GET", { caseRef: casesTwo[0].publicRef }));
+  const inactiveClient = await invoke(detailHandler, request(tokenFor(tenantTwo), "GET", { caseKey: casesTwo[0].publicRef }));
   check("Client inactivo conserva estado explícito sin fallback", inactiveClient.statusCode === 200
     && inactiveClient.body.data.client?.displayName === serviceClientTwo.name
     && inactiveClient.body.data.client?.status === "inactive");
-  await expectError("referencia repetida rechazada como recurso ausente", invoke(detailHandler, request(tokenOne, "GET", { caseRef: [casesOne[0].publicRef, casesOne[1].publicRef] })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+  await expectError("referencia repetida rechazada como recurso ausente", invoke(detailHandler, request(tokenOne, "GET", { caseKey: [casesOne[0].publicRef, casesOne[1].publicRef] })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
   await prisma.tenantMembership.update({ where: { id: ownerOne.membershipId }, data: { status: "SUSPENDED" } });
-  const historical = await invoke(detailHandler, request(tokenOne, "GET", { caseRef: casesOne[0].publicRef }));
+  const historical = await invoke(detailHandler, request(tokenOne, "GET", { caseKey: casesOne[0].publicRef }));
   check("owner se publica con presentación mínima", Object.keys(historical.body.data.owner).length === 1
     && historical.body.data.owner.displayName && !Object.hasOwn(historical.body.data.owner, "membershipId"));
   await prisma.tenantMembership.update({ where: { id: ownerOne.membershipId }, data: { status: "ACTIVE" } });

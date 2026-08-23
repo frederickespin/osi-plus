@@ -8,6 +8,8 @@ const guard = resolve("scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs");
 const files = [
   "src/App.tsx",
   "src/components/auth/CanonicalAccessDenied.tsx",
+  "src/components/auth/CanonicalAuthorizationError.tsx",
+  "src/lib/api.ts",
   "src/hub/hubRouteAccess.ts",
   "src/hub/hubAccess.ts",
   "src/hub/appCatalog.ts",
@@ -57,8 +59,18 @@ assert.equal(positive.status, 0, positive.stderr);
 const guardSource = readFileSync(guard, "utf8");
 assert.doesNotMatch(guardSource, /from\s+["']node:child_process["']|git\s+(?:diff|merge-base)|const\s+BASE\s*=|allowed(?:Backend|Prisma|Global)?Changes|[0-9a-f]{40}/i);
 const negatives = [
-  negative("bypass previo", "src/App.tsx", (s) => s.replace("if (!routeDecision.allowed)", "if (false)"), /autorización previa fue eliminada/),
-  negative("navegación sin revalidación", "src/App.tsx", (s) => s.replace("validateLegacySession(session).then", "Promise.resolve(session).then"), /navegación no revalida/),
+  negative("bypass previo", "src/App.tsx", (s) => s.replace("routeState.status === 'DENIED' || !routeDecision.allowed", "false"), /autorización previa fue eliminada/),
+  negative("navegación sin revalidación", "src/App.tsx", (s) => s.replace("validateLegacySession(session, controller.signal).then", "Promise.resolve(session).then"), /navegación no revalida/),
+  negative("navegación sin abort", "src/App.tsx", (s) => s.split("activeNavigation.current?.controller.abort()").join("void activeNavigation.current"), /no cancela/),
+  negative("navegación sin fencing", "src/App.tsx", (s) => s.replace("const fence = ++navigationFence.current", "const fence = navigationFence.current"), /perdió su fencing/),
+  negative("respuesta tardía aceptada", "src/App.tsx", (s) => s.replace("controller.signal.aborted || fence !== navigationFence.current", "false"), /tardía puede ganar/),
+  negative("red deja datos visibles", "src/App.tsx", (s) => s.replace("setRouteState((current) => ({ ...current, status: 'ERROR' }))", "setRouteState((current) => ({ ...current, status: 'READY' }))"), /fallo de red no desmonta/),
+  negative("estado pendiente bloquea logout", "src/App.tsx", (s) => s.replace("pointer-events-none fixed inset-x-0", "fixed inset-x-0"), /bloquea logout/),
+  negative("push antes de autorizar", "src/App.tsx", (s) => s.replace(
+    "const decision = evaluateHubRouteAccess(pathname, validatedAccessContext);\n      if (historyMode === 'PUSH' && decision.allowed) window.history.pushState({}, '', pathname);",
+    "if (historyMode === 'PUSH' && decision.allowed) window.history.pushState({}, '', pathname);\n      const decision = evaluateHubRouteAccess(pathname, validatedAccessContext);",
+  ), /pushState ocurre antes/),
+  negative("fetch sin signal", "src/lib/api.ts", (s) => s.replace("signal: options.signal", "signal: undefined"), /fetch no recibe/),
   negative("import eager", "src/App.tsx", (s) => s.replace("const HubWorkspace = lazy(() => import('@/hub/HubWorkspace'));", "import HubWorkspace from '@/hub/HubWorkspace';"), /dejó de ser lazy|import eager/),
   negative("decisión dentro del lazy", "src/hub/HubWorkspace.tsx", (s) => `${s}\nevaluateHubAccess(selected, accessContext);\n`, /regresó al chunk lazy/),
   negative("routing dentro del lazy", "src/hub/HubWorkspace.tsx", (s) => `${s}\nwindow.history.pushState({}, '', '/commercial');\n`, /routing regresó al chunk lazy/),
@@ -69,6 +81,7 @@ const negatives = [
   negative("storage como autoridad", "src/hub/hubRouteAccess.ts", (s) => `${s}\nlocalStorage.getItem("pipeline:view");\n`, /autoridad del navegador/),
   negative("prefetch protegido", "src/App.tsx", (s) => `${s}\nconst unsafe = '<link rel="prefetch">';\n`, /prefetch o preload/),
   negative("403 sin foco", "src/components/auth/CanonicalAccessDenied.tsx", (s) => s.replace("headingRef.current?.focus()", "void headingRef.current"), /403 accesible perdió/),
+  negative("error sin foco", "src/components/auth/CanonicalAuthorizationError.tsx", (s) => s.replace("headingRef.current?.focus()", "void headingRef.current"), /error accesible perdió/),
   negative("SHA fijo en guardia", "scripts/validate-v17-commercial-crm-guard.mjs", (s) => `${s}\nconst BASE = "0123456789012345678901234567890123456789";\n`, /SHA fijo o allowlist global/),
   negative("allowlist global", "scripts/validate-v17-commercial-crm-guard.mjs", (s) => `${s}\nconst allowedBackendChanges = new Set();\n`, /SHA fijo o allowlist global/),
 ];

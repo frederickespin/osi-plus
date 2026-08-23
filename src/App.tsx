@@ -1,6 +1,7 @@
 import { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { LoginScreen, type LoginSession } from '@/components/auth/LoginScreen';
+import { CanonicalAccessDenied } from '@/components/auth/CanonicalAccessDenied';
 import { Toaster } from '@/components/ui/sonner';
 import type { UserRole } from '@/types/osi.types';
 import { getMe } from '@/lib/api';
@@ -15,6 +16,7 @@ import { isRelationalCrmReadEnabled } from '@/crm-relational/clientMode';
 import type { ModuleId } from '@/lib/roleModuleMap';
 import { resolveOsiHubMode } from '@/hub/hubMode';
 import type { HubAccessContext } from '@/hub/hubAccess';
+import { evaluateHubRouteAccess } from '@/hub/hubRouteAccess';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const TowerControl = lazy(() =>
@@ -145,6 +147,54 @@ const RelationalPipelineModule = lazy(() =>
   import('@/crm-relational/RelationalPipelineModule').then((m) => ({ default: m.RelationalPipelineModule }))
 );
 const HubWorkspace = lazy(() => import('@/hub/HubWorkspace'));
+
+function currentHubPathname() {
+  return window.location.pathname === '/' ? '/hub' : window.location.pathname;
+}
+
+function navigateWithinShell(pathname: string) {
+  window.history.pushState({}, '', pathname);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
+type AuthorizedHubEntryProps = Readonly<{
+  session: Session;
+  accessContext: HubAccessContext;
+  crmReadEnabled: boolean;
+  mode: 'LOCAL_ONLY' | 'PREVIEW_REHEARSAL';
+  onLogout: () => void;
+}>;
+
+function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLogout }: AuthorizedHubEntryProps) {
+  const [pathname, setPathname] = useState(currentHubPathname);
+
+  useEffect(() => {
+    const updatePathname = () => setPathname(currentHubPathname());
+    window.addEventListener('popstate', updatePathname);
+    return () => window.removeEventListener('popstate', updatePathname);
+  }, []);
+
+  const routeDecision = useMemo(
+    () => evaluateHubRouteAccess(pathname, accessContext),
+    [accessContext, pathname],
+  );
+
+  if (!routeDecision.allowed) {
+    const returnToSafeRoute = routeDecision.hasAuthorizedApplication
+      ? () => navigateWithinShell('/hub')
+      : () => {
+          window.history.replaceState({}, '', '/');
+          onLogout();
+        };
+    return <CanonicalAccessDenied onReturnToSafeRoute={returnToSafeRoute} />;
+  }
+
+  return (
+    <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
+      <HubWorkspace userName={session.name} authorization={session.token} accessContext={accessContext} crmReadEnabled={crmReadEnabled} mode={mode} onLogout={onLogout} />
+    </Suspense>
+  );
+}
 
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
@@ -411,9 +461,13 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
 
   if (hubMode.enabled) {
     return (
-      <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
-        <HubWorkspace userName={session.name} authorization={session.token} accessContext={hubAccessContext} crmReadEnabled={crmPipelineClientEnabled} mode={hubMode.mode} onLogout={onLogout} />
-      </Suspense>
+      <AuthorizedHubEntry
+        session={session}
+        accessContext={hubAccessContext}
+        crmReadEnabled={crmPipelineClientEnabled}
+        mode={hubMode.mode}
+        onLogout={onLogout}
+      />
     );
   }
 

@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useState, type ElementType } from "
 import { BriefcaseBusiness, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Truck, Users, Warehouse } from "lucide-react";
 import { ENV_LABELS, getAppEnv } from "@/lib/env";
 import { HUB_APPLICATIONS, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
-import { evaluateHubAccess, visibleHubApplications, type HubAccessContext } from "./hubAccess";
+import { visibleHubApplications, type HubAccessContext } from "./hubAccess";
 import type { OsiHubMode } from "./hubMode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
@@ -73,10 +73,6 @@ function HubHome({ applications, userName }: { applications: readonly HubApplica
   );
 }
 
-function AccessDenied({ application }: { application: HubApplication }) {
-  return <section className="mx-auto max-w-xl px-5 py-16 text-center" data-testid="hub-forbidden"><p className="text-sm font-bold text-red-700">403 · Acceso no autorizado</p><h1 className="mt-3 text-2xl font-black">{application.name}</h1><p className="mt-2 text-sm text-slate-600">La ruta directa y la tarjeta utilizan la misma decisión de acceso. Ocultar una tarjeta no sustituye la autorización del backend.</p></section>;
-}
-
 function RegisteredApplication({ application }: { application: HubApplication }) {
   const Icon = ICONS[application.icon];
   return <section className="mx-auto max-w-3xl px-5 py-12"><div className="rounded-3xl border bg-white p-8 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Icon className="h-7 w-7" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-indigo-600">Aplicación registrada</p><h1 className="mt-2 text-3xl font-black">{application.name}</h1><p className="mt-3 text-sm leading-6 text-slate-600">{application.description}</p><div className="mt-7 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>Fundación inactiva.</strong> La conexión funcional se realizará en un lote separado; esta vista no ejecuta APIs ni monta el módulo heredado.</div></div></section>;
@@ -93,7 +89,6 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
   const selected = findHubApplicationByRoute(pathname);
   const commercialCaseRef = commercialCaseRefFromRoute(pathname);
-  const decision = selected ? evaluateHubAccess(selected, accessContext) : null;
   const sidebar = (
     <aside className="flex h-full w-72 flex-col bg-slate-950 text-white">
       <button onClick={() => navigate("/hub")} className="flex items-center gap-3 border-b border-white/10 p-5 text-left"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500"><LayoutGrid className="h-5 w-5" /></span><span><strong className="block">OSi Plus</strong><small className="text-slate-400">Hub canónico local</small></span></button>
@@ -104,9 +99,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const content = pathname === "/hub"
     ? <HubHome applications={visible} userName={userName} />
     : selected
-      ? !decision?.allowed
-        ? <AccessDenied application={selected} />
-        : selected.appId === "commercial-crm" && crmReadEnabled
+      ? selected.appId === "commercial-crm" && crmReadEnabled
           ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando Comercial…</div>}><CommercialInboxModule authorization={authorization} caseRef={commercialCaseRef} onBack={() => navigate("/hub")} onOpenCase={(caseRef) => navigate(`/commercial/cases/${caseRef}`)} onReturnToInbox={() => navigate("/commercial")} onUnauthorized={onLogout} /></Suspense>
           : selected.appId === "osi-survey"
             ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>

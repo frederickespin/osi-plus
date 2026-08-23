@@ -2,6 +2,7 @@ import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useRef, use
 import { Sidebar } from '@/components/layout/Sidebar';
 import { LoginScreen, type LoginSession } from '@/components/auth/LoginScreen';
 import { CanonicalAccessDenied } from '@/components/auth/CanonicalAccessDenied';
+import { CanonicalAuthorizationError } from '@/components/auth/CanonicalAuthorizationError';
 import { Toaster } from '@/components/ui/sonner';
 import type { UserRole } from '@/types/osi.types';
 import { getMe } from '@/lib/api';
@@ -171,32 +172,53 @@ type AuthorizedHubEntryProps = Readonly<{
 
 function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLogout }: AuthorizedHubEntryProps) {
   const [routeState, setRouteState] = useState(() => ({
-    status: 'READY' as const,
+    status: 'READY' as 'READY' | 'VALIDATING' | 'DENIED' | 'ERROR',
     pathname: currentHubPathname(),
     session,
     accessContext,
   }));
   const navigationFence = useRef(0);
+  const activeNavigation = useRef<{ controller: AbortController; pathname: string } | null>(null);
 
   const validateNavigation = useCallback((pathname: string, historyMode: 'PUSH' | 'EXISTING') => {
+    if (activeNavigation.current?.pathname === pathname && !activeNavigation.current.controller.signal.aborted) return;
+    activeNavigation.current?.controller.abort();
+    const controller = new AbortController();
+    activeNavigation.current = { controller, pathname };
     const fence = ++navigationFence.current;
-    if (historyMode === 'PUSH') window.history.pushState({}, '', pathname);
     setRouteState((current) => ({ ...current, status: 'VALIDATING' }));
-    void validateLegacySession(session).then((validatedSession) => {
+    void validateLegacySession(session, controller.signal).then((validatedSession) => {
       if (fence !== navigationFence.current) return;
+      activeNavigation.current = null;
       if (mode === 'PREVIEW_REHEARSAL' && validatedSession.commercialCrmPreviewAuthorized !== true) {
         onLogout();
         return;
       }
-      window.scrollTo({ top: 0, behavior: 'instant' });
+      if (session.userId && validatedSession.userId !== session.userId) {
+        onLogout();
+        return;
+      }
+      const validatedAccessContext = hubAccessContextFromSession(validatedSession);
+      const decision = evaluateHubRouteAccess(pathname, validatedAccessContext);
+      if (historyMode === 'PUSH' && decision.allowed) window.history.pushState({}, '', pathname);
+      if (decision.allowed) window.scrollTo({ top: 0, behavior: 'instant' });
       setRouteState({
-        status: 'READY',
+        status: decision.allowed ? 'READY' : 'DENIED',
         pathname,
         session: validatedSession,
-        accessContext: hubAccessContextFromSession(validatedSession),
+        accessContext: validatedAccessContext,
       });
-    }).catch(() => {
-      if (fence === navigationFence.current) onLogout();
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted || fence !== navigationFence.current) return;
+      activeNavigation.current = null;
+      const status = typeof error === 'object' && error !== null && 'status' in error
+        ? Number((error as { status?: unknown }).status)
+        : null;
+      if (status === 401) {
+        onLogout();
+        return;
+      }
+      setRouteState((current) => ({ ...current, status: 'ERROR' }));
     });
   }, [mode, onLogout, session]);
 
@@ -204,6 +226,8 @@ function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLo
     const updatePathname = () => validateNavigation(currentHubPathname(), 'EXISTING');
     window.addEventListener('popstate', updatePathname);
     return () => {
+      activeNavigation.current?.controller.abort();
+      activeNavigation.current = null;
       navigationFence.current += 1;
       window.removeEventListener('popstate', updatePathname);
     };
@@ -214,20 +238,25 @@ function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLo
     [routeState.accessContext, routeState.pathname],
   );
 
-  if (!routeDecision.allowed) {
-    const returnToSafeRoute = routeDecision.hasAuthorizedApplication
-      ? () => validateNavigation('/hub', 'PUSH')
-      : () => {
-          window.history.replaceState({}, '', '/');
-          onLogout();
-        };
+  const returnToSafeRoute = routeDecision.hasAuthorizedApplication
+    ? () => validateNavigation('/hub', 'PUSH')
+    : () => {
+        window.history.replaceState({}, '', '/');
+        onLogout();
+      };
+
+  if (routeState.status === 'ERROR') {
+    return <CanonicalAuthorizationError onReturnToSafeRoute={returnToSafeRoute} />;
+  }
+
+  if (routeState.status === 'DENIED' || !routeDecision.allowed) {
     return <CanonicalAccessDenied onReturnToSafeRoute={returnToSafeRoute} />;
   }
 
   return (
     <>
       {routeState.status === 'VALIDATING' && (
-        <div className="fixed inset-x-0 top-0 z-[100] bg-slate-950 px-4 py-2 text-center text-xs font-semibold text-white" role="status" aria-live="polite">
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[100] bg-slate-950 px-4 py-2 text-center text-xs font-semibold text-white" role="status" aria-live="polite">
           Verificando acceso…
         </div>
       )}
@@ -294,12 +323,24 @@ type PendingLegacyValidation = {
 
 let pendingLegacyValidation: PendingLegacyValidation | null = null;
 
-function validateLegacySession(session: Session): Promise<Session> {
+function validateLegacySession(session: Session, signal?: AbortSignal): Promise<Session> {
   const token = session.token;
   if (!token) return Promise.reject(Object.assign(new Error('Token legacy requerido.'), { status: 401 }));
+  if (signal) return resolveValidatedLegacySession(token, signal);
   if (pendingLegacyValidation?.token === token) return pendingLegacyValidation.promise;
 
-  const promise = getMe(token).then((response) => {
+  const promise = resolveValidatedLegacySession(token);
+  const entry = { token, promise };
+  pendingLegacyValidation = entry;
+  void promise.then(
+    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
+    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
+  );
+  return promise;
+}
+
+function resolveValidatedLegacySession(token: string, signal?: AbortSignal): Promise<Session> {
+  return getMe(token, signal).then((response) => {
     const role = normalizeRole(response.user.role);
     if (!role) {
       throw Object.assign(new Error('El servidor devolvió un rol inválido.'), { status: 401 });
@@ -314,13 +355,6 @@ function validateLegacySession(session: Session): Promise<Session> {
       commercialCrmPreviewAuthorized: response.user.commercialCrmPreviewAuthorized === true,
     };
   });
-  const entry = { token, promise };
-  pendingLegacyValidation = entry;
-  void promise.then(
-    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
-    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
-  );
-  return promise;
 }
 
 function AuthLoadingScreen() {

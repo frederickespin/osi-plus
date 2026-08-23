@@ -190,6 +190,7 @@ type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   token?: string;
+  signal?: AbortSignal;
 };
 
 async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -222,6 +223,7 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     method: options.method || "GET",
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
   });
 
   if (!response.ok) {
@@ -264,8 +266,8 @@ export function login(email: string, password: string) {
   });
 }
 
-export function getMe(token: string) {
-  return requestJson<{ ok: boolean; user: UserDto }>("/auth/me", { token });
+export function getMe(token: string, signal?: AbortSignal) {
+  return requestJson<{ ok: boolean; user: UserDto }>("/auth/me", { token, signal });
 }
 
 export async function getUsers(query = "") {

@@ -172,8 +172,10 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
   await page.getByRole("button", { name: "Volver al Pipeline" }).click();
   await expect(page.getByPlaceholder("Caso o ruta")).toHaveValue("CRM-DEMO");
   await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await expect(page).toHaveURL(new RegExp(`/commercial/cases/${DEFAULT_CASE_REF}$`));
   await page.reload();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await expect(page.getByText("Receptor verificado: Receptor Sintético", { exact: true })).toBeVisible();
 
   detailFails = true;
   await page.goto(`/commercial/cases/${DEFAULT_CASE_REF}`);

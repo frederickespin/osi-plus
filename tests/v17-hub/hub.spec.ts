@@ -210,7 +210,7 @@ test("cuatro rutas deny, back/forward y logout permanecen antes del límite lazy
   await context.close();
 });
 
-test("un permiso retirado por la revalidación bloquea la navegación siguiente", async ({ browser }) => {
+test("un permiso retirado se revalida antes de una navegación SPA y bloquea el Inbox", async ({ browser }) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   let denied = false;
@@ -228,8 +228,10 @@ test("un permiso retirado por la revalidación bloquea la navegación siguiente"
   denied = true;
   const requestsAfterRevocation: string[] = [];
   page.on("request", (request) => requestsAfterRevocation.push(new URL(request.url()).pathname));
-  await page.goto("/commercial");
+  await page.locator("main").getByRole("button").filter({ hasText: "Comercial y CRM" }).click();
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  expect(requestsAfterRevocation.filter((path) => path === "/api/auth/me")).toHaveLength(1);
+  expect(requestsAfterRevocation.some((path) => /CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(requestsAfterRevocation.some((path) => path.startsWith("/api/crm/"))).toBe(false);
   await context.close();
 });

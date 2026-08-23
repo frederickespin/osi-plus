@@ -93,7 +93,7 @@ function request(token, { method = "GET", id, caseRef, body, idempotencyKey, hea
     ...base,
     method,
     url: url || (caseRef ? `/api/crm/pipeline-cases/${caseRef}` : id ? `/api/crm/pipeline-cases/${id}` : "/api/crm/pipeline-cases"),
-    query: caseRef ? { caseRef } : id ? { id } : {},
+    query: caseRef ? { caseKey: caseRef } : id ? { id } : {},
     headers: nextHeaders,
     rawHeaders: Object.entries(nextHeaders).flat(),
     ...(body === undefined ? {} : { body }),

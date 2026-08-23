@@ -17,9 +17,12 @@ const index = read("index.html");
 
 requireText(app, "const HubWorkspace = lazy(() => import('@/hub/HubWorkspace'))", "HubWorkspace dejó de ser lazy");
 if (/import\s+HubWorkspace\s+from/.test(app)) fail("HubWorkspace usa import eager");
-requireText(app, "evaluateHubRouteAccess(pathname, accessContext)", "la ruta no usa la decisión pura previa");
+requireText(app, "evaluateHubRouteAccess(routeState.pathname, routeState.accessContext)", "la ruta no usa la decisión pura previa");
 requireText(app, "if (!routeDecision.allowed)", "la autorización previa fue eliminada");
 requireText(app, "<CanonicalAccessDenied", "el 403 canónico no pertenece al shell inicial");
+requireText(app, "validateLegacySession(session).then", "la navegación no revalida la sesión antes del lazy");
+requireText(app, "status: 'VALIDATING'", "la navegación no registra su estado de revalidación");
+requireText(app, "if (historyMode === 'PUSH') window.history.pushState", "la navegación controlada perdió el historial canónico");
 const denialIndex = app.indexOf("if (!routeDecision.allowed)");
 const lazyRenderIndex = app.indexOf("<HubWorkspace");
 if (denialIndex < 0 || lazyRenderIndex < 0 || denialIndex > lazyRenderIndex) fail("HubWorkspace puede renderizar antes de autorizar");
@@ -35,7 +38,8 @@ if (deniedIndex < 0 || roleIndex < 0 || deniedIndex > roleIndex) fail("deniedPer
 if (!/appId: "commercial-crm"[^\n]+requiresExplicitPermissions: true/.test(catalog)) fail("roles baseline conceden pipeline:view");
 requireText(catalog, 'route: "/commercial", routeAliases: ["/crm", "/sales/pipeline"]', "las rutas comerciales no comparten descriptor");
 
-if (/evaluateHubAccess\s*\(\s*selected|function\s+AccessDenied|<AccessDenied/.test(workspace)) fail("la autorización de ruta regresó al chunk lazy");
+if (/evaluateHubAccess\s*\(\s*selected|function\s+AccessDenied|<AccessDenied|addEventListener\(["']popstate|history\.pushState/.test(workspace)) fail("la autorización o el routing regresó al chunk lazy");
+for (const signature of ["pathname: string", "onNavigate: (pathname: string) => void"]) requireText(workspace, signature, `HubWorkspace dejó de ser controlado: ${signature}`);
 requireText(workspace, "selected.appId === \"commercial-crm\" && crmReadEnabled", "la lectura CRM perdió su compuerta funcional");
 if (/const\s+BASE\s*=|allowed(?:Backend|Prisma|Global)?Changes|[0-9a-f]{40}/i.test(commercialGuard)) fail("una guardia protegida usa SHA fijo o allowlist global");
 if (/prefetch|webpackPrefetch|rel=["'](?:modulepreload|preload)["']/i.test([app, routeAccess, workspace, index].join("\n"))) fail("se introdujo prefetch o preload protegido");
@@ -45,4 +49,4 @@ for (const signature of ["headingRef.current?.focus()", "tabIndex={-1}", "Volver
   requireText(boundary, signature, `el 403 accesible perdió: ${signature}`);
 }
 
-console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", protectedLazyImports: 3, migrationsExpected: 18 }));
+console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, protectedLazyImports: 3, migrationsExpected: 18 }));

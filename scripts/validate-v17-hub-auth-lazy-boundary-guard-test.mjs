@@ -58,8 +58,10 @@ const guardSource = readFileSync(guard, "utf8");
 assert.doesNotMatch(guardSource, /from\s+["']node:child_process["']|git\s+(?:diff|merge-base)|const\s+BASE\s*=|allowed(?:Backend|Prisma|Global)?Changes|[0-9a-f]{40}/i);
 const negatives = [
   negative("bypass previo", "src/App.tsx", (s) => s.replace("if (!routeDecision.allowed)", "if (false)"), /autorización previa fue eliminada/),
+  negative("navegación sin revalidación", "src/App.tsx", (s) => s.replace("validateLegacySession(session).then", "Promise.resolve(session).then"), /navegación no revalida/),
   negative("import eager", "src/App.tsx", (s) => s.replace("const HubWorkspace = lazy(() => import('@/hub/HubWorkspace'));", "import HubWorkspace from '@/hub/HubWorkspace';"), /dejó de ser lazy|import eager/),
   negative("decisión dentro del lazy", "src/hub/HubWorkspace.tsx", (s) => `${s}\nevaluateHubAccess(selected, accessContext);\n`, /regresó al chunk lazy/),
+  negative("routing dentro del lazy", "src/hub/HubWorkspace.tsx", (s) => `${s}\nwindow.history.pushState({}, '', '/commercial');\n`, /routing regresó al chunk lazy/),
   negative("ruta concede acceso", "src/hub/hubRouteAccess.ts", (s) => s.replace("evaluateHubAccess(application, context)", "({ allowed: true })"), /no comparten decisión pura/),
   negative("deny tardío", "src/hub/hubAccess.ts", (s) => s.replace("const denied = new Set(context.deniedPermissions);", "const denied = new Set(context.deniedPermissions);\n  const baseline = application.baselineRoles.includes(context.role);"), /deniedPermissions no prevalece/),
   negative("rol concede permiso", "src/hub/appCatalog.ts", (s) => s.replace("requiresExplicitPermissions: true", "requiresExplicitPermissions: false"), /roles baseline conceden/),

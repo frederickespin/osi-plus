@@ -21,8 +21,9 @@ invariant(/const HubWorkspace = lazy\(\(\) => import\('@\/hub\/HubWorkspace'\)\)
 const routeDecisionIndex = app.indexOf("if (!routeDecision.allowed)");
 const hubRenderIndex = app.indexOf("<HubWorkspace");
 invariant(routeDecisionIndex >= 0 && hubRenderIndex > routeDecisionIndex, "guardia de ruta no precede carga Hub/CRM");
+invariant(/validateLegacySession\(session\)\.then[\s\S]*status: 'READY'[\s\S]*accessContext: hubAccessContextFromSession/.test(app), "navegación no revalida autoridad antes del lazy");
 invariant(/findHubApplicationByRoute\(normalizedPath\)[\s\S]*evaluateHubAccess\(application, context\)/.test(routeAccess), "rutas y tarjetas no comparten decisión canónica");
-invariant(!/evaluateHubAccess\s*\(\s*selected|!decision\?\.allowed/.test(hub), "autorización regresó al chunk lazy");
+invariant(!/evaluateHubAccess\s*\(\s*selected|!decision\?\.allowed|addEventListener\(["']popstate|history\.pushState/.test(hub), "autorización o routing regresó al chunk lazy");
 invariant(/lazy\(\(\) => import\("@\/commercial-crm\/CommercialInboxModule"\)\)/.test(hub), "Inbox no es lazy");
 invariant(/selected\.appId === "commercial-crm" && crmReadEnabled/.test(hub), "compuerta CRM ausente después de autorizar la ruta");
 

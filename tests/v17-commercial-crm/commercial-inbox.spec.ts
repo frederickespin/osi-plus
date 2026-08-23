@@ -20,7 +20,7 @@ function pipelineCase(overrides: Record<string, unknown> = {}) {
   return {
     caseRef: DEFAULT_CASE_REF,
     caseCode: "CRM-DEMO-001",
-    clientName: "Receptor Sintético",
+    client: { displayName: "Receptor Sintético", type: "PERSON", status: "active" },
     mode: "EXPORT",
     serviceType: "Mudanza internacional",
     customerType: "PERSON",
@@ -44,11 +44,11 @@ function pipelineCase(overrides: Record<string, unknown> = {}) {
 function pipelineCaseDetail(item = pipelineCase(), overrides: Record<string, unknown> = {}) {
   return {
     caseRef: item.caseRef,
-    caseNumber: item.caseCode,
+    caseCode: item.caseCode,
     status: item.status,
     mode: item.mode,
     serviceType: item.serviceType,
-    client: { displayName: "Client Relacional Sintético", type: "PERSON", status: "active" },
+    client: item.client,
     owner: item.owner ? { displayName: item.owner.displayName } : null,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -116,8 +116,9 @@ test("cero casos presenta estado empresarial vacío y sólo ejecuta GET canónic
   expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => /crm|pipeline|case/i.test(key) && !key.startsWith("osi-plus.")))).toEqual([]);
 });
 
-test("filtros, paginación y Ficha usan Client relacional sin IDs o clientName legacy visibles", async ({ page }) => {
-  const hostile = pipelineCase({ clientName: "<img src=x onerror=globalThis.__hostile=1>", owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" } });
+test("filtros, paginación y Ficha usan Client relacional y renderizan texto hostil sin ejecutarlo", async ({ page }) => {
+  const hostileName = "<img src=x onerror=globalThis.__hostile=1>";
+  const hostile = pipelineCase({ client: { displayName: hostileName, type: "PERSON", status: "active" }, owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" } });
   await authenticate(page, { role: "V", permissions: ["pipeline:view"] });
   const audit = await mockCrm(page, { total: 2_000, cases: [hostile] });
   await page.goto("/crm");
@@ -130,8 +131,7 @@ test("filtros, paginación y Ficha usan Client relacional sin IDs o clientName l
   await expect.poll(() => audit.some(({ search }) => search.includes("unassigned=false"))).toBe(true);
   await page.getByRole("button", { name: "Abrir ficha" }).first().click();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
-  await expect(page.getByText("Client Relacional Sintético", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("<img src=x onerror=globalThis.__hostile=1>", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(hostileName, { exact: true }).first()).toBeVisible();
   expect(await page.evaluate(() => (globalThis as typeof globalThis & { __hostile?: number }).__hostile)).toBeUndefined();
   await expect(page.getByText(DEFAULT_CASE_REF)).toHaveCount(0);
   expect(audit.every(({ method }) => method === "GET")).toBe(true);
@@ -306,7 +306,7 @@ test("adaptador HTTP rechaza contratos adversariales y conserva Bearer sólo en 
   await expect(page.locator("body")).toHaveAttribute("data-result", "passed");
   const result = await page.evaluate(() => JSON.parse(document.body.dataset.details || "{}"));
   expect(result.failed).toEqual([]);
-  expect(result.passed).toBe(46);
+  expect(result.passed).toBe(51);
 });
 
 test("compuerta CRM desactivada mantiene descriptor inactivo sin chunk ni requests", async ({ page }) => {

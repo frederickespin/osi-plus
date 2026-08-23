@@ -130,7 +130,6 @@ function normalizeSuccessContract(value) {
   return JSON.parse(JSON.stringify(value, (key, item) => {
     if (key === "id") return "<id>";
     if (key === "caseRef") return "<caseRef>";
-    if (key === "caseNumber") return "<caseNumber>";
     if (key === "caseCode") return "<caseCode>";
     if (key === "displayName") return "<displayName>";
     if (key === "createdAt" || key === "updatedAt") return "<timestamp>";
@@ -294,9 +293,13 @@ try {
     && !Object.hasOwn(item, "id")
     && !Object.hasOwn(item, "publicRef")
   )));
+  check("lista elimina clientName legacy y publica sólo Client relacional", list.body.data.every((item) => (
+    !Object.hasOwn(item, "clientName")
+    && (item.client === null || Object.keys(item.client).sort().join(",") === "displayName,status,type")
+  )));
   check("lista usa cache privada", list.getHeader("cache-control") === "private, no-store" && /authorization/i.test(String(list.getHeader("vary"))));
   check("owner es vista histórica mínima", list.body.data.filter((item) => item.owner).every((item) => item.owner.displayName && item.owner.role === "V" && item.owner.membershipStatus === "ACTIVE"));
-  const forbiddenFields = ["tenantId", "ownerId", "ownerUserId", "membershipId", "userId", "userStatus", "email", "phone", "grantedPermissions", "deniedPermissions", "milestonesJson", "flags"];
+  const forbiddenFields = ["tenantId", "clientId", "clientName", "ownerId", "ownerUserId", "membershipId", "userId", "userStatus", "email", "phone", "grantedPermissions", "deniedPermissions", "milestonesJson", "flags"];
   check("campos internos ausentes", list.body.data.every((item) => forbiddenFields.every((field) => !(field in item))));
   check("campos internos ausentes del owner", list.body.data.filter((item) => item.owner).every((item) => forbiddenFields.every((field) => !(field in item.owner))));
   check("paginación contractual", list.body.page === 1 && list.body.pageSize === 20);
@@ -320,6 +323,11 @@ try {
   check("filtro estado tenantizado", byStatus.body.data.every((item) => item.status === casesOne[0].status));
   const bySearch = await invoke(listHandler, request(tokenOne, "GET", { q: "Origen 2", pageSize: "100" }));
   check("búsqueda allowlist tenantizada", bySearch.body.total > 0 && bySearch.body.data.every((item) => item.originLocation === "Origen 2"));
+  const byRelationalClient = await invoke(listHandler, request(tokenOne, "GET", { q: serviceClientOne.name, pageSize: "100" }));
+  check("búsqueda de receptor usa Client relacional", byRelationalClient.body.total === 1
+    && byRelationalClient.body.data[0]?.client?.displayName === serviceClientOne.name);
+  const byLegacyClient = await invoke(listHandler, request(tokenOne, "GET", { q: casesOne[0].clientName, pageSize: "100" }));
+  check("clientName legacy no participa en búsqueda", byLegacyClient.body.total === 0);
 
   const detail = await invoke(detailHandler, request(tokenOne, "GET", { caseRef: casesOne[0].publicRef }));
   check("detalle mismo tenant", detail.statusCode === 200 && detail.body.data.caseRef === casesOne[0].publicRef);
@@ -330,7 +338,7 @@ try {
     && detail.getHeader("access-control-allow-credentials") === undefined);
   const snapshotList = await invoke(listHandler, request(tokenOne, "GET", { q: casesOne[0].caseCode, pageSize: "1" }));
   const expectedCaseContract = {
-    caseRef: "<caseRef>", caseCode: "<caseCode>", clientName: "<img src=x onerror=legacy-authority>", mode: "EXPORT", serviceType: "MOVING",
+    caseRef: "<caseRef>", caseCode: "<caseCode>", client: { displayName: "<displayName>", type: "PERSON", status: "active" }, mode: "EXPORT", serviceType: "MOVING",
     customerType: "L4_PERSONAL", status: "NEW_INBOX", estimatedCbm: 0.5, requiresSurvey: true,
     surveyMethod: "PRESENCIAL", originLocation: "Origen 0", destinationLocation: "Destino 0",
     destinationContracted: true, assetsCount: 0,
@@ -339,7 +347,7 @@ try {
   };
   checkJsonSnapshot("snapshot lista", normalizeSuccessContract(snapshotList.body), { ok: true, total: 1, page: 1, pageSize: 1, data: [expectedCaseContract] });
   checkJsonSnapshot("snapshot detalle", normalizeSuccessContract(detail.body), { ok: true, data: {
-    caseRef: "<caseRef>", caseNumber: "<caseNumber>", status: "NEW_INBOX", mode: "EXPORT", serviceType: "MOVING",
+    caseRef: "<caseRef>", caseCode: "<caseCode>", status: "NEW_INBOX", mode: "EXPORT", serviceType: "MOVING",
     client: { displayName: "<displayName>", type: "PERSON", status: "active" },
     owner: { displayName: "<displayName>" }, createdAt: "<timestamp>", updatedAt: "<timestamp>",
   } });

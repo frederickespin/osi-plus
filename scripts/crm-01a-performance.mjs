@@ -82,14 +82,29 @@ function summarizePlan(planRows) {
 
 try {
   await prisma.tenant.create({ data: { id: tenantId, code: run.toUpperCase(), name: "CRM-01A performance local" } });
+  const clientId = `${run}-client`;
+  const clientName = "Receptor relacional rendimiento";
+  await prisma.client.create({ data: {
+    id: clientId,
+    tenantId,
+    code: `${run}-CLIENT`.toUpperCase(),
+    name: clientName,
+    email: "performance@example.invalid",
+    phone: "0000000000",
+    address: "Dirección sintética",
+    type: "PERSON",
+    status: "active",
+    createdAt: "2026-08-22",
+  } });
   const statuses = ["NEW_INBOX", "AWAITING_ICP", "QUOTE_SENT", "NEGOTIATION", "APPROVED"];
   const fixtureRange = (start, count) => Array.from({ length: count }, (_, offset) => {
     const index = start + offset;
     return {
       id: `${run}-${String(index).padStart(4, "0")}`,
       tenantId,
+      clientId,
       caseCode: `${run}-CASE-${String(index).padStart(4, "0")}`.toUpperCase(),
-      clientName: `Cliente rendimiento ${index}`,
+      clientName: `Legacy no autoritativo ${index}`,
       mode: index % 2 === 0 ? "LOCAL" : "EXPORT",
       serviceType: index % 2 === 0 ? "MOVING" : "STORAGE",
       customerType: "L4_PERSONAL",
@@ -116,7 +131,7 @@ try {
       await measure("lista página profunda", { page: String(Math.max(2, Math.floor(fixtureCount / 50) - 5)), pageSize: "50" }),
       await measure("filtro estado", { status: "QUOTE_SENT", pageSize: "50" }),
       await measure("filtro unassigned", { unassigned: "true", pageSize: "50" }),
-      await measure("búsqueda comercial", { q: `Cliente rendimiento ${fixtureCount - 1}`, pageSize: "50" }),
+      await measure("búsqueda Client relacional", { q: clientName, pageSize: "50" }),
       await measureDetail("detalle tenant-first por caseRef", detailTarget.publicRef),
     ];
     check(`${fixtureCount.toLocaleString("en-US")} mantiene máximo dos consultas y cero N+1`, metrics.every((metric) => (
@@ -147,10 +162,12 @@ try {
   `, tenantId));
   const searchPlan = summarizePlan(await prisma.$queryRawUnsafe(`
     EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-    SELECT public_ref, "caseCode", status, "updatedAt"
-    FROM osi.osi_pipeline_cases
-    WHERE tenant_id = $1 AND "clientName" ILIKE '%rendimiento 1999%'
-    ORDER BY "updatedAt" DESC, public_ref ASC
+    SELECT pc.public_ref, pc."caseCode", pc.status, pc."updatedAt"
+    FROM osi.osi_pipeline_cases AS pc
+    JOIN osi.osi_clients AS client
+      ON client.tenant_id = pc.tenant_id AND client.id = pc.client_id
+    WHERE pc.tenant_id = $1 AND client.name ILIKE '%Receptor relacional rendimiento%'
+    ORDER BY pc."updatedAt" DESC, pc.public_ref ASC
     LIMIT 50
   `, tenantId));
   const detailTarget = await prisma.pipelineCase.findFirstOrThrow({ where: { tenantId }, select: { publicRef: true } });
@@ -183,6 +200,7 @@ try {
   process.exitCode = 1;
 } finally {
   try { await prisma.pipelineCase.deleteMany({ where: { tenantId } }); } catch {}
+  try { await prisma.client.deleteMany({ where: { tenantId } }); } catch {}
   try { await prisma.tenant.delete({ where: { id: tenantId } }); } catch {}
   await prisma.$disconnect();
 }

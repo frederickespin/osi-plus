@@ -48,7 +48,7 @@ async function mockReadApi(page: Page, total = 0) {
       const pageSize = Number(url.searchParams.get("pageSize") || 25);
       const count = Math.min(pageSize, Math.max(0, total - ((page - 1) * pageSize)));
       const data = Array.from({ length: count }, (_, index) => ({
-        caseRef: caseRefFor(page, index), caseCode: `PREVIEW-${page}-${index}`, clientName: "Receptor sintético",
+        caseRef: caseRefFor(page, index), caseCode: `PREVIEW-${page}-${index}`, client: { displayName: "Receptor sintético", type: "PERSON", status: "active" },
         mode: "EXPORT", serviceType: "Servicio sintético", customerType: "PERSON", status: "NEW_INBOX",
         estimatedCbm: 12.5, requiresSurvey: false, surveyMethod: "REMOTE", originLocation: "Origen sintético",
         destinationLocation: "Destino sintético", destinationContracted: false, assetsCount: 0, owner: null,

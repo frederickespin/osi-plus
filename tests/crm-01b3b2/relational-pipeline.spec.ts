@@ -6,7 +6,7 @@ const caseRefFor = (index: number) => `11111111-1111-4111-8111-${String(index + 
 
 function pipelineCase(overrides: Record<string, unknown> = {}) {
   return {
-    caseRef: CASE_REF, caseCode: "CRM-001", clientName: "Cliente sintético", mode: "LOCAL", serviceType: "MUDANZA",
+    caseRef: CASE_REF, caseCode: "CRM-001", client: { displayName: "Cliente sintético", type: "PERSON", status: "active" }, mode: "LOCAL", serviceType: "MUDANZA",
     customerType: "L3_CORPORATE", status: "NEW_INBOX", estimatedCbm: 12.5, requiresSurvey: false, surveyMethod: "NO_APLICA",
     originLocation: "Origen local", destinationLocation: "Destino local", destinationContracted: true, assetsCount: 3,
     owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" }, quoteCount: 1, eventCount: 2,
@@ -572,7 +572,7 @@ test("texto hostil se acota y se renderiza como texto sin ejecutar ni navegar", 
   const hostile = `<img src=x onerror=window.__crmPwned=1><svg onload=window.__crmPwned=2></svg>javascript:alert(1)\u202E${"X".repeat(1200)}`;
   const external: string[] = [];
   page.on("request", (request) => { if (!request.url().startsWith("http://127.0.0.1:4182")) external.push(request.url()); });
-  await mockApi(page, { caseData: pipelineCase({ caseCode: hostile, clientName: hostile, owner: { displayName: hostile, role: "V", membershipStatus: "ACTIVE" }, serviceType: hostile, originLocation: hostile, destinationLocation: hostile }) });
+  await mockApi(page, { caseData: pipelineCase({ caseCode: hostile, client: { displayName: hostile, type: "PERSON", status: "active" }, owner: { displayName: hostile, role: "V", membershipStatus: "ACTIVE" }, serviceType: hostile, originLocation: hostile, destinationLocation: hostile }) });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await expect(page.getByText(hostile, { exact: true }).first()).toBeVisible();
   expect(await page.evaluate(() => (window as Window & { __crmPwned?: number }).__crmPwned ?? 0)).toBe(0);

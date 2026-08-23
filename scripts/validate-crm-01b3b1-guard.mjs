@@ -7,13 +7,13 @@ const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const MIGRATION_HASH = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
-  "api/crm/pipeline-cases/[id].js",
+  "api/crm/pipeline-cases/[caseKey]/index.js",
   "api/crm/pipeline-summary.js",
   "api/crm/pipeline-owner-options.js",
-  "api/crm/pipeline-cases/[id]/allowed-transitions.js",
-  "api/crm/pipeline-cases/[id]/assign-owner.js",
-  "api/crm/pipeline-cases/[id]/transition.js",
-  "api/crm/pipeline-cases/[id]/unassign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/transition.js",
+  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
 const CONFIG_NAMES = Object.freeze([
   "CRM_PIPELINE_RUNTIME_MODE",
@@ -32,7 +32,7 @@ function filesBelow(directory) {
 export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env, migrationNames } = {}) {
   const read = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 17 && migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "se exigen 17 migraciones, incluida V17-CASE-CLIENT");
+  invariant(migrations.length === 18 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "se exigen 18 migraciones, incluidas V17-CASE-CLIENT y V17-CASE-PUBLIC-REF");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
   invariant(/model PipelineCaseCommand\s*\{/.test(read("prisma/schema.prisma")), "datamodel no contiene autoridad PipelineCaseCommand");
 
@@ -127,7 +127,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const suite of ["crm-01b3b1-gate-test.mjs", "crm-01b3b1-adversarial-test.mjs", "validate-crm-01b3b1-guard.mjs", "validate-crm-01b3b1-guard-test.mjs", "crm-01a-test.mjs", "crm-01b3a-integration-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
-  return Object.freeze({ ok: true, migrations: 17, routes: 8, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 2 });
+  return Object.freeze({ ok: true, migrations: 18, routes: 8, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 2 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

@@ -31,10 +31,10 @@ const [
   { issueCrmOwnerRef },
 ] = await Promise.all([
   import("../api/_lib/auth.js"),
-  import("../api/crm/pipeline-cases/[id]/transition.js"),
-  import("../api/crm/pipeline-cases/[id]/assign-owner.js"),
-  import("../api/crm/pipeline-cases/[id]/unassign-owner.js"),
-  import("../api/crm/pipeline-cases/[id]/allowed-transitions.js"),
+  import("../api/crm/pipeline-cases/[caseKey]/transition.js"),
+  import("../api/crm/pipeline-cases/[caseKey]/assign-owner.js"),
+  import("../api/crm/pipeline-cases/[caseKey]/unassign-owner.js"),
+  import("../api/crm/pipeline-cases/[caseKey]/allowed-transitions.js"),
   import("../api/_lib/crmOwnerRef.js"),
 ]);
 const appPrisma = (await import("../api/_lib/db.js")).prisma;

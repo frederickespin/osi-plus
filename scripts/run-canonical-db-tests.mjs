@@ -116,6 +116,11 @@ invariant(
   "V17_CASE_CLIENT_TEST_DATABASE_URL no coincide con el destino canónico validado",
 );
 process.env.V17_CASE_CLIENT_TEST_DATABASE_URL = process.env.DATABASE_URL;
+invariant(
+  !process.env.V17_CASE_PUBLIC_REF_TEST_DATABASE_URL || process.env.V17_CASE_PUBLIC_REF_TEST_DATABASE_URL === process.env.DATABASE_URL,
+  "V17_CASE_PUBLIC_REF_TEST_DATABASE_URL no coincide con el destino canónico validado",
+);
+process.env.V17_CASE_PUBLIC_REF_TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
 const envPath = resolve(".env.mt01a.local");
 invariant(!existsSync(envPath), `${envPath} ya existe; no será sobrescrito`);
@@ -324,12 +329,24 @@ try {
   const v17CaseClientDatabaseGuardRun = runJson("v17-case-client-local-target-test.mjs", "V17-CASE-CLIENT/DATABASE_GUARD");
   const v17CaseClientGuardRun = runJson("validate-v17-case-client-guard.mjs", "V17-CASE-CLIENT/GUARD");
   const v17CaseClientGuardTestsRun = runJson("validate-v17-case-client-guard-test.mjs", "V17-CASE-CLIENT/GUARD_TESTS");
+  const v17CasePublicRefRun = runJson("v17-case-public-ref-test.mjs", "V17-CASE-PUBLIC-REF/TESTS");
+  const v17CasePublicRefRaceRun = runJson("v17-case-public-ref-migration-race-test.mjs", "V17-CASE-PUBLIC-REF/MIGRATION_RACE");
+  const v17CasePublicRefGuardRun = runJson("validate-v17-case-public-ref-guard.mjs", "V17-CASE-PUBLIC-REF/GUARD");
+  const v17CasePublicRefGuardTestsRun = runJson("validate-v17-case-public-ref-guard-test.mjs", "V17-CASE-PUBLIC-REF/GUARD_TESTS");
   invariant(v17CaseClientRun.report.ok === true && v17CaseClientRun.assertions >= 16, `V17-CASE-CLIENT esperaba al menos 16 pruebas y obtuvo ${v17CaseClientRun.assertions}`);
   invariant(v17CaseClientPerformanceRun.report.ok === true && v17CaseClientPerformanceRun.report.fixtureCases === 10_000, "V17-CASE-CLIENT rendimiento incompleto");
   invariant(v17CaseClientAdversarialRun.report.ok === true && v17CaseClientAdversarialRun.report.raceMetrics?.operations === 160, "V17-CASE-CLIENT adversarial incompleto");
   invariant(v17CaseClientDatabaseGuardRun.assertions >= 13, `V17-CASE-CLIENT database guard esperaba al menos 13 pruebas y obtuvo ${v17CaseClientDatabaseGuardRun.assertions}`);
-  invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === 17, "V17-CASE-CLIENT guard falló");
+  invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === 18, "V17-CASE-CLIENT guard falló");
   invariant(v17CaseClientGuardTestsRun.assertions >= 10, `V17-CASE-CLIENT guard tests esperaba al menos 10 pruebas y obtuvo ${v17CaseClientGuardTestsRun.assertions}`);
+  invariant(v17CasePublicRefRun.report.ok === true && v17CasePublicRefRun.assertions >= 15, "V17-CASE-PUBLIC-REF tests fallaron");
+  invariant(v17CasePublicRefRaceRun.report.ok === true && v17CasePublicRefRaceRun.report.backfill?.rows === 10_000
+    && v17CasePublicRefRaceRun.report.atomicity?.concurrentInsert === "blocked_then_uuid", "V17-CASE-PUBLIC-REF carrera de migración falló");
+  invariant(v17CasePublicRefGuardRun.report.ok === true
+    && v17CasePublicRefGuardRun.report.runtimeConsumers === 1
+    && v17CasePublicRefGuardRun.report.runtimeConsumer === "api/_lib/crmPipelineRead.js"
+    && v17CasePublicRefGuardRun.report.publicContract === "caseRef", "V17-CASE-PUBLIC-REF guard falló");
+  invariant(v17CasePublicRefGuardTestsRun.assertions >= 13, "V17-CASE-PUBLIC-REF guard tests incompletos");
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mt01a: 7,

@@ -9,6 +9,7 @@ const statuses = [
   "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT",
   "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF",
 ];
+const caseRefFor = (page: number, index: number) => `22222222-2222-4222-8222-${String(((page - 1) * 25) + index + 1).padStart(12, "0")}`;
 
 async function authenticate(page: Page, actor: Actor) {
   await page.addInitScript(({ role }) => {
@@ -47,7 +48,7 @@ async function mockReadApi(page: Page, total = 0) {
       const pageSize = Number(url.searchParams.get("pageSize") || 25);
       const count = Math.min(pageSize, Math.max(0, total - ((page - 1) * pageSize)));
       const data = Array.from({ length: count }, (_, index) => ({
-        id: `internal-${page}-${index}`, caseCode: `PREVIEW-${page}-${index}`, clientName: "Receptor sintético",
+        caseRef: caseRefFor(page, index), caseCode: `PREVIEW-${page}-${index}`, client: { displayName: "Receptor sintético", type: "PERSON", status: "active" },
         mode: "EXPORT", serviceType: "Servicio sintético", customerType: "PERSON", status: "NEW_INBOX",
         estimatedCbm: 12.5, requiresSurvey: false, surveyMethod: "REMOTE", originLocation: "Origen sintético",
         destinationLocation: "Destino sintético", destinationContracted: false, assetsCount: 0, owner: null,

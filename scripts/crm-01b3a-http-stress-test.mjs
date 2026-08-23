@@ -22,8 +22,8 @@ const { prisma, target } = await createCrm01b2LocalPrisma();
 process.env.DATABASE_URL = process.env.CRM01B2_TEST_DATABASE_URL;
 process.env.DIRECT_URL = process.env.CRM01B2_TEST_DATABASE_URL;
 const [{ createPipelineTransitionHandler }, { createPipelineAssignOwnerHandler }] = await Promise.all([
-  import("../api/crm/pipeline-cases/[id]/transition.js"),
-  import("../api/crm/pipeline-cases/[id]/assign-owner.js"),
+  import("../api/crm/pipeline-cases/[caseKey]/transition.js"),
+  import("../api/crm/pipeline-cases/[caseKey]/assign-owner.js"),
 ]);
 const appPrisma = (await import("../api/_lib/db.js")).prisma;
 const run = `crm01b3a-stress-${randomUUID()}`;

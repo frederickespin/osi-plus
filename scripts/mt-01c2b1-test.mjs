@@ -239,11 +239,12 @@ try {
   `);
   const normalizedIndexDefinitions = mt01c2b1Indexes.map((row) => row.indexdef.replace(/^CREATE UNIQUE INDEX|^CREATE INDEX/, "CREATE INDEX"));
   const tenantIndexNames = new Set(mt01c2b1Indexes.map((row) => row.indexname));
-  check("cadena crea exactamente 15 índices tenant y ninguno exacto redundante",
-    mt01c2b1Indexes.length === 15
-      && new Set(normalizedIndexDefinitions).size === 15
+  check("cadena crea exactamente 16 índices tenant y ninguno exacto redundante",
+    mt01c2b1Indexes.length === 16
+      && new Set(normalizedIndexDefinitions).size === 16
       && tenantIndexNames.has("osi_pipeline_cases_tenant_id_client_id_status_updated_at_idx")
       && tenantIndexNames.has("osi_pipeline_cases_tenant_id_id_client_id_key")
+      && tenantIndexNames.has("osi_pipeline_cases_tenant_id_public_ref_key")
       && tenantIndexNames.has("osi_projects_tenant_id_pipeline_case_id_client_id_idx"),
     mt01c2b1Indexes.map((row) => row.indexname));
 

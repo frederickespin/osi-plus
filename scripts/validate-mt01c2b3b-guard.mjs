@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const EXPECTED_MIGRATIONS = 17;
+const EXPECTED_MIGRATIONS = 18;
 const PREPARED_ROUTES = Object.freeze([
   "api/clients/index.js",
   "api/projects/index.js",
@@ -47,6 +47,7 @@ export function validateMt01c2b3b({
   invariant(migrationNames.length === EXPECTED_MIGRATIONS, `se requieren exactamente ${EXPECTED_MIGRATIONS} migraciones`);
   invariant(migrationNames.includes("20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1");
   invariant(migrationNames.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
+  invariant(migrationNames.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");
 
   const envExample = text(root, ".env.example", overrides);
   invariant(/^COMMERCIAL_TENANCY_WRITE_MODE="LEGACY_ONLY"$/m.test(envExample), "WRITE debe iniciar en LEGACY_ONLY exacto");

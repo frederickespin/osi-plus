@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useState, type ElementType } from "react";
 import { BriefcaseBusiness, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Truck, Users, Warehouse } from "lucide-react";
 import { ENV_LABELS, getAppEnv } from "@/lib/env";
-import { HUB_APPLICATIONS, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
+import { HUB_APPLICATIONS, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
 import { evaluateHubAccess, visibleHubApplications, type HubAccessContext } from "./hubAccess";
 import type { OsiHubMode } from "./hubMode";
 
@@ -92,11 +92,12 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   }, []);
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
   const selected = findHubApplicationByRoute(pathname);
+  const commercialCaseRef = commercialCaseRefFromRoute(pathname);
   const decision = selected ? evaluateHubAccess(selected, accessContext) : null;
   const sidebar = (
     <aside className="flex h-full w-72 flex-col bg-slate-950 text-white">
       <button onClick={() => navigate("/hub")} className="flex items-center gap-3 border-b border-white/10 p-5 text-left"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500"><LayoutGrid className="h-5 w-5" /></span><span><strong className="block">OSi Plus</strong><small className="text-slate-400">Hub canónico local</small></span></button>
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Aplicaciones OSi Plus"><button onClick={() => navigate("/hub")} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/hub" ? "bg-white/15" : "text-slate-300 hover:bg-white/10"}`}>Inicio</button>{visible.map((application) => { const Icon = ICONS[application.icon]; const active = pathname === application.route || application.routeAliases?.includes(pathname); return <button key={application.appId} onClick={() => navigate(application.route)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${active ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Icon className="h-4 w-4" />{application.name}</button>; })}</nav>
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Aplicaciones OSi Plus"><button onClick={() => navigate("/hub")} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/hub" ? "bg-white/15" : "text-slate-300 hover:bg-white/10"}`}>Inicio</button>{visible.map((application) => { const Icon = ICONS[application.icon]; const active = selected?.appId === application.appId; return <button key={application.appId} onClick={() => navigate(application.route)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${active ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Icon className="h-4 w-4" />{application.name}</button>; })}</nav>
       <div className="border-t border-white/10 p-4"><p className="mb-3 text-xs text-slate-400">{userName || "Usuario"}<br />{environmentLabel(mode)}</p><button onClick={onLogout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-500/10"><LogOut className="h-4 w-4" />Cerrar sesión</button></div>
     </aside>
   );
@@ -106,7 +107,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       ? !decision?.allowed
         ? <AccessDenied application={selected} />
         : selected.appId === "commercial-crm" && crmReadEnabled
-          ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando Inbox Comercial…</div>}><CommercialInboxModule authorization={authorization} onBack={() => navigate("/hub")} onUnauthorized={onLogout} /></Suspense>
+          ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando Comercial…</div>}><CommercialInboxModule authorization={authorization} caseRef={commercialCaseRef} onBack={() => navigate("/hub")} onOpenCase={(caseRef) => navigate(`/commercial/cases/${caseRef}`)} onReturnToInbox={() => navigate("/commercial")} onUnauthorized={onLogout} /></Suspense>
           : selected.appId === "osi-survey"
             ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>
             : <RegisteredApplication application={selected} />

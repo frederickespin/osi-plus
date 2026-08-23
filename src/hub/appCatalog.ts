@@ -42,6 +42,15 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   { appId: "osi-survey", name: "OSi Survey", description: "Visitas asignadas y captura móvil del evaluador.", icon: "clipboard", route: "/survey", status: "PLANNED", requiredPermissions: ["survey:assigned:view"], permissionMode: "ALL", baselineRoles: [], mobileAvailability: "MOBILE_PRIMARY", directAccessAllowed: true, lazy: true },
 ]);
 
+const COMMERCIAL_CASE_ROUTE = /^\/commercial\/cases\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
+
+export function commercialCaseRefFromRoute(pathname: string) {
+  return COMMERCIAL_CASE_ROUTE.exec(pathname)?.[1] ?? null;
+}
+
 export function findHubApplicationByRoute(pathname: string) {
+  if (commercialCaseRefFromRoute(pathname)) {
+    return HUB_APPLICATIONS.find((application) => application.appId === "commercial-crm") ?? null;
+  }
   return HUB_APPLICATIONS.find((application) => application.route === pathname || application.routeAliases?.includes(pathname)) ?? null;
 }

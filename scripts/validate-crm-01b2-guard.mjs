@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const DOMAIN = "api/_lib/pipelineCaseDomain.js";
 const AUTHORIZED_CONSUMERS = Object.freeze([
-  "api/crm/pipeline-cases/[id]/allowed-transitions.js",
-  "api/crm/pipeline-cases/[id]/assign-owner.js",
-  "api/crm/pipeline-cases/[id]/transition.js",
-  "api/crm/pipeline-cases/[id]/unassign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/transition.js",
+  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const MIGRATION_HASH = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
@@ -18,14 +18,18 @@ function invariant(condition, message) { if (!condition) throw new Error(`CRM01B
 function files(root) {
   const result = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   invariant(result.status === 0, "no se pudo inventariar el repositorio");
-  return result.stdout.split("\0").filter(Boolean).map((entry) => entry.replaceAll("\\", "/"));
+  return result.stdout.split("\0")
+    .filter(Boolean)
+    .map((entry) => entry.replaceAll("\\", "/"))
+    .filter((entry) => existsSync(resolve(root, entry)));
 }
 
 export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 17 && migrations.includes(MIGRATION), "se requieren exactamente 17 migraciones");
+  invariant(migrations.length === 18 && migrations.includes(MIGRATION), "se requieren exactamente 18 migraciones");
   invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
+  invariant(migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migration.sql CRM-01B1 fue modificada");
 
   const domain = read(DOMAIN);
@@ -109,7 +113,7 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
   invariant(canonical.includes("process.env.CRM01B2_TEST_DATABASE_URL = process.env.DATABASE_URL"), "runner canónico no transfiere URL local CRM-01B2");
   const target = read("scripts/crm-01b2-local-target.mjs");
   for (const required of ["127.0.0.1", "55432", "osi_crm01b2_local", "neon.branch_id", "no existe fallback"]) invariant(target.includes(required), `guardia local incompleta: ${required}`);
-  return Object.freeze({ ok: true, migrations: 17, runtimeConsumers: AUTHORIZED_CONSUMERS.length, mutationBypasses: 0, crmMode: "DISABLED", advisoryLock: "TRY", lockOrder: Object.freeze(["REQUEST", "CASE"]), blockedTransitions: Object.freeze(["SURVEY_SCHEDULED", "WON"]), approved: "FROZEN" });
+  return Object.freeze({ ok: true, migrations: 18, runtimeConsumers: AUTHORIZED_CONSUMERS.length, mutationBypasses: 0, crmMode: "DISABLED", advisoryLock: "TRY", lockOrder: Object.freeze(["REQUEST", "CASE"]), blockedTransitions: Object.freeze(["SURVEY_SCHEDULED", "WON"]), approved: "FROZEN" });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

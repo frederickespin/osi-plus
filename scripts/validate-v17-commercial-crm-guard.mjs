@@ -10,20 +10,35 @@ const allowedBackendChanges = new Set([
   "api/_lib/crmHttpHeaders.js",
   "api/_lib/crmOwnerCatalogHttp.js",
   "api/_lib/crmPipelineAccess.js",
+  "api/_lib/crmPipelineRead.js",
   "api/_lib/crmPipelineReadHttp.js",
   "api/_lib/http.js",
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
+  "api/crm/pipeline-cases/[id].js",
+  "api/crm/pipeline-cases/[id]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[id]/assign-owner.js",
+  "api/crm/pipeline-cases/[id]/transition.js",
+  "api/crm/pipeline-cases/[id]/unassign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/index.js",
+  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/transition.js",
+  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
   "api/auth/login.js",
   "api/auth/me.js",
 ]);
 const read = (path) => readFileSync(path, "utf8");
 const invariant = (condition, message) => { if (!condition) throw new Error(`V17_COMMERCIAL_CRM_GUARD:${message}`); };
+const allowedPrismaChanges = new Set([
+  "prisma/schema.prisma",
+  "prisma/migrations/20260821010000_v17_pipeline_case_public_ref/migration.sql",
+]);
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-invariant(migrations.length === 17, `se esperaban 17 migraciones, existen ${migrations.length}`);
+invariant(migrations.length === 18, `se esperaban 18 migraciones, existen ${migrations.length}`);
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-invariant(!changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || path.startsWith("prisma/") || path.startsWith("src/data/")), "backend ajeno al ensayo, Prisma, migraciones o fixtures canónicos modificados");
+invariant(!changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || (path.startsWith("prisma/") && !allowedPrismaChanges.has(path)) || path.startsWith("src/data/")), "backend ajeno al ensayo, Prisma no autorizado o fixtures canónicos modificados");
 
 const catalog = read("src/hub/appCatalog.ts");
 invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");
@@ -48,16 +63,29 @@ invariant(/AbortController/.test(adapter) && /cache: "no-store"/.test(adapter), 
 invariant(/cacheControl\.includes\("private"\)[\s\S]*cacheControl\.includes\("no-store"\)[\s\S]*vary\.includes\("authorization"\)[\s\S]*vary\.includes\("origin"\)[\s\S]*vary\.includes\("\*"\)/.test(adapter), "headers privados no se validan");
 invariant(/response\.status !== 200/.test(adapter) && /MAX_RESPONSE_BYTES/.test(adapter) && /credentials: "omit"/.test(adapter), "status/tamaño/cookies no fallan cerrado");
 invariant(!/getToken|sessionStore|localStorage|sessionStorage|indexedDB|Idempotency-Key/.test(adapter), "adaptador obtiene autoridad desde storage o prepara mutación");
+invariant(!/\bclientName\b|\bcaseNumber\b/.test(adapter) && /"caseRef", "caseCode", "client"/.test(adapter),
+  "DTO público debe usar caseRef, caseCode y Client relacional sin aliases legacy");
+
+const canonicalRead = read("api/_lib/crmPipelineRead.js");
+invariant(!/\bclientName\b|\bcaseNumber\b/.test(canonicalRead), "backend de lectura reintrodujo autoridad legacy");
+invariant(/tenantId_publicRef/.test(canonicalRead) && /client:\s*\{\s*is:\s*\{\s*name:/.test(canonicalRead),
+  "resolución de caso o búsqueda de Client no es tenant-first relacional");
 
 const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");
-invariant(/Inbox Comercial/.test(inbox) && /Disponible en una fase posterior/.test(inbox), "presentación read-only incompleta");
-invariant(/APPROVED[\s\S]*legacy congelado/.test(inbox) && /OPS_HANDOFF[\s\S]*terminal/.test(inbox), "semántica terminal/legacy ausente");
-invariant(!/localStorage|sessionStorage|indexedDB|useCasesStore|caseBridge|LeadLite|offline.?queue/i.test(inbox), "autoridad local o prototipo importado");
-invariant(!/assign-owner|unassign-owner|allowed-transitions|\/transition|method:\s*"POST"/i.test(inbox), "mutación conectada al Inbox");
-invariant(!/\bclientId\b|\btenantId\b|\bownerId\b|\bownerUserId\b|\bmembershipId\b/.test(inbox), "ID interno expuesto en presentación");
-invariant(!/dangerouslySetInnerHTML/.test(inbox), "HTML editable inseguro");
-invariant(/<SheetDescription className="sr-only">Detalle de la oportunidad comercial seleccionada\.<\/SheetDescription>/.test(inbox), "drawer sin descripción accesible canónica");
-invariant(!/<SheetContent[^>]*aria-describedby/.test(inbox) && !/<SheetDescription[^>]*\sid=/.test(inbox), "drawer sobrescribe IDs administrados por Radix");
+const caseDetail = read("src/commercial-crm/CommercialCaseDetail.tsx");
+const presentation = read("src/commercial-crm/presentation.ts");
+invariant(/Inbox Comercial/.test(inbox) && /Disponible en una fase posterior/.test(caseDetail), "presentación read-only incompleta");
+invariant(/APPROVED[\s\S]*legacy congelado/.test(presentation) && /OPS_HANDOFF[\s\S]*terminal/.test(presentation)
+  && /Legacy congelado/.test(caseDetail) && /Estado terminal/.test(caseDetail), "semántica terminal/legacy ausente");
+for (const [path, source] of [["Inbox", inbox], ["Ficha", caseDetail]]) {
+  invariant(!/localStorage|sessionStorage|indexedDB|useCasesStore|caseBridge|LeadLite|offline.?queue/i.test(source), `autoridad local o prototipo importado en ${path}`);
+  invariant(!/assign-owner|unassign-owner|allowed-transitions|\/transition|method:\s*"POST"/i.test(source), `mutación conectada a ${path}`);
+  invariant(!/\bclientId\b|\btenantId\b|\bownerId\b|\bownerUserId\b|\bmembershipId\b/.test(source), `ID interno expuesto en ${path}`);
+  invariant(!/dangerouslySetInnerHTML/.test(source), `HTML editable inseguro en ${path}`);
+}
+invariant(/lazy\(\(\) => import\("\.\/CommercialCaseDetail"\)\)/.test(inbox), "Ficha no está separada en un chunk lazy");
+invariant(/Abrir ficha/.test(inbox) && /Volver al Pipeline/.test(caseDetail), "navegación canónica de la Ficha ausente");
+invariant(!/Survey[\s\S]*role="tab"|Cotizaci[oó]n[\s\S]*role="tab"/.test(caseDetail), "Ficha anuncia tabs funcionales fuera de alcance");
 
 const packageJson = JSON.parse(read("package.json"));
 invariant(packageJson.scripts?.["test:v17-commercial-crm:browser"] === "playwright test -c playwright.v17-commercial-crm.config.ts", "suite browser no está congelada");
@@ -68,4 +96,4 @@ for (const command of ["npm run typecheck:v17-commercial-crm", "npm run test:v17
 }
 const vite = read("vite.config.ts");
 invariant(/base:\s*["']\/["']/.test(vite), "assets deben usar raíz absoluta para deep links anidados");
-console.log(JSON.stringify({ ok: true, migrations: 17, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], changedFiles: changed.length }));
+console.log(JSON.stringify({ ok: true, migrations: 18, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], changedFiles: changed.length }));

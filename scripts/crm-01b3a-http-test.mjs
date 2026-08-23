@@ -129,6 +129,11 @@ const transition = createTransitionHandler({ env: enabled, resolveContext: async
 }) });
 const transitionOk = await invoke(transition, request({ body: { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null } }));
 check("transición devuelve selección segura", transitionOk.statusCode === 200 && transitionOk.body.command.resultingVersion === 2 && transitionOk.body.command.owner === null && transitionOk.body.command.commandId === undefined);
+const caseKeyRequest = request({ body: { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null } });
+caseKeyRequest.query = { caseKey: caseKeyRequest.query.id };
+check("segmento físico caseKey conserva el CUID interno de mutaciones", (await invoke(transition, caseKeyRequest)).statusCode === 200);
+const ambiguousKeyRequest = request({ body: { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null }, query: { caseKey: "case-1" } });
+check("id y caseKey simultáneos se rechazan", (await invoke(transition, ambiguousKeyRequest)).statusCode === 400);
 check("respuesta no expone campos internos", !JSON.stringify(transitionOk.body).match(/tenantId|ownerUserId|actor|payloadHash|committedAt|requestId/));
 check("snapshot éxito estable", JSON.stringify(transitionOk.body) === JSON.stringify({ ok: true, command: { caseId: "case-1", commandType: "TRANSITION", previousVersion: 1, resultingVersion: 2, previousStatus: "NEW_INBOX", resultingStatus: "AWAITING_ICP", owner: null, replayed: false } }));
 const corsSuccess = await invoke(transition, request({ body: { expectedVersion: 1, toStatus: "AWAITING_ICP", reasonCode: null, evidence: null }, headers: { origin: "http://localhost:5173" } }));

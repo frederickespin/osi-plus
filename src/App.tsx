@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { LoginScreen, type LoginSession } from '@/components/auth/LoginScreen';
 import { CanonicalAccessDenied } from '@/components/auth/CanonicalAccessDenied';
@@ -152,9 +152,13 @@ function currentHubPathname() {
   return window.location.pathname === '/' ? '/hub' : window.location.pathname;
 }
 
-function navigateWithinShell(pathname: string) {
-  window.history.pushState({}, '', pathname);
-  window.dispatchEvent(new PopStateEvent('popstate'));
+function hubAccessContextFromSession(session: Session): HubAccessContext {
+  return {
+    role: session.role,
+    effectivePermissions: session.permissions ?? null,
+    deniedPermissions: session.deniedPermissions ?? [],
+    source: session.permissions ? 'SERVER_EFFECTIVE_PERMISSIONS' : 'SERVER_VALIDATED_ROLE',
+  };
 }
 
 type AuthorizedHubEntryProps = Readonly<{
@@ -166,22 +170,53 @@ type AuthorizedHubEntryProps = Readonly<{
 }>;
 
 function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLogout }: AuthorizedHubEntryProps) {
-  const [pathname, setPathname] = useState(currentHubPathname);
+  const [routeState, setRouteState] = useState(() => ({
+    status: 'READY' as const,
+    pathname: currentHubPathname(),
+    session,
+    accessContext,
+  }));
+  const navigationFence = useRef(0);
+
+  const validateNavigation = useCallback((pathname: string, historyMode: 'PUSH' | 'EXISTING') => {
+    const fence = ++navigationFence.current;
+    if (historyMode === 'PUSH') window.history.pushState({}, '', pathname);
+    setRouteState((current) => ({ ...current, status: 'VALIDATING' }));
+    void validateLegacySession(session).then((validatedSession) => {
+      if (fence !== navigationFence.current) return;
+      if (mode === 'PREVIEW_REHEARSAL' && validatedSession.commercialCrmPreviewAuthorized !== true) {
+        onLogout();
+        return;
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      setRouteState({
+        status: 'READY',
+        pathname,
+        session: validatedSession,
+        accessContext: hubAccessContextFromSession(validatedSession),
+      });
+    }).catch(() => {
+      if (fence === navigationFence.current) onLogout();
+    });
+  }, [mode, onLogout, session]);
 
   useEffect(() => {
-    const updatePathname = () => setPathname(currentHubPathname());
+    const updatePathname = () => validateNavigation(currentHubPathname(), 'EXISTING');
     window.addEventListener('popstate', updatePathname);
-    return () => window.removeEventListener('popstate', updatePathname);
-  }, []);
+    return () => {
+      navigationFence.current += 1;
+      window.removeEventListener('popstate', updatePathname);
+    };
+  }, [validateNavigation]);
 
   const routeDecision = useMemo(
-    () => evaluateHubRouteAccess(pathname, accessContext),
-    [accessContext, pathname],
+    () => evaluateHubRouteAccess(routeState.pathname, routeState.accessContext),
+    [routeState.accessContext, routeState.pathname],
   );
 
   if (!routeDecision.allowed) {
     const returnToSafeRoute = routeDecision.hasAuthorizedApplication
-      ? () => navigateWithinShell('/hub')
+      ? () => validateNavigation('/hub', 'PUSH')
       : () => {
           window.history.replaceState({}, '', '/');
           onLogout();
@@ -190,9 +225,25 @@ function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLo
   }
 
   return (
-    <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
-      <HubWorkspace userName={session.name} authorization={session.token} accessContext={accessContext} crmReadEnabled={crmReadEnabled} mode={mode} onLogout={onLogout} />
-    </Suspense>
+    <>
+      {routeState.status === 'VALIDATING' && (
+        <div className="fixed inset-x-0 top-0 z-[100] bg-slate-950 px-4 py-2 text-center text-xs font-semibold text-white" role="status" aria-live="polite">
+          Verificando acceso…
+        </div>
+      )}
+      <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
+        <HubWorkspace
+          userName={routeState.session.name}
+          authorization={routeState.session.token}
+          accessContext={routeState.accessContext}
+          crmReadEnabled={crmReadEnabled}
+          mode={mode}
+          pathname={routeState.pathname}
+          onNavigate={(pathname) => validateNavigation(pathname, 'PUSH')}
+          onLogout={onLogout}
+        />
+      </Suspense>
+    </>
   );
 }
 
@@ -313,12 +364,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
   const crmPipelineClientEnabled = isRelationalCrmReadEnabled() && previewConfirmed;
   const userRole: UserRole = session.role;
   const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
-  const hubAccessContext = useMemo<HubAccessContext>(() => ({
-    role: userRole,
-    effectivePermissions: session.permissions ?? null,
-    deniedPermissions: session.deniedPermissions ?? [],
-    source: session.permissions ? 'SERVER_EFFECTIVE_PERMISSIONS' : 'SERVER_VALIDATED_ROLE',
-  }), [session.deniedPermissions, session.permissions, userRole]);
+  const hubAccessContext = useMemo(() => hubAccessContextFromSession(session), [session]);
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {

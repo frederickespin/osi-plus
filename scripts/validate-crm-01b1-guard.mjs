@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,7 +27,10 @@ function repositoryFiles(root) {
     cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024,
   });
   invariant(run.status === 0, run.stderr || "no se pudo inventariar el repositorio");
-  return run.stdout.split("\0").filter(Boolean).map((file) => file.replaceAll("\\", "/"));
+  return run.stdout.split("\0")
+    .filter(Boolean)
+    .map((file) => file.replaceAll("\\", "/"))
+    .filter((file) => existsSync(resolve(root, file)));
 }
 
 export function validateCrm01b1Guard({

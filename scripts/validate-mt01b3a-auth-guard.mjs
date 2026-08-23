@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const INVENTORIED_ROUTES = new Set([
   "api/auth/login.js", "api/auth/logout.js", "api/auth/me.js", "api/auth/refresh.js", "api/auth/session/upgrade.js",
   "api/clients/index.js", "api/health.js", "api/info.js",
-  "api/crm/pipeline-cases/[id].js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js",
+  "api/crm/pipeline-cases/[caseRef].js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js",
   "api/crm/pipeline-cases/[id]/allowed-transitions.js", "api/crm/pipeline-cases/[id]/assign-owner.js",
   "api/crm/pipeline-cases/[id]/transition.js", "api/crm/pipeline-cases/[id]/unassign-owner.js",
   "api/crm/pipeline-owner-options.js",
@@ -31,7 +31,7 @@ const CRM_MUTATION_ROUTES = new Set([
   "api/crm/pipeline-cases/[id]/transition.js",
   "api/crm/pipeline-cases/[id]/unassign-owner.js",
 ]);
-const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js", "api/crm/pipeline-cases/[id].js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js", "api/crm/pipeline-owner-options.js", ...CRM_MUTATION_ROUTES]);
+const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js", "api/crm/pipeline-cases/[caseRef].js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js", "api/crm/pipeline-owner-options.js", ...CRM_MUTATION_ROUTES]);
 const LEGACY_JWT_ROUTES = new Set(["api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js"]);
 const ROUTE_HELPERS = new Set(["api/k/_lib.js", "api/osis/_helpers.js", "api/templates/_pst.js"]);
 export const B3B1_ACTIVATION_BLOCKERS = Object.freeze([

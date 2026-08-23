@@ -6,7 +6,7 @@ import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 const EXPECTED_MIGRATIONS = 18;
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
-  "api/crm/pipeline-cases/[id].js",
+  "api/crm/pipeline-cases/[caseRef].js",
   "api/crm/pipeline-summary.js",
 ]);
 const CRM_MUTATION_ROUTES = Object.freeze([
@@ -83,7 +83,7 @@ export function validateCrm01aGuard({
   invariant(!/milestonesJson:\s*true|flags:\s*true|ownerUserId:\s*true|tenantId:\s*true/.test(service), "el select expone campos internos");
   const safeOwner = service.slice(service.indexOf("function safeOwner"), service.indexOf("function safeCase"));
   invariant(!/membershipId|userStatus|email|phone|userId|tenantId|grantedPermissions|deniedPermissions/.test(safeOwner), "owner expone identidad o estado global innecesario");
-  invariant(/MAX_PAGE_SIZE = 100/.test(service) && /updatedAt:\s*"desc"[\s\S]*id:\s*"asc"/.test(service), "paginación u orden estable ausente");
+  invariant(/MAX_PAGE_SIZE = 100/.test(service) && /updatedAt:\s*"desc"[\s\S]*publicRef:\s*"asc"/.test(service), "paginación u orden estable ausente");
   invariant(/ownerMembershipId:\s*null[\s\S]*ownerUserId:\s*null/.test(service), "filtro unassigned incompleto");
   invariant(/sla:\s*Object\.freeze\(\{ overdue: null, basis: "UNAVAILABLE" \}\)/.test(service), "SLA ambiguo no está explicitado");
   const readHttpGate = readHttp.indexOf("requireCrmPipelineReadOnly(env)");

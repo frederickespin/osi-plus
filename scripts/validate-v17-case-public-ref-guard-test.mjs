@@ -6,6 +6,8 @@ const root = process.cwd();
 const schema = readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
 const sql = readFileSync(resolve(root, "prisma/migrations", V17_CASE_PUBLIC_REF_MIGRATION, "migration.sql"), "utf8");
 const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+const canonicalRead = readFileSync(resolve(root, "api/_lib/crmPipelineRead.js"), "utf8");
+const canonicalRuntime = { "api/_lib/crmPipelineRead.js": canonicalRead, "api/crm/pipeline-cases/[caseRef].js": "export default function handler() {}", "src/crm-relational/readApi.ts": "const caseRef = 'public DTO';" };
 const results = [];
 function check(name, condition) {
   results.push({ name, passed: Boolean(condition) });
@@ -13,7 +15,7 @@ function check(name, condition) {
 }
 function rejected(name, overrides, expected) {
   let error;
-  try { validateV17CasePublicRefGuard({ root, migrationNames: migrations, schemaSource: schema, migrationSource: sql, extraRuntimeSources: {}, ...overrides }); }
+  try { validateV17CasePublicRefGuard({ root, migrationNames: migrations, schemaSource: schema, migrationSource: sql, extraRuntimeSources: canonicalRuntime, ...overrides }); }
   catch (caught) { error = caught; }
   check(name, Boolean(error) && expected.test(error.message));
 }
@@ -21,7 +23,7 @@ function rejected(name, overrides, expected) {
 check("baseline publicRef aprobada", validateV17CasePublicRefGuard().ok);
 rejected("nullable rechazado", { schemaSource: schema.replace("publicRef                     String ", "publicRef                     String? ") }, /NOT NULL|nullable/);
 rejected("default PostgreSQL eliminado", { schemaSource: schema.replace('@default(dbgenerated("gen_random_uuid()")) ', "") }, /default PostgreSQL/);
-rejected("unicidad tenant-first eliminada", { schemaSource: schema.replace(/\s*@@unique\(\[tenantId, publicRef\].*\n/, "\n") }, /unicidad tenant-first/);
+rejected("unicidad tenant-first eliminada", { schemaSource: schema.replace(/\s*@@unique\(\[tenantId, publicRef\][^\r\n]*\r?\n/, "\n") }, /unicidad tenant-first/);
 rejected("default SQL eliminado", { migrationSource: sql.replace("ALTER COLUMN \"public_ref\" SET DEFAULT pg_catalog.gen_random_uuid(),", "") }, /default o NOT NULL/);
 rejected("transacción explícita eliminada", { migrationSource: sql.replace("BEGIN;", "") }, /transacción explícita/);
 rejected("COMMIT prematuro rechazado", { migrationSource: sql.replace("COMMIT;", "COMMIT;\nSELECT 1;") }, /COMMIT debe cerrar/);
@@ -34,8 +36,11 @@ rejected("orden inseguro rechazado", { migrationSource: sql.replace(backfill, ""
 rejected("CUID como fallback rechazado", { schemaSource: schema.replace('dbgenerated("gen_random_uuid()")', "cuid()") }, /default PostgreSQL|Prisma no puede/);
 rejected("JWT como fuente rechazado", { migrationSource: sql.replace("COMMIT;", "-- derive from JWT secret\nCOMMIT;") }, /fallback|debilitamiento/);
 rejected("migración 19 rechazada", { migrationNames: [...migrations, "20260821020000_future"] }, /18 migraciones|migración 19/);
-rejected("consumidor runtime rechazado", { extraRuntimeSources: { "api/crm/public-ref.js": "const value = row.publicRef;" } }, /runtime prematura/);
-rejected("búsqueda sólo por publicRef rechazada", { extraRuntimeSources: { "src/unsafe.ts": "pipelineCase.findUnique({ where: { publicRef } })" } }, /runtime prematura/);
-rejected("exposición HTTP prematura rechazada", { extraRuntimeSources: { "api/crm/detail.js": "res.json({ public_ref: row.value })" } }, /runtime prematura/);
+rejected("consumidor backend adicional rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/public-ref.js": "const value = row.publicRef;" } }, /sólo puede consumirse/);
+rejected("consumidor frontend rechazado", { extraRuntimeSources: { ...canonicalRuntime, "src/unsafe.ts": "const leaked = value.publicRef;" } }, /sólo puede consumirse|frontend/);
+rejected("búsqueda sólo por publicRef rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace(/tenantId_publicRef:[\s\S]{0,130}\},\s*\}/, "publicRef") } }, /índice único tenant-first|únicamente por publicRef/);
+rejected("serializer CUID rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace("caseRef: row.publicRef", "caseRef: row.id") } }, /serializar|PK CUID/);
+rejected("campo público interno rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/leak.js": "res.json({ public_ref: row.value })" } }, /sólo puede consumirse/);
+rejected("alias dinámico id rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/pipeline-cases/[id].js": "export default function handler() {}" } }, /alias ambiguo/);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

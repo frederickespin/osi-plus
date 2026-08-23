@@ -7,7 +7,7 @@ const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const MIGRATION_HASH = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
-  "api/crm/pipeline-cases/[id].js",
+  "api/crm/pipeline-cases/[caseRef].js",
   "api/crm/pipeline-summary.js",
   "api/crm/pipeline-owner-options.js",
   "api/crm/pipeline-cases/[id]/allowed-transitions.js",

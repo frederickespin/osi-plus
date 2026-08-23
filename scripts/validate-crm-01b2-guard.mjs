@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -18,7 +18,10 @@ function invariant(condition, message) { if (!condition) throw new Error(`CRM01B
 function files(root) {
   const result = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   invariant(result.status === 0, "no se pudo inventariar el repositorio");
-  return result.stdout.split("\0").filter(Boolean).map((entry) => entry.replaceAll("\\", "/"));
+  return result.stdout.split("\0")
+    .filter(Boolean)
+    .map((entry) => entry.replaceAll("\\", "/"))
+    .filter((entry) => existsSync(resolve(root, entry)));
 }
 
 export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env } = {}) {

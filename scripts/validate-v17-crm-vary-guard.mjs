@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const EXPECTED_ROUTES = Object.freeze({
   "api/crm/pipeline-cases/index.js": "createCrmPipelineReadHandler",
-  "api/crm/pipeline-cases/[id].js": "createCrmPipelineReadHandler",
+  "api/crm/pipeline-cases/[caseRef].js": "createCrmPipelineReadHandler",
   "api/crm/pipeline-summary.js": "createCrmPipelineReadHandler",
   "api/crm/pipeline-owner-options.js": "createCrmOwnerCatalogHandler",
   "api/crm/pipeline-cases/[id]/allowed-transitions.js": "createAllowedTransitionsHandler",

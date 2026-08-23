@@ -33,7 +33,7 @@ const [
   import("../api/_lib/rbac.js"),
   import("./mt-01b1-test-helpers.mjs"),
   import("../api/crm/pipeline-cases/index.js"),
-  import("../api/crm/pipeline-cases/[id].js"),
+  import("../api/crm/pipeline-cases/[caseRef].js"),
   import("../api/crm/pipeline-summary.js"),
 ]);
 
@@ -143,6 +143,7 @@ function caseData(label, index, tenantId, owner) {
   const status = crm.CRM_PIPELINE_STATUS_VALUES[index % crm.CRM_PIPELINE_STATUS_VALUES.length];
   return {
     id: `${run}-case-${label}-${index}`,
+    publicRef: randomUUID(),
     tenantId,
     caseCode: `${run}-CASE-${label}-${String(index).padStart(3, "0")}`.toUpperCase(),
     clientName: `Cliente ${index % 7}`,
@@ -288,6 +289,11 @@ try {
   const tokenOne = tokenFor(tenantOne);
   const list = await invoke(listHandler, request(tokenOne, "GET", { page: "1", pageSize: "20" }));
   check("lista tenantizada 51", list.statusCode === 200 && list.body.total === 51 && list.body.data.length === 20);
+  check("lista publica sólo caseRef UUID v4", list.body.data.every((item) => (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(item.caseRef)
+    && !Object.hasOwn(item, "id")
+    && !Object.hasOwn(item, "publicRef")
+  )));
   check("lista usa cache privada", list.getHeader("cache-control") === "private, no-store" && /authorization/i.test(String(list.getHeader("vary"))));
   check("owner es vista histórica mínima", list.body.data.filter((item) => item.owner).every((item) => item.owner.displayName && item.owner.role === "V" && item.owner.membershipStatus === "ACTIVE"));
   const forbiddenFields = ["tenantId", "ownerId", "ownerUserId", "membershipId", "userId", "userStatus", "email", "phone", "grantedPermissions", "deniedPermissions", "milestonesJson", "flags"];
@@ -295,14 +301,14 @@ try {
   check("campos internos ausentes del owner", list.body.data.filter((item) => item.owner).every((item) => forbiddenFields.every((field) => !(field in item.owner))));
   check("paginación contractual", list.body.page === 1 && list.body.pageSize === 20);
   const tenantTwoList = await invoke(listHandler, request(tokenFor(tenantTwo), "GET", { pageSize: "100" }));
-  check("segundo tenant sólo ve sus cuatro casos", tenantTwoList.statusCode === 200 && tenantTwoList.body.total === 4 && tenantTwoList.body.data.every((item) => item.id.includes("-two-")));
+  check("segundo tenant sólo ve sus cuatro casos", tenantTwoList.statusCode === 200 && tenantTwoList.body.total === 4 && tenantTwoList.body.data.every((item) => item.caseCode.includes("-TWO-")));
 
-  const allIds = [];
+  const allRefs = [];
   for (let page = 1; page <= 6; page += 1) {
     const response = await invoke(listHandler, request(tokenOne, "GET", { page: String(page), pageSize: "10" }));
-    allIds.push(...response.body.data.map((item) => item.id));
+    allRefs.push(...response.body.data.map((item) => item.caseRef));
   }
-  check("paginación estable sin duplicados", allIds.length === 51 && new Set(allIds).size === 51);
+  check("paginación estable sin duplicados", allRefs.length === 51 && new Set(allRefs).size === 51);
 
   const unassigned = await invoke(listHandler, request(tokenOne, "GET", { unassigned: "true", pageSize: "100" }));
   check("12 sin owner", unassigned.statusCode === 200 && unassigned.body.total === 12 && unassigned.body.data.every((item) => item.owner === null));
@@ -315,8 +321,8 @@ try {
   const bySearch = await invoke(listHandler, request(tokenOne, "GET", { q: "Origen 2", pageSize: "100" }));
   check("búsqueda allowlist tenantizada", bySearch.body.total > 0 && bySearch.body.data.every((item) => item.originLocation === "Origen 2"));
 
-  const detail = await invoke(detailHandler, request(tokenOne, "GET", { id: casesOne[0].id }));
-  check("detalle mismo tenant", detail.statusCode === 200 && detail.body.data.caseRef === casesOne[0].id);
+  const detail = await invoke(detailHandler, request(tokenOne, "GET", { caseRef: casesOne[0].publicRef }));
+  check("detalle mismo tenant", detail.statusCode === 200 && detail.body.data.caseRef === casesOne[0].publicRef);
   check("Client relacional prevalece sobre clientName legacy", detail.body.data.client?.displayName === serviceClientOne.name
     && !JSON.stringify(detail.body.data).includes(casesOne[0].clientName));
   check("detalle no expone clientId", !Object.hasOwn(detail.body.data, "clientId") && !Object.hasOwn(detail.body.data, "id"));
@@ -324,7 +330,7 @@ try {
     && detail.getHeader("access-control-allow-credentials") === undefined);
   const snapshotList = await invoke(listHandler, request(tokenOne, "GET", { q: casesOne[0].caseCode, pageSize: "1" }));
   const expectedCaseContract = {
-    id: "<id>", caseCode: "<caseCode>", clientName: "<img src=x onerror=legacy-authority>", mode: "EXPORT", serviceType: "MOVING",
+    caseRef: "<caseRef>", caseCode: "<caseCode>", clientName: "<img src=x onerror=legacy-authority>", mode: "EXPORT", serviceType: "MOVING",
     customerType: "L4_PERSONAL", status: "NEW_INBOX", estimatedCbm: 0.5, requiresSurvey: true,
     surveyMethod: "PRESENCIAL", originLocation: "Origen 0", destinationLocation: "Destino 0",
     destinationContracted: true, assetsCount: 0,
@@ -337,18 +343,18 @@ try {
     client: { displayName: "<displayName>", type: "PERSON", status: "active" },
     owner: { displayName: "<displayName>" }, createdAt: "<timestamp>", updatedAt: "<timestamp>",
   } });
-  const noClient = await invoke(detailHandler, request(tokenOne, "GET", { id: casesOne[1].id }));
+  const noClient = await invoke(detailHandler, request(tokenOne, "GET", { caseRef: casesOne[1].publicRef }));
   check("clientId NULL produce client null sin inferencia", noClient.statusCode === 200 && noClient.body.data.client === null
     && !JSON.stringify(noClient.body.data).includes(casesOne[1].clientName));
-  const crossTenant = await expectError("cross-tenant indistinguible", invoke(detailHandler, request(tokenOne, "GET", { id: casesTwo[0].id })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+  const crossTenant = await expectError("cross-tenant indistinguible", invoke(detailHandler, request(tokenOne, "GET", { caseRef: casesTwo[0].publicRef })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
   checkJsonSnapshot("snapshot 404", crossTenant.body, { ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" });
-  const inactiveClient = await invoke(detailHandler, request(tokenFor(tenantTwo), "GET", { id: casesTwo[0].id }));
+  const inactiveClient = await invoke(detailHandler, request(tokenFor(tenantTwo), "GET", { caseRef: casesTwo[0].publicRef }));
   check("Client inactivo conserva estado explícito sin fallback", inactiveClient.statusCode === 200
     && inactiveClient.body.data.client?.displayName === serviceClientTwo.name
     && inactiveClient.body.data.client?.status === "inactive");
-  await expectError("id repetido rechazado", invoke(detailHandler, request(tokenOne, "GET", { id: [casesOne[0].id, casesOne[1].id] })), 400, "CRM_PIPELINE_FILTER_INVALID");
+  await expectError("referencia repetida rechazada como recurso ausente", invoke(detailHandler, request(tokenOne, "GET", { caseRef: [casesOne[0].publicRef, casesOne[1].publicRef] })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
   await prisma.tenantMembership.update({ where: { id: ownerOne.membershipId }, data: { status: "SUSPENDED" } });
-  const historical = await invoke(detailHandler, request(tokenOne, "GET", { id: casesOne[0].id }));
+  const historical = await invoke(detailHandler, request(tokenOne, "GET", { caseRef: casesOne[0].publicRef }));
   check("owner se publica con presentación mínima", Object.keys(historical.body.data.owner).length === 1
     && historical.body.data.owner.displayName && !Object.hasOwn(historical.body.data.owner, "membershipId"));
   await prisma.tenantMembership.update({ where: { id: ownerOne.membershipId }, data: { status: "ACTIVE" } });

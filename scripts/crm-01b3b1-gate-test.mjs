@@ -7,7 +7,7 @@ import {
   resolveCrmPipelineModes,
 } from "../api/_lib/crmPipelineAccess.js";
 import { createPipelineCasesListHandler } from "../api/crm/pipeline-cases/index.js";
-import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[id].js";
+import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[caseRef].js";
 import { createPipelineSummaryHandler } from "../api/crm/pipeline-summary.js";
 import { createTransitionHandler, createAssignOwnerHandler, createUnassignOwnerHandler, createAllowedTransitionsHandler } from "../api/_lib/pipelineCaseMutationHttp.js";
 
@@ -22,7 +22,7 @@ function rejected(name, env, code = "CRM_PIPELINE_CONFIGURATION_INVALID") {
   check(name, error?.status === 503 && error?.code === code);
 }
 function request(method = "GET", body = undefined) {
-  return { method, headers: {}, rawHeaders: [], query: { id: "case-1" }, body };
+  return { method, headers: {}, rawHeaders: [], query: { id: "case-1", caseRef: "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012" }, body };
 }
 async function invoke(handler, req) {
   const res = mockResponse();
@@ -116,7 +116,7 @@ try {
     pipelineCase: {
       count: () => { queryCalls += 1; return Promise.resolve(0); },
       findMany: () => { queryCalls += 1; return Promise.resolve([]); },
-      findFirst: () => { queryCalls += 1; return Promise.resolve(null); },
+      findUnique: () => { queryCalls += 1; return Promise.resolve(null); },
       groupBy: () => { queryCalls += 1; return Promise.resolve([]); },
     },
     $transaction: (operations) => Promise.all(operations),

@@ -29,7 +29,7 @@ const [
   import("../api/_lib/crmPipelineRead.js"),
   import("../api/_lib/rbac.js"),
   import("../api/crm/pipeline-cases/index.js"),
-  import("../api/crm/pipeline-cases/[id].js"),
+  import("../api/crm/pipeline-cases/[caseRef].js"),
   import("../api/crm/pipeline-summary.js"),
   import("../api/crm/pipeline-cases/[id]/allowed-transitions.js"),
   import("../api/crm/pipeline-cases/[id]/transition.js"),
@@ -84,7 +84,7 @@ function caseData(id, tenantId, owner) {
   };
 }
 
-function request(token, { method = "GET", id, body, idempotencyKey, headers = {}, url } = {}) {
+function request(token, { method = "GET", id, caseRef, body, idempotencyKey, headers = {}, url } = {}) {
   const base = syntheticRequest({ authorization: token ? `Bearer ${token}` : undefined });
   const nextHeaders = { ...base.headers, ...headers };
   if (body !== undefined) nextHeaders["content-type"] = "application/json";
@@ -92,8 +92,8 @@ function request(token, { method = "GET", id, body, idempotencyKey, headers = {}
   return {
     ...base,
     method,
-    url: url || (id ? `/api/crm/pipeline-cases/${id}` : "/api/crm/pipeline-cases"),
-    query: id ? { id } : {},
+    url: url || (caseRef ? `/api/crm/pipeline-cases/${caseRef}` : id ? `/api/crm/pipeline-cases/${id}` : "/api/crm/pipeline-cases"),
+    query: caseRef ? { caseRef } : id ? { id } : {},
     headers: nextHeaders,
     rawHeaders: Object.entries(nextHeaders).flat(),
     ...(body === undefined ? {} : { body }),
@@ -173,9 +173,9 @@ try {
   const transition = createPipelineTransitionHandler({ env: productionWrite });
 
   check("PRODUCTION_READ lista activa", (await invoke(list, request(legacyToken))).statusCode === 200);
-  check("PRODUCTION_READ detalle aislado", (await invoke(detail, request(legacyToken, { id: pipelineCase.id }))).statusCode === 200);
+  check("PRODUCTION_READ detalle aislado", (await invoke(detail, request(legacyToken, { caseRef: pipelineCase.publicRef }))).statusCode === 200);
   check("PRODUCTION_READ resumen activo", (await invoke(summary, request(legacyToken))).statusCode === 200);
-  const crossTenant = await invoke(detail, request(legacyTokenTwo, { id: pipelineCase.id }));
+  const crossTenant = await invoke(detail, request(legacyTokenTwo, { caseRef: pipelineCase.publicRef }));
   check("cross-tenant indistinguible", crossTenant.statusCode === 404 && crossTenant.body?.error === "CRM_PIPELINE_RESOURCE_NOT_FOUND");
   check("PRODUCTION_READ mantiene mutaciones bloqueadas", (await invoke(allowedReadBlocked, request(legacyToken, { id: pipelineCase.id, url: `/api/crm/pipeline-cases/${pipelineCase.id}/allowed-transitions` }))).statusCode === 409);
 
@@ -261,7 +261,7 @@ try {
   const perfContext = Object.freeze({ tenantId: tenant.id, membershipId: seller.id, userId: sellerUser.id });
   await benchmark("authContext", () => access.resolveCrmPipelineContext(request(legacyToken), { prisma, env: productionRead }), 1);
   await benchmark("list", () => read.listCrmPipelineCases(prisma, { tenantId: tenant.id, filters: read.parsePipelineListQuery({ page: "1", pageSize: "50" }) }), 2);
-  await benchmark("detail", () => read.findCrmPipelineCase(prisma, { tenantId: tenant.id, caseId: perfCase.id }), 1);
+  await benchmark("detail", () => read.findCrmPipelineCase(prisma, { tenantId: tenant.id, caseRef: perfCase.publicRef }), 1);
   await benchmark("summary", () => read.summarizeCrmPipelineCases(prisma, { tenantId: tenant.id }), 3);
   await benchmark("allowedTransitions", () => domain.getAllowedPipelineTransitions(perfContext, perfCase.id), 4);
   check("100 requests cálidos por operación", Object.values(timings).every((entry) => entry.requests === 100));

@@ -4,7 +4,7 @@ import { once } from "node:events";
 import loginHandler from "../api/auth/login.js";
 import authMeHandler from "../api/auth/me.js";
 import { createPipelineCasesListHandler } from "../api/crm/pipeline-cases/index.js";
-import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[id].js";
+import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[caseRef].js";
 import { createPipelineTransitionHandler } from "../api/crm/pipeline-cases/[id]/transition.js";
 import { createPipelineOwnerOptionsHandler } from "../api/crm/pipeline-owner-options.js";
 import { createPipelineSummaryHandler } from "../api/crm/pipeline-summary.js";
@@ -23,6 +23,8 @@ const exactPreview = Object.freeze({
   COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ",
   COMMERCIAL_TENANCY_ACTIVATION_BATCH: "MT-01C2B2-IPACKERS-DO-V1",
 });
+const VISIBLE_CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const CROSS_TENANT_CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9013";
 
 let assertions = 0;
 function check(name, condition) {
@@ -63,11 +65,11 @@ const listDatabase = {
 };
 const detailDatabase = {
   pipelineCase: {
-    findFirst: async ({ where }) => {
+    findUnique: async ({ where }) => {
       databaseCalls += 1;
-      if (where.id === "cross-tenant-case") return null;
+      if (where.tenantId_publicRef?.publicRef === CROSS_TENANT_CASE_REF) return null;
       return {
-        id: "visible-case", caseCode: "DEMO-HTTP", mode: "LOCAL", serviceType: "MOVING",
+        publicRef: VISIBLE_CASE_REF, caseCode: "DEMO-HTTP", mode: "LOCAL", serviceType: "MOVING",
         status: "NEW_INBOX", client: null, enterpriseOwner: null,
         createdAt: new Date("2026-08-18T10:00:00.000Z"), updatedAt: new Date("2026-08-18T10:00:00.000Z"),
       };
@@ -117,7 +119,7 @@ const server = createServer(async (req, rawResponse) => {
     }
     const caseMatch = parsed.pathname.match(/^\/api\/crm\/pipeline-cases\/([^/]+)$/);
     if (caseMatch) {
-      req.query = { id: caseMatch[1] };
+      req.query = { caseRef: caseMatch[1] };
       return await detail(req, res);
     }
     if (parsed.pathname === "/api/auth/login") return await loginHandler(req, res);
@@ -152,7 +154,7 @@ async function request(path, { method = "GET", origin, authorization, body } = {
 try {
   const routes = [
     "/api/crm/pipeline-cases",
-    "/api/crm/pipeline-cases/visible-case",
+    `/api/crm/pipeline-cases/${VISIBLE_CASE_REF}`,
     "/api/crm/pipeline-summary",
   ];
   for (const route of routes) {
@@ -183,7 +185,7 @@ try {
   check("401 conserva headers privados", invalidBearer.response.headers.get("cache-control") === "private, no-store"
     && invalidBearer.response.headers.get("vary") === "Authorization, Origin");
 
-  const crossTenant = await request("/api/crm/pipeline-cases/cross-tenant-case", { authorization: "Bearer preview-valid" });
+  const crossTenant = await request(`/api/crm/pipeline-cases/${CROSS_TENANT_CASE_REF}`, { authorization: "Bearer preview-valid" });
   check("cross-tenant indistinguible", crossTenant.response.status === 404
     && crossTenant.json?.error === "CRM_PIPELINE_RESOURCE_NOT_FOUND"
     && !JSON.stringify(crossTenant.json).includes("tenant"));

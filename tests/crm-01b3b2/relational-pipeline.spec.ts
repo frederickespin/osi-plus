@@ -1,10 +1,12 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 
 const statuses = ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"];
+const CASE_REF = "11111111-1111-4111-8111-111111111111";
+const caseRefFor = (index: number) => `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`;
 
 function pipelineCase(overrides: Record<string, unknown> = {}) {
   return {
-    id: "case-001", caseCode: "CRM-001", clientName: "Cliente sintético", mode: "LOCAL", serviceType: "MUDANZA",
+    caseRef: CASE_REF, caseCode: "CRM-001", clientName: "Cliente sintético", mode: "LOCAL", serviceType: "MUDANZA",
     customerType: "L3_CORPORATE", status: "NEW_INBOX", estimatedCbm: 12.5, requiresSurvey: false, surveyMethod: "NO_APLICA",
     originLocation: "Origen local", destinationLocation: "Destino local", destinationContracted: true, assetsCount: 3,
     owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" }, quoteCount: 1, eventCount: 2,
@@ -53,7 +55,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
       if (options.mutation) return options.mutation(route, mutationAttempt);
       return json({ ok: true, command: { caseId: "case-001", commandType: "TRANSITION", previousVersion: 4, resultingVersion: 5, previousStatus: "NEW_INBOX", resultingStatus: "AWAITING_ICP", owner: null, replayed: false } });
     }
-    if (url.pathname === "/api/crm/pipeline-cases/case-001") {
+    if (url.pathname === `/api/crm/pipeline-cases/${CASE_REF}`) {
       if (options.detail) return options.detail(route);
       return json({ ok: true, data: options.caseData ?? pipelineCase() });
     }
@@ -178,7 +180,7 @@ test("lista rechaza autoridad interna, parciales, tipos y arrays excesivos", asy
   const missingCaseCode = pipelineCase();
   delete missingCaseCode.caseCode;
   const ownerWithInternalId = { ...pipelineCase(), owner: { ...pipelineCase().owner as Record<string, unknown>, ownerMembershipId: "internal-membership" } };
-  const excessive = Array.from({ length: 26 }, (_, index) => pipelineCase({ id: `case-${index}`, caseCode: `CRM-${index}` }));
+  const excessive = Array.from({ length: 26 }, (_, index) => pipelineCase({ caseRef: caseRefFor(index), caseCode: `CRM-${index}` }));
   const variants = [
     { ok: true, total: 1, page: 1, pageSize: 25, tenantId: "internal-tenant", data: [pipelineCase()] },
     { ok: true, total: 1, page: 1, pageSize: 25, permissions: ["pipeline:view"], data: [pipelineCase()] },
@@ -295,11 +297,11 @@ test("VERSION_CONFLICT no reintenta y vuelve a leer el caso", async ({ page }) =
   const requests = await mockApi(page, { mutation: async (route) => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ ok: false, code: "CRM_PIPELINE_VERSION_CONFLICT", recoverable: true }) }) });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await page.getByText("CRM-001").click();
-  const readsBefore = requests.filter((entry) => entry.url === "/api/crm/pipeline-cases/case-001").length;
+  const readsBefore = requests.filter((entry) => entry.url === `/api/crm/pipeline-cases/${CASE_REF}`).length;
   await confirmTransition(page);
   await expect(page.getByText(/La oportunidad cambió/)).toBeVisible();
   expect(requests.filter((entry) => entry.method === "POST")).toHaveLength(1);
-  await expect.poll(() => requests.filter((entry) => entry.url === "/api/crm/pipeline-cases/case-001").length).toBeGreaterThan(readsBefore);
+  await expect.poll(() => requests.filter((entry) => entry.url === `/api/crm/pipeline-cases/${CASE_REF}`).length).toBeGreaterThan(readsBefore);
 });
 
 test("V no recibe acciones de owner y A puede desasignar", async ({ page }) => {
@@ -395,10 +397,10 @@ test("403 no muta permisos locales y revalida acciones con el servidor", async (
   const requests = await mockApi(page, { mutation: async (route) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ ok: false, code: "COMMERCIAL_PERMISSION_DENIED" }) }) });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await page.getByText("CRM-001").click();
-  const readsBefore = requests.filter((entry) => entry.url === "/api/crm/pipeline-cases/case-001").length;
+  const readsBefore = requests.filter((entry) => entry.url === `/api/crm/pipeline-cases/${CASE_REF}`).length;
   await confirmTransition(page);
   await expect(page.getByText("No tienes permiso para esta operación.")).toBeVisible();
-  await expect.poll(() => requests.filter((entry) => entry.url === "/api/crm/pipeline-cases/case-001").length).toBeGreaterThan(readsBefore);
+  await expect.poll(() => requests.filter((entry) => entry.url === `/api/crm/pipeline-cases/${CASE_REF}`).length).toBeGreaterThan(readsBefore);
   await expect(page.getByRole("button", { name: "Revisar cambio" })).toBeVisible();
 });
 
@@ -628,7 +630,7 @@ test("página de 25 sobre 2,000 mantiene una sola lectura por acción", async ({
     listRequests += 1;
     const pageNumber = Number(url.searchParams.get("page") || 1);
     const q = url.searchParams.get("q") || "";
-    const data = Array.from({ length: 25 }, (_, index) => pipelineCase({ id: `case-${pageNumber}-${index}`, caseCode: `${q ? "FILTER" : "CRM"}-${String((pageNumber - 1) * 25 + index + 1).padStart(4, "0")}` }));
+    const data = Array.from({ length: 25 }, (_, index) => pipelineCase({ caseRef: caseRefFor((pageNumber - 1) * 25 + index), caseCode: `${q ? "FILTER" : "CRM"}-${String((pageNumber - 1) * 25 + index + 1).padStart(4, "0")}` }));
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, total: 2_000, page: pageNumber, pageSize: 25, data }) });
   } });
   await page.goto("/tests/crm-01b3b2/harness.html");

@@ -1,9 +1,10 @@
 import { CrmPipelineReadApi } from "/src/crm-relational/readApi";
 
 const headers = { "Content-Type": "application/json", "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
+const caseRef = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const statuses = ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"];
-const row = { id: "case-1", caseCode: "CASE-1", clientName: null, mode: "LOCAL", serviceType: "Servicio", customerType: "PERSON", status: "NEW_INBOX", estimatedCbm: 1, requiresSurvey: false, surveyMethod: "NONE", originLocation: "Origen", destinationLocation: "Destino", destinationContracted: false, assetsCount: 0, owner: null, quoteCount: 0, eventCount: 0, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
-const detail = { caseRef: "case-1", caseNumber: "CASE-1", status: "NEW_INBOX", mode: "LOCAL", serviceType: "Servicio", client: null, owner: null, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
+const row = { caseRef, caseCode: "CASE-1", clientName: null, mode: "LOCAL", serviceType: "Servicio", customerType: "PERSON", status: "NEW_INBOX", estimatedCbm: 1, requiresSurvey: false, surveyMethod: "NONE", originLocation: "Origen", destinationLocation: "Destino", destinationContracted: false, assetsCount: 0, owner: null, quoteCount: 0, eventCount: 0, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
+const detail = { caseRef, caseNumber: "CASE-1", status: "NEW_INBOX", mode: "LOCAL", serviceType: "Servicio", client: null, owner: null, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
 const validList = { ok: true, total: 1, page: 1, pageSize: 25, data: [row] };
 const validSummary = { ok: true, data: { total: 1, assigned: 0, unassigned: 1, byStatus: Object.fromEntries(statuses.map((status) => [status, status === "NEW_INBOX" ? 1 : 0])), sla: { overdue: null, basis: "UNAVAILABLE" } } };
 type Scenario = { name: string; response: () => Response; operation?: "list" | "detail" | "summary"; expectedStatus?: number };
@@ -20,15 +21,19 @@ const scenarios: Scenario[] = [
   { name: "array", response: () => json([]) },
   { name: "missing-field", response: () => json({ ...validList, total: undefined }) },
   { name: "additional-field", response: () => json({ ...validList, nextCursor: "forbidden" }) },
+  { name: "list-internal-id", response: () => json({ ...validList, data: [{ ...row, id: "forbidden" }] }) },
+  { name: "list-public-ref-name", response: () => json({ ...validList, data: [{ ...row, publicRef: caseRef }] }) },
   { name: "unknown-status", response: () => json({ ...validList, data: [{ ...row, status: "UNKNOWN" }] }) },
   { name: "non-finite", response: () => new Response(JSON.stringify(validList).replace('"estimatedCbm":1', '"estimatedCbm":1e400'), { status: 200, headers }) },
   { name: "page-mismatch", response: () => json({ ...validList, page: 2 }) },
   { name: "page-size-mismatch", response: () => json({ ...validList, pageSize: 100 }) },
   { name: "count-mismatch", response: () => json({ ...validList, total: 2 }) },
-  { name: "duplicate-id", response: () => json({ ...validList, total: 2, data: [row, row] }) },
+  { name: "duplicate-case-ref", response: () => json({ ...validList, total: 2, data: [row, row] }) },
   { name: "summary-ok-false", operation: "summary", response: () => json({ ...validSummary, ok: false }) },
   { name: "summary-counts", operation: "summary", response: () => json({ ...validSummary, data: { ...validSummary.data, assigned: 1 } }) },
   { name: "detail-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, caseRef: "wrong" } }) },
+  { name: "detail-internal-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, id: "forbidden" } }) },
+  { name: "detail-public-ref-name", operation: "detail", response: () => json({ ok: true, data: { ...detail, publicRef: caseRef } }) },
   { name: "detail-tenant-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, tenantId: "forbidden" } }) },
   { name: "detail-legacy-client-name", operation: "detail", response: () => json({ ok: true, data: { ...detail, clientName: "forbidden" } }) },
   { name: "detail-client-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, client: { displayName: "Client", type: "PERSON", status: "active", clientId: "forbidden" } } }) },
@@ -48,13 +53,41 @@ for (const scenario of scenarios) {
   });
   try {
     if (scenario.operation === "summary") await api.summary();
-    else if (scenario.operation === "detail") await api.detail("case-1");
+    else if (scenario.operation === "detail") await api.detail(caseRef);
     else await api.list({ page: 1, pageSize: 25 });
     failed.push(`${scenario.name}:accepted`);
   } catch (error) {
     const status = Number((error as { status?: unknown }).status);
     if (scenario.expectedStatus !== undefined && status !== scenario.expectedStatus) failed.push(`${scenario.name}:status`);
     else if (requested.includes("secret-token") || observed?.method !== "GET" || observed?.credentials !== "omit" || new Headers(observed?.headers).get("Authorization") !== "Bearer secret-token-never-in-url" || new Headers(observed?.headers).has("Idempotency-Key")) failed.push(`${scenario.name}:request`);
+    else passed += 1;
+  }
+}
+
+for (const invalidCaseRef of [
+  "",
+  "cmf0historicalcuid123456789",
+  caseRef.toUpperCase(),
+  ` ${caseRef}`,
+  `${caseRef} `,
+  `\ufeff${caseRef}`,
+  `${caseRef}\r`,
+  `${caseRef}\n`,
+  "../case",
+  "%2F%2Fevil.invalid",
+  "%252F%252Fevil.invalid",
+  "x".repeat(10_000),
+]) {
+  let requested = false;
+  const api = new CrmPipelineReadApi({
+    tokenProvider: () => "secret-token-never-in-url",
+    fetchImpl: (async () => { requested = true; return json({ ok: true, data: detail }); }) as typeof fetch,
+  });
+  try {
+    await api.detail(invalidCaseRef);
+    failed.push("invalid-case-ref:accepted");
+  } catch (error) {
+    if (requested || Number((error as { status?: unknown }).status) !== 404) failed.push("invalid-case-ref:not-404-before-fetch");
     else passed += 1;
   }
 }

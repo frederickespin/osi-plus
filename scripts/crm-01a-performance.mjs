@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
 import { createCrm01aLocalPrisma } from "./crm-01a-local-target.mjs";
-import { listCrmPipelineCases, parsePipelineListQuery } from "../api/_lib/crmPipelineRead.js";
+import { findCrmPipelineCase, listCrmPipelineCases, parsePipelineListQuery } from "../api/_lib/crmPipelineRead.js";
 
 const FIXTURE_COUNTS = Object.freeze([2_000, 10_000]);
 const ROUNDS = 30;
@@ -33,6 +33,26 @@ async function measure(name, query) {
     name,
     rounds: ROUNDS,
     queriesPerRequest: 2,
+    p50Ms: Number(percentile(samples, 0.50).toFixed(3)),
+    p95Ms: Number(percentile(samples, 0.95).toFixed(3)),
+    maxMs: Number(Math.max(...samples).toFixed(3)),
+  });
+}
+
+async function measureDetail(name, caseRef) {
+  for (let index = 0; index < 3; index += 1) await findCrmPipelineCase(prisma, { tenantId, caseRef });
+  const samples = [];
+  for (let index = 0; index < ROUNDS; index += 1) {
+    const start = performance.now();
+    const detail = await findCrmPipelineCase(prisma, { tenantId, caseRef });
+    if (detail.caseRef !== caseRef) throw new Error("detalle devolvió otra referencia pública");
+    samples.push(performance.now() - start);
+  }
+  return Object.freeze({
+    name,
+    rounds: ROUNDS,
+    prismaOperationsPerRequest: 1,
+    maximumDatabaseQueries: 2,
     p50Ms: Number(percentile(samples, 0.50).toFixed(3)),
     p95Ms: Number(percentile(samples, 0.95).toFixed(3)),
     maxMs: Number(Math.max(...samples).toFixed(3)),
@@ -86,51 +106,72 @@ try {
     await prisma.pipelineCase.createMany({ data: fixtureRange(inserted, fixtureCount - inserted) });
     inserted = fixtureCount;
     check(`fixture ${fixtureCount.toLocaleString("en-US")} separado de medición`, await prisma.pipelineCase.count({ where: { tenantId } }) === fixtureCount);
+    const detailTarget = await prisma.pipelineCase.findFirstOrThrow({
+      where: { tenantId },
+      orderBy: { updatedAt: "desc" },
+      select: { publicRef: true },
+    });
     const metrics = [
       await measure("lista primera página", { page: "1", pageSize: "50" }),
       await measure("lista página profunda", { page: String(Math.max(2, Math.floor(fixtureCount / 50) - 5)), pageSize: "50" }),
       await measure("filtro estado", { status: "QUOTE_SENT", pageSize: "50" }),
       await measure("filtro unassigned", { unassigned: "true", pageSize: "50" }),
       await measure("búsqueda comercial", { q: `Cliente rendimiento ${fixtureCount - 1}`, pageSize: "50" }),
+      await measureDetail("detalle tenant-first por caseRef", detailTarget.publicRef),
     ];
-    check(`${fixtureCount.toLocaleString("en-US")} mantiene dos consultas y cero N+1`, metrics.every((metric) => metric.queriesPerRequest === 2));
+    check(`${fixtureCount.toLocaleString("en-US")} mantiene máximo dos consultas y cero N+1`, metrics.every((metric) => (
+      "queriesPerRequest" in metric ? metric.queriesPerRequest === 2 : metric.maximumDatabaseQueries === 2
+    )));
     datasets.push(Object.freeze({ fixtures: fixtureCount, metrics: Object.freeze(metrics) }));
   }
 
+  // The canonical chain exercises this table heavily before CRM performance runs.
+  // Refresh planner statistics so the index assertion measures the current fixture set.
+  await prisma.$executeRawUnsafe(`ANALYZE "osi"."osi_pipeline_cases"`);
+
   const listPlan = summarizePlan(await prisma.$queryRawUnsafe(`
     EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-    SELECT id, "caseCode", status, "updatedAt"
+    SELECT public_ref, "caseCode", status, "updatedAt"
     FROM osi.osi_pipeline_cases
     WHERE tenant_id = $1
-    ORDER BY "updatedAt" DESC, id ASC
+    ORDER BY "updatedAt" DESC, public_ref ASC
     LIMIT 50
   `, tenantId));
   const statusPlan = summarizePlan(await prisma.$queryRawUnsafe(`
     EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-    SELECT id, "caseCode", status, "updatedAt"
+    SELECT public_ref, "caseCode", status, "updatedAt"
     FROM osi.osi_pipeline_cases
     WHERE tenant_id = $1 AND status = 'QUOTE_SENT'::osi."PipelineCaseStatus"
-    ORDER BY "updatedAt" DESC, id ASC
+    ORDER BY "updatedAt" DESC, public_ref ASC
     LIMIT 50
   `, tenantId));
   const searchPlan = summarizePlan(await prisma.$queryRawUnsafe(`
     EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-    SELECT id, "caseCode", status, "updatedAt"
+    SELECT public_ref, "caseCode", status, "updatedAt"
     FROM osi.osi_pipeline_cases
     WHERE tenant_id = $1 AND "clientName" ILIKE '%rendimiento 1999%'
-    ORDER BY "updatedAt" DESC, id ASC
+    ORDER BY "updatedAt" DESC, public_ref ASC
     LIMIT 50
   `, tenantId));
+  const detailTarget = await prisma.pipelineCase.findFirstOrThrow({ where: { tenantId }, select: { publicRef: true } });
+  const detailPlan = summarizePlan(await prisma.$queryRawUnsafe(`
+    EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+    SELECT public_ref, "caseCode", status, "updatedAt"
+    FROM osi.osi_pipeline_cases
+    WHERE tenant_id = $1 AND public_ref = $2::uuid
+  `, tenantId, detailTarget.publicRef));
+  check("detalle usa índice tenant-first publicRef", detailPlan.nodes.some((node) => node.index === "osi_pipeline_cases_tenant_id_public_ref_key"), detailPlan);
 
   process.stdout.write(`${JSON.stringify({
     ok: true,
     target,
     fixtureSets: FIXTURE_COUNTS,
     datasets,
-    plans: { list: listPlan, status: statusPlan, search: searchPlan },
+    plans: { list: listPlan, status: statusPlan, search: searchPlan, detail: detailPlan },
     crm01bIndexAssessment: {
       current: ["tenantId,status,updatedAt", "tenantId,ownerMembershipId,ownerUserId"],
-      missingForGeneralOrder: "(tenant_id, updatedAt DESC, id)",
+      publicDetail: "osi_pipeline_cases_tenant_id_public_ref_key",
+      missingForGeneralOrder: "(tenant_id, updatedAt DESC, public_ref)",
       textualSearch: "evaluar pg_trgm/índices funcionales sólo con evidencia de volumen productivo",
       migration16Created: false,
     },

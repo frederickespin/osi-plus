@@ -55,6 +55,13 @@ invariant(/AbortController/.test(adapter) && /cache: "no-store"/.test(adapter), 
 invariant(/cacheControl\.includes\("private"\)[\s\S]*cacheControl\.includes\("no-store"\)[\s\S]*vary\.includes\("authorization"\)[\s\S]*vary\.includes\("origin"\)[\s\S]*vary\.includes\("\*"\)/.test(adapter), "headers privados no se validan");
 invariant(/response\.status !== 200/.test(adapter) && /MAX_RESPONSE_BYTES/.test(adapter) && /credentials: "omit"/.test(adapter), "status/tamaño/cookies no fallan cerrado");
 invariant(!/getToken|sessionStore|localStorage|sessionStorage|indexedDB|Idempotency-Key/.test(adapter), "adaptador obtiene autoridad desde storage o prepara mutación");
+invariant(!/\bclientName\b|\bcaseNumber\b/.test(adapter) && /"caseRef", "caseCode", "client"/.test(adapter),
+  "DTO público debe usar caseRef, caseCode y Client relacional sin aliases legacy");
+
+const canonicalRead = read("api/_lib/crmPipelineRead.js");
+invariant(!/\bclientName\b|\bcaseNumber\b/.test(canonicalRead), "backend de lectura reintrodujo autoridad legacy");
+invariant(/tenantId_publicRef/.test(canonicalRead) && /client:\s*\{\s*is:\s*\{\s*name:/.test(canonicalRead),
+  "resolución de caso o búsqueda de Client no es tenant-first relacional");
 
 const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");
 const caseDetail = read("src/commercial-crm/CommercialCaseDetail.tsx");

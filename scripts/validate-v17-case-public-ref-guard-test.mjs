@@ -37,9 +37,14 @@ rejected("CUID como fallback rechazado", { schemaSource: schema.replace('dbgener
 rejected("JWT como fuente rechazado", { migrationSource: sql.replace("COMMIT;", "-- derive from JWT secret\nCOMMIT;") }, /fallback|debilitamiento/);
 rejected("migración 19 rechazada", { migrationNames: [...migrations, "20260821020000_future"] }, /18 migraciones|migración 19/);
 rejected("consumidor backend adicional rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/public-ref.js": "const value = row.publicRef;" } }, /sólo puede consumirse/);
+rejected("mutación consumidora rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/pipelineCaseMutationHttp.js": "const value = command.publicRef;" } }, /sólo puede consumirse/);
 rejected("consumidor frontend rechazado", { extraRuntimeSources: { ...canonicalRuntime, "src/unsafe.ts": "const leaked = value.publicRef;" } }, /sólo puede consumirse|frontend/);
 rejected("búsqueda sólo por publicRef rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace(/tenantId_publicRef:[\s\S]{0,130}\},\s*\}/, "publicRef") } }, /índice único tenant-first|únicamente por publicRef/);
 rejected("serializer CUID rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace("caseRef: row.publicRef", "caseRef: row.id") } }, /serializar|PK CUID/);
+rejected("clientName legacy rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace("caseCode: true,", "caseCode: true,\n  clientName: true,") } }, /clientName legacy/);
+rejected("búsqueda legacy de receptor rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace('{ client: { is: { name: { contains: filters.search, mode: "insensitive" } } } }', '{ clientName: { contains: filters.search, mode: "insensitive" } }') } }, /clientName legacy|Client relacional/);
+rejected("alias caseNumber rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": `${canonicalRead}\nconst caseNumber = "forbidden";` } }, /único caseCode/);
+rejected("frontend clientName rechazado", { extraRuntimeSources: { ...canonicalRuntime, "src/crm-relational/readApi.ts": "const clientName = 'legacy'; const caseRef = 'public DTO';" } }, /frontend público/);
 rejected("campo público interno rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/leak.js": "res.json({ public_ref: row.value })" } }, /sólo puede consumirse/);
 rejected("alias dinámico id rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/pipeline-cases/[id].js": "export default function handler() {}" } }, /alias ambiguo/);
 

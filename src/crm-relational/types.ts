@@ -16,7 +16,7 @@ export type CrmOwner = Readonly<{
 }>;
 
 export type CrmPipelineCase = Readonly<{
-  id: string;
+  caseRef: string;
   caseCode: string;
   clientName: string | null;
   mode: PipelineMode;

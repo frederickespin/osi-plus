@@ -86,8 +86,8 @@ function PipelineList({ value, selectedId, onSelect }: { value: CrmPipelineList 
   return (
     <div className="overflow-hidden rounded-lg border bg-white" role="list" aria-label="Oportunidades CRM relacionales">
       {value.data.map((item) => (
-        <button key={item.id} type="button" role="listitem" onClick={(event) => onSelect(item.id, event.currentTarget)}
-          className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 border-b p-4 text-left last:border-b-0 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 ${selectedId === item.id ? "bg-blue-50" : ""}`}>
+        <button key={item.caseRef} type="button" role="listitem" onClick={(event) => onSelect(item.caseRef, event.currentTarget)}
+          className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 border-b p-4 text-left last:border-b-0 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 ${selectedId === item.caseRef ? "bg-blue-50" : ""}`}>
           <span className="min-w-0">
             <span className="flex min-w-0 flex-wrap items-center gap-2"><strong className="max-w-full truncate">{item.caseCode}</strong><Badge variant={statusTone(item.status)}>{STATUS_LABELS[item.status]}</Badge></span>
             <span className="mt-1 block truncate text-sm text-slate-700">{item.clientName || "Cliente sin nombre publicado"}</span>

@@ -13,6 +13,7 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 1_000_000;
 const STATUSES = new Set<string>(PIPELINE_CASE_STATUSES);
 const MODES = new Set(["LOCAL", "EXPORT", "IMPORT"]);
+const PUBLIC_CASE_REF_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const PUBLIC_ERROR_CODES = Object.freeze({
   401: new Set(["COMMERCIAL_AUTH_REQUIRED"]),
   403: new Set(["CRM_PIPELINE_PERMISSION_FORBIDDEN"]),
@@ -121,7 +122,7 @@ function owner(value: unknown): CrmPipelineCase["owner"] {
 function pipelineCase(value: unknown): CrmPipelineCase {
   const row = record(value);
   exactKeys(row, [
-    "id", "caseCode", "clientName", "mode", "serviceType", "customerType", "status",
+    "caseRef", "caseCode", "clientName", "mode", "serviceType", "customerType", "status",
     "estimatedCbm", "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation",
     "destinationContracted", "assetsCount", "owner", "quoteCount", "eventCount", "createdAt", "updatedAt",
   ]);
@@ -129,7 +130,7 @@ function pipelineCase(value: unknown): CrmPipelineCase {
     throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   }
   return Object.freeze({
-    id: text(row.id)!,
+    caseRef: publicCaseRef(row.caseRef),
     caseCode: text(row.caseCode)!,
     clientName: text(row.clientName, true),
     mode: row.mode as CrmPipelineCase["mode"],
@@ -149,6 +150,13 @@ function pipelineCase(value: unknown): CrmPipelineCase {
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   });
+}
+
+function publicCaseRef(value: unknown): string {
+  if (typeof value !== "string" || !PUBLIC_CASE_REF_PATTERN.test(value)) {
+    throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  }
+  return value;
 }
 
 function serviceClient(value: unknown): CrmPipelineCaseDetail["client"] {
@@ -177,7 +185,7 @@ function pipelineCaseDetail(value: unknown): CrmPipelineCaseDetail {
     publicOwner = Object.freeze({ displayName: text(value.displayName)! });
   }
   return Object.freeze({
-    caseRef: text(row.caseRef)!,
+    caseRef: publicCaseRef(row.caseRef),
     caseNumber: text(row.caseNumber, true),
     status: status(row.status),
     mode: row.mode as CrmPipelineCaseDetail["mode"],
@@ -308,15 +316,15 @@ export class CrmPipelineReadApi {
     const data = root.data.map(pipelineCase);
     const expectedRows = Math.min(pageSize, Math.max(0, total - ((page - 1) * pageSize)));
     if (page !== filters.page || pageSize !== requestedPageSize || data.length !== expectedRows
-      || new Set(data.map((item) => item.id)).size !== data.length) {
+      || new Set(data.map((item) => item.caseRef)).size !== data.length) {
       throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
     }
     return Object.freeze({ total, page, pageSize, data: Object.freeze(data) });
   }
 
   async detail(caseRef: string, signal?: AbortSignal): Promise<CrmPipelineCaseDetail> {
-    if (!caseRef || caseRef.length > 128 || hasControlCharacters(caseRef) || caseRef.includes("/") || caseRef !== caseRef.trim()) {
-      throw new CrmPipelineReadError(400, "CRM_PIPELINE_FILTER_INVALID");
+    if (!PUBLIC_CASE_REF_PATTERN.test(caseRef)) {
+      throw new CrmPipelineReadError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
     }
     const root = record(await this.get(`/pipeline-cases/${encodeURIComponent(caseRef)}`, signal));
     exactKeys(root, ["ok", "data"]);

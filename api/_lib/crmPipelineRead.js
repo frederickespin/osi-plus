@@ -42,6 +42,7 @@ const LIST_QUERY_FIELDS = Object.freeze(new Set([
 ]));
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
+const PUBLIC_CASE_REF_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const OWNER_SELECT = Object.freeze({
   role: true,
@@ -50,7 +51,7 @@ const OWNER_SELECT = Object.freeze({
 });
 
 const CASE_SELECT = Object.freeze({
-  id: true,
+  publicRef: true,
   caseCode: true,
   clientName: true,
   mode: true,
@@ -71,7 +72,7 @@ const CASE_SELECT = Object.freeze({
 });
 
 const CASE_DETAIL_SELECT = Object.freeze({
-  id: true,
+  publicRef: true,
   caseCode: true,
   mode: true,
   serviceType: true,
@@ -127,6 +128,13 @@ function boundedOptional(value, maximum) {
   const text = scalar(value);
   if (!text || text.length > maximum) invalid();
   return text;
+}
+
+function canonicalCaseRef(value) {
+  if (typeof value !== "string" || !PUBLIC_CASE_REF_PATTERN.test(value)) {
+    invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
+  }
+  return value;
 }
 
 function exactBoolean(value) {
@@ -201,7 +209,7 @@ function safeOwner(owner) {
 
 function safeCase(row) {
   return Object.freeze({
-    id: row.id,
+    caseRef: row.publicRef,
     caseCode: row.caseCode,
     clientName: row.clientName,
     mode: row.mode,
@@ -225,7 +233,7 @@ function safeCase(row) {
 
 function safeCaseDetail(row) {
   return Object.freeze({
-    caseRef: row.id,
+    caseRef: row.publicRef,
     caseNumber: row.caseCode,
     status: row.status,
     mode: row.mode,
@@ -253,7 +261,7 @@ export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
       prisma.pipelineCase.findMany({
         where,
         select: CASE_SELECT,
-        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        orderBy: [{ updatedAt: "desc" }, { publicRef: "asc" }],
         skip: filters.skip,
         take: filters.pageSize,
       }),
@@ -270,12 +278,16 @@ export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
   }
 }
 
-export async function findCrmPipelineCase(prisma, { tenantId, caseId }) {
-  const id = boundedOptional(caseId, 128);
-  if (!id) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
+export async function findCrmPipelineCase(prisma, { tenantId, caseRef }) {
+  const publicRef = canonicalCaseRef(caseRef);
   try {
-    const row = await prisma.pipelineCase.findFirst({
-      where: { id, tenantId: String(tenantId) },
+    const row = await prisma.pipelineCase.findUnique({
+      where: {
+        tenantId_publicRef: {
+          tenantId: String(tenantId),
+          publicRef,
+        },
+      },
       select: CASE_DETAIL_SELECT,
     });
     if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);

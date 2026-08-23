@@ -99,6 +99,13 @@ function parseOwner(value: unknown): CrmPipelineCase["owner"] {
   return Object.freeze({ displayName: text(row.displayName)!, role: text(row.role)!, membershipStatus: text(row.membershipStatus)! });
 }
 
+function parseClient(value: unknown): CrmPipelineCase["client"] {
+  if (value === null) return null;
+  const row = object(value);
+  exactKeys(row, ["displayName", "type", "status"]);
+  return Object.freeze({ displayName: text(row.displayName)!, type: text(row.type, true), status: text(row.status)! });
+}
+
 function parseOwnerOption(value: unknown): CrmOwnerOption {
   const row = object(value);
   exactKeys(row, ["ownerRef", "displayName", "role"]);
@@ -111,11 +118,11 @@ function parseOwnerOption(value: unknown): CrmOwnerOption {
 
 function parseCase(value: unknown): CrmPipelineCase {
   const row = object(value);
-  exactKeys(row, ["caseRef", "caseCode", "clientName", "mode", "serviceType", "customerType", "status", "estimatedCbm", "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation", "destinationContracted", "assetsCount", "owner", "quoteCount", "eventCount", "createdAt", "updatedAt"]);
+  exactKeys(row, ["caseRef", "caseCode", "client", "mode", "serviceType", "customerType", "status", "estimatedCbm", "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation", "destinationContracted", "assetsCount", "owner", "quoteCount", "eventCount", "createdAt", "updatedAt"]);
   if (typeof row.mode !== "string" || !MODE.has(row.mode)) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   if (typeof row.caseRef !== "string" || !PUBLIC_CASE_REF_PATTERN.test(row.caseRef)) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   return Object.freeze({
-    caseRef: row.caseRef, caseCode: text(row.caseCode)!, clientName: text(row.clientName, true), mode: row.mode as CrmPipelineCase["mode"],
+    caseRef: row.caseRef, caseCode: text(row.caseCode)!, client: parseClient(row.client), mode: row.mode as CrmPipelineCase["mode"],
     serviceType: text(row.serviceType)!, customerType: text(row.customerType)!, status: status(row.status), estimatedCbm: finite(row.estimatedCbm),
     requiresSurvey: bool(row.requiresSurvey), surveyMethod: text(row.surveyMethod)!, originLocation: text(row.originLocation)!, destinationLocation: text(row.destinationLocation)!,
     destinationContracted: bool(row.destinationContracted), assetsCount: integer(row.assetsCount), owner: parseOwner(row.owner), quoteCount: integer(row.quoteCount),

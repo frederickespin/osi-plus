@@ -50,10 +50,15 @@ const OWNER_SELECT = Object.freeze({
   user: { select: { name: true } },
 });
 
+const CLIENT_SELECT = Object.freeze({
+  name: true,
+  type: true,
+  status: true,
+});
+
 const CASE_SELECT = Object.freeze({
   publicRef: true,
   caseCode: true,
-  clientName: true,
   mode: true,
   serviceType: true,
   customerType: true,
@@ -67,6 +72,7 @@ const CASE_SELECT = Object.freeze({
   assetsCount: true,
   createdAt: true,
   updatedAt: true,
+  client: { select: CLIENT_SELECT },
   enterpriseOwner: { select: OWNER_SELECT },
   _count: { select: { quotes: true, events: true } },
 });
@@ -79,13 +85,7 @@ const CASE_DETAIL_SELECT = Object.freeze({
   status: true,
   createdAt: true,
   updatedAt: true,
-  client: {
-    select: {
-      name: true,
-      type: true,
-      status: true,
-    },
-  },
+  client: { select: CLIENT_SELECT },
   enterpriseOwner: {
     select: {
       user: { select: { name: true } },
@@ -190,7 +190,7 @@ function pipelineWhere(tenantId, filters = {}) {
   if (filters.search) {
     where.OR = [
       { caseCode: { contains: filters.search, mode: "insensitive" } },
-      { clientName: { contains: filters.search, mode: "insensitive" } },
+      { client: { is: { name: { contains: filters.search, mode: "insensitive" } } } },
       { originLocation: { contains: filters.search, mode: "insensitive" } },
       { destinationLocation: { contains: filters.search, mode: "insensitive" } },
     ];
@@ -207,11 +207,20 @@ function safeOwner(owner) {
   });
 }
 
+function safeClient(client) {
+  if (!client) return null;
+  return Object.freeze({
+    displayName: String(client.name),
+    type: client.type === null ? null : String(client.type),
+    status: String(client.status),
+  });
+}
+
 function safeCase(row) {
   return Object.freeze({
     caseRef: row.publicRef,
     caseCode: row.caseCode,
-    clientName: row.clientName,
+    client: safeClient(row.client),
     mode: row.mode,
     serviceType: row.serviceType,
     customerType: row.customerType,
@@ -234,17 +243,11 @@ function safeCase(row) {
 function safeCaseDetail(row) {
   return Object.freeze({
     caseRef: row.publicRef,
-    caseNumber: row.caseCode,
+    caseCode: row.caseCode,
     status: row.status,
     mode: row.mode,
     serviceType: row.serviceType,
-    client: row.client
-      ? Object.freeze({
-        displayName: String(row.client.name),
-        type: String(row.client.type),
-        status: String(row.client.status),
-      })
-      : null,
+    client: safeClient(row.client),
     owner: row.enterpriseOwner?.user?.name
       ? Object.freeze({ displayName: String(row.enterpriseOwner.user.name) })
       : null,

@@ -71,17 +71,16 @@ ServiceCase, Lead, Account, BusinessEntity y stores históricos no son fallback.
 
 ### Disponibles mediante las APIs actuales
 
-Los tres GET vigentes publican lista, resumen y detalle con el mismo DTO de caso. Están disponibles: `id` opaco de transporte, `caseCode`, `clientName` heredado nullable, `mode`, `serviceType`, `customerType`, `status`, `estimatedCbm`, `requiresSurvey`, `surveyMethod`, origen/destino resumidos, `destinationContracted`, `assetsCount`, owner sanitizado, conteos de eventos/cotizaciones y fechas de creación/actualización. El resumen publica total, asignadas, sin asignar y conteo por estado; SLA declara `UNAVAILABLE`.
+Los tres GET vigentes publican lista, resumen y detalle mediante contratos cerrados. Lista y detalle usan `caseRef` como representación pública de `PipelineCase.publicRef`, muestran un único `caseCode` y proyectan `client` exclusivamente desde la relación tenant-first. También están disponibles `mode`, `serviceType`, `customerType`, `status`, `estimatedCbm`, `requiresSurvey`, `surveyMethod`, origen/destino resumidos, `destinationContracted`, `assetsCount`, owner sanitizado, conteos de eventos/cotizaciones y fechas de creación/actualización. El resumen publica total, asignadas, sin asignar y conteo por estado; SLA declara `UNAVAILABLE`.
 
 ### Ausentes en los contratos actuales
 
-- La relación canónica `PipelineCase.client` y una proyección pública verificable del Client receptor. El `clientName` heredado no demuestra que `clientId` esté vinculado.
 - `statusChangedAt`, versión y una historia pública ordenada.
 - Datos generales adicionales de la Ficha que no estén en el DTO anterior.
 - Project/handoff publicado, ubicaciones múltiples, partes comerciales, compliance y componentes de servicio.
 - Survey, Quote, materiales, cajas, costos, PIC y documentos.
 
-Para cumplir “Client vinculado”, el primer vertical necesita una ampliación GET mínima y estricta, por ejemplo `serviceClient: { displayName, kind, status } | null`, construida desde la FK tenant-first. No debe publicar `clientId` ni usar `clientName` como sustituto. Hasta que exista, la UI mostrará “Client receptor no vinculado” y podrá presentar el nombre histórico sólo con una etiqueta inequívoca de dato legado.
+La proyección pública vigente es `client: { displayName, type, status } | null`, construida desde la FK tenant-first. `clientId=NULL` siempre produce `client:null`; `clientName` heredado no se selecciona, no participa en búsquedas y no se publica.
 
 ### Campos que no deben inventarse
 
@@ -96,14 +95,70 @@ No derivar Client, pagador, aprobador, institución, Lead Account, perfil diplom
 - Query permitida: `page`, `pageSize`, `status`, `mode`, `serviceType`, `q`, `unassigned`.
 - Paginación server-side, máximo vigente del servidor.
 - Respuesta: `total`, `page`, `pageSize`, `data`.
-- Cada caso publica sólo el identificador público opaco requerido por el detalle, caseCode, receptor publicado, mode, serviceType, customerType, status, estimatedCbm, requiresSurvey, surveyMethod, ruta resumida, owner sanitizado, quoteCount, eventCount y timestamps.
+- Cada caso publica sólo `caseRef`, `caseCode`, `client`, mode, serviceType, customerType, status, estimatedCbm, requiresSurvey, surveyMethod, ruta resumida, owner sanitizado, quoteCount, eventCount y timestamps.
 
-`GET /api/crm/pipeline-cases/:id`
+`GET /api/crm/pipeline-cases/:caseRef`
 
 - Tenant scoping obligatorio.
 - Cross-tenant y ausente producen el mismo 404.
 - No publica tenantId, clientId, ownerMembershipId, ownerUserId, permisos ni objeto Prisma.
-- Debe ampliarse con la proyección pública del Client receptor antes de declarar completo el alcance “Client vinculado”.
+- Resuelve exclusivamente `(tenantId, publicRef)`; CUID, UUID no canónico, ausente y cross-tenant producen el mismo 404.
+
+### DTO públicos exactos
+
+```ts
+type PublicClient = {
+  displayName: string;
+  type: string | null;
+  status: string;
+};
+
+type PublicListOwner = {
+  displayName: string;
+  role: string;
+  membershipStatus: string;
+};
+
+type PublicDetailOwner = {
+  displayName: string;
+};
+
+type PublicPipelineCaseListItem = {
+  caseRef: string;
+  caseCode: string;
+  client: PublicClient | null;
+  mode: PipelineMode;
+  serviceType: string;
+  customerType: PipelineCustomerType;
+  status: PipelineCaseStatus;
+  estimatedCbm: number;
+  requiresSurvey: boolean;
+  surveyMethod: PipelineSurveyMethod;
+  originLocation: string;
+  destinationLocation: string;
+  destinationContracted: boolean;
+  assetsCount: number;
+  owner: PublicListOwner | null;
+  quoteCount: number;
+  eventCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type PublicPipelineCaseDetail = {
+  caseRef: string;
+  caseCode: string;
+  status: PipelineCaseStatus;
+  mode: PipelineMode | null;
+  serviceType: string | null;
+  client: PublicClient | null;
+  owner: PublicDetailOwner | null;
+  createdAt: string;
+  updatedAt: string;
+};
+```
+
+Los contratos son exactos: cualquier campo adicional, tipo incorrecto, fecha inválida, string excesivo, estado desconocido o respuesta mayor de 1 MB produce `CRM_PIPELINE_RESPONSE_INVALID`, sin conservar datos parciales ni ejecutar retry automático.
 
 `GET /api/crm/pipeline-summary`
 
@@ -114,7 +169,7 @@ No derivar Client, pagador, aprobador, institución, Lead Account, perfil diplom
 
 La Ficha puede implementarse inicialmente con el detalle existente. Si la revisión visual exige historia, añadir sólo:
 
-`GET /api/crm/pipeline-cases/:id/history?cursor=&pageSize=`
+`GET /api/crm/pipeline-cases/:caseRef/history?cursor=&pageSize=`
 
 DTO propuesto por entrada:
 
@@ -136,7 +191,7 @@ No publicar payload, requestId, hashes, membershipId, userId, tenantId, evidence
 | Grupo | Campos permitidos | Regla |
 |---|---|---|
 | Identidad del caso | caseCode | Nunca mostrar PK interna |
-| Receptor | `serviceClient` canónico o “Client receptor no vinculado”; opcionalmente nombre histórico etiquetado | No confundir `clientName` heredado con la FK Client |
+| Receptor | `client` canónico o “Client receptor no vinculado” | Sólo `PipelineCase.client`; nunca `clientName` heredado |
 | Servicio | mode, serviceType, customerType | Enumeraciones estrictas |
 | Estado | status, statusChangedAt si se publica | Etiquetas exactas, sin LeadLite mapping |
 | Asignación | owner displayName y rol publicado | Nunca membershipId/userId |
@@ -240,24 +295,24 @@ Una ampliación a otros roles requiere decisión empresarial separada; no basta 
 
 ### Regresión
 
-- PostgreSQL 18 con 17 migraciones; segundo deploy, status, drift y baseline.
+- PostgreSQL 18 con 18 migraciones; segundo deploy, status, drift y baseline.
 - Suite canónica, Auth adversarial, Hub, CRM estricto, Inbox y navegadores existentes.
 - Build, TypeScript, ESLint diferencial, secretos, bundle y `git diff --check`.
 
 ## Riesgos de implementación
 
-1. `clientName` heredado y `Client` vinculado pueden divergir. El backend debe definir un único campo público de receptor y representar la ausencia, nunca resolverla en frontend.
+1. `clientName` heredado y `Client` vinculado pueden divergir. El backend publica únicamente `client` relacional y representa la ausencia como `null`.
 2. La apariencia de CasePipelineControl invita a acciones. En 01A debe ser estrictamente informativa.
-3. El ID público actual se usa para detalle; no debe filtrarse a logs/DOM más allá de la necesidad de routing y debe evaluarse un identificador público separado en fase futura.
+3. `caseRef` se usa sólo para routing y transporte; no se muestra y nunca sustituye `caseCode` como identidad visible.
 4. La historia puede mezclar PipelineEvent y Command. Sólo se agrega si existe un DTO y orden canónico; no se concatena en el cliente.
 5. El snapshot tiene rutas internas y estado persistido. El vertical nuevo debe usar el router/guardia canónicos sin importar ese comportamiento.
 6. El empty state de Production será legítimo tras la limpieza sintética; nunca debe activar fixtures o fallback.
 
 ## Bloqueadores exactos antes de implementación
 
-1. Acordar y versionar la proyección pública mínima del Client receptor; el contrato vigente sólo entrega `clientName` heredado.
+1. La proyección pública mínima del Client receptor quedó congelada como `client: { displayName, type, status } | null`.
 2. Decidir si la historia básica entra en 01A. Si entra, crear su GET paginado y DTO sanitizado; si no, mantener el placeholder explícito.
-3. Definir el identificador de navegación pública del detalle. El `id` actual es opaco pero sigue siendo PK; no debe expandirse a otros contratos sin decisión.
+3. La navegación usa `caseRef` UUID v4 derivado de `publicRef`; la PK CUID no pertenece al contrato público.
 4. Congelar la lista exacta de campos generales de la Ficha a los disponibles arriba; cualquier campo adicional requiere contrato backend, no adaptación frontend.
 5. Confirmar mediante guardia de imports que ningún componente portado arrastra `useCasesStore`, `salesStore`, `caseBridge`, mocks, `NewCaseModal` o storage.
 6. Aprobar la comparación visual desktop/móvil del Inbox y Ficha contra el snapshot, aceptando que tabs Survey/Quote/Materiales no aparecen todavía.

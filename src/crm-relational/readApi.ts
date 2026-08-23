@@ -122,7 +122,7 @@ function owner(value: unknown): CrmPipelineCase["owner"] {
 function pipelineCase(value: unknown): CrmPipelineCase {
   const row = record(value);
   exactKeys(row, [
-    "caseRef", "caseCode", "clientName", "mode", "serviceType", "customerType", "status",
+    "caseRef", "caseCode", "client", "mode", "serviceType", "customerType", "status",
     "estimatedCbm", "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation",
     "destinationContracted", "assetsCount", "owner", "quoteCount", "eventCount", "createdAt", "updatedAt",
   ]);
@@ -132,7 +132,7 @@ function pipelineCase(value: unknown): CrmPipelineCase {
   return Object.freeze({
     caseRef: publicCaseRef(row.caseRef),
     caseCode: text(row.caseCode)!,
-    clientName: text(row.clientName, true),
+    client: serviceClient(row.client),
     mode: row.mode as CrmPipelineCase["mode"],
     serviceType: text(row.serviceType)!,
     customerType: text(row.customerType)!,
@@ -173,7 +173,7 @@ function serviceClient(value: unknown): CrmPipelineCaseDetail["client"] {
 function pipelineCaseDetail(value: unknown): CrmPipelineCaseDetail {
   const row = record(value);
   exactKeys(row, [
-    "caseRef", "caseNumber", "status", "mode", "serviceType", "client", "owner", "createdAt", "updatedAt",
+    "caseRef", "caseCode", "status", "mode", "serviceType", "client", "owner", "createdAt", "updatedAt",
   ]);
   if (row.mode !== null && (typeof row.mode !== "string" || !MODES.has(row.mode))) {
     throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
@@ -186,7 +186,7 @@ function pipelineCaseDetail(value: unknown): CrmPipelineCaseDetail {
   }
   return Object.freeze({
     caseRef: publicCaseRef(row.caseRef),
-    caseNumber: text(row.caseNumber, true),
+    caseCode: text(row.caseCode)!,
     status: status(row.status),
     mode: row.mode as CrmPipelineCaseDetail["mode"],
     serviceType: text(row.serviceType, true),

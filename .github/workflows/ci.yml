@@ -143,6 +143,7 @@ jobs:
           node scripts/validate-sec-dep-01-guard.mjs
           node scripts/validate-sec-dep-01-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
+          npm run guard:v17-hub-auth-lazy
           node scripts/validate-v17-commercial-crm-guard.mjs
           npm run guard:v17-commercial-crm-preview
           npm run test:v17-commercial-crm-preview:guard
@@ -282,6 +283,7 @@ jobs:
           node scripts/validate-v17-case-public-ref-guard.mjs
           node scripts/validate-v17-case-public-ref-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
+          node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           node scripts/v17-case-client-local-target-test.mjs
           node scripts/validate-mt01c2b2-guard.mjs
           node scripts/mt-01c2b2-database-guard-test.mjs
@@ -386,6 +388,7 @@ jobs:
           node scripts/validate-v17-case-public-ref-guard.mjs
           node scripts/validate-v17-case-public-ref-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
+          node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           node scripts/validate-mt01c2b3a-guard.mjs
           node scripts/validate-mt01c2b3a-guard-test.mjs
           node scripts/validate-mt01c2b3b-guard.mjs

@@ -16,6 +16,7 @@
     "test:sec-dep-01:browser": "playwright test -c playwright.sec-dep.config.ts",
     "test:crm-01b3b2:browser": "playwright test -c playwright.crm-01b3b2.config.ts",
     "test:v17-hub:browser": "playwright test -c playwright.v17-hub.config.ts",
+    "guard:v17-hub-auth-lazy": "node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs && node scripts/validate-v17-hub-auth-lazy-boundary-guard-test.mjs",
     "test:v17-commercial-crm:browser": "playwright test -c playwright.v17-commercial-crm.config.ts",
     "test:v17-commercial-crm-preview": "node scripts/v17-commercial-crm-preview-test.mjs",
     "test:v17-commercial-crm-preview:http": "node scripts/v17-commercial-crm-preview-http-test.mjs",

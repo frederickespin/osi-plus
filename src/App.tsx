@@ -1,6 +1,8 @@
-import { Component, Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { LoginScreen, type LoginSession } from '@/components/auth/LoginScreen';
+import { CanonicalAccessDenied } from '@/components/auth/CanonicalAccessDenied';
+import { CanonicalAuthorizationError } from '@/components/auth/CanonicalAuthorizationError';
 import { Toaster } from '@/components/ui/sonner';
 import type { UserRole } from '@/types/osi.types';
 import { getMe } from '@/lib/api';
@@ -15,6 +17,7 @@ import { isRelationalCrmReadEnabled } from '@/crm-relational/clientMode';
 import type { ModuleId } from '@/lib/roleModuleMap';
 import { resolveOsiHubMode } from '@/hub/hubMode';
 import type { HubAccessContext } from '@/hub/hubAccess';
+import { evaluateHubRouteAccess } from '@/hub/hubRouteAccess';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const TowerControl = lazy(() =>
@@ -146,6 +149,133 @@ const RelationalPipelineModule = lazy(() =>
 );
 const HubWorkspace = lazy(() => import('@/hub/HubWorkspace'));
 
+function currentHubPathname() {
+  return window.location.pathname === '/' ? '/hub' : window.location.pathname;
+}
+
+function hubAccessContextFromSession(session: Session): HubAccessContext {
+  return {
+    role: session.role,
+    effectivePermissions: session.permissions ?? null,
+    deniedPermissions: session.deniedPermissions ?? [],
+    source: session.permissions ? 'SERVER_EFFECTIVE_PERMISSIONS' : 'SERVER_VALIDATED_ROLE',
+  };
+}
+
+type AuthorizedHubEntryProps = Readonly<{
+  session: Session;
+  accessContext: HubAccessContext;
+  crmReadEnabled: boolean;
+  mode: 'LOCAL_ONLY' | 'PREVIEW_REHEARSAL';
+  onLogout: () => void;
+}>;
+
+function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLogout }: AuthorizedHubEntryProps) {
+  const [routeState, setRouteState] = useState(() => ({
+    status: 'READY' as 'READY' | 'VALIDATING' | 'DENIED' | 'ERROR',
+    pathname: currentHubPathname(),
+    session,
+    accessContext,
+  }));
+  const navigationFence = useRef(0);
+  const activeNavigation = useRef<{ controller: AbortController; pathname: string } | null>(null);
+
+  const validateNavigation = useCallback((pathname: string, historyMode: 'PUSH' | 'EXISTING') => {
+    if (activeNavigation.current?.pathname === pathname && !activeNavigation.current.controller.signal.aborted) return;
+    activeNavigation.current?.controller.abort();
+    const controller = new AbortController();
+    activeNavigation.current = { controller, pathname };
+    const fence = ++navigationFence.current;
+    setRouteState((current) => ({ ...current, status: 'VALIDATING' }));
+    void validateLegacySession(session, controller.signal).then((validatedSession) => {
+      if (fence !== navigationFence.current) return;
+      activeNavigation.current = null;
+      if (mode === 'PREVIEW_REHEARSAL' && validatedSession.commercialCrmPreviewAuthorized !== true) {
+        onLogout();
+        return;
+      }
+      if (session.userId && validatedSession.userId !== session.userId) {
+        onLogout();
+        return;
+      }
+      const validatedAccessContext = hubAccessContextFromSession(validatedSession);
+      const decision = evaluateHubRouteAccess(pathname, validatedAccessContext);
+      if (historyMode === 'PUSH' && decision.allowed) window.history.pushState({}, '', pathname);
+      if (decision.allowed) window.scrollTo({ top: 0, behavior: 'instant' });
+      setRouteState({
+        status: decision.allowed ? 'READY' : 'DENIED',
+        pathname,
+        session: validatedSession,
+        accessContext: validatedAccessContext,
+      });
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted || fence !== navigationFence.current) return;
+      activeNavigation.current = null;
+      const status = typeof error === 'object' && error !== null && 'status' in error
+        ? Number((error as { status?: unknown }).status)
+        : null;
+      if (status === 401) {
+        onLogout();
+        return;
+      }
+      setRouteState((current) => ({ ...current, status: 'ERROR' }));
+    });
+  }, [mode, onLogout, session]);
+
+  useEffect(() => {
+    const updatePathname = () => validateNavigation(currentHubPathname(), 'EXISTING');
+    window.addEventListener('popstate', updatePathname);
+    return () => {
+      activeNavigation.current?.controller.abort();
+      activeNavigation.current = null;
+      navigationFence.current += 1;
+      window.removeEventListener('popstate', updatePathname);
+    };
+  }, [validateNavigation]);
+
+  const routeDecision = useMemo(
+    () => evaluateHubRouteAccess(routeState.pathname, routeState.accessContext),
+    [routeState.accessContext, routeState.pathname],
+  );
+
+  const returnToSafeRoute = routeDecision.hasAuthorizedApplication
+    ? () => validateNavigation('/hub', 'PUSH')
+    : () => {
+        window.history.replaceState({}, '', '/');
+        onLogout();
+      };
+
+  if (routeState.status === 'ERROR') {
+    return <CanonicalAuthorizationError onReturnToSafeRoute={returnToSafeRoute} />;
+  }
+
+  if (routeState.status === 'DENIED' || !routeDecision.allowed) {
+    return <CanonicalAccessDenied onReturnToSafeRoute={returnToSafeRoute} />;
+  }
+
+  return (
+    <>
+      {routeState.status === 'VALIDATING' && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[100] bg-slate-950 px-4 py-2 text-center text-xs font-semibold text-white" role="status" aria-live="polite">
+          Verificando acceso…
+        </div>
+      )}
+      <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
+        <HubWorkspace
+          userName={routeState.session.name}
+          authorization={routeState.session.token}
+          accessContext={routeState.accessContext}
+          crmReadEnabled={crmReadEnabled}
+          mode={mode}
+          pathname={routeState.pathname}
+          onNavigate={(pathname) => validateNavigation(pathname, 'PUSH')}
+          onLogout={onLogout}
+        />
+      </Suspense>
+    </>
+  );
+}
+
 class AppErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
     super(props);
@@ -193,12 +323,24 @@ type PendingLegacyValidation = {
 
 let pendingLegacyValidation: PendingLegacyValidation | null = null;
 
-function validateLegacySession(session: Session): Promise<Session> {
+function validateLegacySession(session: Session, signal?: AbortSignal): Promise<Session> {
   const token = session.token;
   if (!token) return Promise.reject(Object.assign(new Error('Token legacy requerido.'), { status: 401 }));
+  if (signal) return resolveValidatedLegacySession(token, signal);
   if (pendingLegacyValidation?.token === token) return pendingLegacyValidation.promise;
 
-  const promise = getMe(token).then((response) => {
+  const promise = resolveValidatedLegacySession(token);
+  const entry = { token, promise };
+  pendingLegacyValidation = entry;
+  void promise.then(
+    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
+    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
+  );
+  return promise;
+}
+
+function resolveValidatedLegacySession(token: string, signal?: AbortSignal): Promise<Session> {
+  return getMe(token, signal).then((response) => {
     const role = normalizeRole(response.user.role);
     if (!role) {
       throw Object.assign(new Error('El servidor devolvió un rol inválido.'), { status: 401 });
@@ -213,13 +355,6 @@ function validateLegacySession(session: Session): Promise<Session> {
       commercialCrmPreviewAuthorized: response.user.commercialCrmPreviewAuthorized === true,
     };
   });
-  const entry = { token, promise };
-  pendingLegacyValidation = entry;
-  void promise.then(
-    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
-    () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
-  );
-  return promise;
 }
 
 function AuthLoadingScreen() {
@@ -263,12 +398,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
   const crmPipelineClientEnabled = isRelationalCrmReadEnabled() && previewConfirmed;
   const userRole: UserRole = session.role;
   const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
-  const hubAccessContext = useMemo<HubAccessContext>(() => ({
-    role: userRole,
-    effectivePermissions: session.permissions ?? null,
-    deniedPermissions: session.deniedPermissions ?? [],
-    source: session.permissions ? 'SERVER_EFFECTIVE_PERMISSIONS' : 'SERVER_VALIDATED_ROLE',
-  }), [session.deniedPermissions, session.permissions, userRole]);
+  const hubAccessContext = useMemo(() => hubAccessContextFromSession(session), [session]);
 
   // Escuchar evento de cambio de módulo desde otros componentes
   useEffect(() => {
@@ -411,9 +541,13 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
 
   if (hubMode.enabled) {
     return (
-      <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
-        <HubWorkspace userName={session.name} authorization={session.token} accessContext={hubAccessContext} crmReadEnabled={crmPipelineClientEnabled} mode={hubMode.mode} onLogout={onLogout} />
-      </Suspense>
+      <AuthorizedHubEntry
+        session={session}
+        accessContext={hubAccessContext}
+        crmReadEnabled={crmPipelineClientEnabled}
+        mode={hubMode.mode}
+        onLogout={onLogout}
+      />
     );
   }
 

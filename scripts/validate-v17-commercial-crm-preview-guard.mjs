@@ -18,10 +18,14 @@ export const PREVIEW_GUARD_FILES = Object.freeze([
   "src/crm-relational/clientMode.ts",
   "src/crm-relational/readApi.ts",
   "src/hub/HubWorkspace.tsx",
+  "src/hub/hubRouteAccess.ts",
+  "src/components/auth/CanonicalAccessDenied.tsx",
+  "src/components/auth/CanonicalAuthorizationError.tsx",
   "src/hub/appCatalog.ts",
   "src/hub/hubAccess.ts",
   "src/hub/hubMode.ts",
   "src/lib/env.ts",
+  "src/lib/api.ts",
   "vercel.json",
   "vite.config.ts",
 ]);
@@ -146,8 +150,9 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   const catalog = "src/hub/appCatalog.ts";
   requireText(files, catalog, 'route: "/commercial", routeAliases: ["/crm", "/sales/pipeline"]', "rutas CRM equivalentes divergentes");
   const workspace = "src/hub/HubWorkspace.tsx";
-  requireText(files, workspace, "findHubApplicationByRoute(pathname)", "ruta directa omite catálogo común");
-  requireText(files, workspace, "evaluateHubAccess(selected, accessContext)", "ruta directa omite decisión común");
+  const routeAccess = "src/hub/hubRouteAccess.ts";
+  requireText(files, routeAccess, "findHubApplicationByRoute(normalizedPath)", "ruta directa omite catálogo común");
+  requireText(files, routeAccess, "evaluateHubAccess(application, context)", "ruta directa omite decisión común");
   requireText(files, workspace, "selected.appId === \"commercial-crm\" && crmReadEnabled", "Inbox se carga sin compuerta de lectura");
 
   const accessUi = "src/hub/hubAccess.ts";
@@ -160,6 +165,9 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   const app = "src/App.tsx";
   requireText(files, app, "commercialCrmPreviewAuthorized === true", "frontend no exige confirmación del servidor");
   requireText(files, app, "isRelationalCrmReadEnabled() && previewConfirmed", "frontend no coordina Hub/cliente/lectura");
+  requireText(files, app, "evaluateHubRouteAccess(routeState.pathname, routeState.accessContext)", "frontend autoriza después del lazy");
+  requireText(files, app, "validateLegacySession(session, controller.signal)", "frontend no revalida con cancelación");
+  requireText(files, app, "activeNavigation.current?.controller.abort()", "frontend no cancela navegación obsoleta");
 
   const workflow = ".github/workflows/ci.yml";
   for (const signature of [

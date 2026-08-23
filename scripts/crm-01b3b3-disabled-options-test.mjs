@@ -1,5 +1,5 @@
 import { createPipelineCasesListHandler } from "../api/crm/pipeline-cases/index.js";
-import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[caseRef].js";
+import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[caseKey]/index.js";
 import { createPipelineSummaryHandler } from "../api/crm/pipeline-summary.js";
 import { createPipelineOwnerOptionsHandler } from "../api/crm/pipeline-owner-options.js";
 import {
@@ -152,7 +152,7 @@ try {
         };
       } },
     },
-  }), request("GET"));
+  }), request("GET", { query: { caseKey: CASE_REF } }));
   check("detalle GET activo conserva contrato", activeDetail.statusCode === 200
     && activeDetail.body?.ok === true && activeDetail.body?.data?.caseRef === CASE_REF
     && activeDetail.body?.data?.owner === null);
@@ -188,7 +188,7 @@ try {
     [CASE_REF, CASE_REF],
   ];
   for (const invalidRef of invalidRefs) {
-    const response = await invoke(invalidRefHandler, request("GET", { query: { caseRef: invalidRef } }));
+    const response = await invoke(invalidRefHandler, request("GET", { query: { caseKey: invalidRef } }));
     check("referencia pública inválida produce 404 uniforme", response.statusCode === 404
       && response.body?.error === "CRM_PIPELINE_RESOURCE_NOT_FOUND"
       && JSON.stringify(response.body) === JSON.stringify({ ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }));

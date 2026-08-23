@@ -7,7 +7,7 @@ import {
   resolveCrmPipelineModes,
 } from "../api/_lib/crmPipelineAccess.js";
 import { createPipelineCasesListHandler } from "../api/crm/pipeline-cases/index.js";
-import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[caseRef].js";
+import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[caseKey]/index.js";
 import { createPipelineSummaryHandler } from "../api/crm/pipeline-summary.js";
 import { createTransitionHandler, createAssignOwnerHandler, createUnassignOwnerHandler, createAllowedTransitionsHandler } from "../api/_lib/pipelineCaseMutationHttp.js";
 

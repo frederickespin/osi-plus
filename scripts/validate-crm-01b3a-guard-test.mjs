@@ -9,7 +9,7 @@ function rejected(name, options, pattern) {
 }
 const adapter = readFileSync("api/_lib/pipelineCaseMutationHttp.js", "utf8");
 const access = readFileSync("api/_lib/crmPipelineAccess.js", "utf8");
-const transition = readFileSync("api/crm/pipeline-cases/[id]/transition.js", "utf8");
+const transition = readFileSync("api/crm/pipeline-cases/[caseKey]/transition.js", "utf8");
 const vercel = readFileSync("vercel.json", "utf8");
 check("baseline CRM-01B3A", validateCrm01b3aGuard().ok);
 rejected("LOCAL_ONLY en CI rechazado", { env: { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY" } }, /LOCAL_ONLY/);
@@ -24,11 +24,12 @@ rejected("CORS global de Vercel sobre CRM rechazado", { overrides: { "vercel.jso
 rejected("exclusión parcial por endpoint rechazada", { overrides: { "vercel.json": vercel.replace("crm/", "crm/(?:pipeline-cases|pipeline-summary)") } }, /namespace|parcial/);
 rejected("header x-osi rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace('"Authorization", "Content-Type", "Idempotency-Key"', '"Authorization", "Content-Type", "Idempotency-Key", "x-osi-role"') } }, /x-osi/);
 rejected("detección raw idempotency obligatoria", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace('rawHeaderCount(req, "idempotency-key")', 'null /* duplicate guard removed */') } }, /rawHeaders/);
+rejected("identidad dinámica ambigua rechazada", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace('(keys.includes("id") && keys.includes("caseKey"))', "false") } }, /identidad ambigua/);
 rejected("auth antes de gate rechazado", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("requireCrmPipelineMutationsLocal(env);", "resolveContext(req); requireCrmPipelineMutationsLocal(env);") } }, /orden/);
-rejected("SQL en handler rechazado", { overrides: { "api/crm/pipeline-cases/[id]/transition.js": `${transition}\nawait prisma.pipelineCase.update({});` } }, /SQL|escritura/);
+rejected("SQL en handler rechazado", { overrides: { "api/crm/pipeline-cases/[caseKey]/transition.js": `${transition}\nawait prisma.pipelineCase.update({});` } }, /SQL|escritura/);
 rejected("autoasignación rechazada", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": `${adapter}\nconst ownerMembershipId = context.membershipId; // autoAssign` } }, /autoasignación/);
-rejected("PATCH rechazado", { overrides: { "api/crm/pipeline-cases/[id]/transition.js": `${transition}\nif (req.method === "PATCH") {}` } }, /alternativo/);
-rejected("endpoint nuevo rechazado", { extraSources: { "api/crm/pipeline-cases/[id]/mutate.js": "export default async function handler() {}" } }, /endpoints no autorizados/);
+rejected("PATCH rechazado", { overrides: { "api/crm/pipeline-cases/[caseKey]/transition.js": `${transition}\nif (req.method === "PATCH") {}` } }, /alternativo/);
+rejected("endpoint nuevo rechazado", { extraSources: { "api/crm/pipeline-cases/[caseKey]/mutate.js": "export default async function handler() {}" } }, /endpoints no autorizados/);
 rejected("frontend consumidor rechazado", { extraSources: { "src/fake-crm-mutation.ts": 'fetch("/api/crm/pipeline-cases/x/assign-owner")' } }, /frontend/);
 rejected("HYBRID rechazado", { env: { MT01B_AUTH_MODE: "HYBRID" } }, /HYBRID/);
 rejected("tenant switch rechazado", { env: { MT01B_TENANT_SWITCH_ENABLED: "true" } }, /tenant switch/);

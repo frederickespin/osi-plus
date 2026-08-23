@@ -13,13 +13,13 @@ const paths = [
 const baseline = Object.fromEntries(paths.map((path) => [path, readFileSync(resolve(path), "utf8")]));
 const canonicalRoutes = [
   "api/crm/pipeline-cases/index.js",
-  "api/crm/pipeline-cases/[caseRef].js",
+  "api/crm/pipeline-cases/[caseKey]/index.js",
   "api/crm/pipeline-summary.js",
   "api/crm/pipeline-owner-options.js",
-  "api/crm/pipeline-cases/[id]/allowed-transitions.js",
-  "api/crm/pipeline-cases/[id]/transition.js",
-  "api/crm/pipeline-cases/[id]/assign-owner.js",
-  "api/crm/pipeline-cases/[id]/unassign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[caseKey]/transition.js",
+  "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ].sort();
 
 let assertions = 0;

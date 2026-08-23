@@ -33,7 +33,7 @@ const [
   import("../api/_lib/rbac.js"),
   import("./mt-01b1-test-helpers.mjs"),
   import("../api/crm/pipeline-cases/index.js"),
-  import("../api/crm/pipeline-cases/[caseRef].js"),
+  import("../api/crm/pipeline-cases/[caseKey]/index.js"),
   import("../api/crm/pipeline-summary.js"),
 ]);
 

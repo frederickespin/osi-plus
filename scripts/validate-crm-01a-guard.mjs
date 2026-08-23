@@ -6,15 +6,15 @@ import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 const EXPECTED_MIGRATIONS = 18;
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
-  "api/crm/pipeline-cases/[caseRef].js",
+  "api/crm/pipeline-cases/[caseKey]/index.js",
   "api/crm/pipeline-summary.js",
 ]);
 const CRM_MUTATION_ROUTES = Object.freeze([
   "api/crm/pipeline-owner-options.js",
-  "api/crm/pipeline-cases/[id]/allowed-transitions.js",
-  "api/crm/pipeline-cases/[id]/assign-owner.js",
-  "api/crm/pipeline-cases/[id]/transition.js",
-  "api/crm/pipeline-cases/[id]/unassign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
+  "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
+  "api/crm/pipeline-cases/[caseKey]/transition.js",
+  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
 const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES]);
 const AUTHORIZED_FRONTEND_CONSUMERS = Object.freeze([

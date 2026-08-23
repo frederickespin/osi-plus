@@ -7,7 +7,7 @@ const schema = readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
 const sql = readFileSync(resolve(root, "prisma/migrations", V17_CASE_PUBLIC_REF_MIGRATION, "migration.sql"), "utf8");
 const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
 const canonicalRead = readFileSync(resolve(root, "api/_lib/crmPipelineRead.js"), "utf8");
-const canonicalRuntime = { "api/_lib/crmPipelineRead.js": canonicalRead, "api/crm/pipeline-cases/[caseRef].js": "export default function handler() {}", "src/crm-relational/readApi.ts": "const caseRef = 'public DTO';" };
+const canonicalRuntime = { "api/_lib/crmPipelineRead.js": canonicalRead, "api/crm/pipeline-cases/[caseKey]/index.js": "const caseRef = req.query?.caseKey; export default function handler() {}", "src/crm-relational/readApi.ts": "const caseRef = 'public DTO';" };
 const results = [];
 function check(name, condition) {
   results.push({ name, passed: Boolean(condition) });
@@ -46,6 +46,7 @@ rejected("búsqueda legacy de receptor rechazada", { extraRuntimeSources: { ...c
 rejected("alias caseNumber rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": `${canonicalRead}\nconst caseNumber = "forbidden";` } }, /único caseCode/);
 rejected("frontend clientName rechazado", { extraRuntimeSources: { ...canonicalRuntime, "src/crm-relational/readApi.ts": "const clientName = 'legacy'; const caseRef = 'public DTO';" } }, /frontend público/);
 rejected("campo público interno rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/leak.js": "res.json({ public_ref: row.value })" } }, /sólo puede consumirse/);
-rejected("alias dinámico id rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/pipeline-cases/[id].js": "export default function handler() {}" } }, /alias ambiguo/);
+rejected("alias dinámico id rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/pipeline-cases/[id].js": "export default function handler() {}" } }, /segmento dinámico físico único|alias ambiguo/);
+rejected("segmento dinámico conflictivo rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/pipeline-cases/[other]/future.js": "export default function handler() {}" } }, /segmento dinámico físico único/);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

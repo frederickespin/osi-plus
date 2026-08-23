@@ -29,10 +29,10 @@ const [
   import("../api/_lib/crmPipelineRead.js"),
   import("../api/_lib/rbac.js"),
   import("../api/crm/pipeline-cases/index.js"),
-  import("../api/crm/pipeline-cases/[caseRef].js"),
+  import("../api/crm/pipeline-cases/[caseKey]/index.js"),
   import("../api/crm/pipeline-summary.js"),
-  import("../api/crm/pipeline-cases/[id]/allowed-transitions.js"),
-  import("../api/crm/pipeline-cases/[id]/transition.js"),
+  import("../api/crm/pipeline-cases/[caseKey]/allowed-transitions.js"),
+  import("../api/crm/pipeline-cases/[caseKey]/transition.js"),
   import("../api/_lib/pipelineCaseDomain.js"),
 ]);
 

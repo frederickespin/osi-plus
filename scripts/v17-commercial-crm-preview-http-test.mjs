@@ -4,8 +4,8 @@ import { once } from "node:events";
 import loginHandler from "../api/auth/login.js";
 import authMeHandler from "../api/auth/me.js";
 import { createPipelineCasesListHandler } from "../api/crm/pipeline-cases/index.js";
-import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[caseRef].js";
-import { createPipelineTransitionHandler } from "../api/crm/pipeline-cases/[id]/transition.js";
+import { createPipelineCaseDetailHandler } from "../api/crm/pipeline-cases/[caseKey]/index.js";
+import { createPipelineTransitionHandler } from "../api/crm/pipeline-cases/[caseKey]/transition.js";
 import { createPipelineOwnerOptionsHandler } from "../api/crm/pipeline-owner-options.js";
 import { createPipelineSummaryHandler } from "../api/crm/pipeline-summary.js";
 
@@ -119,7 +119,7 @@ const server = createServer(async (req, rawResponse) => {
     }
     const caseMatch = parsed.pathname.match(/^\/api\/crm\/pipeline-cases\/([^/]+)$/);
     if (caseMatch) {
-      req.query = { caseRef: caseMatch[1] };
+      req.query = { caseKey: caseMatch[1] };
       return await detail(req, res);
     }
     if (parsed.pathname === "/api/auth/login") return await loginHandler(req, res);

@@ -132,7 +132,12 @@ export function validateV17CasePublicRefGuard({
     "UUID v4 canónico debe rechazarse como 404 antes de Prisma");
 
   const routePaths = Object.keys(runtime).filter((path) => path.startsWith("api/crm/pipeline-cases/") && /\.js$/.test(path));
-  invariant(routePaths.includes("api/crm/pipeline-cases/[caseRef].js"), "ruta pública [caseRef] ausente");
+  invariant(routePaths.includes("api/crm/pipeline-cases/[caseKey]/index.js"), "ruta pública [caseRef] ausente");
+  const dynamicSegments = new Set(routePaths.flatMap((path) => path.match(/\[[^\]]+\]/g) || []));
+  invariant(dynamicSegments.size === 1 && dynamicSegments.has("[caseKey]"),
+    "Vercel exige un segmento dinámico físico único y neutral para lectura y mutaciones");
+  invariant(/req\.query\?\.caseKey/.test(runtime["api/crm/pipeline-cases/[caseKey]/index.js"] || ""),
+    "la ruta de detalle debe interpretar caseKey exclusivamente como caseRef");
   invariant(!routePaths.includes("api/crm/pipeline-cases/[id].js"), "alias ambiguo [id] de lectura todavía presente");
   invariant(!Object.entries(runtime).some(([path, source]) => path.startsWith("src/") && /\bpublicRef\b|\bpublic_ref\b/.test(source)),
     "frontend debe usar únicamente caseRef");

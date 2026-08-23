@@ -4,13 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const EXPECTED_ROUTES = Object.freeze({
   "api/crm/pipeline-cases/index.js": "createCrmPipelineReadHandler",
-  "api/crm/pipeline-cases/[caseRef].js": "createCrmPipelineReadHandler",
+  "api/crm/pipeline-cases/[caseKey]/index.js": "createCrmPipelineReadHandler",
   "api/crm/pipeline-summary.js": "createCrmPipelineReadHandler",
   "api/crm/pipeline-owner-options.js": "createCrmOwnerCatalogHandler",
-  "api/crm/pipeline-cases/[id]/allowed-transitions.js": "createAllowedTransitionsHandler",
-  "api/crm/pipeline-cases/[id]/transition.js": "createTransitionHandler",
-  "api/crm/pipeline-cases/[id]/assign-owner.js": "createAssignOwnerHandler",
-  "api/crm/pipeline-cases/[id]/unassign-owner.js": "createUnassignOwnerHandler",
+  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js": "createAllowedTransitionsHandler",
+  "api/crm/pipeline-cases/[caseKey]/transition.js": "createTransitionHandler",
+  "api/crm/pipeline-cases/[caseKey]/assign-owner.js": "createAssignOwnerHandler",
+  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js": "createUnassignOwnerHandler",
 });
 
 function invariant(condition, message) {

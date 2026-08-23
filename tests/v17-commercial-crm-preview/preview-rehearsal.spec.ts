@@ -105,7 +105,7 @@ test("sin permiso, deny, rol no elegible o confirmación ausente bloquean chunk 
     const { context, page, resources } = await openActor(browser, actor);
     if (actor.confirmed === false) await expect(page.getByText("Configuración Hub rechazada")).toBeVisible();
     else await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-    expect(resources.some((path) => /CommercialInboxModule/i.test(path))).toBe(false);
+    expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
     expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
     await context.close();
   }
@@ -133,6 +133,6 @@ test("query, hash, storage y x-osi no alteran la autoridad del servidor", async 
   page.on("request", (request) => resources.push(new URL(request.url()).pathname));
   await page.goto("/commercial?role=A&permission=pipeline:view#pipeline:view");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-  expect(resources.some((path) => /CommercialInboxModule/i.test(path))).toBe(false);
+  expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
 });

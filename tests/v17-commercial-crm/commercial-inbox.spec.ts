@@ -232,7 +232,7 @@ test("rol no elegible y deniedPermissions bloquean antes de descargar el módulo
     await authenticate(page, actor);
     await page.goto(`/commercial/cases/${DEFAULT_CASE_REF}?role=A#permission=pipeline:view`);
     await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-    expect(resources.some((path) => /CommercialInboxModule/i.test(path))).toBe(false);
+    expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
     expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
     await context.close();
   }

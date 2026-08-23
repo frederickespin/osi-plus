@@ -56,7 +56,7 @@ test("DISABLED conserva la aplicación actual y no descarga el chunk Hub", async
   await page.goto("http://127.0.0.1:4184/");
   await expect(page.getByText("Actor legacy")).toBeVisible();
   await expect(page.getByText("OSi Plus Hub", { exact: true })).toHaveCount(0);
-  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|appCatalog/i.test(path))).toBe(false);
+  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(requests.filter((path) => path.startsWith("/api/"))).toEqual(["/api/auth/me"]);
 });
 
@@ -86,8 +86,8 @@ test("DISABLED también bloquea deep links sin prefetch, listeners ni timers del
   await expect(page.getByTestId("osi-survey-inactive")).toHaveCount(0);
   const audit = await page.evaluate(() => (window as typeof window & { __v17HubDisabledAudit: { listeners: string[]; timers: string[] } }).__v17HubDisabledAudit);
   expect(audit).toEqual({ listeners: [], timers: [] });
-  expect(resources.some((path) => /HubWorkspace|OsiSurveyInactive|appCatalog|hubAccess/i.test(path))).toBe(false);
-  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /HubWorkspace|OsiSurveyInactive|appCatalog|hubAccess/i.test(entry.name)))).toBe(false);
+  expect(resources.some((path) => /HubWorkspace|OsiSurveyInactive|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /HubWorkspace|OsiSurveyInactive|CommercialInboxModule|CommercialCaseDetail/i.test(entry.name)))).toBe(false);
 });
 
 test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) => {
@@ -101,31 +101,57 @@ test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) 
     const page = await context.newPage();
     await authenticate(page, { role });
     await page.goto("/hub");
-    await expect(page.getByText("OSi Plus Hub", { exact: true }).first()).toBeVisible();
-    expect(await page.locator("main h2").allTextContents()).toEqual(apps);
+    if (apps.length === 0) {
+      await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+      await expect(page.getByText("OSi Plus Hub", { exact: true })).toHaveCount(0);
+    } else {
+      await expect(page.getByText("OSi Plus Hub", { exact: true }).first()).toBeVisible();
+      expect(await page.locator("main h2").allTextContents()).toEqual(apps);
+    }
     await context.close();
   }
 });
 
-test("deniedPermissions prevalece y ruta directa usa la misma decisión 403", async ({ page }) => {
-  await authenticate(page, { role: "A", deniedPermissions: ["pipeline:view"] });
-  await page.goto("/hub?app=commercial-crm", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toHaveCount(0);
-  await page.goto("/commercial?role=A");
-  await expect(page.getByTestId("hub-forbidden")).toContainText("403");
+test("deniedPermissions prevalece antes del lazy y no bloquea otras aplicaciones legítimas", async ({ browser }) => {
+  const deniedContext = await browser.newContext();
+  const deniedPage = await deniedContext.newPage();
+  const deniedResources: string[] = [];
+  deniedPage.on("request", (request) => deniedResources.push(new URL(request.url()).pathname));
+  await authenticate(deniedPage, { role: "A", deniedPermissions: ["pipeline:view"] });
+  await deniedPage.goto("/commercial?role=A");
+  await expect(deniedPage.getByTestId("hub-forbidden")).toContainText("403");
+  await expect(deniedPage.getByRole("heading", { name: "No puedes abrir esta aplicación" })).toBeFocused();
+  await expect(deniedPage.getByRole("button", { name: "Volver a una ruta segura" })).toBeVisible();
+  expect(deniedResources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(deniedResources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
+  await deniedContext.close();
+
+  const hubContext = await browser.newContext();
+  const hubPage = await hubContext.newPage();
+  await authenticate(hubPage, { role: "A", deniedPermissions: ["pipeline:view"] });
+  await hubPage.goto("/hub?app=commercial-crm", { waitUntil: "domcontentloaded" });
+  await expect(hubPage.getByRole("heading", { name: "Comercial y CRM" })).toHaveCount(0);
+  await expect(hubPage.getByRole("heading", { name: "Coordinación" })).toBeVisible();
+  await hubContext.close();
 });
 
 test("query, storage y x-osi-* no elevan un contexto validado", async ({ page }) => {
+  const resources: string[] = [];
+  page.on("request", (request) => resources.push(new URL(request.url()).pathname));
   await page.setExtraHTTPHeaders({ "x-osi-role": "A", "x-osi-userid": "forged" });
   await authenticate(page, { role: "G" });
   await page.goto("/commercial?role=A&permission=clients:view");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
   await page.goto("/hub");
   await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Operaciones" })).toBeVisible();
 });
 
 test("hash, URL, sessionStorage y headers de proxy no alteran autoridad", async ({ page }) => {
+  const resources: string[] = [];
+  page.on("request", (request) => resources.push(new URL(request.url()).pathname));
   await page.setExtraHTTPHeaders({
     "x-forwarded-host": "127.0.0.1",
     "x-osi-role": "A",
@@ -140,6 +166,72 @@ test("hash, URL, sessionStorage y headers de proxy no alteran autoridad", async 
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   await page.goto("/survey?permission=survey:assigned:view#role=A");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail|OsiSurveyInactive/i.test(path))).toBe(false);
+  expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
+});
+
+test("cuatro rutas deny, back/forward y logout permanecen antes del límite lazy", async ({ browser }) => {
+  const actor = { role: "V", permissions: ["pipeline:view"], deniedPermissions: ["pipeline:view"] };
+  const routes = ["/commercial", "/crm", "/sales/pipeline", "/commercial/cases/22222222-2222-4222-8222-222222222222"];
+  for (const route of routes) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const resources: string[] = [];
+    const issues: string[] = [];
+    page.on("request", (request) => resources.push(new URL(request.url()).pathname));
+    page.on("console", (message) => { if (["warning", "error"].includes(message.type())) issues.push(message.type()); });
+    page.on("pageerror", () => issues.push("pageerror"));
+    await authenticate(page, actor);
+    await page.goto(`${route}?role=A&permission=pipeline:view#pipeline:view`);
+    await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No puedes abrir esta aplicación" })).toBeFocused();
+    expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+    expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
+    expect(issues).toEqual([]);
+    await context.close();
+  }
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const resources: string[] = [];
+  page.on("request", (request) => resources.push(new URL(request.url()).pathname));
+  await authenticate(page, actor);
+  await page.goto("/commercial");
+  await page.goto("/crm");
+  await page.goBack();
+  await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  await page.goForward();
+  await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
+  await page.getByRole("button", { name: "Volver a una ruta segura" }).press("Enter");
+  await expect(page.getByRole("button", { name: "Iniciar Sesión" })).toBeVisible();
+  expect(await page.evaluate(() => [localStorage.getItem("osi-plus.token"), localStorage.getItem("osi-plus.session")])).toEqual([null, null]);
+  await context.close();
+});
+
+test("un permiso retirado por la revalidación bloquea la navegación siguiente", async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  let denied = false;
+  await page.addInitScript(() => {
+    localStorage.setItem("osi-plus.token", "synthetic.hub.revocation.token");
+    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "hub-revocation-user", name: "Actor revalidado", role: "V" }));
+  });
+  await page.route("**/api/auth/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ok: true, user: { id: "hub-revocation-user", code: "SYNTHETIC", name: "Actor revalidado", email: "synthetic@example.invalid", phone: "", role: "V", status: "active", joinDate: "2026-01-01", points: 0, rating: 0, permissions: ["pipeline:view"], deniedPermissions: denied ? ["pipeline:view"] : [] } }),
+  }));
+  await page.goto("/hub");
+  await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toBeVisible();
+  denied = true;
+  const requestsAfterRevocation: string[] = [];
+  page.on("request", (request) => requestsAfterRevocation.push(new URL(request.url()).pathname));
+  await page.goto("/commercial");
+  await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  expect(requestsAfterRevocation.some((path) => path.startsWith("/api/crm/"))).toBe(false);
+  await context.close();
 });
 
 test("rutas desconocidas y traversal permanecen cerrados; back/forward conserva la guardia", async ({ page }) => {
@@ -163,7 +255,7 @@ test("denegar Survey no descarga el módulo destino", async ({ page }) => {
   await authenticate(page, { role: "A", deniedPermissions: ["survey:assigned:view"] });
   await page.goto("/survey");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-  expect(requests.some((path) => /OsiSurveyInactive/i.test(path))).toBe(false);
+  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive/i.test(path))).toBe(false);
 });
 
 test("OSi Survey exige autorización explícita y permanece sin API ni persistencia", async ({ page }) => {

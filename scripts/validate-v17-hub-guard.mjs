@@ -15,6 +15,7 @@ const allowedBackendChanges = new Set([
   "api/_lib/http.js",
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
+  "api/_lib/v17CommercialCrmProductionAuth.js",
   "api/auth/login.js",
   "api/auth/me.js",
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
@@ -44,6 +45,10 @@ if (!mode.includes('hostname === "[::1]"')) fail("gate does not require the lite
 const app = text(join("src", "App.tsx"));
 if (!app.includes("const HubWorkspace = lazy(() => import('@/hub/HubWorkspace'))")) fail("Hub is not lazy");
 if (/import\s+HubWorkspace\s+from/.test(app)) fail("Hub has an eager runtime import");
+
+const productionAuth = text(join("api", "_lib", "v17CommercialCrmProductionAuth.js"));
+if (!productionAuth.includes("CRM_PIPELINE_MUTATION_MODES.DISABLED")) fail("Production Read does not keep CRM mutations disabled");
+if (!productionAuth.includes("resolveCrmPipelineContext")) fail("Production Read does not revalidate the canonical CRM context");
 
 const packageJson = JSON.parse(text("package.json"));
 if (packageJson.scripts?.["test:v17-hub:browser"] !== "playwright test -c playwright.v17-hub.config.ts") fail("canonical Hub browser command missing");

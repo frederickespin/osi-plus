@@ -2,11 +2,16 @@ import {
   V17_COMMERCIAL_CRM_PREVIEW_MODE,
   resolveV17CommercialCrmPreviewClientAuthority,
 } from "../../shared/v17CommercialCrmPreview.js";
+import {
+  V17_COMMERCIAL_CRM_PRODUCTION_MODE,
+  resolveV17CommercialCrmProductionClientAuthority,
+} from "../../shared/v17CommercialCrmProduction.js";
 
 export const OSI_HUB_MODES = Object.freeze({
   DISABLED: "DISABLED",
   LOCAL_ONLY: "LOCAL_ONLY",
   PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE,
+  PRODUCTION_READ: V17_COMMERCIAL_CRM_PRODUCTION_MODE,
 } as const);
 
 export type OsiHubMode = (typeof OSI_HUB_MODES)[keyof typeof OSI_HUB_MODES];
@@ -15,7 +20,7 @@ export type OsiHubModeResolution = Readonly<{
   mode: OsiHubMode;
   enabled: boolean;
   valid: boolean;
-  reason: "DISABLED" | "LOCAL_LOOPBACK" | "AUTHORIZED_PREVIEW" | "VALUE_INVALID" | "REMOTE_FORBIDDEN" | "VERCEL_FORBIDDEN" | "PREVIEW_CONFIGURATION_INVALID";
+  reason: "DISABLED" | "LOCAL_LOOPBACK" | "AUTHORIZED_PREVIEW" | "AUTHORIZED_PRODUCTION" | "VALUE_INVALID" | "REMOTE_FORBIDDEN" | "VERCEL_FORBIDDEN" | "PREVIEW_CONFIGURATION_INVALID" | "PRODUCTION_CONFIGURATION_INVALID";
 }>;
 
 type HubEnvironment = Record<string, unknown>;
@@ -56,6 +61,22 @@ export function resolveOsiHubMode(
       enabled: preview.enabled,
       valid: preview.valid,
       reason: preview.reason === "AUTHORIZED_PREVIEW" ? "AUTHORIZED_PREVIEW" : "PREVIEW_CONFIGURATION_INVALID",
+    });
+  }
+  if (raw === OSI_HUB_MODES.PRODUCTION_READ) {
+    const production = resolveV17CommercialCrmProductionClientAuthority({
+      hubMode: raw,
+      clientMode: environment.VITE_CRM_PIPELINE_CLIENT_MODE,
+      readMode: environment.VITE_CRM_PIPELINE_READ_MODE,
+      vercelEnvironment: runtime.vercelEnvironment,
+      gitBranch: runtime.gitBranch,
+      hostname: runtime.hostname,
+    });
+    return Object.freeze({
+      mode: production.enabled ? OSI_HUB_MODES.PRODUCTION_READ : OSI_HUB_MODES.DISABLED,
+      enabled: production.enabled,
+      valid: production.valid,
+      reason: production.reason === "AUTHORIZED_PRODUCTION" ? "AUTHORIZED_PRODUCTION" : "PRODUCTION_CONFIGURATION_INVALID",
     });
   }
   if (raw !== OSI_HUB_MODES.LOCAL_ONLY) {

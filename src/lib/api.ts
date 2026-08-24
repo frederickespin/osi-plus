@@ -34,6 +34,7 @@ export type UserDto = {
   permissions?: string[];
   deniedPermissions?: string[];
   commercialCrmPreviewAuthorized?: boolean;
+  commercialCrmProductionAuthorized?: boolean;
 };
 
 export type ClientDto = {

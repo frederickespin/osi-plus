@@ -15,7 +15,7 @@ import {
 } from '@/lib/sessionStore';
 import { isRelationalCrmReadEnabled } from '@/crm-relational/clientMode';
 import type { ModuleId } from '@/lib/roleModuleMap';
-import { resolveOsiHubMode } from '@/hub/hubMode';
+import { resolveOsiHubMode, type OsiHubMode } from '@/hub/hubMode';
 import type { HubAccessContext } from '@/hub/hubAccess';
 import { evaluateHubRouteAccess } from '@/hub/hubRouteAccess';
 export type { ModuleId } from '@/lib/roleModuleMap';
@@ -166,7 +166,7 @@ type AuthorizedHubEntryProps = Readonly<{
   session: Session;
   accessContext: HubAccessContext;
   crmReadEnabled: boolean;
-  mode: 'LOCAL_ONLY' | 'PREVIEW_REHEARSAL';
+  mode: Exclude<OsiHubMode, 'DISABLED'>;
   onLogout: () => void;
 }>;
 
@@ -191,6 +191,10 @@ function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLo
       if (fence !== navigationFence.current) return;
       activeNavigation.current = null;
       if (mode === 'PREVIEW_REHEARSAL' && validatedSession.commercialCrmPreviewAuthorized !== true) {
+        onLogout();
+        return;
+      }
+      if (mode === 'PRODUCTION_READ' && validatedSession.commercialCrmProductionAuthorized !== true) {
         onLogout();
         return;
       }
@@ -353,6 +357,7 @@ function resolveValidatedLegacySession(token: string, signal?: AbortSignal): Pro
       permissions: Array.isArray(response.user.permissions) ? response.user.permissions : undefined,
       deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
       commercialCrmPreviewAuthorized: response.user.commercialCrmPreviewAuthorized === true,
+      commercialCrmProductionAuthorized: response.user.commercialCrmProductionAuthorized === true,
     };
   });
 }
@@ -394,8 +399,12 @@ async function resolveInitialAuthState(): Promise<AuthState> {
 
 function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const hubMode = resolveOsiHubMode();
-  const previewConfirmed = hubMode.mode !== 'PREVIEW_REHEARSAL' || session.commercialCrmPreviewAuthorized === true;
-  const crmPipelineClientEnabled = isRelationalCrmReadEnabled() && previewConfirmed;
+  const serverConfirmed = hubMode.mode === 'PREVIEW_REHEARSAL'
+    ? session.commercialCrmPreviewAuthorized === true
+    : hubMode.mode === 'PRODUCTION_READ'
+      ? session.commercialCrmProductionAuthorized === true
+      : true;
+  const crmPipelineClientEnabled = isRelationalCrmReadEnabled() && serverConfirmed;
   const userRole: UserRole = session.role;
   const [activeModule, setActiveModule] = useState<ModuleId>(() => getDefaultModuleForRole(userRole));
   const hubAccessContext = useMemo(() => hubAccessContextFromSession(session), [session]);
@@ -527,12 +536,12 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
     }
   };
 
-  if (!hubMode.valid || !previewConfirmed) {
+  if (!hubMode.valid || !serverConfirmed) {
     return (
       <main className="grid min-h-screen place-items-center bg-slate-950 p-6 text-white">
         <section className="max-w-lg rounded-2xl border border-red-400/40 bg-slate-900 p-7 text-center">
           <h1 className="text-xl font-bold">Configuración Hub rechazada</h1>
-          <p className="mt-2 text-sm text-slate-300">La compuerta exige un modo local loopback o un Preview exacto confirmado por el servidor.</p>
+          <p className="mt-2 text-sm text-slate-300">La compuerta exige un entorno exacto y la confirmación vigente del servidor.</p>
           <button onClick={onLogout} className="mt-5 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-950">Cerrar sesión</button>
         </section>
       </main>
@@ -588,11 +597,15 @@ function App() {
   const handleLoginSuccess = async (session: LoginSession) => {
     const hubMode = resolveOsiHubMode();
     try {
-      const validated = hubMode.mode === 'PREVIEW_REHEARSAL'
+      const requiresServerConfirmation = hubMode.mode === 'PREVIEW_REHEARSAL' || hubMode.mode === 'PRODUCTION_READ';
+      const validated = requiresServerConfirmation
         ? await validateLegacySession(session)
         : session;
       if (hubMode.mode === 'PREVIEW_REHEARSAL' && validated.commercialCrmPreviewAuthorized !== true) {
         throw Object.assign(new Error('El servidor no confirmó el ensayo CRM.'), { status: 503 });
+      }
+      if (hubMode.mode === 'PRODUCTION_READ' && validated.commercialCrmProductionAuthorized !== true) {
+        throw Object.assign(new Error('El servidor no confirmó el piloto CRM de lectura.'), { status: 503 });
       }
       saveSession(validated);
       setAuthState({ status: 'AUTHENTICATED', session: validated });

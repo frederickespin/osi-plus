@@ -1,4 +1,5 @@
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
+import { COMMERCIAL_TENANCY_MUTATION_MODES } from "./commercialTenancyMutation.js";
 import {
   CRM_PIPELINE_MUTATION_MODES,
   CRM_PIPELINE_READ_MODES,
@@ -14,6 +15,9 @@ function invalidConfiguration() {
 /** Se ejecuta antes de auth/body/Prisma cuando el piloto productivo está solicitado. */
 export function requireV17CommercialCrmProductionSessionMode(env = process.env) {
   if (!hasV17CommercialCrmProductionServerSignal(env)) return false;
+  if (env.COMMERCIAL_TENANCY_MUTATION_MODE !== COMMERCIAL_TENANCY_MUTATION_MODES.DISABLED) {
+    invalidConfiguration();
+  }
   const modes = resolveCrmPipelineModes(env);
   if (!modes.production
     || modes.readMode !== CRM_PIPELINE_READ_MODES.PRODUCTION_READ

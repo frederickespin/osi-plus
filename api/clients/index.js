@@ -11,9 +11,11 @@ import {
   sendCommercialTenancyError,
 } from "../_lib/commercialTenancyWrite.js";
 import { commercialPagination, listTenantClients } from "../_lib/commercialTenancyRead.js";
+import { requireCommercialTenancyMutation } from "../_lib/commercialTenancyMutation.js";
 import { PERMS } from "../_lib/rbac.js";
 
 export default withCommonHeaders(async (req, res) => {
+  if (req.method === "POST" && !requireCommercialTenancyMutation(req, res)) return;
   const permission = req.method === "GET" ? PERMS.CLIENTS_VIEW : req.method === "POST" ? PERMS.CLIENTS_CREATE : null;
   let modes = {
     writeMode: COMMERCIAL_TENANCY_WRITE_MODES.LEGACY_ONLY,

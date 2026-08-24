@@ -24,6 +24,7 @@ Las siguientes variables forman una unidad de activación. No deben configurarse
 | `CRM_PIPELINE_ACTIVATION_BATCH` | Production | `CRM-01B3B1-PRODUCTION-V1` | Coordina la compuerta productiva del backend. |
 | `COMMERCIAL_TENANCY_WRITE_MODE` | Production | `TENANT_WRITE` | Activa la autoridad tenant-first requerida por los contratos canónicos; no autoriza mutaciones CRM. |
 | `COMMERCIAL_TENANCY_READ_MODE` | Production | `TENANT_READ` | Exige lecturas tenant-first. |
+| `COMMERCIAL_TENANCY_MUTATION_MODE` | Production | `DISABLED` | Bloquea independientemente las cuatro escrituras comerciales generales antes de auth, body o Prisma. |
 | `COMMERCIAL_TENANCY_ACTIVATION_BATCH` | Production | `MT-01C2B2-IPACKERS-DO-V1` | Coordina la autoridad comercial tenantizada. |
 | `MT01B_AUTH_MODE` | Production | `LEGACY` | Conserva Auth LEGACY como única autoridad de sesión del piloto. |
 | `MT01B_TENANT_SWITCH_ENABLED` | Production | `false` | Impide cambio de tenant. |
@@ -42,9 +43,9 @@ La activación sólo es válida en un deployment construido desde el resolver de
 
 ### Bloqueo previo: escritura comercial general
 
-La autoridad canónica vigente no posee un modo `TENANT_READ_ONLY`. Sólo admite el par `LEGACY_ONLY/LEGACY_ONLY` o `TENANT_WRITE/TENANT_READ`; no se crea un tercer valor en este lote.
+La autoridad canónica vigente no posee un modo `TENANT_READ_ONLY`. Sólo admite el par `LEGACY_ONLY/LEGACY_ONLY` o `TENANT_WRITE/TENANT_READ`; no se crea un tercer valor. La autorización para escribir queda desacoplada mediante `COMMERCIAL_TENANCY_MUTATION_MODE`.
 
-Configurar `COMMERCIAL_TENANCY_WRITE_MODE=TENANT_WRITE` no habilita las mutaciones CRM, que siguen protegidas por `CRM_PIPELINE_MUTATION_MODE=DISABLED`, pero sí selecciona la ruta tenant-first de estos endpoints POST existentes:
+Configurar `COMMERCIAL_TENANCY_WRITE_MODE=TENANT_WRITE` selecciona la implementación tenant-first, pero ya no autoriza por sí mismo ninguno de estos endpoints POST:
 
 | Endpoint | Permiso adicional | Efecto potencial |
 |---|---|---|
@@ -53,12 +54,14 @@ Configurar `COMMERCIAL_TENANCY_WRITE_MODE=TENANT_WRITE` no habilita las mutacion
 | `POST /api/k/project-validate` | `projects:validate`, rol K/A | Validar y transicionar Project. |
 | `POST /api/k/project-release` | `projects:release`, rol K/A | Liberar y transicionar Project. |
 
-Hub, Inbox y Ficha importan exclusivamente `crm-relational/readApi` y no invocan esos endpoints, owner options ni comandos CRM. Sin embargo, el cutover productivo no debe configurar el lote mientras no exista una autorización empresarial explícita para conservar esas escrituras o un diseño canónico separado que desacople lectura tenantizada y escritura general. Este bloqueo no afecta la publicación inactiva del código.
+Hub, Inbox y Ficha importan exclusivamente `crm-relational/readApi` y no invocan esos endpoints, owner options ni comandos CRM. Con `COMMERCIAL_TENANCY_MUTATION_MODE=DISABLED`, las cuatro rutas responden `409 COMMERCIAL_TENANCY_MUTATIONS_DISABLED` antes de autenticación, body, Prisma, escritura o auditoría. Las mutaciones CRM y owner options permanecen además protegidas por `CRM_PIPELINE_MUTATION_MODE=DISABLED`.
+
+Los únicos valores implementados para la nueva compuerta son `DISABLED` y `LOCAL_ONLY`. El segundo existe exclusivamente para arneses locales con socket loopback real y se rechaza ante cualquier marcador `VERCEL*`; no existen `PREVIEW_WRITE` ni `PRODUCTION_WRITE`.
 
 1. Auditar y fusionar el resolver mediante un PR separado.
 2. Esperar un deployment Production inactivo del merge y validar sus contratos con las variables todavía ausentes.
 3. Registrar deployment estable, aliases y respaldo vigente en la autorización de cutover.
-4. Configurar las doce variables como un único lote Production, sin tocar Preview o Development.
+4. Configurar las trece variables como un único lote Production, sin tocar Preview o Development.
 5. Generar el deployment Git correspondiente; no reutilizar un bundle anterior.
 6. Validar primero la URL inmutable: metadata Production/main, Auth LEGACY, A/V, deny, cero mutaciones y cero IDs internos.
 7. Promover aliases sólo después de CI y smoke verdes.
@@ -68,7 +71,7 @@ Hub, Inbox y Ficha importan exclusivamente `crm-relational/readApi` y no invocan
 El rollback no requiere SQL ni revertir las 18 migraciones:
 
 1. Reasignar los aliases al deployment estable registrado inmediatamente antes del piloto.
-2. Retirar el lote de variables `PRODUCTION_READ` o restaurar los modos Hub/cliente/lectura/runtime a `DISABLED`, manteniendo `CRM_PIPELINE_MUTATION_MODE=DISABLED`.
+2. Retirar el lote de variables `PRODUCTION_READ` o restaurar los modos Hub/cliente/lectura/runtime a `DISABLED`, manteniendo `CRM_PIPELINE_MUTATION_MODE=DISABLED` y `COMMERCIAL_TENANCY_MUTATION_MODE=DISABLED`.
 3. Generar un deployment Git con la configuración desactivada y verificar que no se descarguen chunks protegidos ni existan requests CRM.
 4. Conservar Auth LEGACY, tenancy y datos sin cambios; no tocar `PipelineCase.publicRef` ni el respaldo Neon.
 
@@ -81,5 +84,6 @@ La restauración de aliases es la medida inmediata. Un cambio de variables neces
 - Usuario A/V sin `pipeline:view`: denegado.
 - `deniedPermissions` con `pipeline:view`: 403 desde el shell, antes del lazy import.
 - Mutaciones CRM y owner options: 409.
+- Las cuatro mutaciones comerciales generales: 409 antes de auth, body o Prisma.
 - Sin migración 19, backfill, fixtures, mocks runtime o storage empresarial.
 - Sin cambios en Production, Neon, Vercel, aliases o variables.

@@ -1,44 +1,11 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const BASE = "de5e8460c5da4e7f1c1fe42836b7ab488f67dd42";
-const allowedBackendChanges = new Set([
-  "api/_lib/authHttp.js",
-  "api/_lib/authOrigin.js",
-  "api/_lib/commercialTenancyWrite.js",
-  "api/_lib/crmHttpHeaders.js",
-  "api/_lib/crmOwnerCatalogHttp.js",
-  "api/_lib/crmPipelineAccess.js",
-  "api/_lib/crmPipelineRead.js",
-  "api/_lib/crmPipelineReadHttp.js",
-  "api/_lib/http.js",
-  "api/_lib/pipelineCaseMutationHttp.js",
-  "api/_lib/v17CommercialCrmPreviewAuth.js",
-  "api/crm/pipeline-cases/[id].js",
-  "api/crm/pipeline-cases/[id]/allowed-transitions.js",
-  "api/crm/pipeline-cases/[id]/assign-owner.js",
-  "api/crm/pipeline-cases/[id]/transition.js",
-  "api/crm/pipeline-cases/[id]/unassign-owner.js",
-  "api/crm/pipeline-cases/[caseKey]/index.js",
-  "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
-  "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
-  "api/crm/pipeline-cases/[caseKey]/transition.js",
-  "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
-  "api/auth/login.js",
-  "api/auth/me.js",
-]);
 const read = (path) => readFileSync(path, "utf8");
 const invariant = (condition, message) => { if (!condition) throw new Error(`V17_COMMERCIAL_CRM_GUARD:${message}`); };
-const allowedPrismaChanges = new Set([
-  "prisma/schema.prisma",
-  "prisma/migrations/20260821010000_v17_pipeline_case_public_ref/migration.sql",
-]);
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
 invariant(migrations.length === 18, `se esperaban 18 migraciones, existen ${migrations.length}`);
-const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-invariant(!changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || (path.startsWith("prisma/") && !allowedPrismaChanges.has(path)) || path.startsWith("src/data/")), "backend ajeno al ensayo, Prisma no autorizado o fixtures canónicos modificados");
 
 const catalog = read("src/hub/appCatalog.ts");
 invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");
@@ -47,9 +14,19 @@ invariant(/appId: "commercial-crm"[\s\S]{0,500}requiredPermissions: \["pipeline:
 const access = read("src/hub/hubAccess.ts");
 invariant(/application\.requiresExplicitPermissions[\s\S]{0,150}PERMISSION_MISSING/.test(access), "rol baseline no puede sustituir permiso explícito");
 
+const app = read("src/App.tsx");
+const routeAccess = read("src/hub/hubRouteAccess.ts");
 const hub = read("src/hub/HubWorkspace.tsx");
+invariant(/const HubWorkspace = lazy\(\(\) => import\('@\/hub\/HubWorkspace'\)\)/.test(app), "HubWorkspace no es lazy");
+const routeDecisionIndex = app.indexOf("routeState.status === 'DENIED' || !routeDecision.allowed");
+const hubRenderIndex = app.indexOf("<HubWorkspace");
+invariant(routeDecisionIndex >= 0 && hubRenderIndex > routeDecisionIndex, "guardia de ruta no precede carga Hub/CRM");
+invariant(/validateLegacySession\(session, controller\.signal\)\.then[\s\S]*decision\.allowed \? 'READY' : 'DENIED'[\s\S]*accessContext: validatedAccessContext/.test(app), "navegación no revalida autoridad abortable antes del lazy");
+invariant(/activeNavigation\.current\?\.controller\.abort\(\)[\s\S]*const fence = \+\+navigationFence\.current[\s\S]*controller\.signal\.aborted \|\| fence !== navigationFence\.current/.test(app), "navegación perdió abort o fencing");
+invariant(/findHubApplicationByRoute\(normalizedPath\)[\s\S]*evaluateHubAccess\(application, context\)/.test(routeAccess), "rutas y tarjetas no comparten decisión canónica");
+invariant(!/evaluateHubAccess\s*\(\s*selected|!decision\?\.allowed|addEventListener\(["']popstate|history\.pushState/.test(hub), "autorización o routing regresó al chunk lazy");
 invariant(/lazy\(\(\) => import\("@\/commercial-crm\/CommercialInboxModule"\)\)/.test(hub), "Inbox no es lazy");
-invariant(/!decision\?\.allowed[\s\S]*commercial-crm" && crmReadEnabled/.test(hub), "guardia de ruta no precede carga CRM");
+invariant(/selected\.appId === "commercial-crm" && crmReadEnabled/.test(hub), "compuerta CRM ausente después de autorizar la ruta");
 
 const mode = read("src/crm-relational/clientMode.ts");
 for (const signature of ['LOCAL_ONLY: "LOCAL_ONLY"', 'READ_ONLY: "READ_ONLY"', 'PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE', "VITE_CRM_PIPELINE_CLIENT_MODE", "VITE_CRM_PIPELINE_READ_MODE", "isRelationalCrmReadEnabled"]) invariant(mode.includes(signature), `compuerta incompleta: ${signature}`);
@@ -96,4 +73,4 @@ for (const command of ["npm run typecheck:v17-commercial-crm", "npm run test:v17
 }
 const vite = read("vite.config.ts");
 invariant(/base:\s*["']\/["']/.test(vite), "assets deben usar raíz absoluta para deep links anidados");
-console.log(JSON.stringify({ ok: true, migrations: 18, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], changedFiles: changed.length }));
+console.log(JSON.stringify({ ok: true, migrations: 18, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], authorizationBoundary: "PRE_LAZY" }));

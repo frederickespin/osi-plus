@@ -145,6 +145,7 @@ jobs:
           node scripts/validate-v17-hub-guard.mjs
           npm run guard:v17-hub-auth-lazy
           node scripts/validate-v17-commercial-crm-guard.mjs
+          npm run guard:v17-commercial-inbox-reload-race
           npm run guard:v17-commercial-crm-preview
           npm run test:v17-commercial-crm-preview:guard
           npm run test:v17-commercial-crm-preview
@@ -175,6 +176,8 @@ jobs:
         run: npm run test:v17-hub:browser
 
       - name: Validate inactive V17 Commercial Inbox in real browsers
+        env:
+          COMMERCIAL_CRM_ARTIFACT_DIR: ${{ runner.temp }}/v17-commercial-crm-playwright-artifacts
         run: npm run test:v17-commercial-crm:browser
 
       - name: Validate isolated CRM Preview rehearsal in real browsers (24/24)
@@ -192,6 +195,16 @@ jobs:
           path: ${{ runner.temp }}/auth-null-playwright-artifacts
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Upload Commercial Inbox failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v17-commercial-crm-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/v17-commercial-crm-playwright-artifacts
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 6
 
       - name: Verify repository cleanliness
         run: git diff --exit-code

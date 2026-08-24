@@ -1,4 +1,10 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
+import {
+  createControlledGate,
+  DetailFulfillmentBarrier,
+  expect,
+  test,
+} from "./commercialTestHarness.mjs";
 
 const STATUSES = [
   "NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING",
@@ -137,17 +143,21 @@ test("filtros, paginación y Ficha usan Client relacional y renderizan texto hos
   expect(audit.every(({ method }) => method === "GET")).toBe(true);
 });
 
-test("Ficha soporta deep link, reload, error accesible y regreso preservando filtros", async ({ page }) => {
+test("Ficha soporta deep link, reload, error accesible y regreso preservando filtros", async ({ page, commercialDiagnostics }) => {
   const item = pipelineCase();
   const consoleIssues: string[] = [];
   const pageErrors: string[] = [];
-  let detailFails = false;
+  const detailPath = `/api/crm/pipeline-cases/${DEFAULT_CASE_REF}`;
+  const detailBarrier = new DetailFulfillmentBarrier(commercialDiagnostics);
+  let detailMode: "VALID" | "INVALID" = "VALID";
+  let delayedTicketId: number | null = null;
+  let controlledGate: ReturnType<typeof createControlledGate> | null = null;
   page.on("console", (message) => {
     if (message.type() === "warning" || message.type() === "error") consoleIssues.push(`${message.type()}:${message.text()}`);
   });
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await authenticate(page);
-  await page.route("**/api/crm/**", (route) => {
+  await page.route("**/api/crm/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/crm/pipeline-summary") {
       return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(summary(1)) });
@@ -155,32 +165,78 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
     if (url.pathname === "/api/crm/pipeline-cases") {
       return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, data: [item] }) });
     }
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      headers: privateHeaders,
-      body: JSON.stringify(detailFails ? { ok: true, data: { ...pipelineCaseDetail(item), tenantId: "internal-authority" } } : { ok: true, data: pipelineCaseDetail(item) }),
-    });
+    const lifecycle = detailBarrier.begin(url.pathname);
+    lifecycle.fulfillStarted();
+    if (controlledGate && lifecycle.ticket.id === delayedTicketId) await controlledGate.promise;
+    const status = 200;
+    const payload = detailMode === "INVALID"
+      ? { ok: true, data: { ...pipelineCaseDetail(item), tenantId: "internal-authority" } }
+      : { ok: true, data: pipelineCaseDetail(item) };
+    try {
+      await route.fulfill({ status, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(payload) });
+      lifecycle.fulfilled(status, "application/json");
+    } catch (cause) {
+      lifecycle.failed(cause);
+      throw cause;
+    }
   });
 
   await page.goto("/commercial");
   await page.getByPlaceholder("Caso o ruta").fill("CRM-DEMO");
   await expect(page.getByRole("button", { name: "Abrir ficha" }).first()).toBeVisible();
+  const firstDetail = detailBarrier.prepare("first-valid-detail", detailPath);
   await page.getByRole("button", { name: "Abrir ficha" }).first().click();
   await expect(page).toHaveURL(new RegExp(`/commercial/cases/${DEFAULT_CASE_REF}$`));
+  await firstDetail.completion;
   await expect(page.getByTestId("commercial-case-detail")).toBeVisible();
+  detailBarrier.markUiStable(firstDetail, "detail-rendered");
   await page.getByRole("button", { name: "Volver al Pipeline" }).click();
   await expect(page.getByPlaceholder("Caso o ruta")).toHaveValue("CRM-DEMO");
+
+  controlledGate = createControlledGate();
+  const preReloadDetail = detailBarrier.prepare("pre-reload-valid-detail", detailPath);
+  delayedTicketId = preReloadDetail.id;
   await page.getByRole("button", { name: "Abrir ficha" }).first().click();
   await expect(page).toHaveURL(new RegExp(`/commercial/cases/${DEFAULT_CASE_REF}$`));
+  await expect(page.getByText("Cargando la autoridad relacional del caso…")).toBeVisible();
+  expect(detailBarrier.pendingCount).toBe(1);
+  controlledGate.release();
+  await preReloadDetail.completion;
+  await expect(page.getByText("Receptor verificado: Receptor Sintético", { exact: true })).toBeVisible();
+  detailBarrier.markUiStable(preReloadDetail, "verified-receiver-rendered");
+  detailBarrier.assertReadyForReload(preReloadDetail);
+  expect(detailBarrier.pendingCount).toBe(0);
+
+  controlledGate = null;
+  delayedTicketId = null;
+  const reloadDetail = detailBarrier.prepare("post-reload-valid-detail", detailPath);
   await page.reload();
+  await reloadDetail.completion;
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await expect(page.getByText("Receptor verificado: Receptor Sintético", { exact: true })).toBeVisible();
+  detailBarrier.markUiStable(reloadDetail, "post-reload-detail-rendered");
 
-  detailFails = true;
+  detailMode = "INVALID";
+  const invalidDetail = detailBarrier.prepare("invalid-contract-detail", detailPath);
   await page.goto(`/commercial/cases/${DEFAULT_CASE_REF}`);
+  await invalidDetail.completion;
   await expect(page.getByRole("alert")).toContainText("CRM_PIPELINE_RESPONSE_INVALID");
   await expect(page.getByRole("button", { name: "Reintentar lectura" })).toBeVisible();
+  detailBarrier.markUiStable(invalidDetail, "invalid-contract-error-rendered");
+
+  const abortedProbe = new DetailFulfillmentBarrier(commercialDiagnostics);
+  const abortedTicket = abortedProbe.prepare("unexpected-abort-probe", detailPath);
+  const abortedLifecycle = abortedProbe.begin(detailPath);
+  abortedLifecycle.fulfillStarted();
+  abortedLifecycle.failed(new Error("SYNTHETIC_UNEXPECTED_ABORT"));
+  await expect(abortedTicket.completion).rejects.toThrow("SYNTHETIC_UNEXPECTED_ABORT");
+
+  const removedProbe = new DetailFulfillmentBarrier(commercialDiagnostics);
+  const removedTicket = removedProbe.prepare("interceptor-removed-probe", detailPath);
+  expect(() => removedProbe.assertReadyForReload(removedTicket)).toThrow("DETAIL_BARRIER_RELOAD_BLOCKED");
+  removedProbe.interceptorRemoved(removedTicket);
+  await expect(removedTicket.completion).rejects.toThrow("DETAIL_BARRIER_INTERCEPTOR_REMOVED");
+
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   expect(consoleIssues).toEqual([]);
   expect(pageErrors).toEqual([]);

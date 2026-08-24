@@ -8,6 +8,8 @@ El navegador sólo puede montar el árbol protegido cuando coinciden los tres mo
 
 Survey y Cotización permanecen visibles exclusivamente como **En integración**. CRM se identifica como **Sólo lectura** y las mutaciones continúan `DISABLED`.
 
+Una inspección de control plane de sólo lectura realizada el 2026-08-24 confirmó que las seis variables de activación Hub/CRM están ausentes en Production: los tres modos públicos `VITE_*`, `CRM_PIPELINE_RUNTIME_MODE`, `CRM_PIPELINE_MUTATION_MODE` y `CRM_PIPELINE_ACTIVATION_BATCH`. Las tres variables `COMMERCIAL_TENANCY_*` ya existen por la adopción tenant-first anterior; no se leyeron sus valores. No se modificó ninguna variable.
+
 ## Variables exactas del piloto
 
 Las siguientes variables forman una unidad de activación. No deben configurarse parcialmente ni con espacios, comillas, BOM, cambios de casing o valores alternativos.
@@ -37,6 +39,21 @@ Vercel debe aportar, sin variables editables del navegador:
 La activación sólo es válida en un deployment construido desde el resolver de este lote. Configurar las variables sobre un deployment anterior es insuficiente: ese bundle no reconoce `PRODUCTION_READ`, no solicita la confirmación segura de `/api/auth/me` y debe permanecer inactivo o fallar cerrado.
 
 ## Secuencia futura de activación
+
+### Bloqueo previo: escritura comercial general
+
+La autoridad canónica vigente no posee un modo `TENANT_READ_ONLY`. Sólo admite el par `LEGACY_ONLY/LEGACY_ONLY` o `TENANT_WRITE/TENANT_READ`; no se crea un tercer valor en este lote.
+
+Configurar `COMMERCIAL_TENANCY_WRITE_MODE=TENANT_WRITE` no habilita las mutaciones CRM, que siguen protegidas por `CRM_PIPELINE_MUTATION_MODE=DISABLED`, pero sí selecciona la ruta tenant-first de estos endpoints POST existentes:
+
+| Endpoint | Permiso adicional | Efecto potencial |
+|---|---|---|
+| `POST /api/clients` | `clients:create` | Crear Client tenantizado. |
+| `POST /api/projects` | `projects:create` | Crear Project tenantizado. |
+| `POST /api/k/project-validate` | `projects:validate`, rol K/A | Validar y transicionar Project. |
+| `POST /api/k/project-release` | `projects:release`, rol K/A | Liberar y transicionar Project. |
+
+Hub, Inbox y Ficha importan exclusivamente `crm-relational/readApi` y no invocan esos endpoints, owner options ni comandos CRM. Sin embargo, el cutover productivo no debe configurar el lote mientras no exista una autorización empresarial explícita para conservar esas escrituras o un diseño canónico separado que desacople lectura tenantizada y escritura general. Este bloqueo no afecta la publicación inactiva del código.
 
 1. Auditar y fusionar el resolver mediante un PR separado.
 2. Esperar un deployment Production inactivo del merge y validar sus contratos con las variables todavía ausentes.

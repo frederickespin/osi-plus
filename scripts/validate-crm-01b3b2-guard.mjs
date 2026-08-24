@@ -21,12 +21,15 @@ if (negativeCase === "direct-env") sources.set("src/crm-relational/RelationalPip
 if (negativeCase === "storage") sources.set("src/crm-relational/RelationalPipelineModule.tsx", `${sources.get("src/crm-relational/RelationalPipelineModule.tsx")}\nlocalStorage.setItem("crm", "unsafe");`);
 if (negativeCase === "owner-field") sources.set("src/crm-relational/RelationalPipelineModule.tsx", `${sources.get("src/crm-relational/RelationalPipelineModule.tsx")}\nconst ownerMembershipId = "free-input";`);
 if (negativeCase === "cors") sources.set("src/crm-relational/api.ts", `${sources.get("src/crm-relational/api.ts")}\nconst cors = "Access-Control-Allow-Origin: *";`);
+if (negativeCase === "production-write") sources.set("src/crm-relational/clientMode.ts", `${sources.get("src/crm-relational/clientMode.ts")}\nconst unsafeMode = "PRODUCTION_WRITE";`);
+if (negativeCase === "inline-production") sources.set("src/crm-relational/clientMode.ts", sources.get("src/crm-relational/clientMode.ts").replaceAll("resolveV17CommercialCrmProductionClientAuthority", "unsafeProductionAuthority"));
 const modeReaders = [...sources.entries()].filter(([, source]) => /VITE_CRM_PIPELINE_CLIENT_MODE/.test(source));
 invariant(modeReaders.length === 1 && modeReaders[0][0] === "src/crm-relational/clientMode.ts", "la variable sólo puede leerse en el resolver");
 const gate = sources.get("src/crm-relational/clientMode.ts") || "";
 invariant(/raw === undefined[\s\S]*DISABLED/.test(gate), "DISABLED debe ser predeterminado");
 invariant(!/(?:trim|toUpperCase|toLowerCase)\s*\(/.test(gate), "la compuerta no puede normalizar valores inválidos");
-invariant(!/PRODUCTION_(?:READ|WRITE)|TENANT_(?:READ|WRITE)/.test(gate), "modo productivo frontend prohibido");
+invariant(!/PRODUCTION_WRITE|TENANT_(?:READ|WRITE)/.test(gate), "escritura o tenancy productiva frontend prohibida");
+invariant(/V17_COMMERCIAL_CRM_PRODUCTION_MODE/.test(gate) && /resolveV17CommercialCrmProductionClientAuthority/.test(gate), "PRODUCTION_READ debe proceder del resolver canónico");
 
 for (const [path, source] of sources) {
   invariant(!/localStorage|sessionStorage|indexedDB/.test(source), `${path} no puede persistir CRM relacional`);

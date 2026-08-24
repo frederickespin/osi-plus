@@ -254,12 +254,12 @@ try {
   invariant(crmDisabledOptionsRun.report.ok === true && crmDisabledOptionsRun.assertions >= 300, `CRM-01B3B3 OPTIONS esperaba al menos 300 pruebas y obtuvo ${crmDisabledOptionsRun.assertions}`);
   invariant(crmProductionAdversarialRun.report.ok === true && crmProductionAdversarialRun.assertions >= 20
     && Object.values(crmProductionAdversarialRun.report.performance || {}).every((entry) => entry.requests === 100), "CRM-01B3B1 adversarial/rendimiento no se completó");
-  invariant(crmProductionGateGuardRun.report.ok === true && crmProductionGateGuardRun.report.routes === 8, "CRM-01B3B1 guard falló");
+  invariant(crmProductionGateGuardRun.report.ok === true && crmProductionGateGuardRun.report.routes === 9, "CRM-01B3B1 guard falló");
   invariant(crmProductionGateGuardTestsRun.assertions >= 15, `CRM-01B3B1 guard tests esperaba al menos 15 pruebas y obtuvo ${crmProductionGateGuardTestsRun.assertions}`);
   invariant(crmOwnerCatalogRun.assertions >= 21, `CRM-01B3B3 esperaba al menos 21 pruebas y obtuvo ${crmOwnerCatalogRun.assertions}`);
   invariant(crmOwnerCatalogIntegrationRun.report.ok === true && crmOwnerCatalogIntegrationRun.report.fixtureMemberships === 2_001
     && crmOwnerCatalogIntegrationRun.assertions >= 14, "CRM-01B3B3 integración/rendimiento no se completó");
-  invariant(crmOwnerCatalogGuardRun.report.ok === true && crmOwnerCatalogGuardRun.report.routes === 8, "CRM-01B3B3 guard falló");
+  invariant(crmOwnerCatalogGuardRun.report.ok === true && crmOwnerCatalogGuardRun.report.routes === 9, "CRM-01B3B3 guard falló");
   invariant(crmOwnerCatalogGuardTestsRun.assertions >= 5, `CRM-01B3B3 guard tests esperaba al menos 5 pruebas y obtuvo ${crmOwnerCatalogGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
@@ -337,7 +337,7 @@ try {
   invariant(v17CaseClientPerformanceRun.report.ok === true && v17CaseClientPerformanceRun.report.fixtureCases === 10_000, "V17-CASE-CLIENT rendimiento incompleto");
   invariant(v17CaseClientAdversarialRun.report.ok === true && v17CaseClientAdversarialRun.report.raceMetrics?.operations === 160, "V17-CASE-CLIENT adversarial incompleto");
   invariant(v17CaseClientDatabaseGuardRun.assertions >= 13, `V17-CASE-CLIENT database guard esperaba al menos 13 pruebas y obtuvo ${v17CaseClientDatabaseGuardRun.assertions}`);
-  invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === 18, "V17-CASE-CLIENT guard falló");
+  invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === 19, "V17-CASE-CLIENT guard falló");
   invariant(v17CaseClientGuardTestsRun.assertions >= 10, `V17-CASE-CLIENT guard tests esperaba al menos 10 pruebas y obtuvo ${v17CaseClientGuardTestsRun.assertions}`);
   invariant(v17CasePublicRefRun.report.ok === true && v17CasePublicRefRun.assertions >= 15, "V17-CASE-PUBLIC-REF tests fallaron");
   invariant(v17CasePublicRefRaceRun.report.ok === true && v17CasePublicRefRaceRun.report.backfill?.rows === 10_000

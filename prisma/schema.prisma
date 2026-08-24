@@ -352,6 +352,7 @@ model AuthRefreshToken {
 
 model Client {
   id                        String         @id @default(cuid())
+  publicRef                 String         @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
   tenantId                  String?        @map("tenant_id")
   code                      String         @unique
   name                      String
@@ -389,6 +390,7 @@ model Client {
   surveys                   Survey[]
 
   @@unique([tenantId, id], map: "osi_clients_tenant_id_id_key")
+  @@unique([tenantId, publicRef], map: "osi_clients_tenant_id_public_ref_key")
   @@index([tenantId, status], map: "osi_clients_tenant_id_status_idx")
   @@map("osi_clients")
 }
@@ -1257,7 +1259,7 @@ model PipelineCase {
   publicRef                     String                        @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
   tenantId                      String?                       @map("tenant_id")
   clientId                      String?                       @map("client_id")
-  caseCode                      String                        @unique
+  caseCode                      String
   clientName                    String?
   mode                          PipelineMode
   serviceType                   String
@@ -1298,6 +1300,7 @@ model PipelineCase {
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
   @@unique([tenantId, id, clientId], map: "osi_pipeline_cases_tenant_id_id_client_id_key")
   @@unique([tenantId, publicRef], map: "osi_pipeline_cases_tenant_id_public_ref_key")
+  @@unique([tenantId, caseCode], map: "osi_pipeline_cases_tenant_id_case_code_key")
   @@index([tenantId, status, updatedAt], map: "osi_pipeline_cases_tenant_id_status_updated_at_idx")
   @@index([tenantId, clientId, status, updatedAt], map: "osi_pipeline_cases_tenant_id_client_id_status_updated_at_idx")
   @@index([tenantId, ownerMembershipId, ownerUserId], map: "osi_pipeline_cases_tenant_owner_idx")
@@ -3209,6 +3212,8 @@ enum PipelineCaseStatus {
 }
 
 enum PipelineCaseCommandType {
+  CREATE
+  UPDATE
   TRANSITION
   REOPEN
   ASSIGN_OWNER

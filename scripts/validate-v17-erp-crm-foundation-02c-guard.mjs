@@ -9,6 +9,14 @@ const files = {
   production: fs.readFileSync("shared/v17CommercialCrmProduction.js", "utf8"),
   auth: fs.readFileSync("api/_lib/v17CommercialCrmProductionAuth.js", "utf8"),
 };
+const workflow = fs.readFileSync(".github/workflows/ci.yml", "utf8");
+const protectedUi = [
+  fs.readFileSync("src/hub/HubWorkspace.tsx", "utf8"),
+  fs.readFileSync("src/commercial-crm/AdvancedErpShell.tsx", "utf8"),
+  fs.readFileSync("src/commercial-crm/CommercialInboxModule.tsx", "utf8"),
+  fs.readFileSync("src/commercial-crm/CommercialCaseDetail.tsx", "utf8"),
+  fs.readFileSync("src/crm-relational/readApi.ts", "utf8"),
+].join("\n");
 
 assert.match(files.production, /hubMode === V17_COMMERCIAL_CRM_PRODUCTION_MODE[\s\S]*clientMode === V17_COMMERCIAL_CRM_PRODUCTION_MODE[\s\S]*readMode === V17_COMMERCIAL_CRM_PRODUCTION_MODE/u);
 assert.match(files.production, /vercelEnvironment === "production"[\s\S]*gitBranch === V17_COMMERCIAL_CRM_PRODUCTION_BRANCH/u);
@@ -19,10 +27,14 @@ assert.match(files.app, /commercialCrmProductionAuthorized !== true/u);
 assert.ok(files.app.indexOf("!hubMode.valid || !serverConfirmed") < files.app.indexOf("<AuthorizedHubEntry"));
 assert.match(files.hubMode, /resolveV17CommercialCrmProductionClientAuthority/u);
 assert.match(files.clientMode, /productionPair/u);
-assert.doesNotMatch(files.hub, /Esta fundación local no activa ninguna aplicación/u);
+assert.match(files.hub, /Comercial abre el ERP sólo cuando la sesión y el entorno están autorizados/u);
 assert.match(files.hub, /CRM · sólo lectura/u);
+assert.match(workflow, /npm run test:v17-erp-crm-foundation-02c\s/u);
+assert.match(workflow, /npm run test:v17-erp-crm-foundation-02c:browser/u);
+assert.doesNotMatch(protectedUi, /\/api\/(?:clients|projects|k\/)|\/pipeline-owner-options|\/allowed-transitions|\/assign-owner|\/unassign-owner|\/transition/u);
+assert.doesNotMatch(protectedUi, /crm-relational\/api/u);
 for (const source of Object.values(files)) {
   assert.doesNotMatch(source, /prefetch|localStorage\.getItem\([^)]*(?:permission|role)|x-osi-/iu);
 }
 
-process.stdout.write(JSON.stringify({ ok: true, assertions: 17, protectedBoundary: "pre-lazy", mutations: "DISABLED" }));
+process.stdout.write(JSON.stringify({ ok: true, assertions: 21, protectedBoundary: "pre-lazy", mutations: "DISABLED", browserCi: 18 }));

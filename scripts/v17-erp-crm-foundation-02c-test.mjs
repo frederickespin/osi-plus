@@ -114,8 +114,20 @@ check("Auth me confirma Production sólo con contexto revalidado", () => {
 
 check("Hub corrige copy local y declara CRM sólo lectura", () => {
   const hub = read("src/hub/HubWorkspace.tsx");
-  assert.doesNotMatch(hub, /Esta fundación local no activa ninguna aplicación/u);
+  assert.match(hub, /Comercial abre el ERP sólo cuando la sesión y el entorno están autorizados/u);
   assert.match(hub, /CRM · sólo lectura/u);
+});
+
+check("Hub, Inbox y Ficha no invocan escrituras comerciales generales", () => {
+  const protectedUi = [
+    read("src/hub/HubWorkspace.tsx"),
+    read("src/commercial-crm/AdvancedErpShell.tsx"),
+    read("src/commercial-crm/CommercialInboxModule.tsx"),
+    read("src/commercial-crm/CommercialCaseDetail.tsx"),
+    read("src/crm-relational/readApi.ts"),
+  ].join("\n");
+  assert.doesNotMatch(protectedUi, /\/api\/(?:clients|projects|k\/)|\/pipeline-owner-options|\/allowed-transitions|\/assign-owner|\/unassign-owner|\/transition/u);
+  assert.doesNotMatch(protectedUi, /crm-relational\/api/u);
 });
 
 check("Survey y Cotización permanecen En integración", () => {

@@ -150,6 +150,8 @@ jobs:
           npm run test:v17-commercial-crm-preview:guard
           npm run test:v17-commercial-crm-preview
           npm run test:v17-commercial-crm-preview:http
+          npm run test:v17-erp-crm-foundation-02c
+          npm run guard:v17-erp-crm-foundation-02c
           npm run test:v17-app-environment
           npm run test:webkit-internal-recovery
 
@@ -182,6 +184,9 @@ jobs:
 
       - name: Validate isolated CRM Preview rehearsal in real browsers (24/24)
         run: npm run test:v17-commercial-crm-preview:browser
+
+      - name: Validate inactive Production Read pilot in real browsers (18/18)
+        run: npm run test:v17-erp-crm-foundation-02c:browser
 
       - name: Report browser infrastructure after validation
         if: always()

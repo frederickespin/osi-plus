@@ -16,6 +16,7 @@ export type CrmOwner = Readonly<{
 }>;
 
 export type CrmServiceClient = Readonly<{
+  clientRef: string;
   displayName: string;
   type: string | null;
   status: string;
@@ -46,6 +47,7 @@ export type CrmPipelineCase = Readonly<{
 export type CrmPipelineCaseDetail = Readonly<{
   caseRef: string;
   caseCode: string;
+  version: number;
   status: PipelineCaseStatus;
   mode: PipelineMode | null;
   serviceType: string | null;
@@ -60,7 +62,7 @@ export type CrmPipelineCaseDetail = Readonly<{
   quoteCount: number;
   eventCount: number;
   client: CrmServiceClient | null;
-  owner: Readonly<{ displayName: string }> | null;
+  owner: Readonly<{ displayName: string; isCurrentActor: boolean }> | null;
   createdAt: string;
   updatedAt: string;
 }>;

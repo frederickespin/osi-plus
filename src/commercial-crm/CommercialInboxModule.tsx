@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, ChevronLeft, ChevronRight, Clock3, MapPin, Search, UserRound, UsersRound } from "lucide-react";
+import { AlertCircle, ArrowLeft, ChevronLeft, ChevronRight, Clock3, MapPin, Plus, Search, UserRound, UsersRound } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,9 @@ import {
   type PipelineMode,
 } from "@/crm-relational/types";
 import { STATUS_LABELS, commercialReadErrorCopy, statusClass } from "./presentation";
+import { CrmCaseMutationApi, isCrmCaseMutationUiEnabled } from "@/crm-relational/mutationApi";
+import CommercialCaseForm from "./CommercialCaseForm";
+import type { CrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 
 const CommercialCaseDetail = lazy(() => import("./CommercialCaseDetail"));
 const PAGE_SIZE = 25;
@@ -24,6 +27,7 @@ const MODES: readonly PipelineMode[] = ["LOCAL", "EXPORT", "IMPORT"];
 
 type Props = Readonly<{
   authorization?: string;
+  mutationAccess: CrmCaseMutationUiAccess;
   caseRef?: string | null;
   onBack(): void;
   onOpenCase(caseRef: string): void;
@@ -77,7 +81,7 @@ function MobileCase({ item, onOpen }: { item: CrmPipelineCase; onOpen(caseRef: s
   return <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="border-l-4 border-l-sky-500 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-sm font-black text-[#003366]">{item.caseCode}</p><p className="mt-1 max-w-56 truncate text-sm font-semibold text-slate-900">{item.client?.displayName || "Sin Client vinculado"}</p><p className="text-[11px] text-slate-500">{formatDate(item.updatedAt)}</p></div><Badge variant="outline">{item.mode}</Badge></div><p className="mt-3 text-sm text-slate-700">{item.originLocation || "Origen no registrado"} → {item.destinationLocation || "Destino no registrado"}</p><div className="mt-3 flex flex-wrap gap-2"><Badge data-status={item.status} variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">SLA no disponible</span></div><div className="mt-4 flex items-center justify-between"><span className="text-xs text-slate-600">{item.owner?.displayName || "Sin asignar"}</span><Button size="sm" className="bg-[#006aa6] hover:bg-[#005482]" onClick={() => onOpen(item.caseRef)}>Abrir ficha</Button></div></div></article>;
 }
 
-export default function CommercialInboxModule({ authorization, caseRef, onBack, onOpenCase, onReturnToInbox, onUnauthorized, api: suppliedApi }: Props) {
+export default function CommercialInboxModule({ authorization, mutationAccess, caseRef, onBack, onOpenCase, onReturnToInbox, onUnauthorized, api: suppliedApi }: Props) {
   const api = useMemo(
     () => suppliedApi ?? new CrmPipelineReadApi({ tokenProvider: () => authorization ?? null }),
     [authorization, suppliedApi],
@@ -92,9 +96,12 @@ export default function CommercialInboxModule({ authorization, caseRef, onBack, 
   const [detail, setDetail] = useState<DetailState>({ loading: false, value: null, error: null });
   const [refresh, setRefresh] = useState(0);
   const [detailRefresh, setDetailRefresh] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
   const listFence = useRef(0);
   const summaryFence = useRef(0);
   const detailFence = useRef(0);
+  const mutationEnvironmentEnabled = isCrmCaseMutationUiEnabled();
+  const mutationApi = useMemo(() => new CrmCaseMutationApi(() => authorization ?? null), [authorization]);
 
   const captureError = useCallback((cause: unknown) => {
     const error = asCrmPipelineReadError(cause);
@@ -156,12 +163,13 @@ export default function CommercialInboxModule({ authorization, caseRef, onBack, 
   }, [api, captureError, caseRef, detailRefresh]);
 
   if (caseRef) {
-    return <Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense>;
+    return <Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense>;
   }
 
   const pages = Math.max(1, Math.ceil((list?.total ?? 0) / (list?.pageSize ?? PAGE_SIZE)));
   return <section className="mx-auto max-w-[1580px] space-y-5 px-4 py-5 sm:px-6 lg:px-8" data-testid="commercial-crm-inbox">
-    <header className="overflow-hidden rounded-xl border border-sky-200 bg-white shadow-sm"><div className="h-1 bg-gradient-to-r from-[#003366] via-[#0079b8] to-amber-400" /><div className="flex flex-wrap items-start justify-between gap-4 p-5"><div><p className="text-[11px] font-bold uppercase tracking-[.2em] text-[#0070a8]">Gestión Comercial</p><h1 className="mt-1 text-2xl font-black tracking-tight text-[#003366]">Inbox Comercial</h1><p className="mt-1 text-sm text-slate-600">Pipeline relacional del tenant autenticado · lectura segura</p></div><Button variant="outline" onClick={onBack}><ArrowLeft />Regresar al Hub</Button></div></header>
+    <header className="overflow-hidden rounded-xl border border-sky-200 bg-white shadow-sm"><div className="h-1 bg-gradient-to-r from-[#003366] via-[#0079b8] to-amber-400" /><div className="flex flex-wrap items-start justify-between gap-4 p-5"><div><p className="text-[11px] font-bold uppercase tracking-[.2em] text-[#0070a8]">Gestión Comercial</p><h1 className="mt-1 text-2xl font-black tracking-tight text-[#003366]">Inbox Comercial</h1><p className="mt-1 text-sm text-slate-600">Pipeline relacional del tenant autenticado{mutationEnvironmentEnabled && mutationAccess.canCreate ? " · altas locales gobernadas" : " · lectura segura"}</p></div><div className="flex gap-2">{mutationEnvironmentEnabled && mutationAccess.canCreate && <Button onClick={() => setCreateOpen(true)}><Plus />Nuevo Caso</Button>}<Button variant="outline" onClick={onBack}><ArrowLeft />Regresar al Hub</Button></div></div></header>
+    {mutationEnvironmentEnabled && mutationAccess.canCreate && <CommercialCaseForm open={createOpen} mode="CREATE" api={mutationApi} onOpenChange={setCreateOpen} onCommitted={(receipt) => { setRefresh((value) => value + 1); onOpenCase(receipt.caseRef); }} />}
     <SummaryCards value={summary} />
     <Card className="border-slate-200 shadow-sm"><CardContent className="grid gap-3 p-4 md:grid-cols-[minmax(220px,1fr)_180px_200px]"><label className="text-xs font-semibold text-slate-600">Buscar<span className="relative mt-1 block"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input className="pl-9" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Caso, cliente o ruta" /></span></label><label className="text-xs font-semibold text-slate-600">Estado<select aria-label="Estado" className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={filters.status || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, status: (event.target.value || undefined) as PipelineCaseStatus | undefined }))}><option value="">Todos</option>{PIPELINE_CASE_STATUSES.map((value) => <option key={value} value={value}>{STATUS_LABELS[value]}</option>)}</select></label><label className="text-xs font-semibold text-slate-600">Asignación<select aria-label="Asignación" className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={filters.owner || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, owner: (event.target.value || undefined) as CrmPipelineFilters["owner"] }))}><option value="">Todas</option><option value="assigned">Asignadas</option><option value="unassigned">Sin asignar</option></select></label><div className="flex flex-wrap gap-2 md:col-span-3"><Button size="sm" variant={!filters.mode ? "default" : "outline"} onClick={() => setFilters((current) => ({ ...current, page: 1, mode: undefined }))}>Todos los modos</Button>{MODES.map((mode) => <Button key={mode} size="sm" variant={filters.mode === mode ? "default" : "outline"} onClick={() => setFilters((current) => ({ ...current, page: 1, mode }))}>{mode}</Button>)}</div></CardContent></Card>
     {listError && <Alert variant="destructive"><AlertCircle /><AlertTitle>{listError.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(listError)}<Button size="sm" variant="outline" className="mt-3" onClick={() => setRefresh((value) => value + 1)}>Reintentar lectura</Button></AlertDescription></Alert>}

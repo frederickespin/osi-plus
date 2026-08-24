@@ -102,8 +102,9 @@ function parseOwner(value: unknown): CrmPipelineCase["owner"] {
 function parseClient(value: unknown): CrmPipelineCase["client"] {
   if (value === null) return null;
   const row = object(value);
-  exactKeys(row, ["displayName", "type", "status"]);
-  return Object.freeze({ displayName: text(row.displayName)!, type: text(row.type, true), status: text(row.status)! });
+  exactKeys(row, ["clientRef", "displayName", "type", "status"]);
+  if (typeof row.clientRef !== "string" || !PUBLIC_CASE_REF_PATTERN.test(row.clientRef)) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  return Object.freeze({ clientRef: row.clientRef, displayName: text(row.displayName)!, type: text(row.type, true), status: text(row.status)! });
 }
 
 function parseOwnerOption(value: unknown): CrmOwnerOption {

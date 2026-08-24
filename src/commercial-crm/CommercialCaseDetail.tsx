@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   FileText,
   Gauge,
   MapPin,
+  Pencil,
   PackageOpen,
   Route,
   UserRound,
@@ -19,11 +20,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { CrmPipelineReadError } from "@/crm-relational/readApi";
 import type { CrmPipelineCaseDetail } from "@/crm-relational/types";
 import { STATUS_LABELS, commercialReadErrorCopy, statusClass } from "./presentation";
+import { CrmCaseMutationApi, type CrmCaseFields } from "@/crm-relational/mutationApi";
+import CommercialCaseForm from "./CommercialCaseForm";
+import type { CrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 
 type Props = Readonly<{
   state: Readonly<{ loading: boolean; value: CrmPipelineCaseDetail | null; error: CrmPipelineReadError | null }>;
   onBack(): void;
   onReload(): void;
+  mutationEnvironmentEnabled: boolean;
+  mutationAccess: CrmCaseMutationUiAccess;
+  mutationApi: CrmCaseMutationApi;
 }>;
 
 type WorkspaceTab = "CASE" | "SURVEY" | "QUOTE";
@@ -58,13 +65,29 @@ function IntegrationPanel({ title, description }: { title: string; description: 
   </section>;
 }
 
-export default function CommercialCaseDetail({ state, onBack, onReload }: Props) {
+export default function CommercialCaseDetail({ state, onBack, onReload, mutationEnvironmentEnabled, mutationAccess, mutationApi }: Props) {
   const [tab, setTab] = useState<WorkspaceTab>("CASE");
+  const [editOpen, setEditOpen] = useState(false);
   const item = state.value;
+  const mutationEnabled = Boolean(item && mutationEnvironmentEnabled
+    && !["APPROVED", "OPS_HANDOFF"].includes(item.status)
+    && (mutationAccess.canUpdateAny || (mutationAccess.canUpdateOwn && item.owner?.isCurrentActor)));
+  const initial = useMemo<CrmCaseFields | undefined>(() => item ? ({
+    clientRef: item.client?.clientRef || null,
+    mode: item.mode || "LOCAL",
+    serviceType: item.serviceType || "",
+    customerType: (item.customerType || "L4_PERSONAL") as CrmCaseFields["customerType"],
+    estimatedCbm: item.estimatedCbm || 0,
+    requiresSurvey: item.requiresSurvey,
+    surveyMethod: (item.surveyMethod || "NO_APLICA") as CrmCaseFields["surveyMethod"],
+    originLocation: item.originLocation || "",
+    destinationLocation: item.destinationLocation || "",
+    destinationContracted: item.destinationContracted ?? true,
+  }) : undefined, [item]);
   return <section className="mx-auto max-w-[1420px] space-y-4 px-4 py-5 sm:px-6 lg:px-8" data-testid="commercial-case-detail">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div><p className="text-[11px] font-bold uppercase tracking-[.2em] text-[#0070a8]">Workspace Comercial · sólo lectura</p><h1 className="mt-1 text-2xl font-black tracking-tight text-[#003366]">Ficha del Caso</h1></div>
-      <Button variant="outline" onClick={onBack}><ArrowLeft />Volver al Pipeline</Button>
+      <div className="flex gap-2">{mutationEnabled && item && <Button onClick={() => setEditOpen(true)}><Pencil />Editar</Button>}<Button variant="outline" onClick={onBack}><ArrowLeft />Volver al Pipeline</Button></div>
     </div>
     {state.loading && <Card><CardContent className="py-16 text-center text-sm text-slate-500">Cargando la autoridad relacional del caso…</CardContent></Card>}
     {state.error && <Alert variant="destructive" role="alert"><AlertCircle /><AlertTitle>{state.error.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(state.error)}<Button className="mt-3" size="sm" variant="outline" onClick={onReload}>Reintentar lectura</Button></AlertDescription></Alert>}
@@ -118,7 +141,8 @@ export default function CommercialCaseDetail({ state, onBack, onReload }: Props)
 
       {item.status === "APPROVED" && <Alert><AlertTitle>Legacy congelado</AlertTitle><AlertDescription>APPROVED permanece visible, pero no admite acciones en esta fase.</AlertDescription></Alert>}
       {item.status === "OPS_HANDOFF" && <Alert><AlertTitle>Estado terminal</AlertTitle><AlertDescription>La oportunidad ya fue entregada a Operaciones.</AlertDescription></Alert>}
-      <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4"><p className="text-sm font-semibold text-slate-800">Edición y acciones empresariales</p><p className="mt-1 text-sm text-slate-500">Disponible en una fase posterior. Esta Ficha no ejecuta mutaciones ni inventa autoridades ausentes.</p></div>
+      {!mutationEnabled && <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4"><p className="text-sm font-semibold text-slate-800">Edición y acciones empresariales</p><p className="mt-1 text-sm text-slate-500">Disponible en una fase posterior. Esta Ficha no ejecuta mutaciones ni inventa autoridades ausentes.</p></div>}
+      {mutationEnabled && initial && <CommercialCaseForm open={editOpen} mode="UPDATE" api={mutationApi} caseRef={item.caseRef} expectedVersion={item.version} initial={initial} initialClient={item.client ? { clientRef: item.client.clientRef, displayName: item.client.displayName, type: item.client.type, status: item.client.status } : undefined} onOpenChange={setEditOpen} onCommitted={() => onReload()} />}
     </>}
   </section>;
 }

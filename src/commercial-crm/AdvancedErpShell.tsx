@@ -17,11 +17,13 @@ import {
   X,
 } from "lucide-react";
 import CommercialInboxModule from "./CommercialInboxModule";
+import type { CrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 
 type Props = Readonly<{
   authorization?: string;
   caseRef?: string | null;
   role: string;
+  mutationAccess: CrmCaseMutationUiAccess;
   userName?: string;
   onNavigate(pathname: string): void;
   onLogout(): void;
@@ -109,7 +111,7 @@ function Sidebar({ collapsed, userName, role, onCollapse, onCommercial, onHub, o
   </aside>;
 }
 
-export default function AdvancedErpShell({ authorization, caseRef, role, userName, onNavigate, onLogout, onUnauthorized }: Props) {
+export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, userName, onNavigate, onLogout, onUnauthorized }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const goCommercial = () => {
@@ -136,6 +138,7 @@ export default function AdvancedErpShell({ authorization, caseRef, role, userNam
       <main>
         <CommercialInboxModule
           authorization={authorization}
+          mutationAccess={mutationAccess}
           caseRef={caseRef}
           onBack={goHub}
           onOpenCase={(nextCaseRef) => onNavigate(`/commercial/cases/${nextCaseRef}`)}

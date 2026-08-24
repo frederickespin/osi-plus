@@ -76,7 +76,7 @@ test("DISABLED conserva la aplicación actual y no descarga el chunk Hub", async
   await page.goto("http://127.0.0.1:4184/");
   await expect(page.getByText("Actor legacy")).toBeVisible();
   await expect(page.getByText("OSi Plus Hub", { exact: true })).toHaveCount(0);
-  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(requests.filter((path) => path.startsWith("/api/"))).toEqual(["/api/auth/me"]);
 });
 
@@ -106,8 +106,8 @@ test("DISABLED también bloquea deep links sin prefetch, listeners ni timers del
   await expect(page.getByTestId("osi-survey-inactive")).toHaveCount(0);
   const audit = await page.evaluate(() => (window as typeof window & { __v17HubDisabledAudit: { listeners: string[]; timers: string[] } }).__v17HubDisabledAudit);
   expect(audit).toEqual({ listeners: [], timers: [] });
-  expect(resources.some((path) => /HubWorkspace|OsiSurveyInactive|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
-  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /HubWorkspace|OsiSurveyInactive|CommercialInboxModule|CommercialCaseDetail/i.test(entry.name)))).toBe(false);
+  expect(resources.some((path) => /HubWorkspace|OsiSurveyInactive|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /HubWorkspace|OsiSurveyInactive|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(entry.name)))).toBe(false);
 });
 
 test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) => {
@@ -142,7 +142,7 @@ test("deniedPermissions prevalece antes del lazy y no bloquea otras aplicaciones
   await expect(deniedPage.getByTestId("hub-forbidden")).toContainText("403");
   await expect(deniedPage.getByRole("heading", { name: "No puedes abrir esta aplicación" })).toBeFocused();
   await expect(deniedPage.getByRole("button", { name: "Volver a una ruta segura" })).toBeVisible();
-  expect(deniedResources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(deniedResources.some((path) => /HubWorkspace|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(deniedResources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
   await deniedContext.close();
 
@@ -162,7 +162,7 @@ test("query, storage y x-osi-* no elevan un contexto validado", async ({ page })
   await authenticate(page, { role: "G" });
   await page.goto("/commercial?role=A&permission=clients:view");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-  expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(resources.some((path) => /HubWorkspace|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
   await page.goto("/hub");
   await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toHaveCount(0);
@@ -186,7 +186,7 @@ test("hash, URL, sessionStorage y headers de proxy no alteran autoridad", async 
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   await page.goto("/survey?permission=survey:assigned:view#role=A");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-  expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail|OsiSurveyInactive/i.test(path))).toBe(false);
+  expect(resources.some((path) => /HubWorkspace|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail|OsiSurveyInactive/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
 });
 
@@ -205,7 +205,7 @@ test("cuatro rutas deny, back/forward y logout permanecen antes del límite lazy
     await page.goto(`${route}?role=A&permission=pipeline:view#pipeline:view`);
     await expect(page.getByTestId("hub-forbidden")).toBeVisible();
     await expect(page.getByRole("heading", { name: "No puedes abrir esta aplicación" })).toBeFocused();
-    expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+    expect(resources.some((path) => /HubWorkspace|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
     expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
     expect(issues).toEqual([]);
     await context.close();
@@ -222,7 +222,7 @@ test("cuatro rutas deny, back/forward y logout permanecen antes del límite lazy
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   await page.goForward();
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-  expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(resources.some((path) => /HubWorkspace|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
   await page.getByRole("button", { name: "Volver a una ruta segura" }).press("Enter");
   await expect(page.getByRole("button", { name: "Iniciar Sesión" })).toBeVisible();
@@ -252,7 +252,7 @@ test("un permiso retirado se revalida antes de una navegación SPA y bloquea el 
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   expect(new URL(page.url()).pathname).toBe("/hub");
   expect(requestsAfterRevocation.filter((path) => path === "/api/auth/me")).toHaveLength(1);
-  expect(requestsAfterRevocation.some((path) => /CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(requestsAfterRevocation.some((path) => /AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(requestsAfterRevocation.some((path) => path.startsWith("/api/crm/"))).toBe(false);
   await context.close();
 });

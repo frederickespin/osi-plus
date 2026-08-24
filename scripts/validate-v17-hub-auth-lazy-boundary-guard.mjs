@@ -52,7 +52,8 @@ requireText(catalog, 'route: "/commercial", routeAliases: ["/crm", "/sales/pipel
 
 if (/evaluateHubAccess\s*\(\s*selected|function\s+AccessDenied|<AccessDenied|addEventListener\(["']popstate|history\.pushState/.test(workspace)) fail("la autorización o el routing regresó al chunk lazy");
 for (const signature of ["pathname: string", "onNavigate: (pathname: string) => void"]) requireText(workspace, signature, `HubWorkspace dejó de ser controlado: ${signature}`);
-requireText(workspace, "selected.appId === \"commercial-crm\" && crmReadEnabled", "la lectura CRM perdió su compuerta funcional");
+requireText(workspace, "selected?.appId === \"commercial-crm\" && crmReadEnabled", "la lectura CRM perdió su compuerta funcional");
+requireText(workspace, 'lazy(() => import("@/commercial-crm/AdvancedErpShell"))', "el ERP Comercial dejó de ser lazy");
 if (/const\s+BASE\s*=|allowed(?:Backend|Prisma|Global)?Changes|[0-9a-f]{40}/i.test(commercialGuard)) fail("una guardia protegida usa SHA fijo o allowlist global");
 if (/prefetch|webpackPrefetch|rel=["'](?:modulepreload|preload)["']/i.test([app, routeAccess, workspace, index].join("\n"))) fail("se introdujo prefetch o preload protegido");
 

@@ -25,8 +25,8 @@ invariant(/validateLegacySession\(session, controller\.signal\)\.then[\s\S]*deci
 invariant(/activeNavigation\.current\?\.controller\.abort\(\)[\s\S]*const fence = \+\+navigationFence\.current[\s\S]*controller\.signal\.aborted \|\| fence !== navigationFence\.current/.test(app), "navegación perdió abort o fencing");
 invariant(/findHubApplicationByRoute\(normalizedPath\)[\s\S]*evaluateHubAccess\(application, context\)/.test(routeAccess), "rutas y tarjetas no comparten decisión canónica");
 invariant(!/evaluateHubAccess\s*\(\s*selected|!decision\?\.allowed|addEventListener\(["']popstate|history\.pushState/.test(hub), "autorización o routing regresó al chunk lazy");
-invariant(/lazy\(\(\) => import\("@\/commercial-crm\/CommercialInboxModule"\)\)/.test(hub), "Inbox no es lazy");
-invariant(/selected\.appId === "commercial-crm" && crmReadEnabled/.test(hub), "compuerta CRM ausente después de autorizar la ruta");
+invariant(/lazy\(\(\) => import\("@\/commercial-crm\/AdvancedErpShell"\)\)/.test(hub), "ERP Comercial no es lazy");
+invariant(/selected\?\.appId === "commercial-crm" && crmReadEnabled/.test(hub), "compuerta CRM ausente después de autorizar la ruta");
 
 const mode = read("src/crm-relational/clientMode.ts");
 for (const signature of ['LOCAL_ONLY: "LOCAL_ONLY"', 'READ_ONLY: "READ_ONLY"', 'PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE', "VITE_CRM_PIPELINE_CLIENT_MODE", "VITE_CRM_PIPELINE_READ_MODE", "isRelationalCrmReadEnabled"]) invariant(mode.includes(signature), `compuerta incompleta: ${signature}`);
@@ -50,11 +50,12 @@ invariant(/tenantId_publicRef/.test(canonicalRead) && /client:\s*\{\s*is:\s*\{\s
 
 const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");
 const caseDetail = read("src/commercial-crm/CommercialCaseDetail.tsx");
+const erpShell = read("src/commercial-crm/AdvancedErpShell.tsx");
 const presentation = read("src/commercial-crm/presentation.ts");
 invariant(/Inbox Comercial/.test(inbox) && /Disponible en una fase posterior/.test(caseDetail), "presentación read-only incompleta");
 invariant(/APPROVED[\s\S]*legacy congelado/.test(presentation) && /OPS_HANDOFF[\s\S]*terminal/.test(presentation)
   && /Legacy congelado/.test(caseDetail) && /Estado terminal/.test(caseDetail), "semántica terminal/legacy ausente");
-for (const [path, source] of [["Inbox", inbox], ["Ficha", caseDetail]]) {
+for (const [path, source] of [["ERP shell", erpShell], ["Inbox", inbox], ["Ficha", caseDetail]]) {
   invariant(!/localStorage|sessionStorage|indexedDB|useCasesStore|caseBridge|LeadLite|offline.?queue/i.test(source), `autoridad local o prototipo importado en ${path}`);
   invariant(!/assign-owner|unassign-owner|allowed-transitions|\/transition|method:\s*"POST"/i.test(source), `mutación conectada a ${path}`);
   invariant(!/\bclientId\b|\btenantId\b|\bownerId\b|\bownerUserId\b|\bmembershipId\b/.test(source), `ID interno expuesto en ${path}`);
@@ -62,7 +63,12 @@ for (const [path, source] of [["Inbox", inbox], ["Ficha", caseDetail]]) {
 }
 invariant(/lazy\(\(\) => import\("\.\/CommercialCaseDetail"\)\)/.test(inbox), "Ficha no está separada en un chunk lazy");
 invariant(/Abrir ficha/.test(inbox) && /Volver al Pipeline/.test(caseDetail), "navegación canónica de la Ficha ausente");
-invariant(!/Survey[\s\S]*role="tab"|Cotizaci[oó]n[\s\S]*role="tab"/.test(caseDetail), "Ficha anuncia tabs funcionales fuera de alcance");
+invariant(/role="tablist"/.test(caseDetail) && /Survey en integración/.test(caseDetail) && /Cotización en integración/.test(caseDetail), "Ficha no conserva tabs avanzados como integración explícita");
+invariant(!/surveyApi|quoteApi|\/api\/survey|\/api\/quote|SalesQuoteWorkspace/.test(caseDetail), "tabs futuros conectaron autoridad inexistente");
+for (const section of ["General", "Administración", "Comercial", "Coordinación", "Operaciones", "Campo y Taller", "Logística", "Recursos Humanos"]) {
+  invariant(erpShell.includes(section), `shell ERP avanzado omite ${section}`);
+}
+invariant(/functional: true/.test(erpShell) && /functional: false/.test(erpShell) && /En integración/.test(erpShell), "shell ERP avanzado no distingue Comercial de áreas en integración");
 
 const packageJson = JSON.parse(read("package.json"));
 invariant(packageJson.scripts?.["test:v17-commercial-crm:browser"] === "playwright test -c playwright.v17-commercial-crm.config.ts", "suite browser no está congelada");

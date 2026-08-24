@@ -5,6 +5,8 @@ import {
 } from "../../_lib/crmPipelineRead.js";
 import { requireCrmPipelinePermissionResponse } from "../../_lib/crmPipelineAccess.js";
 import { createCrmPipelineReadHandler } from "../../_lib/crmPipelineReadHttp.js";
+import { createCrmCaseMutationHandler, isMutationPreflight } from "../../_lib/crmCaseMutationHttp.js";
+import { createCrmPipelineCase } from "../../_lib/crmCaseMutationDomain.js";
 
 export function createPipelineCasesListHandler({
   prismaClient = prisma,
@@ -23,4 +25,15 @@ export function createPipelineCasesListHandler({
   });
 }
 
-export default createPipelineCasesListHandler();
+const readHandler = createPipelineCasesListHandler();
+const createHandler = createCrmCaseMutationHandler({
+  prismaClient: prisma,
+  method: "POST",
+  status: 201,
+  execute: ({ context, body, prisma: database }) => createCrmPipelineCase(context, body, database),
+});
+
+export default function pipelineCasesHandler(req, res) {
+  if (req.method === "POST" || isMutationPreflight(req, "POST")) return createHandler(req, res);
+  return readHandler(req, res);
+}

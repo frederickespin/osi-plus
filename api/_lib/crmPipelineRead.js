@@ -51,6 +51,7 @@ const OWNER_SELECT = Object.freeze({
 });
 
 const CLIENT_SELECT = Object.freeze({
+  publicRef: true,
   name: true,
   type: true,
   status: true,
@@ -79,6 +80,8 @@ const CASE_SELECT = Object.freeze({
 
 const CASE_DETAIL_SELECT = Object.freeze({
   publicRef: true,
+  ownerMembershipId: true,
+  version: true,
   caseCode: true,
   mode: true,
   serviceType: true,
@@ -219,6 +222,7 @@ function safeOwner(owner) {
 function safeClient(client) {
   if (!client) return null;
   return Object.freeze({
+    clientRef: client.publicRef,
     displayName: String(client.name),
     type: client.type === null ? null : String(client.type),
     status: String(client.status),
@@ -249,10 +253,11 @@ function safeCase(row) {
   });
 }
 
-function safeCaseDetail(row) {
+function safeCaseDetail(row, membershipId) {
   return Object.freeze({
     caseRef: row.publicRef,
     caseCode: row.caseCode,
+    version: Number(row.version),
     status: row.status,
     mode: row.mode,
     serviceType: row.serviceType,
@@ -268,7 +273,7 @@ function safeCaseDetail(row) {
     eventCount: Number(row._count?.events || 0),
     client: safeClient(row.client),
     owner: row.enterpriseOwner?.user?.name
-      ? Object.freeze({ displayName: String(row.enterpriseOwner.user.name) })
+      ? Object.freeze({ displayName: String(row.enterpriseOwner.user.name), isCurrentActor: row.ownerMembershipId === membershipId })
       : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -300,7 +305,7 @@ export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
   }
 }
 
-export async function findCrmPipelineCase(prisma, { tenantId, caseRef }) {
+export async function findCrmPipelineCase(prisma, { tenantId, membershipId, caseRef }) {
   const publicRef = canonicalCaseRef(caseRef);
   try {
     const row = await prisma.pipelineCase.findUnique({
@@ -313,7 +318,7 @@ export async function findCrmPipelineCase(prisma, { tenantId, caseRef }) {
       select: CASE_DETAIL_SELECT,
     });
     if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
-    return safeCaseDetail(row);
+    return safeCaseDetail(row, String(membershipId));
   } catch (cause) {
     if (cause instanceof CommercialTenancyError) throw cause;
     throw commercialDatabaseUnavailable(cause);

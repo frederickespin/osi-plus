@@ -28,6 +28,9 @@ export const PERMS = {
   PIPELINE_UPDATE: "pipeline:update",
   PIPELINE_TRANSITION: "pipeline:transition",
   PIPELINE_ASSIGN: "pipeline:assign",
+  PIPELINE_CREATE: "pipeline:create",
+  PIPELINE_UPDATE_OWN: "pipeline:update:own",
+  PIPELINE_UPDATE_ANY: "pipeline:update:any",
 
   // Projects
   PROJECTS_VIEW: "projects:view",
@@ -73,8 +76,16 @@ export const PERMS = {
   SECURITY_SCAN: "security:scan",
 };
 
+// These mutation permissions are always explicit membership grants. Merely
+// holding a baseline role never enables a transactional case mutation.
+const EXPLICIT_PIPELINE_MUTATION_PERMISSIONS = new Set([
+  PERMS.PIPELINE_CREATE,
+  PERMS.PIPELINE_UPDATE_OWN,
+  PERMS.PIPELINE_UPDATE_ANY,
+]);
+
 const ROLE_PERMS = {
-  A: Object.values(PERMS),
+  A: Object.values(PERMS).filter((permission) => !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

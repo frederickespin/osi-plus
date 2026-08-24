@@ -28,6 +28,7 @@
     "guard:v17-crm-vary": "node scripts/validate-v17-crm-vary-guard.mjs && node scripts/validate-v17-crm-vary-guard-test.mjs",
     "typecheck:v17-commercial-crm": "tsc -p tsconfig.v17-commercial-crm.json --pretty false",
     "guard:v17-commercial-crm": "node scripts/validate-v17-commercial-crm-guard.mjs",
+    "guard:v17-commercial-inbox-reload-race": "node scripts/validate-v17-commercial-inbox-reload-race-guard.mjs && node scripts/validate-v17-commercial-inbox-reload-race-guard-test.mjs && node scripts/validate-v17-commercial-test-harness.mjs",
     "test:v17-case-public-ref": "node scripts/v17-case-public-ref-test.mjs",
     "test:v17-case-public-ref:populated": "node scripts/v17-case-public-ref-populated-test.mjs",
     "test:v17-case-public-ref:race": "node scripts/v17-case-public-ref-migration-race-test.mjs",

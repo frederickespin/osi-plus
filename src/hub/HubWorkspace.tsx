@@ -37,6 +37,7 @@ function statusLabel(application: HubApplication, crmReadEnabled: boolean) {
 
 function environmentLabel(mode: OsiHubMode) {
   if (mode === "PREVIEW_REHEARSAL") return "Preview";
+  if (mode === "PRODUCTION_READ") return "Producción · sólo lectura";
   return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)
     ? "Desarrollo local"
     : ENV_LABELS[getAppEnv()];
@@ -47,7 +48,7 @@ function HubHome({ applications, crmReadEnabled, userName, onNavigate }: { appli
     <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-11">
       <p className="text-xs font-bold uppercase tracking-[.2em] text-indigo-600">OSi Plus Hub</p>
       <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Hola, {userName || "Usuario"}</h1>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">El catálogo muestra únicamente accesos derivados del contexto autenticado. Esta fundación local no activa ninguna aplicación.</p>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">El catálogo muestra únicamente accesos derivados del contexto autenticado. Comercial abre el ERP sólo cuando la sesión y el entorno están autorizados.</p>
       <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {applications.map((application) => {
           const Icon = ICONS[application.icon];
@@ -103,5 +104,5 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
             ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>
             : <RegisteredApplication application={selected} />
       : <section className="p-12 text-center"><p className="font-bold">404 · Ruta del Hub no registrada</p></section>;
-  return <div className="flex min-h-screen bg-slate-50"><div className="hidden lg:block">{sidebar}</div>{mobileOpen && <div className="fixed inset-0 z-50 flex lg:hidden"><div className="h-full">{sidebar}</div><button aria-label="Cerrar navegación" className="flex-1 bg-black/50" onClick={() => setMobileOpen(false)} /></div>}<div className="min-w-0 flex-1"><header className="flex h-16 items-center justify-between border-b bg-white px-4 sm:px-6"><button aria-label="Abrir navegación" className="rounded-lg border p-2 lg:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></button><button onClick={() => onNavigate("/hub")} className="text-sm font-bold text-slate-900">OSi Plus Hub</button><span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">{mode}</span></header><main>{content}</main></div></div>;
+  return <div className="flex min-h-screen bg-slate-50"><div className="hidden lg:block">{sidebar}</div>{mobileOpen && <div className="fixed inset-0 z-50 flex lg:hidden"><div className="h-full">{sidebar}</div><button aria-label="Cerrar navegación" className="flex-1 bg-black/50" onClick={() => setMobileOpen(false)} /></div>}<div className="min-w-0 flex-1"><header className="flex h-16 items-center justify-between border-b bg-white px-4 sm:px-6"><button aria-label="Abrir navegación" className="rounded-lg border p-2 lg:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></button><button onClick={() => onNavigate("/hub")} className="text-sm font-bold text-slate-900">OSi Plus Hub</button><span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">{mode === "PRODUCTION_READ" ? "CRM · sólo lectura" : mode}</span></header><main>{content}</main></div></div>;
 }

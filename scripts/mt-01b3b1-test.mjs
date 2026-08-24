@@ -17,6 +17,10 @@ process.env.MT01B_TENANT_SWITCH_ENABLED = "false";
 process.env.MT01B_LEGACY_TOKEN_ACCEPT_UNTIL = new Date(now.getTime() + 24 * 3600_000).toISOString();
 process.env.MT01B_REFRESH_TOKEN_PEPPER = "mt01b3b1-ci-refresh-pepper-with-at-least-32-characters";
 process.env.MT01B_ALLOWED_ORIGINS = "http://localhost:5173";
+process.env.COMMERCIAL_TENANCY_MUTATION_MODE = "LOCAL_ONLY";
+for (const name of Object.keys(process.env)) {
+  if (name.toUpperCase().startsWith("VERCEL")) delete process.env[name];
+}
 
 const prisma = createTestPrisma();
 const results = [];

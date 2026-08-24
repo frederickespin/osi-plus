@@ -71,6 +71,7 @@ jobs:
       VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED"
       COMMERCIAL_TENANCY_WRITE_MODE: LEGACY_ONLY
       COMMERCIAL_TENANCY_READ_MODE: LEGACY_ONLY
+      COMMERCIAL_TENANCY_MUTATION_MODE: DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -152,6 +153,8 @@ jobs:
           npm run test:v17-commercial-crm-preview:http
           npm run test:v17-erp-crm-foundation-02c
           npm run guard:v17-erp-crm-foundation-02c
+          npm run test:commercial-tenancy-mutation-gate
+          npm run guard:commercial-tenancy-mutation-gate
           npm run test:v17-app-environment
           npm run test:webkit-internal-recovery
 
@@ -245,6 +248,7 @@ jobs:
       VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED"
       COMMERCIAL_TENANCY_WRITE_MODE: LEGACY_ONLY
       COMMERCIAL_TENANCY_READ_MODE: LEGACY_ONLY
+      COMMERCIAL_TENANCY_MUTATION_MODE: DISABLED
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -313,6 +317,8 @@ jobs:
           node scripts/mt-01c2b3c-test.mjs
           node scripts/validate-mt01c2b3c-guard.mjs
           node scripts/validate-mt01c2b3c-guard-test.mjs
+          npm run test:commercial-tenancy-mutation-gate
+          npm run guard:commercial-tenancy-mutation-gate
           node scripts/validate-crm-01a-guard.mjs
           node scripts/validate-crm-01a-guard-test.mjs
           node scripts/crm-01a-local-target-test.mjs

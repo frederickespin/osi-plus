@@ -178,6 +178,7 @@ export function validateMt01b2FrontendIsolation({ root = process.cwd(), files = 
   invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "MT-01B2A frontend debe permanecer desactivado");
   invariant(env.COMMERCIAL_TENANCY_WRITE_MODE === undefined || env.COMMERCIAL_TENANCY_WRITE_MODE === "LEGACY_ONLY", "MT-01C2B3A exige LEGACY_ONLY exacto");
   invariant(env.COMMERCIAL_TENANCY_READ_MODE === undefined || env.COMMERCIAL_TENANCY_READ_MODE === "LEGACY_ONLY", "MT-01C2B3B exige LEGACY_ONLY exacto");
+  invariant(env.COMMERCIAL_TENANCY_MUTATION_MODE === undefined || env.COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED", "mutaciones comerciales generales deben permanecer DISABLED en CI");
   files = files.map((file) => file.replaceAll("\\", "/"));
   const authSourceFiles = files.filter((file) => file.startsWith("src/auth-v2/") && /\.(?:[cm]?[jt]sx?)$/.test(file));
   const persistentMarkers = ["local" + "Storage", "session" + "Storage", "indexed" + "DB"];

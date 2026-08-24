@@ -21,6 +21,7 @@ const protectedUi = [
 assert.match(files.production, /hubMode === V17_COMMERCIAL_CRM_PRODUCTION_MODE[\s\S]*clientMode === V17_COMMERCIAL_CRM_PRODUCTION_MODE[\s\S]*readMode === V17_COMMERCIAL_CRM_PRODUCTION_MODE/u);
 assert.match(files.production, /vercelEnvironment === "production"[\s\S]*gitBranch === V17_COMMERCIAL_CRM_PRODUCTION_BRANCH/u);
 assert.match(files.auth, /CRM_PIPELINE_MUTATION_MODES\.DISABLED/u);
+assert.match(files.auth, /COMMERCIAL_TENANCY_MUTATION_MODES\.DISABLED/u);
 assert.match(files.auth, /resolveCrmPipelineContext/u);
 assert.match(files.app, /!hubMode\.valid \|\| !serverConfirmed/u);
 assert.match(files.app, /commercialCrmProductionAuthorized !== true/u);

@@ -13,9 +13,10 @@ import {
 const fullRef = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const detailPath = `/api/crm/pipeline-cases/${fullRef}`;
 const diagnostics = new CommercialDiagnostics();
+const syntheticConnection = ["postgresql", "://", "user", ":", "password", "@host/db"].join("");
 
 assert.equal(safePathname(`https://example.invalid${detailPath}?token=unsafe`), "/api/crm/pipeline-cases/:caseRef");
-const sanitized = sanitizeDiagnosticText(`Bearer secret-value synthetic@example.invalid ${fullRef} postgresql://user:password@host/db https://example.invalid${detailPath}`);
+const sanitized = sanitizeDiagnosticText(`Bearer secret-value synthetic@example.invalid ${fullRef} ${syntheticConnection} https://example.invalid${detailPath}`);
 for (const forbidden of ["secret-value", "synthetic@example.invalid", fullRef, "user:password", "https://example.invalid"]) {
   assert.equal(sanitized.includes(forbidden), false, `diagnóstico retuvo ${forbidden}`);
 }

@@ -58,12 +58,14 @@ function assertCommercialTenancyAuthority(env) {
 }
 
 function assertProductionAuthority(env) {
-  if (env.VERCEL_ENV !== "production"
+  if (env.VERCEL !== "1"
+    || env.VERCEL_ENV !== "production"
     || env.VERCEL_GIT_COMMIT_REF !== "main"
     || env.CRM_PIPELINE_ACTIVATION_BATCH !== CRM_PIPELINE_ACTIVATION_BATCH
-    || (env.MT01B_AUTH_MODE ?? "LEGACY") !== "LEGACY"
-    || (env.MT01B_TENANT_SWITCH_ENABLED ?? "false") !== "false"
-    || (env.VITE_MT01B2_CLIENT_ENABLED ?? "false") !== "false") {
+    || env.CRM_PIPELINE_MUTATION_MODE === undefined
+    || env.MT01B_AUTH_MODE !== "LEGACY"
+    || env.MT01B_TENANT_SWITCH_ENABLED !== "false"
+    || env.VITE_MT01B2_CLIENT_ENABLED !== "false") {
     invalidConfiguration();
   }
   assertCommercialTenancyAuthority(env);

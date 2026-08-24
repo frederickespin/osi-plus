@@ -4,7 +4,7 @@ const result = spawnSync(process.execPath, ["scripts/validate-crm-01b3b2-guard.m
 if (result.status !== 0) throw new Error(result.stderr || result.stdout || "guard failed");
 if (!result.stdout.includes("PASS")) throw new Error("guard did not report PASS");
 
-const negativeCases = ["direct-env", "storage", "owner-field", "cors"];
+const negativeCases = ["direct-env", "storage", "owner-field", "cors", "production-write", "inline-production"];
 for (const negativeCase of negativeCases) {
   const rejected = spawnSync(process.execPath, ["scripts/validate-crm-01b3b2-guard.mjs"], {
     encoding: "utf8",

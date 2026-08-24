@@ -82,7 +82,15 @@ const CASE_DETAIL_SELECT = Object.freeze({
   caseCode: true,
   mode: true,
   serviceType: true,
+  customerType: true,
   status: true,
+  estimatedCbm: true,
+  requiresSurvey: true,
+  surveyMethod: true,
+  originLocation: true,
+  destinationLocation: true,
+  destinationContracted: true,
+  assetsCount: true,
   createdAt: true,
   updatedAt: true,
   client: { select: CLIENT_SELECT },
@@ -91,6 +99,7 @@ const CASE_DETAIL_SELECT = Object.freeze({
       user: { select: { name: true } },
     },
   },
+  _count: { select: { quotes: true, events: true } },
 });
 
 function invalid(code = "CRM_PIPELINE_FILTER_INVALID", status = 400) {
@@ -247,6 +256,16 @@ function safeCaseDetail(row) {
     status: row.status,
     mode: row.mode,
     serviceType: row.serviceType,
+    customerType: row.customerType,
+    estimatedCbm: row.estimatedCbm,
+    requiresSurvey: row.requiresSurvey,
+    surveyMethod: row.surveyMethod,
+    originLocation: row.originLocation,
+    destinationLocation: row.destinationLocation,
+    destinationContracted: row.destinationContracted,
+    assetsCount: row.assetsCount,
+    quoteCount: Number(row._count?.quotes || 0),
+    eventCount: Number(row._count?.events || 0),
     client: safeClient(row.client),
     owner: row.enterpriseOwner?.user?.name
       ? Object.freeze({ displayName: String(row.enterpriseOwner.user.name) })

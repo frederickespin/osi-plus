@@ -348,6 +348,9 @@ try {
   checkJsonSnapshot("snapshot lista", normalizeSuccessContract(snapshotList.body), { ok: true, total: 1, page: 1, pageSize: 1, data: [expectedCaseContract] });
   checkJsonSnapshot("snapshot detalle", normalizeSuccessContract(detail.body), { ok: true, data: {
     caseRef: "<caseRef>", caseCode: "<caseCode>", status: "NEW_INBOX", mode: "EXPORT", serviceType: "MOVING",
+    customerType: "L4_PERSONAL", estimatedCbm: 0.5, requiresSurvey: true, surveyMethod: "PRESENCIAL",
+    originLocation: "Origen 0", destinationLocation: "Destino 0", destinationContracted: true,
+    assetsCount: 0, quoteCount: 0, eventCount: 0,
     client: { displayName: "<displayName>", type: "PERSON", status: "active" },
     owner: { displayName: "<displayName>" }, createdAt: "<timestamp>", updatedAt: "<timestamp>",
   } });

@@ -12,6 +12,7 @@ export const PREVIEW_GUARD_FILES = Object.freeze([
   "shared/v17CommercialCrmPreview.js",
   "scripts/validate-v17-commercial-crm-preview-guard.mjs",
   "src/App.tsx",
+  "src/commercial-crm/AdvancedErpShell.tsx",
   "src/commercial-crm/CommercialInboxModule.tsx",
   "src/commercial-crm/CommercialCaseDetail.tsx",
   "src/commercial-crm/presentation.ts",
@@ -67,16 +68,17 @@ function validateCspAndCors(files) {
     fail("vercel.json inválido");
   }
   const apiRules = (configuration.headers || []).filter((rule) => String(rule.source || "").startsWith("/api/"));
-  const safeRule = apiRules.find((rule) => rule.source === "/api/((?!auth/|crm/).*)");
+  const safeRule = apiRules.find((rule) => rule.source === "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)");
   if (!safeRule) fail("Auth y CRM no están excluidos del CORS global");
   for (const rule of apiRules) {
     const wildcard = (rule.headers || []).some((header) => header.key === "Access-Control-Allow-Origin" && header.value === "*");
-    if (wildcard && rule.source !== "/api/((?!auth/|crm/).*)") fail("CORS wildcard puede alcanzar Auth o CRM");
+    if (wildcard && rule.source !== "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)") fail("CORS wildcard puede alcanzar Auth, CRM o mutaciones comerciales protegidas");
   }
 }
 
 function validateInboxIsolation(files) {
   for (const path of [
+    "src/commercial-crm/AdvancedErpShell.tsx",
     "src/commercial-crm/CommercialInboxModule.tsx",
     "src/commercial-crm/CommercialCaseDetail.tsx",
     "src/commercial-crm/presentation.ts",
@@ -153,7 +155,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   const routeAccess = "src/hub/hubRouteAccess.ts";
   requireText(files, routeAccess, "findHubApplicationByRoute(normalizedPath)", "ruta directa omite catálogo común");
   requireText(files, routeAccess, "evaluateHubAccess(application, context)", "ruta directa omite decisión común");
-  requireText(files, workspace, "selected.appId === \"commercial-crm\" && crmReadEnabled", "Inbox se carga sin compuerta de lectura");
+  requireText(files, workspace, "selected?.appId === \"commercial-crm\" && crmReadEnabled", "Inbox se carga sin compuerta de lectura");
 
   const accessUi = "src/hub/hubAccess.ts";
   requireText(files, accessUi, "application.requiredPermissions.some((permission) => denied.has(permission))", "deniedPermissions no prevalece");
@@ -164,7 +166,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
 
   const app = "src/App.tsx";
   requireText(files, app, "commercialCrmPreviewAuthorized === true", "frontend no exige confirmación del servidor");
-  requireText(files, app, "isRelationalCrmReadEnabled() && previewConfirmed", "frontend no coordina Hub/cliente/lectura");
+  requireText(files, app, "isRelationalCrmReadEnabled() && serverConfirmed", "frontend no coordina Hub/cliente/lectura");
   requireText(files, app, "evaluateHubRouteAccess(routeState.pathname, routeState.accessContext)", "frontend autoriza después del lazy");
   requireText(files, app, "validateLegacySession(session, controller.signal)", "frontend no revalida con cancelación");
   requireText(files, app, "activeNavigation.current?.controller.abort()", "frontend no cancela navegación obsoleta");

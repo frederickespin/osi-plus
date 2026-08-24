@@ -13,6 +13,10 @@ process.env.MT01B_TENANT_SWITCH_ENABLED = "false";
 process.env.VITE_MT01B2_CLIENT_ENABLED = "false";
 process.env.COMMERCIAL_TENANCY_WRITE_MODE = "LEGACY_ONLY";
 process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
+process.env.COMMERCIAL_TENANCY_MUTATION_MODE = "LOCAL_ONLY";
+for (const name of Object.keys(process.env)) {
+  if (name.toUpperCase().startsWith("VERCEL")) delete process.env[name];
+}
 
 const [
   { signAccessToken },

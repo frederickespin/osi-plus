@@ -49,10 +49,11 @@ const results = [
   mustFail("deniedPermissions ignorado", mutate("src/hub/hubAccess.ts", (source) => source.replace("application.requiredPermissions.some((permission) => denied.has(permission))", "false")), /deniedPermissions no prevalece/),
   mustFail("alias CRM sin decisión compartida", mutate("src/hub/appCatalog.ts", (source) => source.replace('routeAliases: ["/crm", "/sales/pipeline"]', 'routeAliases: ["/sales/pipeline"]')), /rutas CRM equivalentes divergentes/),
   mustFail("ruta directa sin decisión común", mutate("src/hub/hubRouteAccess.ts", (source) => source.replace("evaluateHubAccess(application, context)", "{ allowed: true }")), /ruta directa omite decisión común/),
-  mustFail("CORS wildcard alcanza Auth y CRM", mutate("vercel.json", (source) => source.replace("/api/((?!auth/|crm/).*)", "/api/(.*)")), /Auth y CRM no están excluidos/),
+  mustFail("CORS wildcard alcanza Auth y CRM", mutate("vercel.json", (source) => source.replace("/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)", "/api/(.*)")), /Auth y CRM no están excluidos/),
   mustFail("Inbox importa localStorage", mutate("src/commercial-crm/CommercialInboxModule.tsx", (source) => `${source}\nlocalStorage.getItem("fixture");\n`), /storage empresarial importado/),
   mustFail("Inbox importa mock", mutate("src/commercial-crm/CommercialInboxModule.tsx", (source) => `import { fixture } from "@/mocks/cases";\n${source}`), /mock, bridge o store importado/),
   mustFail("resolver canónico eliminado", mutate("src/hub/hubMode.ts", (source) => source.replaceAll("resolveV17CommercialCrmPreviewClientAuthority", "unsafePreviewResolver")), /default Hub inseguro/),
+  mustFail("confirmación servidor omitida", mutate("src/App.tsx", (source) => source.replace("isRelationalCrmReadEnabled() && serverConfirmed", "isRelationalCrmReadEnabled()")), /frontend no coordina Hub\/cliente\/lectura/),
   mustFail("variable privada incluida en bundle", { ...clone(), bundleText: `${actual.bundleText}\nJWT_SECRET` }, /configuración servidor empaquetada: JWT_SECRET/),
   mustPass("PR #51 documental 4/4", { ...clone(), unrelatedChanges: PR_51_DOCUMENTS }),
   mustPass("corrección accesible del drawer", mutate("src/commercial-crm/CommercialInboxModule.tsx", (source) => source.replace("Detalle de la oportunidad comercial seleccionada.", "Descripción accesible actualizada."))),
@@ -64,4 +65,4 @@ const results = [
 const guardSource = actual.files["scripts/validate-v17-commercial-crm-preview-guard.mjs"];
 assert.equal(/node:child_process|git\s+(?:diff|merge-base)|const\s+BASE\s*=/.test(guardSource), false);
 
-console.log(JSON.stringify({ ok: true, assertions: results.length, negative: 15, positive: 6, results }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: results.length, negative: 16, positive: 6, results }, null, 2));

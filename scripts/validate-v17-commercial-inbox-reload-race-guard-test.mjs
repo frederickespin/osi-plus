@@ -57,7 +57,7 @@ const negatives = [
   negative("limpia pageerror", "tests/v17-commercial-crm/commercial-inbox.spec.ts", (s) => s.replace("expect(pageErrors).toEqual([]);", "pageErrors.splice(0); expect(pageErrors).toEqual([]);"), /pageErrors se limpia/),
   negative("captura headers", "tests/v17-commercial-crm/commercialTestHarness.mjs", (s) => s.replace("method: request.method(),", "headers: request.headers(), method: request.method(),"), /captura headers/),
   negative("sin fulfill done", "tests/v17-commercial-crm/commercialTestHarness.mjs", (s) => s.replaceAll("detail:fulfill:done", "detail:complete"), /diagnóstico incompleto/),
-  negative("upload siempre", ".github/workflows/ci.yml", (s) => s.replace("Upload Commercial Inbox failure diagnostics\n        if: failure()", "Upload Commercial Inbox failure diagnostics\n        if: always()"), /upload sanitizado/),
+  negative("upload siempre", ".github/workflows/ci.yml", (s) => s.replace(/Upload Commercial Inbox failure diagnostics\r?\n        if: failure\(\)/, "Upload Commercial Inbox failure diagnostics\n        if: always()"), /upload sanitizado/),
 ];
 
 console.log(JSON.stringify({ ok: true, positive: 1, negative: negatives.length, assertions: negatives.length + 1, negatives }));

@@ -49,6 +49,16 @@ export type CrmPipelineCaseDetail = Readonly<{
   status: PipelineCaseStatus;
   mode: PipelineMode | null;
   serviceType: string | null;
+  customerType: string | null;
+  estimatedCbm: number | null;
+  requiresSurvey: boolean;
+  surveyMethod: string | null;
+  originLocation: string | null;
+  destinationLocation: string | null;
+  destinationContracted: boolean | null;
+  assetsCount: number;
+  quoteCount: number;
+  eventCount: number;
   client: CrmServiceClient | null;
   owner: Readonly<{ displayName: string }> | null;
   createdAt: string;

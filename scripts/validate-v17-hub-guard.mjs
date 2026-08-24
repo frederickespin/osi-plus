@@ -6,6 +6,7 @@ const BASE = "de5e8460c5da4e7f1c1fe42836b7ab488f67dd42";
 const allowedBackendChanges = new Set([
   "api/_lib/authHttp.js",
   "api/_lib/authOrigin.js",
+  "api/_lib/commercialTenancyMutation.js",
   "api/_lib/commercialTenancyWrite.js",
   "api/_lib/crmHttpHeaders.js",
   "api/_lib/crmOwnerCatalogHttp.js",
@@ -15,13 +16,18 @@ const allowedBackendChanges = new Set([
   "api/_lib/http.js",
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
+  "api/_lib/v17CommercialCrmProductionAuth.js",
   "api/auth/login.js",
   "api/auth/me.js",
+  "api/clients/index.js",
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
   "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
   "api/crm/pipeline-cases/[caseKey]/transition.js",
   "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
+  "api/k/project-release.js",
+  "api/k/project-validate.js",
+  "api/projects/index.js",
 ]);
 const requiredApps = ["commercial-crm", "coordination", "operations", "materials-equipment", "workshop", "administration", "human-resources", "osi-survey"];
 const allowedPrismaChanges = new Set([
@@ -44,6 +50,11 @@ if (!mode.includes('hostname === "[::1]"')) fail("gate does not require the lite
 const app = text(join("src", "App.tsx"));
 if (!app.includes("const HubWorkspace = lazy(() => import('@/hub/HubWorkspace'))")) fail("Hub is not lazy");
 if (/import\s+HubWorkspace\s+from/.test(app)) fail("Hub has an eager runtime import");
+
+const productionAuth = text(join("api", "_lib", "v17CommercialCrmProductionAuth.js"));
+if (!productionAuth.includes("CRM_PIPELINE_MUTATION_MODES.DISABLED")) fail("Production Read does not keep CRM mutations disabled");
+if (!productionAuth.includes("COMMERCIAL_TENANCY_MUTATION_MODES.DISABLED")) fail("Production Read does not keep general commercial mutations disabled");
+if (!productionAuth.includes("resolveCrmPipelineContext")) fail("Production Read does not revalidate the canonical CRM context");
 
 const packageJson = JSON.parse(text("package.json"));
 if (packageJson.scripts?.["test:v17-hub:browser"] !== "playwright test -c playwright.v17-hub.config.ts") fail("canonical Hub browser command missing");

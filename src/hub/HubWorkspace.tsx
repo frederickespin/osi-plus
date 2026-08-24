@@ -6,7 +6,7 @@ import { visibleHubApplications, type HubAccessContext } from "./hubAccess";
 import type { OsiHubMode } from "./hubMode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
-const CommercialInboxModule = lazy(() => import("@/commercial-crm/CommercialInboxModule"));
+const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
 
 const ICONS: Record<HubIconId, ElementType> = {
   briefcase: BriefcaseBusiness,
@@ -30,7 +30,8 @@ type Props = {
   onLogout: () => void;
 };
 
-function statusLabel(application: HubApplication) {
+function statusLabel(application: HubApplication, crmReadEnabled: boolean) {
+  if (application.appId === "commercial-crm" && crmReadEnabled) return "Disponible";
   return application.status === "PLANNED" ? "Próximamente" : "Fundación inactiva";
 }
 
@@ -41,7 +42,7 @@ function environmentLabel(mode: OsiHubMode) {
     : ENV_LABELS[getAppEnv()];
 }
 
-function HubHome({ applications, userName, onNavigate }: { applications: readonly HubApplication[]; userName?: string; onNavigate: (pathname: string) => void }) {
+function HubHome({ applications, crmReadEnabled, userName, onNavigate }: { applications: readonly HubApplication[]; crmReadEnabled: boolean; userName?: string; onNavigate: (pathname: string) => void }) {
   return (
     <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-11">
       <p className="text-xs font-bold uppercase tracking-[.2em] text-indigo-600">OSi Plus Hub</p>
@@ -52,10 +53,10 @@ function HubHome({ applications, userName, onNavigate }: { applications: readonl
           const Icon = ICONS[application.icon];
           return (
             <button key={application.appId} onClick={() => onNavigate(application.route)} className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg">
-              <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Icon className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">{statusLabel(application)}</span></div>
+              <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Icon className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">{statusLabel(application, crmReadEnabled)}</span></div>
               <h2 className="mt-5 font-bold text-slate-950">{application.name}</h2>
               <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">{application.description}</p>
-              <p className="mt-5 text-xs font-semibold text-indigo-600">Ver descriptor →</p>
+              <p className="mt-5 text-xs font-semibold text-indigo-600">{application.appId === "commercial-crm" && crmReadEnabled ? "Abrir ERP →" : "Ver descriptor →"}</p>
             </button>
           );
         })}
@@ -75,6 +76,19 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
   const selected = findHubApplicationByRoute(pathname);
   const commercialCaseRef = commercialCaseRefFromRoute(pathname);
+  if (selected?.appId === "commercial-crm" && crmReadEnabled) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando ERP Comercial…</div>}>
+      <AdvancedErpShell
+        authorization={authorization}
+        caseRef={commercialCaseRef}
+        role={accessContext.role}
+        userName={userName}
+        onNavigate={onNavigate}
+        onLogout={onLogout}
+        onUnauthorized={onLogout}
+      />
+    </Suspense>;
+  }
   const sidebar = (
     <aside className="flex h-full w-72 flex-col bg-slate-950 text-white">
       <button onClick={() => onNavigate("/hub")} className="flex items-center gap-3 border-b border-white/10 p-5 text-left"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500"><LayoutGrid className="h-5 w-5" /></span><span><strong className="block">OSi Plus</strong><small className="text-slate-400">Hub canónico local</small></span></button>
@@ -83,11 +97,9 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     </aside>
   );
   const content = pathname === "/hub"
-    ? <HubHome applications={visible} userName={userName} onNavigate={onNavigate} />
+    ? <HubHome applications={visible} crmReadEnabled={crmReadEnabled} userName={userName} onNavigate={onNavigate} />
     : selected
-      ? selected.appId === "commercial-crm" && crmReadEnabled
-          ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando Comercial…</div>}><CommercialInboxModule authorization={authorization} caseRef={commercialCaseRef} onBack={() => onNavigate("/hub")} onOpenCase={(caseRef) => onNavigate(`/commercial/cases/${caseRef}`)} onReturnToInbox={() => onNavigate("/commercial")} onUnauthorized={onLogout} /></Suspense>
-          : selected.appId === "osi-survey"
+      ? selected.appId === "osi-survey"
             ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>
             : <RegisteredApplication application={selected} />
       : <section className="p-12 text-center"><p className="font-bold">404 · Ruta del Hub no registrada</p></section>;

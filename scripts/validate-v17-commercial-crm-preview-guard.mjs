@@ -12,6 +12,7 @@ export const PREVIEW_GUARD_FILES = Object.freeze([
   "shared/v17CommercialCrmPreview.js",
   "scripts/validate-v17-commercial-crm-preview-guard.mjs",
   "src/App.tsx",
+  "src/commercial-crm/AdvancedErpShell.tsx",
   "src/commercial-crm/CommercialInboxModule.tsx",
   "src/commercial-crm/CommercialCaseDetail.tsx",
   "src/commercial-crm/presentation.ts",
@@ -77,6 +78,7 @@ function validateCspAndCors(files) {
 
 function validateInboxIsolation(files) {
   for (const path of [
+    "src/commercial-crm/AdvancedErpShell.tsx",
     "src/commercial-crm/CommercialInboxModule.tsx",
     "src/commercial-crm/CommercialCaseDetail.tsx",
     "src/commercial-crm/presentation.ts",
@@ -153,7 +155,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   const routeAccess = "src/hub/hubRouteAccess.ts";
   requireText(files, routeAccess, "findHubApplicationByRoute(normalizedPath)", "ruta directa omite catálogo común");
   requireText(files, routeAccess, "evaluateHubAccess(application, context)", "ruta directa omite decisión común");
-  requireText(files, workspace, "selected.appId === \"commercial-crm\" && crmReadEnabled", "Inbox se carga sin compuerta de lectura");
+  requireText(files, workspace, "selected?.appId === \"commercial-crm\" && crmReadEnabled", "Inbox se carga sin compuerta de lectura");
 
   const accessUi = "src/hub/hubAccess.ts";
   requireText(files, accessUi, "application.requiredPermissions.some((permission) => denied.has(permission))", "deniedPermissions no prevalece");

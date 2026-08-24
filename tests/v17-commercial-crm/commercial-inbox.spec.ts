@@ -54,6 +54,16 @@ function pipelineCaseDetail(item = pipelineCase(), overrides: Record<string, unk
     status: item.status,
     mode: item.mode,
     serviceType: item.serviceType,
+    customerType: item.customerType,
+    estimatedCbm: item.estimatedCbm,
+    requiresSurvey: item.requiresSurvey,
+    surveyMethod: item.surveyMethod,
+    originLocation: item.originLocation,
+    destinationLocation: item.destinationLocation,
+    destinationContracted: item.destinationContracted,
+    assetsCount: item.assetsCount,
+    quoteCount: item.quoteCount,
+    eventCount: item.eventCount,
     client: item.client,
     owner: item.owner ? { displayName: item.owner.displayName } : null,
     createdAt: item.createdAt,
@@ -122,6 +132,26 @@ test("cero casos presenta estado empresarial vacío y sólo ejecuta GET canónic
   expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => /crm|pipeline|case/i.test(key) && !key.startsWith("osi-plus.")))).toEqual([]);
 });
 
+test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo lectura", async ({ page }) => {
+  const item = pipelineCase({ quoteCount: 2, eventCount: 3 });
+  await authenticate(page);
+  const audit = await mockCrm(page, { cases: [item] });
+  await page.goto("/commercial");
+  await expect(page.getByTestId("advanced-erp-shell")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
+  await expect(page.locator("p:visible", { hasText: "Receptor Sintético" }).first()).toBeVisible();
+  await page.locator("button:visible", { hasText: "Abrir ficha" }).first().click();
+  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await expect(page.getByText("Origen sintético", { exact: true })).toBeVisible();
+  await expect(page.getByText("Destino sintético", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: /Survey/ }).click();
+  await expect(page.getByRole("heading", { name: "Survey en integración" })).toBeVisible();
+  await page.getByRole("tab", { name: /Cotización/ }).click();
+  await expect(page.getByRole("heading", { name: "Cotización en integración" })).toBeVisible();
+  expect(audit.every(({ method }) => method === "GET")).toBe(true);
+  expect(audit.filter(({ pathname }) => pathname.startsWith("/api/crm/"))).toHaveLength(3);
+});
+
 test("filtros, paginación y Ficha usan Client relacional y renderizan texto hostil sin ejecutarlo", async ({ page }) => {
   const hostileName = "<img src=x onerror=globalThis.__hostile=1>";
   const hostile = pipelineCase({ client: { displayName: hostileName, type: "PERSON", status: "active" }, owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" } });
@@ -129,7 +159,7 @@ test("filtros, paginación y Ficha usan Client relacional y renderizan texto hos
   const audit = await mockCrm(page, { total: 2_000, cases: [hostile] });
   await page.goto("/crm");
   await expect(page.getByText("2000 resultados")).toBeVisible();
-  await page.getByPlaceholder("Caso o ruta").fill("CRM-DEMO");
+  await page.getByPlaceholder("Caso, cliente o ruta").fill("CRM-DEMO");
   await expect.poll(() => audit.some(({ search }) => search.includes("q=CRM-DEMO"))).toBe(true);
   await page.getByRole("button", { name: "IMPORT" }).click();
   await expect.poll(() => audit.some(({ search }) => search.includes("mode=IMPORT"))).toBe(true);
@@ -182,7 +212,7 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
   });
 
   await page.goto("/commercial");
-  await page.getByPlaceholder("Caso o ruta").fill("CRM-DEMO");
+  await page.getByPlaceholder("Caso, cliente o ruta").fill("CRM-DEMO");
   await expect(page.getByRole("button", { name: "Abrir ficha" }).first()).toBeVisible();
   const firstDetail = detailBarrier.prepare("first-valid-detail", detailPath);
   await page.getByRole("button", { name: "Abrir ficha" }).first().click();
@@ -191,7 +221,7 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
   await expect(page.getByTestId("commercial-case-detail")).toBeVisible();
   detailBarrier.markUiStable(firstDetail, "detail-rendered");
   await page.getByRole("button", { name: "Volver al Pipeline" }).click();
-  await expect(page.getByPlaceholder("Caso o ruta")).toHaveValue("CRM-DEMO");
+  await expect(page.getByPlaceholder("Caso, cliente o ruta")).toHaveValue("CRM-DEMO");
 
   controlledGate = createControlledGate();
   const preReloadDetail = detailBarrier.prepare("pre-reload-valid-detail", detailPath);
@@ -253,7 +283,7 @@ test("APPROVED permanece legacy congelado y OPS_HANDOFF terminal sin controles d
   );
   await page.getByRole("button", { name: "Abrir ficha" }).first().click();
   await expect(page.getByText("Legacy congelado", { exact: true })).toBeVisible();
-  await expect(page.getByText("Disponible en una fase posterior.")).toBeVisible();
+  await expect(page.getByText(/Disponible en una fase posterior\./)).toBeVisible();
   for (const label of ["Asignar", "Desasignar", "Transicionar", "Editar", "Crear caso"]) await expect(page.getByRole("button", { name: label })).toHaveCount(0);
   expect(audit.some(({ method }) => method !== "GET")).toBe(false);
 });
@@ -290,7 +320,7 @@ test("rol no elegible y deniedPermissions bloquean antes de descargar el módulo
     await authenticate(page, actor);
     await page.goto(`/commercial/cases/${DEFAULT_CASE_REF}?role=A#permission=pipeline:view`);
     await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-    expect(resources.some((path) => /HubWorkspace|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+    expect(resources.some((path) => /HubWorkspace|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
     expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
     await context.close();
   }
@@ -313,7 +343,7 @@ test("rutas de Ficha ambiguas o manipuladas quedan fuera del descriptor sin desc
     await page.goto(route);
     await expect(page.getByText("404 · Ruta del Hub no registrada")).toBeVisible();
   }
-  expect(resources.some((path) => /CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(resources.some((path) => /AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
 });
 
@@ -332,7 +362,7 @@ test("toda combinación parcial de compuertas evita chunk y requests del Inbox",
     await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
     await page.goto(`http://127.0.0.1:${configuration.port}/commercial`);
     await expect(page.getByTestId("commercial-crm-inbox"), configuration.label).toHaveCount(0);
-    expect(resources.some((path) => /CommercialInboxModule/i.test(path)), configuration.label).toBe(false);
+    expect(resources.some((path) => /AdvancedErpShell|CommercialInboxModule/i.test(path)), configuration.label).toBe(false);
     expect(resources.some((path) => path.startsWith("/api/crm/")), configuration.label).toBe(false);
     await context.close();
   }
@@ -373,7 +403,7 @@ test("compuerta CRM desactivada mantiene descriptor inactivo sin chunk ni reques
   await authenticate(page);
   await page.goto("http://127.0.0.1:4186/commercial");
   await expect(page.getByText("Fundación inactiva.")).toBeVisible();
-  expect(resources.some((path) => /CommercialInboxModule/i.test(path))).toBe(false);
+  expect(resources.some((path) => /AdvancedErpShell|CommercialInboxModule/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
 });
 

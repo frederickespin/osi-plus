@@ -67,7 +67,7 @@ const negatives = [
   negative("red deja datos visibles", "src/App.tsx", (s) => s.replace("setRouteState((current) => ({ ...current, status: 'ERROR' }))", "setRouteState((current) => ({ ...current, status: 'READY' }))"), /fallo de red no desmonta/),
   negative("estado pendiente bloquea logout", "src/App.tsx", (s) => s.replace("pointer-events-none fixed inset-x-0", "fixed inset-x-0"), /bloquea logout/),
   negative("push antes de autorizar", "src/App.tsx", (s) => s.replace(
-    "const decision = evaluateHubRouteAccess(pathname, validatedAccessContext);\n      if (historyMode === 'PUSH' && decision.allowed) window.history.pushState({}, '', pathname);",
+    /const decision = evaluateHubRouteAccess\(pathname, validatedAccessContext\);\r?\n      if \(historyMode === 'PUSH' && decision\.allowed\) window\.history\.pushState\(\{\}, '', pathname\);/,
     "if (historyMode === 'PUSH' && decision.allowed) window.history.pushState({}, '', pathname);\n      const decision = evaluateHubRouteAccess(pathname, validatedAccessContext);",
   ), /pushState ocurre antes/),
   negative("fetch sin signal", "src/lib/api.ts", (s) => s.replace("signal: options.signal", "signal: undefined"), /fetch no recibe/),

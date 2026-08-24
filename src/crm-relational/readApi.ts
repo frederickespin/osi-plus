@@ -173,7 +173,9 @@ function serviceClient(value: unknown): CrmPipelineCaseDetail["client"] {
 function pipelineCaseDetail(value: unknown): CrmPipelineCaseDetail {
   const row = record(value);
   exactKeys(row, [
-    "caseRef", "caseCode", "status", "mode", "serviceType", "client", "owner", "createdAt", "updatedAt",
+    "caseRef", "caseCode", "status", "mode", "serviceType", "customerType", "estimatedCbm",
+    "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation", "destinationContracted",
+    "assetsCount", "quoteCount", "eventCount", "client", "owner", "createdAt", "updatedAt",
   ]);
   if (row.mode !== null && (typeof row.mode !== "string" || !MODES.has(row.mode))) {
     throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
@@ -190,6 +192,16 @@ function pipelineCaseDetail(value: unknown): CrmPipelineCaseDetail {
     status: status(row.status),
     mode: row.mode as CrmPipelineCaseDetail["mode"],
     serviceType: text(row.serviceType, true),
+    customerType: text(row.customerType, true),
+    estimatedCbm: row.estimatedCbm === null ? null : finite(row.estimatedCbm),
+    requiresSurvey: bool(row.requiresSurvey),
+    surveyMethod: text(row.surveyMethod, true),
+    originLocation: text(row.originLocation, true),
+    destinationLocation: text(row.destinationLocation, true),
+    destinationContracted: row.destinationContracted === null ? null : bool(row.destinationContracted),
+    assetsCount: integer(row.assetsCount),
+    quoteCount: integer(row.quoteCount),
+    eventCount: integer(row.eventCount),
     client: serviceClient(row.client),
     owner: publicOwner,
     createdAt: iso(row.createdAt),

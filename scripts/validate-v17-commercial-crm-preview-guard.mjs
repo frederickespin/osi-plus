@@ -166,7 +166,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
 
   const app = "src/App.tsx";
   requireText(files, app, "commercialCrmPreviewAuthorized === true", "frontend no exige confirmación del servidor");
-  requireText(files, app, "isRelationalCrmReadEnabled() && previewConfirmed", "frontend no coordina Hub/cliente/lectura");
+  requireText(files, app, "isRelationalCrmReadEnabled() && serverConfirmed", "frontend no coordina Hub/cliente/lectura");
   requireText(files, app, "evaluateHubRouteAccess(routeState.pathname, routeState.accessContext)", "frontend autoriza después del lazy");
   requireText(files, app, "validateLegacySession(session, controller.signal)", "frontend no revalida con cancelación");
   requireText(files, app, "activeNavigation.current?.controller.abort()", "frontend no cancela navegación obsoleta");

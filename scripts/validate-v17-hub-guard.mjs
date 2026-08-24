@@ -8,6 +8,9 @@ const allowedBackendChanges = new Set([
   "api/_lib/authOrigin.js",
   "api/_lib/commercialTenancyMutation.js",
   "api/_lib/commercialTenancyWrite.js",
+  "api/_lib/crmCaseMutationDomain.js",
+  "api/_lib/crmCaseMutationHttp.js",
+  "api/_lib/crmClientOptions.js",
   "api/_lib/crmHttpHeaders.js",
   "api/_lib/crmOwnerCatalogHttp.js",
   "api/_lib/crmPipelineAccess.js",
@@ -15,11 +18,15 @@ const allowedBackendChanges = new Set([
   "api/_lib/crmPipelineReadHttp.js",
   "api/_lib/http.js",
   "api/_lib/pipelineCaseMutationHttp.js",
+  "api/_lib/rbac.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
   "api/_lib/v17CommercialCrmProductionAuth.js",
   "api/auth/login.js",
   "api/auth/me.js",
   "api/clients/index.js",
+  "api/crm/client-options.js",
+  "api/crm/pipeline-cases/[id].js",
+  "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
   "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
@@ -33,12 +40,13 @@ const requiredApps = ["commercial-crm", "coordination", "operations", "materials
 const allowedPrismaChanges = new Set([
   "prisma/schema.prisma",
   "prisma/migrations/20260821010000_v17_pipeline_case_public_ref/migration.sql",
+  "prisma/migrations/20260824010000_v17_client_public_ref_case_mutations/migration.sql",
 ]);
 function fail(message) { throw new Error(`V17_HUB_GUARD_FAILED: ${message}`); }
 function text(path) { return readFileSync(path, "utf8"); }
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-if (migrations.length !== 18) fail(`expected 18 migrations, found ${migrations.length}`);
+if (migrations.length !== 19) fail(`expected 19 migrations, found ${migrations.length}`);
 const migrationChanges = execFileSync("git", ["diff", "--name-only", BASE, "--", "prisma/migrations"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
 if (migrationChanges.some((path) => !allowedPrismaChanges.has(path))) fail("canonical migrations changed outside V17-CASE-PUBLIC-REF");
 

@@ -16,11 +16,11 @@ function rejected(name, overrides, pattern) {
 const schema = readFileSync(resolve("prisma/schema.prisma"), "utf8");
 const sql = readFileSync(resolve("prisma/migrations", V17_CASE_CLIENT_MIGRATION, "migration.sql"), "utf8");
 const migrations = Array.from({ length: 16 }, (_, index) => `m${String(index).padStart(2, "0")}`)
-  .concat(V17_CASE_CLIENT_MIGRATION, "20260821010000_v17_pipeline_case_public_ref");
+  .concat(V17_CASE_CLIENT_MIGRATION, "20260821010000_v17_pipeline_case_public_ref", "20260824010000_v17_client_public_ref_case_mutations");
 
 try {
   check("baseline V17 aprobada", validateV17CaseClientGuard().ok);
-  rejected("migración 19 rechazada", { migrationNames: [...migrations, "20260821020000_v17_forbidden"] }, /18 migraciones|migración 19/);
+  rejected("migración 20 rechazada", { migrationNames: [...migrations, "20260825010000_v17_forbidden"] }, /19 migraciones|migración 19/);
   rejected("clientId obligatorio rechazado", { schemaSource: schema.replace("clientId                      String?", "clientId                      String ") }, /nullable/);
   rejected("Project.clientId nullable rechazado", { schemaSource: schema.replace(/(model Project\s*\{[\s\S]*?\n\s*clientId\s+)String(\s*)/, "$1String?$2") }, /Project\.clientId/);
   rejected("CHECK previo contra tenantId NULL es obligatorio", { projectAuthorityMigrationSource: "SELECT 1;" }, /migración 16/);

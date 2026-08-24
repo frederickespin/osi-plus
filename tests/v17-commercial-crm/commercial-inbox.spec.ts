@@ -1,4 +1,6 @@
 import type { Page, Route } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   createControlledGate,
   DetailFulfillmentBarrier,
@@ -17,6 +19,9 @@ type RequestAudit = { method: string; pathname: string; search: string; authoriz
 
 const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 const DEFAULT_CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const DEFAULT_CLIENT_REF = "028f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const CREATED_CASE_REF = "038f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const MUTATION_EVIDENCE = resolve("docs/evidence/V17-CRM-CASE-MUTATIONS-04A");
 
 function syntheticCaseRef(sequence: number) {
   return `018f6d8f-8d11-4f39-8a2d-${sequence.toString(16).padStart(12, "0")}`;
@@ -26,7 +31,7 @@ function pipelineCase(overrides: Record<string, unknown> = {}) {
   return {
     caseRef: DEFAULT_CASE_REF,
     caseCode: "CRM-DEMO-001",
-    client: { displayName: "Receptor Sintético", type: "PERSON", status: "active" },
+    client: { clientRef: DEFAULT_CLIENT_REF, displayName: "Receptor Sintético", type: "PERSON", status: "active" },
     mode: "EXPORT",
     serviceType: "Mudanza internacional",
     customerType: "PERSON",
@@ -50,6 +55,7 @@ function pipelineCase(overrides: Record<string, unknown> = {}) {
 function pipelineCaseDetail(item = pipelineCase(), overrides: Record<string, unknown> = {}) {
   return {
     caseRef: item.caseRef,
+    version: 1,
     caseCode: item.caseCode,
     status: item.status,
     mode: item.mode,
@@ -65,7 +71,7 @@ function pipelineCaseDetail(item = pipelineCase(), overrides: Record<string, unk
     quoteCount: item.quoteCount,
     eventCount: item.eventCount,
     client: item.client,
-    owner: item.owner ? { displayName: item.owner.displayName } : null,
+    owner: item.owner ? { displayName: item.owner.displayName, isCurrentActor: true } : null,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     ...overrides,
@@ -152,9 +158,88 @@ test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo
   expect(audit.filter(({ pathname }) => pathname.startsWith("/api/crm/"))).toHaveLength(3);
 });
 
+test("A crea un caso y edita su Ficha sólo después de confirmación del servidor", async ({ page }, testInfo) => {
+  mkdirSync(MUTATION_EVIDENCE, { recursive: true });
+  await authenticate(page, { role: "A", permissions: ["pipeline:view", "pipeline:create", "pipeline:update:any"] });
+  let detail = pipelineCase({ caseRef: CREATED_CASE_REF, caseCode: "CS-2026-SERVER", originLocation: "Origen inicial" });
+  let version = 1;
+  const writes: Array<{ method: string; body: Record<string, unknown> }> = [];
+  await page.route("**/api/crm/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/crm/pipeline-summary") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(summary(0)) });
+    if (url.pathname === "/api/crm/client-options") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 20, data: [{ clientRef: DEFAULT_CLIENT_REF, displayName: "Receptor Sintético", type: "PERSON", status: "active" }] }) });
+    if (url.pathname === "/api/crm/pipeline-cases" && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 0, page: 1, pageSize: 25, data: [] }) });
+    if (url.pathname === "/api/crm/pipeline-cases" && request.method() === "POST") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      writes.push({ method: "POST", body });
+      return route.fulfill({ status: 201, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CREATED_CASE_REF, version: 1 }, replayed: false }) });
+    }
+    if (url.pathname === `/api/crm/pipeline-cases/${CREATED_CASE_REF}` && request.method() === "PATCH") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      writes.push({ method: "PATCH", body });
+      version = 2;
+      detail = pipelineCase({ ...detail, originLocation: String(body.originLocation), updatedAt: "2026-08-24T12:00:00.000Z" });
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CREATED_CASE_REF, version }, replayed: false }) });
+    }
+    if (url.pathname === `/api/crm/pipeline-cases/${CREATED_CASE_REF}`) return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: pipelineCaseDetail(detail, { version, owner: null }) }) });
+    return route.fulfill({ status: 404, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }) });
+  });
+  await page.goto("/commercial");
+  await page.getByRole("button", { name: "Nuevo Caso" }).click();
+  await expect(page.getByRole("heading", { name: "Nuevo Caso Comercial" })).toBeVisible();
+  if (["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) await page.screenshot({ path: resolve(MUTATION_EVIDENCE, `nuevo-caso-${testInfo.project.name}.png`), fullPage: true });
+  await page.getByLabel("Cliente receptor", { exact: true }).selectOption(DEFAULT_CLIENT_REF);
+  await page.getByLabel("Origen").fill("Origen confirmado");
+  await page.getByLabel("Destino", { exact: true }).fill("Destino confirmado");
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(page).toHaveURL(new RegExp(`/commercial/cases/${CREATED_CASE_REF}$`));
+  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await page.getByRole("button", { name: "Editar" }).click();
+  await expect(page.getByRole("heading", { name: "Editar Ficha del Caso" })).toBeVisible();
+  if (["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) await page.screenshot({ path: resolve(MUTATION_EVIDENCE, `editar-ficha-${testInfo.project.name}.png`), fullPage: true });
+  await page.getByLabel("Origen").fill("Origen editado por servidor");
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(page.getByText("Origen editado por servidor", { exact: true })).toBeVisible();
+  expect(writes).toHaveLength(2);
+  expect(writes[0].method).toBe("POST");
+  expect(writes[1].method).toBe("PATCH");
+  expect(writes[1].body.expectedVersion).toBe(1);
+  for (const { body } of writes) {
+    expect(body.requestId).toMatch(/^[A-Za-z0-9-]{8,191}$/);
+    expect(body.payloadHash).toMatch(/^[0-9a-f]{64}$/);
+    for (const forbidden of ["id", "publicRef", "clientId", "tenantId", "ownerId", "status", "version"]) expect(body).not.toHaveProperty(forbidden);
+  }
+});
+
+test("los permisos explícitos y el owner efectivo gobiernan los controles locales", async ({ browser }) => {
+  const scenarios = [
+    { permissions: ["pipeline:view"], deniedPermissions: undefined, owner: true, create: false, edit: false },
+    { permissions: ["pipeline:view", "pipeline:create", "pipeline:update:own"], deniedPermissions: ["pipeline:create"], owner: true, create: false, edit: true },
+    { permissions: ["pipeline:view", "pipeline:update:own"], deniedPermissions: undefined, owner: false, create: false, edit: false },
+  ];
+  for (const scenario of scenarios) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await authenticate(page, { role: "V", permissions: scenario.permissions, deniedPermissions: scenario.deniedPermissions });
+    const item = pipelineCase({ owner: { displayName: "Ventas Sintético", role: "V", membershipStatus: "ACTIVE" } });
+    await page.route("**/api/crm/**", async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname === "/api/crm/pipeline-summary") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(summary(1, 1)) });
+      if (pathname === "/api/crm/pipeline-cases") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, data: [item] }) });
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: pipelineCaseDetail(item, { owner: { displayName: "Ventas Sintético", isCurrentActor: scenario.owner } }) }) });
+    });
+    await page.goto("/commercial");
+    await expect(page.getByRole("button", { name: "Nuevo Caso" })).toHaveCount(scenario.create ? 1 : 0);
+    await page.getByRole("button", { name: "Abrir ficha" }).click();
+    await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(scenario.edit ? 1 : 0);
+    await context.close();
+  }
+});
+
 test("filtros, paginación y Ficha usan Client relacional y renderizan texto hostil sin ejecutarlo", async ({ page }) => {
   const hostileName = "<img src=x onerror=globalThis.__hostile=1>";
-  const hostile = pipelineCase({ client: { displayName: hostileName, type: "PERSON", status: "active" }, owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" } });
+  const hostile = pipelineCase({ client: { clientRef: DEFAULT_CLIENT_REF, displayName: hostileName, type: "PERSON", status: "active" }, owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" } });
   await authenticate(page, { role: "V", permissions: ["pipeline:view"] });
   const audit = await mockCrm(page, { total: 2_000, cases: [hostile] });
   await page.goto("/crm");

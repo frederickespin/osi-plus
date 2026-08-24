@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const V17_CASE_PUBLIC_REF_MIGRATION = "20260821010000_v17_pipeline_case_public_ref";
+const V17_CLIENT_PUBLIC_REF_MIGRATION = "20260824010000_v17_client_public_ref_case_mutations";
 const PREVIOUS_MIGRATION_HASHES = Object.freeze({
   "20260801000000_production_baseline": "59a6060c78107a73cf9793da65cc5fc1a35d9d3c5e60ae37e04e5f395812bb2c",
   "20260801001000_mt01a_tenant_memberships": "015c8bd39f050f71fbe1bea0f94198091149296269fed77905bcefd23094cd44",
@@ -56,9 +57,9 @@ export function validateV17CasePublicRefGuard({
 } = {}) {
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  invariant(migrations.length === 18, "se exigen exactamente 18 migraciones");
-  invariant(migrations.at(-1) === V17_CASE_PUBLIC_REF_MIGRATION, "migración 18 exacta ausente o fuera de orden");
-  invariant(!migrations.some((name) => name > V17_CASE_PUBLIC_REF_MIGRATION), "migración 19 no autorizada");
+  invariant(migrations.length === 19, "se exigen exactamente 19 migraciones");
+  invariant(migrations.includes(V17_CASE_PUBLIC_REF_MIGRATION), "migración 18 exacta ausente");
+  invariant(migrations.at(-1) === V17_CLIENT_PUBLIC_REF_MIGRATION, "migración 19 exacta ausente o fuera de orden");
 
   const schema = schemaSource ?? readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
   const sql = (migrationSource ?? readFileSync(resolve(root, "prisma/migrations", V17_CASE_PUBLIC_REF_MIGRATION, "migration.sql"), "utf8")).replaceAll("\r\n", "\n");
@@ -102,15 +103,21 @@ export function validateV17CasePublicRefGuard({
 
   const runtime = extraRuntimeSources ?? runtimeSources(root);
   const canonicalReadPath = "api/_lib/crmPipelineRead.js";
+  const authorizedPublicRefConsumers = new Set([
+    canonicalReadPath,
+    "api/_lib/crmCaseMutationDomain.js",
+    "api/_lib/crmClientOptions.js",
+  ]);
   const publicRefConsumers = Object.entries(runtime)
     .filter(([, source]) => /\bpublicRef\b|\bpublic_ref\b/.test(source))
     .map(([path]) => path);
-  invariant(publicRefConsumers.length === 1 && publicRefConsumers[0] === canonicalReadPath,
-    `publicRef sólo puede consumirse en el backend canónico de lectura: ${publicRefConsumers.join(", ")}`);
+  invariant(publicRefConsumers.includes(canonicalReadPath)
+    && publicRefConsumers.every((path) => authorizedPublicRefConsumers.has(path)),
+  `publicRef sólo puede consumirse en backends canónicos tenant-first: ${publicRefConsumers.join(", ")}`);
 
   const canonicalRead = runtime[canonicalReadPath];
-  invariant((canonicalRead.match(/publicRef:\s*true/g) || []).length === 2,
-    "lista y detalle deben seleccionar publicRef de forma explícita");
+  invariant((canonicalRead.match(/publicRef:\s*true/g) || []).length === 3,
+    "lista, detalle y Client deben seleccionar publicRef de forma explícita");
   invariant((canonicalRead.match(/caseRef:\s*row\.publicRef/g) || []).length === 2,
     "lista y detalle deben serializar publicRef exclusivamente como caseRef");
   invariant((canonicalRead.match(/caseCode:\s*row\.caseCode/g) || []).length === 2 && !/\bcaseNumber\b/.test(canonicalRead),
@@ -148,8 +155,8 @@ export function validateV17CasePublicRefGuard({
 
   return Object.freeze({
     ok: true,
-    migrations: 18,
-    runtimeConsumers: 1,
+    migrations: 19,
+    runtimeConsumers: publicRefConsumers.length,
     runtimeConsumer: canonicalReadPath,
     publicContract: "caseRef",
     atomic: true,

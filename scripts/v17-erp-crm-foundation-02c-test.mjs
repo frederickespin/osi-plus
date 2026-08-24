@@ -141,7 +141,7 @@ check("Survey y Cotización permanecen En integración", () => {
 
 check("no existe migración 19", () => {
   const migrations = fs.readdirSync(path.join(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  assert.equal(migrations.length, 18);
+  assert.equal(migrations.length, 19);
   assert.equal(migrations.some((entry) => /v17_(?:party|location|service|compliance)|migration.?19/iu.test(entry.name)), false);
 });
 

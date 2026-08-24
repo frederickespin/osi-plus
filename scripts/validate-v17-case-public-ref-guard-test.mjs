@@ -7,8 +7,11 @@ const schema = readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
 const sql = readFileSync(resolve(root, "prisma/migrations", V17_CASE_PUBLIC_REF_MIGRATION, "migration.sql"), "utf8");
 const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
 const canonicalRead = readFileSync(resolve(root, "api/_lib/crmPipelineRead.js"), "utf8");
-const canonicalRuntime = { "api/_lib/crmPipelineRead.js": canonicalRead, "api/crm/pipeline-cases/[caseKey]/index.js": "const caseRef = req.query?.caseKey; export default function handler() {}", "src/crm-relational/readApi.ts": "const caseRef = 'public DTO';" };
+const canonicalRuntime = { "api/_lib/crmPipelineRead.js": canonicalRead, "api/_lib/crmCaseMutationDomain.js": "const caseRef = row.public_ref;", "api/_lib/crmClientOptions.js": "const clientRef = row.publicRef;", "api/crm/pipeline-cases/[caseKey]/index.js": "const caseRef = req.query?.caseKey; export default function handler() {}", "src/crm-relational/readApi.ts": "const caseRef = 'public DTO';" };
 const results = [];
+function mutatePipeline(mutator) {
+  return schema.replace(/model PipelineCase\s*\{[\s\S]*?\n\}/, (block) => mutator(block));
+}
 function check(name, condition) {
   results.push({ name, passed: Boolean(condition) });
   if (!condition) throw new Error(name);
@@ -21,9 +24,9 @@ function rejected(name, overrides, expected) {
 }
 
 check("baseline publicRef aprobada", validateV17CasePublicRefGuard().ok);
-rejected("nullable rechazado", { schemaSource: schema.replace("publicRef                     String ", "publicRef                     String? ") }, /NOT NULL|nullable/);
-rejected("default PostgreSQL eliminado", { schemaSource: schema.replace('@default(dbgenerated("gen_random_uuid()")) ', "") }, /default PostgreSQL/);
-rejected("unicidad tenant-first eliminada", { schemaSource: schema.replace(/\s*@@unique\(\[tenantId, publicRef\][^\r\n]*\r?\n/, "\n") }, /unicidad tenant-first/);
+rejected("nullable rechazado", { schemaSource: mutatePipeline((block) => block.replace("publicRef                     String ", "publicRef                     String? ")) }, /NOT NULL|nullable/);
+rejected("default PostgreSQL eliminado", { schemaSource: mutatePipeline((block) => block.replace('@default(dbgenerated("gen_random_uuid()")) ', "")) }, /default PostgreSQL/);
+rejected("unicidad tenant-first eliminada", { schemaSource: mutatePipeline((block) => block.replace(/\s*@@unique\(\[tenantId, publicRef\][^\r\n]*\r?\n/, "\n")) }, /unicidad tenant-first/);
 rejected("default SQL eliminado", { migrationSource: sql.replace("ALTER COLUMN \"public_ref\" SET DEFAULT pg_catalog.gen_random_uuid(),", "") }, /default o NOT NULL/);
 rejected("transacción explícita eliminada", { migrationSource: sql.replace("BEGIN;", "") }, /transacción explícita/);
 rejected("COMMIT prematuro rechazado", { migrationSource: sql.replace("COMMIT;", "COMMIT;\nSELECT 1;") }, /COMMIT debe cerrar/);
@@ -33,9 +36,9 @@ rejected("comparación no estable rechazada", { migrationSource: sql.replace("IS
 rejected("UPDATE de publicRef permitido rechazado", { migrationSource: sql.replace("RAISE EXCEPTION 'V17_PIPELINE_CASE_PUBLIC_REF_IMMUTABLE'", "RAISE NOTICE 'allowed'") }, /rechazo inmutable/);
 const backfill = sql.match(/UPDATE "osi"\."osi_pipeline_cases"[\s\S]*?WHERE "public_ref" IS NULL;/)?.[0];
 rejected("orden inseguro rechazado", { migrationSource: sql.replace(backfill, "").replace('ADD COLUMN "public_ref" UUID;', `${backfill}\n\nADD COLUMN "public_ref" UUID;`) }, /orden|eventos de triggers/);
-rejected("CUID como fallback rechazado", { schemaSource: schema.replace('dbgenerated("gen_random_uuid()")', "cuid()") }, /default PostgreSQL|Prisma no puede/);
+rejected("CUID como fallback rechazado", { schemaSource: mutatePipeline((block) => block.replace('dbgenerated("gen_random_uuid()")', "cuid()")) }, /default PostgreSQL|Prisma no puede/);
 rejected("JWT como fuente rechazado", { migrationSource: sql.replace("COMMIT;", "-- derive from JWT secret\nCOMMIT;") }, /fallback|debilitamiento/);
-rejected("migración 19 rechazada", { migrationNames: [...migrations, "20260821020000_future"] }, /18 migraciones|migración 19/);
+rejected("migración 20 rechazada", { migrationNames: [...migrations, "20260825010000_future"] }, /19 migraciones|migración 19/);
 rejected("consumidor backend adicional rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/public-ref.js": "const value = row.publicRef;" } }, /sólo puede consumirse/);
 rejected("mutación consumidora rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/pipelineCaseMutationHttp.js": "const value = command.publicRef;" } }, /sólo puede consumirse/);
 rejected("consumidor frontend rechazado", { extraRuntimeSources: { ...canonicalRuntime, "src/unsafe.ts": "const leaked = value.publicRef;" } }, /sólo puede consumirse|frontend/);

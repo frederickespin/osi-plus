@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const DOMAIN = "api/_lib/pipelineCaseDomain.js";
+const CASE_MUTATION_DOMAIN = "api/_lib/crmCaseMutationDomain.js";
+const CASE_MUTATION_FRONTEND_AUTH = "src/crm-relational/mutationAccess.ts";
 const AUTHORIZED_CONSUMERS = Object.freeze([
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
   "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
@@ -27,7 +29,7 @@ function files(root) {
 export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 18 && migrations.includes(MIGRATION), "se requieren exactamente 18 migraciones");
+  invariant(migrations.length === 19 && migrations.includes(MIGRATION), "se requieren exactamente 19 migraciones");
   invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
   invariant(migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migration.sql CRM-01B1 fue modificada");
@@ -90,9 +92,9 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
   for (const path of allFiles.filter((path) => /^(?:api|src)\/.+\.(?:[cm]?[jt]sx?)$/.test(path))) {
     const source = extraSources[path] ?? read(path);
     if (path !== DOMAIN && /(?:from|import\s*\()\s*["'][^"']*pipelineCaseDomain\.js/.test(source)) consumers.push(path);
-    if (path !== DOMAIN && /pipelineCase\s*\.\s*(?:update|updateMany|upsert|delete|deleteMany)\s*\(|UPDATE\s+"osi"\."osi_pipeline_cases"/i.test(source)) mutations.push(path);
-    if (path !== DOMAIN && /pipelineCaseCommand\s*\.\s*create\s*\(|INSERT\s+INTO\s+"osi"\."pipeline_case_commands"/i.test(source)) journalBypasses.push(path);
-    if (path.startsWith("src/") && /pipeline:(?:update|transition|assign)|PipelineCaseCommand/.test(source)) mutations.push(path);
+    if (![DOMAIN, CASE_MUTATION_DOMAIN].includes(path) && /pipelineCase\s*\.\s*(?:update|updateMany|upsert|delete|deleteMany)\s*\(|UPDATE\s+"osi"\."osi_pipeline_cases"/i.test(source)) mutations.push(path);
+    if (![DOMAIN, CASE_MUTATION_DOMAIN].includes(path) && /pipelineCaseCommand\s*\.\s*create\s*\(|INSERT\s+INTO\s+"osi"\."pipeline_case_commands"/i.test(source)) journalBypasses.push(path);
+    if (path.startsWith("src/") && path !== CASE_MUTATION_FRONTEND_AUTH && /pipeline:(?:update|transition|assign)|PipelineCaseCommand/.test(source)) mutations.push(path);
   }
   for (const [path, source] of Object.entries(extraSources)) {
     if (!/^(?:api|src)\//.test(path) || path === DOMAIN || allFiles.includes(path)) continue;
@@ -113,7 +115,7 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
   invariant(canonical.includes("process.env.CRM01B2_TEST_DATABASE_URL = process.env.DATABASE_URL"), "runner canónico no transfiere URL local CRM-01B2");
   const target = read("scripts/crm-01b2-local-target.mjs");
   for (const required of ["127.0.0.1", "55432", "osi_crm01b2_local", "neon.branch_id", "no existe fallback"]) invariant(target.includes(required), `guardia local incompleta: ${required}`);
-  return Object.freeze({ ok: true, migrations: 18, runtimeConsumers: AUTHORIZED_CONSUMERS.length, mutationBypasses: 0, crmMode: "DISABLED", advisoryLock: "TRY", lockOrder: Object.freeze(["REQUEST", "CASE"]), blockedTransitions: Object.freeze(["SURVEY_SCHEDULED", "WON"]), approved: "FROZEN" });
+  return Object.freeze({ ok: true, migrations: 19, runtimeConsumers: AUTHORIZED_CONSUMERS.length, mutationBypasses: 0, crmMode: "DISABLED", advisoryLock: "TRY", lockOrder: Object.freeze(["REQUEST", "CASE"]), blockedTransitions: Object.freeze(["SURVEY_SCHEDULED", "WON"]), approved: "FROZEN" });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

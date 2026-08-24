@@ -42,6 +42,8 @@ export function validateCommercialTenancyMutationGuard({ root = process.cwd(), o
   const workflow = source(root, ".github/workflows/ci.yml", overrides);
   assert.match(workflow, /npm run test:commercial-tenancy-mutation-gate/u, "prueba de compuerta no es obligatoria en CI");
   assert.match(workflow, /npm run guard:commercial-tenancy-mutation-gate/u, "guardia de compuerta no es obligatoria en CI");
+  const vercel = source(root, "vercel.json", overrides);
+  assert.match(vercel, /clients\(\?:\/\|\$\)[\s\S]*projects\(\?:\/\|\$\)[\s\S]*k\/project-\(\?:validate\|release\)/u, "Vercel vuelve a aplicar CORS permisivo a mutaciones protegidas");
   return { routes: ROUTES.length, modes: 2 };
 }
 

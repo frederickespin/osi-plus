@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CANONICAL_GLOBAL_API_SOURCE = "/api/((?!auth/|crm/).*)";
+const CANONICAL_GLOBAL_API_SOURCE = "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)";
 const SAFE_ROUTE_SEGMENT = "crm-cors-guard-id";
 
 function invariant(condition, message) {
@@ -105,8 +105,9 @@ export function validateCrmCorsGuard({
   const matched = unsafeCrmRouteMatches({ root, vercelText, routes });
   invariant(matched.length === 0, `rutas CRM cubiertas por CORS permisivo: ${matched.join(", ")}`);
 
-  for (const path of ["/api/clients", "/api/projects", "/api/osis"]) {
-    invariant(matchesSource(globalRule.source, path), `la corrección alteró CORS no CRM: ${path}`);
+  invariant(matchesSource(globalRule.source, "/api/osis"), "la corrección alteró CORS heredado fuera del alcance");
+  for (const path of ["/api/clients", "/api/projects", "/api/k/project-validate", "/api/k/project-release"]) {
+    invariant(!matchesSource(globalRule.source, path), `${path} heredaría CORS permisivo`);
   }
   invariant(!matchesSource(globalRule.source, "/api/auth/login"), "Auth debe quedar fuera del CORS heredado");
   invariant(!matchesSource(globalRule.source, "/api/auth/future-route"), "una ruta Auth futura recibiría CORS permisivo");
@@ -118,7 +119,7 @@ export function validateCrmCorsGuard({
     crmRoutes: routes.length,
     matchedCrmRoutes: matched.length,
     handlersChecked: routeSources.length,
-    nonCrmCompatibilityRoutes: 3,
+    nonCrmCompatibilityRoutes: 1,
   });
 }
 

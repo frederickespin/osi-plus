@@ -71,7 +71,7 @@ test("A y V acceden al ERP avanzado sólo después de confirmación productiva",
     await page.goto("/hub");
     await expect(page.getByRole("heading", { name: new RegExp(`Hola, Actor ${role}`) })).toBeVisible();
     await expect(page.getByText("CRM · sólo lectura", { exact: true })).toBeVisible();
-    await expect(page.getByText("Esta fundación local no activa ninguna aplicación")).toHaveCount(0);
+    await expect(page.getByText("Comercial abre el ERP sólo cuando la sesión y el entorno están autorizados.")).toBeVisible();
     await page.locator("main").getByRole("button").filter({ hasText: "Comercial y CRM" }).click();
     await expect(page.getByTestId("advanced-erp-shell")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();

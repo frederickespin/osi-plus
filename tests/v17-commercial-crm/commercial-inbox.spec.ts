@@ -402,7 +402,7 @@ test("compuerta CRM desactivada mantiene descriptor inactivo sin chunk ni reques
   page.on("request", (request) => resources.push(new URL(request.url()).pathname));
   await authenticate(page);
   await page.goto("http://127.0.0.1:4186/commercial");
-  await expect(page.getByText("Fundación inactiva.")).toBeVisible();
+  await expect(page.getByText("En integración.")).toBeVisible();
   expect(resources.some((path) => /AdvancedErpShell|CommercialInboxModule/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
 });

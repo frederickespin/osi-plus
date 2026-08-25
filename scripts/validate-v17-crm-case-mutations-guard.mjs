@@ -69,6 +69,10 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
   requireMatch(frontend, /VITE_CRM_PIPELINE_CASE_MUTATION_MODE[\s\S]*mutation === "LOCAL_ONLY"[\s\S]*mutation === "PREVIEW_REHEARSAL"/, "UI de mutación no posee compuerta focal exacta");
   requireMatch(frontend, /mutation === undefined \|\| mutation === "DISABLED"[\s\S]*return false/, "UI de mutación no falla cerrada por defecto");
 
+  const browserSuite = read("tests/v17-commercial-crm/commercial-inbox.spec.ts");
+  requireMatch(browserSuite, /V17_CAPTURE_MUTATION_EVIDENCE === "1"/, "captura documental no exige autorización explícita");
+  requireMatch(browserSuite, /CAPTURE_MUTATION_EVIDENCE && \["chromium-desktop", "chromium-mobile"\]\.includes/, "suite browser puede reescribir evidencia por defecto");
+
   return Object.freeze({ ok: true, migrations: 19, migration: MIGRATION, endpoints: Object.freeze(["POST /api/crm/pipeline-cases", "PATCH /api/crm/pipeline-cases/:caseRef", "GET /api/crm/client-options"]), mutationModes: Object.freeze(["LOCAL_ONLY", "PREVIEW_REHEARSAL"]), productionMutationMode: "DISABLED" });
 }
 

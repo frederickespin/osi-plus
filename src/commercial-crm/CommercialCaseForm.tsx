@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, LoaderCircle, Search } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ export default function CommercialCaseForm({ open, mode, api, caseRef, expectedV
   const [loadingClients, setLoadingClients] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestId = useRef<string | null>(null);
   const valid = useMemo(() => fields.serviceType.trim().length > 0
     && fields.originLocation.trim().length > 0
     && fields.destinationLocation.trim().length > 0
@@ -53,6 +54,7 @@ export default function CommercialCaseForm({ open, mode, api, caseRef, expectedV
     if (!open) return;
     setFields(copy(initial || EMPTY));
     setError(null);
+    requestId.current = null;
   }, [initial, open]);
 
   useEffect(() => {
@@ -68,14 +70,19 @@ export default function CommercialCaseForm({ open, mode, api, caseRef, expectedV
     return () => { controller.abort(); clearTimeout(timer); };
   }, [api, clientPage, clientSearch, open]);
 
-  const update = <K extends keyof CrmCaseFields>(key: K, value: CrmCaseFields[K]) => setFields((current) => ({ ...current, [key]: value }));
+  const update = <K extends keyof CrmCaseFields>(key: K, value: CrmCaseFields[K]) => {
+    requestId.current = null;
+    setFields((current) => ({ ...current, [key]: value }));
+  };
   const submit = async () => {
     if (!valid || saving) return;
     setSaving(true); setError(null);
     try {
+      requestId.current ||= crypto.randomUUID();
       const receipt = mode === "CREATE"
-        ? await api.create(fields)
-        : await api.update(caseRef!, expectedVersion!, fields);
+        ? await api.create(fields, requestId.current)
+        : await api.update(caseRef!, expectedVersion!, fields, requestId.current);
+      requestId.current = null;
       onCommitted(receipt);
       onOpenChange(false);
     } catch (cause) {

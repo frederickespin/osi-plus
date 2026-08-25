@@ -108,10 +108,9 @@ export class CrmCaseMutationApi {
     this.fetchImpl = fetchImpl;
   }
 
-  private async mutation(method: "POST" | "PATCH", path: string, operation: "CREATE" | "UPDATE", fields: CrmCaseFields, expectedVersion?: number) {
+  private async mutation(method: "POST" | "PATCH", path: string, operation: "CREATE" | "UPDATE", fields: CrmCaseFields, expectedVersion: number | undefined, requestId: string) {
     const token = this.tokenProvider();
     if (!token) throw new CrmCaseMutationClientError(401, "COMMERCIAL_AUTH_REQUIRED");
-    const requestId = crypto.randomUUID();
     const command = { operation, requestId, ...fields, ...(operation === "UPDATE" ? { expectedVersion } : {}) };
     const body = { ...command, payloadHash: await sha256(command) };
     delete (body as Record<string, unknown>).operation;
@@ -133,10 +132,10 @@ export class CrmCaseMutationApi {
     return Object.freeze({ caseRef: safeRef(data.caseRef), version: data.version, replayed: root.replayed });
   }
 
-  create(fields: CrmCaseFields) { return this.mutation("POST", "/pipeline-cases", "CREATE", fields); }
-  update(caseRef: string, expectedVersion: number, fields: CrmCaseFields) {
+  create(fields: CrmCaseFields, requestId: string = crypto.randomUUID()) { return this.mutation("POST", "/pipeline-cases", "CREATE", fields, undefined, requestId); }
+  update(caseRef: string, expectedVersion: number, fields: CrmCaseFields, requestId: string = crypto.randomUUID()) {
     if (!UUID_V4.test(caseRef)) throw new CrmCaseMutationClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
-    return this.mutation("PATCH", `/pipeline-cases/${encodeURIComponent(caseRef)}`, "UPDATE", fields, expectedVersion);
+    return this.mutation("PATCH", `/pipeline-cases/${encodeURIComponent(caseRef)}`, "UPDATE", fields, expectedVersion, requestId);
   }
 
   async clients(search = "", page = 1): Promise<Readonly<{ total: number; data: readonly CrmClientOption[] }>> {

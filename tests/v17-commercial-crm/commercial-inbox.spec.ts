@@ -212,6 +212,37 @@ test("A crea un caso y edita su Ficha sólo después de confirmación del servid
   }
 });
 
+test("un reintento tras perder la respuesta conserva requestId y payloadHash", async ({ page }) => {
+  await authenticate(page, { role: "A", permissions: ["pipeline:view", "pipeline:create"] });
+  const attempts: Array<Record<string, unknown>> = [];
+  await page.route("**/api/crm/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === "/api/crm/pipeline-summary") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(summary(0)) });
+    if (pathname === "/api/crm/client-options") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 0, page: 1, pageSize: 20, data: [] }) });
+    if (pathname === "/api/crm/pipeline-cases" && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 0, page: 1, pageSize: 25, data: [] }) });
+    if (pathname === "/api/crm/pipeline-cases" && request.method() === "POST") {
+      attempts.push(request.postDataJSON() as Record<string, unknown>);
+      if (attempts.length === 1) return route.abort("connectionreset");
+      return route.fulfill({ status: 201, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CREATED_CASE_REF, version: 1 }, replayed: true }) });
+    }
+    if (pathname === `/api/crm/pipeline-cases/${CREATED_CASE_REF}`) return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: pipelineCaseDetail(pipelineCase({ caseRef: CREATED_CASE_REF })) }) });
+    return route.fulfill({ status: 404, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }) });
+  });
+
+  await page.goto("/commercial");
+  await page.getByRole("button", { name: "Nuevo Caso" }).click();
+  await page.getByLabel("Origen").fill("Origen idempotente");
+  await page.getByLabel("Destino", { exact: true }).fill("Destino idempotente");
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(page.getByText("CRM_PIPELINE_REQUEST_FAILED", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(page).toHaveURL(new RegExp(`/commercial/cases/${CREATED_CASE_REF}$`));
+  expect(attempts).toHaveLength(2);
+  expect(attempts[1].requestId).toBe(attempts[0].requestId);
+  expect(attempts[1].payloadHash).toBe(attempts[0].payloadHash);
+});
+
 test("los permisos explícitos y el owner efectivo gobiernan los controles locales", async ({ browser }) => {
   const scenarios = [
     { permissions: ["pipeline:view"], deniedPermissions: undefined, owner: true, create: false, edit: false },

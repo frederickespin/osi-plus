@@ -22,6 +22,7 @@ const DEFAULT_CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const DEFAULT_CLIENT_REF = "028f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const CREATED_CASE_REF = "038f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const MUTATION_EVIDENCE = resolve("docs/evidence/V17-CRM-CASE-MUTATIONS-04A");
+const CAPTURE_MUTATION_EVIDENCE = process.env.V17_CAPTURE_MUTATION_EVIDENCE === "1";
 
 function syntheticCaseRef(sequence: number) {
   return `018f6d8f-8d11-4f39-8a2d-${sequence.toString(16).padStart(12, "0")}`;
@@ -159,7 +160,7 @@ test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo
 });
 
 test("A crea un caso y edita su Ficha sólo después de confirmación del servidor", async ({ page }, testInfo) => {
-  mkdirSync(MUTATION_EVIDENCE, { recursive: true });
+  if (CAPTURE_MUTATION_EVIDENCE) mkdirSync(MUTATION_EVIDENCE, { recursive: true });
   await authenticate(page, { role: "A", permissions: ["pipeline:view", "pipeline:create", "pipeline:update:any"] });
   let detail = pipelineCase({ caseRef: CREATED_CASE_REF, caseCode: "CS-2026-SERVER", originLocation: "Origen inicial" });
   let version = 1;
@@ -188,7 +189,7 @@ test("A crea un caso y edita su Ficha sólo después de confirmación del servid
   await page.goto("/commercial");
   await page.getByRole("button", { name: "Nuevo Caso" }).click();
   await expect(page.getByRole("heading", { name: "Nuevo Caso Comercial" })).toBeVisible();
-  if (["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) await page.screenshot({ path: resolve(MUTATION_EVIDENCE, `nuevo-caso-${testInfo.project.name}.png`), fullPage: true });
+  if (CAPTURE_MUTATION_EVIDENCE && ["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) await page.screenshot({ path: resolve(MUTATION_EVIDENCE, `nuevo-caso-${testInfo.project.name}.png`), fullPage: true });
   await page.getByLabel("Cliente receptor", { exact: true }).selectOption(DEFAULT_CLIENT_REF);
   await page.getByLabel("Origen").fill("Origen confirmado");
   await page.getByLabel("Destino", { exact: true }).fill("Destino confirmado");
@@ -197,7 +198,7 @@ test("A crea un caso y edita su Ficha sólo después de confirmación del servid
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await page.getByRole("button", { name: "Editar" }).click();
   await expect(page.getByRole("heading", { name: "Editar Ficha del Caso" })).toBeVisible();
-  if (["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) await page.screenshot({ path: resolve(MUTATION_EVIDENCE, `editar-ficha-${testInfo.project.name}.png`), fullPage: true });
+  if (CAPTURE_MUTATION_EVIDENCE && ["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) await page.screenshot({ path: resolve(MUTATION_EVIDENCE, `editar-ficha-${testInfo.project.name}.png`), fullPage: true });
   await page.getByLabel("Origen").fill("Origen editado por servidor");
   await page.getByRole("button", { name: "Guardar" }).click();
   await expect(page.getByText("Origen editado por servidor", { exact: true })).toBeVisible();

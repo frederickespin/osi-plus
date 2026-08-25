@@ -157,6 +157,11 @@ COMMIT;`), "utf8");
   await seed.$disconnect();
   seed = undefined;
 
+  // Apply only migration 18 in the race phase. Pointing at the repository's
+  // complete tree would allow later migrations to start while the concurrent
+  // INSERT is being released, contaminating this lock-order experiment.
+  cpSync(resolve("prisma/migrations", CASE_PUBLIC_REF_MIGRATION), injectedDirectory, { recursive: true });
+
   blocker = new PrismaClient({ datasourceUrl: targetUrl.toString() });
   observer = new PrismaClient({ datasourceUrl: targetUrl.toString() });
   inserter = new PrismaClient({ datasourceUrl: targetUrl.toString() });
@@ -171,7 +176,7 @@ COMMIT;`), "utf8");
   }, { timeout: 30_000 });
   await ready;
 
-  const migrationPromise = startMigration(resolve("prisma/schema.prisma"), targetUrl.toString());
+  const migrationPromise = startMigration(join(tempPrisma, "schema.prisma"), targetUrl.toString());
   await waitFor(observer, `
     SELECT pid FROM pg_locks
     WHERE relation='"osi"."osi_pipeline_cases"'::regclass

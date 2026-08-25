@@ -343,7 +343,7 @@ try {
   invariant(v17CasePublicRefRaceRun.report.ok === true && v17CasePublicRefRaceRun.report.backfill?.rows === 10_000
     && v17CasePublicRefRaceRun.report.atomicity?.concurrentInsert === "blocked_then_uuid", "V17-CASE-PUBLIC-REF carrera de migración falló");
   invariant(v17CasePublicRefGuardRun.report.ok === true
-    && v17CasePublicRefGuardRun.report.runtimeConsumers === 1
+    && v17CasePublicRefGuardRun.report.runtimeConsumers === 3
     && v17CasePublicRefGuardRun.report.runtimeConsumer === "api/_lib/crmPipelineRead.js"
     && v17CasePublicRefGuardRun.report.publicContract === "caseRef", "V17-CASE-PUBLIC-REF guard falló");
   invariant(v17CasePublicRefGuardTestsRun.assertions >= 13, "V17-CASE-PUBLIC-REF guard tests incompletos");

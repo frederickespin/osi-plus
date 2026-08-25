@@ -248,7 +248,7 @@ try {
   invariant(crmMutationHttpStressRun.report.ok === true && crmMutationHttpStressRun.report.rounds === 50 && crmMutationHttpStressRun.report.requestsPerRound === 20, "CRM-01B3A estrés HTTP 50x20 no se completó");
   invariant(crmMutationHttpGuardRun.report.ok === true, "CRM-01B3A guard falló");
   invariant(crmMutationHttpGuardTestsRun.assertions >= 14, `CRM-01B3A guard tests esperaba al menos 14 pruebas y obtuvo ${crmMutationHttpGuardTestsRun.assertions}`);
-  invariant(crmCorsGuardRun.report.ok === true && crmCorsGuardRun.report.crmRoutes === 8 && crmCorsGuardRun.report.matchedCrmRoutes === 0, "CRM-01B3A CORS guard falló");
+  invariant(crmCorsGuardRun.report.ok === true && crmCorsGuardRun.report.crmRoutes === 9 && crmCorsGuardRun.report.matchedCrmRoutes === 0, "CRM-01B3A CORS guard falló");
   invariant(crmCorsGuardTestsRun.assertions >= 10, `CRM-01B3A CORS guard tests esperaba al menos 10 pruebas y obtuvo ${crmCorsGuardTestsRun.assertions}`);
   invariant(crmProductionGateRun.report.ok === true && crmProductionGateRun.assertions >= 50, `CRM-01B3B1 gate esperaba al menos 50 pruebas y obtuvo ${crmProductionGateRun.assertions}`);
   invariant(crmDisabledOptionsRun.report.ok === true && crmDisabledOptionsRun.assertions >= 300, `CRM-01B3B3 OPTIONS esperaba al menos 300 pruebas y obtuvo ${crmDisabledOptionsRun.assertions}`);

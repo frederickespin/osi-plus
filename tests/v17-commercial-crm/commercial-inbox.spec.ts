@@ -457,6 +457,7 @@ test("resolvers fallan cerrado ante valores y entornos ambiguos", async ({ page 
   await page.goto("/tests/v17-commercial-crm/read-api-harness.html");
   const result = await page.evaluate(async () => {
     const crm = await import("/src/crm-relational/clientMode.ts");
+    const mutationApi = await import("/src/crm-relational/mutationApi.ts");
     const hub = await import("/src/hub/hubMode.ts");
     const loopbacks = ["localhost", "127.0.0.1", "[::1]"];
     const invalidValues = ["local_only", " LOCAL_ONLY", "LOCAL_ONLY ", "\"LOCAL_ONLY\"", "\ufeffLOCAL_ONLY", "LOCAL_ONLY\r", "LOCAL_ONLY\n", "UNKNOWN"];
@@ -469,9 +470,11 @@ test("resolvers fallan cerrado ante valores y entornos ambiguos", async ({ page 
       remote: remoteHosts.every((hostname) => !crm.isRelationalCrmReadEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY" }, { hostname })),
       vercel: ["VERCEL", "VERCEL_ENV", "VERCELX"].every((key) => !crm.isRelationalCrmReadEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", [key]: "1" }, { hostname: "127.0.0.1" })
         && !hub.resolveOsiHubMode({ VITE_OSI_HUB_MODE: "LOCAL_ONLY", [key]: "1" }, { hostname: "127.0.0.1" }).enabled),
+      mutation: mutationApi.isCrmCaseMutationUiEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", VITE_CRM_PIPELINE_CASE_MUTATION_MODE: "LOCAL_ONLY" }, { hostname: "127.0.0.1" }),
+      mutationPartial: [undefined, "DISABLED", "local_only", " LOCAL_ONLY", "LOCAL_ONLY ", "PREVIEW_REHEARSAL"].every((value) => !mutationApi.isCrmCaseMutationUiEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", ...(value === undefined ? {} : { VITE_CRM_PIPELINE_CASE_MUTATION_MODE: value }) }, { hostname: "127.0.0.1" })),
     };
   });
-  expect(result).toEqual({ loopbacks: true, invalid: true, remote: true, vercel: true });
+  expect(result).toEqual({ loopbacks: true, invalid: true, remote: true, vercel: true, mutation: true, mutationPartial: true });
 });
 
 test("adaptador HTTP rechaza contratos adversariales y conserva Bearer sólo en header", async ({ page }) => {

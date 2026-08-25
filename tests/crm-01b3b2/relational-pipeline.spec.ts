@@ -6,11 +6,22 @@ const caseRefFor = (index: number) => `11111111-1111-4111-8111-${String(index + 
 
 function pipelineCase(overrides: Record<string, unknown> = {}) {
   return {
-    caseRef: CASE_REF, caseCode: "CRM-001", client: { displayName: "Cliente sintético", type: "PERSON", status: "active" }, mode: "LOCAL", serviceType: "MUDANZA",
+    caseRef: CASE_REF, caseCode: "CRM-001", client: { clientRef: "22222222-2222-4222-8222-222222222222", displayName: "Cliente sintético", type: "PERSON", status: "active" }, mode: "LOCAL", serviceType: "MUDANZA",
     customerType: "L3_CORPORATE", status: "NEW_INBOX", estimatedCbm: 12.5, requiresSurvey: false, surveyMethod: "NO_APLICA",
     originLocation: "Origen local", destinationLocation: "Destino local", destinationContracted: true, assetsCount: 3,
     owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" }, quoteCount: 1, eventCount: 2,
     createdAt: "2026-08-12T12:00:00.000Z", updatedAt: "2026-08-12T12:10:00.000Z", ...overrides,
+  };
+}
+
+function pipelineCaseDetail(overrides: Record<string, unknown> = {}) {
+  const row = pipelineCase(overrides);
+  return {
+    ...row,
+    version: 1,
+    owner: row.owner && typeof row.owner === "object"
+      ? { displayName: String((row.owner as Record<string, unknown>).displayName), isCurrentActor: true }
+      : null,
   };
 }
 
@@ -57,7 +68,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     }
     if (url.pathname === `/api/crm/pipeline-cases/${CASE_REF}`) {
       if (options.detail) return options.detail(route);
-      return json({ ok: true, data: options.caseData ?? pipelineCase() });
+      return json({ ok: true, data: pipelineCaseDetail(options.caseData ?? {}) });
     }
     if (url.pathname === "/api/crm/pipeline-cases") {
       if (options.list) return options.list(route, url);
@@ -195,14 +206,14 @@ test("lista rechaza autoridad interna, parciales, tipos y arrays excesivos", asy
 });
 
 test("detalle rechaza IDs internos, parciales y tipos incorrectos", async ({ context }) => {
-  const missingStatus = pipelineCase();
+  const missingStatus = pipelineCaseDetail();
   delete missingStatus.status;
   const variants = [
-    { ok: true, data: { ...pipelineCase(), tenantId: "internal-tenant" } },
-    { ok: true, data: { ...pipelineCase(), ownerMembershipId: "internal-membership" } },
-    { ok: true, data: { ...pipelineCase(), clientId: "internal-client" } },
+    { ok: true, data: { ...pipelineCaseDetail(), tenantId: "internal-tenant" } },
+    { ok: true, data: { ...pipelineCaseDetail(), ownerMembershipId: "internal-membership" } },
+    { ok: true, data: { ...pipelineCaseDetail(), clientId: "internal-client" } },
     { ok: true, data: missingStatus },
-    { ok: true, data: { ...pipelineCase(), estimatedCbm: "12.5" } },
+    { ok: true, data: { ...pipelineCaseDetail(), estimatedCbm: "12.5" } },
   ];
   for (const payload of variants) await expectInvalidDetailResponse(context, payload);
 });
@@ -572,7 +583,7 @@ test("texto hostil se acota y se renderiza como texto sin ejecutar ni navegar", 
   const hostile = `<img src=x onerror=window.__crmPwned=1><svg onload=window.__crmPwned=2></svg>javascript:alert(1)\u202E${"X".repeat(1200)}`;
   const external: string[] = [];
   page.on("request", (request) => { if (!request.url().startsWith("http://127.0.0.1:4182")) external.push(request.url()); });
-  await mockApi(page, { caseData: pipelineCase({ caseCode: hostile, client: { displayName: hostile, type: "PERSON", status: "active" }, owner: { displayName: hostile, role: "V", membershipStatus: "ACTIVE" }, serviceType: hostile, originLocation: hostile, destinationLocation: hostile }) });
+  await mockApi(page, { caseData: pipelineCase({ caseCode: hostile, client: { clientRef: "22222222-2222-4222-8222-222222222222", displayName: hostile, type: "PERSON", status: "active" }, owner: { displayName: hostile, role: "V", membershipStatus: "ACTIVE" }, serviceType: hostile, originLocation: hostile, destinationLocation: hostile }) });
   await page.goto("/tests/crm-01b3b2/harness.html");
   await expect(page.getByText(hostile, { exact: true }).first()).toBeVisible();
   expect(await page.evaluate(() => (window as Window & { __crmPwned?: number }).__crmPwned ?? 0)).toBe(0);

@@ -29,7 +29,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   const read = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const files = inventory(root);
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 18 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "se exigen exactamente 18 migraciones, incluidas V17-CASE-CLIENT y V17-CASE-PUBLIC-REF");
+  invariant(migrations.length === 19 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "se exigen exactamente 19 migraciones, incluidas V17-CASE-CLIENT y V17-CASE-PUBLIC-REF");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
 
   const adapter = read("api/_lib/pipelineCaseMutationHttp.js");
@@ -62,7 +62,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   "requestId/query adicional o identidad ambigua no se rechaza");
   invariant(/rawHeaderCount\(req, "idempotency-key"\)/.test(adapter), "duplicados Idempotency-Key no se detectan en rawHeaders");
   invariant(/rawHeaderCount\(request, "authorization"\)/.test(access) && /assertCrmAuthorizationHeader\(req\)/.test(adapter), "Authorization ambiguo no se detecta");
-  invariant(vercel.includes('"source": "/api/((?!auth/|crm/).*)"'), "Vercel no excluye los namespaces Auth y CRM completos del CORS global");
+  invariant(vercel.includes('"source": "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)"'), "Vercel no excluye los namespaces Auth/CRM ni las mutaciones comerciales protegidas del CORS global");
   invariant(!/(?:transition|assign-owner|unassign-owner|allowed-transitions|pipeline-summary)/.test(JSON.parse(vercel).headers?.[0]?.source || ""), "Vercel no puede mantener una exclusión CRM parcial por endpoint");
   for (const forbidden of ["tenantId", "userId", "actorUserId", "actorMembershipId", "ownerUserId", "ownerId", "role", "permissions", "requestId", "resultingVersion", "payloadHash", "statusChangedAt", "timestamps"]) {
     invariant(adapter.includes(`"${forbidden}"`), `falta protección de ${forbidden}`);
@@ -79,7 +79,13 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
     && /^api\/crm\/pipeline-cases\/\[caseKey\]\/(?!index\.js$).+\.js$/.test(path));
   invariant(JSON.stringify(mutationFiles.sort()) === JSON.stringify(Object.keys(ROUTES).sort()), `endpoints no autorizados: ${mutationFiles.join(", ")}`);
   invariant(POST_ROUTES.length === 3, "deben existir exactamente tres POST");
-  invariant(!files.some((path) => /^api\/crm\/.+\.(?:js|ts)$/.test(path) && /(?:PATCH|PUT|DELETE)/.test(extraSources[path] ?? read(path))), "método mutante alternativo detectado");
+  const caseMutationRoutes = new Set([
+    "api/crm/pipeline-cases/index.js",
+    "api/crm/pipeline-cases/[caseKey]/index.js",
+  ]);
+  invariant(!files.some((path) => /^api\/crm\/.+\.(?:js|ts)$/.test(path)
+    && !caseMutationRoutes.has(path)
+    && /(?:PATCH|PUT|DELETE)/.test(extraSources[path] ?? read(path))), "método mutante alternativo detectado");
 
   const prohibitedConfigFiles = files.filter((path) => path === ".env.example" || path === "vercel.json" || path.startsWith(".github/workflows/"));
   for (const path of prohibitedConfigFiles) invariant(!read(path).includes("CRM_PIPELINE_MUTATION_MODE"), `${path} configura la compuerta`);
@@ -110,7 +116,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(/lostResponseCommits/.test(stress) && /transportLost/.test(stress), "falta escenario de respuesta perdida post-commit");
   const domain = read("api/_lib/pipelineCaseDomain.js");
   invariant(/APPROVED:\s*Object\.freeze\(\[\]\)/.test(domain) && !/APPROVED:\s*Object\.freeze\(\["WON"\]/.test(domain), "APPROVED no puede tratarse como WON");
-  return Object.freeze({ ok: true, migrations: 18, mutationMode: "DISABLED", postEndpoints: 3, readEndpoints: 1, runtimeConsumers: 4, frontendConsumers: 1 });
+  return Object.freeze({ ok: true, migrations: 19, mutationMode: "DISABLED", postEndpoints: 3, readEndpoints: 1, runtimeConsumers: 4, frontendConsumers: 1 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

@@ -12,6 +12,7 @@ const paths = [
 ];
 const baseline = Object.fromEntries(paths.map((path) => [path, readFileSync(resolve(path), "utf8")]));
 const canonicalRoutes = [
+  "api/crm/client-options.js",
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
   "api/crm/pipeline-summary.js",

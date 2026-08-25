@@ -14,6 +14,10 @@ import { createTestPrisma, mockResponse } from "./mt-01b1-test-helpers.mjs";
 process.env.MT01B_AUTH_MODE = "LEGACY";
 process.env.MT01B_TENANT_SWITCH_ENABLED = "false";
 process.env.VITE_MT01B2_CLIENT_ENABLED = "false";
+process.env.COMMERCIAL_TENANCY_MUTATION_MODE = "LOCAL_ONLY";
+for (const name of Object.keys(process.env)) {
+  if (name.toUpperCase().startsWith("VERCEL")) delete process.env[name];
+}
 
 const prisma = createTestPrisma();
 const results = [];
@@ -27,7 +31,7 @@ async function invoke(handler, req) {
   return res;
 }
 function post(body, headers = {}) {
-  return { method: "POST", headers, body };
+  return { method: "POST", headers, body, socket: { localAddress: "127.0.0.1", remoteAddress: "127.0.0.1" } };
 }
 function authorized(token, method = "GET", body) {
   return {
@@ -37,6 +41,7 @@ function authorized(token, method = "GET", body) {
       authorization: `Bearer ${token}`,
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
+    socket: { localAddress: "127.0.0.1", remoteAddress: "127.0.0.1" },
     ...(body === undefined ? {} : { body }),
   };
 }

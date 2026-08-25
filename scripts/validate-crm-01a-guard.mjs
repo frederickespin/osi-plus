@@ -3,13 +3,14 @@ import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 
-const EXPECTED_MIGRATIONS = 18;
+const EXPECTED_MIGRATIONS = 19;
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
   "api/crm/pipeline-summary.js",
 ]);
 const CRM_MUTATION_ROUTES = Object.freeze([
+  "api/crm/client-options.js",
   "api/crm/pipeline-owner-options.js",
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
   "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
@@ -19,6 +20,7 @@ const CRM_MUTATION_ROUTES = Object.freeze([
 const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES]);
 const AUTHORIZED_FRONTEND_CONSUMERS = Object.freeze([
   "src/crm-relational/api.ts",
+  "src/crm-relational/mutationApi.ts",
   "src/crm-relational/readApi.ts",
 ]);
 
@@ -102,7 +104,8 @@ export function validateCrm01aGuard({
     const source = read(path);
     const factoryStart = source.indexOf("export function createPipeline");
     invariant(factoryStart >= 0, `${path} no expone una fábrica auditable`);
-    const handler = source.slice(factoryStart);
+    const handlerEnd = source.indexOf("\nconst readHandler", factoryStart);
+    const handler = source.slice(factoryStart, handlerEnd >= 0 ? handlerEnd : undefined);
     invariant(/createCrmPipelineReadHandler\(\{/.test(handler), `${path} no usa el adaptador HTTP canónico`);
     invariant(!/req\.method\s*===\s*"(?:POST|PATCH|PUT|DELETE)"|readJson|\.create\(|\.update|\.delete|\.upsert/.test(handler), `${path} contiene escritura`);
     invariant(!/x-osi-(?:role|userid)|req\.(?:query|body).*(?:tenantId|membershipId|role|permissions)/i.test(handler), `${path} acepta autoridad del navegador`);
@@ -120,7 +123,7 @@ export function validateCrm01aGuard({
   for (const [path, source] of Object.entries(runtimeSources)) {
     if (path.startsWith("src/")) {
       if (AUTHORIZED_FRONTEND_CONSUMERS.includes(path)) {
-        invariant(/API_PREFIX\s*=\s*["']\/api\/crm["']/.test(source), `${path} no usa el adaptador CRM autorizado`);
+        invariant(/(?:API_PREFIX|API)\s*=\s*["']\/api\/crm["']/.test(source), `${path} no usa el adaptador CRM autorizado`);
       } else {
         invariant(!/api\/crm|crmPipelineRead|CRM_PIPELINE_RUNTIME_MODE/.test(source), `${path} conecta CRM-01A al frontend fuera del adaptador autorizado`);
       }
@@ -147,7 +150,7 @@ export function validateCrm01aGuard({
     baseRoles: Object.freeze(["A", "V"]),
     legacyHeaderExceptions: authInventory.legacyHeaderExceptions,
     frontendConsumers: AUTHORIZED_FRONTEND_CONSUMERS.length,
-    writeEndpoints: 0,
+    writeEndpoints: 2,
     disabledOptionsGate: true,
   });
 }

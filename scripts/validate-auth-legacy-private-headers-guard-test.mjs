@@ -15,7 +15,7 @@ function rejected(name, options, pattern) {
 
 const current = validateAuthLegacyPrivateHeadersGuard();
 check("cinco rutas Auth protegidas recursivamente", current.ok && current.routes === 5 && current.futureRoutesProtected);
-rejected("catch-all Vercel inseguro", { vercelText: baseline.replace("((?!auth/|crm/).*)", "(.*)") }, /regla global|heredaría/);
+rejected("catch-all Vercel inseguro", { vercelText: baseline.replace("((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)", "(.*)") }, /regla global|heredaría/);
 rejected("exclusión parcial Auth rechazada", { vercelText: baseline.replace("auth/|", "auth/login|auth/me|") }, /regla global/);
 rejected("ruta futura sin wrapper rechazada", {
   routes: [...inventoryAuthRoutes(), "/api/auth/future"].sort(),

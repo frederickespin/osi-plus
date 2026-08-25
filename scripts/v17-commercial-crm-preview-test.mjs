@@ -56,11 +56,16 @@ const exactPreview = Object.freeze({
   CRM_PIPELINE_RUNTIME_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE,
   CRM_PIPELINE_MUTATION_MODE: "DISABLED",
   CRM_PIPELINE_ACTIVATION_BATCH: V17_COMMERCIAL_CRM_PREVIEW_BATCH,
+  VITE_OSI_HUB_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE,
+  VITE_CRM_PIPELINE_CLIENT_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE,
+  VITE_CRM_PIPELINE_READ_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE,
+  VITE_V17_COMMERCIAL_CRM_PREVIEW_BATCH: V17_COMMERCIAL_CRM_PREVIEW_BATCH,
   MT01B_AUTH_MODE: "LEGACY",
   MT01B_TENANT_SWITCH_ENABLED: "false",
   VITE_MT01B2_CLIENT_ENABLED: "false",
   COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE",
   COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ",
+  COMMERCIAL_TENANCY_MUTATION_MODE: "DISABLED",
   COMMERCIAL_TENANCY_ACTIVATION_BATCH: "MT-01C2B2-IPACKERS-DO-V1",
 });
 
@@ -70,6 +75,8 @@ check("production without variables remains fully disabled", resolveCrmPipelineM
 check("local read remains available off Vercel", resolveCrmPipelineModes({ CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" }).readMode === "READ_ONLY");
 check("exact preview certified", isExactV17CommercialCrmPreviewServerEnvironment(exactPreview));
 check("preview read only enabled", resolveCrmPipelineModes(exactPreview).readMode === CRM_PIPELINE_READ_MODES.PREVIEW_REHEARSAL && resolveCrmPipelineModes(exactPreview).preview === true);
+check("preview case mutations require the same exact authority", resolveCrmPipelineModes({ ...exactPreview, CRM_PIPELINE_MUTATION_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE }).mutationMode === V17_COMMERCIAL_CRM_PREVIEW_MODE);
+const exactPreviewWrite = Object.freeze({ ...exactPreview, CRM_PIPELINE_MUTATION_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE });
 check("commercial tenant authority accepts exact isolated preview", resolveCommercialTenancyModes(exactPreview).tenantMode === true);
 
 for (const [name, overrides] of [
@@ -81,6 +88,8 @@ for (const [name, overrides] of [
   ["hybrid rejected", { MT01B_AUTH_MODE: "HYBRID" }],
   ["tenant switch rejected", { MT01B_TENANT_SWITCH_ENABLED: "true" }],
   ["client V2 rejected", { VITE_MT01B2_CLIENT_ENABLED: "true" }],
+  ["frontend read mode rejected", { VITE_CRM_PIPELINE_READ_MODE: "DISABLED" }],
+  ["commercial mutation gate rejected", { COMMERCIAL_TENANCY_MUTATION_MODE: "LOCAL_ONLY" }],
   ["mutation mode rejected", { CRM_PIPELINE_MUTATION_MODE: "LOCAL_ONLY" }],
   ["commercial legacy rejected", { COMMERCIAL_TENANCY_WRITE_MODE: "LEGACY_ONLY", COMMERCIAL_TENANCY_READ_MODE: "LEGACY_ONLY", COMMERCIAL_TENANCY_ACTIVATION_BATCH: undefined }],
 ]) expectConfigurationError(name, () => resolveCrmPipelineModes({ ...exactPreview, ...overrides }));
@@ -125,7 +134,7 @@ check("invalid read gate returns sanitized 503", invalidResponse.statusCode === 
 check("invalid read gate precedes auth and Prisma", permissionCalls === 0 && databaseCalls === 0);
 
 const mutationResponse = await invoke(createPipelineTransitionHandler({
-  env: exactPreview,
+  env: exactPreviewWrite,
   resolveContext: async () => { throw new Error("auth must not run"); },
   execute: async () => { throw new Error("write must not run"); },
 }), {
@@ -136,7 +145,7 @@ const mutationResponse = await invoke(createPipelineTransitionHandler({
 });
 check("preview mutation remains disabled before auth/body", mutationResponse.statusCode === 409 && mutationResponse.body?.code === "CRM_PIPELINE_MUTATIONS_DISABLED");
 const ownerResponse = await invoke(createPipelineOwnerOptionsHandler({
-  env: exactPreview,
+  env: exactPreviewWrite,
   resolveContext: async () => { throw new Error("owner auth must not run"); },
   listOptions: async () => { throw new Error("owner query must not run"); },
 }), { method: "GET", headers: {}, query: {} });

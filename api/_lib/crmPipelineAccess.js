@@ -26,6 +26,7 @@ export const CRM_PIPELINE_READ_MODES = Object.freeze({
 export const CRM_PIPELINE_MUTATION_MODES = Object.freeze({
   DISABLED: "DISABLED",
   LOCAL_ONLY: "LOCAL_ONLY",
+  PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE,
   PRODUCTION_WRITE: "PRODUCTION_WRITE",
 });
 
@@ -58,12 +59,14 @@ function assertCommercialTenancyAuthority(env) {
 }
 
 function assertProductionAuthority(env) {
-  if (env.VERCEL_ENV !== "production"
+  if (env.VERCEL !== "1"
+    || env.VERCEL_ENV !== "production"
     || env.VERCEL_GIT_COMMIT_REF !== "main"
     || env.CRM_PIPELINE_ACTIVATION_BATCH !== CRM_PIPELINE_ACTIVATION_BATCH
-    || (env.MT01B_AUTH_MODE ?? "LEGACY") !== "LEGACY"
-    || (env.MT01B_TENANT_SWITCH_ENABLED ?? "false") !== "false"
-    || (env.VITE_MT01B2_CLIENT_ENABLED ?? "false") !== "false") {
+    || env.CRM_PIPELINE_MUTATION_MODE === undefined
+    || env.MT01B_AUTH_MODE !== "LEGACY"
+    || env.MT01B_TENANT_SWITCH_ENABLED !== "false"
+    || env.VITE_MT01B2_CLIENT_ENABLED !== "false") {
     invalidConfiguration();
   }
   assertCommercialTenancyAuthority(env);
@@ -98,23 +101,25 @@ export function resolveCrmPipelineModes(env = process.env) {
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY;
   const previewRead = readMode === CRM_PIPELINE_READ_MODES.PREVIEW_REHEARSAL
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.DISABLED;
+  const previewWrite = readMode === CRM_PIPELINE_READ_MODES.PREVIEW_REHEARSAL
+    && mutationMode === CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL;
   const productionRead = readMode === CRM_PIPELINE_READ_MODES.PRODUCTION_READ
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.DISABLED;
   const productionWrite = readMode === CRM_PIPELINE_READ_MODES.PRODUCTION_READ
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.PRODUCTION_WRITE;
 
-  if (!disabled && !localRead && !localWrite && !previewRead && !productionRead && !productionWrite) invalidConfiguration();
+  if (!disabled && !localRead && !localWrite && !previewRead && !previewWrite && !productionRead && !productionWrite) invalidConfiguration();
   if (!["LEGACY", "MEMBERSHIP_ONLY"].includes(authMode) || tenantSwitch !== "false" || clientV2 !== "false") invalidConfiguration();
   if ((disabled || localRead || localWrite) && activationBatch !== undefined) invalidConfiguration();
   if ((localRead || localWrite) && hasVercelEnvironment(env)) invalidConfiguration();
-  if (previewRead) assertPreviewAuthority(env);
+  if (previewRead || previewWrite) assertPreviewAuthority(env);
   if ((productionRead || productionWrite)) assertProductionAuthority(env);
   if (localWrite || productionWrite) assertCrmOwnerRefSecretConfigured(env);
 
   return Object.freeze({
     readMode,
     mutationMode,
-    ...(previewRead ? { preview: true } : {}),
+    ...(previewRead || previewWrite ? { preview: true } : {}),
     production: productionRead || productionWrite,
   });
 }

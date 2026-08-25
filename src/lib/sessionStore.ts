@@ -8,6 +8,7 @@ export type Session = {
   permissions?: readonly string[];
   deniedPermissions?: readonly string[];
   commercialCrmPreviewAuthorized?: boolean;
+  commercialCrmProductionAuthorized?: boolean;
 };
 
 export type StoredSessionInspection =

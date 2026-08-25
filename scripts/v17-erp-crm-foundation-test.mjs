@@ -64,7 +64,7 @@ await assert.rejects(
 assertions += 1;
 
 const migrations = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-check(migrations.length === 18, "cantidad de migraciones distinta de 18");
+check(migrations.length === 19, "cantidad de migraciones distinta de 19");
 check(!migrations.some((entry) => /(?:migration.?19|commercial_case_foundation)/i.test(entry.name)), "migración 19 creada fuera de autoridad");
 
 const schema = readFileSync("prisma/schema.prisma", "utf8");

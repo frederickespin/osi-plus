@@ -46,6 +46,7 @@ export async function createIdentity(prisma, suffix = randomUUID().slice(0, 8), 
 export function syntheticRequest({ userAgent = "MT01B-Test/1.0", clientId = "mt01b-test-client", origin = "http://localhost:5173", cookie, authorization } = {}) {
   return {
     method: "POST",
+    socket: { localAddress: "127.0.0.1", remoteAddress: "127.0.0.1" },
     headers: {
       "user-agent": userAgent,
       "x-osi-client-id": clientId,

@@ -17,8 +17,8 @@ function rejected(name, vercelText, pattern, routes, routeSources) {
 }
 
 const current = validateCrmCorsGuard();
-check("namespace CRM completo excluido", current.ok && current.crmRoutes === 8 && current.matchedCrmRoutes === 0 && current.handlersChecked === 8);
-check("rutas no Auth/CRM conservan la regla heredada", current.nonCrmCompatibilityRoutes === 3);
+check("namespace CRM completo excluido", current.ok && current.crmRoutes === 9 && current.matchedCrmRoutes === 0 && current.handlersChecked === 9);
+check("rutas ajenas conservan la regla heredada", current.nonCrmCompatibilityRoutes === 1);
 
 const routeSources = inventoryCrmRouteSources();
 const listSource = routeSources.find((route) => route.path === "/api/crm/pipeline-cases");
@@ -33,12 +33,13 @@ rejected(
 );
 
 const rejectedDeploymentConfig = baseline.replace(
-  "(?!auth/|crm/)",
-  "(?!auth/|crm/pipeline-cases/[^/]+/(?:transition|assign-owner|unassign-owner|allowed-transitions)/?$)",
+  "(?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))",
+  "(?!auth/|crm/pipeline-cases/[^/]+/(?:transition|assign-owner|unassign-owner|allowed-transitions)/?$|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))",
 );
 check(
   "semántica anterior cubría exactamente lista, detalle y resumen",
   JSON.stringify(unsafeCrmRouteMatches({ vercelText: rejectedDeploymentConfig })) === JSON.stringify([
+    "/api/crm/client-options",
     "/api/crm/pipeline-cases",
     `/api/crm/pipeline-cases/${"crm-cors-guard-id"}`,
     "/api/crm/pipeline-owner-options",
@@ -50,7 +51,7 @@ rejected(
   rejectedDeploymentConfig,
   /excluir todo|parcial/,
 );
-rejected("catch-all inseguro rechazado", baseline.replace("((?!auth/|crm/).*)", "(.*)"), /excluir todo/);
+rejected("catch-all inseguro rechazado", baseline.replace("((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)", "(.*)"), /excluir todo/);
 rejected("allowlist de lecturas rechazada", baseline.replace("crm/", "crm/(?:pipeline-cases|pipeline-summary)"), /excluir todo|parcial/);
 rejected(
   "wildcard adicional sobre CRM rechazado",
@@ -65,7 +66,7 @@ rejected(
 rejected("JSON inválido rechazado", "{", /JSON válido/);
 rejected(
   "ruta CRM futura permanece protegida",
-  baseline.replace("(?!auth/|crm/)", "(?!auth/|crm/pipeline-cases/)"),
+  baseline.replace("(?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))", "(?!auth/|crm/pipeline-cases/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))"),
   /excluir todo|rutas CRM/,
   ["/api/crm/pipeline-cases", "/api/crm/future/report"],
 );

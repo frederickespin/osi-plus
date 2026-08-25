@@ -7,6 +7,10 @@ process.env.MT01B_AUTH_MODE = "LEGACY";
 process.env.MT01B_TENANT_SWITCH_ENABLED = "false";
 process.env.VITE_MT01B2_CLIENT_ENABLED = "false";
 process.env.JWT_SECRET ||= "mt01c2b1-local-contract-secret-not-for-production";
+process.env.COMMERCIAL_TENANCY_MUTATION_MODE = "LOCAL_ONLY";
+for (const name of Object.keys(process.env)) {
+  if (name.toUpperCase().startsWith("VERCEL")) delete process.env[name];
+}
 
 const { prisma, identity } = await createMt01c2b1LocalPrisma();
 process.env.DATABASE_URL = process.env.MT01C2B1_TEST_DATABASE_URL;
@@ -41,7 +45,7 @@ function mockResponse() {
 }
 
 async function invoke(handler, token, { method = "GET", body, headers = {} } = {}) {
-  const req = { method, headers: { authorization: `Bearer ${token}`, ...headers }, query: {}, body };
+  const req = { method, headers: { authorization: `Bearer ${token}`, ...headers }, query: {}, body, socket: { localAddress: "127.0.0.1", remoteAddress: "127.0.0.1" } };
   const res = mockResponse();
   await handler(req, res);
   return res;

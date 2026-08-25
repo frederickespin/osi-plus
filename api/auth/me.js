@@ -10,8 +10,12 @@ import {
   requireV17CommercialCrmPreviewSessionMode,
   resolveV17CommercialCrmPreviewSessionContext,
 } from "../_lib/v17CommercialCrmPreviewAuth.js";
+import {
+  requireV17CommercialCrmProductionSessionMode,
+  resolveV17CommercialCrmProductionSessionContext,
+} from "../_lib/v17CommercialCrmProductionAuth.js";
 
-function legacyUserDto(user, authorization = null) {
+function legacyUserDto(user, authorization = null, commercialAuthority = null) {
   return {
     id: user.id,
     code: user.code,
@@ -27,7 +31,8 @@ function legacyUserDto(user, authorization = null) {
     ...(authorization ? {
       permissions: authorization.effectivePermissions,
       deniedPermissions: authorization.deniedPermissions,
-      commercialCrmPreviewAuthorized: true,
+      ...(commercialAuthority === "PREVIEW_REHEARSAL" ? { commercialCrmPreviewAuthorized: true } : {}),
+      ...(commercialAuthority === "PRODUCTION_READ" ? { commercialCrmProductionAuthorized: true } : {}),
     } : {}),
   };
 }
@@ -50,8 +55,10 @@ const legacyMeHandler = withCommonHeaders(async (req, res) => {
   }
 
   let previewRequested;
+  let productionRequested;
   try {
     previewRequested = requireV17CommercialCrmPreviewSessionMode(process.env);
+    productionRequested = requireV17CommercialCrmProductionSessionMode(process.env);
   } catch (error) {
     return sendCommercialTenancyError(res, error);
   }
@@ -73,7 +80,15 @@ const legacyMeHandler = withCommonHeaders(async (req, res) => {
     if (previewRequested) {
       try {
         const context = await resolveV17CommercialCrmPreviewSessionContext(req, { env: process.env, prisma });
-        return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, context) });
+        return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, context, "PREVIEW_REHEARSAL") });
+      } catch (error) {
+        return sendCommercialTenancyError(res, error);
+      }
+    }
+    if (productionRequested) {
+      try {
+        const context = await resolveV17CommercialCrmProductionSessionContext(req, { env: process.env, prisma });
+        return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, context, "PRODUCTION_READ") });
       } catch (error) {
         return sendCommercialTenancyError(res, error);
       }

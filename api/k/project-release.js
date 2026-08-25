@@ -9,6 +9,7 @@ import {
   sendCommercialTenancyError,
 } from "../_lib/commercialTenancyWrite.js";
 import { findTenantProject, transitionTenantProject } from "../_lib/commercialTenancyRead.js";
+import { requireCommercialTenancyMutation } from "../_lib/commercialTenancyMutation.js";
 import { computeSignalColor, computePgdBlockingColor, effectiveSignalMap, ensureDefaultSignals } from "./_lib.js";
 
 function buildBlockers(project, { includeDefaults = false } = {}) {
@@ -41,6 +42,7 @@ function buildBlockers(project, { includeDefaults = false } = {}) {
 
 export default withCommonHeaders(async (req, res) => {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
+  if (!requireCommercialTenancyMutation(req, res)) return;
   let modes;
   try {
     modes = resolveCommercialTenancyModes();

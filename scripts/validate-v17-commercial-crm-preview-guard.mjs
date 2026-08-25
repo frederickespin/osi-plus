@@ -6,6 +6,8 @@ const PREFIX = "V17_COMMERCIAL_CRM_PREVIEW_GUARD";
 
 export const PREVIEW_GUARD_FILES = Object.freeze([
   ".github/workflows/ci.yml",
+  "api/_lib/crmCaseMutationHttp.js",
+  "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/crmPipelineAccess.js",
   "api/auth/me.js",
   "shared/appEnvironment.js",
@@ -17,6 +19,7 @@ export const PREVIEW_GUARD_FILES = Object.freeze([
   "src/commercial-crm/CommercialCaseDetail.tsx",
   "src/commercial-crm/presentation.ts",
   "src/crm-relational/clientMode.ts",
+  "src/crm-relational/mutationApi.ts",
   "src/crm-relational/readApi.ts",
   "src/hub/HubWorkspace.tsx",
   "src/hub/hubRouteAccess.ts",
@@ -68,11 +71,11 @@ function validateCspAndCors(files) {
     fail("vercel.json inválido");
   }
   const apiRules = (configuration.headers || []).filter((rule) => String(rule.source || "").startsWith("/api/"));
-  const safeRule = apiRules.find((rule) => rule.source === "/api/((?!auth/|crm/).*)");
+  const safeRule = apiRules.find((rule) => rule.source === "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)");
   if (!safeRule) fail("Auth y CRM no están excluidos del CORS global");
   for (const rule of apiRules) {
     const wildcard = (rule.headers || []).some((header) => header.key === "Access-Control-Allow-Origin" && header.value === "*");
-    if (wildcard && rule.source !== "/api/((?!auth/|crm/).*)") fail("CORS wildcard puede alcanzar Auth o CRM");
+    if (wildcard && rule.source !== "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)") fail("CORS wildcard puede alcanzar Auth, CRM o mutaciones comerciales protegidas");
   }
 }
 
@@ -98,16 +101,21 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   const files = snapshot?.files || {};
   const migrations = snapshot?.migrations || [];
 
-  if (migrations.length !== 18) fail(`se esperaban 18 migraciones, existen ${migrations.length}`);
+  if (migrations.length !== 19) fail(`se esperaban 19 migraciones, existen ${migrations.length}`);
 
   const shared = "shared/v17CommercialCrmPreview.js";
   for (const signature of [
     'V17_COMMERCIAL_CRM_PREVIEW_MODE = "PREVIEW_REHEARSAL"',
     'V17_COMMERCIAL_CRM_PREVIEW_BATCH = "V17-COMMERCIAL-CRM-PREVIEW-01"',
     'V17_COMMERCIAL_CRM_PREVIEW_BRANCH = "feature/v17-commercial-crm-preview"',
+    'environment.VERCEL === "1"',
     'environment.VERCEL_ENV === "preview"',
     "environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",
-    "absentOrExact(environment.CRM_PIPELINE_MUTATION_MODE, DISABLED)",
+    "exactOneOf(environment.CRM_PIPELINE_MUTATION_MODE, [DISABLED, V17_COMMERCIAL_CRM_PREVIEW_MODE])",
+    "environment.VITE_OSI_HUB_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE",
+    "environment.VITE_CRM_PIPELINE_CLIENT_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE",
+    "environment.VITE_CRM_PIPELINE_READ_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE",
+    "environment.COMMERCIAL_TENANCY_MUTATION_MODE === DISABLED",
     "configuration.gitBranch === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",
   ]) requireText(files, shared, signature, `autoridad Preview incompleta: ${signature}`);
   forbidText(files, shared, /(?:\.trim\(|toUpperCase|toLowerCase)/, "la autoridad Preview normaliza configuración inválida");
@@ -120,9 +128,14 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
     "isExactV17CommercialCrmPreviewServerEnvironment(env)",
     "readMode === CRM_PIPELINE_READ_MODES.PREVIEW_REHEARSAL",
     "mutationMode === CRM_PIPELINE_MUTATION_MODES.DISABLED",
+    "mutationMode === CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL",
   ]) requireText(files, access, signature, `compuerta backend incompleta: ${signature}`);
   const mutationBlock = files[access]?.match(/export const CRM_PIPELINE_MUTATION_MODES[\s\S]*?\}\);/)?.[0] || "";
-  if (mutationBlock.includes("PREVIEW_REHEARSAL")) fail("mutaciones Preview habilitadas");
+  if (!mutationBlock.includes("PREVIEW_REHEARSAL")) fail("compuerta focal de casos no admite Preview exacto");
+  const caseMutation = "api/_lib/crmCaseMutationHttp.js";
+  requireText(files, caseMutation, "mode !== CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL", "mutación focal no limita Preview exacto");
+  const historicMutation = "api/_lib/pipelineCaseMutationHttp.js";
+  requireText(files, historicMutation, 'throw new CommercialTenancyError("CRM_PIPELINE_MUTATIONS_DISABLED", 409)', "mutaciones históricas se habilitan en Preview");
 
   const hubMode = "src/hub/hubMode.ts";
   for (const signature of [
@@ -141,6 +154,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   ]) requireText(files, clientMode, signature, `default cliente/lectura inseguro: ${signature}`);
   requirePattern(files, clientMode, /if \(raw === undefined\)\s*return Object\.freeze\(\{ mode: CRM_PIPELINE_CLIENT_MODES\.DISABLED, valid: true \}\)/, "default cliente CRM no falla cerrado");
   requirePattern(files, clientMode, /if \(raw === undefined \|\| raw === CRM_PIPELINE_READ_CLIENT_MODES\.DISABLED\)\s*\{\s*return Object\.freeze\(\{ mode: CRM_PIPELINE_READ_CLIENT_MODES\.DISABLED, valid: true \}\)/, "default lectura CRM no falla cerrado");
+  requireText(files, "src/crm-relational/mutationApi.ts", "CRM_PIPELINE_CLIENT_MODES.PREVIEW_REHEARSAL", "frontend no habilita el formulario sólo en Preview autorizado");
 
   const authMe = "api/auth/me.js";
   requireText(files, authMe, "requireV17CommercialCrmPreviewSessionMode(process.env)", "Auth omite compuerta Preview");
@@ -166,7 +180,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
 
   const app = "src/App.tsx";
   requireText(files, app, "commercialCrmPreviewAuthorized === true", "frontend no exige confirmación del servidor");
-  requireText(files, app, "isRelationalCrmReadEnabled() && previewConfirmed", "frontend no coordina Hub/cliente/lectura");
+  requireText(files, app, "isRelationalCrmReadEnabled() && serverConfirmed", "frontend no coordina Hub/cliente/lectura");
   requireText(files, app, "evaluateHubRouteAccess(routeState.pathname, routeState.accessContext)", "frontend autoriza después del lazy");
   requireText(files, app, "validateLegacySession(session, controller.signal)", "frontend no revalida con cancelación");
   requireText(files, app, "activeNavigation.current?.controller.abort()", "frontend no cancela navegación obsoleta");

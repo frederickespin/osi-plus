@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const MIGRATION_HASH = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
 const CRM_ROUTES = Object.freeze([
+  "api/crm/client-options.js",
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
   "api/crm/pipeline-summary.js",
@@ -32,7 +33,7 @@ function filesBelow(directory) {
 export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env, migrationNames } = {}) {
   const read = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 18 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "se exigen 18 migraciones, incluidas V17-CASE-CLIENT y V17-CASE-PUBLIC-REF");
+  invariant(migrations.length === 19 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "se exigen 19 migraciones, incluidas V17-CASE-CLIENT y V17-CASE-PUBLIC-REF");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
   invariant(/model PipelineCaseCommand\s*\{/.test(read("prisma/schema.prisma")), "datamodel no contiene autoridad PipelineCaseCommand");
 
@@ -40,10 +41,11 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const signature of [
     'PRODUCTION_READ: "PRODUCTION_READ"', 'PRODUCTION_WRITE: "PRODUCTION_WRITE"',
     'CRM-01B3B1-PRODUCTION-V1', 'CRM_PIPELINE_CONFIGURATION_INVALID',
-    'env.VERCEL_ENV !== "production"', 'env.VERCEL_GIT_COMMIT_REF !== "main"',
-    '(env.MT01B_AUTH_MODE ?? "LEGACY") !== "LEGACY"',
-    '(env.MT01B_TENANT_SWITCH_ENABLED ?? "false") !== "false"',
-    '(env.VITE_MT01B2_CLIENT_ENABLED ?? "false") !== "false"',
+    'env.VERCEL !== "1"', 'env.VERCEL_ENV !== "production"', 'env.VERCEL_GIT_COMMIT_REF !== "main"',
+    'env.CRM_PIPELINE_MUTATION_MODE === undefined',
+    'env.MT01B_AUTH_MODE !== "LEGACY"',
+    'env.MT01B_TENANT_SWITCH_ENABLED !== "false"',
+    'env.VITE_MT01B2_CLIENT_ENABLED !== "false"',
     'resolveCommercialTenancyModes(env)', 'activationBatch !== undefined',
     'assertCrmAuthorizationHeader(request)', 'verifiedTokenKind: tokenKind',
     'verifyStrictLegacyAccessToken(token)', 'verifyMembershipAccessToken(token)',
@@ -71,11 +73,11 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES].sort()), "inventario de rutas CRM cambió");
   for (const path of CRM_ROUTES) {
     const source = read(path);
-    invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp/.test(source), `${path} omite compuerta central`);
+    invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp|crmClientOptions/.test(source), `${path} omite compuerta central`);
     invariant(!/(?:process\.)?env\.VERCEL_(?:ENV|GIT_COMMIT_REF)/.test(source), `${path} interpreta autoridad Vercel fuera del resolver`);
     invariant(!/x-osi-(?:role|userid)|req\.(?:query|body)[^\n]*(?:tenantId|membershipId|role|permissions)/i.test(source), `${path} acepta autoridad del navegador`);
   }
-  for (const path of CRM_ROUTES.slice(0, 3)) {
+  for (const path of ["api/crm/client-options.js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-cases/[caseKey]/index.js", "api/crm/pipeline-summary.js"]) {
     const source = read(path);
     invariant(/createCrmPipelineReadHandler\(\{/.test(source), `${path} omite adaptador de lectura canónico`);
   }
@@ -95,13 +97,13 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   invariant(!/CLIENTS_VIEW|clients:view/.test(`${access}\n${domain}\n${adapter}`), "clients:view no puede autorizar CRM");
   invariant(!/PERMS\.PIPELINE_UPDATE/.test(domain), "pipeline:update está reservado y no autoriza acciones actuales");
 
-  const authorizedFrontendAdapters = new Set(["src/crm-relational/api.ts", "src/crm-relational/readApi.ts"]);
+  const authorizedFrontendAdapters = new Set(["src/crm-relational/api.ts", "src/crm-relational/mutationApi.ts", "src/crm-relational/readApi.ts"]);
   const srcFiles = filesBelow(resolve(root, "src")).filter((path) => /\.[cm]?[jt]sx?$/.test(path));
   for (const absolute of srcFiles) {
     const path = relative(root, absolute).replaceAll("\\", "/");
     const source = read(path);
     if (authorizedFrontendAdapters.has(path)) {
-      invariant(/API_PREFIX\s*=\s*["']\/api\/crm["']/.test(source), `${path} no contiene el adaptador autorizado`);
+      invariant(/(?:API_PREFIX|API)\s*=\s*["']\/api\/crm["']/.test(source), `${path} no contiene el adaptador autorizado`);
     } else {
       invariant(!/api\/crm|crmPipelineAccess|CRM_PIPELINE_(?:RUNTIME|MUTATION|ACTIVATION)/.test(source), `${path} conecta frontend CRM fuera del adaptador autorizado`);
     }
@@ -127,7 +129,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const suite of ["crm-01b3b1-gate-test.mjs", "crm-01b3b1-adversarial-test.mjs", "validate-crm-01b3b1-guard.mjs", "validate-crm-01b3b1-guard-test.mjs", "crm-01a-test.mjs", "crm-01b3a-integration-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
-  return Object.freeze({ ok: true, migrations: 18, routes: 8, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 2 });
+  return Object.freeze({ ok: true, migrations: 19, routes: 9, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 3 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

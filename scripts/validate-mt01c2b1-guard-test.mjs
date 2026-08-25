@@ -42,6 +42,11 @@ try {
   const baseline = validateMt01c2b1Guard(root);
   check("estado actual aprobado", baseline.nullableRoots === 4 && baseline.runtimeTenantAuthorityConsumers === 0);
 
+  reject("caseCode sin unicidad tenant-first rechazado", () => {
+    const path = join(root, "prisma/schema.prisma");
+    writeFileSync(path, readFileSync(path, "utf8").replace(/\s*@@unique\(\[tenantId, caseCode\][^\n]*\)\r?\n/, "\n"), "utf8");
+  }, /caseCode requiere unicidad tenant-first/);
+
   reject("tenantId required rechazado", () => {
     const path = join(root, "prisma/schema.prisma");
     writeFileSync(path, readFileSync(path, "utf8").replace(/(model Client\s*\{[\s\S]*?\n\s*tenantId\s+)String\?(\s+@map\("tenant_id"\))/, "$1String $2"), "utf8");
@@ -93,7 +98,7 @@ try {
   write(join("prisma/migrations/20260801021000_unexpected", "migration.sql"), "SELECT 1;\n");
   let unexpectedError;
   try { validateMigrationFiles(root); } catch (caught) { unexpectedError = caught; }
-  check("migración 19 inesperada rechazada", unexpectedError?.message.includes("18 migraciones canónicas"));
+  check("migración 20 inesperada rechazada", unexpectedError?.message.includes("19 migraciones canónicas"));
 
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } finally {

@@ -90,9 +90,11 @@ export function validateMt01c2b1Guard(root = process.cwd()) {
   for (const [model, relation] of [["Project", "ProjectTenantClient"], ["Lead", "LeadTenantCustomer"], ["Lead", "LeadTenantProject"]]) {
     invariant(modelBlock(schema, model).includes(`@relation(\"${relation}\"`), `${relation} ausente`);
   }
-  for (const [model, field] of [["Client", "code"], ["Project", "code"], ["Lead", "code"], ["PipelineCase", "caseCode"]]) {
+  for (const [model, field] of [["Client", "code"], ["Project", "code"], ["Lead", "code"]]) {
     invariant(new RegExp(`^\\s*${field}\\s+String[^\\n]*@unique`, "m").test(modelBlock(schema, model)), `${model}.${field} no puede cambiar su unicidad global en B1`);
   }
+  invariant(/^\s*caseCode\s+String\s*$/m.test(pipeline), "PipelineCase.caseCode debe conservarse como campo obligatorio");
+  invariant(/@@unique\(\[tenantId, caseCode\],\s*map:\s*"osi_pipeline_cases_tenant_id_case_code_key"\)/.test(pipeline), "PipelineCase.caseCode requiere unicidad tenant-first canónica");
 
   const migrationPath = `prisma/migrations/${MIGRATION}/migration.sql`;
   const migrationBytes = readFileSync(resolve(root, migrationPath));

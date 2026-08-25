@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const EXPECTED_MIGRATIONS = 18;
+const EXPECTED_MIGRATIONS = 19;
 const PREPARED_CONSUMERS = Object.freeze(new Set([
   "api/clients/index.js",
   "api/projects/index.js",
@@ -10,6 +10,7 @@ const PREPARED_CONSUMERS = Object.freeze(new Set([
 const PROTECTED_FIELDS = Object.freeze(["tenantId", "membershipId", "ownerMembershipId", "ownerUserId", "ownerId"]);
 const RAW_COMMERCIAL_WRITE_ALLOWLIST = Object.freeze(new Set([
   "api/_lib/pipelineCaseDomain.js",
+  "api/_lib/crmCaseMutationDomain.js",
 ]));
 
 function invariant(condition, message) {
@@ -104,6 +105,10 @@ function validateUpdateBlocks(path, text) {
     invariant(calls.length === 1 && calls[0].model === "project" && calls[0].method === "updateMany", `${path} contiene updates comerciales no inventariados`);
     invariant(/tenantId:\s*String\(tenantId\)[\s\S]*updatedAt:\s*expectedUpdatedAt[\s\S]*kState:\s*expectedKState/.test(calls[0].body), `${path} no limita la transición K por tenant, versión y estado`);
     invariant(/\bdata\s*,/.test(calls[0].body), `${path} cambió el payload cerrado de la transición K`);
+  } else if (path === "api/_lib/crmCaseMutationDomain.js") {
+    invariant(calls.length === 1 && calls[0].model === "pipelineCase" && calls[0].method === "updateMany", `${path} contiene updates comerciales no inventariados`);
+    invariant(/tenantId:\s*who\.tenantId[\s\S]*version:\s*command\.expectedVersion/.test(calls[0].body), `${path} no limita UPDATE por tenant y versión`);
+    invariant(/data:\s*\{\s*\.\.\.data\(command, client\),\s*version:\s*next\s*\}/.test(calls[0].body), `${path} cambió el payload cerrado de UPDATE`);
   } else if (!path.startsWith("api/_disabled/")) {
     invariant(calls.length === 0, `${path} contiene updates comerciales no inventariados`);
   }
@@ -168,6 +173,7 @@ export function validateMt01c2b3a({
   invariant(JSON.stringify(creatorLocations.sort()) === JSON.stringify([
     "api/_lib/commercialTenancyWrite.js:client.create",
     "api/_lib/commercialTenancyWrite.js:project.create",
+    "api/_lib/crmCaseMutationDomain.js:pipelineCase.create",
     "api/clients/index.js:client.create",
     "api/projects/index.js:project.create",
   ]), `creadores runtime no preparados: ${creatorLocations.join(", ")}`);
@@ -181,7 +187,8 @@ export function validateMt01c2b3a({
     mode: "LEGACY_ONLY",
     preparedConsumers: Object.freeze([...consumers].sort()),
     runtimeCreators: Object.freeze([...creatorLocations].sort()),
-    pipelineCaseCreateBlocked: !creatorLocations.some((item) => item.includes(":pipelineCase.")),
+    pipelineCaseCreateGoverned:
+      creatorLocations.filter((item) => item.includes(":pipelineCase.")).length === 1,
     leadCreateBlocked: !creatorLocations.some((item) => item.includes(":lead.")),
   });
 }

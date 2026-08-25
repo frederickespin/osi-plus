@@ -3,8 +3,9 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const V17_CASE_CLIENT_MIGRATION = "20260801020000_v17_pipeline_case_client_authority";
-const EXPECTED_MIGRATIONS = 18;
+const EXPECTED_MIGRATIONS = 19;
 const V17_CASE_PUBLIC_REF_MIGRATION = "20260821010000_v17_pipeline_case_public_ref";
+const V17_CLIENT_PUBLIC_REF_MIGRATION = "20260824010000_v17_client_public_ref_case_mutations";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`V17_CASE_CLIENT_GUARD: ${message}`);
@@ -27,8 +28,8 @@ export function validateV17CaseClientGuard({
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   invariant(migrations.length === EXPECTED_MIGRATIONS, `se exigen exactamente ${EXPECTED_MIGRATIONS} migraciones`);
   invariant(migrations.includes(V17_CASE_CLIENT_MIGRATION), "la migración 17 exacta debe existir");
-  invariant(migrations.at(-1) === V17_CASE_PUBLIC_REF_MIGRATION, "la migración 18 autorizada debe ser la última");
-  invariant(!migrations.some((name) => name > V17_CASE_PUBLIC_REF_MIGRATION), "migración 19+ no autorizada");
+  invariant(migrations.includes(V17_CASE_PUBLIC_REF_MIGRATION), "la migración 18 autorizada debe existir");
+  invariant(migrations.at(-1) === V17_CLIENT_PUBLIC_REF_MIGRATION, "la migración 19 autorizada debe ser la última");
 
   const schema = schemaSource ?? readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
   const sql = (migrationSource ?? readFileSync(resolve(root, "prisma/migrations", V17_CASE_CLIENT_MIGRATION, "migration.sql"), "utf8")).replaceAll("\r\n", "\n");

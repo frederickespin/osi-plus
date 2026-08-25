@@ -13,6 +13,10 @@ process.env.MT01B_TENANT_SWITCH_ENABLED = "false";
 process.env.VITE_MT01B2_CLIENT_ENABLED = "false";
 process.env.COMMERCIAL_TENANCY_WRITE_MODE = "LEGACY_ONLY";
 process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
+process.env.COMMERCIAL_TENANCY_MUTATION_MODE = "LOCAL_ONLY";
+for (const name of Object.keys(process.env)) {
+  if (name.toUpperCase().startsWith("VERCEL")) delete process.env[name];
+}
 process.env.MT01B_REFRESH_TOKEN_PEPPER = "mt01c2b3a-local-refresh-pepper-at-least-32-characters";
 process.env.MT01B_ALLOWED_ORIGINS = "http://localhost:5173";
 

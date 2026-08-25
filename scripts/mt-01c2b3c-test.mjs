@@ -146,6 +146,7 @@ try {
     "COMMERCIAL_TENANCY_WRITE_MODE",
     "COMMERCIAL_TENANCY_READ_MODE",
     "COMMERCIAL_TENANCY_ACTIVATION_BATCH",
+    "COMMERCIAL_TENANCY_MUTATION_MODE",
     "VERCEL_ENV",
     "VERCEL_GIT_COMMIT_REF",
   ].map((name) => [name, process.env[name]]));
@@ -153,6 +154,7 @@ try {
     process.env.COMMERCIAL_TENANCY_WRITE_MODE = "LEGACY_ONLY";
     process.env.COMMERCIAL_TENANCY_READ_MODE = "LEGACY_ONLY";
     process.env.COMMERCIAL_TENANCY_ACTIVATION_BATCH = COMMERCIAL_TENANCY_ACTIVATION_BATCH;
+    process.env.COMMERCIAL_TENANCY_MUTATION_MODE = "DISABLED";
     process.env.VERCEL_ENV = "production";
     process.env.VERCEL_GIT_COMMIT_REF = "main";
     const attempts = await Promise.all(Array.from({ length: 20 }, async (_, index) => {
@@ -162,8 +164,12 @@ try {
       await handler({ method, headers: {}, query: {}, body: {} }, res);
       return { path, res };
     }));
-    check("20 requests concurrentes inválidas devuelven 503", attempts.every(({ res }) => res.statusCode === 503
-      && JSON.stringify(res.body) === JSON.stringify({ ok: false, error: "COMMERCIAL_TENANCY_CONFIGURATION_INVALID" })));
+    const disabledMutations = attempts.filter(({ res }) => res.statusCode === 409
+      && JSON.stringify(res.body) === JSON.stringify({ ok: false, error: "COMMERCIAL_TENANCY_MUTATIONS_DISABLED" }));
+    const invalidReads = attempts.filter(({ res }) => res.statusCode === 503
+      && JSON.stringify(res.body) === JSON.stringify({ ok: false, error: "COMMERCIAL_TENANCY_CONFIGURATION_INVALID" }));
+    check("mutaciones se bloquean antes de configuración tenant", disabledMutations.length === 10);
+    check("lecturas conservan rechazo de configuración tenant", invalidReads.length === 10);
     check("configuración inválida produce cero lecturas o escrituras", databaseTouches === 0, { databaseTouches });
     check("errores concurrentes no exponen batch ni ambiente", attempts.every(({ res }) => {
       const serialized = JSON.stringify({ body: res.body, headers: [...res.headers?.entries?.() || []] });

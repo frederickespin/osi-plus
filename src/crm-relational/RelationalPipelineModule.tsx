@@ -12,7 +12,7 @@ import {
   PIPELINE_CASE_STATUSES,
   type CrmAllowedTransition,
   type CrmAllowedTransitions,
-  type CrmPipelineCase,
+  type CrmPipelineCaseDetail,
   type CrmPipelineFilters,
   type CrmPipelineList,
   type CrmPipelineSummary,
@@ -37,7 +37,7 @@ const STATUS_LABELS: Record<PipelineCaseStatus, string> = {
 };
 
 type DetailState = Readonly<{
-  data: CrmPipelineCase | null;
+  data: CrmPipelineCaseDetail | null;
   allowed: CrmAllowedTransitions | null;
   loading: boolean;
   error: CrmPipelineError | null;

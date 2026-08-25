@@ -66,6 +66,8 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
   if (/localStorage|sessionStorage|indexedDB|\/api\/cases|\/api\/events|clientName/.test(frontend)) fail("frontend usa fallback o persistencia empresarial");
   if (/\b(?:clientId|tenantId|ownerMembershipId|ownerUserId|publicRef)\b/.test(frontend)) fail("frontend expone identidad interna");
   if (!["deniedPermissions", "pipeline:create", "pipeline:update:own", "pipeline:update:any"].every((value) => frontend.includes(value))) fail("frontend no aplica permisos explícitos y denies");
+  requireMatch(frontend, /VITE_CRM_PIPELINE_CASE_MUTATION_MODE[\s\S]*mutation === "LOCAL_ONLY"[\s\S]*mutation === "PREVIEW_REHEARSAL"/, "UI de mutación no posee compuerta focal exacta");
+  requireMatch(frontend, /mutation === undefined \|\| mutation === "DISABLED"[\s\S]*return false/, "UI de mutación no falla cerrada por defecto");
 
   return Object.freeze({ ok: true, migrations: 19, migration: MIGRATION, endpoints: Object.freeze(["POST /api/crm/pipeline-cases", "PATCH /api/crm/pipeline-cases/:caseRef", "GET /api/crm/client-options"]), mutationModes: Object.freeze(["LOCAL_ONLY", "PREVIEW_REHEARSAL"]), productionMutationMode: "DISABLED" });
 }

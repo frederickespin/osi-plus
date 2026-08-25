@@ -1,4 +1,9 @@
-import { CRM_PIPELINE_CLIENT_MODES, resolveCrmPipelineClientMode } from "./clientMode";
+import {
+  CRM_PIPELINE_CLIENT_MODES,
+  CRM_PIPELINE_READ_CLIENT_MODES,
+  resolveCrmPipelineClientMode,
+  resolveCrmPipelineReadClientMode,
+} from "./clientMode";
 import type { PipelineMode } from "./types";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -68,10 +73,31 @@ async function json(response: Response) {
   try { return JSON.parse(text) as unknown; } catch { throw new CrmCaseMutationClientError(502, "CRM_PIPELINE_RESPONSE_INVALID"); }
 }
 
-export function isCrmCaseMutationUiEnabled() {
-  const result = resolveCrmPipelineClientMode();
-  return result.valid && (result.mode === CRM_PIPELINE_CLIENT_MODES.LOCAL_ONLY
-    || result.mode === CRM_PIPELINE_CLIENT_MODES.PREVIEW_REHEARSAL);
+type MutationClientEnvironment = Readonly<Record<string, unknown>>;
+type MutationClientRuntime = Readonly<{ hostname?: string; vercelEnvironment?: string | null; gitBranch?: string | null }>;
+
+/**
+ * Compuerta visual adicional. La lectura habilitada nunca implica escritura:
+ * el backend vuelve a validar su compuerta antes de auth, body o Prisma.
+ */
+export function isCrmCaseMutationUiEnabled(
+  environment: MutationClientEnvironment = import.meta.env,
+  runtime?: MutationClientRuntime,
+) {
+  const mutation = environment.VITE_CRM_PIPELINE_CASE_MUTATION_MODE;
+  if (mutation === undefined || mutation === "DISABLED") return false;
+  const client = resolveCrmPipelineClientMode(environment, runtime);
+  const read = resolveCrmPipelineReadClientMode(environment, runtime);
+  if (!client.valid || !read.valid) return false;
+  if (mutation === "LOCAL_ONLY") {
+    return client.mode === CRM_PIPELINE_CLIENT_MODES.LOCAL_ONLY
+      && read.mode === CRM_PIPELINE_READ_CLIENT_MODES.READ_ONLY;
+  }
+  if (mutation === "PREVIEW_REHEARSAL") {
+    return client.mode === CRM_PIPELINE_CLIENT_MODES.PREVIEW_REHEARSAL
+      && read.mode === CRM_PIPELINE_READ_CLIENT_MODES.PREVIEW_REHEARSAL;
+  }
+  return false;
 }
 
 export class CrmCaseMutationApi {

@@ -17,6 +17,7 @@ const rbac = read("api/_lib/rbac.js");
 const http = read("api/_lib/crmCaseMutationHttp.js");
 const domain = read("api/_lib/crmCaseMutationDomain.js");
 const form = read("src/commercial-crm/CommercialCaseForm.tsx");
+const mutationApi = read("src/crm-relational/mutationApi.ts");
 
 rejected("publicRef nullable", { "prisma/schema.prisma": schema.replace(/(model Client\s*\{[\s\S]*?publicRef\s+)String/, "$1String?") }, /Client\.publicRef/);
 rejected("unicidad tenant-first retirada", { "prisma/schema.prisma": schema.replace(/\s*@@unique\(\[tenantId, publicRef\][^\n]*\)\r?\n/, "\n") }, /Client\.publicRef/);
@@ -34,5 +35,6 @@ rejected("PATCH sin tenant", { "api/_lib/crmCaseMutationDomain.js": domain.repla
 rejected("V sobre owner ajeno", { "api/_lib/crmCaseMutationDomain.js": domain.replace("current.owner_membership_id !== who.membershipId || current.owner_user_id !== who.userId", "false") }, /owner completo/);
 rejected("storage empresarial", { "src/commercial-crm/CommercialCaseForm.tsx": `${form}\nlocalStorage.setItem('case','x');` }, /persistencia empresarial/);
 rejected("ID interno frontend", { "src/commercial-crm/CommercialCaseForm.tsx": `${form}\nconst clientId='x';` }, /identidad interna/);
+rejected("lectura concede escritura UI", { "src/crm-relational/mutationApi.ts": mutationApi.replace('const mutation = environment.VITE_CRM_PIPELINE_CASE_MUTATION_MODE;', 'const mutation = "LOCAL_ONLY";') }, /compuerta focal/);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);

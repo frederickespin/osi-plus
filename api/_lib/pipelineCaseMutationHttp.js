@@ -63,7 +63,11 @@ export function resolveCrmPipelineMutationMode(env = process.env) {
 }
 
 export function requireCrmPipelineMutationsLocal(env = process.env) {
-  return requireCrmPipelineMutation(env);
+  const mode = requireCrmPipelineMutation(env);
+  if (mode === CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL) {
+    throw new CommercialTenancyError("CRM_PIPELINE_MUTATIONS_DISABLED", 409);
+  }
+  return mode;
 }
 
 function sendError(res, status, code, options = {}) {

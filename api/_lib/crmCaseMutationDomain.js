@@ -110,13 +110,14 @@ async function lock(tx, tenantId, namespace, value) {
 async function actor(tx, context, operation) {
   const tenantId = requiredText(context?.tenantId, 191);
   const membershipId = requiredText(context?.membershipId, 191);
+  const userId = requiredText(context?.userId, 191);
   const rows = await tx.$queryRaw(Prisma.sql`
     SELECT m."id",m."tenant_id",m."user_id",m."role"::text AS "role",m."status"::text AS "membership_status",
       m."granted_permissions",m."denied_permissions",u."status" AS "user_status",u."name",t."status"::text AS "tenant_status"
     FROM "osi"."tenant_memberships" m
     JOIN "osi"."osi_users" u ON u."id"=m."user_id"
     JOIN "osi"."tenants" t ON t."id"=m."tenant_id"
-    WHERE m."tenant_id"=${tenantId} AND m."id"=${membershipId}
+    WHERE m."tenant_id"=${tenantId} AND m."id"=${membershipId} AND m."user_id"=${userId}
     LIMIT 1 FOR UPDATE OF m
   `);
   const row = rows[0];

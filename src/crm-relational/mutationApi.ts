@@ -70,7 +70,8 @@ async function json(response: Response) {
 
 export function isCrmCaseMutationUiEnabled() {
   const result = resolveCrmPipelineClientMode();
-  return result.valid && result.mode === CRM_PIPELINE_CLIENT_MODES.LOCAL_ONLY;
+  return result.valid && (result.mode === CRM_PIPELINE_CLIENT_MODES.LOCAL_ONLY
+    || result.mode === CRM_PIPELINE_CLIENT_MODES.PREVIEW_REHEARSAL);
 }
 
 export class CrmCaseMutationApi {

@@ -5,6 +5,7 @@ import {
   resolveCrmPipelineContext,
 } from "./crmPipelineAccess.js";
 import { CrmCaseMutationError } from "./crmCaseMutationDomain.js";
+import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
 import { methodNotAllowed, readJsonObject, withCommonHeaders } from "./http.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 
@@ -21,9 +22,13 @@ function sameOrigin(req) {
     throw new CrmCaseMutationError("CRM_PIPELINE_ORIGIN_FORBIDDEN", 403);
   }
 }
-function gate(env) {
+function gate(env, req) {
   const mode = requireCrmPipelineMutation(env);
-  if (mode !== CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY) {
+  if (mode === CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY && !isRealLoopbackRequest(req)) {
+    throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
+  }
+  if (mode !== CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY
+    && mode !== CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL) {
     throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
   }
 }
@@ -56,7 +61,7 @@ export function createCrmCaseMutationHandler({
     try {
       // Configuration is deliberately first: no auth, body or Prisma access can
       // happen while case mutations are disabled or outside loopback.
-      gate(env);
+      gate(env, req);
       sameOrigin(req);
     } catch (error) {
       return send(res, error, req.method === "HEAD");

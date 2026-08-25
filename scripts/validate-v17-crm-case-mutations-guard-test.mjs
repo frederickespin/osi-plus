@@ -25,8 +25,11 @@ rejected("backfill empresarial", { [migrationPath]: `${migration}\nUPDATE "osi".
 rejected("inmutabilidad retirada", { [migrationPath]: migration.replace("BEFORE UPDATE OF \"public_ref\"", "BEFORE DELETE") }, /inmutabilidad/);
 rejected("permiso automático A", { "api/_lib/rbac.js": rbac.replace("Object.values(PERMS).filter((permission) => !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission))", "Object.values(PERMS)") }, /A recibe/);
 rejected("permiso automático V", { "api/_lib/rbac.js": rbac.replace("PERMS.PIPELINE_VIEW,", "PERMS.PIPELINE_VIEW,\n    PERMS.PIPELINE_CREATE,") }, /V recibe/);
-rejected("auth antes del gate", { "api/_lib/crmCaseMutationHttp.js": http.replace("gate(env);", "void resolveCrmPipelineContext(req); gate(env);") }, /orden/);
-rejected("modo Production en handler", { "api/_lib/crmCaseMutationHttp.js": http.replace("mode !== CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY", "mode !== CRM_PIPELINE_MUTATION_MODES.PRODUCTION_WRITE") }, /LOCAL_ONLY/);
+rejected("auth antes del gate", { "api/_lib/crmCaseMutationHttp.js": http.replace("gate(env, req);", "void resolveCrmPipelineContext(req); gate(env, req);") }, /orden/);
+rejected("LOCAL_ONLY sin loopback real", { "api/_lib/crmCaseMutationHttp.js": http.replace("&& !isRealLoopbackRequest(req)", "&& false") }, /loopback/);
+rejected("modo Production en handler", { "api/_lib/crmCaseMutationHttp.js": http.replace("mode !== CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL", "mode !== CRM_PIPELINE_MUTATION_MODES.PRODUCTION_WRITE") }, /local o Preview/);
+rejected("hash confiado al cliente", { "api/_lib/crmCaseMutationDomain.js": domain.replace("input.payloadHash !== hashCrmCaseMutation(payload)", "false") }, /payloadHash/);
+rejected("actor sin User", { "api/_lib/crmCaseMutationDomain.js": domain.replace(' AND m."user_id"=${userId}', "") }, /User, Membership/);
 rejected("PATCH sin tenant", { "api/_lib/crmCaseMutationDomain.js": domain.replace('WHERE "tenant_id"=${who.tenantId} AND "public_ref"', 'WHERE "public_ref"') }, /tenant\/publicRef/);
 rejected("V sobre owner ajeno", { "api/_lib/crmCaseMutationDomain.js": domain.replace("current.owner_membership_id !== who.membershipId || current.owner_user_id !== who.userId", "false") }, /owner completo/);
 rejected("storage empresarial", { "src/commercial-crm/CommercialCaseForm.tsx": `${form}\nlocalStorage.setItem('case','x');` }, /persistencia empresarial/);

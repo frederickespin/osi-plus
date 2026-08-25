@@ -33,11 +33,12 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
 
   const http = read("api/_lib/crmCaseMutationHttp.js");
   const handler = http.slice(http.indexOf("return withCommonHeaders"));
-  const gate = handler.indexOf("gate(env)");
+  const gate = handler.indexOf("gate(env, req)");
   const auth = handler.indexOf("resolveCrmPipelineContext(req");
   const body = handler.indexOf("readJsonObject(req");
   if (gate < 0 || auth < gate || body < auth) fail("orden gate -> auth -> body inválido");
-  requireMatch(http, /mode !== CRM_PIPELINE_MUTATION_MODES\.LOCAL_ONLY/, "handler admite mutación fuera de LOCAL_ONLY");
+  requireMatch(http, /mode === CRM_PIPELINE_MUTATION_MODES\.LOCAL_ONLY[\s\S]*!isRealLoopbackRequest\(req\)/, "LOCAL_ONLY no exige socket loopback real");
+  requireMatch(http, /mode !== CRM_PIPELINE_MUTATION_MODES\.LOCAL_ONLY[\s\S]*mode !== CRM_PIPELINE_MUTATION_MODES\.PREVIEW_REHEARSAL/, "handler admite un modo distinto de local o Preview exacto");
   requireMatch(http, /setCrmPrivateHeaders\(res\)/, "headers privados ausentes");
 
   const domain = read("api/_lib/crmCaseMutationDomain.js");
@@ -46,6 +47,8 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
     "CRM_PIPELINE_IDEMPOTENCY_CONFLICT", "CRM_PIPELINE_VERSION_CONFLICT", "NEW_INBOX",
   ]) if (!domain.includes(signature)) fail(`dominio incompleto: ${signature}`);
   requireMatch(domain, /WHERE c\."tenant_id"=\$\{tenantId\} AND c\."id"=\$\{id\}/, "lectura de resultado no es tenant-first");
+  requireMatch(domain, /input\.payloadHash !== hashCrmCaseMutation\(payload\)/, "payloadHash no se recalcula canónicamente en servidor");
+  requireMatch(domain, /m\."tenant_id"=\$\{tenantId\} AND m\."id"=\$\{membershipId\} AND m\."user_id"=\$\{userId\}/, "actor no revalida User, Membership y Tenant");
   requireMatch(domain, /WHERE "tenant_id"=\$\{who\.tenantId\} AND "public_ref"=CAST\(\$\{ref\} AS uuid\)/, "PATCH no resuelve tenant/publicRef");
   requireMatch(domain, /who\.role === "V"[\s\S]*owner_membership_id !== who\.membershipId[\s\S]*owner_user_id !== who\.userId/, "V no queda limitado al owner completo");
 
@@ -64,7 +67,7 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
   if (/\b(?:clientId|tenantId|ownerMembershipId|ownerUserId|publicRef)\b/.test(frontend)) fail("frontend expone identidad interna");
   if (!["deniedPermissions", "pipeline:create", "pipeline:update:own", "pipeline:update:any"].every((value) => frontend.includes(value))) fail("frontend no aplica permisos explícitos y denies");
 
-  return Object.freeze({ ok: true, migrations: 19, migration: MIGRATION, endpoints: Object.freeze(["POST /api/crm/pipeline-cases", "PATCH /api/crm/pipeline-cases/:caseRef", "GET /api/crm/client-options"]), mutationMode: "LOCAL_ONLY", productionMutationMode: "DISABLED" });
+  return Object.freeze({ ok: true, migrations: 19, migration: MIGRATION, endpoints: Object.freeze(["POST /api/crm/pipeline-cases", "PATCH /api/crm/pipeline-cases/:caseRef", "GET /api/crm/client-options"]), mutationModes: Object.freeze(["LOCAL_ONLY", "PREVIEW_REHEARSAL"]), productionMutationMode: "DISABLED" });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

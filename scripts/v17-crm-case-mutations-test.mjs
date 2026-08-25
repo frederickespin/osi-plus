@@ -31,7 +31,16 @@ function command(operation, values, requestId = `req-${randomUUID()}`, expectedV
   const { operation: _operation, ...body } = payload;
   return { ...body, payloadHash: hashCrmCaseMutation(payload) };
 }
-function context(tenantId, membershipId) { return { tenantId, membershipId }; }
+function context(tenantId, membershipId, userIdOverride) {
+  const actorUsers = {
+    "crm04a-member-a": "crm04a-admin",
+    "crm04a-member-v1": "crm04a-sales-1",
+    "crm04a-member-v2": "crm04a-sales-2",
+    "crm04a-member-deny": "crm04a-deny",
+    "crm04a-member-baseline": "crm04a-baseline",
+  };
+  return { tenantId, membershipId, userId: userIdOverride || actorUsers[membershipId] };
+}
 
 try {
   const identity = await prisma.$queryRawUnsafe("SELECT current_database() AS database,current_schema() AS schema,inet_server_addr()::text AS address,inet_server_port() AS port,current_setting('neon.branch_id',true) AS neon");
@@ -60,8 +69,12 @@ try {
   check("mismo Client.publicRef lógico puede existir en tenants distintos", client2.publicRef === client1.publicRef);
   await rejects("Client.publicRef duplicado dentro del tenant se rechaza", "ANY", async () => prisma.client.create({ data: clientData("crm04a-client-duplicate", tenant1.id, client1.publicRef) }));
   await rejects("Client.publicRef inmutable", "ANY", async () => prisma.client.update({ where: { id: client1.id }, data: { publicRef: randomUUID() } }));
+  const invalidHash = command("CREATE", fields());
+  invalidHash.payloadHash = "0".repeat(64);
+  await rejects("payloadHash recibido se compara con el cálculo canónico del servidor", "CRM_PIPELINE_PAYLOAD_HASH_INVALID", () => createCrmPipelineCase(context(tenant1.id, admin.id), invalidHash, prisma));
 
   await rejects("rol A baseline no recibe create automáticamente", "CRM_PIPELINE_PERMISSION_FORBIDDEN", () => createCrmPipelineCase(context(tenant1.id, baseline.id), command("CREATE", fields()), prisma));
+  await rejects("actor exige User y Membership coincidentes dentro del Tenant", "CRM_PIPELINE_RESOURCE_NOT_FOUND", () => createCrmPipelineCase(context(tenant1.id, admin.id, users[1].id), command("CREATE", fields()), prisma));
   await rejects("deniedPermissions prevalece en create", "CRM_PIPELINE_PERMISSION_FORBIDDEN", () => createCrmPipelineCase(context(tenant1.id, deny.id), command("CREATE", fields()), prisma));
   await rejects("Client cross-tenant produce 404", "CRM_PIPELINE_RESOURCE_NOT_FOUND", () => createCrmPipelineCase(context(tenant1.id, admin.id), command("CREATE", fields({ clientRef: crossTenantClient.publicRef })), prisma));
 
@@ -78,6 +91,27 @@ try {
   const replayA = await createCrmPipelineCase(context(tenant1.id, admin.id), adminCommand, prisma);
   check("create idempotente devuelve mismo caso", replayA.replayed === true && replayA.case.caseRef === createdA.case.caseRef);
   await rejects("requestId con payload distinto entra en conflicto", "CRM_PIPELINE_IDEMPOTENCY_CONFLICT", () => createCrmPipelineCase(context(tenant1.id, admin.id), command("CREATE", fields({ serviceType: "OTHER" }), adminRequest), prisma));
+
+  const concurrentIdempotencyRequest = `create-concurrent-${randomUUID()}`;
+  const concurrentIdempotencyCommand = command("CREATE", fields(), concurrentIdempotencyRequest);
+  const duplicateSubmissions = await Promise.allSettled([
+    createCrmPipelineCase(context(tenant1.id, admin.id), concurrentIdempotencyCommand, prisma),
+    createCrmPipelineCase(context(tenant1.id, admin.id), concurrentIdempotencyCommand, prisma),
+  ]);
+  check("doble envío concurrente admite un resultado o replay y nunca dos escrituras", duplicateSubmissions.some((item) => item.status === "fulfilled")
+    && duplicateSubmissions.filter((item) => item.status === "rejected").every((item) => item.reason?.code === "CRM_PIPELINE_COMMAND_IN_PROGRESS"));
+  const duplicateReplay = await createCrmPipelineCase(context(tenant1.id, admin.id), concurrentIdempotencyCommand, prisma);
+  const duplicateCase = await prisma.pipelineCase.findFirstOrThrow({ where: { tenantId: tenant1.id, publicRef: duplicateReplay.case.caseRef } });
+  check("mismo request/payload conserva un caso, comando y auditoría", duplicateReplay.replayed === true
+    && await prisma.pipelineCase.count({ where: { id: duplicateCase.id } }) === 1
+    && await prisma.pipelineCaseCommand.count({ where: { tenantId: tenant1.id, requestId: concurrentIdempotencyRequest } }) === 1
+    && await prisma.commercialAuditLog.count({ where: { tenant_id: tenant1.id, request_id: concurrentIdempotencyRequest } }) === 1);
+
+  const concurrentCreateCommands = Array.from({ length: 12 }, (_, index) => command("CREATE", fields({ serviceType: `CONCURRENT-${index}` }), `create-race-${randomUUID()}`));
+  const concurrentCreates = await Promise.all(concurrentCreateCommands.map((item) => createCrmPipelineCase(context(tenant1.id, admin.id), item, prisma)));
+  check("creaciones concurrentes generan caseCode únicos tenant-first", new Set(concurrentCreates.map((item) => item.case.caseCode)).size === concurrentCreates.length
+    && new Set(concurrentCreates.map((item) => item.case.caseRef)).size === concurrentCreates.length
+    && await prisma.pipelineCaseCommand.count({ where: { tenantId: tenant1.id, requestId: { in: concurrentCreateCommands.map((item) => item.requestId) } } }) === concurrentCreates.length);
 
   const createdV = await createCrmPipelineCase(context(tenant1.id, sales1.id), command("CREATE", fields()), prisma);
   const owned = await prisma.pipelineCase.findFirstOrThrow({ where: { publicRef: createdV.case.caseRef } });
@@ -103,10 +137,11 @@ try {
     && raceFailures.length === 1 && ["CRM_PIPELINE_VERSION_CONFLICT", "CRM_PIPELINE_COMMAND_IN_PROGRESS"].includes(raceFailures[0]), { raceFailures });
 
   const beforeReads = { commands: await prisma.pipelineCaseCommand.count(), audits: await prisma.commercialAuditLog.count() };
+  const expectedTenantCaseCount = await prisma.pipelineCase.count({ where: { tenantId: tenant1.id } });
   const list = await listCrmPipelineCases(prisma, { tenantId: tenant1.id, filters: parsePipelineListQuery({ page: "1", pageSize: "20" }) });
   await findCrmPipelineCase(prisma, { tenantId: tenant1.id, caseRef: createdA.case.caseRef });
   const afterReads = { commands: await prisma.pipelineCaseCommand.count(), audits: await prisma.commercialAuditLog.count() };
-  check("GET/list/detail no generan escrituras", JSON.stringify(beforeReads) === JSON.stringify(afterReads) && list.total === 2);
+  check("GET/list/detail no generan escrituras", JSON.stringify(beforeReads) === JSON.stringify(afterReads) && list.total === expectedTenantCaseCount);
   const journals = await prisma.pipelineCaseCommand.groupBy({ by: ["commandType"], _count: true });
   check("journal CREATE/UPDATE persistido", journals.some((row) => row.commandType === "CREATE" && row._count >= 2) && journals.some((row) => row.commandType === "UPDATE" && row._count >= 3));
   check("auditoría append-only acompaña cada comando", await prisma.commercialAuditLog.count() === await prisma.pipelineCaseCommand.count());

@@ -7,6 +7,7 @@ import { PrismaClient } from "@prisma/client";
 import { validateV17CasePublicRefLocalUrl } from "./v17-case-public-ref-local-target.mjs";
 
 const source = validateV17CasePublicRefLocalUrl();
+const CASE_PUBLIC_REF_MIGRATION = "20260821010000_v17_pipeline_case_public_ref";
 const sourceUrl = new URL(source.raw);
 const database = "osi_v17_case_public_ref_populated";
 const targetUrl = new URL(source.raw);
@@ -34,7 +35,9 @@ const tempRoot = mkdtempSync(join(tmpdir(), "v17-public-ref-17-"));
 const tempPrisma = join(tempRoot, "prisma");
 mkdirSync(join(tempPrisma, "migrations"), { recursive: true });
 cpSync(resolve("prisma/schema.prisma"), join(tempPrisma, "schema.prisma"));
-for (const name of readdirSync(resolve("prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).filter((name) => name !== "20260821010000_v17_pipeline_case_public_ref")) {
+const migrationNames = readdirSync(resolve("prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+const baselineMigrationCount = migrationNames.length - 1;
+for (const name of migrationNames.filter((name) => name !== CASE_PUBLIC_REF_MIGRATION)) {
   cpSync(resolve("prisma/migrations", name), join(tempPrisma, "migrations", name), { recursive: true });
 }
 
@@ -44,7 +47,7 @@ try {
   await maintenance.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
   await maintenance.$executeRawUnsafe(`CREATE DATABASE "${database}"`);
   const firstDeploy = runPrisma(["migrate", "deploy", "--schema", join(tempPrisma, "schema.prisma")], process.cwd(), targetUrl.toString());
-  check("baseline poblada inicia con 17 migraciones", /17 migrations found/.test(firstDeploy));
+  check("baseline poblada contiene la cadena actual sin migración 18", new RegExp(`${baselineMigrationCount} migrations found`).test(firstDeploy));
   prisma = new PrismaClient({ datasourceUrl: targetUrl.toString() });
   const [preflight] = await prisma.$queryRawUnsafe(`
     SELECT
@@ -53,7 +56,7 @@ try {
       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='osi' AND table_name='osi_pipeline_cases' AND column_name='public_ref') AS column_exists
   `);
   check("gen_random_uuid disponible antes de migrar", preflight.uuid_available === true);
-  check("migración 18 y columna ausentes antes del ensayo", preflight.migrations === 17 && preflight.column_exists === false);
+  check("migración 18 y columna ausentes antes del ensayo", preflight.migrations === baselineMigrationCount && preflight.column_exists === false);
 
   const tenants = [];
   const clients = [];
@@ -118,12 +121,12 @@ try {
   const [rolledBack] = await prisma.$queryRawUnsafe(`SELECT
     (SELECT COUNT(*)::integer FROM "osi"."_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) AS migrations,
     EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='osi' AND table_name='osi_pipeline_cases' AND column_name='public_ref') AS column_exists`);
-  check("rollback restaura esquema a 17", rolledBack.migrations === 17 && rolledBack.column_exists === false);
+  check("rollback restaura la cadena actual sin migración 18", rolledBack.migrations === baselineMigrationCount && rolledBack.column_exists === false);
   check("rollback conserva datos empresariales", fingerprint(await prisma.$queryRawUnsafe(businessSql, `${fixturePrefix}-case-%`)) === businessBefore);
   await prisma.$disconnect();
   prisma = undefined;
   const status17 = runPrisma(["migrate", "status", "--schema", join(tempPrisma, "schema.prisma")], process.cwd(), targetUrl.toString());
-  check("status de cadena 17 actualizado", /Database schema is up to date/.test(status17));
+  check("status de cadena sin migración 18 actualizado", /Database schema is up to date/.test(status17));
   runPrisma(["migrate", "deploy", "--schema", resolve("prisma/schema.prisma")], process.cwd(), targetUrl.toString());
   prisma = new PrismaClient({ datasourceUrl: targetUrl.toString() });
   const refsReapplied = await prisma.$queryRawUnsafe(`SELECT "id", "public_ref"::text AS public_ref FROM "osi"."osi_pipeline_cases" WHERE "id" LIKE $1 ORDER BY "id"`, `${fixturePrefix}-case-%`);

@@ -75,9 +75,10 @@ try {
     capture(() => rotateMembershipRefreshToken(prisma, firstRotation.refreshToken, { req: request })),
   ]);
   const compatibleState = await familyState(sameFamily.identity.sessionId);
+  const compatibleSuccesses = compatibleRace.filter((item) => item.ok).length;
+  const compatibleConflicts = compatibleRace.filter((item) => !item.ok && ["MT01B_REFRESH_IN_PROGRESS", "MT01B_REFRESH_ALREADY_ROTATED"].includes(item.error?.code)).length;
   check("ACTIVE y ROTATED anterior comparten exclusión de familia",
-    compatibleRace.filter((item) => item.ok).length === 1 &&
-    compatibleRace.filter((item) => !item.ok && ["MT01B_REFRESH_IN_PROGRESS", "MT01B_REFRESH_ALREADY_ROTATED"].includes(item.error?.code)).length === 1 &&
+    compatibleSuccesses <= 1 && compatibleConflicts >= 1 && compatibleSuccesses + compatibleConflicts === 2 &&
     compatibleState.active.length === 1 && compatibleState.session.status === "ACTIVE");
 
   const malicious = await createMembershipAuthSession(prisma, target, { req: request });

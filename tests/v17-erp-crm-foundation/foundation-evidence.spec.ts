@@ -92,7 +92,7 @@ test("capturas sanitizadas del núcleo ERP avanzado", async ({ page }, testInfo)
   await page.getByRole("button", { name: /Abrir ERP/ }).click();
   await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
   await page.screenshot({ path: resolve(EVIDENCE, testInfo.project.name === "chromium-mobile" ? "03-inbox-mobile.png" : "02-inbox-desktop.png"), fullPage: true });
-  await page.locator("button:visible", { hasText: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await page.screenshot({ path: resolve(EVIDENCE, testInfo.project.name === "chromium-mobile" ? "05-ficha-mobile.png" : "04-ficha-desktop.png"), fullPage: true });
   if (testInfo.project.name === "chromium-desktop") {

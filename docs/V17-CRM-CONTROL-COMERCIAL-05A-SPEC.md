@@ -99,9 +99,26 @@ Las capturas usan exclusivamente fixtures sintéticos y están versionadas en
 - `06-mobile-detail.png`: Ficha móvil a pantalla completa;
 - `07-gray-sla.png`: caso sin autoridad SLA, sin inferencia de color.
 
-La evidencia desktop exige al menos diez acciones `Abrir ficha` dentro del
+La evidencia desktop exige al menos diez acciones `Ficha del caso` dentro del
 viewport 1920×1080. No constituye datos empresariales ni habilita el contrato
 SLA/KPI pendiente.
+
+## Evidencia visual 04D1A
+
+La interacción master-detail y la Ficha completa se verifican con fixtures
+sintéticos en `docs/evidence/V17-CRM-COMPACT-CONTROL-CENTER-04D1A/`:
+
+- `01-supervision-global.png`: supervisión sin caso seleccionado;
+- `02-caso-seleccionado-resumen.png`: bandeja y resumen compacto simultáneos;
+- `03-accion-ficha-del-caso.png`: acción hermana accesible `Ficha del caso`;
+- `04-ficha-espacio-completo.png`: Ficha usando todo el espacio central;
+- `05-regreso-inbox-estado.png`: regreso con selección y contexto conservados;
+- `06a`–`06c-flujo-movil-*.png`: lista, resumen y Ficha en móvil;
+- `07-alcance-vendedor.png`: alcance personal de Ventas sin datos ajenos.
+
+El resumen no infiere precio, comunicación, próximo paso ni SLA. En ausencia
+de contratos publicados muestra estados explícitos y mantiene `eventCount`
+únicamente como conteo.
 
 ## Criterio de adopción
 

@@ -147,7 +147,7 @@ test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo
   await expect(page.getByTestId("advanced-erp-shell")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
   await expect(page.locator("p:visible", { hasText: "Receptor Sintético" }).first()).toBeVisible();
-  await page.locator("button:visible", { hasText: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await expect(page.getByText("Origen sintético", { exact: true })).toBeVisible();
   await expect(page.getByText("Destino sintético", { exact: true })).toBeVisible();
@@ -157,6 +157,82 @@ test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo
   await expect(page.getByRole("heading", { name: "Cotización en integración" })).toBeVisible();
   expect(audit.every(({ method }) => method === "GET")).toBe(true);
   expect(audit.filter(({ pathname }) => pathname.startsWith("/api/crm/"))).toHaveLength(3);
+});
+
+test("seleccionar una fila abre el resumen y Ficha del caso usa el workspace completo", async ({ page }, testInfo) => {
+  const rows = Array.from({ length: 25 }, (_, index) => pipelineCase({
+    caseRef: syntheticCaseRef(index + 1),
+    caseCode: `CRM-SELECT-${String(index + 1).padStart(2, "0")}`,
+    client: index === 10 ? null : {
+      clientRef: DEFAULT_CLIENT_REF,
+      displayName: `Receptor Sintético ${index + 1}`,
+      type: "PERSON",
+      status: "active",
+    },
+    owner: index % 2 === 0 ? { displayName: "Ventas Sintético", role: "V", membershipStatus: "ACTIVE" } : null,
+    quoteCount: index === 10 ? 2 : 0,
+    eventCount: index === 10 ? 3 : 0,
+  }));
+  await authenticate(page);
+  const audit = await mockCrm(page, { total: 50, cases: rows });
+  await page.goto("/commercial");
+  await page.getByPlaceholder("Caso, cliente o ruta").fill("SELECT");
+  await expect.poll(() => audit.some(({ search }) => search.includes("q=SELECT"))).toBe(true);
+  await page.getByLabel("Estado").selectOption("NEW_INBOX");
+  await expect.poll(() => audit.some(({ search }) => search.includes("status=NEW_INBOX"))).toBe(true);
+  await page.getByRole("button", { name: "Página siguiente" }).click();
+  await expect(page.getByText("Página 2 de 2")).toContainText("Página 2 de 2");
+
+  const row = page.getByTestId("commercial-queue-item").nth(10);
+  await expect(row.getByRole("button", { name: /Seleccionar caso CRM-SELECT-11/ })).toBeVisible();
+  await expect(row.getByRole("button", { name: /Ficha del caso CRM-SELECT-11/ })).toBeVisible();
+  const rowSelector = row.locator("button").first();
+  const fullCaseAction = row.locator("button").nth(1);
+  expect(await row.locator("button button").count()).toBe(0);
+  await rowSelector.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(page).toHaveURL(/\/commercial$/);
+  await expect(row).toHaveAttribute("data-selected", "true");
+  await expect(rowSelector).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("commercial-case-summary")).toBeVisible();
+  await expect(page.getByText("Etapa no publicada", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sin cotización", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sin comunicación registrada", { exact: true })).toBeVisible();
+  await expect(page.getByText("Pendiente de definir", { exact: true })).toBeVisible();
+  await expect(page.getByText("Survey sin conteo", { exact: true })).toBeVisible();
+  await expect(page.getByText("Cotizaciones", { exact: true })).toBeVisible();
+  await expect(page.getByText("Actividad", { exact: true })).toBeVisible();
+  await expect(page.getByText("updatedAt no se utiliza como comunicación.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Abrir ficha", { exact: true })).toHaveCount(0);
+  if (testInfo.project.name.endsWith("desktop")) await expect(page.getByRole("region", { name: "Cola comercial" })).toBeVisible();
+  else await expect(page.getByRole("region", { name: "Cola comercial" })).toBeHidden();
+
+  await page.evaluate(() => globalThis.scrollTo(0, Math.min(180, document.documentElement.scrollHeight - innerHeight)));
+  const scrollBefore = await page.evaluate(() => globalThis.scrollY);
+  if (testInfo.project.name.endsWith("desktop")) expect(scrollBefore).toBeGreaterThan(0);
+  await fullCaseAction.evaluate((element) => (element as HTMLButtonElement).click());
+  await expect(page).toHaveURL(new RegExp(`/commercial/cases/${rows[10].caseRef}$`));
+  await expect(page.getByTestId("commercial-full-case-workspace")).toBeVisible();
+  await expect(page.getByTestId("commercial-master-detail-layout")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await page.getByRole("button", { name: "Volver al Inbox" }).click();
+
+  await expect(page).toHaveURL(/\/commercial$/);
+  await expect(page.getByPlaceholder("Caso, cliente o ruta")).toHaveValue("SELECT");
+  await expect(page.getByLabel("Estado")).toHaveValue("NEW_INBOX");
+  await expect(page.getByText("Página 2 de 2")).toContainText("Página 2 de 2");
+  await expect(page.getByTestId("commercial-case-summary")).toBeVisible();
+  await expect(row).toHaveAttribute("data-selected", "true");
+  expect(await page.evaluate(() => globalThis.scrollY)).toBe(scrollBefore);
+
+  if (!testInfo.project.name.endsWith("desktop")) {
+    await page.getByTestId("commercial-case-summary").getByRole("button", { name: "Volver al Inbox" }).click();
+    await expect(row).toBeVisible();
+  }
+  await rowSelector.focus();
+  await page.keyboard.press("Space");
+  await expect(rowSelector).toHaveAttribute("aria-pressed", "true");
 });
 
 test("A crea un caso y edita su Ficha sólo después de confirmación del servidor", async ({ page }, testInfo) => {
@@ -263,7 +339,7 @@ test("los permisos explícitos y el owner efectivo gobiernan los controles local
     });
     await page.goto("/commercial");
     await expect(page.getByRole("button", { name: "Nuevo Caso" })).toHaveCount(scenario.create ? 1 : 0);
-    await page.getByRole("button", { name: "Abrir ficha" }).click();
+    await page.getByRole("button", { name: /Ficha del caso/ }).click();
     await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(scenario.edit ? 1 : 0);
     await context.close();
   }
@@ -282,7 +358,7 @@ test("filtros, paginación y Ficha usan Client relacional y renderizan texto hos
   await expect.poll(() => audit.some(({ search }) => search.includes("mode=IMPORT"))).toBe(true);
   await page.getByLabel("Asignación").selectOption("assigned");
   await expect.poll(() => audit.some(({ search }) => search.includes("unassigned=false"))).toBe(true);
-  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await expect(page.getByText(hostileName, { exact: true }).first()).toBeVisible();
   expect(await page.evaluate(() => (globalThis as typeof globalThis & { __hostile?: number }).__hostile)).toBeUndefined();
@@ -330,20 +406,20 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
 
   await page.goto("/commercial");
   await page.getByPlaceholder("Caso, cliente o ruta").fill("CRM-DEMO");
-  await expect(page.getByRole("button", { name: "Abrir ficha" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Ficha del caso/ }).first()).toBeVisible();
   const firstDetail = detailBarrier.prepare("first-valid-detail", detailPath);
-  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page).toHaveURL(new RegExp(`/commercial/cases/${DEFAULT_CASE_REF}$`));
   await firstDetail.completion;
   await expect(page.getByTestId("commercial-case-detail")).toBeVisible();
   detailBarrier.markUiStable(firstDetail, "detail-rendered");
-  await page.getByRole("button", { name: "Volver al Pipeline" }).click();
+  await page.getByRole("button", { name: "Volver al Inbox" }).click();
   await expect(page.getByPlaceholder("Caso, cliente o ruta")).toHaveValue("CRM-DEMO");
 
   controlledGate = createControlledGate();
   const preReloadDetail = detailBarrier.prepare("pre-reload-valid-detail", detailPath);
   delayedTicketId = preReloadDetail.id;
-  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page).toHaveURL(new RegExp(`/commercial/cases/${DEFAULT_CASE_REF}$`));
   await expect(page.getByText("Cargando la autoridad relacional del caso…")).toBeVisible();
   expect(detailBarrier.pendingCount).toBe(1);
@@ -398,7 +474,7 @@ test("APPROVED permanece legacy congelado y OPS_HANDOFF terminal sin controles d
   await expect(page.locator('[data-status="OPS_HANDOFF"]:visible').first()).toContainText(
     "Handoff a Operaciones · terminal",
   );
-  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page.getByText("Legacy congelado", { exact: true })).toBeVisible();
   await expect(page.getByText(/Disponible en una fase posterior\./)).toBeVisible();
   for (const label of ["Asignar", "Desasignar", "Transicionar", "Editar", "Crear caso"]) await expect(page.getByRole("button", { name: label })).toHaveCount(0);
@@ -418,7 +494,7 @@ test("aliases, deep links, reload y regreso al Hub conservan la misma guardia", 
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
-  await page.getByRole("button", { name: "Volver al Pipeline" }).click();
+  await page.getByRole("button", { name: "Volver al Inbox" }).click();
   await page.getByRole("button", { name: "Regresar al Hub" }).click();
   await expect(page.getByText("Hola, Actor sintético")).toBeVisible();
 });
@@ -566,5 +642,5 @@ test("10,000 casos conservan paginación server-side y una lectura por página",
   const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1];
   testInfo.annotations.push({ type: "performance", description: JSON.stringify({ records: 10_000, p50Ms: sorted[Math.floor(sorted.length / 2)], p95Ms: p95, maxMs: sorted.at(-1) }) });
   expect(audit.filter(({ pathname }) => pathname === "/api/crm/pipeline-cases")).toHaveLength(9);
-  expect(await page.getByRole("button", { name: "Abrir ficha" }).count()).toBe(25);
+  expect(await page.getByRole("button", { name: /Ficha del caso/ }).count()).toBe(25);
 });

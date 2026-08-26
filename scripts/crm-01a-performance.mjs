@@ -22,11 +22,11 @@ function percentile(values, fraction) {
 
 async function measure(name, query) {
   const filters = parsePipelineListQuery(query);
-  for (let index = 0; index < 3; index += 1) await listCrmPipelineCases(prisma, { tenantId, filters });
+  for (let index = 0; index < 3; index += 1) await listCrmPipelineCases(prisma, { tenantId, role: "A", filters });
   const samples = [];
   for (let index = 0; index < ROUNDS; index += 1) {
     const start = performance.now();
-    await listCrmPipelineCases(prisma, { tenantId, filters });
+    await listCrmPipelineCases(prisma, { tenantId, role: "A", filters });
     samples.push(performance.now() - start);
   }
   return Object.freeze({
@@ -40,11 +40,11 @@ async function measure(name, query) {
 }
 
 async function measureDetail(name, caseRef) {
-  for (let index = 0; index < 3; index += 1) await findCrmPipelineCase(prisma, { tenantId, caseRef });
+  for (let index = 0; index < 3; index += 1) await findCrmPipelineCase(prisma, { tenantId, role: "A", caseRef });
   const samples = [];
   for (let index = 0; index < ROUNDS; index += 1) {
     const start = performance.now();
-    const detail = await findCrmPipelineCase(prisma, { tenantId, caseRef });
+    const detail = await findCrmPipelineCase(prisma, { tenantId, role: "A", caseRef });
     if (detail.caseRef !== caseRef) throw new Error("detalle devolvió otra referencia pública");
     samples.push(performance.now() - start);
   }

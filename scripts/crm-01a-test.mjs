@@ -294,7 +294,8 @@ try {
   } catch (error) { crossClientError = error; }
   check("FK tenant-first rechaza Client de otro tenant", crossClientError?.code === "P2003");
 
-  const tokenOne = tokenFor(tenantOne);
+  const tokenOne = tokenFor(adminOne);
+  const salesToken = tokenFor(ownerOne);
   const list = await invoke(listHandler, request(tokenOne, "GET", { page: "1", pageSize: "20" }));
   check("lista tenantizada 51", list.statusCode === 200 && list.body.total === 51 && list.body.data.length === 20);
   check("lista publica sólo caseRef UUID v4", list.body.data.every((item) => (
@@ -312,7 +313,7 @@ try {
   check("campos internos ausentes", list.body.data.every((item) => forbiddenFields.every((field) => !(field in item))));
   check("campos internos ausentes del owner", list.body.data.filter((item) => item.owner).every((item) => forbiddenFields.every((field) => !(field in item.owner))));
   check("paginación contractual", list.body.page === 1 && list.body.pageSize === 20);
-  const tenantTwoList = await invoke(listHandler, request(tokenFor(tenantTwo), "GET", { pageSize: "100" }));
+  const tenantTwoList = await invoke(listHandler, request(tokenFor(ownerTwo), "GET", { pageSize: "100" }));
   check("segundo tenant sólo ve sus cuatro casos", tenantTwoList.statusCode === 200 && tenantTwoList.body.total === 4 && tenantTwoList.body.data.every((item) => item.caseCode.includes("-TWO-")));
 
   const allRefs = [];
@@ -368,7 +369,7 @@ try {
     && !JSON.stringify(noClient.body.data).includes(casesOne[1].clientName));
   const crossTenant = await expectError("cross-tenant indistinguible", invoke(detailHandler, request(tokenOne, "GET", { caseKey: casesTwo[0].publicRef })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
   checkJsonSnapshot("snapshot 404", crossTenant.body, { ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" });
-  const inactiveClient = await invoke(detailHandler, request(tokenFor(tenantTwo), "GET", { caseKey: casesTwo[0].publicRef }));
+  const inactiveClient = await invoke(detailHandler, request(tokenFor(ownerTwo), "GET", { caseKey: casesTwo[0].publicRef }));
   check("Client inactivo conserva estado explícito sin fallback", inactiveClient.statusCode === 200
     && inactiveClient.body.data.client?.displayName === serviceClientTwo.name
     && inactiveClient.body.data.client?.status === "inactive");
@@ -398,6 +399,19 @@ try {
     ok: true,
     data: { total: 51, assigned: 39, unassigned: 12, byStatus: expectedByStatus, sla: { overdue: null, basis: "UNAVAILABLE" } },
   });
+
+  const salesList = await invoke(listHandler, request(salesToken, "GET", { pageSize: "100" }));
+  check("V sólo lista casos con owner completo propio", salesList.statusCode === 200 && salesList.body.total === 39
+    && salesList.body.data.length === 39 && salesList.body.data.every((item) => item.owner?.displayName === `Usuario sintético ${run}-owner-one`));
+  const salesUnassigned = await invoke(listHandler, request(salesToken, "GET", { unassigned: "true", pageSize: "100" }));
+  check("V no observa casos sin owner ni sus totales", salesUnassigned.statusCode === 200 && salesUnassigned.body.total === 0 && salesUnassigned.body.data.length === 0);
+  const salesSummary = await invoke(summaryHandler, request(salesToken));
+  check("métricas V se limitan antes de contar", salesSummary.statusCode === 200 && salesSummary.body.data.total === 39
+    && salesSummary.body.data.assigned === 39 && salesSummary.body.data.unassigned === 0);
+  await expectError("detalle sin owner es 404 indistinguible para V", invoke(detailHandler, request(salesToken, "GET", { caseKey: casesOne[39].publicRef })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+  await assignOwnerFixture(casesOne[1].id, tenantOne.tenantId, alternateOwner, adminOne, "foreign-detail");
+  await expectError("detalle de otro vendedor es 404 indistinguible", invoke(detailHandler, request(salesToken, "GET", { caseKey: casesOne[1].publicRef })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+  await assignOwnerFixture(casesOne[1].id, tenantOne.tenantId, ownerOne, adminOne, "foreign-detail-restore");
 
   check("rol A accede", (await invoke(listHandler, request(tokenFor(adminOne)))).statusCode === 200);
   const clientsOnlyDenied = await expectError("clients:view solo no permite Pipeline", invoke(listHandler, request(tokenFor(clientsOnly))), 403, "COMMERCIAL_PERMISSION_FORBIDDEN");
@@ -478,12 +492,12 @@ try {
   };
   let failure;
   try {
-    await crm.listCrmPipelineCases(failurePrisma, { tenantId: tenantOne.tenantId, filters: crm.parsePipelineListQuery({}) });
+    await crm.listCrmPipelineCases(failurePrisma, { tenantId: tenantOne.tenantId, role: "A", membershipId: adminOne.membershipId, userId: adminOne.userId, filters: crm.parsePipelineListQuery({}) });
   } catch (error) { failure = error; }
   check("falla Prisma sanitizada", failure?.status === 503 && failure?.code === "COMMERCIAL_CONTEXT_DATABASE_UNAVAILABLE" && !String(failure.message).includes("secret"));
   const failureHandler = createPipelineCasesListHandler({
     prismaClient: failurePrisma,
-    requirePermission: async () => Object.freeze({ tenantId: tenantOne.tenantId }),
+    requirePermission: async () => Object.freeze({ tenantId: tenantOne.tenantId, role: "A", membershipId: adminOne.membershipId, userId: adminOne.userId }),
   });
   const failureResponse = await invoke(failureHandler, request(tokenOne));
   checkJsonSnapshot("snapshot 503 base", failureResponse.body, { ok: false, error: "COMMERCIAL_CONTEXT_DATABASE_UNAVAILABLE" });

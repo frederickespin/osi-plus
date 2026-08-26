@@ -124,7 +124,7 @@ try {
   await rejects("CUID o ID interno se rechaza como ruta", "CRM_PIPELINE_RESOURCE_NOT_FOUND", () => updateCrmPipelineCase(context(tenant1.id, admin.id), owned.id, command("UPDATE", fields(), undefined, 2), prisma));
   await rejects("expectedVersion obsoleto produce 409 estable", "CRM_PIPELINE_VERSION_CONFLICT", () => updateCrmPipelineCase(context(tenant1.id, admin.id), createdV.case.caseRef, command("UPDATE", fields(), undefined, 1), prisma));
 
-  const currentA = await findCrmPipelineCase(prisma, { tenantId: tenant1.id, caseRef: createdA.case.caseRef });
+  const currentA = await findCrmPipelineCase(prisma, { tenantId: tenant1.id, role: "A", membershipId: admin.id, userId: users[0].id, caseRef: createdA.case.caseRef });
   const updateA = await updateCrmPipelineCase(context(tenant1.id, admin.id), createdA.case.caseRef, command("UPDATE", fields({ clientRef: null, mode: "EXPORT" }), undefined, currentA.version), prisma);
   check("A actualiza cualquier caso del tenant", updateA.case.mode === "EXPORT" && updateA.case.client === null);
   const concurrentVersion = updateA.case.version;
@@ -138,8 +138,8 @@ try {
 
   const beforeReads = { commands: await prisma.pipelineCaseCommand.count(), audits: await prisma.commercialAuditLog.count() };
   const expectedTenantCaseCount = await prisma.pipelineCase.count({ where: { tenantId: tenant1.id } });
-  const list = await listCrmPipelineCases(prisma, { tenantId: tenant1.id, filters: parsePipelineListQuery({ page: "1", pageSize: "20" }) });
-  await findCrmPipelineCase(prisma, { tenantId: tenant1.id, caseRef: createdA.case.caseRef });
+  const list = await listCrmPipelineCases(prisma, { tenantId: tenant1.id, role: "A", membershipId: admin.id, userId: users[0].id, filters: parsePipelineListQuery({ page: "1", pageSize: "20" }) });
+  await findCrmPipelineCase(prisma, { tenantId: tenant1.id, role: "A", membershipId: admin.id, userId: users[0].id, caseRef: createdA.case.caseRef });
   const afterReads = { commands: await prisma.pipelineCaseCommand.count(), audits: await prisma.commercialAuditLog.count() };
   check("GET/list/detail no generan escrituras", JSON.stringify(beforeReads) === JSON.stringify(afterReads) && list.total === expectedTenantCaseCount);
   const journals = await prisma.pipelineCaseCommand.groupBy({ by: ["commandType"], _count: true });

@@ -45,7 +45,7 @@ invariant(!/\bclientName\b|\bcaseNumber\b/.test(adapter) && /"caseRef", "caseCod
 
 const canonicalRead = read("api/_lib/crmPipelineRead.js");
 invariant(!/\bclientName\b|\bcaseNumber\b/.test(canonicalRead), "backend de lectura reintrodujo autoridad legacy");
-invariant(/tenantId_publicRef/.test(canonicalRead) && /client:\s*\{\s*is:\s*\{\s*name:/.test(canonicalRead),
+invariant(/resolveCrmPipelineReadScope/.test(canonicalRead) && /where:\s*\{\s*\.\.\.scope,\s*publicRef\s*\}/.test(canonicalRead) && /client:\s*\{\s*is:\s*\{\s*name:/.test(canonicalRead),
   "resolución de caso o búsqueda de Client no es tenant-first relacional");
 
 const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");

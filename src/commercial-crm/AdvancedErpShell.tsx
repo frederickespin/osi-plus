@@ -122,19 +122,20 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
     <div className="sticky top-0 hidden h-screen lg:block">{sidebar}</div>
     {mobileOpen && <div className="fixed inset-0 z-50 flex lg:hidden"><div className="h-full">{sidebar}</div><button type="button" aria-label="Cerrar navegación ERP" className="flex-1 bg-slate-950/55" onClick={() => setMobileOpen(false)} /></div>}
     <div className="min-w-0 flex-1">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6">
+      {!caseRef && <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6">
         <div className="flex items-center gap-3">
           <button type="button" aria-label="Abrir navegación ERP" className="rounded-lg border border-slate-200 p-2 text-[#003366] lg:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></button>
           <div><p className="text-sm font-black text-[#003366]">Comercial y CRM</p><p className="text-[10px] uppercase tracking-[.16em] text-slate-500">Control comercial relacional</p></div>
         </div>
         <div className="flex items-center gap-2"><span className="hidden rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[#003366] sm:inline">ERP avanzado</span><button type="button" aria-label="Cerrar navegación ERP" className="hidden"><X /></button></div>
-      </header>
-      <main>
+      </header>}
+      <main className={caseRef ? "min-h-screen" : undefined}>
         <CommercialInboxModule
           authorization={authorization}
           mutationAccess={mutationAccess}
           role={role}
           caseRef={caseRef}
+          onOpenNavigation={() => setMobileOpen(true)}
           onBack={goHub}
           onOpenCase={(nextCaseRef) => onNavigate(`/commercial/cases/${nextCaseRef}`)}
           onReturnToInbox={goCommercial}

@@ -139,7 +139,7 @@ test("cero casos presenta estado empresarial vacío y sólo ejecuta GET canónic
   expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => /crm|pipeline|case/i.test(key) && !key.startsWith("osi-plus.")))).toEqual([]);
 });
 
-test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo lectura", async ({ page }) => {
+test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo lectura", async ({ page }, testInfo) => {
   const item = pipelineCase({ quoteCount: 2, eventCount: 3 });
   await authenticate(page);
   const audit = await mockCrm(page, { cases: [item] });
@@ -148,7 +148,27 @@ test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo
   await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
   await expect(page.locator("p:visible", { hasText: "Receptor Sintético" }).first()).toBeVisible();
   await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
-  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  const focusedHeader = page.getByTestId("commercial-case-focused-header");
+  await expect(focusedHeader.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await expect(focusedHeader.getByRole("heading", { name: "Receptor Sintético" })).toBeVisible();
+  await expect(focusedHeader).toContainText("CRM-DEMO-001");
+  await expect(focusedHeader).toContainText("Nuevo en Inbox");
+  await expect(focusedHeader).toContainText("Etapa no publicada");
+  await expect(focusedHeader).toContainText("Sin responsable");
+  if (testInfo.project.name.endsWith("mobile")) {
+    await page.getByRole("button", { name: "Abrir navegación ERP" }).click();
+    await expect(page.locator("aside:visible").getByText("OSi Plus ERP", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Cerrar navegación ERP" }).click();
+  } else {
+    await expect(page.getByText("OSi Plus ERP", { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("Comercial y CRM", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Control comercial relacional", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("ERP avanzado", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("commercial-summary-strip")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nuevo Caso" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Regresar al Hub" })).toHaveCount(0);
   await expect(page.getByText("Origen sintético", { exact: true })).toBeVisible();
   await expect(page.getByText("Destino sintético", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Survey/ }).click();
@@ -425,7 +445,7 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
   expect(detailBarrier.pendingCount).toBe(1);
   controlledGate.release();
   await preReloadDetail.completion;
-  await expect(page.getByText("Receptor verificado: Receptor Sintético", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("commercial-case-focused-header").getByRole("heading", { name: "Receptor Sintético" })).toBeVisible();
   detailBarrier.markUiStable(preReloadDetail, "verified-receiver-rendered");
   detailBarrier.assertReadyForReload(preReloadDetail);
   expect(detailBarrier.pendingCount).toBe(0);
@@ -436,7 +456,7 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
   await page.reload();
   await reloadDetail.completion;
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
-  await expect(page.getByText("Receptor verificado: Receptor Sintético", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("commercial-case-focused-header").getByRole("heading", { name: "Receptor Sintético" })).toBeVisible();
   detailBarrier.markUiStable(reloadDetail, "post-reload-detail-rendered");
 
   detailMode = "INVALID";

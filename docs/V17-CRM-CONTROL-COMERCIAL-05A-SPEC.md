@@ -86,6 +86,23 @@ Cada GET debe revalidar User, TenantMembership y Tenant, usar `private, no-store
 - Actividad, Tareas, Survey, Cotización, Notas, Archivos y Comunicación permanecen `En integración` cuando no existe contrato funcional.
 - No se publican porcentajes, vencimientos, comparaciones de equipo ni prioridades inventadas.
 
+## Evidencia visual 04C
+
+Las capturas usan exclusivamente fixtures sintéticos y están versionadas en
+`docs/evidence/V17-CRM-COMPACT-CONTROL-CENTER-04C/`:
+
+- `01-admin-global.png`: supervisión tenant-wide y cola compacta;
+- `02-admin-selected.png`: master-detail con caso seleccionado;
+- `03-alert-list-gray-sla.png`: alertas factuales y SLA `GRAY`;
+- `04-sales-scope.png`: vista personal de Ventas;
+- `05-mobile-list.png`: resumen y cola móvil;
+- `06-mobile-detail.png`: Ficha móvil a pantalla completa;
+- `07-gray-sla.png`: caso sin autoridad SLA, sin inferencia de color.
+
+La evidencia desktop exige al menos diez acciones `Abrir ficha` dentro del
+viewport 1920×1080. No constituye datos empresariales ni habilita el contrato
+SLA/KPI pendiente.
+
 ## Criterio de adopción
 
 La adopción futura requiere pruebas A/V/deny, aislamiento cross-tenant, estabilidad bajo paginación y filtros, razones reproducibles, accesibilidad de color con texto, historial append-only y ensayo con fixtures sintéticos. No autoriza por sí misma `PRODUCTION_WRITE`.

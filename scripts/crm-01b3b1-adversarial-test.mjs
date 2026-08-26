@@ -260,9 +260,9 @@ try {
   const perfCase = await prisma.pipelineCase.create({ data: caseData(`${run}-case-perf`, tenant.id, { id: seller.id, userId: sellerUser.id }) });
   const perfContext = Object.freeze({ tenantId: tenant.id, membershipId: seller.id, userId: sellerUser.id });
   await benchmark("authContext", () => access.resolveCrmPipelineContext(request(legacyToken), { prisma, env: productionRead }), 1);
-  await benchmark("list", () => read.listCrmPipelineCases(prisma, { tenantId: tenant.id, filters: read.parsePipelineListQuery({ page: "1", pageSize: "50" }) }), 2);
-  await benchmark("detail", () => read.findCrmPipelineCase(prisma, { tenantId: tenant.id, caseRef: perfCase.publicRef }), 1);
-  await benchmark("summary", () => read.summarizeCrmPipelineCases(prisma, { tenantId: tenant.id }), 3);
+  await benchmark("list", () => read.listCrmPipelineCases(prisma, { tenantId: tenant.id, role: "A", filters: read.parsePipelineListQuery({ page: "1", pageSize: "50" }) }), 2);
+  await benchmark("detail", () => read.findCrmPipelineCase(prisma, { tenantId: tenant.id, role: "A", caseRef: perfCase.publicRef }), 1);
+  await benchmark("summary", () => read.summarizeCrmPipelineCases(prisma, { tenantId: tenant.id, role: "A" }), 3);
   await benchmark("allowedTransitions", () => domain.getAllowedPipelineTransitions(perfContext, perfCase.id), 4);
   check("100 requests cálidos por operación", Object.values(timings).every((entry) => entry.requests === 100));
   check("sin N+1 y presupuesto fijo", timings.list.queries === 2 && timings.detail.queries === 1 && timings.summary.queries === 3 && timings.allowedTransitions.queries === 4);

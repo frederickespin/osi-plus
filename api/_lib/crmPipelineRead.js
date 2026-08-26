@@ -187,17 +187,38 @@ export function parsePipelineListQuery(query = {}) {
   });
 }
 
-function pipelineWhere(tenantId, filters = {}) {
-  const where = { tenantId: String(tenantId) };
+export function resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId } = {}) {
+  const normalizedRole = String(role || "").toUpperCase();
+  if (!tenantId || !["A", "V"].includes(normalizedRole)) {
+    invalid("COMMERCIAL_PERMISSION_FORBIDDEN", 403);
+  }
+  if (normalizedRole === "A") return Object.freeze({ tenantId: String(tenantId) });
+  if (!membershipId || !userId) invalid("COMMERCIAL_PERMISSION_FORBIDDEN", 403);
+  return Object.freeze({
+    tenantId: String(tenantId),
+    ownerMembershipId: String(membershipId),
+    ownerUserId: String(userId),
+  });
+}
+
+function pipelineWhere(scope, filters = {}) {
+  const where = { ...scope };
+  const personalScope = typeof scope.ownerMembershipId === "string" && typeof scope.ownerUserId === "string";
   if (filters.status) where.status = filters.status;
   if (filters.mode) where.mode = filters.mode;
   if (filters.serviceType) where.serviceType = filters.serviceType;
   if (filters.unassigned === true) {
-    where.ownerMembershipId = null;
-    where.ownerUserId = null;
+    if (personalScope) {
+      where.AND = [{ ownerMembershipId: null, ownerUserId: null }];
+    } else {
+      where.ownerMembershipId = null;
+      where.ownerUserId = null;
+    }
   } else if (filters.unassigned === false) {
-    where.ownerMembershipId = { not: null };
-    where.ownerUserId = { not: null };
+    if (!personalScope) {
+      where.ownerMembershipId = { not: null };
+      where.ownerUserId = { not: null };
+    }
   }
   if (filters.search) {
     where.OR = [
@@ -280,8 +301,8 @@ function safeCaseDetail(row, membershipId) {
   });
 }
 
-export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
-  const where = pipelineWhere(tenantId, filters);
+export async function listCrmPipelineCases(prisma, { tenantId, role, membershipId, userId, filters }) {
+  const where = pipelineWhere(resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId }), filters);
   try {
     const [total, rows] = await prisma.$transaction([
       prisma.pipelineCase.count({ where }),
@@ -305,16 +326,12 @@ export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
   }
 }
 
-export async function findCrmPipelineCase(prisma, { tenantId, membershipId, caseRef }) {
+export async function findCrmPipelineCase(prisma, { tenantId, role, membershipId, userId, caseRef }) {
   const publicRef = canonicalCaseRef(caseRef);
+  const scope = resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId });
   try {
-    const row = await prisma.pipelineCase.findUnique({
-      where: {
-        tenantId_publicRef: {
-          tenantId: String(tenantId),
-          publicRef,
-        },
-      },
+    const row = await prisma.pipelineCase.findFirst({
+      where: { ...scope, publicRef },
       select: CASE_DETAIL_SELECT,
     });
     if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
@@ -325,8 +342,9 @@ export async function findCrmPipelineCase(prisma, { tenantId, membershipId, case
   }
 }
 
-export async function summarizeCrmPipelineCases(prisma, { tenantId }) {
-  const where = { tenantId: String(tenantId) };
+export async function summarizeCrmPipelineCases(prisma, { tenantId, role, membershipId, userId }) {
+  const where = resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId });
+  const personalScope = typeof where.ownerMembershipId === "string" && typeof where.ownerUserId === "string";
   try {
     const [groups, assigned, unassigned] = await prisma.$transaction([
       prisma.pipelineCase.groupBy({
@@ -336,10 +354,10 @@ export async function summarizeCrmPipelineCases(prisma, { tenantId }) {
         orderBy: { status: "asc" },
       }),
       prisma.pipelineCase.count({
-        where: { ...where, ownerMembershipId: { not: null }, ownerUserId: { not: null } },
+        where: personalScope ? where : { ...where, ownerMembershipId: { not: null }, ownerUserId: { not: null } },
       }),
       prisma.pipelineCase.count({
-        where: { ...where, ownerMembershipId: null, ownerUserId: null },
+        where: personalScope ? { ...where, AND: [{ ownerMembershipId: null, ownerUserId: null }] } : { ...where, ownerMembershipId: null, ownerUserId: null },
       }),
     ]);
     const byStatus = Object.fromEntries(PIPELINE_STATUSES.map((status) => [status, 0]));

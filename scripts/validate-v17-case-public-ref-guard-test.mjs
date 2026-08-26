@@ -7,7 +7,7 @@ const schema = readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
 const sql = readFileSync(resolve(root, "prisma/migrations", V17_CASE_PUBLIC_REF_MIGRATION, "migration.sql"), "utf8");
 const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
 const canonicalRead = readFileSync(resolve(root, "api/_lib/crmPipelineRead.js"), "utf8");
-const canonicalRuntime = { "api/_lib/crmPipelineRead.js": canonicalRead, "api/_lib/crmCaseMutationDomain.js": "const caseRef = row.public_ref;", "api/_lib/crmClientOptions.js": "const clientRef = row.publicRef;", "api/crm/pipeline-cases/[caseKey]/index.js": "const caseRef = req.query?.caseKey; export default function handler() {}", "src/crm-relational/readApi.ts": "const caseRef = 'public DTO';" };
+const canonicalRuntime = { "api/_lib/crmPipelineRead.js": canonicalRead, "api/_lib/crmCaseMutationDomain.js": "const caseRef = row.public_ref;", "api/_lib/crmClientOptions.js": "const clientRef = row.publicRef;", "api/crm/pipeline-cases/[caseKey]/index.js": "findCrmPipelineCase(database, { tenantId: context.tenantId, role: context.role, membershipId: context.membershipId, userId: context.userId, caseRef: req.query?.caseKey });", "src/crm-relational/readApi.ts": "const caseRef = 'public DTO';" };
 const results = [];
 function mutatePipeline(mutator) {
   return schema.replace(/model PipelineCase\s*\{[\s\S]*?\n\}/, (block) => mutator(block));
@@ -21,6 +21,9 @@ function rejected(name, overrides, expected) {
   try { validateV17CasePublicRefGuard({ root, migrationNames: migrations, schemaSource: schema, migrationSource: sql, extraRuntimeSources: canonicalRuntime, ...overrides }); }
   catch (caught) { error = caught; }
   check(name, Boolean(error) && expected.test(error.message));
+}
+function withCanonicalRead(source) {
+  return { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": source } };
 }
 
 check("baseline publicRef aprobada", validateV17CasePublicRefGuard().ok);
@@ -42,7 +45,26 @@ rejected("migración 20 rechazada", { migrationNames: [...migrations, "202608250
 rejected("consumidor backend adicional rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/public-ref.js": "const value = row.publicRef;" } }, /sólo puede consumirse/);
 rejected("mutación consumidora rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/pipelineCaseMutationHttp.js": "const value = command.publicRef;" } }, /sólo puede consumirse/);
 rejected("consumidor frontend rechazado", { extraRuntimeSources: { ...canonicalRuntime, "src/unsafe.ts": "const leaked = value.publicRef;" } }, /sólo puede consumirse|frontend/);
-rejected("búsqueda sólo por publicRef rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace(/tenantId_publicRef:[\s\S]{0,130}\},\s*\}/, "publicRef") } }, /índice único tenant-first|únicamente por publicRef/);
+rejected("tenantId de alcance eliminado rechazado", withCanonicalRead(canonicalRead
+  .replace('{ tenantId: String(tenantId) }', "{}")
+  .replace("    tenantId: String(tenantId),\n    ownerMembershipId", "    ownerMembershipId")), /alcance tenant-first|tenant/);
+rejected("publicRef de findFirst eliminado rechazado", withCanonicalRead(canonicalRead
+  .replace("where: { ...scope, publicRef },", "where: { ...scope },")), /predicados tenant-first/);
+rejected("ownerMembershipId de V eliminado rechazado", withCanonicalRead(canonicalRead
+  .replace("    ownerMembershipId: String(membershipId),\n", "")), /Membership y User completos/);
+rejected("ownerUserId de V eliminado rechazado", withCanonicalRead(canonicalRead
+  .replace("    ownerUserId: String(userId),\n", "")), /Membership y User completos/);
+rejected("validación UUID previa eliminada rechazada", withCanonicalRead(canonicalRead
+  .replace("const publicRef = canonicalCaseRef(caseRef);", "const publicRef = String(caseRef);")), /UUID y alcance|UUID v4/);
+rejected("alcance previo a Prisma eliminado rechazado", withCanonicalRead(canonicalRead
+  .replace("const scope = resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId });", "const scope = Object.freeze({});")), /alcance server-side|UUID y alcance/);
+rejected("404 sanitizado eliminado rechazado", withCanonicalRead(canonicalRead
+  .replace('if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);', 'if (!row) invalid("CRM_PIPELINE_FORBIDDEN", 403);')), /404 indistinguible/);
+rejected("fallback a PK interna rechazado", withCanonicalRead(canonicalRead
+  .replace("return safeCaseDetail(row, String(membershipId));", "if (!row) return prisma.pipelineCase.findUnique({ where: { id: caseRef } });\n    return safeCaseDetail(row, String(membershipId));")), /fallback|segunda consulta|PK interna/);
+rejected("findFirst genérico sin alcance rechazado", withCanonicalRead(canonicalRead
+  .replace("where: { ...scope, publicRef },", "where: { publicRef },")), /predicados tenant-first|únicamente por publicRef/);
+rejected("alcance de ruta desde query rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/pipeline-cases/[caseKey]/index.js": canonicalRuntime["api/crm/pipeline-cases/[caseKey]/index.js"].replace("tenantId: context.tenantId", "tenantId: req.query.tenantId") } }, /contexto revalidado|query/);
 rejected("serializer CUID rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace("caseRef: row.publicRef", "caseRef: row.id") } }, /serializar|PK CUID/);
 rejected("clientName legacy rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace("caseCode: true,", "caseCode: true,\n  clientName: true,") } }, /clientName legacy/);
 rejected("búsqueda legacy de receptor rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": canonicalRead.replace('{ client: { is: { name: { contains: filters.search, mode: "insensitive" } } } }', '{ clientName: { contains: filters.search, mode: "insensitive" } }') } }, /clientName legacy|Client relacional/);

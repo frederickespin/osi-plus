@@ -80,13 +80,20 @@ export function validateCrm01aGuard({
   const pipelineAssignments = roleCatalog.match(/PERMS\.PIPELINE_VIEW/g) || [];
   invariant(pipelineAssignments.length === 1 && JSON.stringify(pipelineRoles) === JSON.stringify(["V"]), "pipeline:view sólo puede asignarse por base a A y V");
   invariant(!/\bownerId\b/.test(service), "ownerId heredado no puede ser autoridad");
-  invariant((service.match(/tenantId:\s*String\(tenantId\)/g) || []).length >= 3, "hay consultas sin filtro tenantId");
+  invariant((service.match(/resolveCrmPipelineReadScope\(\{ tenantId, role, membershipId, userId \}\)/g) || []).length === 3,
+    "lista, detalle y resumen no comparten alcance READ revalidado");
+  invariant(/normalizedRole === "A"[\s\S]{0,120}tenantId:\s*String\(tenantId\)/.test(service)
+    && /ownerMembershipId:\s*String\(membershipId\)[\s\S]{0,100}ownerUserId:\s*String\(userId\)/.test(service),
+  "alcance V no exige owner completo User + Membership + Tenant");
   invariant(/select:\s*CASE_SELECT/.test(service) && /enterpriseOwner:\s*\{\s*select:\s*OWNER_SELECT/.test(service), "falta selección explícita y owner relacional");
   invariant(!/milestonesJson:\s*true|flags:\s*true|ownerUserId:\s*true|tenantId:\s*true/.test(service), "el select expone campos internos");
   const safeOwner = service.slice(service.indexOf("function safeOwner"), service.indexOf("function safeCase"));
   invariant(!/membershipId|userStatus|email|phone|userId|tenantId|grantedPermissions|deniedPermissions/.test(safeOwner), "owner expone identidad o estado global innecesario");
   invariant(/MAX_PAGE_SIZE = 100/.test(service) && /updatedAt:\s*"desc"[\s\S]*publicRef:\s*"asc"/.test(service), "paginación u orden estable ausente");
   invariant(/ownerMembershipId:\s*null[\s\S]*ownerUserId:\s*null/.test(service), "filtro unassigned incompleto");
+  invariant((service.match(/personalScope \? \{ \.\.\.where, AND: \[\{ ownerMembershipId: null, ownerUserId: null \}\] \}/g) || []).length === 1
+    && /if \(personalScope\)[\s\S]{0,100}where\.AND = \[\{ ownerMembershipId: null, ownerUserId: null \}\]/.test(service),
+  "filtros o métricas V pueden sobrescribir el owner revalidado");
   invariant(/sla:\s*Object\.freeze\(\{ overdue: null, basis: "UNAVAILABLE" \}\)/.test(service), "SLA ambiguo no está explicitado");
   const readHttpGate = readHttp.indexOf("requireCrmPipelineReadOnly(env)");
   const readHttpOptions = readHttp.indexOf('req.method === "OPTIONS"');

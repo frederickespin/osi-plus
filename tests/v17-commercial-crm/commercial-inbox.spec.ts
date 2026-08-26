@@ -272,7 +272,7 @@ test("los permisos explícitos y el owner efectivo gobiernan los controles local
 test("filtros, paginación y Ficha usan Client relacional y renderizan texto hostil sin ejecutarlo", async ({ page }) => {
   const hostileName = "<img src=x onerror=globalThis.__hostile=1>";
   const hostile = pipelineCase({ client: { clientRef: DEFAULT_CLIENT_REF, displayName: hostileName, type: "PERSON", status: "active" }, owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" } });
-  await authenticate(page, { role: "V", permissions: ["pipeline:view"] });
+  await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
   const audit = await mockCrm(page, { total: 2_000, cases: [hostile] });
   await page.goto("/crm");
   await expect(page.getByText("2000 resultados")).toBeVisible();

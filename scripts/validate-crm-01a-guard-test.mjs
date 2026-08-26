@@ -27,7 +27,9 @@ try {
   rejected("clients:view como autoridad rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("PERMS.PIPELINE_VIEW", '"clients:view"') } }, /pipeline:view/);
   const rbac = read("api/_lib/rbac.js");
   rejected("pipeline:view en rol K rechazado", { overrides: { "api/_lib/rbac.js": rbac.replace("  K: [", "  K: [\n    PERMS.PIPELINE_VIEW,") } }, /A y V/);
-  rejected("filtro tenant eliminado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replaceAll("tenantId: String(tenantId)", "id: { not: '' }") } }, /tenantId/);
+  rejected("filtro tenant eliminado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("return Object.freeze({ tenantId: String(tenantId) });", "return Object.freeze({});") } }, /owner completo/);
+  rejected("owner User de V eliminado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("ownerUserId: String(userId),", "") } }, /owner completo/);
+  rejected("intersección unassigned de V eliminada rechazada", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("where.AND = [{ ownerMembershipId: null, ownerUserId: null }];", "where.ownerMembershipId = null; where.ownerUserId = null;") } }, /sobrescribir/);
   rejected("ownerId heredado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": `${service}\nconst authority = row.ownerId;` } }, /ownerId/);
   rejected("campo interno expuesto rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("publicRef: true,", "tenantId: true,\n  publicRef: true,") } }, /campos internos/);
   const list = read("api/crm/pipeline-cases/index.js");

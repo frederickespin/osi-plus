@@ -6,6 +6,113 @@ const MIGRATION = "20260824010000_v17_client_public_ref_case_mutations";
 const fail = (message) => { throw new Error(`V17_CRM_CASE_MUTATIONS_GUARD:${message}`); };
 const requireMatch = (text, pattern, message) => { if (!pattern.test(text)) fail(message); };
 
+function hasIdentifierOutsideLiterals(source, expected) {
+  let index = 0;
+  const identifierStart = /[A-Za-z_$]/;
+  const identifierPart = /[A-Za-z0-9_$]/;
+
+  function skipQuoted(quote) {
+    index += 1;
+    while (index < source.length) {
+      if (source[index] === "\\") {
+        index += 2;
+      } else if (source[index] === quote) {
+        index += 1;
+        return;
+      } else {
+        index += 1;
+      }
+    }
+  }
+
+  function skipLineComment() {
+    index += 2;
+    while (index < source.length && source[index] !== "\n") index += 1;
+  }
+
+  function skipBlockComment() {
+    index += 2;
+    while (index < source.length) {
+      if (source[index] === "*" && source[index + 1] === "/") {
+        index += 2;
+        return;
+      }
+      index += 1;
+    }
+  }
+
+  function scanTemplate() {
+    index += 1;
+    while (index < source.length) {
+      if (source[index] === "\\") {
+        index += 2;
+      } else if (source[index] === "`") {
+        index += 1;
+        return false;
+      } else if (source[index] === "$" && source[index + 1] === "{") {
+        index += 2;
+        if (scanCode(true)) return true;
+      } else {
+        index += 1;
+      }
+    }
+    return false;
+  }
+
+  function scanCode(stopAtTemplateExpression) {
+    let braces = 0;
+    while (index < source.length) {
+      const character = source[index];
+      const next = source[index + 1];
+      if (character === "/" && next === "/") {
+        skipLineComment();
+        continue;
+      }
+      if (character === "/" && next === "*") {
+        skipBlockComment();
+        continue;
+      }
+      if (character === "\"" || character === "'") {
+        skipQuoted(character);
+        continue;
+      }
+      if (character === "`") {
+        if (scanTemplate()) return true;
+        continue;
+      }
+      if (stopAtTemplateExpression && character === "{") {
+        braces += 1;
+        index += 1;
+        continue;
+      }
+      if (stopAtTemplateExpression && character === "}") {
+        if (braces === 0) {
+          index += 1;
+          return false;
+        }
+        braces -= 1;
+        index += 1;
+        continue;
+      }
+      if (identifierStart.test(character)) {
+        const start = index;
+        index += 1;
+        while (index < source.length && identifierPart.test(source[index])) index += 1;
+        if (source.slice(start, index) === expected) return true;
+        continue;
+      }
+      index += 1;
+    }
+    return false;
+  }
+
+  return scanCode(false);
+}
+
+function assertNoLegacyClientNameAuthority(source, message) {
+  if (hasIdentifierOutsideLiterals(source, "clientName")) fail(message);
+}
+
 export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrides = {} } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
@@ -62,8 +169,12 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
   requireMatch(clientOptions, /tenantId:\s*String\(tenantId\)[\s\S]*select:\s*\{\s*publicRef:\s*true,\s*name:\s*true,\s*type:\s*true,\s*status:\s*true\s*\}/, "selector Client no es tenant-first o mínimo");
   if (/document|email|phone|clientId|tenantId:\s*true/i.test(clientOptions)) fail("selector Client expone PII o autoridad interna");
 
+  const readDomain = read("api/_lib/crmPipelineRead.js");
+  assertNoLegacyClientNameAuthority(readDomain, "lectura CRM publica, selecciona o usa fallback clientName legacy");
+
   const frontend = ["src/crm-relational/mutationApi.ts", "src/crm-relational/mutationAccess.ts", "src/commercial-crm/CommercialCaseForm.tsx", "src/commercial-crm/CommercialCaseDetail.tsx", "src/commercial-crm/CommercialInboxModule.tsx"].map(read).join("\n");
-  if (/localStorage|sessionStorage|indexedDB|\/api\/cases|\/api\/events|clientName/.test(frontend)) fail("frontend usa fallback o persistencia empresarial");
+  if (/localStorage|sessionStorage|indexedDB|\/api\/cases|\/api\/events/.test(frontend)) fail("frontend usa fallback o persistencia empresarial");
+  assertNoLegacyClientNameAuthority(frontend, "frontend consume campo DTO o fallback clientName legacy");
   if (/\b(?:clientId|tenantId|ownerMembershipId|ownerUserId|publicRef)\b/.test(frontend)) fail("frontend expone identidad interna");
   if (!["deniedPermissions", "pipeline:create", "pipeline:update:own", "pipeline:update:any"].every((value) => frontend.includes(value))) fail("frontend no aplica permisos explícitos y denies");
   requireMatch(frontend, /VITE_CRM_PIPELINE_CASE_MUTATION_MODE[\s\S]*mutation === "LOCAL_ONLY"[\s\S]*mutation === "PREVIEW_REHEARSAL"/, "UI de mutación no posee compuerta focal exacta");

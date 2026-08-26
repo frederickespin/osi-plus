@@ -19,6 +19,9 @@ export function createPipelineCasesListHandler({
     requirePermission,
     execute: ({ req, context, prisma: database }) => listCrmPipelineCases(database, {
       tenantId: context.tenantId,
+      role: context.role,
+      membershipId: context.membershipId,
+      userId: context.userId,
       filters: parsePipelineListQuery(req.query),
     }),
     response: (result) => ({ ok: true, ...result }),

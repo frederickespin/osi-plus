@@ -50,6 +50,11 @@ function runtimeSources(root) {
   }
   return result;
 }
+function containsLegacyFrontendIdentifier(source) {
+  return /\b(?:const|let|var)\s+(?:clientName|caseNumber)\b/.test(source)
+    || /(?:\.|\{|,)\s*(?:clientName|caseNumber)\s*(?::|=|,|\})/.test(source)
+    || /["'](?:clientName|caseNumber)["']\s*:/.test(source);
+}
 
 export function validateV17CasePublicRefGuard({
   root = process.cwd(), migrationNames, schemaSource, migrationSource,
@@ -116,6 +121,21 @@ export function validateV17CasePublicRefGuard({
   `publicRef sólo puede consumirse en backends canónicos tenant-first: ${publicRefConsumers.join(", ")}`);
 
   const canonicalRead = runtime[canonicalReadPath];
+  const canonicalRefStart = canonicalRead.indexOf("function canonicalCaseRef(value)");
+  const canonicalRefEnd = canonicalRead.indexOf("\nfunction ", canonicalRefStart + 1);
+  const scopeStart = canonicalRead.indexOf("export function resolveCrmPipelineReadScope");
+  const scopeEnd = canonicalRead.indexOf("\nfunction pipelineWhere", scopeStart + 1);
+  const detailStart = canonicalRead.indexOf("export async function findCrmPipelineCase");
+  const detailEnd = canonicalRead.indexOf("\nexport async function summarizeCrmPipelineCases", detailStart + 1);
+  invariant(canonicalRefStart >= 0 && canonicalRefEnd > canonicalRefStart,
+    "validador UUID canónico de caseRef ausente");
+  invariant(scopeStart >= 0 && scopeEnd > scopeStart,
+    "alcance READ server-side ausente");
+  invariant(detailStart >= 0 && detailEnd > detailStart,
+    "lector tenant-first de detalle ausente");
+  const canonicalRef = canonicalRead.slice(canonicalRefStart, canonicalRefEnd);
+  const readScope = canonicalRead.slice(scopeStart, scopeEnd);
+  const detailRead = canonicalRead.slice(detailStart, detailEnd);
   invariant((canonicalRead.match(/publicRef:\s*true/g) || []).length === 3,
     "lista, detalle y Client deben seleccionar publicRef de forma explícita");
   invariant((canonicalRead.match(/caseRef:\s*row\.publicRef/g) || []).length === 2,
@@ -129,9 +149,27 @@ export function validateV17CasePublicRefGuard({
   "lista y detalle deben proyectar exclusivamente Client relacional");
   invariant(/client:\s*\{\s*is:\s*\{\s*name:\s*\{\s*contains:\s*filters\.search/.test(canonicalRead),
     "búsqueda de receptor debe usar Client relacional");
-  invariant(/findUnique\(\{[\s\S]{0,250}tenantId_publicRef:\s*\{[\s\S]{0,120}tenantId:\s*String\(tenantId\),[\s\S]{0,80}publicRef/.test(canonicalRead),
-    "detalle debe consultar el índice único tenant-first");
-  invariant(!/where:\s*\{\s*publicRef\b/.test(canonicalRead), "consulta únicamente por publicRef prohibida");
+  invariant(/typeof value !== "string"[\s\S]*PUBLIC_CASE_REF_PATTERN\.test\(value\)[\s\S]*invalid\("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404\)[\s\S]*return value/.test(canonicalRef),
+    "UUID v4 canónico debe validarse como 404 antes de Prisma");
+  invariant(/normalizedRole === "A"\) return Object\.freeze\(\{ tenantId: String\(tenantId\) \}\)/.test(readScope),
+    "A debe conservar alcance tenant-first exacto");
+  invariant(/if \(!membershipId \|\| !userId\) invalid\("COMMERCIAL_PERMISSION_FORBIDDEN", 403\)/.test(readScope)
+    && /tenantId: String\(tenantId\),[\s\S]*ownerMembershipId: String\(membershipId\),[\s\S]*ownerUserId: String\(userId\)/.test(readScope),
+  "V debe exigir tenant, Membership y User completos");
+  const validatePosition = detailRead.indexOf("const publicRef = canonicalCaseRef(caseRef);");
+  const scopePosition = detailRead.indexOf("const scope = resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId });");
+  const queryPosition = detailRead.indexOf("prisma.pipelineCase.findFirst({");
+  invariant(validatePosition >= 0 && scopePosition > validatePosition && queryPosition > scopePosition,
+    "UUID y alcance server-side deben resolverse antes de Prisma");
+  invariant(/findFirst\(\{\s*where:\s*\{ \.\.\.scope, publicRef \},\s*select: CASE_DETAIL_SELECT/.test(detailRead),
+    "detalle findFirst debe usar todos los predicados tenant-first autorizados");
+  invariant((detailRead.match(/prisma\.pipelineCase\.(?:findFirst|findUnique)\s*\(/g) || []).length === 1,
+    "detalle no puede usar fallback ni una segunda consulta de identidad");
+  invariant(!/where:\s*\{\s*publicRef\b/.test(detailRead), "findFirst genérico únicamente por publicRef prohibido");
+  invariant(!/where:\s*\{\s*(?:id|caseRef)\b|findUnique\s*\(|\bcaseRef:\s*(?:row\.)?id\b/.test(detailRead),
+    "fallback a PK interna o CUID prohibido");
+  invariant(/if \(!row\) invalid\("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404\)/.test(detailRead),
+    "caso ajeno, inexistente o cross-tenant debe ser 404 indistinguible");
   invariant(!/caseRef:\s*row\.id\b|\bid:\s*row\.id\b|\bid:\s*true\b|\bcaseId\b/.test(canonicalRead),
     "PK CUID o alias interno prohibido en lectura pública");
   invariant(!/\bpublic_ref\b/.test(canonicalRead), "nombre SQL public_ref prohibido en contratos runtime");
@@ -143,14 +181,22 @@ export function validateV17CasePublicRefGuard({
   const dynamicSegments = new Set(routePaths.flatMap((path) => path.match(/\[[^\]]+\]/g) || []));
   invariant(dynamicSegments.size === 1 && dynamicSegments.has("[caseKey]"),
     "Vercel exige un segmento dinámico físico único y neutral para lectura y mutaciones");
-  invariant(/req\.query\?\.caseKey/.test(runtime["api/crm/pipeline-cases/[caseKey]/index.js"] || ""),
+  const detailRoute = runtime["api/crm/pipeline-cases/[caseKey]/index.js"] || "";
+  invariant(/req\.query\?\.caseKey/.test(detailRoute),
     "la ruta de detalle debe interpretar caseKey exclusivamente como caseRef");
+  invariant(/tenantId:\s*context\.tenantId/.test(detailRoute)
+    && /role:\s*context\.role/.test(detailRoute)
+    && /membershipId:\s*context\.membershipId/.test(detailRoute)
+    && /userId:\s*context\.userId/.test(detailRoute),
+  "tenant, rol, Membership y User deben proceder del contexto revalidado server-side");
+  invariant(!/(?:req\.query|req\.headers|x-osi-|localStorage|sessionStorage)[\s\S]{0,120}(?:tenantId|membershipId|userId|owner)/i.test(detailRoute),
+    "query, headers o storage no pueden definir el alcance de detalle");
   invariant(!routePaths.includes("api/crm/pipeline-cases/[id].js"), "alias ambiguo [id] de lectura todavía presente");
   invariant(!Object.entries(runtime).some(([path, source]) => path.startsWith("src/") && /\bpublicRef\b|\bpublic_ref\b/.test(source)),
     "frontend debe usar únicamente caseRef");
   const protectedPublicFrontend = Object.entries(runtime)
     .filter(([path]) => path.startsWith("src/crm-relational/") || path.startsWith("src/commercial-crm/"));
-  invariant(!protectedPublicFrontend.some(([, source]) => /\bclientName\b|\bcaseNumber\b/.test(source)),
+  invariant(!protectedPublicFrontend.some(([, source]) => containsLegacyFrontendIdentifier(source)),
     "frontend público no puede reintroducir clientName legacy ni caseNumber");
 
   return Object.freeze({
@@ -162,6 +208,7 @@ export function validateV17CasePublicRefGuard({
     atomic: true,
     immutable: true,
     tenantFirst: true,
+    detailLookup: "findFirst(tenantId,publicRef,authorized-owner-scope)",
     migration: V17_CASE_PUBLIC_REF_MIGRATION,
   });
 }

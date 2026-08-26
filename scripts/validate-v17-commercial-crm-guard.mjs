@@ -62,7 +62,12 @@ for (const [path, source] of [["ERP shell", erpShell], ["Inbox", inbox], ["Ficha
   invariant(!/dangerouslySetInnerHTML/.test(source), `HTML editable inseguro en ${path}`);
 }
 invariant(/lazy\(\(\) => import\("\.\/CommercialCaseDetail"\)\)/.test(inbox), "Ficha no está separada en un chunk lazy");
-invariant(/Abrir ficha/.test(inbox) && /Volver al Pipeline/.test(caseDetail), "navegación canónica de la Ficha ausente");
+invariant(/aria-label={`Seleccionar caso/.test(inbox) && /aria-pressed={selected}/.test(inbox)
+  && /Ficha del caso/.test(inbox) && /Volver al Inbox/.test(caseDetail), "selección master-detail o navegación canónica de la Ficha ausente");
+invariant(/commercial-case-summary/.test(inbox) && /commercial-full-case-workspace/.test(inbox)
+  && /Sin cotización/.test(inbox) && /Sin comunicación registrada/.test(inbox) && /Pendiente de definir/.test(inbox),
+  "resumen compacto inventa autoridad o no separa la Ficha completa");
+invariant(!/Abrir ficha|Volver al Pipeline/.test(inbox + caseDetail), "etiquetas históricas de navegación reaparecieron");
 invariant(/role="tablist"/.test(caseDetail) && /Survey en integración/.test(caseDetail) && /Cotización en integración/.test(caseDetail), "Ficha no conserva tabs avanzados como integración explícita");
 invariant(!/surveyApi|quoteApi|\/api\/survey|\/api\/quote|SalesQuoteWorkspace/.test(caseDetail), "tabs futuros conectaron autoridad inexistente");
 for (const section of ["General", "Administración", "Comercial", "Coordinación", "Operaciones", "Campo y Taller", "Logística", "Recursos Humanos"]) {

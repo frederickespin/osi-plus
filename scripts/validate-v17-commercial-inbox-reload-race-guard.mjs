@@ -22,7 +22,7 @@ const preReload = affected.slice(barrierStart, reloadIndex);
 
 const ordered = [
   'detailBarrier.prepare("pre-reload-valid-detail", detailPath)',
-  'getByRole("button", { name: "Abrir ficha" }).first().click()',
+  'getByRole("button", { name: /Ficha del caso/ }).first().click()',
   "toHaveURL",
   "Cargando la autoridad relacional del caso",
   "controlledGate.release()",

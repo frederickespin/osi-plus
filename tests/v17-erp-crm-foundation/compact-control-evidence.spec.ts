@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 
-const EVIDENCE = resolve("docs/evidence/V17-CRM-COMPACT-CONTROL-CENTER-04C");
+const EVIDENCE = resolve("docs/evidence/V17-CRM-COMPACT-CONTROL-CENTER-04D1A");
 const CASE_REF = "118f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const CLIENT_REF = "128f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const statuses = ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"] as const;
@@ -50,7 +50,7 @@ test("evidencia sanitizada del control comercial compacto", async ({ page }, tes
   const layout = page.getByTestId("commercial-master-detail-layout");
   const queue = page.getByRole("region", { name: "Cola comercial" });
   if (!mobile) {
-    const visibleRows = await page.getByRole("button", { name: "Abrir ficha" }).evaluateAll((buttons) => buttons.filter((button) => button.getBoundingClientRect().bottom <= window.innerHeight).length);
+    const visibleRows = await page.getByRole("button", { name: /Ficha del caso/ }).evaluateAll((buttons) => buttons.filter((button) => button.getBoundingClientRect().bottom <= window.innerHeight).length);
     expect(visibleRows).toBeGreaterThanOrEqual(10);
     const queueBox = await queue.boundingBox();
     expect(queueBox?.width).toBeGreaterThanOrEqual(559);
@@ -62,18 +62,27 @@ test("evidencia sanitizada del control comercial compacto", async ({ page }, tes
     expect((await summaryStrip.boundingBox())?.height).toBeLessThanOrEqual(50);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  await page.screenshot({ path: resolve(EVIDENCE, mobile ? "05-mobile-list.png" : "01-admin-global.png"), fullPage: true });
-  if (!mobile) await page.screenshot({ path: resolve(EVIDENCE, "03-alert-list-gray-sla.png"), fullPage: true });
-  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.screenshot({ path: resolve(EVIDENCE, mobile ? "06a-flujo-movil-lista.png" : "01-supervision-global.png"), fullPage: true });
+  const firstRow = page.getByTestId("commercial-queue-item").first();
+  await firstRow.getByRole("button", { name: /Seleccionar caso/ }).click();
+  await expect(page.getByTestId("commercial-case-summary")).toBeVisible();
+  await expect(firstRow).toHaveAttribute("data-selected", "true");
+  await page.screenshot({ path: resolve(EVIDENCE, mobile ? "06b-flujo-movil-resumen.png" : "02-caso-seleccionado-resumen.png"), fullPage: true });
+  if (!mobile) await firstRow.getByRole("button", { name: /Ficha del caso/ }).screenshot({ path: resolve(EVIDENCE, "03-accion-ficha-del-caso.png") });
+  await page.getByTestId("commercial-case-summary").getByRole("button", { name: /Ficha del caso/ }).click();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
-  await page.screenshot({ path: resolve(EVIDENCE, mobile ? "06-mobile-detail.png" : "02-admin-selected.png"), fullPage: true });
+  await expect(page.getByTestId("commercial-master-detail-layout")).toHaveCount(0);
+  await page.screenshot({ path: resolve(EVIDENCE, mobile ? "06c-flujo-movil-ficha.png" : "04-ficha-espacio-completo.png"), fullPage: true });
+  await page.getByRole("button", { name: "Volver al Inbox" }).click();
+  await expect(page.getByTestId("commercial-case-summary")).toBeVisible();
+  await expect(firstRow).toHaveAttribute("data-selected", "true");
+  if (!mobile) await page.screenshot({ path: resolve(EVIDENCE, "05-regreso-inbox-estado.png"), fullPage: true });
   if (!mobile) {
-    await page.screenshot({ path: resolve(EVIDENCE, "07-gray-sla.png"), fullPage: true });
     actorRole = "V";
     await page.evaluate(() => { localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic-user", name: "Ventas Demo", role: "V" })); });
     await page.goto("/commercial");
     await expect(page.getByText("Cola personal revalidada por servidor")).toBeVisible();
-    await page.screenshot({ path: resolve(EVIDENCE, "04-sales-scope.png"), fullPage: true });
+    await page.screenshot({ path: resolve(EVIDENCE, "07-alcance-vendedor.png"), fullPage: true });
   }
   await expect(page.getByText(CASE_REF)).toHaveCount(0);
 });

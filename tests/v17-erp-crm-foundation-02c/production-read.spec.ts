@@ -76,7 +76,7 @@ test("A y V acceden al ERP avanzado sólo después de confirmación productiva",
     await page.locator("main").getByRole("button").filter({ hasText: "Comercial y CRM" }).click();
     await expect(page.getByTestId("advanced-erp-shell")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Abrir ficha" }).click();
+    await page.getByRole("button", { name: /Ficha del caso/ }).click();
     await expect(page).toHaveURL(new RegExp(`/commercial/cases/${CASE_REF}$`));
     await expect(page.getByRole("heading", { name: "Ficha del Caso", exact: true })).toBeVisible();
     await page.getByRole("tab", { name: /Survey/u }).click();

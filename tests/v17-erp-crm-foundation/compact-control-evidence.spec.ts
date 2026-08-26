@@ -42,10 +42,26 @@ test("evidencia sanitizada del control comercial compacto", async ({ page }, tes
   await page.goto("/commercial");
   await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
   const mobile = testInfo.project.name === "chromium-mobile";
+  const summaryStrip = page.getByTestId("commercial-summary-strip");
+  await expect(summaryStrip).toContainText("12 casos");
+  await expect(summaryStrip).toContainText("8 asignados");
+  await expect(summaryStrip).toContainText("4 sin asignar");
+  await expect(summaryStrip).toContainText("SLA sin configurar");
+  const layout = page.getByTestId("commercial-master-detail-layout");
+  const queue = page.getByRole("region", { name: "Cola comercial" });
   if (!mobile) {
     const visibleRows = await page.getByRole("button", { name: "Abrir ficha" }).evaluateAll((buttons) => buttons.filter((button) => button.getBoundingClientRect().bottom <= window.innerHeight).length);
     expect(visibleRows).toBeGreaterThanOrEqual(10);
+    const queueBox = await queue.boundingBox();
+    expect(queueBox?.width).toBeGreaterThanOrEqual(559);
+    expect(queueBox?.width).toBeLessThanOrEqual(721);
+    expect(await layout.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
+    expect(await page.getByTestId("commercial-queue-item").first().locator("p").first().evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(13);
+  } else {
+    expect(await layout.evaluate((element) => getComputedStyle(element).display)).not.toBe("grid");
+    expect((await summaryStrip.boundingBox())?.height).toBeLessThanOrEqual(50);
   }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: resolve(EVIDENCE, mobile ? "05-mobile-list.png" : "01-admin-global.png"), fullPage: true });
   if (!mobile) await page.screenshot({ path: resolve(EVIDENCE, "03-alert-list-gray-sla.png"), fullPage: true });
   await page.getByRole("button", { name: "Abrir ficha" }).first().click();

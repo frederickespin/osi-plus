@@ -58,7 +58,14 @@ const requirePermission = async (req, res) => {
     res.status(401).json({ ok: false, error: "COMMERCIAL_AUTH_INVALID" });
     return null;
   }
-  return Object.freeze({ tenantId: "tenant-preview" });
+  return Object.freeze({
+    tenantId: "tenant-preview",
+    membershipId: "membership-preview-admin",
+    userId: "user-preview-admin",
+    role: "A",
+    effectivePermissions: Object.freeze(["pipeline:view"]),
+    deniedPermissions: Object.freeze([]),
+  });
 };
 
 const listDatabase = {
@@ -70,12 +77,15 @@ const listDatabase = {
 };
 const detailDatabase = {
   pipelineCase: {
-    findUnique: async ({ where }) => {
+    findFirst: async ({ where }) => {
       databaseCalls += 1;
-      if (where.tenantId_publicRef?.publicRef === CROSS_TENANT_CASE_REF) return null;
+      if (where.publicRef === CROSS_TENANT_CASE_REF) return null;
       return {
-        publicRef: VISIBLE_CASE_REF, caseCode: "DEMO-HTTP", mode: "LOCAL", serviceType: "MOVING",
-        status: "NEW_INBOX", client: null, enterpriseOwner: null,
+        publicRef: VISIBLE_CASE_REF, ownerMembershipId: null, version: 1,
+        caseCode: "DEMO-HTTP", mode: "LOCAL", serviceType: "MOVING", customerType: "L4_PERSONAL",
+        status: "NEW_INBOX", estimatedCbm: null, requiresSurvey: false, surveyMethod: null,
+        originLocation: null, destinationLocation: null, destinationContracted: null, assetsCount: 0,
+        client: null, enterpriseOwner: null, _count: { quotes: 0, events: 0 },
         createdAt: new Date("2026-08-18T10:00:00.000Z"), updatedAt: new Date("2026-08-18T10:00:00.000Z"),
       };
     },

@@ -25,6 +25,7 @@ const allowedBackendChanges = new Set([
   "api/auth/me.js",
   "api/clients/index.js",
   "api/crm/client-options.js",
+  "api/crm/pipeline-summary.js",
   "api/crm/pipeline-cases/[id].js",
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",

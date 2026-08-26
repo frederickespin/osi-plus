@@ -161,7 +161,14 @@ const readDatabase = {
 const validRead = await invoke(createPipelineCasesListHandler({
   env: exactPreview,
   prismaClient: readDatabase,
-  requirePermission: async () => ({ tenantId: "tenant-synthetic" }),
+  requirePermission: async () => ({
+    tenantId: "tenant-synthetic",
+    membershipId: "membership-synthetic",
+    userId: "user-synthetic",
+    role: "A",
+    effectivePermissions: ["pipeline:view"],
+    deniedPermissions: [],
+  }),
 }), {
   method: "GET",
   headers: {

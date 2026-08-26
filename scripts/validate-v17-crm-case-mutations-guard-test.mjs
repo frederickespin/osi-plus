@@ -17,7 +17,9 @@ const rbac = read("api/_lib/rbac.js");
 const http = read("api/_lib/crmCaseMutationHttp.js");
 const domain = read("api/_lib/crmCaseMutationDomain.js");
 const form = read("src/commercial-crm/CommercialCaseForm.tsx");
+const detail = read("src/commercial-crm/CommercialCaseDetail.tsx");
 const mutationApi = read("src/crm-relational/mutationApi.ts");
+const readDomain = read("api/_lib/crmPipelineRead.js");
 const browserSuite = read("tests/v17-commercial-crm/commercial-inbox.spec.ts");
 
 rejected("publicRef nullable", { "prisma/schema.prisma": schema.replace(/(model Client\s*\{[\s\S]*?publicRef\s+)String/, "$1String?") }, /Client\.publicRef/);
@@ -35,8 +37,17 @@ rejected("actor sin User", { "api/_lib/crmCaseMutationDomain.js": domain.replace
 rejected("PATCH sin tenant", { "api/_lib/crmCaseMutationDomain.js": domain.replace('WHERE "tenant_id"=${who.tenantId} AND "public_ref"', 'WHERE "public_ref"') }, /tenant\/publicRef/);
 rejected("V sobre owner ajeno", { "api/_lib/crmCaseMutationDomain.js": domain.replace("current.owner_membership_id !== who.membershipId || current.owner_user_id !== who.userId", "false") }, /owner completo/);
 rejected("storage empresarial", { "src/commercial-crm/CommercialCaseForm.tsx": `${form}\nlocalStorage.setItem('case','x');` }, /persistencia empresarial/);
+rejected("campo DTO clientName", { "src/crm-relational/mutationApi.ts": `${mutationApi}\ninterface ForbiddenDto { clientName: string }` }, /campo DTO|clientName legacy/);
+rejected("fallback frontend clientName", { "src/commercial-crm/CommercialCaseDetail.tsx": `${detail}\nconst forbidden = item.client?.displayName || item.clientName;` }, /campo DTO|clientName legacy/);
+rejected("fallback clientName en interpolación", { "src/commercial-crm/CommercialCaseDetail.tsx": `${detail}\nconst forbidden = ` + "`${item.clientName}`" + `;` }, /campo DTO|clientName legacy/);
+rejected("selección Prisma clientName", { "api/_lib/crmPipelineRead.js": readDomain.replace("caseCode: true,", "caseCode: true,\n  clientName: true,") }, /lectura CRM.*clientName/);
+rejected("fallback API clientName", { "api/_lib/crmPipelineRead.js": readDomain.replace("displayName: String(client.name),", "displayName: String(client.name || row.clientName),") }, /lectura CRM.*clientName/);
 rejected("ID interno frontend", { "src/commercial-crm/CommercialCaseForm.tsx": `${form}\nconst clientId='x';` }, /identidad interna/);
 rejected("lectura concede escritura UI", { "src/crm-relational/mutationApi.ts": mutationApi.replace('const mutation = environment.VITE_CRM_PIPELINE_CASE_MUTATION_MODE;', 'const mutation = "LOCAL_ONLY";') }, /compuerta focal/);
 rejected("capturas reescriben evidencia en CI", { "tests/v17-commercial-crm/commercial-inbox.spec.ts": browserSuite.replace(/CAPTURE_MUTATION_EVIDENCE && /g, "") }, /evidencia/);
+
+assert.equal(validateV17CrmCaseMutationsGuard({ overrides: {
+  "src/commercial-crm/CommercialCaseDetail.tsx": `${detail}\nconst clientDisplayName = item.client?.displayName || \`No se infiere desde clientName\`;`,
+} }).ok, true); assertions += 1;
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);

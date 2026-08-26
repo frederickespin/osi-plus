@@ -27,7 +27,7 @@ const ordered = [
   "Cargando la autoridad relacional del caso",
   "controlledGate.release()",
   "await preReloadDetail.completion",
-  "Receptor verificado: Receptor Sintético",
+  "commercial-case-focused-header",
   "detailBarrier.markUiStable(preReloadDetail",
   "detailBarrier.assertReadyForReload(preReloadDetail)",
   "expect(detailBarrier.pendingCount).toBe(0)",

@@ -9,7 +9,7 @@ function files(root) {
 }
 
 const migrationNames = readdirSync("prisma/migrations", { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => item.name);
-invariant(migrationNames.length === 20, "se exigen exactamente 20 migraciones");
+invariant(migrationNames.length === 21, "se exigen exactamente 21 migraciones");
 invariant(migrationNames.includes("20260801020000_v17_pipeline_case_client_authority"), "migración 17 V17-CASE-CLIENT ausente");
 invariant(migrationNames.includes("20260821010000_v17_pipeline_case_public_ref"), "migración 18 V17-CASE-PUBLIC-REF ausente");
 

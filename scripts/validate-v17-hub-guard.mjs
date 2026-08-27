@@ -49,12 +49,13 @@ const allowedPrismaChanges = new Set([
   "prisma/migrations/20260821010000_v17_pipeline_case_public_ref/migration.sql",
   "prisma/migrations/20260824010000_v17_client_public_ref_case_mutations/migration.sql",
   "prisma/migrations/20260827010000_v17_tenant_membership_public_ref/migration.sql",
+  "prisma/migrations/20260827020000_v17_admin_identity_invitation/migration.sql",
 ]);
 function fail(message) { throw new Error(`V17_HUB_GUARD_FAILED: ${message}`); }
 function text(path) { return readFileSync(path, "utf8"); }
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-if (migrations.length !== 20) fail(`expected 20 migrations, found ${migrations.length}`);
+if (migrations.length !== 21) fail(`expected 21 migrations, found ${migrations.length}`);
 const migrationChanges = execFileSync("git", ["diff", "--name-only", BASE, "--", "prisma/migrations"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
 if (migrationChanges.some((path) => !allowedPrismaChanges.has(path))) fail("canonical migrations changed outside V17-CASE-PUBLIC-REF");
 

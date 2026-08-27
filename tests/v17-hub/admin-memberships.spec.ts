@@ -43,6 +43,13 @@ test("A con permisos explícitos usa Administración tenant-first sin identidade
   await authenticate(page, "A", ADMIN_PERMISSIONS);
   let patches = 0;
   await page.route("**/api/admin/memberships?*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: listBody() }));
+  await page.route("**/api/admin/identity-invitations", (route) => {
+    if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, invitations: [] }) });
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, invitation: {
+      invitationRef: "33333333-3333-4333-8333-333333333333", email: "second-admin@example.invalid", role: "A",
+      grantedPermissions: ADMIN_PERMISSIONS, status: "PENDING", expiresAt: "2026-08-28T12:00:00.000Z", createdAt: "2026-08-27T12:00:00.000Z",
+    }, activationPath: "/activate-admin#token=synthetic-one-time-token", shownOnce: true }) });
+  });
   await page.route(`**/api/admin/memberships/${MEMBERSHIP_REF}`, async (route) => {
     if (route.request().method() !== "PATCH") return route.abort();
     patches += 1;
@@ -58,7 +65,52 @@ test("A con permisos explícitos usa Administración tenant-first sin identidade
   await expect(page.getByText("Actualice exclusivamente el acceso de esta persona dentro del tenant activo.")).toBeVisible();
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect.poll(() => patches).toBe(1);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeHidden();
   await evidence(page, testInfo, testInfo.project.name.includes("mobile") ? "mobile" : "desktop");
+  await page.getByRole("button", { name: "Invitar administrador" }).click();
+  await expect(page.getByText(/se mostrará una sola vez/i)).toBeVisible();
+  await page.getByLabel("Email corporativo").fill("second-admin@example.invalid");
+  await page.getByRole("button", { name: "Generar invitación" }).click();
+  await expect(page.getByText("Copie este enlace ahora. No podrá recuperarse después.")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("33333333-3333-4333-8333-333333333333");
+});
+
+test("activación nueva retira el token de la URL y exige login normal", async ({ page }) => {
+  let payload: Record<string, unknown> | null = null;
+  await page.route("**/api/auth/admin-invitations/activate", async (route) => {
+    payload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, activated: true, loginRequired: true }) });
+  });
+  await page.goto("/activate-admin#token=synthetic-new-token");
+  await expect(page).toHaveURL(/\/activate-admin$/);
+  await page.getByLabel("Nombre completo").fill("Nueva Administradora");
+  await page.getByLabel("Nueva contraseña").fill("Synthetic-Activation-1!");
+  await page.getByLabel("Confirmar contraseña").fill("Synthetic-Activation-1!");
+  await page.getByRole("button", { name: "Activar cuenta" }).click();
+  await expect(page.getByRole("status")).toContainText("inicio de sesión normal");
+  expect(payload).toMatchObject({ token: "synthetic-new-token", name: "Nueva Administradora" });
+  expect(await page.evaluate(() => ({ token: localStorage.getItem("osi-plus.token"), session: localStorage.getItem("osi-plus.session"), hash: location.hash }))).toEqual({ token: null, session: null, hash: "" });
+  await expect(page.locator("body")).not.toContainText("synthetic-new-token");
+});
+
+test("User existente acepta autenticado sin reemplazar contraseña", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("osi-plus.token", "existing.synthetic.legacy.token");
+    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "existing-user", name: "Existente", role: "V" }));
+  });
+  let authorization = ""; let payload: Record<string, unknown> | null = null;
+  await page.route("**/api/auth/admin-invitations/activate", async (route) => {
+    authorization = route.request().headers().authorization || "";
+    payload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, activated: true, loginRequired: true }) });
+  });
+  await page.goto("/activate-admin#token=synthetic-existing-token");
+  await expect(page.getByText("Su contraseña no será reemplazada.")).toBeVisible();
+  await page.getByRole("button", { name: "Aceptar invitación" }).click();
+  await expect(page.getByRole("status")).toBeVisible();
+  expect(authorization).toBe("Bearer existing.synthetic.legacy.token");
+  expect(payload).toEqual({ token: "synthetic-existing-token" });
 });
 
 test("rol, deny, query, hash, storage y x-osi-* no cargan Administración sin permiso efectivo", async ({ page }) => {

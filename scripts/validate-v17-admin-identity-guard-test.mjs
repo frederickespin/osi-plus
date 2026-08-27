@@ -1,0 +1,34 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { validateV17AdminIdentityGuard } from "./validate-v17-admin-identity-guard.mjs";
+
+const results = [];
+const read = (path) => readFileSync(resolve(path), "utf8");
+function check(name, value) { results.push({ name, passed: Boolean(value) }); if (!value) throw new Error(name); }
+function rejected(name, path, mutate, expected) {
+  let error; try { validateV17AdminIdentityGuard({ overrides: { [path]: mutate(read(path)) } }); } catch (caught) { error = caught; }
+  check(name, expected.test(String(error?.message || "")));
+}
+
+check("baseline aprobada", validateV17AdminIdentityGuard().ok);
+const migration = "prisma/migrations/20260827020000_v17_admin_identity_invitation/migration.sql";
+rejected("token plaintext bloqueado", migration, (s) => s.replace('"token_hash" CHAR(64) NOT NULL', '"token" TEXT NOT NULL'), /token|SQL/);
+rejected("expiración mayor de 24h bloqueada", migration, (s) => s.replace("INTERVAL '24 hours'", "INTERVAL '48 hours'"), /SQL/);
+rejected("pending único eliminado bloqueado", migration, (s) => s.replace("admin_identity_invitations_one_pending_email_key", "removed_pending_key"), /SQL/);
+rejected("identidad mutable bloqueada", migration, (s) => s.replace('BEFORE UPDATE ON "osi"."admin_identity_invitations"', 'AFTER INSERT ON "osi"."admin_identity_invitations"'), /SQL/);
+const domain = "api/_lib/adminIdentityInvitationDomain.js";
+rejected("aleatoriedad débil bloqueada", domain, (s) => s.replace("randomBytes(32)", "Buffer.alloc(32)"), /aleatorio/);
+rejected("consumo sin estado bloqueado", domain, (s) => s.replace('WHERE "id"=CAST(${invitation.id} AS uuid) AND "tenant_id"=${invitation.tenant_id} AND "status"=\'PENDING\'', 'WHERE "id"=CAST(${invitation.id} AS uuid) AND "tenant_id"=${invitation.tenant_id}'), /atómico/);
+rejected("aceptación existente eliminada bloqueada", domain, (s) => s.replace("acceptExistingAdminIdentity", "removedExistingAcceptance"), /existente/);
+const http = "api/_lib/adminIdentityInvitationHttp.js";
+rejected("gate posterior a body bloqueado", http, (s) => s.replace("requireAdminTenantMembershipAccess(req, env);", "void 0;"), /gate/);
+rejected("CORS permisivo bloqueado", http, (s) => s.replace("cors: false, handleOptions: false", "cors: true"), /CORS/);
+const activationRoute = "src/admin-tenant/adminIdentityActivationRoute.ts";
+rejected("fragmento persistente bloqueado", activationRoute, (s) => s.replace('window.history.replaceState({}, "", "/activate-admin");', "void 0;"), /fragmento/);
+const app = "src/App.tsx";
+rejected("pantalla fuera de compuerta bloqueada", app, (s) => s.replace("!isAdminTenantMembershipEnabled()", "false"), /pantalla/);
+const bootstrap = "scripts/v17-admin-initial-permissions-bootstrap.mjs";
+rejected("dry-run escribible bloqueado", bootstrap, (s) => s.replace('await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");', "void 0;"), /dry-run/);
+rejected("bootstrap de contraseña bloqueado", bootstrap, (s) => `${s}\nconst passwordHash = 'forbidden';\n`, /credenciales/);
+
+process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

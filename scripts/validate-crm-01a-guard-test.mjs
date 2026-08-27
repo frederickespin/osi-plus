@@ -22,7 +22,7 @@ try {
   check("adaptadores frontend relacionales gobernados", baseline.frontendConsumers === 3 && baseline.writeEndpoints === 2);
   check("pipeline:view limitado a A y V", baseline.permission === "pipeline:view" && JSON.stringify(baseline.baseRoles) === JSON.stringify(["A", "V"]));
   rejected("READ_ONLY en CI rechazado", { env: { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" } }, /READ_ONLY/);
-  rejected("migración 21 rechazada", { migrations: [...Array.from({ length: 20 }, (_, index) => `m${index}`), "20260828010000_unexpected"] }, /20 migraciones/);
+  rejected("migración 22 rechazada", { migrations: [...Array.from({ length: 21 }, (_, index) => `m${index}`), "20260828010000_unexpected"] }, /21 migraciones/);
   const service = read("api/_lib/crmPipelineRead.js");
   rejected("clients:view como autoridad rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("PERMS.PIPELINE_VIEW", '"clients:view"') } }, /pipeline:view/);
   const rbac = read("api/_lib/rbac.js");

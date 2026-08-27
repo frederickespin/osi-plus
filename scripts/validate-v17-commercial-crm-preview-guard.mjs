@@ -71,11 +71,11 @@ function validateCspAndCors(files) {
     fail("vercel.json inválido");
   }
   const apiRules = (configuration.headers || []).filter((rule) => String(rule.source || "").startsWith("/api/"));
-  const safeRule = apiRules.find((rule) => rule.source === "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)");
+  const safeRule = apiRules.find((rule) => rule.source === "/api/((?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)");
   if (!safeRule) fail("Auth y CRM no están excluidos del CORS global");
   for (const rule of apiRules) {
     const wildcard = (rule.headers || []).some((header) => header.key === "Access-Control-Allow-Origin" && header.value === "*");
-    if (wildcard && rule.source !== "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)") fail("CORS wildcard puede alcanzar Auth, CRM o mutaciones comerciales protegidas");
+    if (wildcard && rule.source !== "/api/((?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)") fail("CORS wildcard puede alcanzar Auth, Admin, CRM o mutaciones comerciales protegidas");
   }
 }
 
@@ -101,7 +101,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   const files = snapshot?.files || {};
   const migrations = snapshot?.migrations || [];
 
-  if (migrations.length !== 20) fail(`se esperaban 20 migraciones, existen ${migrations.length}`);
+  if (migrations.length !== 21) fail(`se esperaban 21 migraciones, existen ${migrations.length}`);
 
   const shared = "shared/v17CommercialCrmPreview.js";
   for (const signature of [

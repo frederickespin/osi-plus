@@ -2,8 +2,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CANONICAL_GLOBAL_API_SOURCE = "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)";
+const CANONICAL_GLOBAL_API_SOURCE = "/api/((?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)";
 const REQUIRED_ROUTES = Object.freeze([
+  "/api/auth/admin-invitations/activate",
   "/api/auth/login",
   "/api/auth/logout",
   "/api/auth/me",
@@ -62,6 +63,7 @@ export function validateAuthLegacyPrivateHeadersGuard({
   })),
   authHttpSource = readFileSync(resolve(root, "api", "_lib", "authHttp.js"), "utf8"),
   authOriginSource = readFileSync(resolve(root, "api", "_lib", "authOrigin.js"), "utf8"),
+  adminIdentityHttpSource = readFileSync(resolve(root, "api", "_lib", "adminIdentityInvitationHttp.js"), "utf8"),
 } = {}) {
   const config = parseConfig(vercelText);
   invariant(JSON.stringify(routes) === JSON.stringify([...REQUIRED_ROUTES]), "inventario recursivo Auth inesperado");
@@ -74,9 +76,11 @@ export function validateAuthLegacyPrivateHeadersGuard({
   }
 
   for (const { path, source } of routeSources) {
-    const wrapper = path === "/api/auth/login" || path === "/api/auth/me"
-      ? "withLegacyAuthHeaders"
-      : "withMt01bAuthHeaders";
+    const wrapper = path === "/api/auth/admin-invitations/activate"
+      ? "createAdminIdentityActivationHandler"
+      : path === "/api/auth/login" || path === "/api/auth/me"
+        ? "withLegacyAuthHeaders"
+        : "withMt01bAuthHeaders";
     invariant(source.includes(wrapper), `${path} no usa ${wrapper}`);
     invariant(!/Access-Control-Allow-(?:Origin|Credentials)/.test(source), `${path} declara CORS propio`);
     invariant(!/Cache-Control[^\n]+public/i.test(source), `${path} declara caché pública`);
@@ -93,6 +97,10 @@ export function validateAuthLegacyPrivateHeadersGuard({
   invariant(!/setMt01bCors\(req, res\)/.test(authOriginSource), "wrapper V2 todavía emite CORS");
   invariant(/req\.method === ["']OPTIONS["'][\s\S]*status\(405\)/.test(authOriginSource), "OPTIONS V2 todavía responde 204");
   invariant(/setAuthPrivateHeaders\(res\)/.test(authOriginSource), "rutas V2 desactivadas no reciben headers privados");
+  invariant(/setAuthPrivateHeaders\(res\)/.test(adminIdentityHttpSource), "activación Admin no recibe headers privados");
+  invariant(/req\.method !== ["']POST["']/.test(adminIdentityHttpSource), "activación Admin no limita métodos antes del body");
+  invariant(!/Access-Control-Allow-(?:Origin|Credentials)/.test(adminIdentityHttpSource), "activación Admin declara CORS propio");
+  invariant(!/Cache-Control[^\n]+public/i.test(adminIdentityHttpSource), "activación Admin declara caché pública");
 
   return Object.freeze({ ok: true, routes: routes.length, futureRoutesProtected: true });
 }

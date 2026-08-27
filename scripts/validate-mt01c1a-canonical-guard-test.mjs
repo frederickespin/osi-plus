@@ -17,7 +17,7 @@ try {
   cpSync(resolve("prisma", "migrations"), migrationRoot, { recursive: true });
 
   const current = validateMigrationFiles(root);
-  check("MT-01C1A remains migration thirteen in the canonical chain", current.length === 20 && CANONICAL_MIGRATIONS[12] === "20260801012000_mt01c1a_employee_profiles");
+  check("MT-01C1A remains migration thirteen in the canonical chain", current.length === 21 && CANONICAL_MIGRATIONS[12] === "20260801012000_mt01c1a_employee_profiles");
 
   const unexpected = join(migrationRoot, "20260801021000_unexpected_migration");
   mkdirSync(unexpected);
@@ -28,7 +28,7 @@ try {
   } catch (error) {
     rejected = error;
   }
-  check("unexpected migration twenty-one is rejected", rejected?.message.includes("20 migraciones canónicas"));
+  check("unexpected migration twenty-two is rejected", rejected?.message.includes("21 migraciones canónicas"));
   check("guard identifies chain mismatch without executing SQL", rejected instanceof Error);
 
   process.stdout.write(`${JSON.stringify({ ok: true, passed: results.length, results }, null, 2)}\n`);

@@ -147,6 +147,8 @@ jobs:
           npm run guard:v17-hub-auth-lazy
           npm run guard:v17-admin-tenant-memberships
           npm run test:v17-admin-tenant-memberships:http
+          npm run guard:v17-admin-identity
+          npm run test:v17-admin-identity:http
           node scripts/validate-v17-commercial-crm-guard.mjs
           npm run guard:v17-commercial-inbox-reload-race
           npm run guard:v17-commercial-crm-preview
@@ -404,6 +406,8 @@ jobs:
           npm run test:v17-admin-tenant-memberships
           npm run test:v17-admin-membership-bootstrap
           npm run test:v17-admin-membership-public-ref:migration
+          npm run test:v17-admin-identity
+          npm run test:v17-admin-initial-permissions-bootstrap
 
       - name: Build
         run: npm run build
@@ -423,6 +427,7 @@ jobs:
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           npm run guard:v17-admin-tenant-memberships
+          npm run guard:v17-admin-identity
           node scripts/validate-mt01c2b3a-guard.mjs
           node scripts/validate-mt01c2b3a-guard-test.mjs
           node scripts/validate-mt01c2b3b-guard.mjs

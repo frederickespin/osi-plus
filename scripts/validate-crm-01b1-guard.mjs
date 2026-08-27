@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
-const EXPECTED_MIGRATIONS = 20;
+const EXPECTED_MIGRATIONS = 21;
 const EXPECTED_MIGRATION_SHA256 = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
 const RUNTIME_SERVICE_ALLOWLIST = Object.freeze(["api/_lib/pipelineCaseDomain.js", "api/_lib/crmCaseMutationDomain.js"]);
 const JOURNAL_FIXTURE_ALLOWLIST = Object.freeze([

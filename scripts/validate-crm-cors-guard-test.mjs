@@ -33,7 +33,7 @@ rejected(
 );
 
 const rejectedDeploymentConfig = baseline.replace(
-  "(?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))",
+  "(?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))",
   "(?!auth/|crm/pipeline-cases/[^/]+/(?:transition|assign-owner|unassign-owner|allowed-transitions)/?$|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))",
 );
 check(
@@ -51,7 +51,7 @@ rejected(
   rejectedDeploymentConfig,
   /excluir todo|parcial/,
 );
-rejected("catch-all inseguro rechazado", baseline.replace("((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)", "(.*)"), /excluir todo/);
+rejected("catch-all inseguro rechazado", baseline.replace("((?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)", "(.*)"), /excluir todo/);
 rejected("allowlist de lecturas rechazada", baseline.replace("crm/", "crm/(?:pipeline-cases|pipeline-summary)"), /excluir todo|parcial/);
 rejected(
   "wildcard adicional sobre CRM rechazado",
@@ -66,7 +66,7 @@ rejected(
 rejected("JSON inválido rechazado", "{", /JSON válido/);
 rejected(
   "ruta CRM futura permanece protegida",
-  baseline.replace("(?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))", "(?!auth/|crm/pipeline-cases/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))"),
+  baseline.replace("(?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))", "(?!auth/|crm/pipeline-cases/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))"),
   /excluir todo|rutas CRM/,
   ["/api/crm/pipeline-cases", "/api/crm/future/report"],
 );

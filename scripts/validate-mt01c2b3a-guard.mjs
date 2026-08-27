@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const EXPECTED_MIGRATIONS = 20;
+const EXPECTED_MIGRATIONS = 21;
 const PREPARED_CONSUMERS = Object.freeze(new Set([
   "api/clients/index.js",
   "api/projects/index.js",

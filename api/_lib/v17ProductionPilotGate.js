@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { resolveCommercialTenancyModes } from "./commercialTenancyWrite.js";
 
 export const V17_PRODUCTION_PILOT_MODE = "PRODUCTION_PILOT";
 export const V17_PRODUCTION_PILOT_BATCH = "V17-PRODUCTION-GATES-04E1B-V1";
@@ -38,16 +39,20 @@ function exactKeys(value, expected) {
 }
 
 function exactProductionEnvironment(env) {
-  return env?.VERCEL === "1"
+  let tenantMode = false;
+  try {
+    tenantMode = resolveCommercialTenancyModes(env).tenantMode === true;
+  } catch {
+    return false;
+  }
+  return tenantMode
+    && env?.VERCEL === "1"
     && env?.VERCEL_ENV === "production"
     && env?.VERCEL_GIT_COMMIT_REF === "main"
     && env?.MT01B_AUTH_MODE === "LEGACY"
     && env?.MT01B_TENANT_SWITCH_ENABLED === "false"
     && env?.VITE_MT01B2_CLIENT_ENABLED === "false"
-    && env?.COMMERCIAL_TENANCY_WRITE_MODE === "TENANT_WRITE"
-    && env?.COMMERCIAL_TENANCY_READ_MODE === "TENANT_READ"
-    && env?.COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED"
-    && env?.COMMERCIAL_TENANCY_ACTIVATION_BATCH === "MT-01C2B2-IPACKERS-DO-V1";
+    && env?.COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED";
 }
 
 export function resolveV17ProductionPilotActivation(env = process.env) {

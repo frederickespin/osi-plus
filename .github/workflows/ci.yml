@@ -145,6 +145,8 @@ jobs:
           node scripts/validate-sec-dep-01-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
           npm run guard:v17-hub-auth-lazy
+          npm run guard:v17-admin-tenant-memberships
+          npm run test:v17-admin-tenant-memberships:http
           node scripts/validate-v17-commercial-crm-guard.mjs
           npm run guard:v17-commercial-inbox-reload-race
           npm run guard:v17-commercial-crm-preview
@@ -308,6 +310,8 @@ jobs:
           node scripts/validate-v17-crm-case-mutations-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
+          npm run guard:v17-admin-tenant-memberships
+          npm run test:v17-admin-tenant-memberships:http
           node scripts/v17-case-client-local-target-test.mjs
           node scripts/validate-mt01c2b2-guard.mjs
           node scripts/mt-01c2b2-database-guard-test.mjs
@@ -397,6 +401,9 @@ jobs:
           node scripts/auth-json-02-test.mjs
           npm run test:auth-legacy-private-headers
           node scripts/validate-mt01c1b2b-guard.mjs
+          npm run test:v17-admin-tenant-memberships
+          npm run test:v17-admin-membership-bootstrap
+          npm run test:v17-admin-membership-public-ref:migration
 
       - name: Build
         run: npm run build
@@ -415,6 +422,7 @@ jobs:
           node scripts/validate-v17-case-public-ref-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
+          npm run guard:v17-admin-tenant-memberships
           node scripts/validate-mt01c2b3a-guard.mjs
           node scripts/validate-mt01c2b3a-guard-test.mjs
           node scripts/validate-mt01c2b3b-guard.mjs

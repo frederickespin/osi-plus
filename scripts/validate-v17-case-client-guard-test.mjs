@@ -20,7 +20,7 @@ const migrations = Array.from({ length: 16 }, (_, index) => `m${String(index).pa
 
 try {
   check("baseline V17 aprobada", validateV17CaseClientGuard().ok);
-  rejected("migración 20 rechazada", { migrationNames: [...migrations, "20260825010000_v17_forbidden"] }, /19 migraciones|migración 19/);
+  rejected("migración 21 rechazada", { migrationNames: [...migrations, "20260828010000_v17_forbidden"] }, /20 migraciones|migración 20/);
   rejected("clientId obligatorio rechazado", { schemaSource: schema.replace("clientId                      String?", "clientId                      String ") }, /nullable/);
   rejected("Project.clientId nullable rechazado", { schemaSource: schema.replace(/(model Project\s*\{[\s\S]*?\n\s*clientId\s+)String(\s*)/, "$1String?$2") }, /Project\.clientId/);
   rejected("CHECK previo contra tenantId NULL es obligatorio", { projectAuthorityMigrationSource: "SELECT 1;" }, /migración 16/);

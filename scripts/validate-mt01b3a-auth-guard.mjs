@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const INVENTORIED_ROUTES = new Set([
   "api/auth/login.js", "api/auth/logout.js", "api/auth/me.js", "api/auth/refresh.js", "api/auth/session/upgrade.js",
+  "api/admin/memberships/index.js", "api/admin/memberships/[membershipRef]/index.js",
   "api/clients/index.js", "api/health.js", "api/info.js",
   "api/crm/client-options.js", "api/crm/pipeline-cases/[caseKey]/index.js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js",
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js", "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
@@ -31,7 +32,7 @@ const CRM_MUTATION_ROUTES = new Set([
   "api/crm/pipeline-cases/[caseKey]/transition.js",
   "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
-const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js", "api/crm/client-options.js", "api/crm/pipeline-cases/[caseKey]/index.js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js", "api/crm/pipeline-owner-options.js", ...CRM_MUTATION_ROUTES]);
+const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/admin/memberships/index.js", "api/admin/memberships/[membershipRef]/index.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js", "api/crm/client-options.js", "api/crm/pipeline-cases/[caseKey]/index.js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js", "api/crm/pipeline-owner-options.js", ...CRM_MUTATION_ROUTES]);
 const LEGACY_JWT_ROUTES = new Set(["api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js"]);
 const ROUTE_HELPERS = new Set(["api/k/_lib.js", "api/osis/_helpers.js", "api/templates/_pst.js"]);
 export const B3B1_ACTIVATION_BLOCKERS = Object.freeze([
@@ -80,6 +81,8 @@ export function validateMt01b3aSources({ routeSources, envExample, authContextSo
         ? /requireAuthContext/.test(source)
         : CRM_MUTATION_ROUTES.has(route)
           ? /pipelineCaseMutationHttp\.js/.test(source)
+          : route.startsWith("api/admin/")
+          ? /adminMembershipHttp\.js/.test(source)
           : route.startsWith("api/crm/")
           ? /require(?:Commercial|CrmPipeline)Permission|crmOwnerCatalogHttp|crmClientOptions/.test(source)
           : /requirePilot(?:Auth|Permission)/.test(source);

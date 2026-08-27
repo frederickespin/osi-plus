@@ -63,4 +63,4 @@ for (const signature of ["headingRef.current?.focus()", "tabIndex={-1}", "Volver
   requireText(errorBoundary, signature, `el error accesible perdió: ${signature}`);
 }
 
-console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, protectedLazyImports: 3, migrationsExpected: 19 }));
+console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, protectedLazyImports: 3, migrationsExpected: 20 }));

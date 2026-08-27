@@ -4,6 +4,9 @@ import { join } from "node:path";
 
 const BASE = "de5e8460c5da4e7f1c1fe42836b7ab488f67dd42";
 const allowedBackendChanges = new Set([
+  "api/_lib/adminMembershipAccess.js",
+  "api/_lib/adminMembershipDomain.js",
+  "api/_lib/adminMembershipHttp.js",
   "api/_lib/authHttp.js",
   "api/_lib/authOrigin.js",
   "api/_lib/commercialTenancyMutation.js",
@@ -17,12 +20,15 @@ const allowedBackendChanges = new Set([
   "api/_lib/crmPipelineRead.js",
   "api/_lib/crmPipelineReadHttp.js",
   "api/_lib/http.js",
+  "api/_lib/membershipAuthorization.js",
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/rbac.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
   "api/_lib/v17CommercialCrmProductionAuth.js",
   "api/auth/login.js",
   "api/auth/me.js",
+  "api/admin/memberships/index.js",
+  "api/admin/memberships/[membershipRef]/index.js",
   "api/clients/index.js",
   "api/crm/client-options.js",
   "api/crm/pipeline-summary.js",
@@ -42,12 +48,13 @@ const allowedPrismaChanges = new Set([
   "prisma/schema.prisma",
   "prisma/migrations/20260821010000_v17_pipeline_case_public_ref/migration.sql",
   "prisma/migrations/20260824010000_v17_client_public_ref_case_mutations/migration.sql",
+  "prisma/migrations/20260827010000_v17_tenant_membership_public_ref/migration.sql",
 ]);
 function fail(message) { throw new Error(`V17_HUB_GUARD_FAILED: ${message}`); }
 function text(path) { return readFileSync(path, "utf8"); }
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-if (migrations.length !== 19) fail(`expected 19 migrations, found ${migrations.length}`);
+if (migrations.length !== 20) fail(`expected 20 migrations, found ${migrations.length}`);
 const migrationChanges = execFileSync("git", ["diff", "--name-only", BASE, "--", "prisma/migrations"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
 if (migrationChanges.some((path) => !allowedPrismaChanges.has(path))) fail("canonical migrations changed outside V17-CASE-PUBLIC-REF");
 

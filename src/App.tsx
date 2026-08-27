@@ -19,7 +19,7 @@ import { resolveOsiHubMode, type OsiHubMode } from '@/hub/hubMode';
 import type { HubAccessContext } from '@/hub/hubAccess';
 import { evaluateHubRouteAccess } from '@/hub/hubRouteAccess';
 import { isAdminIdentityActivationRoute } from '@/admin-tenant/adminIdentityActivationRoute';
-import { isAdminTenantMembershipEnabled } from '@/admin-tenant/adminMode';
+import { isAdminIdentityInvitationEnabled } from '@/admin-tenant/adminMode';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const AdminIdentityActivation = lazy(() =>
@@ -639,7 +639,7 @@ function SessionApp() {
 }
 
 function App() {
-  if (!isAdminIdentityActivationRoute() || !isAdminTenantMembershipEnabled()) return <SessionApp />;
+  if (!isAdminIdentityActivationRoute() || !isAdminIdentityInvitationEnabled()) return <SessionApp />;
   return <Suspense fallback={<div className="min-h-screen bg-slate-950" />}><AdminIdentityActivation /></Suspense>;
 }
 

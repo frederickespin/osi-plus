@@ -5,6 +5,7 @@ import {
   resolveCrmPipelineReadClientMode,
 } from "./clientMode";
 import type { PipelineMode } from "./types";
+import { V17_PRODUCTION_PILOT_MODE, isV17ProductionPilotClientEnvironment } from "../../shared/v17ProductionPilot.js";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const API = "/api/crm";
@@ -76,13 +77,21 @@ async function json(response: Response) {
 type MutationClientEnvironment = Readonly<Record<string, unknown>>;
 type MutationClientRuntime = Readonly<{ hostname?: string; vercelEnvironment?: string | null; gitBranch?: string | null }>;
 
+function defaultMutationRuntime(): MutationClientRuntime {
+  return {
+    hostname: typeof window === "undefined" ? undefined : window.location.hostname,
+    vercelEnvironment: typeof __V17_VERCEL_ENV__ === "undefined" ? null : __V17_VERCEL_ENV__,
+    gitBranch: typeof __V17_VERCEL_GIT_COMMIT_REF__ === "undefined" ? null : __V17_VERCEL_GIT_COMMIT_REF__,
+  };
+}
+
 /**
  * Compuerta visual adicional. La lectura habilitada nunca implica escritura:
  * el backend vuelve a validar su compuerta antes de auth, body o Prisma.
  */
 export function isCrmCaseMutationUiEnabled(
   environment: MutationClientEnvironment = import.meta.env,
-  runtime?: MutationClientRuntime,
+  runtime: MutationClientRuntime = defaultMutationRuntime(),
 ) {
   const mutation = environment.VITE_CRM_PIPELINE_CASE_MUTATION_MODE;
   if (mutation === undefined || mutation === "DISABLED") return false;
@@ -96,6 +105,11 @@ export function isCrmCaseMutationUiEnabled(
   if (mutation === "PREVIEW_REHEARSAL") {
     return client.mode === CRM_PIPELINE_CLIENT_MODES.PREVIEW_REHEARSAL
       && read.mode === CRM_PIPELINE_READ_CLIENT_MODES.PREVIEW_REHEARSAL;
+  }
+  if (mutation === V17_PRODUCTION_PILOT_MODE) {
+    return client.mode === CRM_PIPELINE_CLIENT_MODES.PRODUCTION_READ
+      && read.mode === CRM_PIPELINE_READ_CLIENT_MODES.PRODUCTION_READ
+      && isV17ProductionPilotClientEnvironment(runtime);
   }
   return false;
 }

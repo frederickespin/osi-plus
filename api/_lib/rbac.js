@@ -18,6 +18,12 @@ export const PERMS = {
   USERS_DELETE: "users:delete",
   USERS_REACTIVATE: "users:reactivate",
 
+  // Tenant Membership administration. These are explicit grants only.
+  MEMBERSHIP_VIEW: "membership:view",
+  MEMBERSHIP_UPDATE_ROLE: "membership:update:role",
+  MEMBERSHIP_UPDATE_PERMISSIONS: "membership:update:permissions",
+  MEMBERSHIP_UPDATE_STATUS: "membership:update:status",
+
   // Clients
   CLIENTS_VIEW: "clients:view",
   CLIENTS_CREATE: "clients:create",
@@ -84,8 +90,17 @@ const EXPLICIT_PIPELINE_MUTATION_PERMISSIONS = new Set([
   PERMS.PIPELINE_UPDATE_ANY,
 ]);
 
+const EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS = new Set([
+  PERMS.MEMBERSHIP_VIEW,
+  PERMS.MEMBERSHIP_UPDATE_ROLE,
+  PERMS.MEMBERSHIP_UPDATE_PERMISSIONS,
+  PERMS.MEMBERSHIP_UPDATE_STATUS,
+]);
+
 const ROLE_PERMS = {
-  A: Object.values(PERMS).filter((permission) => !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)),
+  A: Object.values(PERMS).filter((permission) =>
+    !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
+    && !EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

@@ -2,8 +2,9 @@ import { Prisma } from "@prisma/client";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import { Mt01bAuthError, assertMt01bV2Enabled } from "./authPolicy.js";
 import { configureAuthTransaction, controlledAuthPersistenceError, trySessionFamilyLock } from "./authSession.js";
+import { PERMS } from "./rbac.js";
 
-export const MEMBERSHIP_AUTHORIZATION_MANAGE = "tenant:membership:manage";
+export const MEMBERSHIP_AUTHORIZATION_MANAGE = PERMS.MEMBERSHIP_UPDATE_PERMISSIONS;
 const ROLES = new Set(["A", "V", "K", "B", "C", "C1", "D", "E", "G", "N", "PA", "PB", "PC", "PD", "PF", "I", "PE"]);
 const STATUSES = new Set(["ACTIVE", "SUSPENDED", "INACTIVE"]);
 
@@ -24,7 +25,7 @@ function normalizedPermissions(value, field) {
 function canManage(context) {
   const denied = new Set(context?.deniedPermissions || []);
   const granted = new Set(context?.permissions || context?.grantedPermissions || []);
-  return !denied.has(MEMBERSHIP_AUTHORIZATION_MANAGE) && (String(context?.role) === "A" || granted.has(MEMBERSHIP_AUTHORIZATION_MANAGE));
+  return !denied.has(MEMBERSHIP_AUTHORIZATION_MANAGE) && granted.has(MEMBERSHIP_AUTHORIZATION_MANAGE);
 }
 
 function dto(row) {

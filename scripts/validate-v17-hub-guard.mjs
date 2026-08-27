@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 const BASE = "de5e8460c5da4e7f1c1fe42836b7ab488f67dd42";
 const allowedBackendChanges = new Set([
+  "api/_lib/adminIdentityInvitationDomain.js",
+  "api/_lib/adminIdentityInvitationHttp.js",
   "api/_lib/adminMembershipAccess.js",
   "api/_lib/adminMembershipDomain.js",
   "api/_lib/adminMembershipHttp.js",
@@ -29,6 +31,9 @@ const allowedBackendChanges = new Set([
   "api/auth/me.js",
   "api/admin/memberships/index.js",
   "api/admin/memberships/[membershipRef]/index.js",
+  "api/admin/identity-invitations/index.js",
+  "api/admin/identity-invitations/[invitationRef]/index.js",
+  "api/auth/admin-invitations/activate.js",
   "api/clients/index.js",
   "api/crm/client-options.js",
   "api/crm/pipeline-summary.js",

@@ -95,6 +95,7 @@ model Tenant {
 
 model TenantMembership {
   id                                                                                                                                            String                             @id @default(cuid())
+  publicRef                                                                                                                                     String                             @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
   tenantId                                                                                                                                      String                             @map("tenant_id")
   userId                                                                                                                                        String                             @map("user_id")
   role                                                                                                                                          TenantMembershipRole
@@ -153,6 +154,7 @@ model TenantMembership {
   pipelineCaseCommandsAsResultingOwner                                                                                                          PipelineCaseCommand[]              @relation("PipelineCaseCommandResultingOwner")
 
   @@unique([tenantId, userId])
+  @@unique([tenantId, publicRef], map: "tenant_memberships_tenant_id_public_ref_key")
   @@unique([tenantId, id, userId])
   @@index([tenantId, status, role])
   @@index([userId, status])

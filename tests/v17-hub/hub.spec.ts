@@ -112,7 +112,7 @@ test("DISABLED también bloquea deep links sin prefetch, listeners ni timers del
 
 test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) => {
   const expected: Record<string, string[]> = {
-    A: ["Coordinación", "Operaciones", "Materiales y Equipos", "Taller y Carpintería", "Administración", "Recursos Humanos"],
+    A: ["Coordinación", "Operaciones", "Materiales y Equipos", "Taller y Carpintería", "Recursos Humanos"],
     V: [], K: ["Coordinación"], B: ["Operaciones"], C: ["Materiales y Equipos"], C1: ["Operaciones"], D: ["Operaciones"], E: ["Operaciones"], G: ["Operaciones"], N: ["Operaciones"],
     PA: ["Taller y Carpintería"], PB: ["Taller y Carpintería"], PC: ["Taller y Carpintería"], PD: ["Taller y Carpintería"], PF: ["Taller y Carpintería"], I: ["Recursos Humanos"], PE: ["Operaciones"], RB: [],
   };

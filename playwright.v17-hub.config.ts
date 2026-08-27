@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const commonEnv = { VITE_API_PROXY: "http://127.0.0.1:59999", VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED", VITE_MT01B2_CLIENT_ENABLED: "false" };
+const commonEnv = { VITE_API_PROXY: "http://127.0.0.1:59999", VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED", VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "LOCAL_ONLY", VITE_MT01B2_CLIENT_ENABLED: "false" };
 
 export default defineConfig({
   testDir: "./tests/v17-hub",

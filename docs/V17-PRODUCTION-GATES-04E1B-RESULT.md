@@ -58,3 +58,7 @@ La recuperación de datos no usa rollback de migraciones. 04E1C debe crear un re
 9. Promover aliases sólo con CI y smoke completamente verdes.
 
 No se ejecutó bootstrap, no se creó el segundo A, no se emitió una invitación real y no se modificó Production.
+
+## Autoridad de checksums
+
+La reconciliación posterior `V17-MIGRATION-CHECKSUM-AUTHORITY-04E1B1` determinó que los checksums almacenados durante el ensayo 04E1B fueron calculados sobre un checkout Windows con CRLF, mientras los blobs Git publicados de las migraciones 19–21 son LF. La autoridad canónica y la política de checkout se documentan en `V17-MIGRATION-CHECKSUM-AUTHORITY-04E1B1-RESULT.md`; el contenido SQL publicado no fue modificado.

@@ -600,9 +600,15 @@ test("resolvers fallan cerrado ante valores y entornos ambiguos", async ({ page 
         && !hub.resolveOsiHubMode({ VITE_OSI_HUB_MODE: "LOCAL_ONLY", [key]: "1" }, { hostname: "127.0.0.1" }).enabled),
       mutation: mutationApi.isCrmCaseMutationUiEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", VITE_CRM_PIPELINE_CASE_MUTATION_MODE: "LOCAL_ONLY" }, { hostname: "127.0.0.1" }),
       mutationPartial: [undefined, "DISABLED", "local_only", " LOCAL_ONLY", "LOCAL_ONLY ", "PREVIEW_REHEARSAL"].every((value) => !mutationApi.isCrmCaseMutationUiEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", ...(value === undefined ? {} : { VITE_CRM_PIPELINE_CASE_MUTATION_MODE: value }) }, { hostname: "127.0.0.1" })),
+      productionMutation: mutationApi.isCrmCaseMutationUiEnabled({ VITE_OSI_HUB_MODE: "PRODUCTION_READ", VITE_CRM_PIPELINE_CLIENT_MODE: "PRODUCTION_READ", VITE_CRM_PIPELINE_READ_MODE: "PRODUCTION_READ", VITE_CRM_PIPELINE_CASE_MUTATION_MODE: "PRODUCTION_PILOT" }, { hostname: "pilot.example.invalid", vercelEnvironment: "production", gitBranch: "main" }),
+      productionMutationInvalid: [
+        { hostname: "pilot.example.invalid", vercelEnvironment: "preview", gitBranch: "main" },
+        { hostname: "pilot.example.invalid", vercelEnvironment: "production", gitBranch: "feature/other" },
+        { hostname: "localhost", vercelEnvironment: "production", gitBranch: "main" },
+      ].every((runtime) => !mutationApi.isCrmCaseMutationUiEnabled({ VITE_OSI_HUB_MODE: "PRODUCTION_READ", VITE_CRM_PIPELINE_CLIENT_MODE: "PRODUCTION_READ", VITE_CRM_PIPELINE_READ_MODE: "PRODUCTION_READ", VITE_CRM_PIPELINE_CASE_MUTATION_MODE: "PRODUCTION_PILOT" }, runtime)),
     };
   });
-  expect(result).toEqual({ loopbacks: true, invalid: true, remote: true, vercel: true, mutation: true, mutationPartial: true });
+  expect(result).toEqual({ loopbacks: true, invalid: true, remote: true, vercel: true, mutation: true, mutationPartial: true, productionMutation: true, productionMutationInvalid: true });
 });
 
 test("adaptador HTTP rechaza contratos adversariales y conserva Bearer sólo en header", async ({ page }) => {

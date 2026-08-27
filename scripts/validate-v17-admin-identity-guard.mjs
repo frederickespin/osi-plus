@@ -35,14 +35,14 @@ export function validateV17AdminIdentityGuard({ root = process.cwd(), overrides 
   invariant(!/UPDATE[\s\S]{0,120}"passwordHash"|password_hash[\s\S]{0,120}UPDATE/iu.test(domain), "activación reemplaza password existente");
   for (const handler of ["createAdminIdentityInvitationCollectionHandler", "createAdminIdentityInvitationDetailHandler", "createAdminIdentityActivationHandler"]) invariant(http.includes(handler), `handler ausente: ${handler}`);
   const gatedBlocks = http.split("return withCommonHeaders").slice(1);
-  invariant(gatedBlocks.length === 3 && gatedBlocks.every((block) => block.indexOf("requireAdminTenantMembershipAccess(req, env)") >= 0
-    && block.indexOf("requireAdminTenantMembershipAccess(req, env)") < block.indexOf("readJsonObject(req")), "gate no precede body en todos los endpoints");
+  invariant(gatedBlocks.length === 3 && gatedBlocks.every((block) => block.indexOf("requireAdminIdentityInvitationAccess(req, env)") >= 0
+    && block.indexOf("requireAdminIdentityInvitationAccess(req, env)") < block.indexOf("readJsonObject(req")), "gate no precede body en todos los endpoints");
   invariant(/setAuthPrivateHeaders|setCrmPrivateHeaders/u.test(http)
     && (http.match(/cors: false, handleOptions: false/gu) || []).length === 3, "headers privados/CORS cerrado ausentes");
   invariant(/replaceState\(\{\}, "", "\/activate-admin"\)/u.test(activation), "token no se retira del fragmento");
   invariant(/loadSession/u.test(activation) && /Authorization: `Bearer/u.test(activation) && /Su contraseña no será reemplazada/u.test(activation), "aceptación autenticada de User existente incompleta");
   invariant(/const AdminIdentityActivation = lazy/u.test(app)
-    && /isAdminIdentityActivationRoute\(\)[\s\S]*isAdminTenantMembershipEnabled\(\)[\s\S]*<SessionApp/u.test(app), "pantalla de activación no está lazy o detrás de la compuerta administrativa");
+    && /isAdminIdentityActivationRoute\(\)[\s\S]*isAdminIdentityInvitationEnabled\(\)[\s\S]*<SessionApp/u.test(app), "pantalla de activación no está lazy o detrás de la compuerta de invitaciones");
   invariant(/Invitar administrador/u.test(adminUi) && /se mostrará una sola vez|una sola vez/iu.test(adminUi) && /Revocar/u.test(adminUi), "UI de invitación incompleta");
   invariant(/const DRY_RUN = Symbol/u.test(bootstrap) && /SET TRANSACTION READ ONLY/u.test(bootstrap), "bootstrap no es dry-run read-only por defecto");
   invariant(bootstrap.includes("manifestHash") && bootstrap.includes("AUTHORIZATION_RECEIPT_INVALID")

@@ -52,6 +52,7 @@
     "test:v17-admin-identity:http": "node scripts/v17-admin-identity-invitation-http-test.mjs",
     "test:v17-admin-initial-permissions-bootstrap": "node scripts/v17-admin-initial-permissions-bootstrap-test.mjs",
     "guard:v17-admin-identity": "node scripts/validate-v17-admin-identity-guard.mjs && node scripts/validate-v17-admin-identity-guard-test.mjs",
+    "test:v17-production-pilot-gates": "node scripts/v17-production-pilot-gates-test.mjs && node scripts/validate-v17-production-pilot-gates.mjs",
     "rollback:v17-crm-case-mutations:local": "node scripts/v17-crm-case-mutations-rollback.mjs",
     "typecheck:crm-01b3b2": "tsc -p tsconfig.crm-01b3b2.json --pretty false",
     "preview": "vite preview",

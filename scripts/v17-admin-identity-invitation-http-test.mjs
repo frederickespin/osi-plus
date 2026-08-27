@@ -5,7 +5,7 @@ import {
   createAdminIdentityInvitationDetailHandler,
 } from "../api/_lib/adminIdentityInvitationHttp.js";
 
-const localEnv = { ADMIN_TENANT_MEMBERSHIP_MODE: "LOCAL_ONLY" };
+const localEnv = { ADMIN_IDENTITY_INVITATION_MODE: "LOCAL_ONLY" };
 const context = { tenantId: "tenant-test", membershipId: "member-test", userId: "user-test", role: "A" };
 const invitationRef = randomUUID();
 const invitation = { invitationRef, email: "admin@example.invalid", role: "A", grantedPermissions: [], status: "PENDING", expiresAt: "2026-08-28T00:00:00.000Z", createdAt: "2026-08-27T00:00:00.000Z" };
@@ -28,7 +28,7 @@ function privateHeaders(result) {
 }
 
 let authCalls = 0; let bodyReads = 0; let domainCalls = 0;
-const disabled = createAdminIdentityInvitationCollectionHandler({ env: { ADMIN_TENANT_MEMBERSHIP_MODE: "DISABLED" }, resolveContext: async () => { authCalls += 1; return context; }, issue: async () => { domainCalls += 1; } });
+const disabled = createAdminIdentityInvitationCollectionHandler({ env: { ADMIN_IDENTITY_INVITATION_MODE: "DISABLED" }, resolveContext: async () => { authCalls += 1; return context; }, issue: async () => { domainCalls += 1; } });
 const disabledResult = await invoke(disabled, { method: "POST", bodyGetter: () => { bodyReads += 1; throw new Error("body read"); } });
 check("gate disabled precedes auth body and database", disabledResult.statusCode === 409 && authCalls === 0 && bodyReads === 0 && domainCalls === 0 && privateHeaders(disabledResult));
 
@@ -49,7 +49,7 @@ const revoked = await invoke(detail, { method: "PATCH", query: { invitationRef }
 check("revoke exact public ref", revoked.statusCode === 200 && revoked.body?.invitation?.status === "REVOKED" && privateHeaders(revoked));
 
 let activationBodyReads = 0; let activationCalls = 0;
-const activationDisabled = createAdminIdentityActivationHandler({ env: { ADMIN_TENANT_MEMBERSHIP_MODE: "DISABLED" }, activateNew: async () => { activationCalls += 1; } });
+const activationDisabled = createAdminIdentityActivationHandler({ env: { ADMIN_IDENTITY_INVITATION_MODE: "DISABLED" }, activateNew: async () => { activationCalls += 1; } });
 const activationDisabledResult = await invoke(activationDisabled, { method: "POST", bodyGetter: () => { activationBodyReads += 1; throw new Error("body read"); } });
 check("public activation gate precedes body and database", activationDisabledResult.statusCode === 409 && activationBodyReads === 0 && activationCalls === 0 && privateHeaders(activationDisabledResult));
 const activation = createAdminIdentityActivationHandler({ env: localEnv, prisma: {}, activateNew: async (_db, body) => ({ activated: body.token === "opaque", loginRequired: true }) });

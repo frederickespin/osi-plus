@@ -21,12 +21,12 @@ rejected("aleatoriedad débil bloqueada", domain, (s) => s.replace("randomBytes(
 rejected("consumo sin estado bloqueado", domain, (s) => s.replace('WHERE "id"=CAST(${invitation.id} AS uuid) AND "tenant_id"=${invitation.tenant_id} AND "status"=\'PENDING\'', 'WHERE "id"=CAST(${invitation.id} AS uuid) AND "tenant_id"=${invitation.tenant_id}'), /atómico/);
 rejected("aceptación existente eliminada bloqueada", domain, (s) => s.replace("acceptExistingAdminIdentity", "removedExistingAcceptance"), /existente/);
 const http = "api/_lib/adminIdentityInvitationHttp.js";
-rejected("gate posterior a body bloqueado", http, (s) => s.replace("requireAdminTenantMembershipAccess(req, env);", "void 0;"), /gate/);
+rejected("gate posterior a body bloqueado", http, (s) => s.replace("requireAdminIdentityInvitationAccess(req, env);", "void 0;"), /gate/);
 rejected("CORS permisivo bloqueado", http, (s) => s.replace("cors: false, handleOptions: false", "cors: true"), /CORS/);
 const activationRoute = "src/admin-tenant/adminIdentityActivationRoute.ts";
 rejected("fragmento persistente bloqueado", activationRoute, (s) => s.replace('window.history.replaceState({}, "", "/activate-admin");', "void 0;"), /fragmento/);
 const app = "src/App.tsx";
-rejected("pantalla fuera de compuerta bloqueada", app, (s) => s.replace("!isAdminTenantMembershipEnabled()", "false"), /pantalla/);
+rejected("pantalla fuera de compuerta bloqueada", app, (s) => s.replace("!isAdminIdentityInvitationEnabled()", "false"), /pantalla/);
 const bootstrap = "scripts/v17-admin-initial-permissions-bootstrap.mjs";
 rejected("dry-run escribible bloqueado", bootstrap, (s) => s.replace('await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");', "void 0;"), /dry-run/);
 rejected("bootstrap de contraseña bloqueado", bootstrap, (s) => `${s}\nconst passwordHash = 'forbidden';\n`, /credenciales/);

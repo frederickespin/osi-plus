@@ -21,7 +21,8 @@ export function validateAdminTenantMembershipGuard(overrides = {}) {
   invariant(/publicRef[\s\S]*@db\.Uuid[\s\S]*@@unique\(\[tenantId, publicRef\]/u.test(schema), "schema no publica unique tenant-first");
   for (const permission of ["membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status"]) invariant(rbac.includes(permission), `permiso ausente ${permission}`);
   invariant(/EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS[\s\S]*!EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS\.has/u.test(rbac), "rol A concede administración automáticamente");
-  invariant(/DISABLED: "DISABLED"[\s\S]*LOCAL_ONLY: "LOCAL_ONLY"/u.test(access) && !/PRODUCTION|PREVIEW/u.test(access), "compuerta administrativa amplió entornos");
+  invariant(/DISABLED: "DISABLED"[\s\S]*LOCAL_ONLY: "LOCAL_ONLY"[\s\S]*PRODUCTION_PILOT/u.test(access)
+    && /resolveV17ProductionPilotActivation/u.test(access), "compuerta administrativa no limita el piloto productivo");
   invariant(/requireAdminTenantMembershipAccess\(req, env\)/u.test(http), "HTTP no ejecuta compuerta");
   const handler = http.slice(http.indexOf("return withCommonHeaders"));
   invariant(handler.indexOf("requireAdminTenantMembershipAccess(req, env)") < handler.indexOf("resolveContext(req"), "auth ocurre antes de gate");
@@ -39,7 +40,7 @@ export function validateAdminTenantMembershipGuard(overrides = {}) {
   invariant(!/\b(?:tenantId|membershipId|userId|publicRef|clientId)\b/u.test(ui), "UI expone identidad interna");
   invariant(/--apply[\s\S]*AUTHORIZATION_FILE_REQUIRED[\s\S]*TARGET_USER_NOT_AUTHENTICABLE_OR_UNIQUE/u.test(bootstrap), "bootstrap no exige dry-run/autorización/User autenticable");
   invariant(!/passwordHash\s*[:=]|bcrypt\.hash|hashPassword/u.test(bootstrap), "bootstrap crea credenciales");
-  return { ok: true, migration: 20, permissions: 4, routes: 2, modes: ["DISABLED", "LOCAL_ONLY"] };
+  return { ok: true, migration: 20, permissions: 4, routes: 2, modes: ["DISABLED", "LOCAL_ONLY", "PRODUCTION_PILOT"] };
 }
 
 if (process.argv[1]?.endsWith("validate-v17-admin-tenant-memberships-guard.mjs")) {

@@ -18,8 +18,13 @@ import type { ModuleId } from '@/lib/roleModuleMap';
 import { resolveOsiHubMode, type OsiHubMode } from '@/hub/hubMode';
 import type { HubAccessContext } from '@/hub/hubAccess';
 import { evaluateHubRouteAccess } from '@/hub/hubRouteAccess';
+import { isAdminIdentityActivationRoute } from '@/admin-tenant/adminIdentityActivationRoute';
+import { isAdminTenantMembershipEnabled } from '@/admin-tenant/adminMode';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
+const AdminIdentityActivation = lazy(() =>
+  import('@/admin-tenant/AdminIdentityActivation').then((module) => ({ default: module.AdminIdentityActivation }))
+);
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
 );
@@ -582,7 +587,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
   );
 }
 
-function App() {
+function SessionApp() {
   const [authState, setAuthState] = useState<AuthState>({ status: 'AUTH_LOADING', session: null });
 
   useEffect(() => {
@@ -631,6 +636,11 @@ function App() {
   }
 
   return <AuthenticatedApp session={authState.session} onLogout={handleLogout} />;
+}
+
+function App() {
+  if (!isAdminIdentityActivationRoute() || !isAdminTenantMembershipEnabled()) return <SessionApp />;
+  return <Suspense fallback={<div className="min-h-screen bg-slate-950" />}><AdminIdentityActivation /></Suspense>;
 }
 
 export default App;

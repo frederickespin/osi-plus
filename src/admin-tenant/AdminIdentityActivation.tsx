@@ -1,17 +1,20 @@
 import { FormEvent, useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { loadSession } from "@/lib/sessionStore";
-import { consumeAdminIdentityActivationToken } from "./adminIdentityActivationRoute";
+import { clearAdminIdentityActivationToken, readAdminIdentityActivationToken } from "./adminIdentityActivationRoute";
 
 export function AdminIdentityActivation() {
-  const [token] = useState(() => consumeAdminIdentityActivationToken());
+  const [token] = useState(() => readAdminIdentityActivationToken());
   const [existingSession] = useState(() => loadSession());
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [state, setState] = useState<"READY" | "SAVING" | "DONE" | "ERROR">("READY");
 
-  useEffect(() => { document.querySelector<HTMLElement>("h1")?.focus(); }, []);
+  useEffect(() => {
+    clearAdminIdentityActivationToken();
+    document.querySelector<HTMLElement>("h1")?.focus();
+  }, []);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();

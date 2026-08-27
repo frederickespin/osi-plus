@@ -9,11 +9,16 @@ export const ADMIN_TENANT_MEMBERSHIP_MODES = Object.freeze({
 export const ADMIN_IDENTITY_INVITATION_MODES = ADMIN_TENANT_MEMBERSHIP_MODES;
 
 export type AdminTenantMembershipMode = typeof ADMIN_TENANT_MEMBERSHIP_MODES[keyof typeof ADMIN_TENANT_MEMBERSHIP_MODES];
+type AdminPilotClientRuntime = Readonly<{
+  hostname?: string;
+  vercelEnvironment?: string | null;
+  gitBranch?: string | null;
+}>;
 
 export function resolveAdminTenantMembershipMode(
   environment: Readonly<Record<string, unknown>> = import.meta.env,
   hostname = window.location.hostname,
-  runtime = {
+  runtime: AdminPilotClientRuntime = {
     hostname,
     vercelEnvironment: typeof __V17_VERCEL_ENV__ === "undefined" ? null : __V17_VERCEL_ENV__,
     gitBranch: typeof __V17_VERCEL_GIT_COMMIT_REF__ === "undefined" ? null : __V17_VERCEL_GIT_COMMIT_REF__,
@@ -22,7 +27,11 @@ export function resolveAdminTenantMembershipMode(
   const value = environment.VITE_ADMIN_TENANT_MEMBERSHIP_MODE;
   if (value === undefined || value === ADMIN_TENANT_MEMBERSHIP_MODES.DISABLED) return ADMIN_TENANT_MEMBERSHIP_MODES.DISABLED;
   if (value === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT) {
-    return isV17ProductionPilotClientEnvironment(runtime)
+    return isV17ProductionPilotClientEnvironment({
+      hostname: runtime.hostname ?? hostname,
+      vercelEnvironment: runtime.vercelEnvironment ?? null,
+      gitBranch: runtime.gitBranch ?? null,
+    })
       ? ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT
       : ADMIN_TENANT_MEMBERSHIP_MODES.DISABLED;
   }
@@ -33,7 +42,7 @@ export function resolveAdminTenantMembershipMode(
     : ADMIN_TENANT_MEMBERSHIP_MODES.DISABLED;
 }
 
-export function isAdminTenantMembershipEnabled(environment?: Readonly<Record<string, unknown>>, hostname?: string, runtime?: Readonly<{ hostname?: string; vercelEnvironment?: string | null; gitBranch?: string | null }>) {
+export function isAdminTenantMembershipEnabled(environment?: Readonly<Record<string, unknown>>, hostname?: string, runtime?: AdminPilotClientRuntime) {
   const mode = resolveAdminTenantMembershipMode(environment, hostname, runtime);
   return mode === ADMIN_TENANT_MEMBERSHIP_MODES.LOCAL_ONLY || mode === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT;
 }
@@ -41,7 +50,7 @@ export function isAdminTenantMembershipEnabled(environment?: Readonly<Record<str
 export function resolveAdminIdentityInvitationMode(
   environment: Readonly<Record<string, unknown>> = import.meta.env,
   hostname = window.location.hostname,
-  runtime = {
+  runtime: AdminPilotClientRuntime = {
     hostname,
     vercelEnvironment: typeof __V17_VERCEL_ENV__ === "undefined" ? null : __V17_VERCEL_ENV__,
     gitBranch: typeof __V17_VERCEL_GIT_COMMIT_REF__ === "undefined" ? null : __V17_VERCEL_GIT_COMMIT_REF__,
@@ -54,7 +63,7 @@ export function resolveAdminIdentityInvitationMode(
   );
 }
 
-export function isAdminIdentityInvitationEnabled(environment?: Readonly<Record<string, unknown>>, hostname?: string, runtime?: Readonly<{ hostname?: string; vercelEnvironment?: string | null; gitBranch?: string | null }>) {
+export function isAdminIdentityInvitationEnabled(environment?: Readonly<Record<string, unknown>>, hostname?: string, runtime?: AdminPilotClientRuntime) {
   const mode = resolveAdminIdentityInvitationMode(environment, hostname, runtime);
   return mode === ADMIN_IDENTITY_INVITATION_MODES.LOCAL_ONLY || mode === ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT;
 }

@@ -22,14 +22,14 @@ export class AdminMembershipError extends Error {
   }
 }
 
-function requiredText(value, field, max = 191) {
+export function requiredAdminText(value, field, max = 191) {
   const normalized = String(value ?? "").trim();
   if (!normalized || normalized.length > max) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
   return normalized;
 }
 
 export function canonicalMembershipRef(value) {
-  const normalized = requiredText(value, "membershipRef", 36);
+  const normalized = requiredAdminText(value, "membershipRef", 36);
   if (!UUID_V4.test(normalized)) throw new AdminMembershipError("ADMIN_MEMBERSHIP_NOT_FOUND", 404);
   return normalized;
 }
@@ -50,7 +50,7 @@ function effectivePermissions(row) {
   ].filter((permission) => !denied.has(permission)));
 }
 
-function requirePermission(context, permission) {
+export function requireAdminPermission(context, permission) {
   const denied = new Set(context?.deniedPermissions || []);
   const effective = new Set(context?.effectivePermissions || context?.permissions || []);
   if (denied.has(permission) || !effective.has(permission)) {
@@ -72,10 +72,10 @@ function publicDto(row) {
   });
 }
 
-async function revalidateActor(db, context) {
-  const tenantId = requiredText(context?.tenantId, "tenantId");
-  const membershipId = requiredText(context?.membershipId, "membershipId");
-  const userId = requiredText(context?.userId, "userId");
+export async function revalidateAdminActor(db, context) {
+  const tenantId = requiredAdminText(context?.tenantId, "tenantId");
+  const membershipId = requiredAdminText(context?.membershipId, "membershipId");
+  const userId = requiredAdminText(context?.userId, "userId");
   const rows = await db.$queryRaw(Prisma.sql`
     SELECT tm."id", tm."user_id", tm."role"::text AS "role", tm."status"::text AS "status",
            tm."granted_permissions", tm."denied_permissions", tm."authorization_version",
@@ -94,7 +94,7 @@ async function revalidateActor(db, context) {
   return { tenantId, membershipId, userId, row: actor, effective: effectivePermissions(actor) };
 }
 
-function assertActorPermission(actor, permission) {
+export function assertAdminActorPermission(actor, permission) {
   const denied = new Set(actor.row.denied_permissions || []);
   if (denied.has(permission) || !actor.effective.has(permission)) {
     throw new AdminMembershipError("ADMIN_MEMBERSHIP_FORBIDDEN", 403);
@@ -102,9 +102,9 @@ function assertActorPermission(actor, permission) {
 }
 
 export async function listTenantMemberships(prisma, context, filters = {}) {
-  requirePermission(context, PERMS.MEMBERSHIP_VIEW);
-  const actor = await revalidateActor(prisma, context);
-  assertActorPermission(actor, PERMS.MEMBERSHIP_VIEW);
+  requireAdminPermission(context, PERMS.MEMBERSHIP_VIEW);
+  const actor = await revalidateAdminActor(prisma, context);
+  assertAdminActorPermission(actor, PERMS.MEMBERSHIP_VIEW);
   const page = Math.max(1, Math.trunc(Number(filters.page) || 1));
   const pageSize = Math.min(50, Math.max(1, Math.trunc(Number(filters.pageSize) || 20)));
   const search = String(filters.search || "").trim().slice(0, 120);
@@ -134,10 +134,10 @@ export async function listTenantMemberships(prisma, context, filters = {}) {
 }
 
 export async function getTenantMembership(prisma, context, membershipRef) {
-  requirePermission(context, PERMS.MEMBERSHIP_VIEW);
+  requireAdminPermission(context, PERMS.MEMBERSHIP_VIEW);
   const ref = canonicalMembershipRef(membershipRef);
-  const actor = await revalidateActor(prisma, context);
-  assertActorPermission(actor, PERMS.MEMBERSHIP_VIEW);
+  const actor = await revalidateAdminActor(prisma, context);
+  assertAdminActorPermission(actor, PERMS.MEMBERSHIP_VIEW);
   const rows = await prisma.$queryRaw(Prisma.sql`
     SELECT tm."public_ref", tm."role"::text AS "role", tm."status"::text AS "status",
            tm."granted_permissions", tm."denied_permissions", tm."authorization_version", tm."updated_at",
@@ -159,7 +159,7 @@ function operationalAdmin(row) {
 
 export async function updateTenantMembership(prisma, context, membershipRef, input, { auditWriter = appendCommercialAudit } = {}) {
   const ref = canonicalMembershipRef(membershipRef);
-  const requestId = requiredText(input?.requestId, "requestId");
+  const requestId = requiredAdminText(input?.requestId, "requestId");
   const expectedVersion = Number(input?.expectedVersion);
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
   const role = input.role === undefined ? undefined : String(input.role).toUpperCase();
@@ -171,17 +171,17 @@ export async function updateTenantMembership(prisma, context, membershipRef, inp
   if (role === undefined && status === undefined && granted === undefined && denied === undefined) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
   if (granted && denied && granted.some((permission) => denied.includes(permission))) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
 
-  if (role !== undefined) requirePermission(context, PERMS.MEMBERSHIP_UPDATE_ROLE);
-  if (status !== undefined) requirePermission(context, PERMS.MEMBERSHIP_UPDATE_STATUS);
-  if (granted !== undefined || denied !== undefined) requirePermission(context, PERMS.MEMBERSHIP_UPDATE_PERMISSIONS);
+  if (role !== undefined) requireAdminPermission(context, PERMS.MEMBERSHIP_UPDATE_ROLE);
+  if (status !== undefined) requireAdminPermission(context, PERMS.MEMBERSHIP_UPDATE_STATUS);
+  if (granted !== undefined || denied !== undefined) requireAdminPermission(context, PERMS.MEMBERSHIP_UPDATE_PERMISSIONS);
 
   return prisma.$transaction(async (tx) => {
-    const tenantId = requiredText(context?.tenantId, "tenantId");
+    const tenantId = requiredAdminText(context?.tenantId, "tenantId");
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "osi"."tenants" WHERE "id"=${tenantId} FOR UPDATE`);
-    const actor = await revalidateActor(tx, context);
-    if (role !== undefined) assertActorPermission(actor, PERMS.MEMBERSHIP_UPDATE_ROLE);
-    if (status !== undefined) assertActorPermission(actor, PERMS.MEMBERSHIP_UPDATE_STATUS);
-    if (granted !== undefined || denied !== undefined) assertActorPermission(actor, PERMS.MEMBERSHIP_UPDATE_PERMISSIONS);
+    const actor = await revalidateAdminActor(tx, context);
+    if (role !== undefined) assertAdminActorPermission(actor, PERMS.MEMBERSHIP_UPDATE_ROLE);
+    if (status !== undefined) assertAdminActorPermission(actor, PERMS.MEMBERSHIP_UPDATE_STATUS);
+    if (granted !== undefined || denied !== undefined) assertAdminActorPermission(actor, PERMS.MEMBERSHIP_UPDATE_PERMISSIONS);
 
     const targets = await tx.$queryRaw(Prisma.sql`
       SELECT tm."id", tm."public_ref", tm."user_id", tm."role"::text AS "role", tm."status"::text AS "status",

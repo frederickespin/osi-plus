@@ -5,11 +5,12 @@ const read = (path) => readFile(new URL(path, root), "utf8");
 function requireMatch(source, pattern, message) { if (!pattern.test(source)) throw new Error(message); }
 function forbid(source, pattern, message) { if (pattern.test(source)) throw new Error(message); }
 
-const [gate, crmAccess, crmHttp, adminAccess, adminHttp, identityHttp, mutationUi, adminMode, app, hub, adminModule] = await Promise.all([
+const [gate, crmAccess, crmHttp, adminAccess, adminHttp, identityHttp, mutationUi, adminMode, app, hub, adminModule, hubGuard] = await Promise.all([
   read("api/_lib/v17ProductionPilotGate.js"), read("api/_lib/crmPipelineAccess.js"), read("api/_lib/crmCaseMutationHttp.js"),
   read("api/_lib/adminMembershipAccess.js"), read("api/_lib/adminMembershipHttp.js"), read("api/_lib/adminIdentityInvitationHttp.js"),
   read("src/crm-relational/mutationApi.ts"), read("src/admin-tenant/adminMode.ts"), read("src/App.tsx"),
   read("src/hub/HubWorkspace.tsx"), read("src/admin-tenant/AdminTenantMembershipModule.tsx"),
+  read("scripts/validate-v17-hub-guard.mjs"),
 ]);
 
 requireMatch(gate, /VERCEL_ENV === "production"[\s\S]*VERCEL_GIT_COMMIT_REF === "main"/, "la autoridad no verifica Production/main");
@@ -29,9 +30,11 @@ requireMatch(adminMode, /VITE_ADMIN_TENANT_MEMBERSHIP_MODE[\s\S]*VITE_ADMIN_IDEN
 requireMatch(app, /isAdminIdentityActivationRoute\(\)[\s\S]*isAdminIdentityInvitationEnabled\(\)/, "activación lazy no depende de la compuerta de invitaciones");
 requireMatch(hub, /invitationEnabled=\{adminInvitationsEnabled\}/, "Hub no transmite la compuerta focal de invitaciones");
 requireMatch(adminModule, /invitationEnabled && ADMIN_PERMISSIONS\.every/, "acciones de invitación no fallan cerradas visualmente");
+requireMatch(hubGuard, /"api\/_lib\/v17ProductionPilotGate\.js"/, "la guardia Hub no reconoce la autoridad focal exacta");
+forbid(hubGuard, /api\/_lib\/\*|path\.startsWith\("api\/_lib"\)/, "la guardia Hub amplió la allowlist backend");
 for (const source of [mutationUi, adminMode, app, hub, adminModule]) {
   forbid(source, /V17_PRODUCTION_PILOT_ACTIVATION_(?:BATCH|MANIFEST|MANIFEST_SHA256)/, "autoridad server-only incluida en frontend");
   forbid(source, /x-osi-|location\.(?:search|hash)|localStorage.*PRODUCTION_PILOT|sessionStorage.*PRODUCTION_PILOT/i, "autoridad frontend falsificable");
 }
 
-process.stdout.write(`${JSON.stringify({ ok: true, assertions: 25 }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ ok: true, assertions: 27 }, null, 2)}\n`);

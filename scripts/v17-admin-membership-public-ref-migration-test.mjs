@@ -29,7 +29,7 @@ function prismaCommand(args, url) {
 mkdirSync(join(tempPrisma, "migrations"), { recursive: true });
 cpSync(resolve("prisma/schema.prisma"), join(tempPrisma, "schema.prisma"));
 for (const name of readdirSync(resolve("prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name)) {
-  if (name !== MIGRATION) cpSync(resolve("prisma/migrations", name), join(tempPrisma, "migrations", name), { recursive: true });
+  if (name < MIGRATION) cpSync(resolve("prisma/migrations", name), join(tempPrisma, "migrations", name), { recursive: true });
 }
 
 const maintenance = new PrismaClient({ datasourceUrl: maintenanceUrl.href });
@@ -57,7 +57,8 @@ try {
   await prisma.$disconnect(); prisma = undefined;
 
   const deployed = prismaCommand(["migrate", "deploy", "--schema", resolve("prisma/schema.prisma")], targetUrl.href);
-  check("migración 20 es el único paso", deployed.includes(`Applying migration \`${MIGRATION}\``));
+  check("migraciones 20 y 21 se aplican en orden", deployed.includes(`Applying migration \`${MIGRATION}\``)
+    && deployed.includes("Applying migration `20260827020000_v17_admin_identity_invitation`"));
   prisma = new PrismaClient({ datasourceUrl: targetUrl.href });
   const refs = await prisma.$queryRawUnsafe(`SELECT "id","public_ref"::text AS "ref" FROM "osi"."tenant_memberships" WHERE "tenant_id"=$1 ORDER BY "id"`, tenantId);
   check("backfill UUID v4 no nulo y único", refs.length === 12 && refs.every((row) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(row.ref)) && new Set(refs.map((row) => row.ref)).size === 12);

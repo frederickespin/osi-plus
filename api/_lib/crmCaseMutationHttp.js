@@ -1,13 +1,20 @@
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
 import {
   CRM_PIPELINE_MUTATION_MODES,
-  requireCrmPipelineMutation,
+  requireCrmPipelineCaseMutation,
   resolveCrmPipelineContext,
 } from "./crmPipelineAccess.js";
 import { CrmCaseMutationError } from "./crmCaseMutationDomain.js";
 import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
 import { methodNotAllowed, readJsonObject, withCommonHeaders } from "./http.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
+import { PERMS } from "./rbac.js";
+import {
+  V17_PRODUCTION_PILOT_GATES,
+  V17ProductionPilotGateError,
+  requireV17ProductionPilotContext,
+  resolveV17ProductionPilotActivation,
+} from "./v17ProductionPilotGate.js";
 
 function single(req, name) {
   const value = req?.headers?.[name] ?? req?.headers?.[name.replace(/(^|-)([a-z])/g, (_, dash, letter) => `${dash}${letter.toUpperCase()}`)];
@@ -23,18 +30,21 @@ function sameOrigin(req) {
   }
 }
 function gate(env, req) {
-  const mode = requireCrmPipelineMutation(env);
+  const mode = requireCrmPipelineCaseMutation(env);
   if (mode === CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY && !isRealLoopbackRequest(req)) {
     throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
   }
   if (mode !== CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY
-    && mode !== CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL) {
+    && mode !== CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL
+    && mode !== CRM_PIPELINE_MUTATION_MODES.PRODUCTION_PILOT) {
     throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
   }
+  return mode;
 }
 function send(res, error, head = false) {
   const status = Number.isInteger(error?.status) ? error.status : 503;
   const code = error instanceof CrmCaseMutationError || error instanceof CommercialTenancyError
+    || error instanceof V17ProductionPilotGateError
     ? error.code
     : "CRM_PIPELINE_DATABASE_UNAVAILABLE";
   if (head) return res.status(status).end();
@@ -55,13 +65,15 @@ export function createCrmCaseMutationHandler({
   method,
   execute,
   status = 200,
+  resolveContext = resolveCrmPipelineContext,
 } = {}) {
   return withCommonHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
+    let mode;
     try {
       // Configuration is deliberately first: no auth, body or Prisma access can
       // happen while case mutations are disabled or outside loopback.
-      gate(env, req);
+      mode = gate(env, req);
       sameOrigin(req);
     } catch (error) {
       return send(res, error, req.method === "HEAD");
@@ -69,7 +81,18 @@ export function createCrmCaseMutationHandler({
     if (req.method === "OPTIONS") return res.status(204).end();
     if (req.method !== method) return methodNotAllowed(res, [method]);
     try {
-      const context = await resolveCrmPipelineContext(req, { prisma: prismaClient, env });
+      const context = await resolveContext(req, { prisma: prismaClient, env });
+      if (mode === CRM_PIPELINE_MUTATION_MODES.PRODUCTION_PILOT) {
+        const permissionsByRole = method === "POST"
+          ? { A: [PERMS.PIPELINE_CREATE], V: [PERMS.PIPELINE_CREATE] }
+          : { A: [PERMS.PIPELINE_UPDATE_ANY], V: [PERMS.PIPELINE_UPDATE_OWN] };
+        requireV17ProductionPilotContext(
+          resolveV17ProductionPilotActivation(env),
+          context,
+          V17_PRODUCTION_PILOT_GATES.CRM_CASE_MUTATIONS,
+          permissionsByRole,
+        );
+      }
       const body = await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 32 * 1024 });
       const result = await execute({ req, context, body, prisma: prismaClient });
       return res.status(status).json({

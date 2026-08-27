@@ -15,6 +15,10 @@ import {
   V17_COMMERCIAL_CRM_PREVIEW_MODE,
   isExactV17CommercialCrmPreviewServerEnvironment,
 } from "../../shared/v17CommercialCrmPreview.js";
+import {
+  V17_PRODUCTION_PILOT_MODE,
+  resolveV17ProductionPilotActivation,
+} from "./v17ProductionPilotGate.js";
 
 export const CRM_PIPELINE_READ_MODES = Object.freeze({
   DISABLED: "DISABLED",
@@ -28,6 +32,7 @@ export const CRM_PIPELINE_MUTATION_MODES = Object.freeze({
   LOCAL_ONLY: "LOCAL_ONLY",
   PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE,
   PRODUCTION_WRITE: "PRODUCTION_WRITE",
+  PRODUCTION_PILOT: V17_PRODUCTION_PILOT_MODE,
 });
 
 export const CRM_PIPELINE_ACTIVATION_BATCH = "CRM-01B3B1-PRODUCTION-V1";
@@ -107,20 +112,23 @@ export function resolveCrmPipelineModes(env = process.env) {
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.DISABLED;
   const productionWrite = readMode === CRM_PIPELINE_READ_MODES.PRODUCTION_READ
     && mutationMode === CRM_PIPELINE_MUTATION_MODES.PRODUCTION_WRITE;
+  const productionPilot = readMode === CRM_PIPELINE_READ_MODES.PRODUCTION_READ
+    && mutationMode === CRM_PIPELINE_MUTATION_MODES.PRODUCTION_PILOT;
 
-  if (!disabled && !localRead && !localWrite && !previewRead && !previewWrite && !productionRead && !productionWrite) invalidConfiguration();
+  if (!disabled && !localRead && !localWrite && !previewRead && !previewWrite && !productionRead && !productionWrite && !productionPilot) invalidConfiguration();
   if (!["LEGACY", "MEMBERSHIP_ONLY"].includes(authMode) || tenantSwitch !== "false" || clientV2 !== "false") invalidConfiguration();
   if ((disabled || localRead || localWrite) && activationBatch !== undefined) invalidConfiguration();
   if ((localRead || localWrite) && hasVercelEnvironment(env)) invalidConfiguration();
   if (previewRead || previewWrite) assertPreviewAuthority(env);
-  if ((productionRead || productionWrite)) assertProductionAuthority(env);
+  if (productionRead || productionWrite || productionPilot) assertProductionAuthority(env);
+  if (productionPilot) resolveV17ProductionPilotActivation(env);
   if (localWrite || productionWrite) assertCrmOwnerRefSecretConfigured(env);
 
   return Object.freeze({
     readMode,
     mutationMode,
     ...(previewRead || previewWrite ? { preview: true } : {}),
-    production: productionRead || productionWrite,
+    production: productionRead || productionWrite || productionPilot,
   });
 }
 
@@ -134,8 +142,21 @@ export function requireCrmPipelineRead(env = process.env) {
 
 export function requireCrmPipelineMutation(env = process.env) {
   const modes = resolveCrmPipelineModes(env);
+  if (modes.mutationMode === CRM_PIPELINE_MUTATION_MODES.DISABLED
+    || modes.mutationMode === CRM_PIPELINE_MUTATION_MODES.PRODUCTION_PILOT) {
+    throw new CommercialTenancyError("CRM_PIPELINE_MUTATIONS_DISABLED", 409);
+  }
+  return modes.mutationMode;
+}
+
+export function requireCrmPipelineCaseMutation(env = process.env) {
+  const modes = resolveCrmPipelineModes(env);
   if (modes.mutationMode === CRM_PIPELINE_MUTATION_MODES.DISABLED) {
     throw new CommercialTenancyError("CRM_PIPELINE_MUTATIONS_DISABLED", 409);
+  }
+  if (![CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY, CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL,
+    CRM_PIPELINE_MUTATION_MODES.PRODUCTION_PILOT].includes(modes.mutationMode)) {
+    throw new CommercialTenancyError("CRM_PIPELINE_CONFIGURATION_INVALID", 503);
   }
   return modes.mutationMode;
 }

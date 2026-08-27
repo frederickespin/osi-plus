@@ -142,7 +142,7 @@ async function resolveLegacyCommercialContext(prisma, token) {
       SELECT tm."tenant_id", tm."id" AS "membership_id", u."id" AS "user_id",
              tm."role"::text AS "membership_role", tm."status"::text AS "membership_status",
              tm."granted_permissions", tm."denied_permissions", tm."authorization_version",
-             t."status"::text AS "tenant_status", u."status" AS "user_status"
+             t."status"::text AS "tenant_status", t."code" AS "tenant_code", u."status" AS "user_status"
       FROM "osi"."osi_users" u
       LEFT JOIN "osi"."tenant_memberships" tm
         ON tm."user_id" = u."id" AND tm."is_default" = true
@@ -180,9 +180,13 @@ async function resolveLegacyCommercialContext(prisma, token) {
     authType: "LEGACY_TENANT_WRITE",
     userId: String(row.user_id),
     tenantId: String(row.tenant_id),
+    tenantCode: String(row.tenant_code),
     membershipId: String(row.membership_id),
     role,
     authorizationVersion: Number(row.authorization_version),
+    userStatus: upper(row.user_status),
+    membershipStatus: upper(row.membership_status),
+    tenantStatus: upper(row.tenant_status),
     deniedPermissions: Array.isArray(row.denied_permissions) ? row.denied_permissions.map(String) : [],
     effectivePermissions: effectivePermissions(role, row.granted_permissions, row.denied_permissions),
   });

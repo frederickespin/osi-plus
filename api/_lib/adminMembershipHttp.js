@@ -4,7 +4,13 @@ import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { resolveCrmPipelineContext } from "./crmPipelineAccess.js";
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
 import { Mt01bAuthError } from "./authPolicy.js";
-import { AdminMembershipAccessError, requireAdminTenantMembershipAccess } from "./adminMembershipAccess.js";
+import {
+  ADMIN_TENANT_MEMBERSHIP_MODES,
+  AdminMembershipAccessError,
+  V17_PRODUCTION_PILOT_GATES,
+  requireAdminProductionPilotContext,
+  requireAdminTenantMembershipAccess,
+} from "./adminMembershipAccess.js";
 import {
   AdminMembershipError,
   getTenantMembership,
@@ -80,10 +86,13 @@ export function createAdminMembershipCollectionHandler({
     setCrmPrivateHeaders(res);
     const head = req.method === "HEAD";
     try {
-      requireAdminTenantMembershipAccess(req, env);
+      const mode = requireAdminTenantMembershipAccess(req, env);
       if (!["GET", "HEAD"].includes(req.method)) return methodNotAllowed(res, ["GET", "HEAD"], head);
       assertSameOrigin(req);
       const context = await resolveContext(req, { prisma, env });
+      if (mode === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT) {
+        requireAdminProductionPilotContext(env, context, V17_PRODUCTION_PILOT_GATES.ADMIN_MEMBERSHIPS);
+      }
       const result = await list(prisma, context, queryFilters(req));
       if (head) return res.status(200).end();
       return res.status(200).json({ ok: true, ...result });
@@ -104,10 +113,13 @@ export function createAdminMembershipDetailHandler({
     setCrmPrivateHeaders(res);
     const head = req.method === "HEAD";
     try {
-      requireAdminTenantMembershipAccess(req, env);
+      const mode = requireAdminTenantMembershipAccess(req, env);
       if (!["GET", "HEAD", "PATCH"].includes(req.method)) return methodNotAllowed(res, ["GET", "HEAD", "PATCH"], head);
       assertSameOrigin(req);
       const context = await resolveContext(req, { prisma, env });
+      if (mode === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT) {
+        requireAdminProductionPilotContext(env, context, V17_PRODUCTION_PILOT_GATES.ADMIN_MEMBERSHIPS);
+      }
       const membershipRef = Array.isArray(req.query?.membershipRef) ? null : req.query?.membershipRef;
       if (req.method === "PATCH") {
         const body = strictPatch(await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 32 * 1024 }));

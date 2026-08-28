@@ -23,11 +23,11 @@ try {
     MT01B_TENANT_SWITCH_ENABLED: "false",
     VITE_MT01B2_CLIENT_ENABLED: "false",
   } });
-  check("estado actual aprobado", baseline.ok && baseline.migrations === 19 && baseline.preparedRoutes.length === 6 && baseline.activationBlockers.length === 4);
+  check("estado actual aprobado", baseline.ok && baseline.migrations === 20 && baseline.preparedRoutes.length === 6 && baseline.activationBlockers.length === 4);
   rejected("TENANT_READ en CI rechazado", { env: { COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ" } }, /TENANT_READ/);
   rejected("TENANT_WRITE en CI rechazado", { env: { COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE" } }, /TENANT_WRITE/);
   rejected("read con espacio rechazado", { env: { COMMERCIAL_TENANCY_READ_MODE: "LEGACY_ONLY " } }, /TENANT_READ/);
-  rejected("migración 20 rechazada", { migrationNames: [...Array.from({ length: 19 }, (_, i) => `m${i}`), "20260825010000_unexpected"] }, /19 migraciones/);
+  rejected("migración 21 rechazada", { migrationNames: [...Array.from({ length: 20 }, (_, i) => `m${i}`), "20260828010000_unexpected"] }, /20 migraciones/);
   const service = read("api/_lib/commercialTenancyRead.js");
   rejected("filtro tenant eliminado rechazado", { overrides: { "api/_lib/commercialTenancyRead.js": service.replaceAll("tenantId: String(tenantId)", "id: { not: '' }") } }, /filtran todas/);
   rejected("owner interno expuesto rechazado", { overrides: { "api/_lib/commercialTenancyRead.js": service.replace("ownerMembershipId: true, ownerUserId: true", "") } }, /autoridad interna/);

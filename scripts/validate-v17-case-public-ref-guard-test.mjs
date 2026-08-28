@@ -41,7 +41,7 @@ const backfill = sql.match(/UPDATE "osi"\."osi_pipeline_cases"[\s\S]*?WHERE "pub
 rejected("orden inseguro rechazado", { migrationSource: sql.replace(backfill, "").replace('ADD COLUMN "public_ref" UUID;', `${backfill}\n\nADD COLUMN "public_ref" UUID;`) }, /orden|eventos de triggers/);
 rejected("CUID como fallback rechazado", { schemaSource: mutatePipeline((block) => block.replace('dbgenerated("gen_random_uuid()")', "cuid()")) }, /default PostgreSQL|Prisma no puede/);
 rejected("JWT como fuente rechazado", { migrationSource: sql.replace("COMMIT;", "-- derive from JWT secret\nCOMMIT;") }, /fallback|debilitamiento/);
-rejected("migración 20 rechazada", { migrationNames: [...migrations, "20260825010000_future"] }, /19 migraciones|migración 19/);
+rejected("migración 21 rechazada", { migrationNames: [...migrations, "20260828010000_future"] }, /20 migraciones|migración 20/);
 rejected("consumidor backend adicional rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/public-ref.js": "const value = row.publicRef;" } }, /sólo puede consumirse/);
 rejected("mutación consumidora rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/pipelineCaseMutationHttp.js": "const value = command.publicRef;" } }, /sólo puede consumirse/);
 rejected("consumidor frontend rechazado", { extraRuntimeSources: { ...canonicalRuntime, "src/unsafe.ts": "const leaked = value.publicRef;" } }, /sólo puede consumirse|frontend/);
@@ -51,9 +51,9 @@ rejected("tenantId de alcance eliminado rechazado", withCanonicalRead(canonicalR
 rejected("publicRef de findFirst eliminado rechazado", withCanonicalRead(canonicalRead
   .replace("where: { ...scope, publicRef },", "where: { ...scope },")), /predicados tenant-first/);
 rejected("ownerMembershipId de V eliminado rechazado", withCanonicalRead(canonicalRead
-  .replace("    ownerMembershipId: String(membershipId),\n", "")), /Membership y User completos/);
+  .replace(/^\s*ownerMembershipId: String\(membershipId\),\r?\n/m, "")), /Membership y User completos/);
 rejected("ownerUserId de V eliminado rechazado", withCanonicalRead(canonicalRead
-  .replace("    ownerUserId: String(userId),\n", "")), /Membership y User completos/);
+  .replace(/^\s*ownerUserId: String\(userId\),\r?\n/m, "")), /Membership y User completos/);
 rejected("validación UUID previa eliminada rechazada", withCanonicalRead(canonicalRead
   .replace("const publicRef = canonicalCaseRef(caseRef);", "const publicRef = String(caseRef);")), /UUID y alcance|UUID v4/);
 rejected("alcance previo a Prisma eliminado rechazado", withCanonicalRead(canonicalRead

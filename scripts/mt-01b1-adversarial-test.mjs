@@ -39,7 +39,7 @@ async function familyState(sessionId) {
 }
 
 function actorContext(identity) {
-  return { tenantId: identity.tenantId, membershipId: identity.membershipId, role: "A", permissions: [], deniedPermissions: [] };
+  return { tenantId: identity.tenantId, membershipId: identity.membershipId, role: "A", permissions: ["membership:update:permissions"], deniedPermissions: [] };
 }
 
 async function retryMembershipUpdate(actor, target, input) {
@@ -61,6 +61,7 @@ async function retryMembershipUpdate(actor, target, input) {
 
 try {
   const actor = await createIdentity(prisma, `adv-actor-${randomUUID().slice(0, 6)}`);
+  await prisma.tenantMembership.update({ where: { id: actor.membershipId }, data: { grantedPermissions: ["membership:update:permissions"] } });
   const target = await createIdentity(prisma, `adv-target-${randomUUID().slice(0, 6)}`, {
     tenantId: actor.tenantId,
     role: "V",

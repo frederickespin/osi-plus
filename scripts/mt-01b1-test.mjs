@@ -34,6 +34,7 @@ async function expectCode(name, operation, code) {
 
 try {
   const actor = await createIdentity(prisma, `actor-${randomUUID().slice(0, 6)}`);
+  await prisma.tenantMembership.update({ where: { id: actor.membershipId }, data: { grantedPermissions: ["membership:update:permissions"] } });
   const target = await createIdentity(prisma, `target-${randomUUID().slice(0, 6)}`, { tenantId: actor.tenantId, role: "V", isDefault: false });
   const other = await createIdentity(prisma, `other-${randomUUID().slice(0, 6)}`);
   const request = syntheticRequest();
@@ -99,7 +100,7 @@ try {
   check("logout elimina ACTIVE", await prisma.authRefreshToken.count({ where: { sessionId: logoutSession.identity.sessionId, status: "ACTIVE" } }) === 0);
 
   const targetSession = await createMembershipAuthSession(prisma, target, { req: request, now: new Date(now.getTime() + 4_000) });
-  const actorContext = { tenantId: actor.tenantId, membershipId: actor.membershipId, role: "A", permissions: [], deniedPermissions: [] };
+  const actorContext = { tenantId: actor.tenantId, membershipId: actor.membershipId, role: "A", permissions: ["membership:update:permissions"], deniedPermissions: [] };
   const updated = await updateMembershipAuthorization(prisma, actorContext, {
     membershipId: target.membershipId,
     role: "C",

@@ -139,10 +139,10 @@ check("Survey y Cotización permanecen En integración", () => {
   assert.match(detail, /Cotización en integración/u);
 });
 
-check("no existe migración 19", () => {
+check("no existe migración comercial ambigua", () => {
   const migrations = fs.readdirSync(path.join(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  assert.equal(migrations.length, 19);
+  assert.equal(migrations.length, 20);
   assert.equal(migrations.some((entry) => /v17_(?:party|location|service|compliance)|migration.?19/iu.test(entry.name)), false);
 });
 
-process.stdout.write(JSON.stringify({ ok: true, assertions, productionRead: true, mutations: "DISABLED", migration19: false }));
+process.stdout.write(JSON.stringify({ ok: true, assertions, productionRead: true, mutations: "DISABLED", ambiguousCommercialMigration: false }));

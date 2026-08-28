@@ -11,6 +11,7 @@ const rejected = (name, overrides, pattern) => {
 
 assert.equal(validateV17CrmCaseMutationsGuard().ok, true); assertions += 1;
 const schema = read("prisma/schema.prisma");
+const clientModel = schema.match(/model Client\s*\{[\s\S]*?\n\}/)?.[0] || "";
 const migrationPath = "prisma/migrations/20260824010000_v17_client_public_ref_case_mutations/migration.sql";
 const migration = read(migrationPath);
 const rbac = read("api/_lib/rbac.js");
@@ -23,11 +24,11 @@ const readDomain = read("api/_lib/crmPipelineRead.js");
 const browserSuite = read("tests/v17-commercial-crm/commercial-inbox.spec.ts");
 
 rejected("publicRef nullable", { "prisma/schema.prisma": schema.replace(/(model Client\s*\{[\s\S]*?publicRef\s+)String/, "$1String?") }, /Client\.publicRef/);
-rejected("unicidad tenant-first retirada", { "prisma/schema.prisma": schema.replace(/\s*@@unique\(\[tenantId, publicRef\][^\n]*\)\r?\n/, "\n") }, /Client\.publicRef/);
+rejected("unicidad tenant-first retirada", { "prisma/schema.prisma": schema.replace(clientModel, clientModel.replace(/\s*@@unique\(\[tenantId, publicRef\][^\n]*\)\r?\n/, "\n")) }, /Client\.publicRef/);
 rejected("caseCode global", { "prisma/schema.prisma": schema.replace("caseCode                      String", "caseCode                      String @unique") }, /caseCode/);
 rejected("backfill empresarial", { [migrationPath]: `${migration}\nUPDATE "osi"."osi_pipeline_cases" SET "clientName"='x';\n` }, /datos empresariales/);
 rejected("inmutabilidad retirada", { [migrationPath]: migration.replace("BEFORE UPDATE OF \"public_ref\"", "BEFORE DELETE") }, /inmutabilidad/);
-rejected("permiso automático A", { "api/_lib/rbac.js": rbac.replace("Object.values(PERMS).filter((permission) => !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission))", "Object.values(PERMS)") }, /A recibe/);
+rejected("permiso automático A", { "api/_lib/rbac.js": rbac.replace(/A: Object\.values\(PERMS\)\.filter\(\(permission\) =>[\s\S]*?\),\r?\n  V:/, "A: Object.values(PERMS),\n  V:") }, /A recibe/);
 rejected("permiso automático V", { "api/_lib/rbac.js": rbac.replace("PERMS.PIPELINE_VIEW,", "PERMS.PIPELINE_VIEW,\n    PERMS.PIPELINE_CREATE,") }, /V recibe/);
 rejected("auth antes del gate", { "api/_lib/crmCaseMutationHttp.js": http.replace("gate(env, req);", "void resolveCrmPipelineContext(req); gate(env, req);") }, /orden/);
 rejected("LOCAL_ONLY sin loopback real", { "api/_lib/crmCaseMutationHttp.js": http.replace("&& !isRealLoopbackRequest(req)", "&& false") }, /loopback/);

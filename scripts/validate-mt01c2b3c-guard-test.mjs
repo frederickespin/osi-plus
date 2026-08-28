@@ -19,7 +19,7 @@ function rejected(name, options, pattern) {
 
 try {
   const baseline = validateMt01c2b3c({ root });
-  check("estado inactivo actual aprobado", baseline.ok && baseline.migrations === 19 && baseline.previewBlocked);
+  check("estado inactivo actual aprobado", baseline.ok && baseline.migrations === 20 && baseline.previewBlocked);
   check("allowlist heredada continúa en 24", baseline.legacyHeaderExceptions === 24);
 
   const bridge = read("api/_lib/commercialTenancyWrite.js");
@@ -44,9 +44,9 @@ try {
   rejected("modo tenant versionado rechazado", {
     overrides: { ".env.example": envExample.replace('COMMERCIAL_TENANCY_READ_MODE="LEGACY_ONLY"', 'COMMERCIAL_TENANCY_READ_MODE="TENANT_READ"') },
   }, /READ debe|activa/);
-  rejected("migración 20 rechazada", {
-    migrationNames: [...Array.from({ length: 19 }, (_, index) => `m${index}`), "20260825010000_unexpected"],
-  }, /19 migraciones/);
+  rejected("migración 21 rechazada", {
+    migrationNames: [...Array.from({ length: 20 }, (_, index) => `m${index}`), "20260828010000_unexpected"],
+  }, /20 migraciones/);
   rejected("hook de backfill rechazado", {
     overrides: { "package.json": JSON.stringify({ ...JSON.parse(read("package.json")), scripts: { build: "node scripts/mt-01c2b2-backfill.mjs" } }) },
   }, /hook|automático/);

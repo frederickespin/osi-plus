@@ -4,6 +4,13 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      verify_request_barrier_artifacts:
+        description: Generate and publish one controlled WebKit failure artifact
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -178,7 +185,41 @@ jobs:
         run: npm run test:sec-dep-01:browser
 
       - name: Validate inactive relational CRM client in real browsers
+        id: crm_relational_browser
+        env:
+          CRM01B3B2_ARTIFACT_DIR: ${{ runner.temp }}/crm01b3b2-playwright-artifacts
         run: npm run test:crm-01b3b2:browser
+
+      - name: Generate controlled request-barrier failure evidence
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_request_barrier_artifacts
+        shell: bash
+        env:
+          CRM01B3B2_ARTIFACT_DIR: ${{ runner.temp }}/request-barrier-artificial-raw
+          V17_REQUEST_BARRIER_ARTIFACT_PROBE: "1"
+        run: |
+          set -uo pipefail
+          set +e
+          npx playwright test -c playwright.crm-01b3b2.config.ts relational-pipeline.spec.ts \
+            --project=webkit-mobile \
+            --grep "respuesta perdida conserva la intención" \
+            --workers=1 2>&1 | tee "${{ runner.temp }}/request-barrier-artificial.log"
+          playwright_status=${PIPESTATUS[0]}
+          set -e
+          test "$playwright_status" -eq 1
+          grep -Fq "V17_REQUEST_BARRIER_ARTIFACT_PROBE" "${{ runner.temp }}/request-barrier-artificial.log"
+          python tests/crm-01b3b2/sanitize_failure_artifacts.py \
+            "${{ runner.temp }}/request-barrier-artificial-raw" \
+            "${{ runner.temp }}/request-barrier-artificial-sanitized"
+
+      - name: Publish controlled request-barrier failure evidence
+        if: github.event_name == 'workflow_dispatch' && inputs.verify_request_barrier_artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: request-barrier-artificial-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/request-barrier-artificial-sanitized
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
 
       - name: Validate inactive OSi Plus Hub in real browsers
         run: npm run test:v17-hub:browser
@@ -206,6 +247,24 @@ jobs:
           path: ${{ runner.temp }}/auth-null-playwright-artifacts
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Upload relational CRM failure diagnostics
+        if: steps.crm_relational_browser.outcome == 'failure'
+        shell: bash
+        run: |
+          python tests/crm-01b3b2/sanitize_failure_artifacts.py \
+            "${{ runner.temp }}/crm01b3b2-playwright-artifacts" \
+            "${{ runner.temp }}/crm01b3b2-playwright-artifacts-sanitized"
+
+      - name: Publish sanitized relational CRM failure diagnostics
+        if: steps.crm_relational_browser.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm01b3b2-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/crm01b3b2-playwright-artifacts-sanitized
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
 
       - name: Upload Commercial Inbox failure diagnostics
         if: failure()

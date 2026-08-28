@@ -15,7 +15,7 @@ const mobile = [
 
 export default defineConfig({
   testDir: "./tests/crm-01b3b2",
-  outputDir: join(tmpdir(), `crm01b3b2-playwright-${process.pid}`),
+  outputDir: process.env.CRM01B3B2_ARTIFACT_DIR || join(tmpdir(), `crm01b3b2-playwright-${process.pid}`),
   timeout: 60_000,
   globalTimeout: 12 * 60_000,
   expect: { timeout: 8_000 },
@@ -26,7 +26,13 @@ export default defineConfig({
   reporter: process.env.CI === "true"
     ? [["list"], ["./scripts/v17-crm-schema-browser-ci-reporter.mjs"]]
     : "list",
-  use: { baseURL: "http://127.0.0.1:4182", trace: "off", screenshot: "off", video: "off", serviceWorkers: "block" },
+  use: {
+    baseURL: "http://127.0.0.1:4182",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
+    serviceWorkers: "block",
+  },
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 4182",
     url: "http://127.0.0.1:4182/tests/crm-01b3b2/harness.html",

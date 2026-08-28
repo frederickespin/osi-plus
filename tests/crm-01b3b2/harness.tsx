@@ -7,7 +7,7 @@ import type { UserRole } from "../../src/types/osi.types";
 
 const params = new URLSearchParams(window.location.search);
 const role = (params.get("role") === "V" ? "V" : "A") as UserRole;
-localStorage.setItem("osi-plus.token", "synthetic.browser.jwt");
+localStorage.setItem("osi-plus.token", "[REDACTED]");
 localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic", name: "Actor", role }));
 const forcedDisabled = params.get("disabled") === "1";
 const gateValue = params.get("gate");

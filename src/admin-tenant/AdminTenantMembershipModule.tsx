@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Search, ShieldCheck, UserCog } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, ShieldCheck, UserCog, UserPlus, XCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AdminApiError, AdminTenantApi, type AdminMembership } from "./adminApi";
+import { AdminApiError, AdminTenantApi, type AdminIdentityInvitation, type AdminMembership } from "./adminApi";
 
 const ADMIN_PERMISSIONS = Object.freeze([
   "membership:view",
@@ -50,8 +50,14 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
   const [selected, setSelected] = useState<AdminMembership | null>(null);
   const [draft, setDraft] = useState<AdminMembership | null>(null);
   const [saving, setSaving] = useState(false);
+  const [invitations, setInvitations] = useState<readonly AdminIdentityInvitation[]>([]);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [activationPath, setActivationPath] = useState<string | null>(null);
+  const [inviteSaving, setInviteSaving] = useState(false);
   const fence = useRef(0);
   const can = (permission: string) => effectivePermissions.includes(permission) && !deniedPermissions.includes(permission);
+  const canInvite = ADMIN_PERMISSIONS.every(can);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -71,6 +77,15 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
     }, 150);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [api, onUnauthorized, page, role, search, status]);
+
+  useEffect(() => {
+    if (!canInvite) { setInvitations([]); return undefined; }
+    const controller = new AbortController();
+    void api.listInvitations(controller.signal).then(setInvitations).catch((cause) => {
+      if (!controller.signal.aborted && cause instanceof AdminApiError && cause.status === 401) onUnauthorized();
+    });
+    return () => controller.abort();
+  }, [api, canInvite, onUnauthorized]);
 
   const open = (membership: AdminMembership) => { setSelected(membership); setDraft(membership); setError(null); };
   const toggle = (kind: "grantedPermissions" | "deniedPermissions", permission: string) => {
@@ -96,12 +111,26 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
       else setError(errorText(cause));
     } finally { setSaving(false); }
   };
+  const issueInvitation = async () => {
+    setInviteSaving(true); setError(null); setActivationPath(null);
+    try {
+      const issued = await api.issueInvitation(inviteEmail);
+      setInvitations((current) => [issued.invitation, ...current.filter((row) => row.invitationRef !== issued.invitation.invitationRef)]);
+      setActivationPath(issued.activationPath);
+    } catch (cause) { setError(errorText(cause)); } finally { setInviteSaving(false); }
+  };
+  const revokeInvitation = async (invitationRef: string) => {
+    try {
+      const revoked = await api.revokeInvitation(invitationRef);
+      setInvitations((current) => current.map((row) => row.invitationRef === revoked.invitationRef ? revoked : row));
+    } catch (cause) { setError(errorText(cause)); }
+  };
 
   return <main className="min-h-screen bg-slate-50 px-4 py-6 sm:px-7" data-testid="admin-tenant-memberships">
     <div className="mx-auto max-w-7xl">
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5">
         <div><p className="text-xs font-bold uppercase tracking-[.18em] text-indigo-600">Administración tenant-first</p><h1 className="mt-1 text-2xl font-black text-slate-950">Acceso y membresías</h1><p className="mt-1 text-sm text-slate-600">Roles A/V, permisos explícitos y estado. No incluye RRHH.</p></div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800"><ShieldCheck className="mr-2 inline h-4 w-4" />Auditoría obligatoria</div>
+        <div className="flex items-center gap-2">{canInvite && <button type="button" onClick={() => { setInviteOpen(true); setInviteEmail(""); setActivationPath(null); }} className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white"><UserPlus className="mr-2 inline h-4 w-4" />Invitar administrador</button>}<div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800"><ShieldCheck className="mr-2 inline h-4 w-4" />Auditoría obligatoria</div></div>
       </div>
       <div className="mt-5 grid gap-3 rounded-xl border bg-white p-3 shadow-sm sm:grid-cols-[1fr_150px_170px]">
         <label className="relative"><span className="sr-only">Buscar por nombre o correo</span><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Buscar nombre o correo" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm" /></label>
@@ -122,6 +151,7 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
         {!loading && !error && rows.length === 0 && <p className="p-8 text-center text-sm text-slate-500">No hay membresías para estos filtros.</p>}
       </div>
       <div className="mt-4 flex items-center justify-between text-xs text-slate-600"><span>{total} membresía(s)</span><div className="flex items-center gap-2"><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded border p-2 disabled:opacity-40" aria-label="Página anterior"><ChevronLeft className="h-4 w-4" /></button><span>Página {page}</span><button disabled={page * 20 >= total} onClick={() => setPage((value) => value + 1)} className="rounded border p-2 disabled:opacity-40" aria-label="Página siguiente"><ChevronRight className="h-4 w-4" /></button></div></div>
+      {canInvite && <section className="mt-7" aria-labelledby="admin-invitations-title"><div className="flex items-end justify-between"><div><h2 id="admin-invitations-title" className="text-sm font-black text-slate-950">Invitaciones administrativas</h2><p className="text-xs text-slate-500">El enlace sólo se muestra al emitirlo.</p></div><span className="text-xs text-slate-500">{invitations.length} registrada(s)</span></div><div className="mt-2 divide-y overflow-hidden rounded-xl border bg-white">{invitations.map((invitation) => <div key={invitation.invitationRef} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs"><div className="min-w-0"><strong className="block truncate text-slate-900">{invitation.email}</strong><span className="text-slate-500">Administrador · {invitation.status}</span></div>{invitation.status === "PENDING" && <button type="button" onClick={() => void revokeInvitation(invitation.invitationRef)} className="rounded-lg border border-red-200 px-3 py-1.5 font-semibold text-red-700"><XCircle className="mr-1 inline h-3.5 w-3.5" />Revocar</button>}</div>)}{invitations.length === 0 && <p className="p-5 text-center text-xs text-slate-500">No hay invitaciones.</p>}</div></section>}
     </div>
     <Dialog open={Boolean(draft)} onOpenChange={(openValue) => { if (!openValue) { setSelected(null); setDraft(null); setError(null); } }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
@@ -134,6 +164,9 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
           <button type="button" disabled={saving || !can("membership:update:role") && !can("membership:update:permissions") && !can("membership:update:status")} onClick={() => void save()} className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? "Guardando…" : "Guardar cambios"}</button>
         </div>}
       </DialogContent>
+    </Dialog>
+    <Dialog open={inviteOpen} onOpenChange={(value) => { setInviteOpen(value); if (!value) { setActivationPath(null); setInviteEmail(""); } }}>
+      <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Invitar administrador</DialogTitle><DialogDescription>La cuenta recibirá rol A y los cuatro permisos administrativos explícitos. El enlace se mostrará una sola vez y vence en 24 horas.</DialogDescription></DialogHeader><div className="space-y-4"><label className="block text-sm font-semibold">Email corporativo<input type="email" autoComplete="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} disabled={Boolean(activationPath)} className="mt-1 h-11 w-full rounded-lg border px-3" /></label>{activationPath ? <div className="rounded-xl border border-amber-300 bg-amber-50 p-4"><p className="text-xs font-bold text-amber-950">Copie este enlace ahora. No podrá recuperarse después.</p><code className="mt-2 block break-all rounded bg-white p-2 text-xs">{`${window.location.origin}${activationPath}`}</code><button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}${activationPath}`)} className="mt-3 rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white">Copiar enlace</button></div> : <button type="button" disabled={inviteSaving || !inviteEmail} onClick={() => void issueInvitation()} className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{inviteSaving ? "Generando…" : "Generar invitación"}</button>}</div></DialogContent>
     </Dialog>
   </main>;
 }

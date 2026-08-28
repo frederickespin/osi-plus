@@ -26,7 +26,7 @@ export function validateMt01c1b1Guard(root = process.cwd()) {
     "api/_lib/employeeProvisioningExecutor.js",
     "api/_lib/employeeProvisioningPolicy.js",
   ]);
-  const pattern = /prisma\.(?:employeeProvisioningRequest|employeeProvisioningInvitation|employeeAdminRoleProposal)\b|\bnormalizedEmail\b|\bnormalized_email\b|from\s+["'][^"']*mt-01c1b1|import\s*\([^)]*mt-01c1b1/i;
+  const pattern = /prisma\.(?:employeeProvisioningRequest|employeeProvisioningInvitation|employeeAdminRoleProposal)\b|from\s+["'][^"']*mt-01c1b1|import\s*\([^)]*mt-01c1b1/i;
   const consumers = runtimeFiles.filter((file) => {
     const relative = path.relative(root, file).replaceAll("\\", "/");
     return !inactiveDomainAllowlist.has(relative) && pattern.test(fs.readFileSync(file, "utf8"));
@@ -37,7 +37,7 @@ export function validateMt01c1b1Guard(root = process.cwd()) {
     runtimeFiles: runtimeFiles.length,
     provisioningRuntimeConsumers: 0,
     inactiveDomainFiles: inactiveDomainAllowlist.size,
-    normalizedEmailRuntimeConsumers: 0,
+    historicalProvisioningRuntimeConsumers: 0,
     legacy: true,
     hybrid: false,
     tenantSwitch: false,

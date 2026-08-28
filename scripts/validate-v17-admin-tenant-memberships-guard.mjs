@@ -28,7 +28,7 @@ export function validateAdminTenantMembershipGuard(overrides = {}) {
   invariant(handler.indexOf("requireAdminTenantMembershipAccess(req, env)") < handler.indexOf("resolveContext(req"), "auth ocurre antes de gate");
   invariant(handler.indexOf("resolveContext(req") < handler.indexOf("readJsonObject(req"), "body ocurre antes de auth");
   invariant(domain.includes('WHERE tm."tenant_id"=${tenantId} AND tm."public_ref"=CAST(${ref} AS uuid)') && /FOR UPDATE OF tm, u/u.test(domain), "mutación no resuelve tenant/publicRef con lock");
-  invariant(domain.includes("const actor = await revalidateActor(tx, context);"), "mutación no revalida actor");
+  invariant(domain.includes("const actor = await revalidateAdminActor(tx, context);"), "mutación no revalida actor");
   invariant(/String\(actor\.role\) !== "A"/u.test(domain), "backend permite administración a roles distintos de A");
   invariant(domain.includes("if (Number(before.authorization_version) !== expectedVersion)") && /authorization_version[\s\S]*ADMIN_MEMBERSHIP_VERSION_CONFLICT/u.test(domain), "concurrencia optimista ausente");
   invariant(/FROM "osi"\."tenants" WHERE "id"=\$\{tenantId\} FOR UPDATE/u.test(domain), "invariante administrativa no serializa por tenant");

@@ -17,7 +17,7 @@ try {
   mkdirSync(migrationRoot, { recursive: true });
   cpSync(resolve("prisma", "migrations"), migrationRoot, { recursive: true });
   const current = validateMigrationFiles(root);
-  check("canonical chain contains exactly twenty migrations", current.length === 20 && CANONICAL_MIGRATIONS.length === 20);
+  check("canonical chain contains exactly twenty-one migrations", current.length === 21 && CANONICAL_MIGRATIONS.length === 21);
   check("MT-01C1B1 remains migration fourteen", current[13] === "20260801013000_mt01c1b1_provisioning_persistence");
 
   const unexpected = join(migrationRoot, "20260801021000_unexpected_migration");
@@ -25,16 +25,16 @@ try {
   writeFileSync(join(unexpected, "migration.sql"), "SELECT 1;\n", "utf8");
   let rejected = null;
   try { validateMigrationFiles(root); } catch (error) { rejected = error; }
-  check("unexpected migration twenty-one is rejected", rejected?.message.includes("20 migraciones canónicas"));
+  check("unexpected migration twenty-two is rejected", rejected?.message.includes("21 migraciones canónicas"));
   check("guard rejects before executing unexpected SQL", rejected instanceof Error);
 
   mkdirSync(join(root, "api"), { recursive: true });
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, ".env.example"), "MT01B_AUTH_MODE=LEGACY\nMT01B_TENANT_SWITCH_ENABLED=false\nVITE_MT01B2_CLIENT_ENABLED=false\n", "utf8");
-  writeFileSync(join(root, "api", "normalized-email-consumer.js"), "export const query = { select: { normalizedEmail: true } };\n", "utf8");
+  writeFileSync(join(root, "api", "historical-provisioning-consumer.js"), "export async function read(prisma) { return prisma.employeeProvisioningInvitation.findMany(); }\n", "utf8");
   let runtimeRejected = null;
   try { validateMt01c1b1Guard(root); } catch (error) { runtimeRejected = error; }
-  check("runtime guard rejects normalizedEmail consumers", runtimeRejected?.message.includes("persistencia de provisión no puede tener consumidores runtime"));
+  check("runtime guard rejects historical provisioning consumers", runtimeRejected?.message.includes("persistencia de provisión no puede tener consumidores runtime"));
   process.stdout.write(`${JSON.stringify({ ok: true, passed: results.length, results }, null, 2)}\n`);
 } finally {
   rmSync(root, { recursive: true, force: true });

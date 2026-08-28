@@ -14,7 +14,7 @@ function rejected(name, options, pattern) {
 }
 
 const current = validateAuthLegacyPrivateHeadersGuard();
-check("cinco rutas Auth protegidas recursivamente", current.ok && current.routes === 5 && current.futureRoutesProtected);
+check("seis rutas Auth protegidas recursivamente", current.ok && current.routes === 6 && current.futureRoutesProtected);
 rejected("catch-all Vercel inseguro", { vercelText: baseline.replace('"headers": []', '"headers": [{"source":"/api/(.*)","headers":[{"key":"Access-Control-Allow-Origin","value":"*"}]}]') }, /vercel\.json/);
 rejected("regla parcial Auth rechazada", { vercelText: baseline.replace('"headers": []', '"headers": [{"source":"/api/auth/login","headers":[{"key":"Access-Control-Allow-Origin","value":"*"}]}]') }, /vercel\.json/);
 rejected("ruta futura sin wrapper rechazada", {

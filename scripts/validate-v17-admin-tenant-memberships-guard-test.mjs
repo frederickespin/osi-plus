@@ -5,7 +5,7 @@ const read = (path) => readFileSync(path, "utf8");
 const cases = [
   ["tenant ausente", "api/_lib/adminMembershipDomain.js", (s) => s.replace('WHERE tm."tenant_id"=${tenantId} AND tm."public_ref"=CAST(${ref} AS uuid)', 'WHERE tm."public_ref"=CAST(${ref} AS uuid)')],
   ["publicRef ausente", "api/_lib/adminMembershipDomain.js", (s) => s.replace('WHERE tm."tenant_id"=${tenantId} AND tm."public_ref"=CAST(${ref} AS uuid)', 'WHERE tm."tenant_id"=${tenantId}')],
-  ["actor no revalidado", "api/_lib/adminMembershipDomain.js", (s) => s.replace('const actor = await revalidateActor(tx, context);', 'const actor = { membershipId: context.membershipId, effective: new Set(context.permissions), row: { denied_permissions: [] } };')],
+  ["actor no revalidado", "api/_lib/adminMembershipDomain.js", (s) => s.replace('const actor = await revalidateAdminActor(tx, context);', 'const actor = { membershipId: context.membershipId, effective: new Set(context.permissions), row: { denied_permissions: [] } };')],
   ["rol A backend eliminado", "api/_lib/adminMembershipDomain.js", (s) => s.replace('String(actor.role) !== "A" || ', "")],
   ["permiso explícito eliminado", "api/_lib/rbac.js", (s) => s.replace('MEMBERSHIP_VIEW: "membership:view",', "")],
   ["control de versión eliminado", "api/_lib/adminMembershipDomain.js", (s) => s.replace('if (Number(before.authorization_version) !== expectedVersion)', "if (false)")],

@@ -98,7 +98,7 @@ try {
   write(join("prisma/migrations/20260801021000_unexpected", "migration.sql"), "SELECT 1;\n");
   let unexpectedError;
   try { validateMigrationFiles(root); } catch (caught) { unexpectedError = caught; }
-  check("migración 21 inesperada rechazada", unexpectedError?.message.includes("20 migraciones canónicas"));
+  check("migración 21 inesperada rechazada", unexpectedError?.message.includes("21 migraciones canónicas"));
 
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } finally {

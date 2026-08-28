@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 export const V17_CASE_PUBLIC_REF_MIGRATION = "20260821010000_v17_pipeline_case_public_ref";
 const V17_CLIENT_PUBLIC_REF_MIGRATION = "20260824010000_v17_client_public_ref_case_mutations";
 const V17_MEMBERSHIP_PUBLIC_REF_MIGRATION = "20260827010000_v17_tenant_membership_public_ref";
+const V17_ADMIN_IDENTITY_INVITATION_MIGRATION = "20260827020000_v17_admin_identity_invitation";
 const PREVIOUS_MIGRATION_HASHES = Object.freeze({
   "20260801000000_production_baseline": "59a6060c78107a73cf9793da65cc5fc1a35d9d3c5e60ae37e04e5f395812bb2c",
   "20260801001000_mt01a_tenant_memberships": "015c8bd39f050f71fbe1bea0f94198091149296269fed77905bcefd23094cd44",
@@ -63,10 +64,11 @@ export function validateV17CasePublicRefGuard({
 } = {}) {
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  invariant(migrations.length === 20, "se exigen exactamente 20 migraciones");
+  invariant(migrations.length === 21, "se exigen exactamente 21 migraciones");
   invariant(migrations.includes(V17_CASE_PUBLIC_REF_MIGRATION), "migración 18 exacta ausente");
   invariant(migrations.includes(V17_CLIENT_PUBLIC_REF_MIGRATION), "migración 19 exacta ausente");
-  invariant(migrations.at(-1) === V17_MEMBERSHIP_PUBLIC_REF_MIGRATION, "migración 20 exacta ausente o fuera de orden");
+  invariant(migrations.includes(V17_MEMBERSHIP_PUBLIC_REF_MIGRATION), "migración 20 exacta ausente");
+  invariant(migrations.at(-1) === V17_ADMIN_IDENTITY_INVITATION_MIGRATION, "migración 21 exacta ausente o fuera de orden");
 
   const schema = schemaSource ?? readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
   const sql = (migrationSource ?? readFileSync(resolve(root, "prisma/migrations", V17_CASE_PUBLIC_REF_MIGRATION, "migration.sql"), "utf8")).replaceAll("\r\n", "\n");
@@ -112,6 +114,7 @@ export function validateV17CasePublicRefGuard({
   const canonicalReadPath = "api/_lib/crmPipelineRead.js";
   const authorizedPublicRefConsumers = new Set([
     canonicalReadPath,
+    "api/_lib/adminIdentityInvitationDomain.js",
     "api/_lib/adminMembershipDomain.js",
     "api/_lib/crmCaseMutationDomain.js",
     "api/_lib/crmClientOptions.js",
@@ -204,7 +207,7 @@ export function validateV17CasePublicRefGuard({
 
   return Object.freeze({
     ok: true,
-    migrations: 20,
+    migrations: 21,
     runtimeConsumers: publicRefConsumers.length,
     runtimeConsumer: canonicalReadPath,
     publicContract: "caseRef",

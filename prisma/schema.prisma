@@ -9,37 +9,38 @@ datasource db {
 }
 
 model User {
-  id                              String                           @id @default(cuid())
-  code                            String                           @unique
-  name                            String
-  email                           String                           @unique
-  normalizedEmail                 String?                          @map("normalized_email") @db.VarChar(320)
-  phone                           String
-  role                            String
-  status                          String
-  department                      String?
-  joinDate                        String
-  points                          Int                              @default(0)
-  rating                          Float                            @default(0)
-  passwordHash                    String
-  createdAt                       DateTime                         @default(now())
-  updatedAt                       DateTime                         @updatedAt
-  profilePhotoUrl                 String?
-  employeeProfile                 Json?
-  commercial_audit_logs           CommercialAuditLog[]
-  leadAuditLogs                   LeadAuditLog[]                   @relation("LeadAuditActor")
-  leadVolumeEstimatesUpdated      LeadVolumeEstimate[]             @relation("LeadVolumeEstimateUpdatedBy")
-  pipelineCasesOwned              PipelineCase[]
-  projectPgdsApplied              ProjectPgd[]                     @relation("ProjectPgdAppliedBy")
-  projectPgdItemsValidated        ProjectPgdItem[]                 @relation("ProjectPgdItemValidatedBy")
-  projectSignalsAcked             ProjectSignal[]                  @relation("ProjectSignalAckBy")
-  templateVersionsApproved        TemplateVersion[]                @relation("TemplateApprovedBy")
-  templateVersionsCreated         TemplateVersion[]                @relation("TemplateCreatedBy")
-  templateVersionsRejected        TemplateVersion[]                @relation("TemplateRejectedBy")
-  tipoServicioConfigsUpdated      TipoServicioConfig[]             @relation("TipoServicioConfigUpdatedBy")
-  volumeAreaProfilesUpdated       VolumeAreaProfile[]              @relation("VolumeAreaProfileUpdatedBy")
-  tenantMemberships               TenantMembership[]
-  acceptedProvisioningInvitations EmployeeProvisioningInvitation[] @relation("EmployeeProvisioningInvitationAcceptedUser")
+  id                                String                           @id @default(cuid())
+  code                              String                           @unique
+  name                              String
+  email                             String                           @unique
+  normalizedEmail                   String?                          @map("normalized_email") @db.VarChar(320)
+  phone                             String
+  role                              String
+  status                            String
+  department                        String?
+  joinDate                          String
+  points                            Int                              @default(0)
+  rating                            Float                            @default(0)
+  passwordHash                      String
+  createdAt                         DateTime                         @default(now())
+  updatedAt                         DateTime                         @updatedAt
+  profilePhotoUrl                   String?
+  employeeProfile                   Json?
+  commercial_audit_logs             CommercialAuditLog[]
+  leadAuditLogs                     LeadAuditLog[]                   @relation("LeadAuditActor")
+  leadVolumeEstimatesUpdated        LeadVolumeEstimate[]             @relation("LeadVolumeEstimateUpdatedBy")
+  pipelineCasesOwned                PipelineCase[]
+  projectPgdsApplied                ProjectPgd[]                     @relation("ProjectPgdAppliedBy")
+  projectPgdItemsValidated          ProjectPgdItem[]                 @relation("ProjectPgdItemValidatedBy")
+  projectSignalsAcked               ProjectSignal[]                  @relation("ProjectSignalAckBy")
+  templateVersionsApproved          TemplateVersion[]                @relation("TemplateApprovedBy")
+  templateVersionsCreated           TemplateVersion[]                @relation("TemplateCreatedBy")
+  templateVersionsRejected          TemplateVersion[]                @relation("TemplateRejectedBy")
+  tipoServicioConfigsUpdated        TipoServicioConfig[]             @relation("TipoServicioConfigUpdatedBy")
+  volumeAreaProfilesUpdated         VolumeAreaProfile[]              @relation("VolumeAreaProfileUpdatedBy")
+  tenantMemberships                 TenantMembership[]
+  acceptedProvisioningInvitations   EmployeeProvisioningInvitation[] @relation("EmployeeProvisioningInvitationAcceptedUser")
+  activatedAdminIdentityInvitations AdminIdentityInvitation[]        @relation("AdminIdentityInvitationActivatedUser")
 
   @@map("osi_users")
 }
@@ -79,6 +80,7 @@ model Tenant {
   employeeProvisioningRequests     EmployeeProvisioningRequest[]
   employeeProvisioningInvitations  EmployeeProvisioningInvitation[]
   employeeAdminRoleProposals       EmployeeAdminRoleProposal[]
+  adminIdentityInvitations         AdminIdentityInvitation[]
   clients                          Client[]
   projects                         Project[]
   leads                            Lead[]
@@ -146,6 +148,8 @@ model TenantMembership {
   supervisedEmployeeProfiles                                                                                                                    EmployeeProfile[]                  @relation("EmployeeProfileSupervisor")
   provisionedEmployeeRequests                                                                                                                   EmployeeProvisioningRequest[]      @relation("EmployeeProvisioningRequestProvisionedMembership")
   issuedProvisioningInvitations                                                                                                                 EmployeeProvisioningInvitation[]   @relation("EmployeeProvisioningInvitationIssuer")
+  issuedAdminIdentityInvitations                                                                                                                AdminIdentityInvitation[]          @relation("AdminIdentityInvitationIssuer")
+  activatedAdminIdentityInvitations                                                                                                             AdminIdentityInvitation[]          @relation("AdminIdentityInvitationActivatedMembership")
   proposedEmployeeAdminRoles                                                                                                                    EmployeeAdminRoleProposal[]        @relation("EmployeeAdminRoleProposalProposer")
   supervisedProvisioningRequests                                                                                                                EmployeeProvisioningRequest[]      @relation("EmployeeProvisioningRequestSupervisor")
   enterpriseOwnedPipelineCases                                                                                                                  PipelineCase[]                     @relation("PipelineCaseEnterpriseOwner")
@@ -277,6 +281,38 @@ model EmployeeProvisioningInvitation {
   @@index([tenant_id, provisioningRequestId, createdAt(sort: Desc)], map: "employee_provisioning_invitations_tenant_request_created_idx")
   @@index([tenant_id, status, expiresAt], map: "employee_provisioning_invitations_tenant_status_expires_idx")
   @@map("employee_provisioning_invitations")
+}
+
+model AdminIdentityInvitation {
+  id                    String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  publicRef             String                        @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
+  tenantId              String                        @map("tenant_id")
+  normalizedEmail       String                        @map("normalized_email") @db.VarChar(320)
+  intendedRole          TenantMembershipRole          @default(A) @map("intended_role")
+  grantedPermissions    String[]                      @default([]) @map("granted_permissions")
+  tokenHash             String                        @unique @map("token_hash") @db.Char(64)
+  status                AdminIdentityInvitationStatus @default(PENDING)
+  expiresAt             DateTime                      @map("expires_at") @db.Timestamptz(6)
+  issuedByMembershipId  String                        @map("issued_by_membership_id")
+  issuedByUserId        String                        @map("issued_by_user_id")
+  activatedUserId       String?                       @map("activated_user_id")
+  activatedMembershipId String?                       @map("activated_membership_id")
+  requestId             String                        @map("request_id") @db.VarChar(191)
+  payloadHash           String                        @map("payload_hash") @db.Char(64)
+  consumedAt            DateTime?                     @map("consumed_at") @db.Timestamptz(6)
+  revokedAt             DateTime?                     @map("revoked_at") @db.Timestamptz(6)
+  createdAt             DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "admin_identity_invitations_tenant_fkey")
+  issuerMembership      TenantMembership              @relation("AdminIdentityInvitationIssuer", fields: [tenantId, issuedByMembershipId, issuedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "admin_identity_invitations_issuer_fkey")
+  activatedUser         User?                         @relation("AdminIdentityInvitationActivatedUser", fields: [activatedUserId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "admin_identity_invitations_activated_user_fkey")
+  activatedMembership   TenantMembership?             @relation("AdminIdentityInvitationActivatedMembership", fields: [tenantId, activatedMembershipId, activatedUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "admin_identity_invitations_activated_membership_fkey")
+
+  @@unique([tenantId, publicRef], map: "admin_identity_invitations_tenant_public_ref_key")
+  @@unique([tenantId, requestId], map: "admin_identity_invitations_tenant_request_key")
+  @@index([tenantId, normalizedEmail, status], map: "admin_identity_invitations_tenant_email_status_idx")
+  @@index([tenantId, status, expiresAt], map: "admin_identity_invitations_tenant_status_expires_idx")
+  @@map("admin_identity_invitations")
 }
 
 model EmployeeAdminRoleProposal {
@@ -3563,6 +3599,12 @@ enum EmployeeProvisioningInvitationStatus {
   ACCEPTED
   REVOKED
   EXPIRED
+}
+
+enum AdminIdentityInvitationStatus {
+  PENDING
+  CONSUMED
+  REVOKED
 }
 
 enum GeoRegionAliasKind {

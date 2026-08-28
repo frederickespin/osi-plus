@@ -1,10 +1,10 @@
 import { prisma } from "../_lib/db.js";
 import { hashPassword } from "../_lib/auth.js";
-import { methodNotAllowed, readJsonObject, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "../_lib/http.js";
 import { requirePilotAuth, requirePilotPermission } from "../_lib/authContextPilot.js";
 import { PERMS } from "../_lib/rbac.js";
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   const permission = req.method === "GET" ? PERMS.USERS_VIEW : req.method === "POST" ? PERMS.USERS_CREATE : null;
   const auth = permission
     ? await requirePilotPermission(req, res, permission, { prisma })

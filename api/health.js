@@ -1,6 +1,6 @@
-import { withCommonHeaders, methodNotAllowed } from "./_lib/http.js";
+import { withPublicReadCorsHeaders, methodNotAllowed } from "./_lib/http.js";
 
-export default withCommonHeaders(async (req, res) => {
+export default withPublicReadCorsHeaders(async (req, res) => {
   if (req.method !== "GET") {
     return methodNotAllowed(res, ["GET"]);
   }

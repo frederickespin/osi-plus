@@ -1,4 +1,4 @@
-import { withCommonHeaders, methodNotAllowed } from "./_lib/http.js";
+import { withPrivateApiHeaders, methodNotAllowed } from "./_lib/http.js";
 
 const modules = [
   { id: "dashboard", name: "Dashboard", area: "General" },
@@ -12,7 +12,7 @@ const modules = [
   { id: "mechanic", name: "Mecanica", area: "Mantenimiento" },
 ];
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "GET") {
     return methodNotAllowed(res, ["GET"]);
   }

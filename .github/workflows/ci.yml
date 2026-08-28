@@ -135,6 +135,7 @@ jobs:
           node scripts/validate-crm-01b3a-guard-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          npm run test:protected-cors-http
           node scripts/v17-crm-vary-contract-test.mjs
           node scripts/validate-v17-crm-vary-guard.mjs
           node scripts/validate-v17-crm-vary-guard-test.mjs
@@ -398,6 +399,7 @@ jobs:
           node scripts/validate-crm-01b3a-guard-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          npm run test:protected-cors-http
           node scripts/v17-crm-vary-contract-test.mjs
           node scripts/validate-v17-crm-vary-guard.mjs
           node scripts/validate-v17-crm-vary-guard-test.mjs
@@ -502,6 +504,7 @@ jobs:
           node scripts/crm-01b2-local-target-test.mjs
           node scripts/validate-crm-cors-guard.mjs
           node scripts/validate-crm-cors-guard-test.mjs
+          npm run test:protected-cors-http
           node scripts/v17-crm-vary-contract-test.mjs
           node scripts/validate-v17-crm-vary-guard.mjs
           node scripts/validate-v17-crm-vary-guard-test.mjs

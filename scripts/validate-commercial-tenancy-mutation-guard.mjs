@@ -43,7 +43,9 @@ export function validateCommercialTenancyMutationGuard({ root = process.cwd(), o
   assert.match(workflow, /npm run test:commercial-tenancy-mutation-gate/u, "prueba de compuerta no es obligatoria en CI");
   assert.match(workflow, /npm run guard:commercial-tenancy-mutation-gate/u, "guardia de compuerta no es obligatoria en CI");
   const vercel = source(root, "vercel.json", overrides);
-  assert.match(vercel, /clients\(\?:\/\|\$\)[\s\S]*projects\(\?:\/\|\$\)[\s\S]*k\(\?:\/\|\$\)/u, "Vercel vuelve a aplicar CORS permisivo a mutaciones protegidas");
+  const apiHeaderRules = (JSON.parse(vercel).headers || []).filter((rule) => String(rule?.source || "").startsWith("/api/"));
+  assert.equal(apiHeaderRules.length, 0, "Vercel vuelve a aplicar CORS permisivo a mutaciones protegidas");
+  for (const relative of ROUTES) assert.match(source(root, relative, overrides), /withPrivateApiHeaders/u, `${relative}: wrapper privado ausente`);
   return { routes: ROUTES.length, modes: 2 };
 }
 

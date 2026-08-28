@@ -192,16 +192,14 @@ try {
     clientTenant: null,
     projectTenant: null,
     clientHeaders: {
-      "access-control-allow-headers": "Content-Type, Authorization, x-osi-role, x-osi-userid",
-      "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
-      "access-control-allow-origin": "*",
+      "cache-control": "private, no-store",
       "content-type": "application/json; charset=utf-8",
+      vary: "Authorization, Origin",
     },
     projectHeaders: {
-      "access-control-allow-headers": "Content-Type, Authorization, x-osi-role, x-osi-userid",
-      "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
-      "access-control-allow-origin": "*",
+      "cache-control": "private, no-store",
       "content-type": "application/json; charset=utf-8",
+      vary: "Authorization, Origin",
     },
   }));
   const legacyAuthorityBody = {

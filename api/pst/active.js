@@ -1,5 +1,5 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, withPrivateApiHeaders } from "../_lib/http.js";
 import { PERMS, requirePermFromHeaders } from "../_lib/rbac.js";
 
 function toObject(value) {
@@ -7,7 +7,7 @@ function toObject(value) {
   return {};
 }
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
   const actor = requirePermFromHeaders(req, res, PERMS.TEMPLATES_VIEW);
   if (!actor) return;

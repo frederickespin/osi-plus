@@ -1,10 +1,10 @@
 import { prisma } from "../../_lib/db.js";
-import { methodNotAllowed, withCommonHeaders } from "../../_lib/http.js";
+import { methodNotAllowed, withPrivateApiHeaders } from "../../_lib/http.js";
 import { requireRoleFromHeaders } from "../../_lib/rbac.js";
 
 const ALLOWED_ROLES = ["A", "B", "C", "C1", "I", "K"];
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
 
   const actor = requireRoleFromHeaders(req, res, ALLOWED_ROLES);

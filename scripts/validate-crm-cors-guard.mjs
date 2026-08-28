@@ -2,8 +2,17 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CANONICAL_GLOBAL_API_SOURCE = "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)";
+const CANONICAL_GLOBAL_API_SOURCE = "/api/((?!auth(?:/|$)|crm(?:/|$)|clients(?:/|$)|projects(?:/|$)|k(?:/|$)|admin(?:/|$)).*)";
 const SAFE_ROUTE_SEGMENT = "crm-cors-guard-id";
+const PROTECTED_NAMESPACE_PATH = /^\/api\/(?:auth(?:\/|$)|crm(?:\/|$)|clients(?:\/|$)|projects(?:\/|$)|k(?:\/|$)|admin(?:\/|$))/u;
+const FUTURE_PROTECTED_ROUTES = Object.freeze([
+  "/api/auth/future-route",
+  "/api/crm/future-route",
+  "/api/clients/future-route",
+  "/api/projects/future-route",
+  "/api/k/future-route",
+  "/api/admin/future-route",
+]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`CRM_CORS_GUARD: ${message}`);
@@ -53,6 +62,14 @@ export function inventoryCrmRoutes(root = process.cwd()) {
     .sort();
 }
 
+export function inventoryProtectedRoutes(root = process.cwd()) {
+  return filesBelow(resolve(root, "api"))
+    .filter((file) => /\.(?:js|ts)$/.test(file))
+    .map((file) => routePath(root, file))
+    .filter((path) => PROTECTED_NAMESPACE_PATH.test(path))
+    .sort();
+}
+
 export function inventoryCrmRouteSources(root = process.cwd()) {
   const crmRoot = resolve(root, "api", "crm");
   return filesBelow(crmRoot)
@@ -74,17 +91,31 @@ export function unsafeCrmRouteMatches({
   return routes.filter((path) => unsafeRules.some((rule) => matchesSource(rule.source, path))).sort();
 }
 
+export function unsafeProtectedRouteMatches({
+  root = process.cwd(),
+  vercelText = readFileSync(resolve(root, "vercel.json"), "utf8"),
+  routes = inventoryProtectedRoutes(root),
+} = {}) {
+  const config = parseConfig(vercelText);
+  const unsafeRules = Array.isArray(config.headers) ? config.headers.filter(isUnsafeRule) : [];
+  return routes.filter((path) => unsafeRules.some((rule) => matchesSource(rule.source, path))).sort();
+}
+
 export function validateCrmCorsGuard({
   root = process.cwd(),
   vercelText = readFileSync(resolve(root, "vercel.json"), "utf8"),
   routes = inventoryCrmRoutes(root),
   routeSources = inventoryCrmRouteSources(root),
+  protectedRoutes = inventoryProtectedRoutes(root),
+  adminHttpSource = readFileSync(resolve(root, "api", "_lib", "adminMembershipHttp.js"), "utf8"),
 } = {}) {
   const config = parseConfig(vercelText);
 
   invariant(Array.isArray(config.headers), "vercel.json debe declarar headers");
   invariant(routes.length > 0 && routes.every((path) => path.startsWith("/api/crm/")), "inventario CRM inválido");
   invariant(routeSources.length > 0, "fuentes de rutas CRM ausentes");
+  invariant(protectedRoutes.length > routes.length, "inventario de APIs protegidas incompleto");
+  invariant(protectedRoutes.some((path) => path.startsWith("/api/admin/")), "inventario Admin ausente");
 
   for (const route of routeSources) {
     invariant(!/Access-Control-Allow-Origin[^\n]+["']\*["']/.test(route.source), `${route.path} declara CORS wildcard`);
@@ -104,20 +135,36 @@ export function validateCrmCorsGuard({
 
   const matched = unsafeCrmRouteMatches({ root, vercelText, routes });
   invariant(matched.length === 0, `rutas CRM cubiertas por CORS permisivo: ${matched.join(", ")}`);
+  const matchedProtected = unsafeProtectedRouteMatches({ root, vercelText, routes: protectedRoutes });
+  invariant(matchedProtected.length === 0, `rutas protegidas cubiertas por CORS permisivo: ${matchedProtected.join(", ")}`);
 
   invariant(matchesSource(globalRule.source, "/api/osis"), "la corrección alteró CORS heredado fuera del alcance");
-  for (const path of ["/api/clients", "/api/projects", "/api/k/project-validate", "/api/k/project-release"]) {
+  for (const path of [
+    "/api/auth/login",
+    "/api/crm/pipeline-cases",
+    "/api/clients",
+    "/api/projects",
+    "/api/k/project-validate",
+    "/api/admin/memberships",
+    ...FUTURE_PROTECTED_ROUTES,
+  ]) {
     invariant(!matchesSource(globalRule.source, path), `${path} heredaría CORS permisivo`);
   }
-  invariant(!matchesSource(globalRule.source, "/api/auth/login"), "Auth debe quedar fuera del CORS heredado");
-  invariant(!matchesSource(globalRule.source, "/api/auth/future-route"), "una ruta Auth futura recibiría CORS permisivo");
-  invariant(!matchesSource(globalRule.source, "/api/crm/future-route"), "una ruta CRM futura recibiría CORS permisivo");
+  invariant(!/setHeader\(["']Access-Control-Allow-Origin["']\s*,\s*(?:origin|req\.?headers)/u.test(adminHttpSource), "Admin refleja Origin sin allowlist");
+  invariant(!/setHeader\(["']Access-Control-Allow-(?:Origin|Credentials)["']\s*,\s*["'](?:\*|true)["']/u.test(adminHttpSource), "Admin declara CORS permisivo");
+  invariant((adminHttpSource.match(/assertSameOrigin\(req\);/gu) || []).length === 2
+    && /ADMIN_MEMBERSHIP_ORIGIN_FORBIDDEN/u.test(adminHttpSource), "Admin no rechaza Origin externo");
+  invariant(/\{\s*cors:\s*false,\s*handleOptions:\s*false\s*\}/u.test(adminHttpSource), "Admin permite CORS u OPTIONS global");
 
   return Object.freeze({
     ok: true,
     source: globalRule.source,
     crmRoutes: routes.length,
     matchedCrmRoutes: matched.length,
+    protectedRoutes: protectedRoutes.length,
+    matchedProtectedRoutes: matchedProtected.length,
+    protectedNamespaces: 6,
+    futureProtectedRoutes: FUTURE_PROTECTED_ROUTES.length,
     handlersChecked: routeSources.length,
     nonCrmCompatibilityRoutes: 1,
   });

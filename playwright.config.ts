@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 
 export default defineConfig({
   testDir: "./tests/mt01b2b",
-  outputDir: process.env.RUNNER_TEMP ?? join(tmpdir(), `mt01b2b-playwright-${process.pid}`),
+  outputDir: process.env.RUNNER_TEMP
+    ? join(process.env.RUNNER_TEMP, "mt01b2b-playwright-artifacts")
+    : join(tmpdir(), `mt01b2b-playwright-${process.pid}`),
   timeout: 90_000,
   globalTimeout: 8 * 60_000,
   expect: { timeout: 10_000 },

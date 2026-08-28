@@ -82,7 +82,7 @@ function fingerprint(value) {
 function hasPrivateNoStore(res) {
   const cacheControl = String(res.getHeader("cache-control") || "").toLowerCase();
   const vary = String(res.getHeader("vary") || "").toLowerCase().split(",").map((value) => value.trim());
-  return cacheControl === "private, no-store" && vary.includes("authorization");
+  return cacheControl === "private, no-store" && vary.includes("authorization") && vary.includes("origin");
 }
 
 const suffix = randomUUID().slice(0, 8);
@@ -257,7 +257,11 @@ try {
   check("dos usuarios no comparten respuesta protegida", list.statusCode === 200 && denied.statusCode === 403 && hasPrivateNoStore(list) && hasPrivateNoStore(denied) && denied.body?.data === undefined);
   check("método OSI no permitido conserva 405", (await invoke(osiIndex, request("PUT", { token: authorizedToken }))).statusCode === 405);
   const optionsResponse = await invoke(osiIndex, request("OPTIONS"));
-  check("OPTIONS/CORS conserva preflight", optionsResponse.statusCode === 204 && String(optionsResponse.getHeader("access-control-allow-headers") || "").includes("Authorization"));
+  check("OPTIONS protegido no concede preflight CORS", optionsResponse.statusCode === 405
+    && hasPrivateNoStore(optionsResponse)
+    && optionsResponse.getHeader("access-control-allow-origin") === undefined
+    && optionsResponse.getHeader("access-control-allow-credentials") === undefined
+    && optionsResponse.getHeader("access-control-allow-headers") === undefined);
 
   const originalOsiFindMany = appPrisma.osi.findMany;
   appPrisma.osi.findMany = async () => { throw new Error("sensitive query detail"); };

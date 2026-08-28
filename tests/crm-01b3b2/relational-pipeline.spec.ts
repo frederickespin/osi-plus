@@ -1,4 +1,9 @@
-import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page, type Route, type TestInfo } from "@playwright/test";
+import {
+  SecondPostBarrierError,
+  SecondTransitionRequestBarrier,
+  TransitionFailureEvidence,
+} from "./transition-request-barrier";
 
 const statuses = ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"];
 const CASE_REF = "11111111-1111-4111-8111-111111111111";
@@ -37,6 +42,7 @@ type MockOptions = {
   detail?: (route: Route) => Promise<void>;
   summaryOverride?: (route: Route) => Promise<void>;
   ownerOptions?: (route: Route, attempt: number) => Promise<void>;
+  transitionBarrier?: Pick<SecondTransitionRequestBarrier, "observeIntercepted">;
 };
 
 async function mockApi(page: Page, options: MockOptions = {}) {
@@ -63,6 +69,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     if (url.pathname.endsWith("/allowed-transitions")) return json({ ok: true, case: { caseId: "case-001", version: 4, status: options.caseData?.status ?? "NEW_INBOX", transitions: options.allowed ?? [{ toStatus: "AWAITING_ICP", evidenceType: null }] } });
     if (["transition", "assign-owner", "unassign-owner"].some((action) => url.pathname.endsWith(`/${action}`))) {
       mutationAttempt += 1;
+      options.transitionBarrier?.observeIntercepted(request);
       if (options.mutation) return options.mutation(route, mutationAttempt);
       return json({ ok: true, command: { caseId: "case-001", commandType: "TRANSITION", previousVersion: 4, resultingVersion: 5, previousStatus: "NEW_INBOX", resultingStatus: "AWAITING_ICP", owner: null, replayed: false } });
     }
@@ -392,7 +399,7 @@ test("cliente relacional no escribe storage ni filtra credenciales a URL", async
   await page.getByText("CRM-001").click();
   const keys = await page.evaluate(() => Object.keys(localStorage).sort());
   expect(keys).toEqual(["osi-plus.session", "osi-plus.token"]);
-  expect(requests.every((entry) => !entry.url.includes("synthetic.browser.jwt"))).toBe(true);
+  expect(requests.every((entry) => !entry.url.includes("[REDACTED]"))).toBe(true);
   expect(requests.every((entry) => !entry.url.includes("tenantId") && !entry.url.includes("ownerId"))).toBe(true);
 });
 
@@ -452,19 +459,103 @@ test("503 de mutación requiere retry manual con la misma intención", async ({ 
   expect(writes[1].idempotency).toBe(writes[0].idempotency);
 });
 
-test("respuesta perdida conserva la intención y la key para retry manual", async ({ page }) => {
-  const requests = await mockApi(page, { mutation: async (route, attempt) => {
-    if (attempt === 1) return route.abort("connectionreset");
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, command: { caseId: "case-001", commandType: "TRANSITION", previousVersion: 4, resultingVersion: 5, previousStatus: "NEW_INBOX", resultingStatus: "AWAITING_ICP", owner: null, replayed: true } }) });
-  } });
-  await page.goto("/tests/crm-01b3b2/harness.html");
-  await page.getByText("CRM-001").click();
-  await confirmTransition(page);
-  await expect(page.getByRole("button", { name: "Reintentar misma intención" })).toBeVisible();
-  await page.getByRole("button", { name: "Reintentar misma intención" }).click();
-  await expect.poll(() => requests.filter((entry) => entry.method === "POST").length).toBe(2);
-  const writes = requests.filter((entry) => entry.method === "POST");
-  expect(writes[1].idempotency).toBe(writes[0].idempotency);
+test("respuesta perdida conserva la intención y la key para retry manual", async ({ page }, testInfo) => {
+  let serverApplications = 0;
+  let commands = 0;
+  let audits = 0;
+  let barrier: SecondTransitionRequestBarrier | null = null;
+  const evidence = new TransitionFailureEvidence(page, testInfo);
+  const requests = await mockApi(page, {
+    transitionBarrier: { observeIntercepted: (request) => barrier?.observeIntercepted(request) },
+    list: async (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, data: [pipelineCase({ status: serverApplications === 0 ? "NEW_INBOX" : "AWAITING_ICP" })] }),
+    }),
+    detail: async (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, data: pipelineCaseDetail({ status: serverApplications === 0 ? "NEW_INBOX" : "AWAITING_ICP" }) }),
+    }),
+    mutation: async (route, attempt) => {
+      if (attempt === 1) {
+        serverApplications += 1;
+        commands += 1;
+        audits += 1;
+        return route.abort("connectionreset");
+      }
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, command: { caseId: "case-001", commandType: "TRANSITION", previousVersion: 4, resultingVersion: 5, previousStatus: "NEW_INBOX", resultingStatus: "AWAITING_ICP", owner: null, replayed: true } }) });
+    },
+  });
+
+  try {
+    await page.goto("/tests/crm-01b3b2/harness.html");
+    await page.getByText("CRM-001").click();
+    await confirmTransition(page);
+    await expect(page.getByRole("button", { name: "Reintentar misma intención" })).toBeVisible();
+
+    barrier = new SecondTransitionRequestBarrier(page, CASE_REF);
+    const secondPost = barrier.wait();
+    await page.getByRole("button", { name: "Reintentar misma intención" }).click();
+    const observed = await secondPost;
+    expect(observed.outcome).toBe("SECOND_POST_OBSERVED");
+
+    const writes = requests.filter((entry) => entry.method === "POST");
+    expect(writes).toHaveLength(2);
+    expect(writes[0].idempotency).toBeTruthy();
+    expect(writes[1].idempotency).toBe(writes[0].idempotency);
+    expect(observed.idempotencyKey).toBe(writes[0].idempotency);
+    expect(serverApplications).toBe(1);
+    expect(commands).toBe(1);
+    expect(audits).toBe(1);
+    await expect(page.getByRole("button", { name: "Reintentar misma intención" })).toHaveCount(0);
+    await expect(page.getByRole("dialog").locator(':text-is("Esperando ICP"):visible').first()).toBeVisible();
+
+    if (process.env.V17_REQUEST_BARRIER_ARTIFACT_PROBE === "1") {
+      throw new Error("V17_REQUEST_BARRIER_ARTIFACT_PROBE");
+    }
+  } catch (error) {
+    if (barrier) await evidence.attach(barrier, error);
+    throw error;
+  } finally {
+    barrier?.dispose();
+    evidence.dispose();
+  }
+});
+
+test("barrera clasifica un retry suprimido como SECOND_POST_NOT_INITIATED", async ({ page }, testInfo: TestInfo) => {
+  await page.setContent('<button type="button">Reintentar</button>');
+  const barrier = new SecondTransitionRequestBarrier(page, CASE_REF, 1_000);
+  try {
+    const secondPost = barrier.wait().catch((cause) => cause);
+    await page.getByRole("button", { name: "Reintentar" }).click();
+    const error = await secondPost;
+    expect(error).toBeInstanceOf(SecondPostBarrierError);
+    expect(error).toMatchObject({ code: "SECOND_POST_NOT_INITIATED" });
+    expect(barrier.evidence(testInfo).outcome).toBe("SECOND_POST_NOT_INITIATED");
+  } finally {
+    barrier.dispose();
+  }
+});
+
+test("barrera distingue un request iniciado que el interceptor no observó", async ({ page }, testInfo: TestInfo) => {
+  await page.route(`**/api/crm/pipeline-cases/${CASE_REF}/transition`, (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ok: true }),
+  }));
+  await page.setContent(`<button type="button" onclick="fetch('http://127.0.0.1:4182/api/crm/pipeline-cases/${CASE_REF}/transition',{method:'POST'})">Reintentar</button>`);
+  const barrier = new SecondTransitionRequestBarrier(page, CASE_REF, 1_000);
+  try {
+    const secondPost = barrier.wait().catch((cause) => cause);
+    await page.getByRole("button", { name: "Reintentar" }).click();
+    const error = await secondPost;
+    expect(error).toBeInstanceOf(SecondPostBarrierError);
+    expect(error).toMatchObject({ code: "SECOND_POST_INITIATED_NOT_INTERCEPTED" });
+    expect(barrier.evidence(testInfo).outcome).toBe("SECOND_POST_INITIATED_NOT_INTERCEPTED");
+  } finally {
+    barrier.dispose();
+  }
 });
 
 test("cerrar durante mutación cancela el request sin crear otra intención", async ({ page }) => {

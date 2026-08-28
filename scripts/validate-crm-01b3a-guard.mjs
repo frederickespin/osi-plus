@@ -38,7 +38,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   for (const signature of [
     'requireCrmPipelineMutationsLocal(env)', 'assertCrmAuthorizationHeader(req)',
     'readJsonObject(req, { maxBytes: BODY_MAX_BYTES', '"idempotency-key"', 'setCrmPrivateHeaders(res)',
-    'handleOptions: false, cors: false', '"Authorization", "Content-Type", "Idempotency-Key"',
+    'withPrivateApiHeaders', '{ handleOptions: false }', '"Authorization", "Content-Type", "Idempotency-Key"',
     '["POST", "OPTIONS"]', '["GET", "HEAD", "OPTIONS"]', 'mt01bAllowedOrigins(env)',
   ]) invariant(adapter.includes(signature), `adaptador incompleto: ${signature}`);
   for (const signature of ['DISABLED: "DISABLED"', 'LOCAL_ONLY: "LOCAL_ONLY"', 'PRODUCTION_WRITE: "PRODUCTION_WRITE"', 'CRM_PIPELINE_MUTATIONS_DISABLED', 'CRM_PIPELINE_CONFIGURATION_INVALID']) {
@@ -62,8 +62,8 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   "requestId/query adicional o identidad ambigua no se rechaza");
   invariant(/rawHeaderCount\(req, "idempotency-key"\)/.test(adapter), "duplicados Idempotency-Key no se detectan en rawHeaders");
   invariant(/rawHeaderCount\(request, "authorization"\)/.test(access) && /assertCrmAuthorizationHeader\(req\)/.test(adapter), "Authorization ambiguo no se detecta");
-  invariant(vercel.includes('"source": "/api/((?!auth(?:/|$)|crm(?:/|$)|clients(?:/|$)|projects(?:/|$)|k(?:/|$)|admin(?:/|$)).*)"'), "Vercel no excluye los namespaces protegidos Auth/CRM/Clients/Projects/K/Admin del CORS global");
-  invariant(!/(?:transition|assign-owner|unassign-owner|allowed-transitions|pipeline-summary)/.test(JSON.parse(vercel).headers?.[0]?.source || ""), "Vercel no puede mantener una exclusión CRM parcial por endpoint");
+  invariant((JSON.parse(vercel).headers || []).filter((rule) => String(rule?.source || "").startsWith("/api/")).length === 0, "Vercel no puede aplicar CORS global o parcial a namespaces protegidos");
+  invariant(adapter.includes("withPrivateApiHeaders"), "adaptador CRM no usa wrapper privado");
   for (const forbidden of ["tenantId", "userId", "actorUserId", "actorMembershipId", "ownerUserId", "ownerId", "role", "permissions", "requestId", "resultingVersion", "payloadHash", "statusChangedAt", "timestamps"]) {
     invariant(adapter.includes(`"${forbidden}"`), `falta protección de ${forbidden}`);
   }

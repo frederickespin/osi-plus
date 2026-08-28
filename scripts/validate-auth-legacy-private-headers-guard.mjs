@@ -2,7 +2,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CANONICAL_GLOBAL_API_SOURCE = "/api/((?!auth(?:/|$)|crm(?:/|$)|clients(?:/|$)|projects(?:/|$)|k(?:/|$)|admin(?:/|$)).*)";
 const REQUIRED_ROUTES = Object.freeze([
   "/api/auth/login",
   "/api/auth/logout",
@@ -67,8 +66,7 @@ export function validateAuthLegacyPrivateHeadersGuard({
   invariant(JSON.stringify(routes) === JSON.stringify([...REQUIRED_ROUTES]), "inventario recursivo Auth inesperado");
   invariant(Array.isArray(config.headers), "vercel.json debe declarar headers");
   const unsafeRules = config.headers.filter(unsafeRule);
-  invariant(unsafeRules.length === 1, "debe existir una única regla heredada insegura fuera de Auth/CRM");
-  invariant(unsafeRules[0].source === CANONICAL_GLOBAL_API_SOURCE, "la regla global no excluye namespaces Auth/CRM completos");
+  invariant(unsafeRules.length === 0, "vercel.json no puede declarar CORS o caché inseguros");
   for (const path of [...routes, "/api/auth/future-route"]) {
     invariant(!unsafeRules.some((rule) => matches(rule.source, path)), `${path} heredaría CORS/caché inseguros`);
   }

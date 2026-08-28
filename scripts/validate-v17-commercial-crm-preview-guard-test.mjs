@@ -52,7 +52,7 @@ const results = [
   mustFail("deniedPermissions ignorado", mutate("src/hub/hubAccess.ts", (source) => source.replace("application.requiredPermissions.some((permission) => denied.has(permission))", "false")), /deniedPermissions no prevalece/),
   mustFail("alias CRM sin decisión compartida", mutate("src/hub/appCatalog.ts", (source) => source.replace('routeAliases: ["/crm", "/sales/pipeline"]', 'routeAliases: ["/sales/pipeline"]')), /rutas CRM equivalentes divergentes/),
   mustFail("ruta directa sin decisión común", mutate("src/hub/hubRouteAccess.ts", (source) => source.replace("evaluateHubAccess(application, context)", "{ allowed: true }")), /ruta directa omite decisión común/),
-  mustFail("CORS wildcard alcanza namespaces protegidos", mutate("vercel.json", (source) => source.replace("/api/((?!auth(?:/|$)|crm(?:/|$)|clients(?:/|$)|projects(?:/|$)|k(?:/|$)|admin(?:/|$)).*)", "/api/(.*)")), /namespaces protegidos/),
+  mustFail("CORS wildcard alcanza namespaces protegidos", mutate("vercel.json", (source) => source.replace('"headers": []', '"headers": [{"source":"/api/(.*)","headers":[{"key":"Access-Control-Allow-Origin","value":"*"}]}]')), /namespaces protegidos/),
   mustFail("Inbox importa localStorage", mutate("src/commercial-crm/CommercialInboxModule.tsx", (source) => `${source}\nlocalStorage.getItem("fixture");\n`), /storage empresarial importado/),
   mustFail("Inbox importa mock", mutate("src/commercial-crm/CommercialInboxModule.tsx", (source) => `import { fixture } from "@/mocks/cases";\n${source}`), /mock, bridge o store importado/),
   mustFail("resolver canónico eliminado", mutate("src/hub/hubMode.ts", (source) => source.replaceAll("resolveV17CommercialCrmPreviewClientAuthority", "unsafePreviewResolver")), /default Hub inseguro/),

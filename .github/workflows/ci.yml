@@ -149,6 +149,7 @@ jobs:
           node scripts/crm-01b3b3-test.mjs
           node scripts/validate-crm-01b3b3-guard.mjs
           node scripts/validate-crm-01b3b3-guard-test.mjs
+          node scripts/mt-01b1-refresh-race-evidence-test.mjs
           node scripts/validate-sec-dep-01-guard.mjs
           node scripts/validate-sec-dep-01-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
@@ -455,6 +456,9 @@ jobs:
         run: node scripts/validate-canonical-ci.mjs
 
       - name: Run canonical domain suites and SEC-COM-01A route security
+        id: canonical_domain_suites
+        env:
+          MT01B_REFRESH_RACE_ARTIFACT_PATH: ${{ runner.temp }}/mt01b-refresh-race-evidence/failure.json
         run: |
           node scripts/run-canonical-db-tests.mjs
           node scripts/mt-01b2a-test.ts
@@ -469,6 +473,16 @@ jobs:
           npm run test:v17-admin-membership-public-ref:migration
           npm run test:v17-admin-identity
           npm run test:v17-admin-initial-permissions-bootstrap
+
+      - name: Publish sanitized MT-01B1 refresh-race evidence
+        if: steps.canonical_domain_suites.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mt01b-refresh-race-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mt01b-refresh-race-evidence/failure.json
+          if-no-files-found: ignore
+          retention-days: 7
+          compression-level: 6
 
       - name: Build
         run: npm run build

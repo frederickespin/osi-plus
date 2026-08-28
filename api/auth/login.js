@@ -1,6 +1,6 @@
 import { prisma } from "../_lib/db.js";
 import { comparePassword, signAccessToken } from "../_lib/auth.js";
-import { methodNotAllowed, readJsonObject, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "../_lib/http.js";
 import { withLegacyAuthHeaders } from "../_lib/authHttp.js";
 import { isGloballyActiveUser } from "../_lib/userStatus.js";
 
@@ -23,7 +23,7 @@ export async function authenticateLegacyCredentials({ email, password, prismaCli
   return { outcome: "AUTHENTICATED", user };
 }
 
-const legacyLoginHandler = withCommonHeaders(async (req, res) => {
+const legacyLoginHandler = withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "POST") {
     return methodNotAllowed(res, ["POST"]);
   }
@@ -81,7 +81,7 @@ const legacyLoginHandler = withCommonHeaders(async (req, res) => {
       rating: user.rating,
     },
   });
-}, { handleOptions: false, cors: false });
+}, { handleOptions: false });
 
 export default withLegacyAuthHeaders(legacyLoginHandler, { methods: ["POST"] });
 

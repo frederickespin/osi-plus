@@ -1,5 +1,5 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, readJsonBody, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, readJsonBody, setPrivateNoStore, withPrivateApiHeaders } from "../_lib/http.js";
 import { PERMS, requireRoleFromHeaders } from "../_lib/rbac.js";
 import {
   assertNoBrowserCommercialAuthority,
@@ -50,7 +50,7 @@ function buildBlockers(project, { includeDefaults = false } = {}) {
   return { hardRed, softNeedsAck, pgdHardBlock, semaphores };
 }
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
   if (!requireCommercialTenancyMutation(req, res)) return;
   let modes;

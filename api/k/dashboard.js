@@ -1,6 +1,6 @@
 import { prisma } from "../_lib/db.js";
 import { requirePilotPermission } from "../_lib/authContextPilot.js";
-import { databaseUnavailable, methodNotAllowed, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
+import { databaseUnavailable, methodNotAllowed, setPrivateNoStore, withPrivateApiHeaders } from "../_lib/http.js";
 import { PERMS } from "../_lib/rbac.js";
 import {
   COMMERCIAL_TENANCY_READ_MODES,
@@ -16,7 +16,7 @@ import {
   pgdBlockingSummary,
 } from "./_lib.js";
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
   setPrivateNoStore(res);
   let modes;

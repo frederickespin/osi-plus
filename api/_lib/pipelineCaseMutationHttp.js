@@ -8,7 +8,7 @@ import {
   resolveCrmPipelineContext,
   resolveCrmPipelineModes,
 } from "./crmPipelineAccess.js";
-import { JsonBodyError, methodNotAllowed, readJsonObject, withCommonHeaders } from "./http.js";
+import { JsonBodyError, methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { ensureCrmVaryHeaders, setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { resolveCrmOwnerRefForAssignment } from "./crmOwnerCatalog.js";
 
@@ -193,7 +193,7 @@ function commandResponse(receipt) {
 }
 
 function createMutationHandler({ execute, allowedBodyKeys, routeAction, transformCommand, env = process.env, resolveContext = resolveCrmPipelineContext, prismaClient } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
     try {
       requireCrmPipelineMutationsLocal(env);
@@ -239,7 +239,7 @@ function createMutationHandler({ execute, allowedBodyKeys, routeAction, transfor
       if (error instanceof JsonBodyError) throw error;
       return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
-  }, { handleOptions: false, cors: false });
+  }, { handleOptions: false });
 }
 
 export function createTransitionHandler(options) {
@@ -266,7 +266,7 @@ export function createUnassignOwnerHandler(options) {
 }
 
 export function createAllowedTransitionsHandler({ execute, env = process.env, resolveContext = resolveCrmPipelineContext, requireReadMode, prismaClient } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
     try {
       requireCrmPipelineMutationsLocal(env);
@@ -302,5 +302,5 @@ export function createAllowedTransitionsHandler({ execute, env = process.env, re
     } catch (error) {
       return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
-  }, { handleOptions: false, cors: false });
+  }, { handleOptions: false });
 }

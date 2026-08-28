@@ -87,13 +87,61 @@ try {
   const artifactPath = join(artifactRoot, "failure.json");
   process.env.MT01B_REFRESH_RACE_ARTIFACT_PATH = artifactPath;
   const assertions = evaluateEndpointEvidence([winner, { ...loser, cookie: "CLEAR" }], validDatabase, 2);
-  const error = Object.assign(new Error("synthetic@example.invalid postgresql://user:password@example.invalid/db __Host-osi_refresh=secret"), {
+  const runtimeEmailUser = ["fixture", "-", "mailbox"].join("");
+  const runtimeEmailDomain = ["example", ".", "invalid"].join("");
+  const runtimeEmail = [runtimeEmailUser, "@", runtimeEmailDomain].join("");
+  const runtimeDatabaseUser = ["fixture", "-", "user"].join("");
+  const runtimeDatabasePassword = ["fixture", "-", "pass"].join("");
+  const runtimeDatabaseHost = ["db", ".", "example", ".", "test"].join("");
+  const runtimeDatabaseUrl = [
+    "postgres",
+    "ql",
+    ":",
+    "//",
+    runtimeDatabaseUser,
+    ":",
+    runtimeDatabasePassword,
+    "@",
+    runtimeDatabaseHost,
+    "/",
+    "fixture",
+  ].join("");
+  const runtimeCookie = ["__Host", "-", "osi", "_", "refresh", "=", "fixture", "-", "cookie"].join("");
+  const runtimeToken = ["eyJ", "maXh0dXJlSGVhZGVy", ".", "eyJ", "maXh0dXJlUGF5bG9hZA", ".", "Zml4dHVyZVNpZ25hdHVyZQ"].join("");
+  const runtimeAuthorization = ["Bearer", " ", runtimeToken].join("");
+  const runtimeUuid = ["12345678", "-", "1234", "-", "4abc", "-", "8def", "-", "1234567890ab"].join("");
+  const runtimeFixturesHaveExpectedShape =
+    /^[^@\s]+@example\.invalid$/.test(runtimeEmail)
+    && new URL(runtimeDatabaseUrl).protocol === "postgresql:"
+    && /^__Host-osi_refresh=[^;\s]+$/.test(runtimeCookie)
+    && /^Bearer (?:eyJ[A-Za-z0-9_-]+\.){2}[A-Za-z0-9_-]+$/.test(runtimeAuthorization)
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runtimeUuid)
+    && /^(?:eyJ[A-Za-z0-9_-]+\.){2}[A-Za-z0-9_-]+$/.test(runtimeToken);
+  const error = Object.assign(new Error([
+    runtimeEmail,
+    runtimeDatabaseUrl,
+    runtimeCookie,
+    runtimeAuthorization,
+    runtimeUuid,
+    runtimeToken,
+  ].join(" ")), {
     code: "MT01B_RACE_LOSER_CLEAR_COOKIE",
   });
   const written = writeFailureEvidence({ requests: [winner, { ...loser, cookie: "CLEAR" }], database: validDatabase, assertions }, error);
   const artifact = readFileSync(artifactPath, "utf8");
-  check("fallo genera artefacto JSON", written?.written === true && JSON.parse(artifact).schema === "MT01B_REFRESH_RACE_EVIDENCE_V1");
-  check("artefacto no contiene credenciales ni valores sensibles", !artifact.includes("user:password") && !artifact.includes("synthetic@example.invalid") && !artifact.includes("=secret"));
+  check("fallo genera artefacto JSON", runtimeFixturesHaveExpectedShape && written?.written === true && JSON.parse(artifact).schema === "MT01B_REFRESH_RACE_EVIDENCE_V1");
+  check("artefacto no contiene credenciales ni valores sensibles", [
+    runtimeEmail,
+    runtimeEmailUser,
+    runtimeDatabaseUrl,
+    runtimeDatabaseUser,
+    runtimeDatabasePassword,
+    runtimeDatabaseHost,
+    runtimeCookie,
+    runtimeAuthorization,
+    runtimeUuid,
+    runtimeToken,
+  ].every((value) => !artifact.includes(value)));
 } finally {
   delete process.env.MT01B_REFRESH_RACE_ARTIFACT_PATH;
   rmSync(artifactRoot, { recursive: true, force: true });

@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { assertCanonicalCiTarget } from "./validate-canonical-ci.mjs";
+import {
+  expectedCrmCorsInventoryReport,
+  validateCrmCorsInventoryReport,
+} from "./validate-crm-cors-guard.mjs";
 
 const EXPECTED_DB_TESTS = Object.freeze({ d: 21, e: 37, f: 38, g: 47, h: 35, i: 60, j: 54 });
 const SENSITIVE_NAME = /(DATABASE_URL|DIRECT_URL|PASSWORD|TOKEN|SECRET|API_KEY)/i;
@@ -248,14 +252,10 @@ try {
   invariant(crmMutationHttpStressRun.report.ok === true && crmMutationHttpStressRun.report.rounds === 50 && crmMutationHttpStressRun.report.requestsPerRound === 20, "CRM-01B3A estrés HTTP 50x20 no se completó");
   invariant(crmMutationHttpGuardRun.report.ok === true, "CRM-01B3A guard falló");
   invariant(crmMutationHttpGuardTestsRun.assertions >= 14, `CRM-01B3A guard tests esperaba al menos 14 pruebas y obtuvo ${crmMutationHttpGuardTestsRun.assertions}`);
-  invariant(crmCorsGuardRun.report.ok === true
-    && crmCorsGuardRun.report.routes === 52
-    && crmCorsGuardRun.report.protectedSameOrigin === 25
-    && crmCorsGuardRun.report.publicDeliberate === 2
-    && crmCorsGuardRun.report.webhookOwnAuth === 0
-    && crmCorsGuardRun.report.legacyPending === 25
-    && crmCorsGuardRun.report.platformApiHeaderRules === 0,
-  "CRM-01B3A CORS guard falló");
+  invariant(
+    validateCrmCorsInventoryReport(crmCorsGuardRun.report, expectedCrmCorsInventoryReport()),
+    "CRM-01B3A CORS guard falló",
+  );
   invariant(crmCorsGuardTestsRun.assertions >= 10, `CRM-01B3A CORS guard tests esperaba al menos 10 pruebas y obtuvo ${crmCorsGuardTestsRun.assertions}`);
   invariant(crmProductionGateRun.report.ok === true && crmProductionGateRun.assertions >= 50, `CRM-01B3B1 gate esperaba al menos 50 pruebas y obtuvo ${crmProductionGateRun.assertions}`);
   invariant(crmDisabledOptionsRun.report.ok === true && crmDisabledOptionsRun.assertions >= 300, `CRM-01B3B3 OPTIONS esperaba al menos 300 pruebas y obtuvo ${crmDisabledOptionsRun.assertions}`);

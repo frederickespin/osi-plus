@@ -1,34 +1,10 @@
 import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PUBLIC_CORS_ROUTES = Object.freeze(["/api/health", "/api/info"]);
-const WEBHOOK_ROUTES = Object.freeze([]);
-const PROTECTED_SAME_ORIGIN_ROUTES = Object.freeze([
-  "/api/admin/identity-invitations", "/api/admin/identity-invitations/[invitationRef]",
-  "/api/admin/memberships", "/api/admin/memberships/[membershipRef]",
-  "/api/auth/admin-invitations/activate", "/api/auth/login", "/api/auth/logout", "/api/auth/me", "/api/auth/refresh", "/api/auth/session/upgrade",
-  "/api/clients", "/api/projects",
-  "/api/crm/client-options", "/api/crm/pipeline-cases", "/api/crm/pipeline-cases/[caseKey]",
-  "/api/crm/pipeline-cases/[caseKey]/allowed-transitions", "/api/crm/pipeline-cases/[caseKey]/assign-owner",
-  "/api/crm/pipeline-cases/[caseKey]/transition", "/api/crm/pipeline-cases/[caseKey]/unassign-owner",
-  "/api/crm/pipeline-owner-options", "/api/crm/pipeline-summary",
-  "/api/k/dashboard", "/api/k/pgd/apply", "/api/k/pgd/item", "/api/k/project",
-  "/api/k/project-release", "/api/k/project-validate", "/api/k/signal",
-]);
-const LEGACY_PENDING_ROUTES = Object.freeze([
-  "/api/_disabled/modules", "/api/_disabled/pgd/apply", "/api/_disabled/pgd/item",
-  "/api/_disabled/project-release", "/api/_disabled/project-validate", "/api/_disabled/signal",
-  "/api/osis", "/api/osis/[id]", "/api/osis/[id]/handshake", "/api/osis/[id]/return",
-  "/api/pst/[serviceCode]", "/api/pst/active",
-  "/api/ptf/suggestions/action", "/api/ptf/suggestions", "/api/ptf/suggestions/recompute",
-  "/api/templates/approve", "/api/templates/approve-batch", "/api/templates/draft", "/api/templates/list",
-  "/api/templates/pending", "/api/templates/publish", "/api/templates/reject", "/api/templates/submit",
-  "/api/templates/version", "/api/users",
-]);
-
-const PRIVATE_ROUTE_SET = new Set([...PROTECTED_SAME_ORIGIN_ROUTES, ...LEGACY_PENDING_ROUTES]);
-const CLASSIFIED_ROUTE_SET = new Set([...PRIVATE_ROUTE_SET, ...PUBLIC_CORS_ROUTES, ...WEBHOOK_ROUTES]);
+const MANIFEST_PATH = "scripts/protected-cors-route-inventory.json";
+const CATEGORY_NAMES = Object.freeze(["protectedSameOrigin", "publicDeliberate", "legacyPendingClosed", "webhookOwnAuth"]);
 const WILDCARD_ORIGIN = /setHeader\(\s*["']access-control-allow-origin["']\s*,\s*["']\*["']/iu;
 const CREDENTIALS_TRUE = /setHeader\(\s*["']access-control-allow-credentials["']\s*,\s*["']true["']/iu;
 const ORIGIN_REFLECTION = /setHeader\(\s*["']access-control-allow-origin["']\s*,\s*(?:req(?:uest)?\.?headers|origin)\b/iu;
@@ -55,6 +31,75 @@ function source(root, relativePath, overrides) {
 function parseConfig(text) {
   try { return JSON.parse(text); }
   catch { throw new Error("PROTECTED_CORS_GUARD: vercel.json no es JSON válido"); }
+}
+
+function sha256(text) {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+export function parseProtectedCorsInventoryManifest(text) {
+  let manifest;
+  try { manifest = JSON.parse(text); }
+  catch { throw new Error("PROTECTED_CORS_GUARD: manifiesto CORS no es JSON válido"); }
+  invariant(manifest?.version === "V17-PROTECTED-CORS-INVENTORY-1", "versión del manifiesto CORS inesperada");
+  invariant(manifest?.categories && typeof manifest.categories === "object", "categorías del manifiesto CORS ausentes");
+  invariant(JSON.stringify(Object.keys(manifest.categories).sort()) === JSON.stringify([...CATEGORY_NAMES].sort()), "categorías del manifiesto CORS inesperadas");
+
+  const categories = {};
+  const occurrences = new Map();
+  let duplicates = 0;
+  for (const name of CATEGORY_NAMES) {
+    const routes = manifest.categories[name];
+    invariant(Array.isArray(routes) && routes.every((route) => typeof route === "string" && route.startsWith("/api/")), `categoría CORS inválida: ${name}`);
+    duplicates += routes.length - new Set(routes).size;
+    categories[name] = Object.freeze([...routes].sort());
+    for (const route of routes) occurrences.set(route, (occurrences.get(route) || 0) + 1);
+  }
+  const overlaps = [...occurrences.values()].filter((count) => count > 1).length;
+  invariant(duplicates === 0, "manifiesto CORS contiene rutas duplicadas");
+  invariant(overlaps === 0, "manifiesto CORS contiene categorías superpuestas");
+  const allRoutes = Object.freeze([...occurrences.keys()].sort());
+  return Object.freeze({
+    version: manifest.version,
+    categories: Object.freeze(categories),
+    allRoutes,
+    duplicates,
+    overlaps,
+    manifestSha256: sha256(text),
+    inventorySha256: sha256(JSON.stringify({ version: manifest.version, categories })),
+  });
+}
+
+export function loadProtectedCorsInventory({ root = process.cwd(), overrides = new Map() } = {}) {
+  return parseProtectedCorsInventoryManifest(source(root, MANIFEST_PATH, overrides));
+}
+
+export function validateCrmCorsInventoryReport(report, expected) {
+  const fields = [
+    "manifestVersion", "manifestSha256", "inventorySha256", "routes", "classifiedRoutes",
+    "protectedSameOrigin", "publicDeliberate", "legacyPending", "webhookOwnAuth",
+  ];
+  invariant(report?.ok === true, "reporte CORS no indica éxito");
+  for (const field of fields) invariant(report[field] === expected[field], `resumen CORS no coincide con manifiesto: ${field}`);
+  for (const field of ["duplicates", "unclassified", "overlaps"]) invariant(report[field] === 0, `resumen CORS inseguro: ${field}`);
+  invariant(report.routes === report.classifiedRoutes, "inventario CORS descubierto y clasificado diverge");
+  invariant(report.platformApiHeaderRules === 0, "reporte CORS permite headers API de plataforma");
+  return true;
+}
+
+export function expectedCrmCorsInventoryReport({ root = process.cwd(), overrides = new Map() } = {}) {
+  const inventory = loadProtectedCorsInventory({ root, overrides });
+  return Object.freeze({
+    manifestVersion: inventory.version,
+    manifestSha256: inventory.manifestSha256,
+    inventorySha256: inventory.inventorySha256,
+    routes: inventory.allRoutes.length,
+    classifiedRoutes: inventory.allRoutes.length,
+    protectedSameOrigin: inventory.categories.protectedSameOrigin.length,
+    publicDeliberate: inventory.categories.publicDeliberate.length,
+    legacyPending: inventory.categories.legacyPendingClosed.length,
+    webhookOwnAuth: inventory.categories.webhookOwnAuth.length,
+  });
 }
 
 export function inventoryApiRoutes(root = process.cwd(), overrides, extraRoutes = []) {
@@ -88,6 +133,10 @@ function validatePublicWrapper(httpSource) {
 }
 
 export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map(), extraRoutes = [], vercelText = source(root, "vercel.json", overrides) } = {}) {
+  const inventory = loadProtectedCorsInventory({ root, overrides });
+  const protectedSameOriginRoutes = inventory.categories.protectedSameOrigin;
+  const publicCorsRoutes = inventory.categories.publicDeliberate;
+  const legacyPendingRoutes = inventory.categories.legacyPendingClosed;
   const config = parseConfig(vercelText);
   invariant(Array.isArray(config.headers), "vercel.json debe declarar headers");
   const apiHeaderRules = config.headers.filter((rule) => String(rule?.source || "").startsWith("/api/"));
@@ -96,7 +145,9 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
   const routes = inventoryApiRoutes(root, overrides, extraRoutes);
   const paths = routes.map((route) => route.path);
   invariant(new Set(paths).size === paths.length, "inventario contiene rutas duplicadas");
-  invariant(JSON.stringify(paths) === JSON.stringify([...CLASSIFIED_ROUTE_SET].sort()), "ruta API nueva o clasificación incompleta");
+  const unclassified = paths.filter((path) => !inventory.allRoutes.includes(path));
+  const absent = inventory.allRoutes.filter((path) => !paths.includes(path));
+  invariant(unclassified.length === 0 && absent.length === 0, "ruta API nueva, ausente o clasificación incompleta");
 
   const httpSource = source(root, "api/_lib/http.js", overrides);
   validatePrivateWrapper(httpSource);
@@ -105,7 +156,7 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
   for (const route of routes) {
     invariant(!CREDENTIALS_TRUE.test(route.source), `${route.path} declara credentials permisivo`);
     invariant(!ORIGIN_REFLECTION.test(route.source), `${route.path} refleja Origin`);
-    if (PUBLIC_CORS_ROUTES.includes(route.path)) {
+    if (publicCorsRoutes.includes(route.path)) {
       invariant(route.source.includes("withPublicReadCorsHeaders"), `${route.path} no usa el wrapper público allowlisted`);
       continue;
     }
@@ -127,7 +178,22 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
   }
   invariant(/mt01bAllowedOrigins\(env\)\.has\(origin\)/u.test(source(root, "api/_lib/pipelineCaseMutationHttp.js", overrides)), "CRM local no limita Origin a la allowlist exacta");
 
-  return Object.freeze({ ok: true, routes: routes.length, protectedSameOrigin: PROTECTED_SAME_ORIGIN_ROUTES.length, publicDeliberate: PUBLIC_CORS_ROUTES.length, webhookOwnAuth: WEBHOOK_ROUTES.length, legacyPending: LEGACY_PENDING_ROUTES.length, platformApiHeaderRules: apiHeaderRules.length });
+  return Object.freeze({
+    ok: true,
+    manifestVersion: inventory.version,
+    manifestSha256: inventory.manifestSha256,
+    inventorySha256: inventory.inventorySha256,
+    routes: routes.length,
+    classifiedRoutes: inventory.allRoutes.length,
+    protectedSameOrigin: protectedSameOriginRoutes.length,
+    publicDeliberate: publicCorsRoutes.length,
+    webhookOwnAuth: inventory.categories.webhookOwnAuth.length,
+    legacyPending: legacyPendingRoutes.length,
+    duplicates: inventory.duplicates,
+    unclassified: unclassified.length,
+    overlaps: inventory.overlaps,
+    platformApiHeaderRules: apiHeaderRules.length,
+  });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

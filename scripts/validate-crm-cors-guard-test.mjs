@@ -1,9 +1,16 @@
 import { readFileSync } from "node:fs";
-import { validateCrmCorsGuard } from "./validate-crm-cors-guard.mjs";
+import {
+  expectedCrmCorsInventoryReport,
+  loadProtectedCorsInventory,
+  validateCrmCorsGuard,
+  validateCrmCorsInventoryReport,
+} from "./validate-crm-cors-guard.mjs";
 
 const read = (path) => readFileSync(path, "utf8");
 const baseline = new Map([
   ["vercel.json", read("vercel.json")], ["api/_lib/http.js", read("api/_lib/http.js")],
+  ["scripts/protected-cors-route-inventory.json", read("scripts/protected-cors-route-inventory.json")],
+  ["api/_lib/adminIdentityInvitationHttp.js", read("api/_lib/adminIdentityInvitationHttp.js")],
   ["api/_lib/adminMembershipHttp.js", read("api/_lib/adminMembershipHttp.js")], ["api/_lib/authHttp.js", read("api/_lib/authHttp.js")],
   ["api/_lib/authOrigin.js", read("api/_lib/authOrigin.js")], ["api/_lib/crmCaseMutationHttp.js", read("api/_lib/crmCaseMutationHttp.js")],
   ["api/_lib/crmOwnerCatalogHttp.js", read("api/_lib/crmOwnerCatalogHttp.js")], ["api/_lib/crmPipelineReadHttp.js", read("api/_lib/crmPipelineReadHttp.js")],
@@ -17,13 +24,48 @@ function rejected(name, relativePath, mutate, pattern = /PROTECTED_CORS_GUARD/u)
   let error; try { validateCrmCorsGuard({ overrides }); } catch (caught) { error = caught; }
   check(name, pattern.test(error?.message || ""));
 }
+function reportRejected(name, report, pattern = /PROTECTED_CORS_GUARD/u) {
+  let error; try { validateCrmCorsInventoryReport(report, expectedCrmCorsInventoryReport({ overrides: baseline })); } catch (caught) { error = caught; }
+  check(name, pattern.test(error?.message || ""));
+}
+function mutateManifest(mutator) {
+  return (text) => {
+    const manifest = JSON.parse(text);
+    mutator(manifest.categories);
+    return `${JSON.stringify(manifest, null, 2)}\n`;
+  };
+}
 
 const current = validateCrmCorsGuard({ overrides: baseline });
-check("inventario completo 55/55", current.ok && current.routes === 55);
+const inventory = loadProtectedCorsInventory({ overrides: baseline });
+check("inventario completo 55/55", current.ok && current.routes === 55 && current.classifiedRoutes === 55);
 check("28 rutas same-origin", current.protectedSameOrigin === 28);
 check("allowlist pública 2/2", current.publicDeliberate === 2 && current.webhookOwnAuth === 0);
 check("25 rutas legacy cerradas", current.legacyPending === 25);
+check("categorías exactas sin solapamientos", current.duplicates === 0 && current.unclassified === 0 && current.overlaps === 0);
+check("tres rutas Identity protegidas", [
+  "/api/admin/identity-invitations",
+  "/api/admin/identity-invitations/[invitationRef]",
+  "/api/auth/admin-invitations/activate",
+].every((route) => inventory.categories.protectedSameOrigin.includes(route)));
+check("resumen coincide con manifiesto", validateCrmCorsInventoryReport(current, expectedCrmCorsInventoryReport({ overrides: baseline })));
 check("sin headers API de plataforma", current.platformApiHeaderRules === 0);
+rejected("ruta Identity ausente", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+  categories.protectedSameOrigin = categories.protectedSameOrigin.filter((route) => route !== "/api/auth/admin-invitations/activate");
+}));
+rejected("ruta protegida reclasificada como pública", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+  const route = "/api/admin/identity-invitations";
+  categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);
+  categories.publicDeliberate.push(route);
+}));
+rejected("ruta duplicada en manifiesto", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+  categories.protectedSameOrigin.push("/api/admin/memberships");
+}), /duplicadas/);
+rejected("ruta en dos categorías", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+  categories.publicDeliberate.push("/api/admin/memberships");
+}), /superpuestas/);
+reportRejected("resumen alterado no coincide con manifiesto", { ...current, protectedSameOrigin: 27 }, /protectedSameOrigin/);
+reportRejected("éxito incompleto no engaña al agregador", { ...current, routes: 54, classifiedRoutes: 54 }, /routes/);
 rejected("wildcard Clients", "api/clients/index.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard Projects con casing", "api/projects/index.js", (value) => `${value}\nres.setHeader("aCcEsS-CoNtRoL-AlLoW-OrIgIn", "*");`);
 rejected("wildcard Admin", "api/_lib/adminMembershipHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);

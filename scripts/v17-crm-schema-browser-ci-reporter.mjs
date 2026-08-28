@@ -6,8 +6,8 @@ const EXPECTED_PROJECTS = Object.freeze([
   "webkit-desktop",
   "webkit-mobile",
 ]);
-const EXPECTED_PER_PROJECT = 33;
-const EXPECTED_TOTAL = 198;
+const EXPECTED_PER_PROJECT = 35;
+const EXPECTED_TOTAL = 210;
 
 function projectName(test) {
   return test.parent.project()?.name ?? "unknown";

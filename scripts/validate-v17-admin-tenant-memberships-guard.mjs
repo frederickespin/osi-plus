@@ -23,7 +23,8 @@ export function validateAdminTenantMembershipGuard(overrides = {}) {
   invariant(/EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS[\s\S]*!EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS\.has/u.test(rbac), "rol A concede administración automáticamente");
   invariant(/DISABLED: "DISABLED"[\s\S]*LOCAL_ONLY: "LOCAL_ONLY"/u.test(access) && !/PRODUCTION|PREVIEW/u.test(access), "compuerta administrativa amplió entornos");
   invariant(/requireAdminTenantMembershipAccess\(req, env\)/u.test(http), "HTTP no ejecuta compuerta");
-  const handler = http.slice(http.indexOf("return withCommonHeaders"));
+  const handler = http.slice(http.indexOf("return withPrivateApiHeaders"));
+  invariant(handler.length > 0, "wrapper privado administrativo ausente");
   invariant(handler.indexOf("requireAdminTenantMembershipAccess(req, env)") < handler.indexOf("resolveContext(req"), "auth ocurre antes de gate");
   invariant(handler.indexOf("resolveContext(req") < handler.indexOf("readJsonObject(req"), "body ocurre antes de auth");
   invariant(domain.includes('WHERE tm."tenant_id"=${tenantId} AND tm."public_ref"=CAST(${ref} AS uuid)') && /FOR UPDATE OF tm, u/u.test(domain), "mutación no resuelve tenant/publicRef con lock");

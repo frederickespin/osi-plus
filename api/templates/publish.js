@@ -1,8 +1,8 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, readJsonBody, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, readJsonBody, withPrivateApiHeaders } from "../_lib/http.js";
 import { PERMS, requirePermFromHeaders } from "../_lib/rbac.js";
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
   const actor = requirePermFromHeaders(req, res, PERMS.TEMPLATES_PUBLISH);
   if (!actor) return;

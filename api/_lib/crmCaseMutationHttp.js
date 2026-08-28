@@ -6,7 +6,7 @@ import {
 } from "./crmPipelineAccess.js";
 import { CrmCaseMutationError } from "./crmCaseMutationDomain.js";
 import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
-import { methodNotAllowed, readJsonObject, withCommonHeaders } from "./http.js";
+import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 
 function single(req, name) {
@@ -56,7 +56,7 @@ export function createCrmCaseMutationHandler({
   execute,
   status = 200,
 } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
     try {
       // Configuration is deliberately first: no auth, body or Prisma access can
@@ -81,5 +81,5 @@ export function createCrmCaseMutationHandler({
       if (error?.name === "JsonBodyError") throw error;
       return send(res, error);
     }
-  }, { handleOptions: false, cors: false });
+  }, { handleOptions: false });
 }

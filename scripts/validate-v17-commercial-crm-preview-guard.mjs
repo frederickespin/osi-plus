@@ -71,12 +71,7 @@ function validateCspAndCors(files) {
     fail("vercel.json inválido");
   }
   const apiRules = (configuration.headers || []).filter((rule) => String(rule.source || "").startsWith("/api/"));
-  const safeRule = apiRules.find((rule) => rule.source === "/api/((?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)");
-  if (!safeRule) fail("Auth y CRM no están excluidos del CORS global");
-  for (const rule of apiRules) {
-    const wildcard = (rule.headers || []).some((header) => header.key === "Access-Control-Allow-Origin" && header.value === "*");
-    if (wildcard && rule.source !== "/api/((?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)") fail("CORS wildcard puede alcanzar Auth, Admin, CRM o mutaciones comerciales protegidas");
-  }
+  if (apiRules.length !== 0) fail("CORS de plataforma puede alcanzar namespaces protegidos");
 }
 
 function validateInboxIsolation(files) {

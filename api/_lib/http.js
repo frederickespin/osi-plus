@@ -1,10 +1,17 @@
-function setCors(res) {
+const CORS_RESPONSE_HEADERS = Object.freeze([
+  "Access-Control-Allow-Origin",
+  "Access-Control-Allow-Credentials",
+  "Access-Control-Allow-Methods",
+  "Access-Control-Allow-Headers",
+  "Access-Control-Expose-Headers",
+  "Access-Control-Max-Age",
+]);
+
+function setPublicReadCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, x-osi-role, x-osi-userid",
-  );
+  res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Accept, Content-Type");
+  res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
 }
 
 function appendVary(res, field) {
@@ -18,8 +25,12 @@ function appendVary(res, field) {
 }
 
 function setPrivateNoStore(res) {
+  for (const header of CORS_RESPONSE_HEADERS) {
+    if (typeof res.removeHeader === "function") res.removeHeader(header);
+  }
   res.setHeader("Cache-Control", "private, no-store");
   appendVary(res, "Authorization");
+  appendVary(res, "Origin");
 }
 
 const DEFAULT_JSON_BODY_MAX_BYTES = 256 * 1024;
@@ -45,9 +56,9 @@ class JsonBodyError extends Error {
   }
 }
 
-function withCommonHeaders(handler, { handleOptions = true, cors = true } = {}) {
+function withJsonHeaders(handler, { applyHeaders, handleOptions }) {
   return async (req, res) => {
-    if (cors) setCors(res);
+    applyHeaders(res);
 
     if (handleOptions && req.method === "OPTIONS") {
       return res.status(204).end();
@@ -73,6 +84,36 @@ function withCommonHeaders(handler, { handleOptions = true, cors = true } = {}) 
       return res.status(500).json({ ok: false, error: "Internal Server Error" });
     }
   };
+}
+
+async function invokeHeadWithoutBody(handler, req, res) {
+  if (req.method !== "HEAD") return handler(req, res);
+  const originalEnd = typeof res.end === "function" ? res.end.bind(res) : null;
+  const originalJson = res.json;
+  const originalSend = res.send;
+  if (originalEnd) res.end = () => originalEnd();
+  if (typeof originalJson === "function") res.json = () => res.end();
+  if (typeof originalSend === "function") res.send = () => res.end();
+  try {
+    return await handler(req, res);
+  } finally {
+    if (originalEnd) res.end = originalEnd;
+    if (typeof originalJson === "function") res.json = originalJson;
+    if (typeof originalSend === "function") res.send = originalSend;
+  }
+}
+
+/** Wrapper same-origin: nunca concede CORS ni responde OPTIONS permisivo. */
+function withPrivateApiHeaders(handler, { handleOptions = false } = {}) {
+  return withJsonHeaders((req, res) => invokeHeadWithoutBody(handler, req, res), {
+    applyHeaders: setPrivateNoStore,
+    handleOptions,
+  });
+}
+
+/** Wrapper exclusivo para los GET públicos incluidos en la allowlist canónica. */
+function withPublicReadCorsHeaders(handler) {
+  return withJsonHeaders(handler, { applyHeaders: setPublicReadCors, handleOptions: true });
 }
 
 function methodNotAllowed(res, allowed = ["GET"]) {
@@ -280,7 +321,8 @@ function databaseUnavailable(res) {
 
 export {
   appendVary,
-  withCommonHeaders,
+  withPrivateApiHeaders,
+  withPublicReadCorsHeaders,
   setPrivateNoStore,
   methodNotAllowed,
   readJsonBody,

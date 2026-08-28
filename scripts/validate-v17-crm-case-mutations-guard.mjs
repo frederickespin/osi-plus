@@ -140,7 +140,8 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
   if (/V:\s*\[[\s\S]*?PIPELINE_(?:CREATE|UPDATE_OWN|UPDATE_ANY)/.test(roleBlock)) fail("V recibe mutaciones por rol baseline");
 
   const http = read("api/_lib/crmCaseMutationHttp.js");
-  const handler = http.slice(http.indexOf("return withCommonHeaders"));
+  const handler = http.slice(http.indexOf("return withPrivateApiHeaders"));
+  if (handler.length === 0) fail("wrapper privado de mutaciones CRM ausente");
   const gate = handler.indexOf("gate(env, req)");
   const auth = handler.indexOf("resolveCrmPipelineContext(req");
   const body = handler.indexOf("readJsonObject(req");

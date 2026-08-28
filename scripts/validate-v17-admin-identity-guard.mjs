@@ -34,11 +34,12 @@ export function validateV17AdminIdentityGuard({ root = process.cwd(), overrides 
   invariant(/existing\[0\][\s\S]*throw publicActivationError/u.test(domain) && /acceptExistingAdminIdentity/u.test(domain), "User existente puede reemplazarse o carece de aceptación autenticada");
   invariant(!/UPDATE[\s\S]{0,120}"passwordHash"|password_hash[\s\S]{0,120}UPDATE/iu.test(domain), "activación reemplaza password existente");
   for (const handler of ["createAdminIdentityInvitationCollectionHandler", "createAdminIdentityInvitationDetailHandler", "createAdminIdentityActivationHandler"]) invariant(http.includes(handler), `handler ausente: ${handler}`);
-  const gatedBlocks = http.split("return withCommonHeaders").slice(1);
+  const gatedBlocks = http.split("return withPrivateApiHeaders").slice(1);
   invariant(gatedBlocks.length === 3 && gatedBlocks.every((block) => block.indexOf("requireAdminTenantMembershipAccess(req, env)") >= 0
     && block.indexOf("requireAdminTenantMembershipAccess(req, env)") < block.indexOf("readJsonObject(req")), "gate no precede body en todos los endpoints");
   invariant(/setAuthPrivateHeaders|setCrmPrivateHeaders/u.test(http)
-    && (http.match(/cors: false, handleOptions: false/gu) || []).length === 3, "headers privados/CORS cerrado ausentes");
+    && (http.match(/handleOptions: false/gu) || []).length === 3
+    && !/Access-Control-Allow-(?:Origin|Credentials)/u.test(http), "headers privados/CORS cerrado ausentes");
   invariant(/replaceState\(\{\}, "", "\/activate-admin"\)/u.test(activation), "token no se retira del fragmento");
   invariant(/loadSession/u.test(activation) && /Authorization: `Bearer/u.test(activation) && /Su contraseña no será reemplazada/u.test(activation), "aceptación autenticada de User existente incompleta");
   invariant(/const AdminIdentityActivation = lazy/u.test(app)
@@ -50,7 +51,8 @@ export function validateV17AdminIdentityGuard({ root = process.cwd(), overrides 
   invariant(bootstrap.includes("auth_sessions") && bootstrap.includes("auth_refresh_tokens")
     && bootstrap.includes("appendCommercialAudit"), "bootstrap no revoca sesiones o audita");
   invariant(!/bcrypt|passwordHash|hashPassword/u.test(bootstrap), "bootstrap toca credenciales");
-  invariant(vercel.includes("auth/|admin/|crm/"), "Admin no está excluido del CORS global");
+  const platformApiRules = (JSON.parse(vercel).headers || []).filter((rule) => String(rule?.source || "").startsWith("/api/"));
+  invariant(platformApiRules.length === 0, "Admin puede heredar CORS global");
   invariant(workflow.includes("guard:v17-admin-identity") && workflow.includes("test:v17-admin-identity:http"), "CI no exige guardia y HTTP");
   return Object.freeze({ ok: true, migrations: 21, invitationRoutes: 3, tokenStorage: "SHA256_ONLY", maxExpiryHours: 24, bootstrapDefault: "DRY_RUN" });
 }

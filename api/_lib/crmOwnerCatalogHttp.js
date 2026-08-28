@@ -6,7 +6,7 @@ import {
 } from "./pipelineCaseMutationHttp.js";
 import { assertCrmAuthorizationHeader, resolveCrmPipelineContext } from "./crmPipelineAccess.js";
 import { listCrmPipelineOwnerOptions } from "./crmOwnerCatalog.js";
-import { methodNotAllowed, withCommonHeaders } from "./http.js";
+import { methodNotAllowed, withPrivateApiHeaders } from "./http.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 
 export function createCrmOwnerCatalogHandler({
@@ -15,7 +15,7 @@ export function createCrmOwnerCatalogHandler({
   resolveContext = resolveCrmPipelineContext,
   listOptions = listCrmPipelineOwnerOptions,
 } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
     try {
       requireCrmPipelineMutationsLocal(env);
@@ -42,5 +42,5 @@ export function createCrmOwnerCatalogHandler({
       if (error instanceof CommercialTenancyError) return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
       return sendPipelineMutationError(res, error, { head: req.method === "HEAD" });
     }
-  }, { handleOptions: false, cors: false });
+  }, { handleOptions: false });
 }

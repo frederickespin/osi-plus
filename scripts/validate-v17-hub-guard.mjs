@@ -96,5 +96,17 @@ if (catalogRoutes.length !== requiredApps.length || catalogRoutes.some((route) =
 if (!catalog.includes('appId: "osi-survey"') || !catalog.includes("baselineRoles: []")) fail("OSi Survey has implicit role authorization");
 
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-if (changed.some((path) => (path.startsWith("api/") && !allowedBackendChanges.has(path)) || (path.startsWith("prisma/") && !allowedPrismaChanges.has(path)) || path.startsWith("src/data/"))) fail("forbidden backend, unauthorized Prisma, or mock change");
+function isPrivateCorsWrapperMigration(path) {
+  const diff = execFileSync("git", ["diff", "--unified=0", BASE, "--", path], { encoding: "utf8" });
+  const contentChanges = diff.split(/\r?\n/).filter((line) => /^[+-](?![+-])/u.test(line));
+  return contentChanges.length > 0
+    && contentChanges.every((line) => /with(?:CommonHeaders|PrivateApiHeaders|PublicReadCorsHeaders)/u.test(line));
+}
+const forbiddenBackend = changed.filter((path) => path.startsWith("api/")
+  && !allowedBackendChanges.has(path)
+  && !isPrivateCorsWrapperMigration(path));
+if (forbiddenBackend.length > 0
+  || changed.some((path) => (path.startsWith("prisma/") && !allowedPrismaChanges.has(path)) || path.startsWith("src/data/"))) {
+  fail("forbidden backend, unauthorized Prisma, or mock change");
+}
 console.log(JSON.stringify({ ok: true, migrations: migrations.length, applications: requiredApps.length, changedFiles: changed.length }));

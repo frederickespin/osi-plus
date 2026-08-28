@@ -31,6 +31,6 @@ mustFail("host falsificable", "api/_lib/commercialTenancyMutation.js", (value) =
 mustFail("Vercel no bloqueado", "api/_lib/commercialTenancyMutation.js", (value) => value.replace('if (hasVercelMarker(env)) {', 'if (false && hasVercelMarker(env)) {'));
 mustFail("default activo", ".env.example", (value) => value.replace('COMMERCIAL_TENANCY_MUTATION_MODE="DISABLED"', 'COMMERCIAL_TENANCY_MUTATION_MODE="LOCAL_ONLY"'));
 mustFail("CI sin prueba", ".github/workflows/ci.yml", (value) => value.replaceAll("npm run test:commercial-tenancy-mutation-gate", "node -e true"));
-mustFail("CORS global restaurado", "vercel.json", (value) => value.replace("|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)", ""));
+mustFail("CORS global restaurado", "vercel.json", (value) => value.replace("|clients(?:/|$)|projects(?:/|$)|k(?:/|$)", ""));
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);

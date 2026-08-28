@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CANONICAL_GLOBAL_API_SOURCE = "/api/((?!auth/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)";
+const CANONICAL_GLOBAL_API_SOURCE = "/api/((?!auth(?:/|$)|crm(?:/|$)|clients(?:/|$)|projects(?:/|$)|k(?:/|$)|admin(?:/|$)).*)";
 const REQUIRED_ROUTES = Object.freeze([
   "/api/auth/login",
   "/api/auth/logout",

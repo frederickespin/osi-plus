@@ -5,7 +5,7 @@ const read = (path) => readFileSync(path, "utf8");
 const invariant = (condition, message) => { if (!condition) throw new Error(`V17_COMMERCIAL_CRM_GUARD:${message}`); };
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-invariant(migrations.length === 18, `se esperaban 18 migraciones, existen ${migrations.length}`);
+invariant(migrations.length === 19, `se esperaban 19 migraciones, existen ${migrations.length}`);
 
 const catalog = read("src/hub/appCatalog.ts");
 invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");
@@ -45,7 +45,7 @@ invariant(!/\bclientName\b|\bcaseNumber\b/.test(adapter) && /"caseRef", "caseCod
 
 const canonicalRead = read("api/_lib/crmPipelineRead.js");
 invariant(!/\bclientName\b|\bcaseNumber\b/.test(canonicalRead), "backend de lectura reintrodujo autoridad legacy");
-invariant(/tenantId_publicRef/.test(canonicalRead) && /client:\s*\{\s*is:\s*\{\s*name:/.test(canonicalRead),
+invariant(/resolveCrmPipelineReadScope/.test(canonicalRead) && /where:\s*\{\s*\.\.\.scope,\s*publicRef\s*\}/.test(canonicalRead) && /client:\s*\{\s*is:\s*\{\s*name:/.test(canonicalRead),
   "resolución de caso o búsqueda de Client no es tenant-first relacional");
 
 const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");
@@ -62,7 +62,12 @@ for (const [path, source] of [["ERP shell", erpShell], ["Inbox", inbox], ["Ficha
   invariant(!/dangerouslySetInnerHTML/.test(source), `HTML editable inseguro en ${path}`);
 }
 invariant(/lazy\(\(\) => import\("\.\/CommercialCaseDetail"\)\)/.test(inbox), "Ficha no está separada en un chunk lazy");
-invariant(/Abrir ficha/.test(inbox) && /Volver al Pipeline/.test(caseDetail), "navegación canónica de la Ficha ausente");
+invariant(/aria-label={`Seleccionar caso/.test(inbox) && /aria-pressed={selected}/.test(inbox)
+  && /Ficha del caso/.test(inbox) && /Volver al Inbox/.test(caseDetail), "selección master-detail o navegación canónica de la Ficha ausente");
+invariant(/commercial-case-summary/.test(inbox) && /commercial-full-case-workspace/.test(inbox)
+  && /Sin cotización/.test(inbox) && /Sin comunicación registrada/.test(inbox) && /Pendiente de definir/.test(inbox),
+  "resumen compacto inventa autoridad o no separa la Ficha completa");
+invariant(!/Abrir ficha|Volver al Pipeline/.test(inbox + caseDetail), "etiquetas históricas de navegación reaparecieron");
 invariant(/role="tablist"/.test(caseDetail) && /Survey en integración/.test(caseDetail) && /Cotización en integración/.test(caseDetail), "Ficha no conserva tabs avanzados como integración explícita");
 invariant(!/surveyApi|quoteApi|\/api\/survey|\/api\/quote|SalesQuoteWorkspace/.test(caseDetail), "tabs futuros conectaron autoridad inexistente");
 for (const section of ["General", "Administración", "Comercial", "Coordinación", "Operaciones", "Campo y Taller", "Logística", "Recursos Humanos"]) {
@@ -79,4 +84,4 @@ for (const command of ["npm run typecheck:v17-commercial-crm", "npm run test:v17
 }
 const vite = read("vite.config.ts");
 invariant(/base:\s*["']\/["']/.test(vite), "assets deben usar raíz absoluta para deep links anidados");
-console.log(JSON.stringify({ ok: true, migrations: 18, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], authorizationBoundary: "PRE_LAZY" }));
+console.log(JSON.stringify({ ok: true, migrations: 19, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], authorizationBoundary: "PRE_LAZY" }));

@@ -1,4 +1,6 @@
 import type { Page, Route } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   createControlledGate,
   DetailFulfillmentBarrier,
@@ -17,6 +19,10 @@ type RequestAudit = { method: string; pathname: string; search: string; authoriz
 
 const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 const DEFAULT_CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const DEFAULT_CLIENT_REF = "028f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const CREATED_CASE_REF = "038f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const MUTATION_EVIDENCE = resolve("docs/evidence/V17-CRM-CASE-MUTATIONS-04A");
+const CAPTURE_MUTATION_EVIDENCE = process.env.V17_CAPTURE_MUTATION_EVIDENCE === "1";
 
 function syntheticCaseRef(sequence: number) {
   return `018f6d8f-8d11-4f39-8a2d-${sequence.toString(16).padStart(12, "0")}`;
@@ -26,7 +32,7 @@ function pipelineCase(overrides: Record<string, unknown> = {}) {
   return {
     caseRef: DEFAULT_CASE_REF,
     caseCode: "CRM-DEMO-001",
-    client: { displayName: "Receptor Sintético", type: "PERSON", status: "active" },
+    client: { clientRef: DEFAULT_CLIENT_REF, displayName: "Receptor Sintético", type: "PERSON", status: "active" },
     mode: "EXPORT",
     serviceType: "Mudanza internacional",
     customerType: "PERSON",
@@ -50,6 +56,7 @@ function pipelineCase(overrides: Record<string, unknown> = {}) {
 function pipelineCaseDetail(item = pipelineCase(), overrides: Record<string, unknown> = {}) {
   return {
     caseRef: item.caseRef,
+    version: 1,
     caseCode: item.caseCode,
     status: item.status,
     mode: item.mode,
@@ -65,7 +72,7 @@ function pipelineCaseDetail(item = pipelineCase(), overrides: Record<string, unk
     quoteCount: item.quoteCount,
     eventCount: item.eventCount,
     client: item.client,
-    owner: item.owner ? { displayName: item.owner.displayName } : null,
+    owner: item.owner ? { displayName: item.owner.displayName, isCurrentActor: true } : null,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     ...overrides,
@@ -132,7 +139,7 @@ test("cero casos presenta estado empresarial vacío y sólo ejecuta GET canónic
   expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => /crm|pipeline|case/i.test(key) && !key.startsWith("osi-plus.")))).toEqual([]);
 });
 
-test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo lectura", async ({ page }) => {
+test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo lectura", async ({ page }, testInfo) => {
   const item = pipelineCase({ quoteCount: 2, eventCount: 3 });
   await authenticate(page);
   const audit = await mockCrm(page, { cases: [item] });
@@ -140,8 +147,28 @@ test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo
   await expect(page.getByTestId("advanced-erp-shell")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
   await expect(page.locator("p:visible", { hasText: "Receptor Sintético" }).first()).toBeVisible();
-  await page.locator("button:visible", { hasText: "Abrir ficha" }).first().click();
-  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
+  const focusedHeader = page.getByTestId("commercial-case-focused-header");
+  await expect(focusedHeader.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await expect(focusedHeader.getByRole("heading", { name: "Receptor Sintético" })).toBeVisible();
+  await expect(focusedHeader).toContainText("CRM-DEMO-001");
+  await expect(focusedHeader).toContainText("Nuevo en Inbox");
+  await expect(focusedHeader).toContainText("Etapa no publicada");
+  await expect(focusedHeader).toContainText("Sin responsable");
+  if (testInfo.project.name.endsWith("mobile")) {
+    await page.getByRole("button", { name: "Abrir navegación ERP" }).click();
+    await expect(page.locator("aside:visible").getByText("OSi Plus ERP", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Cerrar navegación ERP" }).click();
+  } else {
+    await expect(page.getByText("OSi Plus ERP", { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("Comercial y CRM", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Control comercial relacional", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("ERP avanzado", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("commercial-summary-strip")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Nuevo Caso" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Regresar al Hub" })).toHaveCount(0);
   await expect(page.getByText("Origen sintético", { exact: true })).toBeVisible();
   await expect(page.getByText("Destino sintético", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Survey/ }).click();
@@ -152,10 +179,196 @@ test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo
   expect(audit.filter(({ pathname }) => pathname.startsWith("/api/crm/"))).toHaveLength(3);
 });
 
+test("seleccionar una fila abre el resumen y Ficha del caso usa el workspace completo", async ({ page }, testInfo) => {
+  const rows = Array.from({ length: 25 }, (_, index) => pipelineCase({
+    caseRef: syntheticCaseRef(index + 1),
+    caseCode: `CRM-SELECT-${String(index + 1).padStart(2, "0")}`,
+    client: index === 10 ? null : {
+      clientRef: DEFAULT_CLIENT_REF,
+      displayName: `Receptor Sintético ${index + 1}`,
+      type: "PERSON",
+      status: "active",
+    },
+    owner: index % 2 === 0 ? { displayName: "Ventas Sintético", role: "V", membershipStatus: "ACTIVE" } : null,
+    quoteCount: index === 10 ? 2 : 0,
+    eventCount: index === 10 ? 3 : 0,
+  }));
+  await authenticate(page);
+  const audit = await mockCrm(page, { total: 50, cases: rows });
+  await page.goto("/commercial");
+  await page.getByPlaceholder("Caso, cliente o ruta").fill("SELECT");
+  await expect.poll(() => audit.some(({ search }) => search.includes("q=SELECT"))).toBe(true);
+  await page.getByLabel("Estado").selectOption("NEW_INBOX");
+  await expect.poll(() => audit.some(({ search }) => search.includes("status=NEW_INBOX"))).toBe(true);
+  await page.getByRole("button", { name: "Página siguiente" }).click();
+  await expect(page.getByText("Página 2 de 2")).toContainText("Página 2 de 2");
+
+  const row = page.getByTestId("commercial-queue-item").nth(10);
+  await expect(row.getByRole("button", { name: /Seleccionar caso CRM-SELECT-11/ })).toBeVisible();
+  await expect(row.getByRole("button", { name: /Ficha del caso CRM-SELECT-11/ })).toBeVisible();
+  const rowSelector = row.locator("button").first();
+  const fullCaseAction = row.locator("button").nth(1);
+  expect(await row.locator("button button").count()).toBe(0);
+  await rowSelector.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(page).toHaveURL(/\/commercial$/);
+  await expect(row).toHaveAttribute("data-selected", "true");
+  await expect(rowSelector).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("commercial-case-summary")).toBeVisible();
+  await expect(page.getByText("Etapa no publicada", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sin cotización", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sin comunicación registrada", { exact: true })).toBeVisible();
+  await expect(page.getByText("Pendiente de definir", { exact: true })).toBeVisible();
+  await expect(page.getByText("Survey sin conteo", { exact: true })).toBeVisible();
+  await expect(page.getByText("Cotizaciones", { exact: true })).toBeVisible();
+  await expect(page.getByText("Actividad", { exact: true })).toBeVisible();
+  await expect(page.getByText("updatedAt no se utiliza como comunicación.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Abrir ficha", { exact: true })).toHaveCount(0);
+  if (testInfo.project.name.endsWith("desktop")) await expect(page.getByRole("region", { name: "Cola comercial" })).toBeVisible();
+  else await expect(page.getByRole("region", { name: "Cola comercial" })).toBeHidden();
+
+  await page.evaluate(() => globalThis.scrollTo(0, Math.min(180, document.documentElement.scrollHeight - innerHeight)));
+  const scrollBefore = await page.evaluate(() => globalThis.scrollY);
+  if (testInfo.project.name.endsWith("desktop")) expect(scrollBefore).toBeGreaterThan(0);
+  await fullCaseAction.evaluate((element) => (element as HTMLButtonElement).click());
+  await expect(page).toHaveURL(new RegExp(`/commercial/cases/${rows[10].caseRef}$`));
+  await expect(page.getByTestId("commercial-full-case-workspace")).toBeVisible();
+  await expect(page.getByTestId("commercial-master-detail-layout")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await page.getByRole("button", { name: "Volver al Inbox" }).click();
+
+  await expect(page).toHaveURL(/\/commercial$/);
+  await expect(page.getByPlaceholder("Caso, cliente o ruta")).toHaveValue("SELECT");
+  await expect(page.getByLabel("Estado")).toHaveValue("NEW_INBOX");
+  await expect(page.getByText("Página 2 de 2")).toContainText("Página 2 de 2");
+  await expect(page.getByTestId("commercial-case-summary")).toBeVisible();
+  await expect(row).toHaveAttribute("data-selected", "true");
+  expect(await page.evaluate(() => globalThis.scrollY)).toBe(scrollBefore);
+
+  if (!testInfo.project.name.endsWith("desktop")) {
+    await page.getByTestId("commercial-case-summary").getByRole("button", { name: "Volver al Inbox" }).click();
+    await expect(row).toBeVisible();
+  }
+  await rowSelector.focus();
+  await page.keyboard.press("Space");
+  await expect(rowSelector).toHaveAttribute("aria-pressed", "true");
+});
+
+test("A crea un caso y edita su Ficha sólo después de confirmación del servidor", async ({ page }, testInfo) => {
+  if (CAPTURE_MUTATION_EVIDENCE) mkdirSync(MUTATION_EVIDENCE, { recursive: true });
+  await authenticate(page, { role: "A", permissions: ["pipeline:view", "pipeline:create", "pipeline:update:any"] });
+  let detail = pipelineCase({ caseRef: CREATED_CASE_REF, caseCode: "CS-2026-SERVER", originLocation: "Origen inicial" });
+  let version = 1;
+  const writes: Array<{ method: string; body: Record<string, unknown> }> = [];
+  await page.route("**/api/crm/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/crm/pipeline-summary") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(summary(0)) });
+    if (url.pathname === "/api/crm/client-options") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 20, data: [{ clientRef: DEFAULT_CLIENT_REF, displayName: "Receptor Sintético", type: "PERSON", status: "active" }] }) });
+    if (url.pathname === "/api/crm/pipeline-cases" && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 0, page: 1, pageSize: 25, data: [] }) });
+    if (url.pathname === "/api/crm/pipeline-cases" && request.method() === "POST") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      writes.push({ method: "POST", body });
+      return route.fulfill({ status: 201, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CREATED_CASE_REF, version: 1 }, replayed: false }) });
+    }
+    if (url.pathname === `/api/crm/pipeline-cases/${CREATED_CASE_REF}` && request.method() === "PATCH") {
+      const body = request.postDataJSON() as Record<string, unknown>;
+      writes.push({ method: "PATCH", body });
+      version = 2;
+      detail = pipelineCase({ ...detail, originLocation: String(body.originLocation), updatedAt: "2026-08-24T12:00:00.000Z" });
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CREATED_CASE_REF, version }, replayed: false }) });
+    }
+    if (url.pathname === `/api/crm/pipeline-cases/${CREATED_CASE_REF}`) return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: pipelineCaseDetail(detail, { version, owner: null }) }) });
+    return route.fulfill({ status: 404, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }) });
+  });
+  await page.goto("/commercial");
+  await page.getByRole("button", { name: "Nuevo Caso" }).click();
+  await expect(page.getByRole("heading", { name: "Nuevo Caso Comercial" })).toBeVisible();
+  if (CAPTURE_MUTATION_EVIDENCE && ["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) await page.screenshot({ path: resolve(MUTATION_EVIDENCE, `nuevo-caso-${testInfo.project.name}.png`), fullPage: true });
+  await page.getByLabel("Cliente receptor", { exact: true }).selectOption(DEFAULT_CLIENT_REF);
+  await page.getByLabel("Origen").fill("Origen confirmado");
+  await page.getByLabel("Destino", { exact: true }).fill("Destino confirmado");
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(page).toHaveURL(new RegExp(`/commercial/cases/${CREATED_CASE_REF}$`));
+  await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await page.getByRole("button", { name: "Editar" }).click();
+  await expect(page.getByRole("heading", { name: "Editar Ficha del Caso" })).toBeVisible();
+  if (CAPTURE_MUTATION_EVIDENCE && ["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) await page.screenshot({ path: resolve(MUTATION_EVIDENCE, `editar-ficha-${testInfo.project.name}.png`), fullPage: true });
+  await page.getByLabel("Origen").fill("Origen editado por servidor");
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(page.getByText("Origen editado por servidor", { exact: true })).toBeVisible();
+  expect(writes).toHaveLength(2);
+  expect(writes[0].method).toBe("POST");
+  expect(writes[1].method).toBe("PATCH");
+  expect(writes[1].body.expectedVersion).toBe(1);
+  for (const { body } of writes) {
+    expect(body.requestId).toMatch(/^[A-Za-z0-9-]{8,191}$/);
+    expect(body.payloadHash).toMatch(/^[0-9a-f]{64}$/);
+    for (const forbidden of ["id", "publicRef", "clientId", "tenantId", "ownerId", "status", "version"]) expect(body).not.toHaveProperty(forbidden);
+  }
+});
+
+test("un reintento tras perder la respuesta conserva requestId y payloadHash", async ({ page }) => {
+  await authenticate(page, { role: "A", permissions: ["pipeline:view", "pipeline:create"] });
+  const attempts: Array<Record<string, unknown>> = [];
+  await page.route("**/api/crm/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === "/api/crm/pipeline-summary") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(summary(0)) });
+    if (pathname === "/api/crm/client-options") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 0, page: 1, pageSize: 20, data: [] }) });
+    if (pathname === "/api/crm/pipeline-cases" && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 0, page: 1, pageSize: 25, data: [] }) });
+    if (pathname === "/api/crm/pipeline-cases" && request.method() === "POST") {
+      attempts.push(request.postDataJSON() as Record<string, unknown>);
+      if (attempts.length === 1) return route.abort("connectionreset");
+      return route.fulfill({ status: 201, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CREATED_CASE_REF, version: 1 }, replayed: true }) });
+    }
+    if (pathname === `/api/crm/pipeline-cases/${CREATED_CASE_REF}`) return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: pipelineCaseDetail(pipelineCase({ caseRef: CREATED_CASE_REF })) }) });
+    return route.fulfill({ status: 404, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }) });
+  });
+
+  await page.goto("/commercial");
+  await page.getByRole("button", { name: "Nuevo Caso" }).click();
+  await page.getByLabel("Origen").fill("Origen idempotente");
+  await page.getByLabel("Destino", { exact: true }).fill("Destino idempotente");
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(page.getByText("CRM_PIPELINE_REQUEST_FAILED", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(page).toHaveURL(new RegExp(`/commercial/cases/${CREATED_CASE_REF}$`));
+  expect(attempts).toHaveLength(2);
+  expect(attempts[1].requestId).toBe(attempts[0].requestId);
+  expect(attempts[1].payloadHash).toBe(attempts[0].payloadHash);
+});
+
+test("los permisos explícitos y el owner efectivo gobiernan los controles locales", async ({ browser }) => {
+  const scenarios = [
+    { permissions: ["pipeline:view"], deniedPermissions: undefined, owner: true, create: false, edit: false },
+    { permissions: ["pipeline:view", "pipeline:create", "pipeline:update:own"], deniedPermissions: ["pipeline:create"], owner: true, create: false, edit: true },
+    { permissions: ["pipeline:view", "pipeline:update:own"], deniedPermissions: undefined, owner: false, create: false, edit: false },
+  ];
+  for (const scenario of scenarios) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await authenticate(page, { role: "V", permissions: scenario.permissions, deniedPermissions: scenario.deniedPermissions });
+    const item = pipelineCase({ owner: { displayName: "Ventas Sintético", role: "V", membershipStatus: "ACTIVE" } });
+    await page.route("**/api/crm/**", async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname === "/api/crm/pipeline-summary") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(summary(1, 1)) });
+      if (pathname === "/api/crm/pipeline-cases") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, data: [item] }) });
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: pipelineCaseDetail(item, { owner: { displayName: "Ventas Sintético", isCurrentActor: scenario.owner } }) }) });
+    });
+    await page.goto("/commercial");
+    await expect(page.getByRole("button", { name: "Nuevo Caso" })).toHaveCount(scenario.create ? 1 : 0);
+    await page.getByRole("button", { name: /Ficha del caso/ }).click();
+    await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(scenario.edit ? 1 : 0);
+    await context.close();
+  }
+});
+
 test("filtros, paginación y Ficha usan Client relacional y renderizan texto hostil sin ejecutarlo", async ({ page }) => {
   const hostileName = "<img src=x onerror=globalThis.__hostile=1>";
-  const hostile = pipelineCase({ client: { displayName: hostileName, type: "PERSON", status: "active" }, owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" } });
-  await authenticate(page, { role: "V", permissions: ["pipeline:view"] });
+  const hostile = pipelineCase({ client: { clientRef: DEFAULT_CLIENT_REF, displayName: hostileName, type: "PERSON", status: "active" }, owner: { displayName: "Vendedor sintético", role: "V", membershipStatus: "ACTIVE" } });
+  await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
   const audit = await mockCrm(page, { total: 2_000, cases: [hostile] });
   await page.goto("/crm");
   await expect(page.getByText("2000 resultados")).toBeVisible();
@@ -165,7 +378,7 @@ test("filtros, paginación y Ficha usan Client relacional y renderizan texto hos
   await expect.poll(() => audit.some(({ search }) => search.includes("mode=IMPORT"))).toBe(true);
   await page.getByLabel("Asignación").selectOption("assigned");
   await expect.poll(() => audit.some(({ search }) => search.includes("unassigned=false"))).toBe(true);
-  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await expect(page.getByText(hostileName, { exact: true }).first()).toBeVisible();
   expect(await page.evaluate(() => (globalThis as typeof globalThis & { __hostile?: number }).__hostile)).toBeUndefined();
@@ -213,26 +426,26 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
 
   await page.goto("/commercial");
   await page.getByPlaceholder("Caso, cliente o ruta").fill("CRM-DEMO");
-  await expect(page.getByRole("button", { name: "Abrir ficha" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Ficha del caso/ }).first()).toBeVisible();
   const firstDetail = detailBarrier.prepare("first-valid-detail", detailPath);
-  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page).toHaveURL(new RegExp(`/commercial/cases/${DEFAULT_CASE_REF}$`));
   await firstDetail.completion;
   await expect(page.getByTestId("commercial-case-detail")).toBeVisible();
   detailBarrier.markUiStable(firstDetail, "detail-rendered");
-  await page.getByRole("button", { name: "Volver al Pipeline" }).click();
+  await page.getByRole("button", { name: "Volver al Inbox" }).click();
   await expect(page.getByPlaceholder("Caso, cliente o ruta")).toHaveValue("CRM-DEMO");
 
   controlledGate = createControlledGate();
   const preReloadDetail = detailBarrier.prepare("pre-reload-valid-detail", detailPath);
   delayedTicketId = preReloadDetail.id;
-  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page).toHaveURL(new RegExp(`/commercial/cases/${DEFAULT_CASE_REF}$`));
   await expect(page.getByText("Cargando la autoridad relacional del caso…")).toBeVisible();
   expect(detailBarrier.pendingCount).toBe(1);
   controlledGate.release();
   await preReloadDetail.completion;
-  await expect(page.getByText("Receptor verificado: Receptor Sintético", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("commercial-case-focused-header").getByRole("heading", { name: "Receptor Sintético" })).toBeVisible();
   detailBarrier.markUiStable(preReloadDetail, "verified-receiver-rendered");
   detailBarrier.assertReadyForReload(preReloadDetail);
   expect(detailBarrier.pendingCount).toBe(0);
@@ -243,7 +456,7 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
   await page.reload();
   await reloadDetail.completion;
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
-  await expect(page.getByText("Receptor verificado: Receptor Sintético", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("commercial-case-focused-header").getByRole("heading", { name: "Receptor Sintético" })).toBeVisible();
   detailBarrier.markUiStable(reloadDetail, "post-reload-detail-rendered");
 
   detailMode = "INVALID";
@@ -281,7 +494,7 @@ test("APPROVED permanece legacy congelado y OPS_HANDOFF terminal sin controles d
   await expect(page.locator('[data-status="OPS_HANDOFF"]:visible').first()).toContainText(
     "Handoff a Operaciones · terminal",
   );
-  await page.getByRole("button", { name: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page.getByText("Legacy congelado", { exact: true })).toBeVisible();
   await expect(page.getByText(/Disponible en una fase posterior\./)).toBeVisible();
   for (const label of ["Asignar", "Desasignar", "Transicionar", "Editar", "Crear caso"]) await expect(page.getByRole("button", { name: label })).toHaveCount(0);
@@ -301,7 +514,7 @@ test("aliases, deep links, reload y regreso al Hub conservan la misma guardia", 
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
-  await page.getByRole("button", { name: "Volver al Pipeline" }).click();
+  await page.getByRole("button", { name: "Volver al Inbox" }).click();
   await page.getByRole("button", { name: "Regresar al Hub" }).click();
   await expect(page.getByText("Hola, Actor sintético")).toBeVisible();
 });
@@ -372,6 +585,7 @@ test("resolvers fallan cerrado ante valores y entornos ambiguos", async ({ page 
   await page.goto("/tests/v17-commercial-crm/read-api-harness.html");
   const result = await page.evaluate(async () => {
     const crm = await import("/src/crm-relational/clientMode.ts");
+    const mutationApi = await import("/src/crm-relational/mutationApi.ts");
     const hub = await import("/src/hub/hubMode.ts");
     const loopbacks = ["localhost", "127.0.0.1", "[::1]"];
     const invalidValues = ["local_only", " LOCAL_ONLY", "LOCAL_ONLY ", "\"LOCAL_ONLY\"", "\ufeffLOCAL_ONLY", "LOCAL_ONLY\r", "LOCAL_ONLY\n", "UNKNOWN"];
@@ -384,9 +598,11 @@ test("resolvers fallan cerrado ante valores y entornos ambiguos", async ({ page 
       remote: remoteHosts.every((hostname) => !crm.isRelationalCrmReadEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY" }, { hostname })),
       vercel: ["VERCEL", "VERCEL_ENV", "VERCELX"].every((key) => !crm.isRelationalCrmReadEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", [key]: "1" }, { hostname: "127.0.0.1" })
         && !hub.resolveOsiHubMode({ VITE_OSI_HUB_MODE: "LOCAL_ONLY", [key]: "1" }, { hostname: "127.0.0.1" }).enabled),
+      mutation: mutationApi.isCrmCaseMutationUiEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", VITE_CRM_PIPELINE_CASE_MUTATION_MODE: "LOCAL_ONLY" }, { hostname: "127.0.0.1" }),
+      mutationPartial: [undefined, "DISABLED", "local_only", " LOCAL_ONLY", "LOCAL_ONLY ", "PREVIEW_REHEARSAL"].every((value) => !mutationApi.isCrmCaseMutationUiEnabled({ VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", ...(value === undefined ? {} : { VITE_CRM_PIPELINE_CASE_MUTATION_MODE: value }) }, { hostname: "127.0.0.1" })),
     };
   });
-  expect(result).toEqual({ loopbacks: true, invalid: true, remote: true, vercel: true });
+  expect(result).toEqual({ loopbacks: true, invalid: true, remote: true, vercel: true, mutation: true, mutationPartial: true });
 });
 
 test("adaptador HTTP rechaza contratos adversariales y conserva Bearer sólo en header", async ({ page }) => {
@@ -446,5 +662,5 @@ test("10,000 casos conservan paginación server-side y una lectura por página",
   const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1];
   testInfo.annotations.push({ type: "performance", description: JSON.stringify({ records: 10_000, p50Ms: sorted[Math.floor(sorted.length / 2)], p95Ms: p95, maxMs: sorted.at(-1) }) });
   expect(audit.filter(({ pathname }) => pathname === "/api/crm/pipeline-cases")).toHaveLength(9);
-  expect(await page.getByRole("button", { name: "Abrir ficha" }).count()).toBe(25);
+  expect(await page.getByRole("button", { name: /Ficha del caso/ }).count()).toBe(25);
 });

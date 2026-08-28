@@ -1,9 +1,8 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, ChevronLeft, ChevronRight, Clock3, MapPin, Search, UserRound, UsersRound } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, ArrowLeft, BellRing, ChevronLeft, ChevronRight, Filter, MapPin, Plus, Search } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { CrmPipelineReadApi, asCrmPipelineReadError, type CrmPipelineReadError } from "@/crm-relational/readApi";
 import {
@@ -17,6 +16,9 @@ import {
   type PipelineMode,
 } from "@/crm-relational/types";
 import { STATUS_LABELS, commercialReadErrorCopy, statusClass } from "./presentation";
+import { CrmCaseMutationApi, isCrmCaseMutationUiEnabled } from "@/crm-relational/mutationApi";
+import CommercialCaseForm from "./CommercialCaseForm";
+import type { CrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 
 const CommercialCaseDetail = lazy(() => import("./CommercialCaseDetail"));
 const PAGE_SIZE = 25;
@@ -24,64 +26,127 @@ const MODES: readonly PipelineMode[] = ["LOCAL", "EXPORT", "IMPORT"];
 
 type Props = Readonly<{
   authorization?: string;
+  mutationAccess: CrmCaseMutationUiAccess;
+  role: string;
   caseRef?: string | null;
+  onOpenNavigation(): void;
   onBack(): void;
   onOpenCase(caseRef: string): void;
   onReturnToInbox(): void;
   onUnauthorized(): void;
   api?: CrmPipelineReadApi;
 }>;
-
-type DetailState = Readonly<{
-  loading: boolean;
-  value: CrmPipelineCaseDetail | null;
-  error: CrmPipelineReadError | null;
+type DetailState = Readonly<{ loading: boolean; value: CrmPipelineCaseDetail | null; error: CrmPipelineReadError | null }>;
+type AlertableCase = Readonly<{
+  client: unknown | null;
+  owner: unknown | null;
+  requiresSurvey: boolean;
+  destinationLocation: string | null;
+  estimatedCbm: number | null;
 }>;
 
-function formatDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "Fecha no disponible"
-    : new Intl.DateTimeFormat("es-DO", { dateStyle: "medium" }).format(date);
+function factualAlerts(item: AlertableCase) {
+  return [
+    !item.client ? "Cliente pendiente" : null,
+    !item.owner ? "Sin asignar" : null,
+    item.requiresSurvey ? "Survey requerido" : null,
+    !item.destinationLocation ? "Destino pendiente" : null,
+    item.estimatedCbm === null || item.estimatedCbm <= 0 ? "Volumen pendiente" : null,
+  ].filter((value): value is string => Boolean(value));
 }
 
-function SummaryCards({ value }: { value: CrmPipelineSummary | null }) {
-  const cards = [
-    { label: "Oportunidades", value: value?.total ?? 0, icon: UsersRound },
-    { label: "Asignadas", value: value?.assigned ?? 0, icon: UserRound },
-    { label: "Sin asignar", value: value?.unassigned ?? 0, icon: AlertCircle },
-    { label: "SLA vencido", value: value?.sla.basis === "UNAVAILABLE" ? "No disponible" : value?.sla.overdue ?? 0, icon: Clock3 },
+function formatCbm(value: number | null) {
+  return value === null ? "No disponible" : `${new Intl.NumberFormat("es-DO", { maximumFractionDigits: 2 }).format(value)} m³`;
+}
+
+function SummaryStrip({ value, role }: { value: CrmPipelineSummary | null; role: string }) {
+  const values = [
+    `${value?.total ?? 0} ${role === "V" ? "casos propios" : "casos"}`,
+    `${value?.assigned ?? 0} asignados`,
+    `${value?.unassigned ?? 0} sin asignar`,
+    "SLA sin configurar",
   ];
-  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map(({ label, value: count, icon: Icon }) => (
-    <Card key={label} className="overflow-hidden border-slate-200 bg-white shadow-sm"><CardContent className="flex items-center justify-between border-l-4 border-l-sky-500 p-4"><div><p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</p><p className={`mt-1 font-black text-slate-950 ${typeof count === "number" ? "text-2xl" : "text-sm"}`}>{count}</p></div><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-50 text-[#006aa6]"><Icon className="h-5 w-5" /></span></CardContent></Card>
-  ))}</div>;
+  return <div data-testid="commercial-summary-strip" className="flex min-h-9 items-center overflow-x-auto border-b border-slate-200 bg-slate-50 px-3 text-[11px] font-bold text-[#003366] sm:text-xs" aria-label="Resumen del alcance comercial">{values.map((label, index) => <span key={label} className={`shrink-0 py-2 ${index ? "ml-3 border-l border-slate-300 pl-3" : ""}`}>{label}</span>)}</div>;
 }
 
 function EmptyState() {
-  return <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center" data-testid="commercial-crm-empty"><h2 className="text-lg font-bold text-slate-900">Inbox Comercial vacío</h2><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-600">Aún no hay oportunidades reales registradas para este tenant. Esta vista no genera casos ni muestra datos de demostración.</p></div>;
+  return <div className="border border-dashed border-slate-300 bg-white px-5 py-12 text-center" data-testid="commercial-crm-empty"><h2 className="text-base font-bold text-slate-900">Inbox Comercial vacío</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">Aún no hay oportunidades reales registradas en el alcance autorizado. No se generan datos de demostración.</p></div>;
 }
 
-function CaseRow({ item, onOpen }: { item: CrmPipelineCase; onOpen(caseRef: string): void }) {
-  return <tr className="border-b border-slate-100 align-top hover:bg-sky-50/40">
-    <td className="px-4 py-3"><p className="font-mono text-sm font-black text-[#003366]">{item.caseCode}</p><p className="mt-1 text-[11px] text-slate-500">Actualizado {formatDate(item.updatedAt)}</p></td>
-    <td className="px-4 py-3"><p className="max-w-48 truncate text-sm font-semibold text-slate-900">{item.client?.displayName || "Sin Client vinculado"}</p><p className="mt-1 text-[11px] text-slate-500">{item.client ? `${item.client.type || "Tipo no registrado"} · ${item.client.status}` : "Sin inferencia legacy"}</p></td>
-    <td className="px-4 py-3"><p className="flex max-w-52 items-center gap-1.5 truncate text-sm text-slate-900"><MapPin className="h-3.5 w-3.5 shrink-0 text-sky-600" />{item.originLocation || "Origen no registrado"}</p><p className="ml-5 max-w-48 truncate text-xs text-slate-500">→ {item.destinationLocation || "Destino no registrado"}</p></td>
-    <td className="px-4 py-3"><Badge variant="outline">{item.mode}</Badge><p className="mt-1 text-xs text-slate-600">{item.serviceType}</p></td>
-    <td className="px-4 py-3"><Badge data-status={item.status} variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge></td>
-    <td className="px-4 py-3"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">No disponible</span><p className="mt-1 text-[10px] text-slate-400">Sin autoridad SLA</p></td>
-    <td className="px-4 py-3 text-right"><Button size="sm" className="bg-[#006aa6] hover:bg-[#005482]" onClick={() => onOpen(item.caseRef)}>Abrir ficha</Button></td>
-  </tr>;
+function QueueItem({ item, selected, onSelect, onOpen }: {
+  item: CrmPipelineCase;
+  selected: boolean;
+  onSelect(caseRef: string): void;
+  onOpen(caseRef: string): void;
+}) {
+  const alerts = factualAlerts(item);
+  const clientDisplayName = item.client?.displayName || "Sin Client vinculado";
+  const accessibleIdentity = `${item.caseCode} · ${clientDisplayName}`;
+  return <article data-testid="commercial-queue-item" data-selected={selected ? "true" : "false"} className={`grid grid-cols-[minmax(0,1fr)_auto] border-b border-slate-200 bg-white transition-colors ${selected ? "border-l-4 border-l-[#0079b8] !bg-sky-50" : "border-l-4 border-l-transparent hover:bg-slate-50"}`}>
+    <button
+      type="button"
+      aria-label={`Seleccionar caso ${accessibleIdentity}`}
+      aria-pressed={selected}
+      onClick={() => onSelect(item.caseRef)}
+      className="min-w-0 px-3 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0079b8]"
+    >
+      <p className="min-w-0 truncate text-[13px] font-bold text-slate-900"><span className="font-mono font-black text-[#003366]">{item.caseCode}</span><span className="text-slate-400"> · </span>{clientDisplayName}</p>
+      <span className="mt-1 flex min-w-0 items-center gap-1 overflow-hidden text-[10px]">
+        <span className="flex min-w-24 flex-1 items-center gap-1 truncate text-slate-600"><MapPin className="h-3 w-3 shrink-0" />{item.originLocation || "Origen pendiente"} → {item.destinationLocation || "Destino pendiente"}</span>
+        <Badge variant="outline" className="shrink-0 px-1.5 text-[9px]">{item.mode}</Badge>
+        <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">SLA sin configurar</span>
+        {alerts.slice(0, 1).map((alert) => <span key={alert} className="max-w-32 truncate rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-800">{alert}</span>)}
+        <span className="max-w-32 truncate text-slate-600">{item.owner?.displayName || "Sin asignar"}</span>
+        {item.eventCount > 0 && <span className="shrink-0 text-slate-500">Act. {item.eventCount}</span>}
+      </span>
+    </button>
+    <div className="flex shrink-0 items-center gap-1.5 py-1.5 pr-3">
+      <Badge data-status={item.status} variant="outline" className={`${statusClass(item.status)} max-w-40 truncate px-1.5 text-[9px]`}>{STATUS_LABELS[item.status]}</Badge>
+      <Button aria-label={`Ficha del caso ${accessibleIdentity}`} size="sm" className="h-7 shrink-0 px-2 text-[10px]" variant={selected ? "secondary" : "outline"} onClick={() => onOpen(item.caseRef)}>Ficha del caso</Button>
+    </div>
+  </article>;
 }
 
-function MobileCase({ item, onOpen }: { item: CrmPipelineCase; onOpen(caseRef: string): void }) {
-  return <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="border-l-4 border-l-sky-500 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-sm font-black text-[#003366]">{item.caseCode}</p><p className="mt-1 max-w-56 truncate text-sm font-semibold text-slate-900">{item.client?.displayName || "Sin Client vinculado"}</p><p className="text-[11px] text-slate-500">{formatDate(item.updatedAt)}</p></div><Badge variant="outline">{item.mode}</Badge></div><p className="mt-3 text-sm text-slate-700">{item.originLocation || "Origen no registrado"} → {item.destinationLocation || "Destino no registrado"}</p><div className="mt-3 flex flex-wrap gap-2"><Badge data-status={item.status} variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">SLA no disponible</span></div><div className="mt-4 flex items-center justify-between"><span className="text-xs text-slate-600">{item.owner?.displayName || "Sin asignar"}</span><Button size="sm" className="bg-[#006aa6] hover:bg-[#005482]" onClick={() => onOpen(item.caseRef)}>Abrir ficha</Button></div></div></article>;
+function SupervisionPanel({ summary, role }: { summary: CrmPipelineSummary | null; role: string }) {
+  const statuses = PIPELINE_CASE_STATUSES.filter((status) => (summary?.byStatus[status] ?? 0) > 0);
+  return <section className="h-full bg-white" aria-labelledby="supervision-heading"><header className="border-b border-slate-200 px-5 py-4"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#0070a8]">{role === "V" ? "Seguimiento personal" : "Supervisión comercial"}</p><h2 id="supervision-heading" className="mt-1 text-xl font-black text-[#003366]">{role === "V" ? "Mis métricas" : "Control del equipo"}</h2><p className="mt-1 text-sm text-slate-600">{role === "V" ? "Los totales incluyen exclusivamente casos con owner completo coincidente con tu sesión." : "Vista tenant-wide. Las métricas por vendedor requieren un contrato agregado y no se infieren en el navegador."}</p></header><div className="grid divide-y divide-slate-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0"><div className="p-5"><h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Distribución por estado</h3><div className="mt-3 divide-y divide-slate-100">{statuses.length ? statuses.map((status) => <div key={status} className="flex items-center justify-between py-2 text-sm"><span>{STATUS_LABELS[status]}</span><strong className="text-[#003366]">{summary?.byStatus[status] ?? 0}</strong></div>) : <p className="py-5 text-sm text-slate-500">Sin casos en el alcance actual.</p>}</div></div><div className="p-5"><h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500"><BellRing className="h-4 w-4" />Atención operativa</h3><div className="mt-3 divide-y divide-slate-100"><div className="flex items-center justify-between py-3 text-sm"><span>Sin asignar</span><strong>{summary?.unassigned ?? 0}</strong></div><div className="flex items-center justify-between py-3 text-sm"><span>SLA</span><span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Sin autoridad</span></div><div className="py-3 text-sm text-slate-500">Alertas detalladas usan sólo campos publicados. No se inventa historial ni prioridad.</div></div></div></div></section>;
 }
 
-export default function CommercialInboxModule({ authorization, caseRef, onBack, onOpenCase, onReturnToInbox, onUnauthorized, api: suppliedApi }: Props) {
-  const api = useMemo(
-    () => suppliedApi ?? new CrmPipelineReadApi({ tokenProvider: () => authorization ?? null }),
-    [authorization, suppliedApi],
-  );
+function SummaryRow({ label, value, note }: { label: string; value: string; note?: string }) {
+  return <div className="grid gap-1 border-b border-slate-100 py-2 last:border-b-0 sm:grid-cols-[150px_minmax(0,1fr)]"><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</dt><dd className="min-w-0 text-sm font-semibold text-slate-900"><span className="break-words">{value}</span>{note && <span className="mt-0.5 block text-xs font-normal leading-5 text-slate-500">{note}</span>}</dd></div>;
+}
+
+function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, onClear, onOpen, onReload }: {
+  state: DetailState;
+  mutationEnvironmentEnabled: boolean;
+  mutationAccess: CrmCaseMutationUiAccess;
+  onClear(): void;
+  onOpen(caseRef: string): void;
+  onReload(): void;
+}) {
+  const item = state.value;
+  const alerts = item ? factualAlerts(item) : [];
+  const canEdit = Boolean(item && mutationEnvironmentEnabled && !["APPROVED", "OPS_HANDOFF"].includes(item.status) && (mutationAccess.canUpdateAny || (mutationAccess.canUpdateOwn && item.owner?.isCurrentActor)));
+  return <section data-testid="commercial-case-summary" className="min-h-full bg-white" aria-labelledby="case-summary-heading">
+    <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+      <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#0070a8]">Caso seleccionado</p><h2 id="case-summary-heading" className="mt-1 text-xl font-black text-[#003366]">Resumen comercial</h2></div>
+      <Button size="sm" variant="outline" onClick={onClear}><ArrowLeft />Volver al Inbox</Button>
+    </header>
+    {state.loading && <div className="grid min-h-[40vh] place-items-center text-sm text-slate-500">Cargando resumen autorizado…</div>}
+    {state.error && <Alert variant="destructive" role="alert" className="m-4"><AlertCircle /><AlertTitle>{state.error.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(state.error)}<Button className="mt-3" size="sm" variant="outline" onClick={onReload}>Reintentar lectura</Button></AlertDescription></Alert>}
+    {item && <div className="divide-y divide-slate-200">
+      <section className="px-4 py-3"><p className="font-mono text-sm font-black text-[#003366]">{item.caseCode}</p><p className="mt-1 text-base font-bold text-slate-900">{item.client?.displayName || "Sin Client vinculado"}</p><div className="mt-2 flex flex-wrap gap-2"><Badge data-status={item.status} variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">Etapa no publicada</span><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">SLA sin autoridad</span></div></section>
+      <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Identidad y servicio</h3><dl className="mt-1"><SummaryRow label="Vendedor" value={item.owner?.displayName || "Sin asignar"} /><SummaryRow label="Ruta" value={`${item.originLocation || "Origen pendiente"} → ${item.destinationLocation || "Destino pendiente"}`} /><SummaryRow label="Servicio" value={`${item.mode || "Modo no disponible"} · ${item.serviceType || "Tipo no disponible"}`} /><SummaryRow label="Volumen" value={formatCbm(item.estimatedCbm)} /></dl></section>
+      <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Valor y seguimiento</h3><dl className="mt-1"><SummaryRow label="Precio" value="Sin cotización" note="No se infiere desde CBM, tarifas o borradores." /><SummaryRow label="Comunicación" value="Sin comunicación registrada" note="updatedAt no se utiliza como comunicación." /><SummaryRow label="Próximo paso" value="Pendiente de definir" note="Requiere una tarea o regla de workflow explícita." /></dl></section>
+      <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Alertas</h3><div className="mt-2 flex flex-wrap gap-1.5">{alerts.length ? alerts.map((alert) => <span key={alert} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">{alert}</span>) : <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Sin alertas deterministas · SLA no calculable</span>}</div></section>
+      <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Conteos publicados</h3><div className="mt-2 grid grid-cols-3 divide-x divide-slate-200 border-y border-slate-200 py-2 text-center"><div><strong className="block text-sm text-[#003366]">—</strong><span className="text-[10px] text-slate-500">Survey sin conteo</span></div><div><strong className="block text-sm text-[#003366]">{item.quoteCount}</strong><span className="text-[10px] text-slate-500">Cotizaciones</span></div><div><strong className="block text-sm text-[#003366]">{item.eventCount}</strong><span className="text-[10px] text-slate-500">Actividad</span></div></div></section>
+      <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Acciones autorizadas</h3><div className="mt-2 flex flex-wrap items-center gap-2"><Button aria-label={`Ficha del caso ${item.caseCode} · ${item.client?.displayName || "Sin Client vinculado"}`} onClick={() => onOpen(item.caseRef)}>Ficha del caso</Button><span className="text-xs text-slate-500">{canEdit ? "Edición disponible dentro de la Ficha." : "Consulta en modo de sólo lectura."}</span></div></section>
+    </div>}
+  </section>;
+}
+
+export default function CommercialInboxModule({ authorization, mutationAccess, role, caseRef, onOpenNavigation, onBack, onOpenCase, onReturnToInbox, onUnauthorized, api: suppliedApi }: Props) {
+  const api = useMemo(() => suppliedApi ?? new CrmPipelineReadApi({ tokenProvider: () => authorization ?? null }), [authorization, suppliedApi]);
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState<CrmPipelineFilters>({ page: 1, pageSize: PAGE_SIZE });
   const [list, setList] = useState<CrmPipelineList | null>(null);
@@ -89,86 +154,67 @@ export default function CommercialInboxModule({ authorization, caseRef, onBack, 
   const [listError, setListError] = useState<CrmPipelineReadError | null>(null);
   const [summaryError, setSummaryError] = useState<CrmPipelineReadError | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedCaseRef, setSelectedCaseRef] = useState<string | null>(caseRef ?? null);
   const [detail, setDetail] = useState<DetailState>({ loading: false, value: null, error: null });
   const [refresh, setRefresh] = useState(0);
   const [detailRefresh, setDetailRefresh] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
   const listFence = useRef(0);
   const summaryFence = useRef(0);
   const detailFence = useRef(0);
-
-  const captureError = useCallback((cause: unknown) => {
-    const error = asCrmPipelineReadError(cause);
-    if (error.status === 401) onUnauthorized();
-    return error;
-  }, [onUnauthorized]);
-
-  useEffect(() => {
-    if (caseRef) return undefined;
-    const timer = globalThis.setTimeout(() => setFilters((current) => {
-      const search = searchInput.trim() || undefined;
-      return current.search === search ? current : { ...current, page: 1, search };
-    }), 300);
-    return () => globalThis.clearTimeout(timer);
-  }, [caseRef, searchInput]);
-
-  useEffect(() => {
-    if (caseRef) return undefined;
-    const fence = ++listFence.current;
-    const controller = new AbortController();
-    queueMicrotask(() => {
-      if (controller.signal.aborted) return;
-      setLoading(true);
-      setListError(null);
-      void api.list(filters, controller.signal)
-        .then((value) => { if (fence === listFence.current) setList(value); })
-        .catch((cause) => { if (!controller.signal.aborted && fence === listFence.current) setListError(captureError(cause)); })
-        .finally(() => { if (fence === listFence.current) setLoading(false); });
-    });
-    return () => controller.abort(new DOMException("Inbox list unmounted", "AbortError"));
-  }, [api, captureError, caseRef, filters, refresh]);
-
-  useEffect(() => {
-    if (caseRef) return undefined;
-    const fence = ++summaryFence.current;
-    const controller = new AbortController();
-    queueMicrotask(() => {
-      if (controller.signal.aborted) return;
-      setSummaryError(null);
-      void api.summary(controller.signal)
-        .then((value) => { if (fence === summaryFence.current) setSummary(value); })
-        .catch((cause) => { if (!controller.signal.aborted && fence === summaryFence.current) setSummaryError(captureError(cause)); });
-    });
-    return () => controller.abort(new DOMException("Inbox summary unmounted", "AbortError"));
-  }, [api, captureError, caseRef, refresh]);
+  const queueScroll = useRef<HTMLDivElement | null>(null);
+  const savedQueueScrollTop = useRef(0);
+  const savedPageScrollTop = useRef(0);
+  const mutationEnvironmentEnabled = isCrmCaseMutationUiEnabled();
+  const mutationApi = useMemo(() => new CrmCaseMutationApi(() => authorization ?? null), [authorization]);
+  const captureError = useCallback((cause: unknown) => { const error = asCrmPipelineReadError(cause); if (error.status === 401) onUnauthorized(); return error; }, [onUnauthorized]);
+  const activeCaseRef = caseRef ?? selectedCaseRef;
+  const fullCaseWorkspace = Boolean(caseRef);
 
   useEffect(() => {
     if (!caseRef) return undefined;
+    let current = true;
+    queueMicrotask(() => { if (current) setSelectedCaseRef(caseRef); });
+    return () => { current = false; };
+  }, [caseRef]);
+  useLayoutEffect(() => {
+    if (!fullCaseWorkspace) {
+      if (queueScroll.current) queueScroll.current.scrollTop = savedQueueScrollTop.current;
+      globalThis.scrollTo({ top: savedPageScrollTop.current, behavior: "auto" });
+    }
+  }, [fullCaseWorkspace]);
+  useEffect(() => { const timer = globalThis.setTimeout(() => setFilters((current) => { const search = searchInput.trim() || undefined; return current.search === search ? current : { ...current, page: 1, search }; }), 300); return () => globalThis.clearTimeout(timer); }, [searchInput]);
+  useEffect(() => { const fence = ++listFence.current; const controller = new AbortController(); queueMicrotask(() => { if (controller.signal.aborted) return; setLoading(true); setListError(null); void api.list(filters, controller.signal).then((value) => { if (fence === listFence.current) setList(value); }).catch((cause) => { if (!controller.signal.aborted && fence === listFence.current) setListError(captureError(cause)); }).finally(() => { if (fence === listFence.current) setLoading(false); }); }); return () => controller.abort(new DOMException("Inbox list unmounted", "AbortError")); }, [api, captureError, filters, refresh]);
+  useEffect(() => { const fence = ++summaryFence.current; const controller = new AbortController(); queueMicrotask(() => { if (controller.signal.aborted) return; setSummaryError(null); void api.summary(controller.signal).then((value) => { if (fence === summaryFence.current) setSummary(value); }).catch((cause) => { if (!controller.signal.aborted && fence === summaryFence.current) setSummaryError(captureError(cause)); }); }); return () => controller.abort(new DOMException("Inbox summary unmounted", "AbortError")); }, [api, captureError, refresh]);
+  useEffect(() => {
+    if (!activeCaseRef) return undefined;
     const fence = ++detailFence.current;
     const controller = new AbortController();
     queueMicrotask(() => {
       if (controller.signal.aborted) return;
       setDetail({ loading: true, value: null, error: null });
-      void api.detail(caseRef, controller.signal)
+      void api.detail(activeCaseRef, controller.signal)
         .then((value) => { if (fence === detailFence.current) setDetail({ loading: false, value, error: null }); })
         .catch((cause) => { if (!controller.signal.aborted && fence === detailFence.current) setDetail({ loading: false, value: null, error: captureError(cause) }); });
     });
     return () => controller.abort(new DOMException("Case detail unmounted", "AbortError"));
-  }, [api, captureError, caseRef, detailRefresh]);
-
-  if (caseRef) {
-    return <Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense>;
-  }
+  }, [activeCaseRef, api, captureError, detailRefresh]);
 
   const pages = Math.max(1, Math.ceil((list?.total ?? 0) / (list?.pageSize ?? PAGE_SIZE)));
-  return <section className="mx-auto max-w-[1580px] space-y-5 px-4 py-5 sm:px-6 lg:px-8" data-testid="commercial-crm-inbox">
-    <header className="overflow-hidden rounded-xl border border-sky-200 bg-white shadow-sm"><div className="h-1 bg-gradient-to-r from-[#003366] via-[#0079b8] to-amber-400" /><div className="flex flex-wrap items-start justify-between gap-4 p-5"><div><p className="text-[11px] font-bold uppercase tracking-[.2em] text-[#0070a8]">Gestión Comercial</p><h1 className="mt-1 text-2xl font-black tracking-tight text-[#003366]">Inbox Comercial</h1><p className="mt-1 text-sm text-slate-600">Pipeline relacional del tenant autenticado · lectura segura</p></div><Button variant="outline" onClick={onBack}><ArrowLeft />Regresar al Hub</Button></div></header>
-    <SummaryCards value={summary} />
-    <Card className="border-slate-200 shadow-sm"><CardContent className="grid gap-3 p-4 md:grid-cols-[minmax(220px,1fr)_180px_200px]"><label className="text-xs font-semibold text-slate-600">Buscar<span className="relative mt-1 block"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input className="pl-9" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Caso, cliente o ruta" /></span></label><label className="text-xs font-semibold text-slate-600">Estado<select aria-label="Estado" className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={filters.status || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, status: (event.target.value || undefined) as PipelineCaseStatus | undefined }))}><option value="">Todos</option>{PIPELINE_CASE_STATUSES.map((value) => <option key={value} value={value}>{STATUS_LABELS[value]}</option>)}</select></label><label className="text-xs font-semibold text-slate-600">Asignación<select aria-label="Asignación" className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" value={filters.owner || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, owner: (event.target.value || undefined) as CrmPipelineFilters["owner"] }))}><option value="">Todas</option><option value="assigned">Asignadas</option><option value="unassigned">Sin asignar</option></select></label><div className="flex flex-wrap gap-2 md:col-span-3"><Button size="sm" variant={!filters.mode ? "default" : "outline"} onClick={() => setFilters((current) => ({ ...current, page: 1, mode: undefined }))}>Todos los modos</Button>{MODES.map((mode) => <Button key={mode} size="sm" variant={filters.mode === mode ? "default" : "outline"} onClick={() => setFilters((current) => ({ ...current, page: 1, mode }))}>{mode}</Button>)}</div></CardContent></Card>
-    {listError && <Alert variant="destructive"><AlertCircle /><AlertTitle>{listError.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(listError)}<Button size="sm" variant="outline" className="mt-3" onClick={() => setRefresh((value) => value + 1)}>Reintentar lectura</Button></AlertDescription></Alert>}
-    {summaryError && <Alert variant="destructive"><AlertCircle /><AlertTitle>{summaryError.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(summaryError)}</AlertDescription></Alert>}
-    {loading && !list && <div className="rounded-2xl border bg-white p-10 text-center text-sm text-slate-500">Cargando Inbox Comercial…</div>}
-    {!loading && list?.data.length === 0 && <EmptyState />}
-    {list && list.data.length > 0 && <><div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block"><div className="overflow-x-auto"><table className="w-full min-w-[1060px] border-collapse"><thead className="bg-[#eef5fa]"><tr className="border-b border-sky-100 text-left text-[10px] font-bold uppercase tracking-[.14em] text-[#31566d]"><th className="px-4 py-3">Caso</th><th className="px-4 py-3">Cliente receptor</th><th className="px-4 py-3">Ruta</th><th className="px-4 py-3">Tipo / modo</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3">SLA</th><th className="px-4 py-3 text-right">Acción</th></tr></thead><tbody>{list.data.map((item) => <CaseRow key={item.caseRef} item={item} onOpen={onOpenCase} />)}</tbody></table></div></div><div className="grid gap-3 md:hidden">{list.data.map((item) => <MobileCase key={item.caseRef} item={item} onOpen={onOpenCase} />)}</div></>}
-    <footer className="flex flex-wrap items-center justify-between gap-3"><Button variant="outline" disabled={loading || (list?.page ?? filters.page) <= 1} onClick={() => setFilters((current) => ({ ...current, page: Math.max(1, current.page - 1) }))}><ChevronLeft />Anterior</Button><p className="text-sm text-slate-600">Página {list?.page ?? filters.page} de {pages} · {list?.total ?? 0} resultados</p><Button variant="outline" disabled={loading || (list?.page ?? filters.page) >= pages} onClick={() => setFilters((current) => ({ ...current, page: Math.min(pages, current.page + 1) }))}>Siguiente<ChevronRight /></Button></footer>
+  const openFullCase = (nextCaseRef: string) => {
+    savedQueueScrollTop.current = queueScroll.current?.scrollTop ?? savedQueueScrollTop.current;
+    savedPageScrollTop.current = globalThis.scrollY;
+    setSelectedCaseRef(nextCaseRef);
+    setDetailRefresh((value) => value + 1);
+    onOpenCase(nextCaseRef);
+  };
+  const queue = <section className="flex min-h-0 flex-col border-r border-slate-200 bg-slate-50" aria-label="Cola comercial"><div className="border-b border-slate-200 bg-white p-3"><label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Buscar<span className="relative mt-1 block"><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input className="h-9 pl-9" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Caso, cliente o ruta" /></span></label><div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Estado" className="h-9 rounded-md border border-slate-300 bg-white px-2 text-xs" value={filters.status || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, status: (event.target.value || undefined) as PipelineCaseStatus | undefined }))}><option value="">Todos los estados</option>{PIPELINE_CASE_STATUSES.map((value) => <option key={value} value={value}>{STATUS_LABELS[value]}</option>)}</select><select aria-label="Asignación" className="h-9 rounded-md border border-slate-300 bg-white px-2 text-xs" value={filters.owner || ""} onChange={(event) => setFilters((current) => ({ ...current, page: 1, owner: (event.target.value || undefined) as CrmPipelineFilters["owner"] }))} disabled={role === "V"}><option value="">{role === "V" ? "Sólo mis casos" : "Toda asignación"}</option><option value="assigned">Asignadas</option><option value="unassigned">Sin asignar</option></select></div><div className="mt-2 flex flex-wrap gap-1"><Filter className="mr-1 h-4 w-4 text-slate-400" /><Button size="sm" variant={!filters.mode ? "secondary" : "ghost"} onClick={() => setFilters((current) => ({ ...current, page: 1, mode: undefined }))}>Todos</Button>{MODES.map((mode) => <Button key={mode} size="sm" variant={filters.mode === mode ? "secondary" : "ghost"} onClick={() => setFilters((current) => ({ ...current, page: 1, mode }))}>{mode}</Button>)}</div></div><div ref={queueScroll} className="min-h-0 flex-1 overflow-y-auto" data-testid="commercial-queue-scroll">{listError && <Alert variant="destructive" className="m-3"><AlertCircle /><AlertTitle>{listError.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(listError)}<Button size="sm" variant="outline" className="mt-2" onClick={() => setRefresh((value) => value + 1)}>Reintentar lectura</Button></AlertDescription></Alert>}{loading && !list && <p className="p-8 text-center text-sm text-slate-500">Cargando Inbox Comercial…</p>}{!loading && list?.data.length === 0 && <EmptyState />}{list?.data.map((item) => <QueueItem key={item.caseRef} item={item} selected={item.caseRef === selectedCaseRef} onSelect={setSelectedCaseRef} onOpen={openFullCase} />)}</div><footer className="flex items-center justify-between gap-2 border-t border-slate-200 bg-white p-2"><Button size="sm" variant="ghost" aria-label="Página anterior" disabled={loading || (list?.page ?? filters.page) <= 1} onClick={() => setFilters((current) => ({ ...current, page: Math.max(1, current.page - 1) }))}><ChevronLeft /></Button><p className="text-[11px] text-slate-600">{list?.total ?? 0} resultados · Página {list?.page ?? filters.page} de {pages}</p><Button size="sm" variant="ghost" aria-label="Página siguiente" disabled={loading || (list?.page ?? filters.page) >= pages} onClick={() => setFilters((current) => ({ ...current, page: Math.min(pages, current.page + 1) }))}><ChevronRight /></Button></footer></section>;
+
+  return <section className={`flex ${fullCaseWorkspace ? "min-h-screen" : "min-h-[calc(100vh-4rem)]"} flex-col bg-[#f4f7fb]`} data-testid="commercial-crm-inbox">{!fullCaseWorkspace && <header className="border-b border-slate-200 bg-white"><div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"><div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#0070a8]">Control Comercial</p><h1 className="text-xl font-black tracking-tight text-[#003366]">Inbox Comercial</h1><p className="text-xs text-slate-500">{role === "V" ? "Cola personal revalidada por servidor" : "Supervisión tenant-wide"} · CRM relacional</p></div><div className="flex gap-2">{mutationEnvironmentEnabled && mutationAccess.canCreate && <Button size="sm" onClick={() => setCreateOpen(true)}><Plus />Nuevo Caso</Button>}<Button size="sm" variant="outline" onClick={onBack}><ArrowLeft />Regresar al Hub</Button></div></div><SummaryStrip value={summary} role={role} /></header>}
+    {mutationEnvironmentEnabled && mutationAccess.canCreate && <CommercialCaseForm open={createOpen} mode="CREATE" api={mutationApi} onOpenChange={setCreateOpen} onCommitted={(receipt) => { setRefresh((value) => value + 1); openFullCase(receipt.caseRef); }} />}
+    {summaryError && <Alert variant="destructive" className="m-3"><AlertCircle /><AlertTitle>{summaryError.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(summaryError)}</AlertDescription></Alert>}
+    {fullCaseWorkspace
+      ? <main className="min-h-0 flex-1 bg-white" data-testid="commercial-full-case-workspace"><Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onOpenNavigation={onOpenNavigation} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense></main>
+      : <div data-testid="commercial-master-detail-layout" className="min-h-0 flex-1 xl:grid" style={{ gridTemplateColumns: "clamp(560px, 40%, 720px) minmax(0, 1fr)" }}><div className={selectedCaseRef ? "hidden xl:block" : "block"}>{queue}</div><main className={selectedCaseRef ? "block min-w-0 bg-white" : "hidden min-w-0 bg-white xl:block"}>{selectedCaseRef ? <CaseSummaryPanel state={detail} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} onClear={() => setSelectedCaseRef(null)} onOpen={openFullCase} onReload={() => setDetailRefresh((value) => value + 1)} /> : <SupervisionPanel summary={summary} role={role} />}</main></div>}
   </section>;
 }

@@ -162,8 +162,9 @@ function publicCaseRef(value: unknown): string {
 function serviceClient(value: unknown): CrmPipelineCaseDetail["client"] {
   if (value === null) return null;
   const row = record(value);
-  exactKeys(row, ["displayName", "type", "status"]);
+  exactKeys(row, ["clientRef", "displayName", "type", "status"]);
   return Object.freeze({
+    clientRef: publicCaseRef(row.clientRef),
     displayName: text(row.displayName)!,
     type: text(row.type, true),
     status: text(row.status)!,
@@ -173,7 +174,7 @@ function serviceClient(value: unknown): CrmPipelineCaseDetail["client"] {
 function pipelineCaseDetail(value: unknown): CrmPipelineCaseDetail {
   const row = record(value);
   exactKeys(row, [
-    "caseRef", "caseCode", "status", "mode", "serviceType", "customerType", "estimatedCbm",
+    "caseRef", "caseCode", "version", "status", "mode", "serviceType", "customerType", "estimatedCbm",
     "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation", "destinationContracted",
     "assetsCount", "quoteCount", "eventCount", "client", "owner", "createdAt", "updatedAt",
   ]);
@@ -183,12 +184,13 @@ function pipelineCaseDetail(value: unknown): CrmPipelineCaseDetail {
   let publicOwner: CrmPipelineCaseDetail["owner"] = null;
   if (row.owner !== null) {
     const value = record(row.owner);
-    exactKeys(value, ["displayName"]);
-    publicOwner = Object.freeze({ displayName: text(value.displayName)! });
+    exactKeys(value, ["displayName", "isCurrentActor"]);
+    publicOwner = Object.freeze({ displayName: text(value.displayName)!, isCurrentActor: bool(value.isCurrentActor) });
   }
   return Object.freeze({
     caseRef: publicCaseRef(row.caseRef),
     caseCode: text(row.caseCode)!,
+    version: integer(row.version, 1),
     status: status(row.status),
     mode: row.mode as CrmPipelineCaseDetail["mode"],
     serviceType: text(row.serviceType, true),

@@ -12,6 +12,24 @@ import { mockResponse } from "./mt-01b1-test-helpers.mjs";
 
 const results = [];
 const CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const PIPELINE_VIEW = "pipeline:view";
+const ACTIVE_A = Object.freeze({
+  tenantId: "tenant-active",
+  membershipId: "membership-admin",
+  userId: "user-admin",
+  role: "A",
+  effectivePermissions: Object.freeze([PIPELINE_VIEW]),
+  deniedPermissions: Object.freeze([]),
+});
+const ACTIVE_V = Object.freeze({
+  tenantId: "tenant-active",
+  membershipId: "membership-sales",
+  userId: "user-sales",
+  role: "V",
+  effectivePermissions: Object.freeze([PIPELINE_VIEW]),
+  deniedPermissions: Object.freeze([]),
+});
+
 function check(name, condition, detail) {
   results.push({ name, passed: Boolean(condition), ...(detail === undefined ? {} : { detail }) });
   if (!condition) throw new Error(name);
@@ -32,6 +50,46 @@ async function invoke(handler, req) {
   const res = mockResponse();
   await handler(req, res);
   return res;
+}
+
+function permissionContext(context, counter = { calls: 0 }) {
+  return async (_req, res, permission) => {
+    counter.calls += 1;
+    const role = String(context?.role || "");
+    const permissions = Array.isArray(context?.effectivePermissions) ? context.effectivePermissions.map(String) : [];
+    const denied = Array.isArray(context?.deniedPermissions) ? context.deniedPermissions.map(String) : [];
+    const complete = Boolean(context?.tenantId && context?.membershipId && context?.userId && ["A", "V"].includes(role));
+    if (!complete || permission !== PIPELINE_VIEW || !permissions.includes(permission) || denied.includes(permission)) {
+      res.status(403).json({ ok: false, error: "COMMERCIAL_PERMISSION_FORBIDDEN" });
+      return null;
+    }
+    return Object.freeze({ ...context });
+  };
+}
+
+function detailRow() {
+  return {
+    publicRef: CASE_REF,
+    ownerMembershipId: null,
+    version: 1,
+    caseCode: "CASE-1",
+    mode: "LOCAL",
+    serviceType: "MOVING",
+    customerType: "L4_PERSONAL",
+    status: "NEW_INBOX",
+    estimatedCbm: null,
+    requiresSurvey: false,
+    surveyMethod: null,
+    originLocation: null,
+    destinationLocation: null,
+    destinationContracted: null,
+    assetsCount: 0,
+    client: null,
+    enterpriseOwner: null,
+    _count: { quotes: 0, events: 0 },
+    createdAt: new Date("2026-08-21T10:00:00.000Z"),
+    updatedAt: new Date("2026-08-21T10:00:00.000Z"),
+  };
 }
 
 function privateContract(name, response, { status, code, empty = false } = {}) {
@@ -120,56 +178,109 @@ try {
     check(`${route} OPTIONS activo sin CORS`, response.getHeader("access-control-allow-origin") === undefined);
   }
 
-  let activeAuthCalls = 0;
-  const activePermission = async () => {
-    activeAuthCalls += 1;
-    return Object.freeze({ tenantId: "tenant-active" });
-  };
+  const activeAuth = { calls: 0 };
+  const activeAdminPermission = permissionContext(ACTIVE_A, activeAuth);
+  const activeSalesPermission = permissionContext(ACTIVE_V, activeAuth);
+  let activeAdminListWhere;
   const activeList = await invoke(createPipelineCasesListHandler({
     env: localRead,
-    requirePermission: activePermission,
+    requirePermission: activeAdminPermission,
     prismaClient: {
-      pipelineCase: { count: async () => 0, findMany: async () => [] },
+      pipelineCase: {
+        count: async ({ where }) => { activeAdminListWhere = where; return 0; },
+        findMany: async () => [],
+      },
       $transaction: (operations) => Promise.all(operations),
     },
   }), request("GET", { query: {} }));
-  check("lista GET activa conserva contrato", activeList.statusCode === 200
+  check("lista GET A activa conserva contrato", activeList.statusCode === 200
     && activeList.body?.ok === true && activeList.body?.total === 0
     && activeList.body?.page === 1 && activeList.body?.pageSize === 50
     && Array.isArray(activeList.body?.data));
+  check("lista A aplica alcance tenant-wide exacto", JSON.stringify(activeAdminListWhere) === JSON.stringify({ tenantId: ACTIVE_A.tenantId }), activeAdminListWhere);
 
-  let activeDetailWhere;
+  const activeSalesListWhere = [];
+  const activeSalesList = await invoke(createPipelineCasesListHandler({
+    env: localRead,
+    requirePermission: activeSalesPermission,
+    prismaClient: {
+      pipelineCase: {
+        count: async ({ where }) => { activeSalesListWhere.push(where); return 0; },
+        findMany: async ({ where }) => { activeSalesListWhere.push(where); return []; },
+      },
+      $transaction: (operations) => Promise.all(operations),
+    },
+  }), request("GET", { query: {} }));
+  const expectedSalesScope = {
+    tenantId: ACTIVE_V.tenantId,
+    ownerMembershipId: ACTIVE_V.membershipId,
+    ownerUserId: ACTIVE_V.userId,
+  };
+  check("lista GET V activa conserva contrato", activeSalesList.statusCode === 200
+    && activeSalesList.body?.ok === true && activeSalesList.body?.total === 0
+    && activeSalesList.body?.page === 1 && activeSalesList.body?.pageSize === 50
+    && Array.isArray(activeSalesList.body?.data));
+  check("lista V filtra antes de conteo y paginación", activeSalesListWhere.length === 2
+    && activeSalesListWhere.every((where) => JSON.stringify(where) === JSON.stringify(expectedSalesScope)), activeSalesListWhere);
+
+  let activeAdminDetailWhere;
   const activeDetail = await invoke(createPipelineCaseDetailHandler({
     env: localRead,
-    requirePermission: activePermission,
+    requirePermission: activeAdminPermission,
     prismaClient: {
-      pipelineCase: { findUnique: async ({ where }) => {
-        activeDetailWhere = where;
-        return {
-          publicRef: CASE_REF, caseCode: "CASE-1", mode: "LOCAL", serviceType: "MOVING",
-          status: "NEW_INBOX", client: null, enterpriseOwner: null,
-          createdAt: new Date("2026-08-21T10:00:00.000Z"), updatedAt: new Date("2026-08-21T10:00:00.000Z"),
-        };
+      pipelineCase: { findFirst: async ({ where }) => {
+        activeAdminDetailWhere = where;
+        return detailRow();
       } },
     },
   }), request("GET", { query: { caseKey: CASE_REF } }));
-  check("detalle GET activo conserva contrato", activeDetail.statusCode === 200
+  check("detalle GET A activo conserva contrato", activeDetail.statusCode === 200
     && activeDetail.body?.ok === true && activeDetail.body?.data?.caseRef === CASE_REF
     && activeDetail.body?.data?.owner === null);
-  check("detalle usa índice único tenant-first", JSON.stringify(activeDetailWhere) === JSON.stringify({
-    tenantId_publicRef: { tenantId: "tenant-active", publicRef: CASE_REF },
-  }));
+  check("detalle A usa tenantId y publicRef", JSON.stringify(activeAdminDetailWhere) === JSON.stringify({
+    tenantId: ACTIVE_A.tenantId,
+    publicRef: CASE_REF,
+  }), activeAdminDetailWhere);
+
+  let activeSalesDetailWhere;
+  const activeSalesDetail = await invoke(createPipelineCaseDetailHandler({
+    env: localRead,
+    requirePermission: activeSalesPermission,
+    prismaClient: {
+      pipelineCase: { findFirst: async ({ where }) => {
+        activeSalesDetailWhere = where;
+        return { ...detailRow(), ownerMembershipId: ACTIVE_V.membershipId };
+      } },
+    },
+  }), request("GET", { query: { caseKey: CASE_REF } }));
+  check("detalle GET V activo conserva contrato", activeSalesDetail.statusCode === 200
+    && activeSalesDetail.body?.ok === true && activeSalesDetail.body?.data?.caseRef === CASE_REF);
+  check("detalle V exige ownership completo", JSON.stringify(activeSalesDetailWhere) === JSON.stringify({
+    ...expectedSalesScope,
+    publicRef: CASE_REF,
+  }), activeSalesDetailWhere);
+
+  const foreignSalesDetail = await invoke(createPipelineCaseDetailHandler({
+    env: localRead,
+    requirePermission: activeSalesPermission,
+    prismaClient: { pipelineCase: { findFirst: async ({ where }) => {
+      check("caso ajeno se consulta con ownership completo", JSON.stringify(where) === JSON.stringify({ ...expectedSalesScope, publicRef: CASE_REF }), where);
+      return null;
+    } } },
+  }), request("GET", { query: { caseKey: CASE_REF } }));
+  check("detalle ajeno V produce 404 indistinguible", foreignSalesDetail.statusCode === 404
+    && JSON.stringify(foreignSalesDetail.body) === JSON.stringify({ ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }), foreignSalesDetail.body);
 
   let invalidRefPrismaCalls = 0;
   let invalidRefAuthCalls = 0;
   const invalidRefHandler = createPipelineCaseDetailHandler({
     env: localRead,
-    requirePermission: async () => {
+    requirePermission: async (...args) => {
       invalidRefAuthCalls += 1;
-      return Object.freeze({ tenantId: "tenant-active" });
+      return permissionContext(ACTIVE_A)(...args);
     },
     prismaClient: {
-      pipelineCase: { findUnique: async () => { invalidRefPrismaCalls += 1; return null; } },
+      pipelineCase: { findFirst: async () => { invalidRefPrismaCalls += 1; return null; } },
     },
   });
   const invalidRefs = [
@@ -196,18 +307,65 @@ try {
   check("auth precede validación de referencia", invalidRefAuthCalls === invalidRefs.length, invalidRefAuthCalls);
   check("referencia inválida se rechaza antes de Prisma", invalidRefPrismaCalls === 0, invalidRefPrismaCalls);
 
-  const activeSummary = await invoke(createPipelineSummaryHandler({
+  const activeAdminSummary = await invoke(createPipelineSummaryHandler({
     env: localRead,
-    requirePermission: activePermission,
+    requirePermission: activeAdminPermission,
     prismaClient: {
       pipelineCase: { groupBy: async () => [], count: async () => 0 },
       $transaction: (operations) => Promise.all(operations),
     },
   }), request("GET"));
-  check("resumen GET activo conserva contrato", activeSummary.statusCode === 200
-    && activeSummary.body?.ok === true && activeSummary.body?.data?.total === 0
-    && activeSummary.body?.data?.assigned === 0 && activeSummary.body?.data?.unassigned === 0);
-  check("GET activo autentica exactamente una vez por ruta", activeAuthCalls === 3, activeAuthCalls);
+  check("resumen GET A activo conserva contrato", activeAdminSummary.statusCode === 200
+    && activeAdminSummary.body?.ok === true && activeAdminSummary.body?.data?.total === 0
+    && activeAdminSummary.body?.data?.assigned === 0 && activeAdminSummary.body?.data?.unassigned === 0);
+
+  const activeSalesSummaryWhere = [];
+  const activeSalesSummary = await invoke(createPipelineSummaryHandler({
+    env: localRead,
+    requirePermission: activeSalesPermission,
+    prismaClient: {
+      pipelineCase: {
+        groupBy: async ({ where }) => { activeSalesSummaryWhere.push(where); return []; },
+        count: async ({ where }) => { activeSalesSummaryWhere.push(where); return 0; },
+      },
+      $transaction: (operations) => Promise.all(operations),
+    },
+  }), request("GET"));
+  check("resumen GET V activo conserva contrato", activeSalesSummary.statusCode === 200
+    && activeSalesSummary.body?.ok === true && activeSalesSummary.body?.data?.total === 0);
+  check("resumen V no filtra información mediante totales", activeSalesSummaryWhere.length === 3
+    && activeSalesSummaryWhere.every((where) => where.tenantId === ACTIVE_V.tenantId
+      && where.ownerMembershipId === ACTIVE_V.membershipId
+      && where.ownerUserId === ACTIVE_V.userId), activeSalesSummaryWhere);
+  check("GET activo autentica exactamente una vez por operación", activeAuth.calls === 7, activeAuth.calls);
+
+  let incompleteContextPrismaCalls = 0;
+  const unreachablePrisma = new Proxy({}, {
+    get() {
+      incompleteContextPrismaCalls += 1;
+      throw new Error("Prisma no debe alcanzarse con contexto incompleto");
+    },
+  });
+  const incompleteContexts = [
+    ["sin User", { ...ACTIVE_A, userId: undefined }],
+    ["sin Membership", { ...ACTIVE_A, membershipId: undefined }],
+    ["sin Tenant", { ...ACTIVE_A, tenantId: undefined }],
+    ["sin rol", { ...ACTIVE_A, role: undefined }],
+    ["sin pipeline:view", { ...ACTIVE_A, effectivePermissions: [] }],
+    ["deny prevalece", { ...ACTIVE_A, deniedPermissions: [PIPELINE_VIEW] }],
+    ["V sin owner Membership", { ...ACTIVE_V, membershipId: undefined }],
+    ["V sin owner User", { ...ACTIVE_V, userId: undefined }],
+  ];
+  for (const [scenario, context] of incompleteContexts) {
+    const response = await invoke(createPipelineCasesListHandler({
+      env: localRead,
+      requirePermission: permissionContext(context),
+      prismaClient: unreachablePrisma,
+    }), request("GET", { query: {} }));
+    check(`contexto ${scenario} falla cerrado`, response.statusCode === 403
+      && response.body?.error === "COMMERCIAL_PERMISSION_FORBIDDEN", response.body);
+  }
+  check("contextos incompletos se rechazan antes de Prisma", incompleteContextPrismaCalls === 0, incompleteContextPrismaCalls);
 
   let mutationAuth = 0;
   let mutationExec = 0;

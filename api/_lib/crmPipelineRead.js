@@ -51,6 +51,7 @@ const OWNER_SELECT = Object.freeze({
 });
 
 const CLIENT_SELECT = Object.freeze({
+  publicRef: true,
   name: true,
   type: true,
   status: true,
@@ -79,6 +80,8 @@ const CASE_SELECT = Object.freeze({
 
 const CASE_DETAIL_SELECT = Object.freeze({
   publicRef: true,
+  ownerMembershipId: true,
+  version: true,
   caseCode: true,
   mode: true,
   serviceType: true,
@@ -184,17 +187,38 @@ export function parsePipelineListQuery(query = {}) {
   });
 }
 
-function pipelineWhere(tenantId, filters = {}) {
-  const where = { tenantId: String(tenantId) };
+export function resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId } = {}) {
+  const normalizedRole = String(role || "").toUpperCase();
+  if (!tenantId || !["A", "V"].includes(normalizedRole)) {
+    invalid("COMMERCIAL_PERMISSION_FORBIDDEN", 403);
+  }
+  if (normalizedRole === "A") return Object.freeze({ tenantId: String(tenantId) });
+  if (!membershipId || !userId) invalid("COMMERCIAL_PERMISSION_FORBIDDEN", 403);
+  return Object.freeze({
+    tenantId: String(tenantId),
+    ownerMembershipId: String(membershipId),
+    ownerUserId: String(userId),
+  });
+}
+
+function pipelineWhere(scope, filters = {}) {
+  const where = { ...scope };
+  const personalScope = typeof scope.ownerMembershipId === "string" && typeof scope.ownerUserId === "string";
   if (filters.status) where.status = filters.status;
   if (filters.mode) where.mode = filters.mode;
   if (filters.serviceType) where.serviceType = filters.serviceType;
   if (filters.unassigned === true) {
-    where.ownerMembershipId = null;
-    where.ownerUserId = null;
+    if (personalScope) {
+      where.AND = [{ ownerMembershipId: null, ownerUserId: null }];
+    } else {
+      where.ownerMembershipId = null;
+      where.ownerUserId = null;
+    }
   } else if (filters.unassigned === false) {
-    where.ownerMembershipId = { not: null };
-    where.ownerUserId = { not: null };
+    if (!personalScope) {
+      where.ownerMembershipId = { not: null };
+      where.ownerUserId = { not: null };
+    }
   }
   if (filters.search) {
     where.OR = [
@@ -219,6 +243,7 @@ function safeOwner(owner) {
 function safeClient(client) {
   if (!client) return null;
   return Object.freeze({
+    clientRef: client.publicRef,
     displayName: String(client.name),
     type: client.type === null ? null : String(client.type),
     status: String(client.status),
@@ -249,10 +274,11 @@ function safeCase(row) {
   });
 }
 
-function safeCaseDetail(row) {
+function safeCaseDetail(row, membershipId) {
   return Object.freeze({
     caseRef: row.publicRef,
     caseCode: row.caseCode,
+    version: Number(row.version),
     status: row.status,
     mode: row.mode,
     serviceType: row.serviceType,
@@ -268,15 +294,15 @@ function safeCaseDetail(row) {
     eventCount: Number(row._count?.events || 0),
     client: safeClient(row.client),
     owner: row.enterpriseOwner?.user?.name
-      ? Object.freeze({ displayName: String(row.enterpriseOwner.user.name) })
+      ? Object.freeze({ displayName: String(row.enterpriseOwner.user.name), isCurrentActor: row.ownerMembershipId === membershipId })
       : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
 }
 
-export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
-  const where = pipelineWhere(tenantId, filters);
+export async function listCrmPipelineCases(prisma, { tenantId, role, membershipId, userId, filters }) {
+  const where = pipelineWhere(resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId }), filters);
   try {
     const [total, rows] = await prisma.$transaction([
       prisma.pipelineCase.count({ where }),
@@ -300,28 +326,25 @@ export async function listCrmPipelineCases(prisma, { tenantId, filters }) {
   }
 }
 
-export async function findCrmPipelineCase(prisma, { tenantId, caseRef }) {
+export async function findCrmPipelineCase(prisma, { tenantId, role, membershipId, userId, caseRef }) {
   const publicRef = canonicalCaseRef(caseRef);
+  const scope = resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId });
   try {
-    const row = await prisma.pipelineCase.findUnique({
-      where: {
-        tenantId_publicRef: {
-          tenantId: String(tenantId),
-          publicRef,
-        },
-      },
+    const row = await prisma.pipelineCase.findFirst({
+      where: { ...scope, publicRef },
       select: CASE_DETAIL_SELECT,
     });
     if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
-    return safeCaseDetail(row);
+    return safeCaseDetail(row, String(membershipId));
   } catch (cause) {
     if (cause instanceof CommercialTenancyError) throw cause;
     throw commercialDatabaseUnavailable(cause);
   }
 }
 
-export async function summarizeCrmPipelineCases(prisma, { tenantId }) {
-  const where = { tenantId: String(tenantId) };
+export async function summarizeCrmPipelineCases(prisma, { tenantId, role, membershipId, userId }) {
+  const where = resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId });
+  const personalScope = typeof where.ownerMembershipId === "string" && typeof where.ownerUserId === "string";
   try {
     const [groups, assigned, unassigned] = await prisma.$transaction([
       prisma.pipelineCase.groupBy({
@@ -331,10 +354,10 @@ export async function summarizeCrmPipelineCases(prisma, { tenantId }) {
         orderBy: { status: "asc" },
       }),
       prisma.pipelineCase.count({
-        where: { ...where, ownerMembershipId: { not: null }, ownerUserId: { not: null } },
+        where: personalScope ? where : { ...where, ownerMembershipId: { not: null }, ownerUserId: { not: null } },
       }),
       prisma.pipelineCase.count({
-        where: { ...where, ownerMembershipId: null, ownerUserId: null },
+        where: personalScope ? { ...where, AND: [{ ownerMembershipId: null, ownerUserId: null }] } : { ...where, ownerMembershipId: null, ownerUserId: null },
       }),
     ]);
     const byStatus = Object.fromEntries(PIPELINE_STATUSES.map((status) => [status, 0]));

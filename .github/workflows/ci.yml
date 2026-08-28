@@ -304,6 +304,8 @@ jobs:
           node scripts/validate-v17-case-client-guard-test.mjs
           node scripts/validate-v17-case-public-ref-guard.mjs
           node scripts/validate-v17-case-public-ref-guard-test.mjs
+          node scripts/validate-v17-crm-case-mutations-guard.mjs
+          node scripts/validate-v17-crm-case-mutations-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           node scripts/v17-case-client-local-target-test.mjs

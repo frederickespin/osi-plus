@@ -17,11 +17,13 @@ import {
   X,
 } from "lucide-react";
 import CommercialInboxModule from "./CommercialInboxModule";
+import type { CrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 
 type Props = Readonly<{
   authorization?: string;
   caseRef?: string | null;
   role: string;
+  mutationAccess: CrmCaseMutationUiAccess;
   userName?: string;
   onNavigate(pathname: string): void;
   onLogout(): void;
@@ -58,16 +60,10 @@ function Navigation({ collapsed, onCommercial, onHub }: { collapsed: boolean; on
     <p className={`px-3 pb-2 text-[10px] font-bold uppercase tracking-[.18em] text-blue-200/65 ${collapsed ? "sr-only" : ""}`}>Aplicaciones ERP</p>
     <div className="space-y-1">
       {NAVIGATION.map(({ label, icon: Icon, functional }) => functional ? (
-        <button
-          key={label}
-          type="button"
-          onClick={onCommercial}
-          aria-current="page"
-          className="flex w-full items-center gap-3 rounded-lg bg-sky-500 px-3 py-2.5 text-left text-sm font-semibold text-white shadow-sm"
-        >
-          <Icon className="h-4 w-4 shrink-0" />
-          {!collapsed && <><span className="flex-1">{label}</span><span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] uppercase">Activo</span></>}
-        </button>
+        <div key={label}>
+          <button type="button" onClick={onCommercial} aria-current="page" className="flex w-full items-center gap-3 rounded-lg bg-sky-500 px-3 py-2.5 text-left text-sm font-semibold text-white shadow-sm"><Icon className="h-4 w-4 shrink-0" />{!collapsed && <><span className="flex-1">{label}</span><span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] uppercase">Activo</span></>}</button>
+          {!collapsed && <div className="ml-7 mt-1 space-y-0.5 border-l border-blue-300/30 pl-3"><button type="button" onClick={onCommercial} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Pipeline</button><div className="rounded px-2 py-1.5 text-xs text-blue-100/65">Clientes · En integración</div><div className="rounded px-2 py-1.5 text-xs text-blue-100/65">Seguimiento · En integración</div></div>}
+        </div>
       ) : (
         <div
           key={label}
@@ -109,7 +105,7 @@ function Sidebar({ collapsed, userName, role, onCollapse, onCommercial, onHub, o
   </aside>;
 }
 
-export default function AdvancedErpShell({ authorization, caseRef, role, userName, onNavigate, onLogout, onUnauthorized }: Props) {
+export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, userName, onNavigate, onLogout, onUnauthorized }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const goCommercial = () => {
@@ -126,17 +122,20 @@ export default function AdvancedErpShell({ authorization, caseRef, role, userNam
     <div className="sticky top-0 hidden h-screen lg:block">{sidebar}</div>
     {mobileOpen && <div className="fixed inset-0 z-50 flex lg:hidden"><div className="h-full">{sidebar}</div><button type="button" aria-label="Cerrar navegación ERP" className="flex-1 bg-slate-950/55" onClick={() => setMobileOpen(false)} /></div>}
     <div className="min-w-0 flex-1">
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6">
+      {!caseRef && <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6">
         <div className="flex items-center gap-3">
           <button type="button" aria-label="Abrir navegación ERP" className="rounded-lg border border-slate-200 p-2 text-[#003366] lg:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></button>
-          <div><p className="text-sm font-black text-[#003366]">Comercial y CRM</p><p className="text-[10px] uppercase tracking-[.16em] text-slate-500">Núcleo relacional · sólo lectura</p></div>
+          <div><p className="text-sm font-black text-[#003366]">Comercial y CRM</p><p className="text-[10px] uppercase tracking-[.16em] text-slate-500">Control comercial relacional</p></div>
         </div>
         <div className="flex items-center gap-2"><span className="hidden rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[#003366] sm:inline">ERP avanzado</span><button type="button" aria-label="Cerrar navegación ERP" className="hidden"><X /></button></div>
-      </header>
-      <main>
+      </header>}
+      <main className={caseRef ? "min-h-screen" : undefined}>
         <CommercialInboxModule
           authorization={authorization}
+          mutationAccess={mutationAccess}
+          role={role}
           caseRef={caseRef}
+          onOpenNavigation={() => setMobileOpen(true)}
           onBack={goHub}
           onOpenCase={(nextCaseRef) => onNavigate(`/commercial/cases/${nextCaseRef}`)}
           onReturnToInbox={goCommercial}

@@ -3,13 +3,14 @@ import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 
-const EXPECTED_MIGRATIONS = 18;
+const EXPECTED_MIGRATIONS = 19;
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
   "api/crm/pipeline-summary.js",
 ]);
 const CRM_MUTATION_ROUTES = Object.freeze([
+  "api/crm/client-options.js",
   "api/crm/pipeline-owner-options.js",
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
   "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
@@ -19,6 +20,7 @@ const CRM_MUTATION_ROUTES = Object.freeze([
 const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES]);
 const AUTHORIZED_FRONTEND_CONSUMERS = Object.freeze([
   "src/crm-relational/api.ts",
+  "src/crm-relational/mutationApi.ts",
   "src/crm-relational/readApi.ts",
 ]);
 
@@ -78,13 +80,20 @@ export function validateCrm01aGuard({
   const pipelineAssignments = roleCatalog.match(/PERMS\.PIPELINE_VIEW/g) || [];
   invariant(pipelineAssignments.length === 1 && JSON.stringify(pipelineRoles) === JSON.stringify(["V"]), "pipeline:view sólo puede asignarse por base a A y V");
   invariant(!/\bownerId\b/.test(service), "ownerId heredado no puede ser autoridad");
-  invariant((service.match(/tenantId:\s*String\(tenantId\)/g) || []).length >= 3, "hay consultas sin filtro tenantId");
+  invariant((service.match(/resolveCrmPipelineReadScope\(\{ tenantId, role, membershipId, userId \}\)/g) || []).length === 3,
+    "lista, detalle y resumen no comparten alcance READ revalidado");
+  invariant(/normalizedRole === "A"[\s\S]{0,120}tenantId:\s*String\(tenantId\)/.test(service)
+    && /ownerMembershipId:\s*String\(membershipId\)[\s\S]{0,100}ownerUserId:\s*String\(userId\)/.test(service),
+  "alcance V no exige owner completo User + Membership + Tenant");
   invariant(/select:\s*CASE_SELECT/.test(service) && /enterpriseOwner:\s*\{\s*select:\s*OWNER_SELECT/.test(service), "falta selección explícita y owner relacional");
   invariant(!/milestonesJson:\s*true|flags:\s*true|ownerUserId:\s*true|tenantId:\s*true/.test(service), "el select expone campos internos");
   const safeOwner = service.slice(service.indexOf("function safeOwner"), service.indexOf("function safeCase"));
   invariant(!/membershipId|userStatus|email|phone|userId|tenantId|grantedPermissions|deniedPermissions/.test(safeOwner), "owner expone identidad o estado global innecesario");
   invariant(/MAX_PAGE_SIZE = 100/.test(service) && /updatedAt:\s*"desc"[\s\S]*publicRef:\s*"asc"/.test(service), "paginación u orden estable ausente");
   invariant(/ownerMembershipId:\s*null[\s\S]*ownerUserId:\s*null/.test(service), "filtro unassigned incompleto");
+  invariant((service.match(/personalScope \? \{ \.\.\.where, AND: \[\{ ownerMembershipId: null, ownerUserId: null \}\] \}/g) || []).length === 1
+    && /if \(personalScope\)[\s\S]{0,100}where\.AND = \[\{ ownerMembershipId: null, ownerUserId: null \}\]/.test(service),
+  "filtros o métricas V pueden sobrescribir el owner revalidado");
   invariant(/sla:\s*Object\.freeze\(\{ overdue: null, basis: "UNAVAILABLE" \}\)/.test(service), "SLA ambiguo no está explicitado");
   const readHttpGate = readHttp.indexOf("requireCrmPipelineReadOnly(env)");
   const readHttpOptions = readHttp.indexOf('req.method === "OPTIONS"');
@@ -102,7 +111,8 @@ export function validateCrm01aGuard({
     const source = read(path);
     const factoryStart = source.indexOf("export function createPipeline");
     invariant(factoryStart >= 0, `${path} no expone una fábrica auditable`);
-    const handler = source.slice(factoryStart);
+    const handlerEnd = source.indexOf("\nconst readHandler", factoryStart);
+    const handler = source.slice(factoryStart, handlerEnd >= 0 ? handlerEnd : undefined);
     invariant(/createCrmPipelineReadHandler\(\{/.test(handler), `${path} no usa el adaptador HTTP canónico`);
     invariant(!/req\.method\s*===\s*"(?:POST|PATCH|PUT|DELETE)"|readJson|\.create\(|\.update|\.delete|\.upsert/.test(handler), `${path} contiene escritura`);
     invariant(!/x-osi-(?:role|userid)|req\.(?:query|body).*(?:tenantId|membershipId|role|permissions)/i.test(handler), `${path} acepta autoridad del navegador`);
@@ -120,7 +130,7 @@ export function validateCrm01aGuard({
   for (const [path, source] of Object.entries(runtimeSources)) {
     if (path.startsWith("src/")) {
       if (AUTHORIZED_FRONTEND_CONSUMERS.includes(path)) {
-        invariant(/API_PREFIX\s*=\s*["']\/api\/crm["']/.test(source), `${path} no usa el adaptador CRM autorizado`);
+        invariant(/(?:API_PREFIX|API)\s*=\s*["']\/api\/crm["']/.test(source), `${path} no usa el adaptador CRM autorizado`);
       } else {
         invariant(!/api\/crm|crmPipelineRead|CRM_PIPELINE_RUNTIME_MODE/.test(source), `${path} conecta CRM-01A al frontend fuera del adaptador autorizado`);
       }
@@ -147,7 +157,7 @@ export function validateCrm01aGuard({
     baseRoles: Object.freeze(["A", "V"]),
     legacyHeaderExceptions: authInventory.legacyHeaderExceptions,
     frontendConsumers: AUTHORIZED_FRONTEND_CONSUMERS.length,
-    writeEndpoints: 0,
+    writeEndpoints: 2,
     disabledOptionsGate: true,
   });
 }

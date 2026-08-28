@@ -20,7 +20,7 @@ export default defineConfig({
   reporter: "list",
   use: { baseURL: "http://127.0.0.1:4185", trace: "off", screenshot: "off", video: "off", serviceWorkers: "block" },
   webServer: [
-    { command: "npm run dev -- --host 127.0.0.1 --port 4185", url: "http://127.0.0.1:4185/", reuseExistingServer: false, timeout: 120_000, env: { ...safe, VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY" } },
+    { command: "npm run dev -- --host 127.0.0.1 --port 4185", url: "http://127.0.0.1:4185/", reuseExistingServer: false, timeout: 120_000, env: { ...safe, VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY", VITE_CRM_PIPELINE_CASE_MUTATION_MODE: "LOCAL_ONLY" } },
     { command: "npm run dev -- --host 127.0.0.1 --port 4186", url: "http://127.0.0.1:4186/", reuseExistingServer: false, timeout: 120_000, env: { ...safe, VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED", VITE_CRM_PIPELINE_READ_MODE: "DISABLED" } },
     { command: "npm run dev -- --host 127.0.0.1 --port 4187", url: "http://127.0.0.1:4187/", reuseExistingServer: false, timeout: 120_000, env: { ...safe, VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED", VITE_CRM_PIPELINE_READ_MODE: "READ_ONLY" } },
     { command: "npm run dev -- --host 127.0.0.1 --port 4188", url: "http://127.0.0.1:4188/", reuseExistingServer: false, timeout: 120_000, env: { ...safe, VITE_CRM_PIPELINE_CLIENT_MODE: "LOCAL_ONLY", VITE_CRM_PIPELINE_READ_MODE: "DISABLED" } },

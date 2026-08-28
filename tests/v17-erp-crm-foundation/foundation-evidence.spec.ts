@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 
 const CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const CLIENT_REF = "028f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const EVIDENCE = resolve("docs/evidence/V17-ERP-CRM-FOUNDATION-02A");
 const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 const statuses = [
@@ -14,7 +15,7 @@ const statuses = [
 const item = Object.freeze({
   caseRef: CASE_REF,
   caseCode: "DEMO-CANONICAL-001",
-  client: { displayName: "Cliente Receptor Sintético", type: "PERSON", status: "active" },
+  client: { clientRef: CLIENT_REF, displayName: "Cliente Receptor Sintético", type: "PERSON", status: "active" },
   mode: "EXPORT",
   serviceType: "Mudanza internacional",
   customerType: "PERSON",
@@ -35,6 +36,7 @@ const item = Object.freeze({
 
 const detail = Object.freeze({
   caseRef: item.caseRef,
+  version: 1,
   caseCode: item.caseCode,
   status: item.status,
   mode: item.mode,
@@ -50,7 +52,7 @@ const detail = Object.freeze({
   quoteCount: item.quoteCount,
   eventCount: item.eventCount,
   client: item.client,
-  owner: { displayName: item.owner.displayName },
+  owner: { displayName: item.owner.displayName, isCurrentActor: true },
   createdAt: item.createdAt,
   updatedAt: item.updatedAt,
 });
@@ -90,7 +92,7 @@ test("capturas sanitizadas del núcleo ERP avanzado", async ({ page }, testInfo)
   await page.getByRole("button", { name: /Abrir ERP/ }).click();
   await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
   await page.screenshot({ path: resolve(EVIDENCE, testInfo.project.name === "chromium-mobile" ? "03-inbox-mobile.png" : "02-inbox-desktop.png"), fullPage: true });
-  await page.locator("button:visible", { hasText: "Abrir ficha" }).first().click();
+  await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await page.screenshot({ path: resolve(EVIDENCE, testInfo.project.name === "chromium-mobile" ? "05-ficha-mobile.png" : "04-ficha-desktop.png"), fullPage: true });
   if (testInfo.project.name === "chromium-desktop") {

@@ -130,6 +130,7 @@ function normalizeSuccessContract(value) {
   return JSON.parse(JSON.stringify(value, (key, item) => {
     if (key === "id") return "<id>";
     if (key === "caseRef") return "<caseRef>";
+    if (key === "clientRef") return "<clientRef>";
     if (key === "caseCode") return "<caseCode>";
     if (key === "displayName") return "<displayName>";
     if (key === "createdAt" || key === "updatedAt") return "<timestamp>";
@@ -267,11 +268,19 @@ try {
   await prisma.pipelineCase.createMany({ data: [...casesOne, ...casesTwo] });
   created.cases.push(...casesOne.map((item) => item.id), ...casesTwo.map((item) => item.id));
 
-  let duplicateCodeError;
+  const crossTenantDuplicateCode = await prisma.pipelineCase.create({
+    data: { ...caseData("duplicate-code-cross-tenant", 0, tenantTwo.tenantId, ownerTwo), caseCode: casesOne[0].caseCode },
+  });
+  check("caseCode puede repetirse entre tenants", crossTenantDuplicateCode.caseCode === casesOne[0].caseCode);
+  await prisma.pipelineCase.delete({ where: { id: crossTenantDuplicateCode.id } });
+
+  let sameTenantDuplicateCodeError;
   try {
-    await prisma.pipelineCase.create({ data: { ...caseData("duplicate-code", 0, tenantTwo.tenantId, ownerTwo), caseCode: casesOne[0].caseCode } });
-  } catch (error) { duplicateCodeError = error; }
-  check("caseCode continúa globalmente único entre tenants", duplicateCodeError?.code === "P2002");
+    await prisma.pipelineCase.create({
+      data: { ...caseData("duplicate-code-same-tenant", 0, tenantOne.tenantId, ownerOne), caseCode: casesOne[0].caseCode },
+    });
+  } catch (error) { sameTenantDuplicateCodeError = error; }
+  check("caseCode permanece único dentro del tenant", sameTenantDuplicateCodeError?.code === "P2002");
 
   let crossOwnerError;
   try {
@@ -285,7 +294,8 @@ try {
   } catch (error) { crossClientError = error; }
   check("FK tenant-first rechaza Client de otro tenant", crossClientError?.code === "P2003");
 
-  const tokenOne = tokenFor(tenantOne);
+  const tokenOne = tokenFor(adminOne);
+  const salesToken = tokenFor(ownerOne);
   const list = await invoke(listHandler, request(tokenOne, "GET", { page: "1", pageSize: "20" }));
   check("lista tenantizada 51", list.statusCode === 200 && list.body.total === 51 && list.body.data.length === 20);
   check("lista publica sólo caseRef UUID v4", list.body.data.every((item) => (
@@ -295,7 +305,7 @@ try {
   )));
   check("lista elimina clientName legacy y publica sólo Client relacional", list.body.data.every((item) => (
     !Object.hasOwn(item, "clientName")
-    && (item.client === null || Object.keys(item.client).sort().join(",") === "displayName,status,type")
+    && (item.client === null || Object.keys(item.client).sort().join(",") === "clientRef,displayName,status,type")
   )));
   check("lista usa cache privada", list.getHeader("cache-control") === "private, no-store" && /authorization/i.test(String(list.getHeader("vary"))));
   check("owner es vista histórica mínima", list.body.data.filter((item) => item.owner).every((item) => item.owner.displayName && item.owner.role === "V" && item.owner.membershipStatus === "ACTIVE"));
@@ -303,7 +313,7 @@ try {
   check("campos internos ausentes", list.body.data.every((item) => forbiddenFields.every((field) => !(field in item))));
   check("campos internos ausentes del owner", list.body.data.filter((item) => item.owner).every((item) => forbiddenFields.every((field) => !(field in item.owner))));
   check("paginación contractual", list.body.page === 1 && list.body.pageSize === 20);
-  const tenantTwoList = await invoke(listHandler, request(tokenFor(tenantTwo), "GET", { pageSize: "100" }));
+  const tenantTwoList = await invoke(listHandler, request(tokenFor(ownerTwo), "GET", { pageSize: "100" }));
   check("segundo tenant sólo ve sus cuatro casos", tenantTwoList.statusCode === 200 && tenantTwoList.body.total === 4 && tenantTwoList.body.data.every((item) => item.caseCode.includes("-TWO-")));
 
   const allRefs = [];
@@ -338,7 +348,7 @@ try {
     && detail.getHeader("access-control-allow-credentials") === undefined);
   const snapshotList = await invoke(listHandler, request(tokenOne, "GET", { q: casesOne[0].caseCode, pageSize: "1" }));
   const expectedCaseContract = {
-    caseRef: "<caseRef>", caseCode: "<caseCode>", client: { displayName: "<displayName>", type: "PERSON", status: "active" }, mode: "EXPORT", serviceType: "MOVING",
+    caseRef: "<caseRef>", caseCode: "<caseCode>", client: { clientRef: "<clientRef>", displayName: "<displayName>", type: "PERSON", status: "active" }, mode: "EXPORT", serviceType: "MOVING",
     customerType: "L4_PERSONAL", status: "NEW_INBOX", estimatedCbm: 0.5, requiresSurvey: true,
     surveyMethod: "PRESENCIAL", originLocation: "Origen 0", destinationLocation: "Destino 0",
     destinationContracted: true, assetsCount: 0,
@@ -347,26 +357,26 @@ try {
   };
   checkJsonSnapshot("snapshot lista", normalizeSuccessContract(snapshotList.body), { ok: true, total: 1, page: 1, pageSize: 1, data: [expectedCaseContract] });
   checkJsonSnapshot("snapshot detalle", normalizeSuccessContract(detail.body), { ok: true, data: {
-    caseRef: "<caseRef>", caseCode: "<caseCode>", status: "NEW_INBOX", mode: "EXPORT", serviceType: "MOVING",
+    caseRef: "<caseRef>", caseCode: "<caseCode>", version: 1, status: "NEW_INBOX", mode: "EXPORT", serviceType: "MOVING",
     customerType: "L4_PERSONAL", estimatedCbm: 0.5, requiresSurvey: true, surveyMethod: "PRESENCIAL",
     originLocation: "Origen 0", destinationLocation: "Destino 0", destinationContracted: true,
     assetsCount: 0, quoteCount: 0, eventCount: 0,
-    client: { displayName: "<displayName>", type: "PERSON", status: "active" },
-    owner: { displayName: "<displayName>" }, createdAt: "<timestamp>", updatedAt: "<timestamp>",
+    client: { clientRef: "<clientRef>", displayName: "<displayName>", type: "PERSON", status: "active" },
+    owner: { displayName: "<displayName>", isCurrentActor: false }, createdAt: "<timestamp>", updatedAt: "<timestamp>",
   } });
   const noClient = await invoke(detailHandler, request(tokenOne, "GET", { caseKey: casesOne[1].publicRef }));
   check("clientId NULL produce client null sin inferencia", noClient.statusCode === 200 && noClient.body.data.client === null
     && !JSON.stringify(noClient.body.data).includes(casesOne[1].clientName));
   const crossTenant = await expectError("cross-tenant indistinguible", invoke(detailHandler, request(tokenOne, "GET", { caseKey: casesTwo[0].publicRef })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
   checkJsonSnapshot("snapshot 404", crossTenant.body, { ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" });
-  const inactiveClient = await invoke(detailHandler, request(tokenFor(tenantTwo), "GET", { caseKey: casesTwo[0].publicRef }));
+  const inactiveClient = await invoke(detailHandler, request(tokenFor(ownerTwo), "GET", { caseKey: casesTwo[0].publicRef }));
   check("Client inactivo conserva estado explícito sin fallback", inactiveClient.statusCode === 200
     && inactiveClient.body.data.client?.displayName === serviceClientTwo.name
     && inactiveClient.body.data.client?.status === "inactive");
   await expectError("referencia repetida rechazada como recurso ausente", invoke(detailHandler, request(tokenOne, "GET", { caseKey: [casesOne[0].publicRef, casesOne[1].publicRef] })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
   await prisma.tenantMembership.update({ where: { id: ownerOne.membershipId }, data: { status: "SUSPENDED" } });
   const historical = await invoke(detailHandler, request(tokenOne, "GET", { caseKey: casesOne[0].publicRef }));
-  check("owner se publica con presentación mínima", Object.keys(historical.body.data.owner).length === 1
+  check("owner se publica con presentación mínima", Object.keys(historical.body.data.owner).sort().join(",") === "displayName,isCurrentActor"
     && historical.body.data.owner.displayName && !Object.hasOwn(historical.body.data.owner, "membershipId"));
   await prisma.tenantMembership.update({ where: { id: ownerOne.membershipId }, data: { status: "ACTIVE" } });
   const [ownerRace] = await Promise.all([
@@ -389,6 +399,19 @@ try {
     ok: true,
     data: { total: 51, assigned: 39, unassigned: 12, byStatus: expectedByStatus, sla: { overdue: null, basis: "UNAVAILABLE" } },
   });
+
+  const salesList = await invoke(listHandler, request(salesToken, "GET", { pageSize: "100" }));
+  check("V sólo lista casos con owner completo propio", salesList.statusCode === 200 && salesList.body.total === 39
+    && salesList.body.data.length === 39 && salesList.body.data.every((item) => item.owner?.displayName === `Usuario sintético ${run}-owner-one`));
+  const salesUnassigned = await invoke(listHandler, request(salesToken, "GET", { unassigned: "true", pageSize: "100" }));
+  check("V no observa casos sin owner ni sus totales", salesUnassigned.statusCode === 200 && salesUnassigned.body.total === 0 && salesUnassigned.body.data.length === 0);
+  const salesSummary = await invoke(summaryHandler, request(salesToken));
+  check("métricas V se limitan antes de contar", salesSummary.statusCode === 200 && salesSummary.body.data.total === 39
+    && salesSummary.body.data.assigned === 39 && salesSummary.body.data.unassigned === 0);
+  await expectError("detalle sin owner es 404 indistinguible para V", invoke(detailHandler, request(salesToken, "GET", { caseKey: casesOne[39].publicRef })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+  await assignOwnerFixture(casesOne[1].id, tenantOne.tenantId, alternateOwner, adminOne, "foreign-detail");
+  await expectError("detalle de otro vendedor es 404 indistinguible", invoke(detailHandler, request(salesToken, "GET", { caseKey: casesOne[1].publicRef })), 404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+  await assignOwnerFixture(casesOne[1].id, tenantOne.tenantId, ownerOne, adminOne, "foreign-detail-restore");
 
   check("rol A accede", (await invoke(listHandler, request(tokenFor(adminOne)))).statusCode === 200);
   const clientsOnlyDenied = await expectError("clients:view solo no permite Pipeline", invoke(listHandler, request(tokenFor(clientsOnly))), 403, "COMMERCIAL_PERMISSION_FORBIDDEN");
@@ -452,7 +475,7 @@ try {
   }
   const unicodeWildcard = await invoke(listHandler, request(tokenOne, "GET", { q: "ñ_%", pageSize: "10" }));
   check("Unicode y wildcard se parametrizan sin error", unicodeWildcard.statusCode === 200 && unicodeWildcard.body.total === 0);
-  await expectError("POST inexistente", invoke(listHandler, request(tokenOne, "POST")), 405, "Method Not Allowed");
+  await expectError("POST bloqueado por compuerta de mutación", invoke(listHandler, request(tokenOne, "POST")), 409, "CRM_PIPELINE_MUTATIONS_DISABLED");
 
   const before = await snapshot();
   await invoke(listHandler, request(tokenOne, "GET", { pageSize: "100" }));
@@ -469,12 +492,12 @@ try {
   };
   let failure;
   try {
-    await crm.listCrmPipelineCases(failurePrisma, { tenantId: tenantOne.tenantId, filters: crm.parsePipelineListQuery({}) });
+    await crm.listCrmPipelineCases(failurePrisma, { tenantId: tenantOne.tenantId, role: "A", membershipId: adminOne.membershipId, userId: adminOne.userId, filters: crm.parsePipelineListQuery({}) });
   } catch (error) { failure = error; }
   check("falla Prisma sanitizada", failure?.status === 503 && failure?.code === "COMMERCIAL_CONTEXT_DATABASE_UNAVAILABLE" && !String(failure.message).includes("secret"));
   const failureHandler = createPipelineCasesListHandler({
     prismaClient: failurePrisma,
-    requirePermission: async () => Object.freeze({ tenantId: tenantOne.tenantId }),
+    requirePermission: async () => Object.freeze({ tenantId: tenantOne.tenantId, role: "A", membershipId: adminOne.membershipId, userId: adminOne.userId }),
   });
   const failureResponse = await invoke(failureHandler, request(tokenOne));
   checkJsonSnapshot("snapshot 503 base", failureResponse.body, { ok: false, error: "COMMERCIAL_CONTEXT_DATABASE_UNAVAILABLE" });

@@ -7,7 +7,7 @@ const TENANT = "tenant-synthetic-foundation";
 const EXPECTED_DETAIL_KEYS = [
   "assetsCount", "caseCode", "caseRef", "client", "createdAt", "customerType", "destinationContracted",
   "destinationLocation", "estimatedCbm", "eventCount", "mode", "originLocation", "owner", "quoteCount",
-  "requiresSurvey", "serviceType", "status", "surveyMethod", "updatedAt",
+  "requiresSurvey", "serviceType", "status", "surveyMethod", "updatedAt", "version",
 ].sort();
 
 let assertions = 0;
@@ -18,6 +18,7 @@ const check = (condition, message) => {
 
 const canonicalRow = Object.freeze({
   publicRef: CASE_REF,
+  version: 1,
   caseCode: "SYNTHETIC-001",
   mode: "EXPORT",
   serviceType: "MOVING",
@@ -40,15 +41,15 @@ const canonicalRow = Object.freeze({
 let capturedQuery;
 const prisma = {
   pipelineCase: {
-    findUnique: async (query) => {
+    findFirst: async (query) => {
       capturedQuery = query;
       return canonicalRow;
     },
   },
 };
-const detail = await findCrmPipelineCase(prisma, { tenantId: TENANT, caseRef: CASE_REF });
-check(capturedQuery.where.tenantId_publicRef.tenantId === TENANT, "detalle no fija tenant");
-check(capturedQuery.where.tenantId_publicRef.publicRef === CASE_REF, "detalle no fija publicRef");
+const detail = await findCrmPipelineCase(prisma, { tenantId: TENANT, role: "A", caseRef: CASE_REF });
+check(capturedQuery.where.tenantId === TENANT, "detalle no fija tenant");
+check(capturedQuery.where.publicRef === CASE_REF, "detalle no fija publicRef");
 check(Object.keys(detail).sort().join("|") === EXPECTED_DETAIL_KEYS.join("|"), "DTO detalle no es cerrado");
 check(detail.caseRef === CASE_REF, "publicRef no se publica como caseRef");
 check(detail.client?.displayName === "Relational receiver", "Client relacional no prevalece");
@@ -56,15 +57,15 @@ check(detail.owner?.displayName === "Relational owner", "owner público incorrec
 check(detail.quoteCount === 2 && detail.eventCount === 3, "conteos relacionales incorrectos");
 check(!/[\"'](?:id|tenantId|clientId|publicRef)[\"']\s*:/.test(JSON.stringify(detail)), "DTO expone identidad interna");
 
-const absentPrisma = { pipelineCase: { findUnique: async () => null } };
+const absentPrisma = { pipelineCase: { findFirst: async () => null } };
 await assert.rejects(
-  findCrmPipelineCase(absentPrisma, { tenantId: TENANT, caseRef: CASE_REF }),
+  findCrmPipelineCase(absentPrisma, { tenantId: TENANT, role: "A", caseRef: CASE_REF }),
   (error) => error?.status === 404 && error?.code === "CRM_PIPELINE_RESOURCE_NOT_FOUND",
 );
 assertions += 1;
 
 const migrations = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-check(migrations.length === 18, "cantidad de migraciones distinta de 18");
+check(migrations.length === 19, "cantidad de migraciones distinta de 19");
 check(!migrations.some((entry) => /(?:migration.?19|commercial_case_foundation)/i.test(entry.name)), "migración 19 creada fuera de autoridad");
 
 const schema = readFileSync("prisma/schema.prisma", "utf8");

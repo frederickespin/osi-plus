@@ -5,7 +5,7 @@ import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 import { validateMt01c2b2Guard } from "./validate-mt01c2b2-guard.mjs";
 import { validateMt01c2b3b } from "./validate-mt01c2b3b-guard.mjs";
 
-const EXPECTED_MIGRATIONS = 18;
+const EXPECTED_MIGRATIONS = 19;
 const ACTIVATION_BATCH = "MT-01C2B2-IPACKERS-DO-V1";
 const BRIDGE_PATH = "api/_lib/commercialTenancyWrite.js";
 const PREPARED_ROUTES = Object.freeze([

@@ -2,9 +2,10 @@ import { CrmPipelineReadApi } from "/src/crm-relational/readApi";
 
 const headers = { "Content-Type": "application/json", "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 const caseRef = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const clientRef = "028f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const statuses = ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"];
 const row = { caseRef, caseCode: "CASE-1", client: null, mode: "LOCAL", serviceType: "Servicio", customerType: "PERSON", status: "NEW_INBOX", estimatedCbm: 1, requiresSurvey: false, surveyMethod: "NONE", originLocation: "Origen", destinationLocation: "Destino", destinationContracted: false, assetsCount: 0, owner: null, quoteCount: 0, eventCount: 0, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
-const detail = { caseRef, caseCode: "CASE-1", status: "NEW_INBOX", mode: "LOCAL", serviceType: "Servicio", customerType: "PERSON", estimatedCbm: 1, requiresSurvey: false, surveyMethod: "NONE", originLocation: "Origen", destinationLocation: "Destino", destinationContracted: true, assetsCount: 0, quoteCount: 0, eventCount: 0, client: null, owner: null, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
+const detail = { caseRef, version: 1, caseCode: "CASE-1", status: "NEW_INBOX", mode: "LOCAL", serviceType: "Servicio", customerType: "PERSON", estimatedCbm: 1, requiresSurvey: false, surveyMethod: "NONE", originLocation: "Origen", destinationLocation: "Destino", destinationContracted: true, assetsCount: 0, quoteCount: 0, eventCount: 0, client: null, owner: null, createdAt: "2026-08-18T10:00:00.000Z", updatedAt: "2026-08-18T10:00:00.000Z" };
 const validList = { ok: true, total: 1, page: 1, pageSize: 25, data: [row] };
 const validSummary = { ok: true, data: { total: 1, assigned: 0, unassigned: 1, byStatus: Object.fromEntries(statuses.map((status) => [status, status === "NEW_INBOX" ? 1 : 0])), sla: { overdue: null, basis: "UNAVAILABLE" } } };
 type Scenario = { name: string; response: () => Response; operation?: "list" | "detail" | "summary"; expectedStatus?: number };
@@ -38,11 +39,11 @@ const scenarios: Scenario[] = [
   { name: "detail-tenant-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, tenantId: "forbidden" } }) },
   { name: "detail-legacy-client-name", operation: "detail", response: () => json({ ok: true, data: { ...detail, clientName: "forbidden" } }) },
   { name: "detail-case-number-alias", operation: "detail", response: () => json({ ok: true, data: { ...detail, caseNumber: "forbidden" } }) },
-  { name: "detail-client-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, client: { displayName: "Client", type: "PERSON", status: "active", clientId: "forbidden" } } }) },
-  { name: "list-client-field", response: () => json({ ...validList, data: [{ ...row, client: { displayName: "Client", type: "PERSON", status: "active", email: "forbidden@example.invalid" } }] }) },
+  { name: "detail-client-id", operation: "detail", response: () => json({ ok: true, data: { ...detail, client: { clientRef, displayName: "Client", type: "PERSON", status: "active", clientId: "forbidden" } } }) },
+  { name: "list-client-field", response: () => json({ ...validList, data: [{ ...row, client: { clientRef, displayName: "Client", type: "PERSON", status: "active", email: "forbidden@example.invalid" } }] }) },
   { name: "list-excessive-string", response: () => json({ ...validList, data: [{ ...row, caseCode: "x".repeat(2_001) }] }) },
   { name: "detail-invalid-date", operation: "detail", response: () => json({ ok: true, data: { ...detail, updatedAt: "not-a-date" } }) },
-  { name: "detail-owner-membership", operation: "detail", response: () => json({ ok: true, data: { ...detail, owner: { displayName: "Owner", membershipId: "forbidden" } } }) },
+  { name: "detail-owner-membership", operation: "detail", response: () => json({ ok: true, data: { ...detail, owner: { displayName: "Owner", isCurrentActor: true, membershipId: "forbidden" } } }) },
   { name: "oversized", response: () => new Response(JSON.stringify({ ...validList, padding: "x".repeat(1_000_001) }), { status: 200, headers }) },
   ...([401, 403, 404, 409, 503] as const).map((status) => ({ name: `error-${status}`, expectedStatus: status, response: () => json({ ok: false, error: "INTERNAL_DETAIL_MUST_NOT_ESCAPE" }, status) })),
 ];

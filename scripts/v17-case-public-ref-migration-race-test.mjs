@@ -7,6 +7,7 @@ import { PrismaClient } from "@prisma/client";
 import { validateV17CasePublicRefLocalUrl } from "./v17-case-public-ref-local-target.mjs";
 
 const source = validateV17CasePublicRefLocalUrl();
+const CASE_PUBLIC_REF_MIGRATION = "20260821010000_v17_pipeline_case_public_ref";
 const database = "osi_v17_case_public_ref_race";
 const atomicDatabase = "osi_v17_case_public_ref_atomic";
 const targetUrl = new URL(source.raw);
@@ -73,7 +74,9 @@ cpSync(resolve("prisma/schema.prisma"), join(tempPrisma, "schema.prisma"));
 for (const name of readdirSync(resolve("prisma/migrations"), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
-  .filter((name) => name !== "20260821010000_v17_pipeline_case_public_ref")) {
+  // This suite exercises migration 18 in isolation. Later migrations must not
+  // leak into its 17-migration baseline as the repository grows.
+  .filter((name) => name < CASE_PUBLIC_REF_MIGRATION)) {
   cpSync(resolve("prisma/migrations", name), join(tempPrisma, "migrations", name), { recursive: true });
 }
 
@@ -96,8 +99,8 @@ try {
   const [atomicBefore] = await atomic.$queryRawUnsafe(`SELECT "id", "caseCode", "createdAt", "updatedAt" FROM "osi"."osi_pipeline_cases" WHERE "id"=$1`, `${fixture}-atomic-case`);
   await atomic.$disconnect();
 
-  const injectedDirectory = join(tempPrisma, "migrations", "20260821010000_v17_pipeline_case_public_ref");
-  cpSync(resolve("prisma/migrations/20260821010000_v17_pipeline_case_public_ref"), injectedDirectory, { recursive: true });
+  const injectedDirectory = join(tempPrisma, "migrations", CASE_PUBLIC_REF_MIGRATION);
+  cpSync(resolve("prisma/migrations", CASE_PUBLIC_REF_MIGRATION), injectedDirectory, { recursive: true });
   const injectedPath = join(injectedDirectory, "migration.sql");
   const migrationSql = readFileSync(injectedPath, "utf8");
   writeFileSync(injectedPath, migrationSql.replace("\nCOMMIT;", `
@@ -154,6 +157,11 @@ COMMIT;`), "utf8");
   await seed.$disconnect();
   seed = undefined;
 
+  // Apply only migration 18 in the race phase. Pointing at the repository's
+  // complete tree would allow later migrations to start while the concurrent
+  // INSERT is being released, contaminating this lock-order experiment.
+  cpSync(resolve("prisma/migrations", CASE_PUBLIC_REF_MIGRATION), injectedDirectory, { recursive: true });
+
   blocker = new PrismaClient({ datasourceUrl: targetUrl.toString() });
   observer = new PrismaClient({ datasourceUrl: targetUrl.toString() });
   inserter = new PrismaClient({ datasourceUrl: targetUrl.toString() });
@@ -168,7 +176,7 @@ COMMIT;`), "utf8");
   }, { timeout: 30_000 });
   await ready;
 
-  const migrationPromise = startMigration(resolve("prisma/schema.prisma"), targetUrl.toString());
+  const migrationPromise = startMigration(join(tempPrisma, "schema.prisma"), targetUrl.toString());
   await waitFor(observer, `
     SELECT pid FROM pg_locks
     WHERE relation='"osi"."osi_pipeline_cases"'::regclass

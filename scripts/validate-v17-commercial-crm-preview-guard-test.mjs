@@ -45,7 +45,10 @@ const results = [
   mustFail("rama Preview alterada", mutate("shared/v17CommercialCrmPreview.js", (source) => source.replace("feature/v17-commercial-crm-preview", "main")), /autoridad Preview incompleta/),
   mustFail("batch Preview alterado", mutate("shared/v17CommercialCrmPreview.js", (source) => source.replace("V17-COMMERCIAL-CRM-PREVIEW-01", "ALTERED")), /autoridad Preview incompleta/),
   mustFail("Preview permitido en Production", mutate("shared/v17CommercialCrmPreview.js", (source) => source.replace('environment.VERCEL_ENV === "preview"', 'environment.VERCEL_ENV === "production"')), /autoridad Preview incompleta/),
-  mustFail("mutación Preview habilitada", mutate("shared/v17CommercialCrmPreview.js", (source) => source.replace("absentOrExact(environment.CRM_PIPELINE_MUTATION_MODE, DISABLED)", "absentOrExact(environment.CRM_PIPELINE_MUTATION_MODE, LOCAL_ONLY)")), /autoridad Preview incompleta/),
+  mustFail("mutación Preview sustituida por modo local", mutate("shared/v17CommercialCrmPreview.js", (source) => source.replace("[DISABLED, V17_COMMERCIAL_CRM_PREVIEW_MODE]", "[DISABLED, LOCAL_ONLY]")), /autoridad Preview incompleta/),
+  mustFail("mutaciones comerciales generales activadas", mutate("shared/v17CommercialCrmPreview.js", (source) => source.replace("environment.COMMERCIAL_TENANCY_MUTATION_MODE === DISABLED", "environment.COMMERCIAL_TENANCY_MUTATION_MODE === LOCAL_ONLY")), /autoridad Preview incompleta/),
+  mustFail("Preview eliminado de la mutación focal", mutate("api/_lib/crmCaseMutationHttp.js", (source) => source.replace("mode !== CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL", "mode !== CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY")), /mutación focal no limita Preview exacto/),
+  mustFail("mutaciones históricas habilitadas en Preview", mutate("api/_lib/pipelineCaseMutationHttp.js", (source) => source.replace('throw new CommercialTenancyError("CRM_PIPELINE_MUTATIONS_DISABLED", 409);', "return mode;")), /mutaciones históricas se habilitan/),
   mustFail("deniedPermissions ignorado", mutate("src/hub/hubAccess.ts", (source) => source.replace("application.requiredPermissions.some((permission) => denied.has(permission))", "false")), /deniedPermissions no prevalece/),
   mustFail("alias CRM sin decisión compartida", mutate("src/hub/appCatalog.ts", (source) => source.replace('routeAliases: ["/crm", "/sales/pipeline"]', 'routeAliases: ["/sales/pipeline"]')), /rutas CRM equivalentes divergentes/),
   mustFail("ruta directa sin decisión común", mutate("src/hub/hubRouteAccess.ts", (source) => source.replace("evaluateHubAccess(application, context)", "{ allowed: true }")), /ruta directa omite decisión común/),
@@ -65,4 +68,4 @@ const results = [
 const guardSource = actual.files["scripts/validate-v17-commercial-crm-preview-guard.mjs"];
 assert.equal(/node:child_process|git\s+(?:diff|merge-base)|const\s+BASE\s*=/.test(guardSource), false);
 
-console.log(JSON.stringify({ ok: true, assertions: results.length, negative: 16, positive: 6, results }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: results.length, negative: 19, positive: 6, results }, null, 2));

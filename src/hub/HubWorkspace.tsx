@@ -4,6 +4,7 @@ import { ENV_LABELS, getAppEnv } from "@/lib/env";
 import { HUB_APPLICATIONS, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
 import { visibleHubApplications, type HubAccessContext } from "./hubAccess";
 import type { OsiHubMode } from "./hubMode";
+import { resolveCrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
@@ -83,6 +84,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         authorization={authorization}
         caseRef={commercialCaseRef}
         role={accessContext.role}
+        mutationAccess={resolveCrmCaseMutationUiAccess(accessContext)}
         userName={userName}
         onNavigate={onNavigate}
         onLogout={onLogout}

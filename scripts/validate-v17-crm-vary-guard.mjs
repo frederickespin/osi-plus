@@ -3,6 +3,7 @@ import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const EXPECTED_ROUTES = Object.freeze({
+  "api/crm/client-options.js": "createCrmClientOptionsHandler",
   "api/crm/pipeline-cases/index.js": "createCrmPipelineReadHandler",
   "api/crm/pipeline-cases/[caseKey]/index.js": "createCrmPipelineReadHandler",
   "api/crm/pipeline-summary.js": "createCrmPipelineReadHandler",

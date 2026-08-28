@@ -14,7 +14,12 @@ export function createPipelineSummaryHandler({
     env,
     prismaClient,
     requirePermission,
-    execute: ({ context, prisma: database }) => summarizeCrmPipelineCases(database, { tenantId: context.tenantId }),
+    execute: ({ context, prisma: database }) => summarizeCrmPipelineCases(database, {
+      tenantId: context.tenantId,
+      role: context.role,
+      membershipId: context.membershipId,
+      userId: context.userId,
+    }),
     response: (data) => ({ ok: true, data }),
   });
 }

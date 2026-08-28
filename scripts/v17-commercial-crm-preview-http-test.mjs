@@ -16,11 +16,16 @@ const exactPreview = Object.freeze({
   CRM_PIPELINE_RUNTIME_MODE: "PREVIEW_REHEARSAL",
   CRM_PIPELINE_MUTATION_MODE: "DISABLED",
   CRM_PIPELINE_ACTIVATION_BATCH: "V17-COMMERCIAL-CRM-PREVIEW-01",
+  VITE_OSI_HUB_MODE: "PREVIEW_REHEARSAL",
+  VITE_CRM_PIPELINE_CLIENT_MODE: "PREVIEW_REHEARSAL",
+  VITE_CRM_PIPELINE_READ_MODE: "PREVIEW_REHEARSAL",
+  VITE_V17_COMMERCIAL_CRM_PREVIEW_BATCH: "V17-COMMERCIAL-CRM-PREVIEW-01",
   MT01B_AUTH_MODE: "LEGACY",
   MT01B_TENANT_SWITCH_ENABLED: "false",
   VITE_MT01B2_CLIENT_ENABLED: "false",
   COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE",
   COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ",
+  COMMERCIAL_TENANCY_MUTATION_MODE: "DISABLED",
   COMMERCIAL_TENANCY_ACTIVATION_BATCH: "MT-01C2B2-IPACKERS-DO-V1",
 });
 const VISIBLE_CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
@@ -53,7 +58,14 @@ const requirePermission = async (req, res) => {
     res.status(401).json({ ok: false, error: "COMMERCIAL_AUTH_INVALID" });
     return null;
   }
-  return Object.freeze({ tenantId: "tenant-preview" });
+  return Object.freeze({
+    tenantId: "tenant-preview",
+    membershipId: "membership-preview-admin",
+    userId: "user-preview-admin",
+    role: "A",
+    effectivePermissions: Object.freeze(["pipeline:view"]),
+    deniedPermissions: Object.freeze([]),
+  });
 };
 
 const listDatabase = {
@@ -65,12 +77,15 @@ const listDatabase = {
 };
 const detailDatabase = {
   pipelineCase: {
-    findUnique: async ({ where }) => {
+    findFirst: async ({ where }) => {
       databaseCalls += 1;
-      if (where.tenantId_publicRef?.publicRef === CROSS_TENANT_CASE_REF) return null;
+      if (where.publicRef === CROSS_TENANT_CASE_REF) return null;
       return {
-        publicRef: VISIBLE_CASE_REF, caseCode: "DEMO-HTTP", mode: "LOCAL", serviceType: "MOVING",
-        status: "NEW_INBOX", client: null, enterpriseOwner: null,
+        publicRef: VISIBLE_CASE_REF, ownerMembershipId: null, version: 1,
+        caseCode: "DEMO-HTTP", mode: "LOCAL", serviceType: "MOVING", customerType: "L4_PERSONAL",
+        status: "NEW_INBOX", estimatedCbm: null, requiresSurvey: false, surveyMethod: null,
+        originLocation: null, destinationLocation: null, destinationContracted: null, assetsCount: 0,
+        client: null, enterpriseOwner: null, _count: { quotes: 0, events: 0 },
         createdAt: new Date("2026-08-18T10:00:00.000Z"), updatedAt: new Date("2026-08-18T10:00:00.000Z"),
       };
     },

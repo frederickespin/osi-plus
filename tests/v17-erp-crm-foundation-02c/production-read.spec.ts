@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Page, type Route } from "@playwright/test";
 
 const CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const CLIENT_REF = "028f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const protectedChunk = /HubWorkspace|AdvancedErpShell|CommercialCaseDetail/u;
 
 type Actor = Readonly<{ role: "A" | "V"; denied?: boolean; confirmed?: boolean }>;
@@ -51,11 +52,11 @@ async function mockCrm(page: Page) {
     if (pathname === "/api/crm/pipeline-summary") {
       return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { total: 1, assigned: 0, unassigned: 1, byStatus: { NEW_INBOX: 1, AWAITING_ICP: 0, GOVERNANCE_CONFIRMED: 0, REQUIREMENTS_CONFIRMED: 0, SURVEY_PLANNING: 0, SURVEY_SCHEDULED: 0, SURVEY_COMPLETED: 0, CRATING_ESTIMATE_PENDING: 0, PRICING_IN_PROGRESS: 0, QUOTE_DRAFT: 0, INTERNAL_REVIEW: 0, QUOTE_SENT: 0, NEGOTIATION: 0, WON: 0, LOST: 0, CHANGE_CONTROL: 0, APPROVED: 0, OPS_HANDOFF: 0 }, sla: { overdue: null, basis: "UNAVAILABLE" } } }) });
     }
-    const item = { caseRef: CASE_REF, caseCode: "PILOT-READ-001", client: { displayName: "Receptor sintético", type: "PERSON", status: "active" }, mode: "EXPORT", serviceType: "Servicio sintético", customerType: "PERSON", status: "NEW_INBOX", estimatedCbm: 1, requiresSurvey: true, surveyMethod: "ONSITE", originLocation: "Origen sintético", destinationLocation: "Destino sintético", destinationContracted: true, assetsCount: 1, owner: null, quoteCount: 0, eventCount: 0, createdAt: "2026-08-24T00:00:00.000Z", updatedAt: "2026-08-24T00:00:00.000Z" };
+    const item = { caseRef: CASE_REF, caseCode: "PILOT-READ-001", client: { clientRef: CLIENT_REF, displayName: "Receptor sintético", type: "PERSON", status: "active" }, mode: "EXPORT", serviceType: "Servicio sintético", customerType: "PERSON", status: "NEW_INBOX", estimatedCbm: 1, requiresSurvey: true, surveyMethod: "ONSITE", originLocation: "Origen sintético", destinationLocation: "Destino sintético", destinationContracted: true, assetsCount: 1, owner: null, quoteCount: 0, eventCount: 0, createdAt: "2026-08-24T00:00:00.000Z", updatedAt: "2026-08-24T00:00:00.000Z" };
     if (pathname === "/api/crm/pipeline-cases") {
       return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, data: [item] }) });
     }
-    return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { ...item, owner: null } }) });
+    return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { ...item, version: 1, owner: null } }) });
   });
   return audit;
 }
@@ -75,7 +76,7 @@ test("A y V acceden al ERP avanzado sólo después de confirmación productiva",
     await page.locator("main").getByRole("button").filter({ hasText: "Comercial y CRM" }).click();
     await expect(page.getByTestId("advanced-erp-shell")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Abrir ficha" }).click();
+    await page.getByRole("button", { name: /Ficha del caso/ }).click();
     await expect(page).toHaveURL(new RegExp(`/commercial/cases/${CASE_REF}$`));
     await expect(page.getByRole("heading", { name: "Ficha del Caso", exact: true })).toBeVisible();
     await page.getByRole("tab", { name: /Survey/u }).click();

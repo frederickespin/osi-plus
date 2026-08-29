@@ -2,6 +2,8 @@ import { performance } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
 import { createCrm01b2LocalPrisma } from "./crm-01b2-local-target.mjs";
 import { listCrmPipelineOwnerOptions, resolveCrmOwnerRefForAssignment } from "../api/_lib/crmOwnerCatalog.js";
+import { readCrmOwnerRef } from "../api/_lib/crmOwnerRef.js";
+import { assertOwnerCatalogContract } from "./crm-owner-catalog-contract.mjs";
 
 const results = [];
 const metrics = {};
@@ -74,8 +76,18 @@ try {
   queryCount = 0;
   const first = await listCrmPipelineOwnerOptions(adminContext, { page: "1", pageSize: "100" }, { prisma: countedPrisma });
   check("2.000 memberships se filtran sin N+1", first.total === 1_999 && first.data.length === 100 && queryCount === 1, { queries: queryCount });
-  check("contrato real no expone IDs ni PII", first.data.every((entry) => Object.keys(entry).sort().join(",") === "displayName,ownerRef,role"
-    && !JSON.stringify(entry).match(/membershipId|userId|tenantId|email|phone/i)));
+  const forbiddenFixtureValues = users.flatMap((entry, index) => [
+    { kind: "USER_ID", value: entry.id },
+    { kind: "EMAIL", value: entry.email },
+    { kind: "PHONE", value: entry.phone },
+    { kind: "MEMBERSHIP_ID", value: index < 2_000 ? `${run}-m-1-${index + 1}` : `${run}-m-2-1` },
+    { kind: "TENANT_ID", value: index < 2_000 ? tenantOneId : tenantTwoId },
+  ]);
+  const contract = assertOwnerCatalogContract(first.data, {
+    forbiddenValues: forbiddenFixtureValues,
+    verifyOwnerRef: (value) => readCrmOwnerRef(value, { env: process.env }),
+  });
+  check("contrato real no expone IDs ni PII", contract.entries === 100 && contract.fields === 3);
   const foreignCatalog = await listCrmPipelineOwnerOptions(Object.freeze({ ...adminContext, tenantId: tenantTwoId }), {}, { prisma });
   check("segundo tenant recibe únicamente su vendedor", foreignCatalog.total === 1 && foreignCatalog.data.length === 1);
   check("nombre idéntico en otro tenant no vuelve ambiguo el catálogo", foreignCatalog.data[0].displayName === first.data[0].displayName);

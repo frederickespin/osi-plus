@@ -179,6 +179,15 @@ jobs:
       - name: Validate cross-tab sessions in real browsers
         run: npm run test:mt01b2b:browser
 
+      - name: Upload sanitized logout-refresh timeline
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mt01b2b-logout-refresh-timeline-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mt01b2b-logout-refresh-timeline
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Validate anonymous sessions in real browsers
         env:
           AUTH_NULL_ARTIFACT_DIR: ${{ runner.temp }}/auth-null-playwright-artifacts

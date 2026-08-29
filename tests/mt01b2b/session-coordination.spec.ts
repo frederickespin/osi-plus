@@ -1,4 +1,13 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  classifyRefreshes,
+  sanitizeLogoutTimeline,
+  validateLogoutTimeline,
+  type FinalTabState,
+  type LogoutTimelineEvent,
+} from "./logoutRefreshTimeline.ts";
 
 type Fence = {
   sessionId: string;
@@ -339,32 +348,306 @@ test("runtime integrado acepta upgrade y vuelve limpiamente a LEGACY si servidor
   expect(await page.evaluate(() => window.mt01b2bHarness.resources())).toEqual({ activities: 0, channels: 0, coordinators: 0 });
 });
 
-test("logout cancela el refresh programado del runtime integrado", async ({ context, browserName }) => {
+test("logout clasifica, aborta y descarta refresh sin restaurar la sesión", async ({ context, browserName }, testInfo) => {
   const session = baseFence(`timer-${browserName}`);
+  const futureRounds = browserName === "webkit" ? 100 : 20;
+  const inFlightRounds = browserName === "webkit" ? 20 : 1;
+  const crossTabRounds = browserName === "webkit" ? 20 : 1;
   let upgradeCalls = 0;
   let refreshCalls = 0;
   let logoutCalls = 0;
+  let tokenTtlMs = 10 * 60_000;
+  let holdRefresh = false;
+  let releaseHeldRefresh: (() => void) | null = null;
+  let observeHeldRefresh: (() => void) | null = null;
+  let heldRefreshObserved = Promise.resolve();
+  let heldRefreshRelease = Promise.resolve();
+  let evidence: { scenario: string; round: number; events: LogoutTimelineEvent[]; tabs: FinalTabState[] } | null = null;
+  let activeScenario = "HARNESS_NEGATIVE";
+  let activeRound = 0;
+  let activePages: Array<{ page: Page; tabId: string }> = [];
+
+  const resetHeldRefresh = () => {
+    heldRefreshObserved = new Promise<void>((resolve) => { observeHeldRefresh = resolve; });
+    heldRefreshRelease = new Promise<void>((resolve) => { releaseHeldRefresh = resolve; });
+  };
+
   await context.route("**/__mt01b2b/upgrade", async (route) => {
     upgradeCalls += 1;
     expect(route.request().headers().authorization === "Bearer legacy-test-token").toBe(true);
-    await route.fulfill(json(success(session, token(session, 61_000, "scheduled"))));
+    await route.fulfill(json(success(session, token(session, tokenTtlMs, "timeline-upgrade"))));
   });
   await context.route("**/__mt01b2b/refresh", async (route) => {
     refreshCalls += 1;
-    await route.fulfill(json(success(session)));
+    const requestId = route.request().headers()["x-mt01b2-timeline-request"];
+    const page = route.request().frame().page();
+    if (requestId) {
+      await page.evaluate((selectedRequestId) => window.mt01b2bHarness.observeRefresh(selectedRequestId), requestId);
+    }
+    observeHeldRefresh?.();
+    if (holdRefresh) await heldRefreshRelease;
+    try {
+      await route.fulfill(json(success(session, token(session, 10 * 60_000, "timeline-refresh"))));
+    } catch {
+      // El fetch abortado puede cerrar la ruta antes de que el interceptor libere su respuesta sintética.
+    }
   });
   await context.route("**/__mt01b2b/logout", async (route) => {
     logoutCalls += 1;
     await route.fulfill(json({ ok: true }));
   });
-  const page = await harnessPage(context);
-  const result = await page.evaluate((channel) => window.mt01b2bHarness.createRuntime(channel), `mt01b2b-timer-${browserName}-${Date.now()}`);
-  expect(result).toMatchObject({ mode: "V2", state: "AUTHENTICATED", authenticated: true });
-  await page.evaluate(() => window.mt01b2bHarness.logout());
-  await page.waitForTimeout(1_500);
-  expect(upgradeCalls).toBe(1);
-  expect(refreshCalls).toBe(0);
-  expect(logoutCalls).toBe(1);
-  expect(await page.evaluate(() => window.mt01b2bHarness.resources())).toEqual({ activities: 0, channels: 0, coordinators: 0 });
-  expect(JSON.stringify(await page.evaluate(() => window.mt01b2bHarness.storage()))).not.toContain("scheduled");
+
+  const installCapture = (page: Page) => page.evaluate(() => {
+    window.addEventListener("mt01b2b:logout-request", () => {
+      window.mt01b2bHarness.recordTimeline("LOGOUT_INTENT");
+    }, { capture: true });
+  });
+
+  const finalTab = async (page: Page, tabId: string): Promise<FinalTabState> => {
+    const view = await page.evaluate(() => window.mt01b2bHarness.snapshot());
+    const resources = await page.evaluate(() => window.mt01b2bHarness.resources());
+    const timers = await page.evaluate(() => window.mt01b2bHarness.timelineTimers());
+    const cookies = await context.cookies();
+    await page.evaluate(({ authenticated, loggedOut, cookiePresent }) => {
+      if (authenticated) window.mt01b2bHarness.recordTimeline("SESSION_AUTHENTICATED");
+      if (loggedOut) window.mt01b2bHarness.recordTimeline("SESSION_LOGGED_OUT");
+      if (cookiePresent) window.mt01b2bHarness.recordTimeline("COOKIE_PRESENT");
+    }, {
+      authenticated: "authenticated" in (view ?? {}) ? Boolean((view as { authenticated?: boolean }).authenticated) : view?.hasAccessToken === true,
+      loggedOut: view?.state === "LOGGED_OUT",
+      cookiePresent: cookies.length > 0,
+    });
+    return {
+      tabId,
+      state: view?.state ?? null,
+      authenticated: "authenticated" in (view ?? {}) ? Boolean((view as { authenticated?: boolean }).authenticated) : view?.hasAccessToken === true,
+      cookieCount: cookies.length,
+      resources: { ...resources, timers },
+    };
+  };
+
+  const assertTimeline = (events: LogoutTimelineEvent[], tabs: FinalTabState[]) => {
+    expect(classifyRefreshes(events).filter((refresh) => refresh.classification === "STARTED_AFTER_LOGOUT_INTENT")).toEqual([]);
+    expect(validateLogoutTimeline(events, tabs)).toEqual([]);
+  };
+
+  const runNegativeAssertions = () => {
+    const tab = (authenticated = false): FinalTabState => ({
+      tabId: "tab-a",
+      state: authenticated ? "AUTHENTICATED" : "LOGGED_OUT",
+      authenticated,
+      cookieCount: 0,
+      resources: { activities: 0, channels: 0, coordinators: 0, timers: 0 },
+    });
+    const base = (extra: LogoutTimelineEvent[]): LogoutTimelineEvent[] => [
+      { sequence: 1, atMs: 2, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 2, atMs: 3, tabId: "tab-a", kind: "BROADCAST_LOGOUT_SENT" },
+      { sequence: 3, atMs: 4, tabId: "tab-a", kind: "SESSION_LOGGED_OUT" },
+      ...extra,
+    ];
+    expect(validateLogoutTimeline(base([
+      { sequence: 4, atMs: 5, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "refresh-1" },
+    ]), [tab()])).toContain("REFRESH_STARTED_AFTER_LOGOUT");
+    expect(validateLogoutTimeline(base([
+      { sequence: 4, atMs: 1, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "refresh-1" },
+      { sequence: 5, atMs: 1.5, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "refresh-1" },
+    ]), [tab()])).toContain("PRE_LOGOUT_REFRESH_NOT_ABORTED");
+    expect(validateLogoutTimeline(base([
+      { sequence: 4, atMs: 5, tabId: "tab-a", kind: "SESSION_AUTHENTICATED" },
+    ]), [tab(true)])).toContain("SESSION_RESTORED_AFTER_LOGOUT");
+    expect(validateLogoutTimeline(base([
+      { sequence: 4, atMs: 5, tabId: "tab-a", kind: "COOKIE_PRESENT" },
+      { sequence: 5, atMs: 6, tabId: "tab-a", kind: "TOKEN_PRESENT" },
+    ]), [tab()])).toContain("CREDENTIAL_EMITTED_AFTER_LOGOUT");
+    const sameMillisecondBefore = classifyRefreshes([
+      { sequence: 1, atMs: 2, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "refresh-before" },
+      { sequence: 2, atMs: 2, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 3, atMs: 2, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "refresh-before" },
+    ])[0];
+    expect(sameMillisecondBefore).toMatchObject({
+      classification: "STARTED_BEFORE_LOGOUT",
+      observation: "OBSERVED_AFTER_LOGOUT",
+      causalOrderKnown: true,
+    });
+
+    const sameMillisecondAfter = classifyRefreshes([
+      { sequence: 1, atMs: 2, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 2, atMs: 2, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "refresh-after" },
+      { sequence: 3, atMs: 2, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "refresh-after" },
+    ])[0];
+    expect(sameMillisecondAfter).toMatchObject({
+      classification: "STARTED_AFTER_LOGOUT_INTENT",
+      observation: "OBSERVED_AFTER_LOGOUT",
+      causalOrderKnown: true,
+    });
+
+    expect(classifyRefreshes([
+      { sequence: 1, atMs: 1, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "observed-late" },
+      { sequence: 2, atMs: 2, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 3, atMs: 3, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "observed-late" },
+    ])[0]).toMatchObject({ classification: "STARTED_BEFORE_LOGOUT", observation: "OBSERVED_AFTER_LOGOUT" });
+
+    expect(classifyRefreshes([
+      { sequence: 1, atMs: 1, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 2, atMs: 1, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "started-late" },
+      { sequence: 3, atMs: 1, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "started-late" },
+    ])[0]).toMatchObject({ classification: "STARTED_AFTER_LOGOUT_INTENT", observation: "OBSERVED_AFTER_LOGOUT" });
+
+    expect(validateLogoutTimeline([
+      { sequence: 1, atMs: 1, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 1, atMs: 2, tabId: "tab-a", kind: "SESSION_LOGGED_OUT" },
+    ], [tab()])).toContain("DUPLICATE_EVENT_SEQUENCE");
+    expect(validateLogoutTimeline([
+      { sequence: 0, atMs: 1, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+    ], [tab()])).toContain("INVALID_EVENT_SEQUENCE");
+
+    const crossTabWithoutBoundary = [
+      { sequence: 1, atMs: 1, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 1, atMs: 1, tabId: "tab-b", kind: "REFRESH_STARTED", requestId: "remote-refresh" },
+    ] satisfies LogoutTimelineEvent[];
+    expect(classifyRefreshes(crossTabWithoutBoundary)[0]).toMatchObject({ classification: null, causalOrderKnown: false });
+    expect(validateLogoutTimeline(crossTabWithoutBoundary, [tab(), { ...tab(), tabId: "tab-b" }]))
+      .toContain("REFRESH_CAUSAL_ORDER_INSUFFICIENT:tab-b:remote-refresh");
+    const ignoredEvents = base([]);
+    expect(validateLogoutTimeline(ignoredEvents, [tab(), {
+      ...tab(true),
+      tabId: "tab-b",
+    }])).toContain("TAB_IGNORED_LOGOUT_BROADCAST:tab-b");
+  };
+
+  try {
+    runNegativeAssertions();
+    const page = await harnessPage(context);
+    await installCapture(page);
+
+    tokenTtlMs = 10 * 60_000;
+    for (let round = 1; round <= futureRounds; round += 1) {
+      const tabId = `${browserName}-future-${round}`;
+      activeScenario = "TIMER_FUTURE";
+      activeRound = round;
+      activePages = [{ page, tabId }];
+      await page.evaluate((selectedTabId) => window.mt01b2bHarness.beginTimeline(selectedTabId), tabId);
+      const refreshBefore = refreshCalls;
+      const result = await page.evaluate((channel) => window.mt01b2bHarness.createRuntime(channel), `mt01b2b-future-${browserName}-${round}`);
+      expect(result).toMatchObject({ mode: "V2", state: "AUTHENTICATED", authenticated: true });
+      await page.evaluate(() => window.mt01b2bHarness.requestLogout());
+      const tabs = [await finalTab(page, tabId)];
+      const events = await page.evaluate(() => window.mt01b2bHarness.timeline());
+      evidence = { scenario: "TIMER_FUTURE", round, events, tabs };
+      expect(refreshCalls - refreshBefore).toBe(0);
+      assertTimeline(events, tabs);
+      expect(await page.evaluate(() => window.mt01b2bHarness.timelineTimers())).toBe(0);
+    }
+
+    tokenTtlMs = 60_001;
+    for (let round = 1; round <= inFlightRounds; round += 1) {
+      const tabId = `${browserName}-inflight-${round}`;
+      activeScenario = "REFRESH_IN_FLIGHT";
+      activeRound = round;
+      activePages = [{ page, tabId }];
+      await page.evaluate((selectedTabId) => window.mt01b2bHarness.beginTimeline(selectedTabId), tabId);
+      holdRefresh = true;
+      resetHeldRefresh();
+      await page.evaluate((channel) => window.mt01b2bHarness.createRuntime(channel), `mt01b2b-inflight-${browserName}-${round}`);
+      await heldRefreshObserved;
+      await page.evaluate(() => window.mt01b2bHarness.requestLogout());
+      holdRefresh = false;
+      releaseHeldRefresh?.();
+      releaseHeldRefresh = null;
+      await expect.poll(() => page.evaluate(() => window.mt01b2bHarness.timeline()
+        .some((event) => event.kind === "REFRESH_REJECTED" && event.errorName === "AbortError"))).toBe(true);
+      const tabs = [await finalTab(page, tabId)];
+      const events = await page.evaluate(() => window.mt01b2bHarness.timeline());
+      evidence = { scenario: "REFRESH_IN_FLIGHT", round, events, tabs };
+      const refreshes = classifyRefreshes(events);
+      expect(refreshes).toHaveLength(1);
+      expect(refreshes[0]).toMatchObject({
+        classification: "STARTED_BEFORE_LOGOUT",
+        observation: expect.stringMatching(/^OBSERVED_(?:BEFORE|AFTER)_LOGOUT$/),
+        causalOrderKnown: true,
+        aborted: true,
+        rejectedWithAbortError: true,
+        resolved: false,
+        tokenPresent: false,
+      });
+      assertTimeline(events, tabs);
+    }
+
+    await page.evaluate(() => window.mt01b2bHarness.endTimeline());
+    await page.close();
+
+    for (let round = 1; round <= crossTabRounds; round += 1) {
+      tokenTtlMs = 10 * 60_000;
+      const pages = await Promise.all([harnessPage(context), harnessPage(context)]);
+      const tabIds = [`${browserName}-cross-${round}-a`, `${browserName}-cross-${round}-b`];
+      activeScenario = "CROSS_TAB";
+      activeRound = round;
+      activePages = pages.map((selectedPage, index) => ({ page: selectedPage, tabId: tabIds[index]! }));
+      await Promise.all(pages.map((selectedPage) => installCapture(selectedPage)));
+      await Promise.all(pages.map((selectedPage, index) => selectedPage.evaluate(
+        (selectedTabId) => window.mt01b2bHarness.beginTimeline(selectedTabId),
+        tabIds[index],
+      )));
+      const channel = `mt01b2b-cross-${browserName}-${round}`;
+      await Promise.all(pages.map((selectedPage) => selectedPage.evaluate(
+        (selectedChannel) => window.mt01b2bHarness.createRuntime(selectedChannel),
+        channel,
+      )));
+      await pages[0]!.evaluate(() => window.mt01b2bHarness.requestLogout());
+      await expect.poll(() => pages[1]!.evaluate(() => window.mt01b2bHarness.snapshot()?.state)).toBe("LOGGED_OUT");
+      const tabs = await Promise.all(pages.map((selectedPage, index) => finalTab(selectedPage, tabIds[index]!)));
+      const eventSets = await Promise.all(pages.map((selectedPage) => selectedPage.evaluate(() => window.mt01b2bHarness.timeline())));
+      const events = eventSets.flat().sort((left, right) => left.atMs - right.atMs || left.sequence - right.sequence);
+      evidence = { scenario: "CROSS_TAB", round, events, tabs };
+      assertTimeline(events, tabs);
+      expect(eventSets[1]!.some((event) => event.kind === "BROADCAST_LOGOUT_RECEIVED")).toBe(true);
+      await Promise.all(pages.map((selectedPage) => selectedPage.evaluate(() => window.mt01b2bHarness.endTimeline())));
+      await Promise.all(pages.map((selectedPage) => selectedPage.close()));
+      activePages = [];
+    }
+
+    expect(upgradeCalls).toBe(futureRounds + inFlightRounds + crossTabRounds * 2);
+    expect(logoutCalls).toBe(futureRounds + inFlightRounds + crossTabRounds);
+  } catch (error) {
+    if (activePages.length > 0) {
+      const livePages = activePages.filter(({ page }) => !page.isClosed());
+      const tabs = await Promise.all(livePages.map(async ({ page, tabId }) => {
+        try { return await finalTab(page, tabId); }
+        catch { return null; }
+      }));
+      const eventSets = await Promise.all(livePages.map(async ({ page }) => {
+        try { return await page.evaluate(() => window.mt01b2bHarness.timeline()); }
+        catch { return []; }
+      }));
+      evidence = {
+        scenario: activeScenario,
+        round: activeRound,
+        events: eventSets.flat().sort((left, right) => left.atMs - right.atMs || left.sequence - right.sequence),
+        tabs: tabs.filter((tab): tab is FinalTabState => tab !== null),
+      };
+    }
+    const artifact = {
+      browser: browserName,
+      viewport: testInfo.project.use.viewport ?? null,
+      test: testInfo.title,
+      scenario: evidence?.scenario ?? "HARNESS_NEGATIVE",
+      round: evidence?.round ?? 0,
+      events: sanitizeLogoutTimeline(evidence?.events ?? []),
+      tabs: evidence?.tabs ?? [],
+    };
+    if (process.env.RUNNER_TEMP) {
+      const artifactDirectory = join(process.env.RUNNER_TEMP, "mt01b2b-logout-refresh-timeline");
+      await mkdir(artifactDirectory, { recursive: true });
+      await writeFile(
+        join(artifactDirectory, `${browserName}-logout-refresh-timeline.json`),
+        `${JSON.stringify(artifact, null, 2)}\n`,
+        { encoding: "utf8", flag: "wx" },
+      );
+    }
+    await testInfo.attach("logout-refresh-timeline", {
+      body: Buffer.from(JSON.stringify(artifact, null, 2)),
+      contentType: "application/json",
+    });
+    throw error;
+  }
 });

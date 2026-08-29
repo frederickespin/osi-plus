@@ -5,7 +5,7 @@ import { HUB_APPLICATIONS, commercialCaseRefFromRoute, findHubApplicationByRoute
 import { visibleHubApplications, type HubAccessContext } from "./hubAccess";
 import type { OsiHubMode } from "./hubMode";
 import { resolveCrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
-import { isAdminTenantMembershipEnabled } from "@/admin-tenant/adminMode";
+import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled } from "@/admin-tenant/adminMode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
@@ -82,6 +82,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const selected = findHubApplicationByRoute(pathname);
   const commercialCaseRef = commercialCaseRefFromRoute(pathname);
   const adminEnabled = isAdminTenantMembershipEnabled();
+  const adminInvitationsEnabled = isAdminIdentityInvitationEnabled();
   if (selected?.appId === "commercial-crm" && crmReadEnabled) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando ERP Comercial…</div>}>
       <AdvancedErpShell
@@ -102,6 +103,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         authorization={authorization}
         effectivePermissions={accessContext.effectivePermissions || []}
         deniedPermissions={accessContext.deniedPermissions}
+        invitationEnabled={adminInvitationsEnabled}
         onUnauthorized={onLogout}
       />
     </Suspense>;

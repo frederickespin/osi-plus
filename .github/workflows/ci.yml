@@ -158,6 +158,7 @@ jobs:
           npm run test:v17-admin-tenant-memberships:http
           npm run guard:v17-admin-identity
           npm run test:v17-admin-identity:http
+          npm run test:v17-production-pilot-gates
           node scripts/validate-v17-commercial-crm-guard.mjs
           npm run guard:v17-commercial-inbox-reload-race
           npm run guard:v17-commercial-crm-preview
@@ -384,6 +385,7 @@ jobs:
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           npm run guard:v17-admin-tenant-memberships
           npm run test:v17-admin-tenant-memberships:http
+          npm run test:v17-production-pilot-gates
           node scripts/v17-case-client-local-target-test.mjs
           node scripts/validate-mt01c2b2-guard.mjs
           node scripts/mt-01c2b2-database-guard-test.mjs
@@ -482,6 +484,7 @@ jobs:
           npm run test:v17-admin-membership-public-ref:migration
           npm run test:v17-admin-identity
           npm run test:v17-admin-initial-permissions-bootstrap
+          npm run test:v17-production-pilot-gates
 
       - name: Publish sanitized MT-01B1 refresh-race evidence
         if: steps.canonical_domain_suites.outcome == 'failure'

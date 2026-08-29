@@ -30,9 +30,9 @@ rejected("backfill empresarial", { [migrationPath]: `${migration}\nUPDATE "osi".
 rejected("inmutabilidad retirada", { [migrationPath]: migration.replace("BEFORE UPDATE OF \"public_ref\"", "BEFORE DELETE") }, /inmutabilidad/);
 rejected("permiso automático A", { "api/_lib/rbac.js": rbac.replace(/A: Object\.values\(PERMS\)\.filter\(\(permission\) =>[\s\S]*?\),\r?\n  V:/, "A: Object.values(PERMS),\n  V:") }, /A recibe/);
 rejected("permiso automático V", { "api/_lib/rbac.js": rbac.replace("PERMS.PIPELINE_VIEW,", "PERMS.PIPELINE_VIEW,\n    PERMS.PIPELINE_CREATE,") }, /V recibe/);
-rejected("auth antes del gate", { "api/_lib/crmCaseMutationHttp.js": http.replace("gate(env, req);", "void resolveCrmPipelineContext(req); gate(env, req);") }, /orden/);
+rejected("auth antes del gate", { "api/_lib/crmCaseMutationHttp.js": http.replace("mode = gate(env, req);", "void resolveContext(req); mode = gate(env, req);") }, /orden/);
 rejected("LOCAL_ONLY sin loopback real", { "api/_lib/crmCaseMutationHttp.js": http.replace("&& !isRealLoopbackRequest(req)", "&& false") }, /loopback/);
-rejected("modo Production en handler", { "api/_lib/crmCaseMutationHttp.js": http.replace("mode !== CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL", "mode !== CRM_PIPELINE_MUTATION_MODES.PRODUCTION_WRITE") }, /local o Preview/);
+rejected("modo ambiguo en handler", { "api/_lib/crmCaseMutationHttp.js": http.replace("mode !== CRM_PIPELINE_MUTATION_MODES.PRODUCTION_PILOT", "mode !== CRM_PIPELINE_MUTATION_MODES.PRODUCTION_WRITE") }, /tres modos focales/);
 rejected("hash confiado al cliente", { "api/_lib/crmCaseMutationDomain.js": domain.replace("input.payloadHash !== hashCrmCaseMutation(payload)", "false") }, /payloadHash/);
 rejected("actor sin User", { "api/_lib/crmCaseMutationDomain.js": domain.replace(' AND m."user_id"=${userId}', "") }, /User, Membership/);
 rejected("PATCH sin tenant", { "api/_lib/crmCaseMutationDomain.js": domain.replace('WHERE "tenant_id"=${who.tenantId} AND "public_ref"', 'WHERE "public_ref"') }, /tenant\/publicRef/);

@@ -14,6 +14,7 @@ type Props = Readonly<{
   authorization?: string;
   effectivePermissions: readonly string[];
   deniedPermissions: readonly string[];
+  invitationEnabled?: boolean;
   onUnauthorized(): void;
   api?: AdminTenantApi;
 }>;
@@ -37,7 +38,7 @@ function errorText(error: unknown) {
   } as Record<string, string>)[code] || "No fue posible completar la operación.";
 }
 
-export default function AdminTenantMembershipModule({ authorization, effectivePermissions, deniedPermissions, onUnauthorized, api: suppliedApi }: Props) {
+export default function AdminTenantMembershipModule({ authorization, effectivePermissions, deniedPermissions, invitationEnabled = false, onUnauthorized, api: suppliedApi }: Props) {
   const api = useMemo(() => suppliedApi || new AdminTenantApi(() => authorization || null), [authorization, suppliedApi]);
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("");
@@ -57,7 +58,7 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
   const [inviteSaving, setInviteSaving] = useState(false);
   const fence = useRef(0);
   const can = (permission: string) => effectivePermissions.includes(permission) && !deniedPermissions.includes(permission);
-  const canInvite = ADMIN_PERMISSIONS.every(can);
+  const canInvite = invitationEnabled && ADMIN_PERMISSIONS.every(can);
 
   useEffect(() => {
     const controller = new AbortController();

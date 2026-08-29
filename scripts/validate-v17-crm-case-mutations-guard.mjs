@@ -143,11 +143,11 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
   const handler = http.slice(http.indexOf("return withPrivateApiHeaders"));
   if (handler.length === 0) fail("wrapper privado de mutaciones CRM ausente");
   const gate = handler.indexOf("gate(env, req)");
-  const auth = handler.indexOf("resolveCrmPipelineContext(req");
+  const auth = handler.indexOf("resolveContext(req");
   const body = handler.indexOf("readJsonObject(req");
   if (gate < 0 || auth < gate || body < auth) fail("orden gate -> auth -> body inválido");
   requireMatch(http, /mode === CRM_PIPELINE_MUTATION_MODES\.LOCAL_ONLY[\s\S]*!isRealLoopbackRequest\(req\)/, "LOCAL_ONLY no exige socket loopback real");
-  requireMatch(http, /mode !== CRM_PIPELINE_MUTATION_MODES\.LOCAL_ONLY[\s\S]*mode !== CRM_PIPELINE_MUTATION_MODES\.PREVIEW_REHEARSAL/, "handler admite un modo distinto de local o Preview exacto");
+  requireMatch(http, /mode !== CRM_PIPELINE_MUTATION_MODES\.LOCAL_ONLY[\s\S]*mode !== CRM_PIPELINE_MUTATION_MODES\.PREVIEW_REHEARSAL[\s\S]*mode !== CRM_PIPELINE_MUTATION_MODES\.PRODUCTION_PILOT/, "handler no limita los tres modos focales exactos");
   requireMatch(http, /setCrmPrivateHeaders\(res\)/, "headers privados ausentes");
 
   const domain = read("api/_lib/crmCaseMutationDomain.js");
@@ -186,7 +186,7 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
   requireMatch(browserSuite, /V17_CAPTURE_MUTATION_EVIDENCE === "1"/, "captura documental no exige autorización explícita");
   requireMatch(browserSuite, /CAPTURE_MUTATION_EVIDENCE && \["chromium-desktop", "chromium-mobile"\]\.includes/, "suite browser puede reescribir evidencia por defecto");
 
-  return Object.freeze({ ok: true, migrations: 21, migration: MIGRATION, endpoints: Object.freeze(["POST /api/crm/pipeline-cases", "PATCH /api/crm/pipeline-cases/:caseRef", "GET /api/crm/client-options"]), mutationModes: Object.freeze(["LOCAL_ONLY", "PREVIEW_REHEARSAL"]), productionMutationMode: "DISABLED" });
+  return Object.freeze({ ok: true, migrations: 21, migration: MIGRATION, endpoints: Object.freeze(["POST /api/crm/pipeline-cases", "PATCH /api/crm/pipeline-cases/:caseRef", "GET /api/crm/client-options"]), mutationModes: Object.freeze(["LOCAL_ONLY", "PREVIEW_REHEARSAL", "PRODUCTION_PILOT"]), productionMutationMode: "PRODUCTION_PILOT" });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

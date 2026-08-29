@@ -123,3 +123,22 @@ test("rol, deny, query, hash, storage y x-osi-* no cargan Administración sin pe
   expect(resources.some((path) => /HubWorkspace|AdminTenantMembershipModule/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/admin/"))).toBe(false);
 });
+
+test("compuertas UI productivas son focales, independientes y metadata-first", async ({ page }) => {
+  await page.goto("/tests/v17-hub/mode-harness.html");
+  const result = await page.evaluate(async () => {
+    const mode = await import("/src/admin-tenant/adminMode.ts");
+    const production = { hostname: "pilot.example.invalid", vercelEnvironment: "production", gitBranch: "main" };
+    const preview = { ...production, vercelEnvironment: "preview" };
+    const branch = { ...production, gitBranch: "feature/other" };
+    return {
+      memberships: mode.isAdminTenantMembershipEnabled({ VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "PRODUCTION_PILOT" }, production.hostname, production),
+      invitations: mode.isAdminIdentityInvitationEnabled({ VITE_ADMIN_IDENTITY_INVITATION_MODE: "PRODUCTION_PILOT" }, production.hostname, production),
+      previewRejected: mode.resolveAdminTenantMembershipMode({ VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "PRODUCTION_PILOT" }, preview.hostname, preview) === "DISABLED",
+      branchRejected: mode.resolveAdminIdentityInvitationMode({ VITE_ADMIN_IDENTITY_INVITATION_MODE: "PRODUCTION_PILOT" }, branch.hostname, branch) === "DISABLED",
+      oneDoesNotEnableOther: !mode.isAdminIdentityInvitationEnabled({ VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "PRODUCTION_PILOT" }, production.hostname, production),
+      alteredRejected: ["PRODUCTION_WRITE", "ENABLED", "ALL_TENANTS", "production_pilot", "PRODUCTION_PILOT "].every((value) => mode.resolveAdminTenantMembershipMode({ VITE_ADMIN_TENANT_MEMBERSHIP_MODE: value }, production.hostname, production) === "DISABLED"),
+    };
+  });
+  expect(result).toEqual({ memberships: true, invitations: true, previewRejected: true, branchRejected: true, oneDoesNotEnableOther: true, alteredRejected: true });
+});

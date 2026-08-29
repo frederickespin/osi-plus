@@ -27,6 +27,7 @@ const allowedBackendChanges = new Set([
   "api/_lib/rbac.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
   "api/_lib/v17CommercialCrmProductionAuth.js",
+  "api/_lib/v17ProductionPilotGate.js",
   "api/auth/login.js",
   "api/auth/me.js",
   "api/admin/memberships/index.js",

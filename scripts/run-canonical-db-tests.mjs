@@ -244,6 +244,7 @@ try {
   const crmProductionGateGuardRun = runJson("validate-crm-01b3b1-guard.mjs", "CRM-01B3B1/GUARD");
   const crmProductionGateGuardTestsRun = runJson("validate-crm-01b3b1-guard-test.mjs", "CRM-01B3B1/GUARD_TESTS");
   const crmOwnerCatalogRun = runJson("crm-01b3b3-test.mjs", "CRM-01B3B3/OWNER_CATALOG");
+  const crmOwnerCatalogContractRun = runJson("crm-owner-catalog-contract-test.mjs", "CRM-01B3B3/OWNER_CATALOG_CONTRACT");
   const crmOwnerCatalogIntegrationRun = runJson("crm-01b3b3-integration-test.mjs", "CRM-01B3B3/INTEGRATION_PERFORMANCE");
   const crmOwnerCatalogGuardRun = runJson("validate-crm-01b3b3-guard.mjs", "CRM-01B3B3/GUARD");
   const crmOwnerCatalogGuardTestsRun = runJson("validate-crm-01b3b3-guard-test.mjs", "CRM-01B3B3/GUARD_TESTS");
@@ -264,6 +265,9 @@ try {
   invariant(crmProductionGateGuardRun.report.ok === true && crmProductionGateGuardRun.report.routes === 9, "CRM-01B3B1 guard falló");
   invariant(crmProductionGateGuardTestsRun.assertions >= 15, `CRM-01B3B1 guard tests esperaba al menos 15 pruebas y obtuvo ${crmProductionGateGuardTestsRun.assertions}`);
   invariant(crmOwnerCatalogRun.assertions >= 21, `CRM-01B3B3 esperaba al menos 21 pruebas y obtuvo ${crmOwnerCatalogRun.assertions}`);
+  invariant(crmOwnerCatalogContractRun.report.ok === true && crmOwnerCatalogContractRun.assertions >= 14
+    && crmOwnerCatalogContractRun.report.deterministicGenerations === 1_000,
+  `CRM-01B3B3 contrato estructural esperaba 1.000 generaciones y obtuvo ${crmOwnerCatalogContractRun.report.deterministicGenerations ?? 0}`);
   invariant(crmOwnerCatalogIntegrationRun.report.ok === true && crmOwnerCatalogIntegrationRun.report.fixtureMemberships === 2_001
     && crmOwnerCatalogIntegrationRun.assertions >= 14, "CRM-01B3B3 integración/rendimiento no se completó");
   invariant(crmOwnerCatalogGuardRun.report.ok === true && crmOwnerCatalogGuardRun.report.routes === 9, "CRM-01B3B3 guard falló");

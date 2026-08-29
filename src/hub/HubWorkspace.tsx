@@ -39,6 +39,12 @@ function statusLabel(application: HubApplication, crmReadEnabled: boolean, admin
   return application.status === "PLANNED" ? "Próximamente" : "En integración";
 }
 
+function ctaLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean) {
+  if (application.appId === "commercial-crm" && crmReadEnabled) return "Abrir ERP →";
+  if (application.appId === "administration" && adminEnabled) return "Abrir Administración →";
+  return "Ver descriptor →";
+}
+
 function environmentLabel(mode: OsiHubMode) {
   if (mode === "PREVIEW_REHEARSAL") return "Preview";
   if (mode === "PRODUCTION_READ") return "Producción · sólo lectura";
@@ -61,7 +67,7 @@ function HubHome({ applications, crmReadEnabled, adminEnabled, userName, onNavig
               <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Icon className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">{statusLabel(application, crmReadEnabled, adminEnabled)}</span></div>
               <h2 className="mt-5 font-bold text-slate-950">{application.name}</h2>
               <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">{application.description}</p>
-              <p className="mt-5 text-xs font-semibold text-indigo-600">{application.appId === "commercial-crm" && crmReadEnabled ? "Abrir ERP →" : "Ver descriptor →"}</p>
+              <p className="mt-5 text-xs font-semibold text-indigo-600">{ctaLabel(application, crmReadEnabled, adminEnabled)}</p>
             </button>
           );
         })}

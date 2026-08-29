@@ -459,10 +459,55 @@ test("logout clasifica, aborta y descarta refresh sin restaurar la sesión", asy
       { sequence: 4, atMs: 5, tabId: "tab-a", kind: "COOKIE_PRESENT" },
       { sequence: 5, atMs: 6, tabId: "tab-a", kind: "TOKEN_PRESENT" },
     ]), [tab()])).toContain("CREDENTIAL_EMITTED_AFTER_LOGOUT");
-    expect(classifyRefreshes(base([
-      { sequence: 4, atMs: 1, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "refresh-1" },
-      { sequence: 5, atMs: 5, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "refresh-1" },
-    ]))[0]?.classification).toBe("OBSERVED_AFTER_LOGOUT");
+    const sameMillisecondBefore = classifyRefreshes([
+      { sequence: 1, atMs: 2, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "refresh-before" },
+      { sequence: 2, atMs: 2, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 3, atMs: 2, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "refresh-before" },
+    ])[0];
+    expect(sameMillisecondBefore).toMatchObject({
+      classification: "STARTED_BEFORE_LOGOUT",
+      observation: "OBSERVED_AFTER_LOGOUT",
+      causalOrderKnown: true,
+    });
+
+    const sameMillisecondAfter = classifyRefreshes([
+      { sequence: 1, atMs: 2, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 2, atMs: 2, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "refresh-after" },
+      { sequence: 3, atMs: 2, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "refresh-after" },
+    ])[0];
+    expect(sameMillisecondAfter).toMatchObject({
+      classification: "STARTED_AFTER_LOGOUT_INTENT",
+      observation: "OBSERVED_AFTER_LOGOUT",
+      causalOrderKnown: true,
+    });
+
+    expect(classifyRefreshes([
+      { sequence: 1, atMs: 1, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "observed-late" },
+      { sequence: 2, atMs: 2, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 3, atMs: 3, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "observed-late" },
+    ])[0]).toMatchObject({ classification: "STARTED_BEFORE_LOGOUT", observation: "OBSERVED_AFTER_LOGOUT" });
+
+    expect(classifyRefreshes([
+      { sequence: 1, atMs: 1, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 2, atMs: 1, tabId: "tab-a", kind: "REFRESH_STARTED", requestId: "started-late" },
+      { sequence: 3, atMs: 1, tabId: "tab-a", kind: "REFRESH_OBSERVED", requestId: "started-late" },
+    ])[0]).toMatchObject({ classification: "STARTED_AFTER_LOGOUT_INTENT", observation: "OBSERVED_AFTER_LOGOUT" });
+
+    expect(validateLogoutTimeline([
+      { sequence: 1, atMs: 1, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 1, atMs: 2, tabId: "tab-a", kind: "SESSION_LOGGED_OUT" },
+    ], [tab()])).toContain("DUPLICATE_EVENT_SEQUENCE");
+    expect(validateLogoutTimeline([
+      { sequence: 0, atMs: 1, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+    ], [tab()])).toContain("INVALID_EVENT_SEQUENCE");
+
+    const crossTabWithoutBoundary = [
+      { sequence: 1, atMs: 1, tabId: "tab-a", kind: "LOGOUT_INTENT" },
+      { sequence: 1, atMs: 1, tabId: "tab-b", kind: "REFRESH_STARTED", requestId: "remote-refresh" },
+    ] satisfies LogoutTimelineEvent[];
+    expect(classifyRefreshes(crossTabWithoutBoundary)[0]).toMatchObject({ classification: null, causalOrderKnown: false });
+    expect(validateLogoutTimeline(crossTabWithoutBoundary, [tab(), { ...tab(), tabId: "tab-b" }]))
+      .toContain("REFRESH_CAUSAL_ORDER_INSUFFICIENT:tab-b:remote-refresh");
     const ignoredEvents = base([]);
     expect(validateLogoutTimeline(ignoredEvents, [tab(), {
       ...tab(true),
@@ -518,6 +563,8 @@ test("logout clasifica, aborta y descarta refresh sin restaurar la sesión", asy
       expect(refreshes).toHaveLength(1);
       expect(refreshes[0]).toMatchObject({
         classification: "STARTED_BEFORE_LOGOUT",
+        observation: expect.stringMatching(/^OBSERVED_(?:BEFORE|AFTER)_LOGOUT$/),
+        causalOrderKnown: true,
         aborted: true,
         rejectedWithAbortError: true,
         resolved: false,

@@ -12,6 +12,7 @@ import type {
   SessionFence,
   SessionSnapshot,
 } from "../../src/auth-v2/sessionTypes.ts";
+import type { LogoutTimelineEvent, LogoutTimelineKind } from "./logoutRefreshTimeline.ts";
 
 type CreateOptions = {
   channelName: string;
@@ -33,6 +34,79 @@ let runtime: FrontendSessionRuntime | null = null;
 let currentSession: SessionFence | null = null;
 let tokenTtlMs = 10 * 60_000;
 const resources: ResourceCounts = { activities: 0, channels: 0, coordinators: 0 };
+const nativeSetTimeout = window.setTimeout.bind(window);
+const nativeClearTimeout = window.clearTimeout.bind(window);
+const NativeBroadcastChannel = window.BroadcastChannel;
+let timelineEvents: LogoutTimelineEvent[] = [];
+let timelineOrigin = 0;
+let timelineSequence = 0;
+let timelineTabId: string | null = null;
+let timelineRefreshSequence = 0;
+let trackedTimers = new Set<number>();
+
+function recordTimeline(kind: LogoutTimelineKind, details: Partial<LogoutTimelineEvent> = {}): void {
+  if (!timelineTabId) return;
+  timelineEvents.push({
+    sequence: ++timelineSequence,
+    atMs: performance.now() - timelineOrigin,
+    tabId: timelineTabId,
+    kind,
+    ...details,
+  });
+}
+
+function beginTimeline(tabId: string): void {
+  timelineEvents = [];
+  timelineOrigin = performance.now();
+  timelineSequence = 0;
+  timelineRefreshSequence = 0;
+  timelineTabId = tabId;
+  trackedTimers = new Set<number>();
+  window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+    let timerId = 0;
+    const wrapped: TimerHandler = typeof handler === "function"
+      ? (...callbackArgs: unknown[]) => {
+        trackedTimers.delete(timerId);
+        return handler(...callbackArgs);
+      }
+      : handler;
+    timerId = nativeSetTimeout(wrapped, timeout, ...args);
+    trackedTimers.add(timerId);
+    return timerId;
+  }) as typeof window.setTimeout;
+  window.clearTimeout = ((timerId?: number) => {
+    if (typeof timerId === "number") trackedTimers.delete(timerId);
+    nativeClearTimeout(timerId);
+  }) as typeof window.clearTimeout;
+
+  class TimelineBroadcastChannel extends NativeBroadcastChannel {
+    constructor(name: string) {
+      super(name);
+      super.addEventListener("message", (event: MessageEvent<unknown>) => {
+        const value = event.data;
+        if (value && typeof value === "object" && (value as { type?: unknown }).type === "LOGOUT") {
+          recordTimeline("BROADCAST_LOGOUT_RECEIVED");
+        }
+      });
+    }
+
+    override postMessage(value: unknown): void {
+      if (value && typeof value === "object" && (value as { type?: unknown }).type === "LOGOUT") {
+        recordTimeline("BROADCAST_LOGOUT_SENT");
+      }
+      super.postMessage(value);
+    }
+  }
+  window.BroadcastChannel = TimelineBroadcastChannel;
+}
+
+function endTimeline(): void {
+  window.setTimeout = nativeSetTimeout;
+  window.clearTimeout = nativeClearTimeout;
+  window.BroadcastChannel = NativeBroadcastChannel;
+  trackedTimers.clear();
+  timelineTabId = null;
+}
 
 function encode(value: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
@@ -64,8 +138,37 @@ async function body(responseValue: Response): Promise<Record<string, unknown>> {
 
 function transport(path = "/__mt01b2b/refresh"): FrontendSessionTransport {
   const request = async (url: string, signal: AbortSignal, headers?: HeadersInit) => {
-    const result = await fetch(url, { method: "POST", credentials: "include", headers, signal });
+    const isRefresh = url === path;
+    const requestId = isRefresh && timelineTabId ? `refresh-${++timelineRefreshSequence}` : null;
+    const requestHeaders = new Headers(headers);
+    if (requestId) {
+      requestHeaders.set("X-MT01B2-Timeline-Request", requestId);
+      recordTimeline("REFRESH_STARTED", { requestId });
+    }
+    const onAbort = () => requestId && recordTimeline("REFRESH_ABORTED", { requestId });
+    signal.addEventListener("abort", onAbort, { once: true });
+    let result: Response;
+    try {
+      result = await fetch(url, { method: "POST", credentials: "include", headers: requestHeaders, signal });
+    } catch (error) {
+      if (requestId) {
+        recordTimeline("REFRESH_REJECTED", {
+          requestId,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+      throw error;
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+    }
     const value = await body(result);
+    if (requestId) {
+      recordTimeline("REFRESH_RESOLVED", {
+        requestId,
+        status: result.status,
+        tokenPresent: typeof value.token === "string" && value.token.length > 0,
+      });
+    }
     if (!result.ok) {
       throw {
         code: value.error,
@@ -154,11 +257,21 @@ const harness = {
   maintain: () => coordinator?.maintainActiveSession() ?? Promise.resolve(null),
   notifyOnline: () => coordinator?.notifyOnline() ?? Promise.resolve(null),
   logout: () => coordinator?.logout() ?? runtime?.logout() ?? Promise.resolve(),
+  requestLogout: () => {
+    window.dispatchEvent(new CustomEvent("mt01b2b:logout-request"));
+    return pendingLogout;
+  },
   reauthenticate: () => coordinator?.requireReauthentication("REVOKED"),
   destroy,
   snapshot,
   accessToken,
   resources: () => ({ ...resources }),
+  timelineTimers: () => trackedTimers.size,
+  beginTimeline,
+  endTimeline,
+  recordTimeline,
+  timeline: () => timelineEvents.map((event) => ({ ...event })),
+  observeRefresh: (requestId: string) => recordTimeline("REFRESH_OBSERVED", { requestId }),
   webLocks: () => Boolean((navigator as Navigator & { locks?: unknown }).locks),
   storage: async () => ({
     local: { ...localStorage },
@@ -172,6 +285,11 @@ const harness = {
     channel.close();
   },
 };
+
+let pendingLogout: Promise<void> = Promise.resolve();
+window.addEventListener("mt01b2b:logout-request", () => {
+  pendingLogout = coordinator?.logout() ?? runtime?.logout() ?? Promise.resolve();
+});
 
 declare global {
   interface Window {

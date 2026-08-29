@@ -1,5 +1,5 @@
 import { prisma } from "../_lib/db.js";
-import { databaseUnavailable, methodNotAllowed, readJsonBody, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
+import { databaseUnavailable, methodNotAllowed, readJsonBody, setPrivateNoStore, withPrivateApiHeaders } from "../_lib/http.js";
 import { requirePilotPermission } from "../_lib/authContextPilot.js";
 import { PERMS, requireRoleFromHeaders } from "../_lib/rbac.js";
 import {
@@ -35,7 +35,7 @@ function validateRequiredRolesForExternal(input) {
   return null;
 }
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method === "GET") {
     setPrivateNoStore(res);
     const context = await requirePilotPermission(req, res, PERMS.OSI_VIEW, { prisma });

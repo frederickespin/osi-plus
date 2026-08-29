@@ -88,8 +88,8 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   const readAuth = readAdapter.indexOf("requirePermission(req");
   invariant(readGate >= 0 && readOptions > readGate && readMethod > readOptions && readAuth > readMethod,
     "lecturas violan orden gate/OPTIONS/método/auth");
-  invariant(/withCommonHeaders\([\s\S]*\{ handleOptions: false, cors: false \}\)/.test(readAdapter),
-    "wrapper común puede interceptar OPTIONS antes del gate");
+  invariant(/withPrivateApiHeaders\([\s\S]*\{ handleOptions: false \}\)/.test(readAdapter),
+    "wrapper privado puede interceptar OPTIONS antes del gate");
   const adapter = read("api/_lib/pipelineCaseMutationHttp.js");
   invariant(adapter.indexOf("requireCrmPipelineMutationsLocal(env)") < adapter.indexOf('req.method !== "POST"')
     && adapter.indexOf('req.method !== "POST"') < adapter.indexOf("resolveContext(req"), "mutaciones violan orden gate/método/auth");

@@ -22,7 +22,7 @@ rejected("consumo sin estado bloqueado", domain, (s) => s.replace('WHERE "id"=CA
 rejected("aceptación existente eliminada bloqueada", domain, (s) => s.replace("acceptExistingAdminIdentity", "removedExistingAcceptance"), /existente/);
 const http = "api/_lib/adminIdentityInvitationHttp.js";
 rejected("gate posterior a body bloqueado", http, (s) => s.replace("requireAdminIdentityInvitationAccess(req, env);", "void 0;"), /gate/);
-rejected("CORS permisivo bloqueado", http, (s) => s.replace("cors: false, handleOptions: false", "cors: true"), /CORS/);
+rejected("CORS permisivo bloqueado", http, (s) => `${s}\nres.setHeader("Access-Control-Allow-Origin", "*");`, /CORS/);
 const activationRoute = "src/admin-tenant/adminIdentityActivationRoute.ts";
 rejected("fragmento persistente bloqueado", activationRoute, (s) => s.replace('window.history.replaceState({}, "", "/activate-admin");', "void 0;"), /fragmento/);
 const app = "src/App.tsx";

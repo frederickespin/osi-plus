@@ -1,5 +1,5 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, setPrivateNoStore, withPrivateApiHeaders } from "../_lib/http.js";
 import { ensureActorUserId, PERMS, requireRoleFromHeaders } from "../_lib/rbac.js";
 import {
   COMMERCIAL_TENANCY_READ_MODES,
@@ -16,7 +16,7 @@ import {
   pgdBlockingSummary,
 } from "./_lib.js";
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
   let modes;
   try {

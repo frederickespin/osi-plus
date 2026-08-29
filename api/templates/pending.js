@@ -1,8 +1,8 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, withPrivateApiHeaders } from "../_lib/http.js";
 import { PERMS, requirePermFromHeaders } from "../_lib/rbac.js";
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
   requirePermFromHeaders(req, res, PERMS.TEMPLATES_APPROVE);
 

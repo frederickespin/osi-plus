@@ -1,6 +1,6 @@
 import { prisma as defaultPrisma } from "./db.js";
 import { Prisma } from "@prisma/client";
-import { JsonBodyError, readJsonObject, withCommonHeaders } from "./http.js";
+import { JsonBodyError, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { setAuthPrivateHeaders } from "./authHttp.js";
 import { getBearerToken, verifyStrictLegacyAccessToken } from "./auth.js";
@@ -103,7 +103,7 @@ export function createAdminIdentityInvitationCollectionHandler({
   env = process.env, prisma = defaultPrisma, resolveContext = resolveCrmPipelineContext,
   list = listAdminIdentityInvitations, issue = issueAdminIdentityInvitation,
 } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
     const head = req.method === "HEAD";
     try {
@@ -125,14 +125,14 @@ export function createAdminIdentityInvitationCollectionHandler({
     } catch (error) {
       return sendAdminError(res, error, head);
     }
-  }, { cors: false, handleOptions: false });
+  }, { handleOptions: false });
 }
 
 export function createAdminIdentityInvitationDetailHandler({
   env = process.env, prisma = defaultPrisma, resolveContext = resolveCrmPipelineContext,
   revoke = revokeAdminIdentityInvitation,
 } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
     try {
       const mode = requireAdminIdentityInvitationAccess(req, env);
@@ -150,14 +150,14 @@ export function createAdminIdentityInvitationDetailHandler({
     } catch (error) {
       return sendAdminError(res, error);
     }
-  }, { cors: false, handleOptions: false });
+  }, { handleOptions: false });
 }
 
 export function createAdminIdentityActivationHandler({
   env = process.env, prisma = defaultPrisma,
   activateNew = activateNewAdminIdentity, acceptExisting = acceptExistingAdminIdentity,
 } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setAuthPrivateHeaders(res);
     try {
       const mode = requireAdminIdentityInvitationAccess(req, env);
@@ -179,5 +179,5 @@ export function createAdminIdentityActivationHandler({
     } catch (error) {
       return sendActivationError(res, error);
     }
-  }, { cors: false, handleOptions: false });
+  }, { handleOptions: false });
 }

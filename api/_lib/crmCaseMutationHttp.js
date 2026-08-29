@@ -6,7 +6,7 @@ import {
 } from "./crmPipelineAccess.js";
 import { CrmCaseMutationError } from "./crmCaseMutationDomain.js";
 import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
-import { methodNotAllowed, readJsonObject, withCommonHeaders } from "./http.js";
+import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { PERMS } from "./rbac.js";
 import {
@@ -67,7 +67,7 @@ export function createCrmCaseMutationHandler({
   status = 200,
   resolveContext = resolveCrmPipelineContext,
 } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
     let mode;
     try {
@@ -104,5 +104,5 @@ export function createCrmCaseMutationHandler({
       if (error?.name === "JsonBodyError") throw error;
       return send(res, error);
     }
-  }, { handleOptions: false, cors: false });
+  }, { handleOptions: false });
 }

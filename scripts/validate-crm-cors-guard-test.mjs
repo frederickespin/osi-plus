@@ -1,74 +1,83 @@
 import { readFileSync } from "node:fs";
-import { inventoryCrmRouteSources, unsafeCrmRouteMatches, validateCrmCorsGuard } from "./validate-crm-cors-guard.mjs";
+import {
+  expectedCrmCorsInventoryReport,
+  loadProtectedCorsInventory,
+  validateCrmCorsGuard,
+  validateCrmCorsInventoryReport,
+} from "./validate-crm-cors-guard.mjs";
 
-const baseline = readFileSync("vercel.json", "utf8");
+const read = (path) => readFileSync(path, "utf8");
+const baseline = new Map([
+  ["vercel.json", read("vercel.json")], ["api/_lib/http.js", read("api/_lib/http.js")],
+  ["scripts/protected-cors-route-inventory.json", read("scripts/protected-cors-route-inventory.json")],
+  ["api/_lib/adminIdentityInvitationHttp.js", read("api/_lib/adminIdentityInvitationHttp.js")],
+  ["api/_lib/adminMembershipHttp.js", read("api/_lib/adminMembershipHttp.js")], ["api/_lib/authHttp.js", read("api/_lib/authHttp.js")],
+  ["api/_lib/authOrigin.js", read("api/_lib/authOrigin.js")], ["api/_lib/crmCaseMutationHttp.js", read("api/_lib/crmCaseMutationHttp.js")],
+  ["api/_lib/crmOwnerCatalogHttp.js", read("api/_lib/crmOwnerCatalogHttp.js")], ["api/_lib/crmPipelineReadHttp.js", read("api/_lib/crmPipelineReadHttp.js")],
+  ["api/_lib/pipelineCaseMutationHttp.js", read("api/_lib/pipelineCaseMutationHttp.js")],
+  ["api/clients/index.js", read("api/clients/index.js")], ["api/projects/index.js", read("api/projects/index.js")],
+]);
 const results = [];
-
-function check(name, condition) {
-  results.push({ name, passed: Boolean(condition) });
-  if (!condition) throw new Error(name);
-}
-
-function rejected(name, vercelText, pattern, routes, routeSources) {
-  let error;
-  try { validateCrmCorsGuard({ vercelText, ...(routes ? { routes } : {}), ...(routeSources ? { routeSources } : {}) }); }
-  catch (caught) { error = caught; }
+function check(name, condition) { results.push({ name, passed: Boolean(condition) }); if (!condition) throw new Error(name); }
+function rejected(name, relativePath, mutate, pattern = /PROTECTED_CORS_GUARD/u) {
+  const overrides = new Map(baseline); overrides.set(relativePath, mutate(overrides.get(relativePath)));
+  let error; try { validateCrmCorsGuard({ overrides }); } catch (caught) { error = caught; }
   check(name, pattern.test(error?.message || ""));
 }
+function reportRejected(name, report, pattern = /PROTECTED_CORS_GUARD/u) {
+  let error; try { validateCrmCorsInventoryReport(report, expectedCrmCorsInventoryReport({ overrides: baseline })); } catch (caught) { error = caught; }
+  check(name, pattern.test(error?.message || ""));
+}
+function mutateManifest(mutator) {
+  return (text) => {
+    const manifest = JSON.parse(text);
+    mutator(manifest.categories);
+    return `${JSON.stringify(manifest, null, 2)}\n`;
+  };
+}
 
-const current = validateCrmCorsGuard();
-check("namespace CRM completo excluido", current.ok && current.crmRoutes === 9 && current.matchedCrmRoutes === 0 && current.handlersChecked === 9);
-check("rutas ajenas conservan la regla heredada", current.nonCrmCompatibilityRoutes === 1);
-
-const routeSources = inventoryCrmRouteSources();
-const listSource = routeSources.find((route) => route.path === "/api/crm/pipeline-cases");
-rejected(
-  "handler de lectura no puede heredar CORS común",
-  baseline,
-  /hereda CORS wildcard/,
-  undefined,
-  routeSources.map((route) => route === listSource
-    ? { ...route, source: `${route.source}\nwithCommonHeaders(async () => {}, {});` }
-    : route),
-);
-
-const rejectedDeploymentConfig = baseline.replace(
-  "(?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))",
-  "(?!auth/|crm/pipeline-cases/[^/]+/(?:transition|assign-owner|unassign-owner|allowed-transitions)/?$|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))",
-);
-check(
-  "semántica anterior cubría exactamente lista, detalle y resumen",
-  JSON.stringify(unsafeCrmRouteMatches({ vercelText: rejectedDeploymentConfig })) === JSON.stringify([
-    "/api/crm/client-options",
-    "/api/crm/pipeline-cases",
-    `/api/crm/pipeline-cases/${"crm-cors-guard-id"}`,
-    "/api/crm/pipeline-owner-options",
-    "/api/crm/pipeline-summary",
-  ]),
-);
-rejected(
-  "reproduce la exclusión parcial del deployment rechazado",
-  rejectedDeploymentConfig,
-  /excluir todo|parcial/,
-);
-rejected("catch-all inseguro rechazado", baseline.replace("((?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$)).*)", "(.*)"), /excluir todo/);
-rejected("allowlist de lecturas rechazada", baseline.replace("crm/", "crm/(?:pipeline-cases|pipeline-summary)"), /excluir todo|parcial/);
-rejected(
-  "wildcard adicional sobre CRM rechazado",
-  baseline.replace('"headers": [', '"headers": [{"source":"/api/crm/(.*)","headers":[{"key":"Access-Control-Allow-Origin","value":"*"}]} ,'),
-  /única regla/,
-);
-rejected(
-  "credenciales adicionales sobre CRM rechazadas",
-  baseline.replace('"headers": [', '"headers": [{"source":"/api/crm/(.*)","headers":[{"key":"Access-Control-Allow-Credentials","value":"true"}]} ,'),
-  /única regla/,
-);
-rejected("JSON inválido rechazado", "{", /JSON válido/);
-rejected(
-  "ruta CRM futura permanece protegida",
-  baseline.replace("(?!auth/|admin/|crm/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))", "(?!auth/|crm/pipeline-cases/|clients(?:/|$)|projects(?:/|$)|k/project-(?:validate|release)(?:/|$))"),
-  /excluir todo|rutas CRM/,
-  ["/api/crm/pipeline-cases", "/api/crm/future/report"],
-);
-
+const current = validateCrmCorsGuard({ overrides: baseline });
+const inventory = loadProtectedCorsInventory({ overrides: baseline });
+check("inventario completo 55/55", current.ok && current.routes === 55 && current.classifiedRoutes === 55);
+check("28 rutas same-origin", current.protectedSameOrigin === 28);
+check("allowlist pública 2/2", current.publicDeliberate === 2 && current.webhookOwnAuth === 0);
+check("25 rutas legacy cerradas", current.legacyPending === 25);
+check("categorías exactas sin solapamientos", current.duplicates === 0 && current.unclassified === 0 && current.overlaps === 0);
+check("tres rutas Identity protegidas", [
+  "/api/admin/identity-invitations",
+  "/api/admin/identity-invitations/[invitationRef]",
+  "/api/auth/admin-invitations/activate",
+].every((route) => inventory.categories.protectedSameOrigin.includes(route)));
+check("resumen coincide con manifiesto", validateCrmCorsInventoryReport(current, expectedCrmCorsInventoryReport({ overrides: baseline })));
+check("sin headers API de plataforma", current.platformApiHeaderRules === 0);
+rejected("ruta Identity ausente", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+  categories.protectedSameOrigin = categories.protectedSameOrigin.filter((route) => route !== "/api/auth/admin-invitations/activate");
+}));
+rejected("ruta protegida reclasificada como pública", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+  const route = "/api/admin/identity-invitations";
+  categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);
+  categories.publicDeliberate.push(route);
+}));
+rejected("ruta duplicada en manifiesto", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+  categories.protectedSameOrigin.push("/api/admin/memberships");
+}), /duplicadas/);
+rejected("ruta en dos categorías", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+  categories.publicDeliberate.push("/api/admin/memberships");
+}), /superpuestas/);
+reportRejected("resumen alterado no coincide con manifiesto", { ...current, protectedSameOrigin: 27 }, /protectedSameOrigin/);
+reportRejected("éxito incompleto no engaña al agregador", { ...current, routes: 54, classifiedRoutes: 54 }, /routes/);
+rejected("wildcard Clients", "api/clients/index.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
+rejected("wildcard Projects con casing", "api/projects/index.js", (value) => `${value}\nres.setHeader("aCcEsS-CoNtRoL-AlLoW-OrIgIn", "*");`);
+rejected("wildcard Admin", "api/_lib/adminMembershipHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
+rejected("wildcard CRM", "api/_lib/crmPipelineReadHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
+rejected("wildcard wrapper compartido", "api/_lib/http.js", (value) => value.replace("applyHeaders: setPrivateNoStore", "applyHeaders: setPublicReadCors"));
+rejected("credentials sin wildcard", "api/_lib/http.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Credentials", "true");`);
+rejected("reflejo de Origin", "api/clients/index.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", req.headers.origin);`);
+rejected("booleano CORS ambiguo", "api/_lib/http.js", (value) => value.replace("{ handleOptions = false }", "{ handleOptions = false, cors = false }"));
+rejected("OPTIONS privado permisivo", "api/_lib/http.js", (value) => value.replace("{ handleOptions = false }", "{ handleOptions = true }"));
+rejected("catch-all Vercel", "vercel.json", (value) => value.replace('"headers": []', '"headers": [{"source":"/api/(.*)","headers":[{"key":"Access-Control-Allow-Origin","value":"*"}]}]'));
+rejected("public wrapper fuera de allowlist", "api/clients/index.js", (value) => value.replaceAll("withPrivateApiHeaders", "withPublicReadCorsHeaders"));
+let newRouteError;
+try { validateCrmCorsGuard({ overrides: baseline, extraRoutes: [{ path: "/api/admin/future", relativePath: "api/admin/future.js", source: "export default withPrivateApiHeaders(async () => {});" }] }); } catch (error) { newRouteError = error; }
+check("ruta protegida nueva no inventariada", /clasificación incompleta/u.test(newRouteError?.message || ""));
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

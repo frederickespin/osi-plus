@@ -1,5 +1,5 @@
 import { prisma as defaultPrisma } from "./db.js";
-import { readJsonObject, withCommonHeaders } from "./http.js";
+import { readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { resolveCrmPipelineContext } from "./crmPipelineAccess.js";
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
@@ -82,7 +82,7 @@ export function createAdminMembershipCollectionHandler({
   resolveContext = resolveCrmPipelineContext,
   list = listTenantMemberships,
 } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
     const head = req.method === "HEAD";
     try {
@@ -99,7 +99,7 @@ export function createAdminMembershipCollectionHandler({
     } catch (error) {
       return send(res, error, head);
     }
-  }, { cors: false, handleOptions: false });
+  }, { handleOptions: false });
 }
 
 export function createAdminMembershipDetailHandler({
@@ -109,7 +109,7 @@ export function createAdminMembershipDetailHandler({
   get = getTenantMembership,
   update = updateTenantMembership,
 } = {}) {
-  return withCommonHeaders(async (req, res) => {
+  return withPrivateApiHeaders(async (req, res) => {
     setCrmPrivateHeaders(res);
     const head = req.method === "HEAD";
     try {
@@ -132,5 +132,5 @@ export function createAdminMembershipDetailHandler({
     } catch (error) {
       return send(res, error, head);
     }
-  }, { cors: false, handleOptions: false });
+  }, { handleOptions: false });
 }

@@ -1,5 +1,5 @@
 import { prisma } from "../../_lib/db.js";
-import { badRequest, methodNotAllowed, readJsonBody, withCommonHeaders } from "../../_lib/http.js";
+import { badRequest, methodNotAllowed, readJsonBody, withPrivateApiHeaders } from "../../_lib/http.js";
 import { requireRoleFromHeaders } from "../../_lib/rbac.js";
 import {
   appendOsiChangeLogs,
@@ -84,7 +84,7 @@ async function maybeCreateSuggestionForPst(prismaClient, params) {
   });
 }
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
 
   const actor = requireRoleFromHeaders(req, res, OPS_ALLOWED_ROLES);

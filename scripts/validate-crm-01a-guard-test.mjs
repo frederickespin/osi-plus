@@ -35,7 +35,7 @@ try {
   const list = read("api/crm/pipeline-cases/index.js");
   rejected("adaptador de lectura omitido rechazado", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("createCrmPipelineReadHandler({", "({") } }, /adaptador HTTP canónico/);
   const readHttp = read("api/_lib/crmPipelineReadHttp.js");
-  rejected("fixture exacta OPTIONS 204 antes del gate rechazada", { overrides: { "api/_lib/crmPipelineReadHttp.js": readHttp.replace("{ handleOptions: false, cors: false }", "{ cors: false }") } }, /intercepta OPTIONS/);
+  rejected("fixture exacta OPTIONS 204 antes del gate rechazada", { overrides: { "api/_lib/crmPipelineReadHttp.js": readHttp.replace("{ handleOptions: false }", "{ handleOptions: true }") } }, /intercepta OPTIONS/);
   rejected("compuerta posterior a OPTIONS rechazada", { overrides: { "api/_lib/crmPipelineReadHttp.js": readHttp.replace('if (req.method === "OPTIONS") return res.status(204).end();', 'if (req.method === "OPTIONS") return res.status(204).end();\n    requireCrmPipelineReadOnly(env);').replace("requireCrmPipelineReadOnly(env);", "void 0;") } }, /orden canónico/);
   rejected("headers CRM privados omitidos rechazados", { overrides: { "api/_lib/crmPipelineReadHttp.js": readHttp.replace("setCrmPrivateHeaders(res);", "") } }, /cache compartida/);
   rejected("import frontend rechazado", { extraSources: { "src/new-crm.ts": 'import "../api/_lib/crmPipelineRead.js";' } }, /frontend/);

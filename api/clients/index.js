@@ -1,5 +1,5 @@
 import { prisma } from "../_lib/db.js";
-import { methodNotAllowed, readJsonObject, setPrivateNoStore, withCommonHeaders } from "../_lib/http.js";
+import { methodNotAllowed, readJsonObject, setPrivateNoStore, withPrivateApiHeaders } from "../_lib/http.js";
 import { requirePilotAuth, requirePilotPermission } from "../_lib/authContextPilot.js";
 import {
   assertNoBrowserCommercialAuthority,
@@ -14,7 +14,7 @@ import { commercialPagination, listTenantClients } from "../_lib/commercialTenan
 import { requireCommercialTenancyMutation } from "../_lib/commercialTenancyMutation.js";
 import { PERMS } from "../_lib/rbac.js";
 
-export default withCommonHeaders(async (req, res) => {
+export default withPrivateApiHeaders(async (req, res) => {
   if (req.method === "POST" && !requireCommercialTenancyMutation(req, res)) return;
   const permission = req.method === "GET" ? PERMS.CLIENTS_VIEW : req.method === "POST" ? PERMS.CLIENTS_CREATE : null;
   let modes = {

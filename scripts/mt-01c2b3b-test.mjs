@@ -244,7 +244,12 @@ try {
   check("LEGACY_ONLY no expone tenantId", legacyClients.body.data.every((item) => !("tenantId" in item)));
   const legacyProjects = await invoke(projectsHandler, request(tokenOne, "GET"));
   check("LEGACY_ONLY conserva Project global", legacyProjects.statusCode === 200 && legacyProjects.body.total === 3);
-  check("LEGACY_ONLY no agrega cache headers", !legacyProjects.getHeader("cache-control") && !legacyClients.getHeader("cache-control"));
+  check("LEGACY_ONLY conserva headers privados", [legacyProjects, legacyClients].every((response) => (
+    response.getHeader("cache-control") === "private, no-store"
+    && String(response.getHeader("vary")) === "Authorization, Origin"
+    && response.getHeader("access-control-allow-origin") === undefined
+    && response.getHeader("access-control-allow-credentials") === undefined
+  )));
 
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "TENANT_WRITE";
   process.env.COMMERCIAL_TENANCY_READ_MODE = "TENANT_READ";

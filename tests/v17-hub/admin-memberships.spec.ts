@@ -6,6 +6,7 @@ const ADMIN_PERMISSIONS = [
   "membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status",
 ];
 const MEMBERSHIP_REF = "22222222-2222-4222-8222-222222222222";
+const SECOND_MEMBERSHIP_REF = "44444444-4444-4444-8444-444444444444";
 
 function authBody(role: string, permissions: string[], deniedPermissions: string[] = []) {
   return JSON.stringify({ ok: true, user: {
@@ -30,6 +31,27 @@ function listBody(version = 1) {
     role: "A", status: "ACTIVE", grantedPermissions: ADMIN_PERMISSIONS, deniedPermissions: [],
     authorizationVersion: version, updatedAt: "2026-08-27T12:00:00.000Z",
   }], total: 1, page: 1, pageSize: 20 });
+}
+
+function twoMembershipsBody() {
+  const first = JSON.parse(listBody()).data[0];
+  return JSON.stringify({
+    ok: true,
+    data: [
+      first,
+      {
+        ...first,
+        membershipRef: SECOND_MEMBERSHIP_REF,
+        name: "Persona de Ventas",
+        email: "ventas@example.invalid",
+        role: "V",
+        grantedPermissions: ["pipeline:view"],
+      },
+    ],
+    total: 2,
+    page: 1,
+    pageSize: 20,
+  });
 }
 
 async function evidence(page: Page, testInfo: TestInfo, suffix: string) {
@@ -74,6 +96,38 @@ test("A con permisos explícitos usa Administración tenant-first sin identidade
   await page.getByRole("button", { name: "Generar invitación" }).click();
   await expect(page.getByText("Copie este enlace ahora. No podrá recuperarse después.")).toBeVisible();
   await expect(page.locator("body")).not.toContainText("33333333-3333-4333-8333-333333333333");
+});
+
+test("CTA administrativo disponible abre el workspace lazy con dos membresías e invitación", async ({ page }) => {
+  const resources: string[] = [];
+  page.on("request", (request) => resources.push(new URL(request.url()).pathname));
+  await authenticate(page, "A", [...ADMIN_PERMISSIONS, "projects:view"]);
+  await page.route("**/api/admin/memberships?*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: twoMembershipsBody() }));
+  await page.route("**/api/admin/identity-invitations", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, invitations: [] }) }));
+
+  await page.goto("/hub");
+  await expect(page.getByRole("button", { name: /Coordinación.*Ver descriptor/s })).toBeVisible();
+  const card = page.getByRole("button", { name: /Abrir Administración/ });
+  await expect(card).toBeVisible();
+  await card.click();
+
+  await expect(page).toHaveURL(/\/administration$/);
+  await expect(page.getByTestId("admin-tenant-memberships")).toBeVisible();
+  await expect(page.getByText("2 membresía(s)")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Invitar administrador" })).toBeVisible();
+  expect(resources.some((path) => /AdminTenantMembershipModule/i.test(path))).toBe(true);
+});
+
+test("V no ve CTA administrativo ni carga chunk o API por acceso directo", async ({ page }) => {
+  const resources: string[] = [];
+  page.on("request", (request) => resources.push(new URL(request.url()).pathname));
+  await authenticate(page, "V", ["pipeline:view"]);
+
+  await page.goto("/administration");
+
+  await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  expect(resources.some((path) => /AdminTenantMembershipModule/i.test(path))).toBe(false);
+  expect(resources.some((path) => path.startsWith("/api/admin/"))).toBe(false);
 });
 
 test("activación nueva retira el token de la URL y exige login normal", async ({ page }) => {

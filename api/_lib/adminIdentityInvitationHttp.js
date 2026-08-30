@@ -83,9 +83,7 @@ function productionPilotRecipient(env, mode) {
   if (mode !== ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT) return undefined;
   const raw = env.V17_PRODUCTION_PILOT_ADMIN_EMAIL;
   try {
-    const normalized = normalizeAdminInvitationEmail(raw);
-    if (raw !== normalized) throw new Error("non-canonical");
-    return normalized;
+    return normalizeAdminInvitationEmail(raw);
   } catch {
     throw new AdminMembershipAccessError("ADMIN_IDENTITY_INVITATION_CONFIGURATION_INVALID", 503);
   }

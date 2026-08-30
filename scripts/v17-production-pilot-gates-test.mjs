@@ -42,7 +42,7 @@ function productionEnvironment(gates) {
     V17_PRODUCTION_PILOT_ACTIVATION_BATCH: V17_PRODUCTION_PILOT_BATCH,
     V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST: manifest.raw,
     V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST_SHA256: manifest.hash,
-    V17_PRODUCTION_PILOT_ADMIN_EMAIL: "pilot-admin@example.invalid",
+    V17_PRODUCTION_PILOT_ADMIN_EMAIL: " Pilot-Admin@Example.Invalid ",
   };
 }
 const allPermissions = [

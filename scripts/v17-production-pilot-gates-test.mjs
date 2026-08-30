@@ -134,14 +134,17 @@ try {
   let issueCalls = 0;
   const issueInvitation = createAdminIdentityInvitationCollectionHandler({
     env: invitationEnv, prisma: {}, resolveContext: async () => context,
-    issue: async () => { issueCalls += 1; return { invitation: {}, activationPath: null, shownOnce: false }; },
+    issue: async (_db, _context, body) => { issueCalls += 1; return { invitation: {
+      invitationRef: randomUUID(), email: body.email, role: "A", grantedPermissions: [], status: "PENDING",
+      expiresAt: "2026-08-30T00:00:00.000Z", createdAt: "2026-08-29T00:00:00.000Z",
+    }, activationPath: null, shownOnce: false }; },
   });
-  check("destinatario distinto al congelado se bloquea antes de emitir", (await invoke(issueInvitation, request("POST", {
+  check("Production Pilot rechaza email inyectado antes de emitir", (await invoke(issueInvitation, request("POST", {
     requestId: randomUUID(), email: "different-admin@example.invalid",
   }))).statusCode === 400 && issueCalls === 0);
-  check("destinatario congelado alcanza emisión", (await invoke(issueInvitation, request("POST", {
-    requestId: randomUUID(), email: "pilot-admin@example.invalid",
-  }))).statusCode === 201 && issueCalls === 1);
+  const corporateIssue = await invoke(issueInvitation, request("POST", { requestId: randomUUID() }));
+  check("destinatario congelado server-side alcanza emisión sin publicarse", corporateIssue.statusCode === 201 && issueCalls === 1
+    && !Object.hasOwn(corporateIssue.body?.invitation || {}, "email") && !JSON.stringify(corporateIssue.body).includes("pilot-admin@example.invalid"));
   let activationCalls = 0;
   const token = `ai1.${"A".repeat(43)}`;
   const activationHandler = createAdminIdentityActivationHandler({

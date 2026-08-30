@@ -30,7 +30,8 @@ import {
   resolveV17ProductionPilotActivation,
 } from "./v17ProductionPilotGate.js";
 
-const ISSUE_FIELDS = new Set(["requestId", "email"]);
+const ISSUE_LOCAL_FIELDS = new Set(["requestId", "email"]);
+const ISSUE_PRODUCTION_PILOT_FIELDS = new Set(["requestId"]);
 const REVOKE_FIELDS = new Set(["requestId", "action"]);
 const RESOLVE_FIELDS = new Set(["action", "token"]);
 const ACTIVATE_NEW_FIELDS = new Set(["action", "token", "name", "password"]);
@@ -89,6 +90,18 @@ function productionPilotRecipient(env, mode) {
   }
 }
 
+function invitationForMode(invitation, mode) {
+  if (mode !== ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT) return invitation;
+  return Object.freeze({
+    invitationRef: invitation.invitationRef,
+    role: invitation.role,
+    grantedPermissions: invitation.grantedPermissions,
+    status: invitation.status,
+    expiresAt: invitation.expiresAt,
+    createdAt: invitation.createdAt,
+  });
+}
+
 function requireProductionPilotActivationTenant(env, mode, tenantCode) {
   if (mode !== ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT) return;
   try {
@@ -110,22 +123,27 @@ export function createAdminIdentityInvitationCollectionHandler({
       const mode = requireAdminIdentityInvitationAccess(req, env);
       if (!["GET", "HEAD", "POST"].includes(req.method)) return methodNotAllowed(res, ["GET", "HEAD", "POST"], head);
       sameOrigin(req);
+      let issueInput;
+      if (req.method === "POST") {
+        const body = await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 8 * 1024 });
+        if (mode === ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT) {
+          exact(body, ISSUE_PRODUCTION_PILOT_FIELDS);
+          issueInput = Object.freeze({ requestId: body.requestId, email: productionPilotRecipient(env, mode) });
+        } else {
+          issueInput = exact(body, ISSUE_LOCAL_FIELDS);
+        }
+      }
       const context = await resolveContext(req, { prisma, env });
       if (mode === ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT) {
         requireAdminProductionPilotContext(env, context, V17_PRODUCTION_PILOT_GATES.ADMIN_IDENTITY_INVITATIONS);
       }
       if (req.method === "POST") {
-        const body = exact(await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 8 * 1024 }), ISSUE_FIELDS);
-        const expectedRecipientEmail = productionPilotRecipient(env, mode);
-        if (expectedRecipientEmail !== undefined && normalizeAdminInvitationEmail(body.email) !== expectedRecipientEmail) {
-          throw new AdminIdentityInvitationError("ADMIN_IDENTITY_INVITATION_INVALID", 400);
-        }
-        const result = await issue(prisma, context, body);
-        return res.status(201).json({ ok: true, ...result });
+        const result = await issue(prisma, context, issueInput);
+        return res.status(201).json({ ok: true, ...result, invitation: invitationForMode(result.invitation, mode) });
       }
       const invitations = await list(prisma, context);
       if (head) return res.status(200).end();
-      return res.status(200).json({ ok: true, invitations });
+      return res.status(200).json({ ok: true, invitations: invitations.map((invitation) => invitationForMode(invitation, mode)) });
     } catch (error) {
       return sendAdminError(res, error, head);
     }
@@ -150,7 +168,7 @@ export function createAdminIdentityInvitationDetailHandler({
       const body = exact(await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 4 * 1024 }), REVOKE_FIELDS);
       if (body.action !== "REVOKE") throw new AdminIdentityInvitationError("ADMIN_IDENTITY_INVITATION_INVALID", 400);
       const invitation = await revoke(prisma, context, ref, body);
-      return res.status(200).json({ ok: true, invitation });
+      return res.status(200).json({ ok: true, invitation: invitationForMode(invitation, mode) });
     } catch (error) {
       return sendAdminError(res, error);
     }

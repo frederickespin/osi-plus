@@ -32,6 +32,13 @@ export function validateV17AdminIdentityGuard({ root = process.cwd(), overrides 
   invariant(/WHERE "id"=CAST\(\$\{invitation\.id\} AS uuid\)[\s\S]*AND "status"='PENDING'/u.test(domain), "consumo no es atómico");
   invariant(/authenticateLegacyCredentials|hashPassword/u.test(`${domain}\n${read("api/auth/login.js")}`), "activación no reutiliza Auth LEGACY");
   invariant(/existing\[0\][\s\S]*throw publicActivationError/u.test(domain) && /acceptExistingAdminIdentity/u.test(domain), "User existente puede reemplazarse o carece de aceptación autenticada");
+  invariant(/resolveAdminIdentityActivation/u.test(domain)
+    && /LEFT JOIN "osi"\."osi_users" existing_user/u.test(domain)
+    && /NEW_IDENTITY[\s\S]*EXISTING_IDENTITY/u.test(domain), "el servidor no resuelve el flujo desde invitación y User");
+  invariant((domain.match(/requireExpectedRecipient\(invitation, expectedRecipientEmail\)/gu) || []).length >= 2,
+    "aceptación no revalida el destinatario congelado dentro de la transacción");
+  invariant((domain.match(/FROM "osi"\."tenants" WHERE "id"=\$\{invitation\.tenant_id\} FOR SHARE/gu) || []).length >= 2,
+    "activación no revalida Tenant dentro de ambos flujos");
   invariant(!/UPDATE[\s\S]{0,120}"passwordHash"|password_hash[\s\S]{0,120}UPDATE/iu.test(domain), "activación reemplaza password existente");
   for (const handler of ["createAdminIdentityInvitationCollectionHandler", "createAdminIdentityInvitationDetailHandler", "createAdminIdentityActivationHandler"]) invariant(http.includes(handler), `handler ausente: ${handler}`);
   const gatedBlocks = http.split("return withPrivateApiHeaders").slice(1);
@@ -40,8 +47,17 @@ export function validateV17AdminIdentityGuard({ root = process.cwd(), overrides 
   invariant(/setAuthPrivateHeaders|setCrmPrivateHeaders/u.test(http)
     && (http.match(/handleOptions: false/gu) || []).length === 3
     && !/Access-Control-Allow-(?:Origin|Credentials)/u.test(http), "headers privados/CORS cerrado ausentes");
+  invariant(/resolveActivation\(prisma, \{ token: body\.token \}/u.test(http)
+    && /resolution\.mode === ADMIN_IDENTITY_ACTIVATION_MODES\.NEW_IDENTITY/u.test(http)
+    && /resolution\.mode !== ADMIN_IDENTITY_ACTIVATION_MODES\.EXISTING_IDENTITY/u.test(http),
+  "HTTP no usa exclusivamente la resolución autoritativa del servidor");
+  invariant(/V17_PRODUCTION_PILOT_ADMIN_EMAIL/u.test(http) && !/VITE_V17_PRODUCTION_PILOT_ADMIN_EMAIL/u.test(`${http}\n${activation}`),
+    "destinatario congelado ausente o publicado al frontend");
   invariant(/replaceState\(\{\}, "", "\/activate-admin"\)/u.test(activation), "token no se retira del fragmento");
-  invariant(/loadSession/u.test(activation) && /Authorization: `Bearer/u.test(activation) && /Su contraseña no será reemplazada/u.test(activation), "aceptación autenticada de User existente incompleta");
+  invariant(/action: "RESOLVE"/u.test(activation)
+    && /mode === "EXISTING_IDENTITY" \? loadSession\(\) : null/u.test(activation)
+    && /mode === "EXISTING_IDENTITY"[\s\S]*Authorization: `Bearer/u.test(activation)
+    && /Su contraseña no será reemplazada/u.test(activation), "frontend selecciona flujo por sesión ambiental o aceptación existente incompleta");
   invariant(/const AdminIdentityActivation = lazy/u.test(app)
     && /isAdminIdentityActivationRoute\(\)[\s\S]*isAdminIdentityInvitationEnabled\(\)[\s\S]*<SessionApp/u.test(app), "pantalla de activación no está lazy o detrás de la compuerta de invitaciones");
   invariant(/Invitar administrador/u.test(adminUi) && /se mostrará una sola vez|una sola vez/iu.test(adminUi) && /Revocar/u.test(adminUi), "UI de invitación incompleta");

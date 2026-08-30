@@ -4,11 +4,13 @@ import { PrismaClient } from "@prisma/client";
 import { authenticateLegacyCredentials } from "../api/auth/login.js";
 import { ADMIN_MEMBERSHIP_PERMISSIONS } from "../api/_lib/adminMembershipDomain.js";
 import {
+  ADMIN_IDENTITY_ACTIVATION_MODES,
   acceptExistingAdminIdentity,
   activateNewAdminIdentity,
   hashAdminInvitationToken,
   issueAdminIdentityInvitation,
   listAdminIdentityInvitations,
+  resolveAdminIdentityActivation,
   revokeAdminIdentityInvitation,
 } from "../api/_lib/adminIdentityInvitationDomain.js";
 
@@ -48,7 +50,10 @@ try {
   check("list tenant-first", (await listAdminIdentityInvitations(prisma, context)).length === 1 && (await listAdminIdentityInvitations(prisma, foreignContext)).length === 0);
   await expectCode("cross tenant revoke is 404", () => revokeAdminIdentityInvitation(prisma, foreignContext, issued.invitation.invitationRef, { requestId: `cross-${suffix}` }), "ADMIN_IDENTITY_INVITATION_NOT_FOUND");
   await expectCode("manipulated token generic", () => activateNewAdminIdentity(prisma, { token: `${token}x`, name: "Persona", password: "Valid-Synthetic-Password-1!" }), "ADMIN_IDENTITY_INVITATION_INVALID");
-  const activated = await activateNewAdminIdentity(prisma, { token, name: "Nueva Administradora", password: "Valid-Synthetic-Password-1!" });
+  const newResolution = await resolveAdminIdentityActivation(prisma, { token }, { expectedRecipientEmail: email.toLowerCase() });
+  check("server resolves recipient without User as NEW_IDENTITY", newResolution.mode === ADMIN_IDENTITY_ACTIVATION_MODES.NEW_IDENTITY && newResolution.tenantCode === tenant.code);
+  await expectCode("frozen recipient mismatch is indistinguishable", () => resolveAdminIdentityActivation(prisma, { token }, { expectedRecipientEmail: `${suffix}-other@example.invalid` }), "ADMIN_IDENTITY_ACTIVATION_INVALID");
+  const activated = await activateNewAdminIdentity(prisma, { token, name: "Nueva Administradora", password: "Valid-Synthetic-Password-1!" }, { expectedRecipientEmail: email.toLowerCase() });
   check("activation requires normal login", activated.activated && activated.loginRequired);
   const createdUser = await prisma.user.findFirst({ where: { normalizedEmail: email.toLowerCase() } });
   const createdMembership = await prisma.tenantMembership.findFirst({ where: { tenantId: tenant.id, userId: createdUser.id } });
@@ -74,10 +79,22 @@ try {
   await membership(existingTenant.id, existing.id, ["pipeline:view"]);
   const existingToken = `ai1.${Buffer.alloc(32, 5).toString("base64url")}`;
   await issueAdminIdentityInvitation(prisma, context, { requestId: `existing-${suffix}`, email: existing.email }, { tokenFactory: () => existingToken });
+  const existingResolution = await resolveAdminIdentityActivation(prisma, { token: existingToken }, { expectedRecipientEmail: existing.email });
+  check("server resolves recipient with User as EXISTING_IDENTITY", existingResolution.mode === ADMIN_IDENTITY_ACTIVATION_MODES.EXISTING_IDENTITY);
   await expectCode("existing User password never replaced", () => activateNewAdminIdentity(prisma, { token: existingToken, name: "Existing", password: "Replacement-Forbidden-1!" }), "ADMIN_IDENTITY_ACTIVATION_INVALID");
   check("existing password intact", (await authenticateLegacyCredentials({ email: existing.email, password: existingPassword, prismaClient: prisma })).outcome === "AUTHENTICATED");
-  const accepted = await acceptExistingAdminIdentity(prisma, { token: existingToken }, { sub: existing.id, email: existing.email });
+  await expectCode("unrelated LEGACY session cannot accept invitation", () => acceptExistingAdminIdentity(prisma, { token: existingToken }, { sub: actorUser.id, email: actorUser.email }), "ADMIN_IDENTITY_ACTIVATION_INVALID");
+  const accepted = await acceptExistingAdminIdentity(prisma, { token: existingToken }, { sub: existing.id, email: existing.email }, { expectedRecipientEmail: existing.email });
   check("authenticated existing identity accepted", accepted.activated && await prisma.tenantMembership.count({ where: { tenantId: tenant.id, userId: existing.id } }) === 1);
+
+  const changedModeToken = `ai1.${Buffer.alloc(32, 7).toString("base64url")}`;
+  const changedModeEmail = `${suffix}-changed-mode@example.invalid`;
+  await issueAdminIdentityInvitation(prisma, context, { requestId: `changed-mode-${suffix}`, email: changedModeEmail }, { tokenFactory: () => changedModeToken });
+  check("preview starts as new identity", (await resolveAdminIdentityActivation(prisma, { token: changedModeToken })).mode === ADMIN_IDENTITY_ACTIVATION_MODES.NEW_IDENTITY);
+  await user("changed-mode", changedModeEmail);
+  await expectCode("User created between preview and activation fails closed", () => activateNewAdminIdentity(prisma, {
+    token: changedModeToken, name: "Changed Mode", password: "Changed-Mode-Password-1!",
+  }), "ADMIN_IDENTITY_ACTIVATION_INVALID");
 
   const raceToken = `ai1.${Buffer.alloc(32, 6).toString("base64url")}`;
   await issueAdminIdentityInvitation(prisma, context, { requestId: `race-${suffix}`, email: `${suffix}-race@example.invalid` }, { tokenFactory: () => raceToken });

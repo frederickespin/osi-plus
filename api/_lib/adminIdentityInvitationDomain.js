@@ -22,6 +22,11 @@ const INVITE_PERMISSION_SET = Object.freeze([
   PERMS.MEMBERSHIP_UPDATE_STATUS,
 ]);
 
+export const ADMIN_IDENTITY_ACTIVATION_MODES = Object.freeze({
+  NEW_IDENTITY: "NEW_IDENTITY",
+  EXISTING_IDENTITY: "EXISTING_IDENTITY",
+});
+
 export class AdminIdentityInvitationError extends Error {
   constructor(code, status) {
     super(code);
@@ -228,6 +233,13 @@ function publicActivationError() {
   return new AdminIdentityInvitationError("ADMIN_IDENTITY_ACTIVATION_INVALID", 400);
 }
 
+function requireExpectedRecipient(invitation, expectedRecipientEmail) {
+  if (expectedRecipientEmail === undefined) return;
+  let expected;
+  try { expected = normalizeAdminInvitationEmail(expectedRecipientEmail); } catch { throw publicActivationError(); }
+  if (String(invitation?.normalized_email || "") !== expected) throw publicActivationError();
+}
+
 function userCode() {
   return `ADM-${randomUUID().replaceAll("-", "").slice(0, 20).toUpperCase()}`;
 }
@@ -239,6 +251,34 @@ async function lockInvitationByToken(tx, tokenHash) {
     FOR UPDATE
   `);
   return rows[0] || null;
+}
+
+export async function resolveAdminIdentityActivation(prisma, input, {
+  now = new Date(), expectedRecipientEmail,
+} = {}) {
+  const tokenHash = hashAdminInvitationToken(input?.token);
+  const rows = await prisma.$queryRaw(Prisma.sql`
+    SELECT invitation."normalized_email", invitation."status"::text AS "status", invitation."expires_at",
+           tenant."code" AS "tenant_code", tenant."status"::text AS "tenant_status",
+           existing_user."id" AS "existing_user_id"
+    FROM "osi"."admin_identity_invitations" invitation
+    JOIN "osi"."tenants" tenant ON tenant."id"=invitation."tenant_id"
+    LEFT JOIN "osi"."osi_users" existing_user
+      ON lower(btrim(existing_user."email"))=invitation."normalized_email"
+    WHERE invitation."token_hash"=${tokenHash}
+    LIMIT 2
+  `);
+  if (rows.length !== 1 || String(rows[0].status) !== "PENDING"
+    || new Date(rows[0].expires_at) <= now || String(rows[0].tenant_status) !== "ACTIVE") {
+    throw publicActivationError();
+  }
+  requireExpectedRecipient(rows[0], expectedRecipientEmail);
+  return Object.freeze({
+    mode: rows[0].existing_user_id
+      ? ADMIN_IDENTITY_ACTIVATION_MODES.EXISTING_IDENTITY
+      : ADMIN_IDENTITY_ACTIVATION_MODES.NEW_IDENTITY,
+    tenantCode: String(rows[0].tenant_code),
+  });
 }
 
 async function consumeInvitation(tx, invitation, user, membership, now, auditWriter) {
@@ -258,7 +298,7 @@ async function consumeInvitation(tx, invitation, user, membership, now, auditWri
 }
 
 export async function activateNewAdminIdentity(prisma, input, {
-  now = new Date(), passwordHasher = hashPassword, auditWriter = appendCommercialAudit,
+  now = new Date(), passwordHasher = hashPassword, auditWriter = appendCommercialAudit, expectedRecipientEmail,
 } = {}) {
   const tokenHash = hashAdminInvitationToken(input?.token);
   const name = String(input?.name || "").trim();
@@ -269,12 +309,14 @@ export async function activateNewAdminIdentity(prisma, input, {
     FROM "osi"."admin_identity_invitations" WHERE "token_hash"=${tokenHash} LIMIT 1
   `);
   if (!locator[0] || String(locator[0].status) !== "PENDING" || new Date(locator[0].expires_at) <= now) throw publicActivationError();
+  requireExpectedRecipient(locator[0], expectedRecipientEmail);
   const passwordHash = await passwordHasher(password);
   try {
     return await prisma.$transaction(async (tx) => {
       await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`v17-admin-identity:${locator[0].normalized_email}`}, 0))::text AS "lock"`);
       const invitation = await lockInvitationByToken(tx, tokenHash);
       if (!invitation || String(invitation.status) !== "PENDING" || new Date(invitation.expires_at) <= now) throw publicActivationError();
+      requireExpectedRecipient(invitation, expectedRecipientEmail);
       const tenants = await tx.$queryRaw(Prisma.sql`SELECT "id", "status"::text AS "status" FROM "osi"."tenants" WHERE "id"=${invitation.tenant_id} FOR SHARE`);
       if (String(tenants[0]?.status) !== "ACTIVE") throw publicActivationError();
       const existing = await tx.$queryRaw(Prisma.sql`
@@ -308,7 +350,7 @@ export async function activateNewAdminIdentity(prisma, input, {
 }
 
 export async function acceptExistingAdminIdentity(prisma, input, legacyIdentity, {
-  now = new Date(), auditWriter = appendCommercialAudit,
+  now = new Date(), auditWriter = appendCommercialAudit, expectedRecipientEmail,
 } = {}) {
   const tokenHash = hashAdminInvitationToken(input?.token);
   const userId = String(legacyIdentity?.sub || "").trim();
@@ -320,6 +362,11 @@ export async function acceptExistingAdminIdentity(prisma, input, legacyIdentity,
       const invitation = await lockInvitationByToken(tx, tokenHash);
       if (!invitation || String(invitation.status) !== "PENDING" || new Date(invitation.expires_at) <= now
         || String(invitation.normalized_email) !== email) throw publicActivationError();
+      requireExpectedRecipient(invitation, expectedRecipientEmail);
+      const tenants = await tx.$queryRaw(Prisma.sql`
+        SELECT "id", "status"::text AS "status" FROM "osi"."tenants" WHERE "id"=${invitation.tenant_id} FOR SHARE
+      `);
+      if (String(tenants[0]?.status) !== "ACTIVE") throw publicActivationError();
       const users = await tx.$queryRaw(Prisma.sql`
         SELECT "id", "status" FROM "osi"."osi_users"
         WHERE "id"=${userId} AND lower(btrim("email"))=${email}

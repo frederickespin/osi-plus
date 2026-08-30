@@ -15,6 +15,8 @@ export function validateV17AdminIdentityGuard({ root = process.cwd(), overrides 
   const activation = `${read("src/admin-tenant/AdminIdentityActivation.tsx")}\n${read("src/admin-tenant/adminIdentityActivationRoute.ts")}`;
   const app = read("src/App.tsx");
   const adminUi = read("src/admin-tenant/AdminTenantMembershipModule.tsx");
+  const adminApi = read("src/admin-tenant/adminApi.ts");
+  const hub = read("src/hub/HubWorkspace.tsx");
   const bootstrap = read("scripts/v17-admin-initial-permissions-bootstrap.mjs");
   const vercel = read("vercel.json");
   const workflow = read(".github/workflows/ci.yml");
@@ -53,6 +55,19 @@ export function validateV17AdminIdentityGuard({ root = process.cwd(), overrides 
   "HTTP no usa exclusivamente la resolución autoritativa del servidor");
   invariant(/V17_PRODUCTION_PILOT_ADMIN_EMAIL/u.test(http) && !/VITE_V17_PRODUCTION_PILOT_ADMIN_EMAIL/u.test(`${http}\n${activation}`),
     "destinatario congelado ausente o publicado al frontend");
+  invariant(/ISSUE_PRODUCTION_PILOT_FIELDS = new Set\(\["requestId"\]\)/u.test(http)
+    && /mode === ADMIN_IDENTITY_INVITATION_MODES\.PRODUCTION_PILOT[\s\S]*exact\(body, ISSUE_PRODUCTION_PILOT_FIELDS\)[\s\S]*email: productionPilotRecipient\(env, mode\)/u.test(http),
+  "Production Pilot acepta email del navegador o no deriva el destinatario server-side");
+  invariant(http.indexOf("exact(body, ISSUE_PRODUCTION_PILOT_FIELDS)") < http.indexOf("resolveContext(req, { prisma, env })"),
+    "Production Pilot valida email inyectado después de auth o Prisma");
+  invariant(/function invitationForMode[\s\S]*PRODUCTION_PILOT[\s\S]*invitationRef:[\s\S]*createdAt:/u.test(http)
+    && !/function invitationForMode[\s\S]{0,500}email:/u.test(http), "respuestas productivas publican el destinatario");
+  invariant(/issueCorporateInvitation[\s\S]*JSON\.stringify\(\{ requestId: crypto\.randomUUID\(\) \}\)/u.test(adminApi)
+    && /CORPORATE_INVITATION_KEYS[\s\S]*LOCAL_INVITATION_KEYS/u.test(adminApi), "cliente productivo envía o exige email");
+  invariant(/corporateRecipient \? "Destinatario corporativo configurado" : invitation\.email/u.test(adminUi)
+    && /corporateRecipient \? <p[\s\S]*Destinatario corporativo configurado[\s\S]*: <label[\s\S]*Email corporativo/u.test(adminUi)
+    && /Generar invitación corporativa/u.test(adminUi), "UI Production Pilot conserva captura manual de correo");
+  invariant(/invitationMode=\{adminInvitationMode\}/u.test(hub), "Hub no transmite el modo de invitación al módulo lazy");
   invariant(/replaceState\(\{\}, "", "\/activate-admin"\)/u.test(activation), "token no se retira del fragmento");
   invariant(/action: "RESOLVE"/u.test(activation)
     && /mode === "EXISTING_IDENTITY" \? loadSession\(\) : null/u.test(activation)

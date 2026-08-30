@@ -98,6 +98,47 @@ test("A con permisos explícitos usa Administración tenant-first sin identidade
   await expect(page.locator("body")).not.toContainText("33333333-3333-4333-8333-333333333333");
 });
 
+test("Production Pilot muestra invitación corporativa sin recibir ni enviar email", async ({ page }) => {
+  await page.goto("/tests/v17-hub/mode-harness.html");
+  await page.evaluate(async () => {
+    const harness = await import("/tests/v17-hub/admin-corporate-invitation-harness.tsx");
+    harness.mountCorporateInvitationHarness();
+  });
+  await expect(page.getByRole("button", { name: "Invitar administrador" })).toBeVisible();
+  await page.getByRole("button", { name: "Invitar administrador" }).click();
+  await expect(page.getByText("Destinatario corporativo configurado", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Email corporativo")).toHaveCount(0);
+  await page.getByRole("button", { name: "Generar invitación corporativa" }).click();
+  await expect(page.getByText("Copie este enlace ahora. No podrá recuperarse después.")).toBeVisible();
+  expect(await page.evaluate(() => window.v17CorporateInvitationHarness)).toEqual({ corporateCalls: 1, localCalls: 0 });
+
+  const requestBody = await page.evaluate(async () => {
+    const { AdminTenantApi } = await import("/src/admin-tenant/adminApi.ts");
+    let captured: Record<string, unknown> = {};
+    const fetchMock = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      captured = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+      return new Response(JSON.stringify({
+        ok: true,
+        invitation: {
+          invitationRef: "33333333-3333-4333-8333-333333333333",
+          role: "A",
+          grantedPermissions: ["membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status"],
+          status: "PENDING",
+          expiresAt: "2026-08-31T12:00:00.000Z",
+          createdAt: "2026-08-30T12:00:00.000Z",
+        },
+        activationPath: "/activate-admin#token=synthetic-one-time-token",
+        shownOnce: true,
+      }), { status: 201, headers: { "content-type": "application/json" } });
+    };
+    const api = new AdminTenantApi(() => "synthetic-admin-token", fetchMock as typeof fetch);
+    await api.issueCorporateInvitation();
+    return captured;
+  });
+  expect(Object.keys(requestBody)).toEqual(["requestId"]);
+  expect(requestBody).not.toHaveProperty("email");
+});
+
 test("CTA administrativo disponible abre el workspace lazy con dos membresías e invitación", async ({ page }) => {
   const resources: string[] = [];
   page.on("request", (request) => resources.push(new URL(request.url()).pathname));

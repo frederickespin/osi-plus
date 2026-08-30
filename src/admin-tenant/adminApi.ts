@@ -12,7 +12,7 @@ export type AdminMembership = Readonly<{
 
 export type AdminIdentityInvitation = Readonly<{
   invitationRef: string;
-  email: string;
+  email?: string;
   role: "A";
   grantedPermissions: readonly string[];
   status: "PENDING" | "EXPIRED" | "CONSUMED" | "REVOKED";
@@ -22,7 +22,8 @@ export type AdminIdentityInvitation = Readonly<{
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MEMBERSHIP_KEYS = ["membershipRef", "name", "email", "role", "status", "grantedPermissions", "deniedPermissions", "authorizationVersion", "updatedAt"].sort();
-const INVITATION_KEYS = ["invitationRef", "email", "role", "grantedPermissions", "status", "expiresAt", "createdAt"].sort();
+const CORPORATE_INVITATION_KEYS = ["invitationRef", "role", "grantedPermissions", "status", "expiresAt", "createdAt"].sort();
+const LOCAL_INVITATION_KEYS = [...CORPORATE_INVITATION_KEYS, "email"].sort();
 
 export class AdminApiError extends Error {
   readonly code: string;
@@ -76,25 +77,26 @@ function membership(value: unknown): AdminMembership {
   });
 }
 
-function invitation(value: unknown): AdminIdentityInvitation {
+function invitation(value: unknown, corporateRecipient = false): AdminIdentityInvitation {
   const row = exactObject(value);
-  exactKeys(row, INVITATION_KEYS);
+  exactKeys(row, corporateRecipient ? CORPORATE_INVITATION_KEYS : LOCAL_INVITATION_KEYS);
   if (typeof row.invitationRef !== "string" || !UUID_V4.test(row.invitationRef)
-    || typeof row.email !== "string" || row.role !== "A"
+    || (!corporateRecipient && typeof row.email !== "string") || row.role !== "A"
     || !["PENDING", "EXPIRED", "CONSUMED", "REVOKED"].includes(String(row.status))
     || typeof row.expiresAt !== "string" || !Number.isFinite(Date.parse(row.expiresAt))
     || typeof row.createdAt !== "string" || !Number.isFinite(Date.parse(row.createdAt))) {
     throw new AdminApiError("ADMIN_IDENTITY_INVITATION_RESPONSE_INVALID", 503);
   }
-  return Object.freeze({
+  const result: AdminIdentityInvitation = {
     invitationRef: row.invitationRef,
-    email: row.email,
     role: "A",
     grantedPermissions: strings(row.grantedPermissions),
     status: row.status as AdminIdentityInvitation["status"],
     expiresAt: row.expiresAt,
     createdAt: row.createdAt,
-  });
+    ...(corporateRecipient ? {} : { email: row.email as string }),
+  };
+  return Object.freeze(result);
 }
 
 async function responseJson(response: Response) {
@@ -150,11 +152,11 @@ export class AdminTenantApi {
     return membership(body.membership);
   }
 
-  async listInvitations(signal?: AbortSignal) {
+  async listInvitations(corporateRecipient = false, signal?: AbortSignal) {
     const body = await responseJson(await this.fetchImpl("/api/admin/identity-invitations", { headers: this.headers(), signal }));
     exactKeys(body, ["invitations", "ok"]);
     if (body.ok !== true || !Array.isArray(body.invitations)) throw new AdminApiError("ADMIN_IDENTITY_INVITATION_RESPONSE_INVALID", 503);
-    return Object.freeze(body.invitations.map(invitation));
+    return Object.freeze(body.invitations.map((item) => invitation(item, corporateRecipient)));
   }
 
   async issueInvitation(email: string, signal?: AbortSignal) {
@@ -169,12 +171,24 @@ export class AdminTenantApi {
     return Object.freeze({ invitation: invitation(body.invitation), activationPath: body.activationPath as string | null, shownOnce: body.shownOnce });
   }
 
-  async revokeInvitation(ref: string, signal?: AbortSignal) {
+  async issueCorporateInvitation(signal?: AbortSignal) {
+    const body = await responseJson(await this.fetchImpl("/api/admin/identity-invitations", {
+      method: "POST", headers: this.headers(true), body: JSON.stringify({ requestId: crypto.randomUUID() }), signal,
+    }));
+    exactKeys(body, ["activationPath", "invitation", "ok", "shownOnce"]);
+    if (body.ok !== true || typeof body.shownOnce !== "boolean"
+      || !(body.activationPath === null || typeof body.activationPath === "string")) {
+      throw new AdminApiError("ADMIN_IDENTITY_INVITATION_RESPONSE_INVALID", 503);
+    }
+    return Object.freeze({ invitation: invitation(body.invitation, true), activationPath: body.activationPath as string | null, shownOnce: body.shownOnce });
+  }
+
+  async revokeInvitation(ref: string, corporateRecipient = false, signal?: AbortSignal) {
     const body = await responseJson(await this.fetchImpl(`/api/admin/identity-invitations/${encodeURIComponent(ref)}`, {
       method: "PATCH", headers: this.headers(true), body: JSON.stringify({ requestId: crypto.randomUUID(), action: "REVOKE" }), signal,
     }));
     exactKeys(body, ["invitation", "ok"]);
     if (body.ok !== true) throw new AdminApiError("ADMIN_IDENTITY_INVITATION_RESPONSE_INVALID", 503);
-    return invitation(body.invitation);
+    return invitation(body.invitation, corporateRecipient);
   }
 }

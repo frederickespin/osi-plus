@@ -1,14 +1,42 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   createAdminIdentityActivationHandler,
   createAdminIdentityInvitationCollectionHandler,
   createAdminIdentityInvitationDetailHandler,
 } from "../api/_lib/adminIdentityInvitationHttp.js";
+import {
+  V17_PRODUCTION_PILOT_BATCH,
+  V17_PRODUCTION_PILOT_GATES,
+} from "../api/_lib/v17ProductionPilotGate.js";
 
 const localEnv = { ADMIN_IDENTITY_INVITATION_MODE: "LOCAL_ONLY" };
 const context = { tenantId: "tenant-test", membershipId: "member-test", userId: "user-test", role: "A" };
 const invitationRef = randomUUID();
 const invitation = { invitationRef, email: "admin@example.invalid", role: "A", grantedPermissions: [], status: "PENDING", expiresAt: "2026-08-28T00:00:00.000Z", createdAt: "2026-08-27T00:00:00.000Z" };
+const adminPermissions = ["membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status"];
+const productionContext = {
+  tenantId: "tenant-test", tenantCode: "PILOT-TENANT", membershipId: "member-test", userId: "user-test", role: "A",
+  userStatus: "ACTIVE", membershipStatus: "ACTIVE", tenantStatus: "ACTIVE", effectivePermissions: adminPermissions, deniedPermissions: [],
+};
+function canonical(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
+}
+function productionEnvironment(adminEmail = "corporate-admin@example.invalid") {
+  const manifest = canonical({ batch: V17_PRODUCTION_PILOT_BATCH, tenants: [{ code: "PILOT-TENANT", gates: [V17_PRODUCTION_PILOT_GATES.ADMIN_IDENTITY_INVITATIONS] }], version: 1 });
+  return {
+    VERCEL: "1", VERCEL_ENV: "production", VERCEL_GIT_COMMIT_REF: "main",
+    MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false",
+    COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE", COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ",
+    COMMERCIAL_TENANCY_MUTATION_MODE: "DISABLED", COMMERCIAL_TENANCY_ACTIVATION_BATCH: "MT-01C2B2-IPACKERS-DO-V1",
+    V17_PRODUCTION_PILOT_ACTIVATION_BATCH: V17_PRODUCTION_PILOT_BATCH,
+    V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST: manifest,
+    V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST_SHA256: createHash("sha256").update(manifest, "utf8").digest("hex"),
+    V17_PRODUCTION_PILOT_ADMIN_EMAIL: adminEmail,
+    ADMIN_IDENTITY_INVITATION_MODE: "PRODUCTION_PILOT",
+  };
+}
 const results = [];
 function check(name, condition) { results.push({ name, passed: Boolean(condition) }); if (!condition) throw new Error(name); }
 function response() {
@@ -44,9 +72,43 @@ check("external origin rejected", (await invoke(collection, { origin: "https://e
 check("OPTIONS never grants CORS", (await invoke(collection, { method: "OPTIONS" })).statusCode === 405);
 check("HEAD has no body", (await invoke(collection, { method: "HEAD" })).body === undefined);
 
+let productionAuthCalls = 0; let productionIssueCalls = 0; let productionInput;
+const productionCollection = createAdminIdentityInvitationCollectionHandler({
+  env: productionEnvironment(), prisma: {},
+  resolveContext: async () => { productionAuthCalls += 1; return productionContext; },
+  list: async () => [{ ...invitation, email: "corporate-admin@example.invalid" }],
+  issue: async (_db, _ctx, body) => {
+    productionIssueCalls += 1; productionInput = body;
+    return { invitation: { ...invitation, email: body.email }, activationPath: "/activate-admin#token=one-time", shownOnce: true };
+  },
+});
+const injectedEmail = await invoke(productionCollection, { method: "POST", headers: { "content-type": "application/json" }, body: { requestId: randomUUID(), email: "injected@example.invalid" } });
+check("Production Pilot rejects injected email before auth or Prisma", injectedEmail.statusCode === 400 && productionAuthCalls === 0 && productionIssueCalls === 0 && privateHeaders(injectedEmail));
+const corporateIssued = await invoke(productionCollection, { method: "POST", headers: { "content-type": "application/json" }, body: { requestId: randomUUID() } });
+check("Production Pilot derives recipient only on server", corporateIssued.statusCode === 201 && productionAuthCalls === 1 && productionIssueCalls === 1
+  && productionInput?.email === "corporate-admin@example.invalid" && !Object.hasOwn(corporateIssued.body?.invitation || {}, "email")
+  && !JSON.stringify(corporateIssued.body).includes("corporate-admin@example.invalid") && privateHeaders(corporateIssued));
+const corporateList = await invoke(productionCollection, {});
+check("Production Pilot list never publishes recipient", corporateList.statusCode === 200 && !Object.hasOwn(corporateList.body?.invitations?.[0] || {}, "email")
+  && !JSON.stringify(corporateList.body).includes("corporate-admin@example.invalid") && privateHeaders(corporateList));
+for (const [name, env] of [
+  ["missing", { ...productionEnvironment(), V17_PRODUCTION_PILOT_ADMIN_EMAIL: undefined }],
+  ["invalid", productionEnvironment("invalid-recipient")],
+]) {
+  let auth = 0; let domain = 0;
+  const handler = createAdminIdentityInvitationCollectionHandler({ env, prisma: {}, resolveContext: async () => { auth += 1; return productionContext; }, issue: async () => { domain += 1; } });
+  const result = await invoke(handler, { method: "POST", headers: { "content-type": "application/json" }, body: { requestId: randomUUID() } });
+  check(`Production Pilot ${name} recipient fails closed before auth or Prisma`, result.statusCode === 503 && auth === 0 && domain === 0 && privateHeaders(result));
+}
+
 const detail = createAdminIdentityInvitationDetailHandler({ env: localEnv, prisma: {}, resolveContext: async () => context, revoke: async (_db, _ctx, ref, body) => ({ ...invitation, invitationRef: ref, status: body.action === "REVOKE" ? "REVOKED" : "PENDING" }) });
 const revoked = await invoke(detail, { method: "PATCH", query: { invitationRef }, headers: { "content-type": "application/json" }, body: { requestId: randomUUID(), action: "REVOKE" } });
 check("revoke exact public ref", revoked.statusCode === 200 && revoked.body?.invitation?.status === "REVOKED" && privateHeaders(revoked));
+const productionDetail = createAdminIdentityInvitationDetailHandler({ env: productionEnvironment(), prisma: {}, resolveContext: async () => productionContext,
+  revoke: async (_db, _ctx, ref) => ({ ...invitation, invitationRef: ref, email: "corporate-admin@example.invalid", status: "REVOKED" }) });
+const corporateRevoked = await invoke(productionDetail, { method: "PATCH", query: { invitationRef }, headers: { "content-type": "application/json" }, body: { requestId: randomUUID(), action: "REVOKE" } });
+check("Production Pilot revoke response never publishes recipient", corporateRevoked.statusCode === 200 && !Object.hasOwn(corporateRevoked.body?.invitation || {}, "email")
+  && !JSON.stringify(corporateRevoked.body).includes("corporate-admin@example.invalid") && privateHeaders(corporateRevoked));
 
 let activationBodyReads = 0; let activationCalls = 0; let resolutionCalls = 0;
 const activationDisabled = createAdminIdentityActivationHandler({ env: { ADMIN_IDENTITY_INVITATION_MODE: "DISABLED" }, resolveActivation: async () => { resolutionCalls += 1; }, activateNew: async () => { activationCalls += 1; } });

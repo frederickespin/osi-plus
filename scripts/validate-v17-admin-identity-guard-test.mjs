@@ -27,12 +27,22 @@ rejected("gate posterior a body bloqueado", http, (s) => s.replace("requireAdmin
 rejected("CORS permisivo bloqueado", http, (s) => `${s}\nres.setHeader("Access-Control-Allow-Origin", "*");`, /CORS/);
 rejected("modo elegido sin resolver bloqueado", http, (s) => s.replace("resolution.mode === ADMIN_IDENTITY_ACTIVATION_MODES.NEW_IDENTITY", "getBearerToken(req)"), /autoritativa/);
 rejected("destinatario productivo sin congelar bloqueado", http, (s) => s.replace("V17_PRODUCTION_PILOT_ADMIN_EMAIL", "REMOVED_FROZEN_RECIPIENT"), /congelado/);
+rejected("email productivo desde navegador bloqueado", http, (s) => s.replace('ISSUE_PRODUCTION_PILOT_FIELDS = new Set(["requestId"])', 'ISSUE_PRODUCTION_PILOT_FIELDS = new Set(["requestId", "email"])'), /Production Pilot/);
+rejected("validación de email después de Prisma bloqueada", http, (s) => s.replace("exact(body, ISSUE_PRODUCTION_PILOT_FIELDS);", "void 0;")
+  .replace("const context = await resolveContext(req, { prisma, env });", "const context = await resolveContext(req, { prisma, env });\n      exact(body, ISSUE_PRODUCTION_PILOT_FIELDS);"), /después de auth|Production Pilot/);
+rejected("destinatario en respuesta productiva bloqueado", http, (s) => s.replace("invitationRef: invitation.invitationRef,", "email: invitation.email,\n    invitationRef: invitation.invitationRef,"), /respuestas productivas/);
 const activation = "src/admin-tenant/AdminIdentityActivation.tsx";
 rejected("sesión ambiental vuelve a seleccionar flujo bloqueada", activation, (s) => s.replace('mode === "EXISTING_IDENTITY" ? loadSession() : null', "loadSession()"), /frontend/);
 const activationRoute = "src/admin-tenant/adminIdentityActivationRoute.ts";
 rejected("fragmento persistente bloqueado", activationRoute, (s) => s.replace('window.history.replaceState({}, "", "/activate-admin");', "void 0;"), /fragmento/);
 const app = "src/App.tsx";
 rejected("pantalla fuera de compuerta bloqueada", app, (s) => s.replace("!isAdminIdentityInvitationEnabled()", "false"), /pantalla/);
+const adminApi = "src/admin-tenant/adminApi.ts";
+rejected("cliente corporativo enviando email bloqueado", adminApi, (s) => s.replace("JSON.stringify({ requestId: crypto.randomUUID() })", "JSON.stringify({ requestId: crypto.randomUUID(), email: 'forbidden' })"), /cliente productivo/);
+const adminUi = "src/admin-tenant/AdminTenantMembershipModule.tsx";
+rejected("selector corporativo eliminado bloqueado", adminUi, (s) => s.replace("corporateRecipient ? <p", "false ? <p"), /UI Production Pilot/);
+const hub = "src/hub/HubWorkspace.tsx";
+rejected("modo corporativo no transmitido bloqueado", hub, (s) => s.replace("invitationMode={adminInvitationMode}", "invitationMode={undefined}"), /modo de invitación/);
 const bootstrap = "scripts/v17-admin-initial-permissions-bootstrap.mjs";
 rejected("dry-run escribible bloqueado", bootstrap, (s) => s.replace('await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");', "void 0;"), /dry-run/);
 rejected("bootstrap de contraseña bloqueado", bootstrap, (s) => `${s}\nconst passwordHash = 'forbidden';\n`, /credenciales/);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Search, ShieldCheck, UserCog, UserPlus, XCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AdminApiError, AdminTenantApi, type AdminIdentityInvitation, type AdminMembership } from "./adminApi";
+import { ADMIN_IDENTITY_INVITATION_MODES, type AdminTenantMembershipMode } from "./adminMode";
 
 const ADMIN_PERMISSIONS = Object.freeze([
   "membership:view",
@@ -15,6 +16,7 @@ type Props = Readonly<{
   effectivePermissions: readonly string[];
   deniedPermissions: readonly string[];
   invitationEnabled?: boolean;
+  invitationMode?: AdminTenantMembershipMode;
   onUnauthorized(): void;
   api?: AdminTenantApi;
 }>;
@@ -38,7 +40,7 @@ function errorText(error: unknown) {
   } as Record<string, string>)[code] || "No fue posible completar la operación.";
 }
 
-export default function AdminTenantMembershipModule({ authorization, effectivePermissions, deniedPermissions, invitationEnabled = false, onUnauthorized, api: suppliedApi }: Props) {
+export default function AdminTenantMembershipModule({ authorization, effectivePermissions, deniedPermissions, invitationEnabled = false, invitationMode = ADMIN_IDENTITY_INVITATION_MODES.DISABLED, onUnauthorized, api: suppliedApi }: Props) {
   const api = useMemo(() => suppliedApi || new AdminTenantApi(() => authorization || null), [authorization, suppliedApi]);
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("");
@@ -59,6 +61,7 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
   const fence = useRef(0);
   const can = (permission: string) => effectivePermissions.includes(permission) && !deniedPermissions.includes(permission);
   const canInvite = invitationEnabled && ADMIN_PERMISSIONS.every(can);
+  const corporateRecipient = invitationMode === ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -82,11 +85,11 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
   useEffect(() => {
     if (!canInvite) { setInvitations([]); return undefined; }
     const controller = new AbortController();
-    void api.listInvitations(controller.signal).then(setInvitations).catch((cause) => {
+    void api.listInvitations(corporateRecipient, controller.signal).then(setInvitations).catch((cause) => {
       if (!controller.signal.aborted && cause instanceof AdminApiError && cause.status === 401) onUnauthorized();
     });
     return () => controller.abort();
-  }, [api, canInvite, onUnauthorized]);
+  }, [api, canInvite, corporateRecipient, onUnauthorized]);
 
   const open = (membership: AdminMembership) => { setSelected(membership); setDraft(membership); setError(null); };
   const toggle = (kind: "grantedPermissions" | "deniedPermissions", permission: string) => {
@@ -115,14 +118,16 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
   const issueInvitation = async () => {
     setInviteSaving(true); setError(null); setActivationPath(null);
     try {
-      const issued = await api.issueInvitation(inviteEmail);
+      const issued = corporateRecipient
+        ? await api.issueCorporateInvitation()
+        : await api.issueInvitation(inviteEmail);
       setInvitations((current) => [issued.invitation, ...current.filter((row) => row.invitationRef !== issued.invitation.invitationRef)]);
       setActivationPath(issued.activationPath);
     } catch (cause) { setError(errorText(cause)); } finally { setInviteSaving(false); }
   };
   const revokeInvitation = async (invitationRef: string) => {
     try {
-      const revoked = await api.revokeInvitation(invitationRef);
+      const revoked = await api.revokeInvitation(invitationRef, corporateRecipient);
       setInvitations((current) => current.map((row) => row.invitationRef === revoked.invitationRef ? revoked : row));
     } catch (cause) { setError(errorText(cause)); }
   };
@@ -152,7 +157,7 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
         {!loading && !error && rows.length === 0 && <p className="p-8 text-center text-sm text-slate-500">No hay membresías para estos filtros.</p>}
       </div>
       <div className="mt-4 flex items-center justify-between text-xs text-slate-600"><span>{total} membresía(s)</span><div className="flex items-center gap-2"><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded border p-2 disabled:opacity-40" aria-label="Página anterior"><ChevronLeft className="h-4 w-4" /></button><span>Página {page}</span><button disabled={page * 20 >= total} onClick={() => setPage((value) => value + 1)} className="rounded border p-2 disabled:opacity-40" aria-label="Página siguiente"><ChevronRight className="h-4 w-4" /></button></div></div>
-      {canInvite && <section className="mt-7" aria-labelledby="admin-invitations-title"><div className="flex items-end justify-between"><div><h2 id="admin-invitations-title" className="text-sm font-black text-slate-950">Invitaciones administrativas</h2><p className="text-xs text-slate-500">El enlace sólo se muestra al emitirlo.</p></div><span className="text-xs text-slate-500">{invitations.length} registrada(s)</span></div><div className="mt-2 divide-y overflow-hidden rounded-xl border bg-white">{invitations.map((invitation) => <div key={invitation.invitationRef} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs"><div className="min-w-0"><strong className="block truncate text-slate-900">{invitation.email}</strong><span className="text-slate-500">Administrador · {invitation.status}</span></div>{invitation.status === "PENDING" && <button type="button" onClick={() => void revokeInvitation(invitation.invitationRef)} className="rounded-lg border border-red-200 px-3 py-1.5 font-semibold text-red-700"><XCircle className="mr-1 inline h-3.5 w-3.5" />Revocar</button>}</div>)}{invitations.length === 0 && <p className="p-5 text-center text-xs text-slate-500">No hay invitaciones.</p>}</div></section>}
+      {canInvite && <section className="mt-7" aria-labelledby="admin-invitations-title"><div className="flex items-end justify-between"><div><h2 id="admin-invitations-title" className="text-sm font-black text-slate-950">Invitaciones administrativas</h2><p className="text-xs text-slate-500">El enlace sólo se muestra al emitirlo.</p></div><span className="text-xs text-slate-500">{invitations.length} registrada(s)</span></div><div className="mt-2 divide-y overflow-hidden rounded-xl border bg-white">{invitations.map((invitation) => <div key={invitation.invitationRef} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs"><div className="min-w-0"><strong className="block truncate text-slate-900">{corporateRecipient ? "Destinatario corporativo configurado" : invitation.email}</strong><span className="text-slate-500">Administrador · {invitation.status}</span></div>{invitation.status === "PENDING" && <button type="button" onClick={() => void revokeInvitation(invitation.invitationRef)} className="rounded-lg border border-red-200 px-3 py-1.5 font-semibold text-red-700"><XCircle className="mr-1 inline h-3.5 w-3.5" />Revocar</button>}</div>)}{invitations.length === 0 && <p className="p-5 text-center text-xs text-slate-500">No hay invitaciones.</p>}</div></section>}
     </div>
     <Dialog open={Boolean(draft)} onOpenChange={(openValue) => { if (!openValue) { setSelected(null); setDraft(null); setError(null); } }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
@@ -167,7 +172,7 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
       </DialogContent>
     </Dialog>
     <Dialog open={inviteOpen} onOpenChange={(value) => { setInviteOpen(value); if (!value) { setActivationPath(null); setInviteEmail(""); } }}>
-      <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Invitar administrador</DialogTitle><DialogDescription>La cuenta recibirá rol A y los cuatro permisos administrativos explícitos. El enlace se mostrará una sola vez y vence en 24 horas.</DialogDescription></DialogHeader><div className="space-y-4"><label className="block text-sm font-semibold">Email corporativo<input type="email" autoComplete="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} disabled={Boolean(activationPath)} className="mt-1 h-11 w-full rounded-lg border px-3" /></label>{activationPath ? <div className="rounded-xl border border-amber-300 bg-amber-50 p-4"><p className="text-xs font-bold text-amber-950">Copie este enlace ahora. No podrá recuperarse después.</p><code className="mt-2 block break-all rounded bg-white p-2 text-xs">{`${window.location.origin}${activationPath}`}</code><button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}${activationPath}`)} className="mt-3 rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white">Copiar enlace</button></div> : <button type="button" disabled={inviteSaving || !inviteEmail} onClick={() => void issueInvitation()} className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{inviteSaving ? "Generando…" : "Generar invitación"}</button>}</div></DialogContent>
+      <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Invitar administrador</DialogTitle><DialogDescription>La cuenta recibirá rol A y los cuatro permisos administrativos explícitos. El enlace se mostrará una sola vez y vence en 24 horas.</DialogDescription></DialogHeader><div className="space-y-4">{corporateRecipient ? <p className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-sm font-semibold text-indigo-950">Destinatario corporativo configurado</p> : <label className="block text-sm font-semibold">Email corporativo<input type="email" autoComplete="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} disabled={Boolean(activationPath)} className="mt-1 h-11 w-full rounded-lg border px-3" /></label>}{activationPath ? <div className="rounded-xl border border-amber-300 bg-amber-50 p-4"><p className="text-xs font-bold text-amber-950">Copie este enlace ahora. No podrá recuperarse después.</p><code className="mt-2 block break-all rounded bg-white p-2 text-xs">{`${window.location.origin}${activationPath}`}</code><button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}${activationPath}`)} className="mt-3 rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white">Copiar enlace</button></div> : <button type="button" disabled={inviteSaving || !corporateRecipient && !inviteEmail} onClick={() => void issueInvitation()} className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{inviteSaving ? "Generando…" : corporateRecipient ? "Generar invitación corporativa" : "Generar invitación"}</button>}</div></DialogContent>
     </Dialog>
   </main>;
 }

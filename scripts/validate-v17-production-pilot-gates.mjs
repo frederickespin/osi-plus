@@ -24,7 +24,10 @@ requireMatch(crmHttp, /gate\(env, req\)[\s\S]*resolveContext[\s\S]*requireV17Pro
 requireMatch(adminAccess, /ADMIN_TENANT_MEMBERSHIP_MODE[\s\S]*ADMIN_IDENTITY_INVITATION_MODE/, "Administración e Invitaciones no poseen modos separados");
 requireMatch(adminHttp, /requireAdminTenantMembershipAccess[\s\S]*resolveContext[\s\S]*requireAdminProductionPilotContext[\s\S]*readJsonObject/, "orden Administración alterado");
 requireMatch(identityHttp, /requireAdminIdentityInvitationAccess[\s\S]*resolveContext[\s\S]*requireAdminProductionPilotContext/, "invitaciones administrativas no validan lote tras auth");
-requireMatch(identityHttp, /requireProductionPilotInvitationToken[\s\S]*activateNew/, "activación pública no valida tenant del lote");
+requireMatch(identityHttp, /resolveActivation[\s\S]*requireProductionPilotActivationTenant[\s\S]*activateNew/,
+  "activación pública no resuelve invitación ni valida tenant del lote");
+requireMatch(identityHttp, /V17_PRODUCTION_PILOT_ADMIN_EMAIL[\s\S]*expectedRecipientEmail/,
+  "emisión y activación no fijan el destinatario productivo");
 requireMatch(mutationUi, /VITE_CRM_PIPELINE_CASE_MUTATION_MODE[\s\S]*PRODUCTION_PILOT/, "UI CRM no posee compuerta visual focal");
 requireMatch(adminMode, /VITE_ADMIN_TENANT_MEMBERSHIP_MODE[\s\S]*VITE_ADMIN_IDENTITY_INVITATION_MODE/, "UI administrativa no separa visibilidad");
 requireMatch(app, /isAdminIdentityActivationRoute\(\)[\s\S]*isAdminIdentityInvitationEnabled\(\)/, "activación lazy no depende de la compuerta de invitaciones");

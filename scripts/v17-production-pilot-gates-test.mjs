@@ -42,6 +42,7 @@ function productionEnvironment(gates) {
     V17_PRODUCTION_PILOT_ACTIVATION_BATCH: V17_PRODUCTION_PILOT_BATCH,
     V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST: manifest.raw,
     V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST_SHA256: manifest.hash,
+    V17_PRODUCTION_PILOT_ADMIN_EMAIL: "pilot-admin@example.invalid",
   };
 }
 const allPermissions = [
@@ -130,21 +131,34 @@ try {
   let invitationCalls = 0;
   const invitations = createAdminIdentityInvitationCollectionHandler({ env: invitationEnv, prisma: {}, resolveContext: async () => context, list: async () => { invitationCalls += 1; return []; } });
   check("Invitaciones productivas focales autorizadas", (await invoke(invitations, request())).statusCode === 200 && invitationCalls === 1);
+  let issueCalls = 0;
+  const issueInvitation = createAdminIdentityInvitationCollectionHandler({
+    env: invitationEnv, prisma: {}, resolveContext: async () => context,
+    issue: async () => { issueCalls += 1; return { invitation: {}, activationPath: null, shownOnce: false }; },
+  });
+  check("destinatario distinto al congelado se bloquea antes de emitir", (await invoke(issueInvitation, request("POST", {
+    requestId: randomUUID(), email: "different-admin@example.invalid",
+  }))).statusCode === 400 && issueCalls === 0);
+  check("destinatario congelado alcanza emisión", (await invoke(issueInvitation, request("POST", {
+    requestId: randomUUID(), email: "pilot-admin@example.invalid",
+  }))).statusCode === 201 && issueCalls === 1);
   let activationCalls = 0;
   const token = `ai1.${"A".repeat(43)}`;
   const activationHandler = createAdminIdentityActivationHandler({
     env: invitationEnv,
-    prisma: { $queryRaw: async () => [{ tenant_code: "PILOT-TENANT" }] },
+    prisma: {},
+    resolveActivation: async () => ({ mode: "NEW_IDENTITY", tenantCode: "PILOT-TENANT" }),
     activateNew: async () => { activationCalls += 1; return { activated: true, loginRequired: true }; },
   });
-  const activationOk = await invoke(activationHandler, request("POST", { token, name: "Persona sintética", password: "Synthetic-Password-1!" }));
+  const activationOk = await invoke(activationHandler, request("POST", { action: "ACTIVATE", token, name: "Persona sintética", password: "Synthetic-Password-1!" }));
   check("activación pública exige tenant y lote", activationOk.statusCode === 200 && activationCalls === 1);
   const activationWrongTenant = createAdminIdentityActivationHandler({
     env: invitationEnv,
-    prisma: { $queryRaw: async () => [{ tenant_code: "OTHER-TENANT" }] },
+    prisma: {},
+    resolveActivation: async () => ({ mode: "NEW_IDENTITY", tenantCode: "OTHER-TENANT" }),
     activateNew: async () => { throw new Error("must not activate"); },
   });
-  check("token de tenant ajeno es indistinguible", (await invoke(activationWrongTenant, request("POST", { token, name: "Persona sintética", password: "Synthetic-Password-1!" }))).body?.error === "ADMIN_IDENTITY_ACTIVATION_INVALID");
+  check("token de tenant ajeno es indistinguible", (await invoke(activationWrongTenant, request("POST", { action: "ACTIVATE", token, name: "Persona sintética", password: "Synthetic-Password-1!" }))).body?.error === "ADMIN_IDENTITY_ACTIVATION_INVALID");
 
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } catch (error) {

@@ -48,14 +48,24 @@ const detail = createAdminIdentityInvitationDetailHandler({ env: localEnv, prism
 const revoked = await invoke(detail, { method: "PATCH", query: { invitationRef }, headers: { "content-type": "application/json" }, body: { requestId: randomUUID(), action: "REVOKE" } });
 check("revoke exact public ref", revoked.statusCode === 200 && revoked.body?.invitation?.status === "REVOKED" && privateHeaders(revoked));
 
-let activationBodyReads = 0; let activationCalls = 0;
-const activationDisabled = createAdminIdentityActivationHandler({ env: { ADMIN_IDENTITY_INVITATION_MODE: "DISABLED" }, activateNew: async () => { activationCalls += 1; } });
+let activationBodyReads = 0; let activationCalls = 0; let resolutionCalls = 0;
+const activationDisabled = createAdminIdentityActivationHandler({ env: { ADMIN_IDENTITY_INVITATION_MODE: "DISABLED" }, resolveActivation: async () => { resolutionCalls += 1; }, activateNew: async () => { activationCalls += 1; } });
 const activationDisabledResult = await invoke(activationDisabled, { method: "POST", bodyGetter: () => { activationBodyReads += 1; throw new Error("body read"); } });
-check("public activation gate precedes body and database", activationDisabledResult.statusCode === 409 && activationBodyReads === 0 && activationCalls === 0 && privateHeaders(activationDisabledResult));
-const activation = createAdminIdentityActivationHandler({ env: localEnv, prisma: {}, activateNew: async (_db, body) => ({ activated: body.token === "opaque", loginRequired: true }) });
-const activated = await invoke(activation, { method: "POST", headers: { "content-type": "application/json" }, body: { token: "opaque", name: "Administradora", password: "Synthetic-Password-1!" } });
-check("activation does not auto login", activated.statusCode === 200 && activated.body?.loginRequired === true && !activated.headers.has("set-cookie") && privateHeaders(activated));
-const invalid = await invoke(activation, { method: "POST", headers: { "content-type": "application/json" }, body: { token: "bad", name: "Administradora", password: "Synthetic-Password-1!", userId: "forbidden" } });
+check("public activation gate precedes body and database", activationDisabledResult.statusCode === 409 && activationBodyReads === 0 && activationCalls === 0 && resolutionCalls === 0 && privateHeaders(activationDisabledResult));
+let selectedMode = "NEW_IDENTITY";
+const activation = createAdminIdentityActivationHandler({ env: localEnv, prisma: {},
+  resolveActivation: async (_db, body) => { resolutionCalls += 1; return { mode: selectedMode, tenantCode: "LOCAL" }; },
+  activateNew: async (_db, body) => { activationCalls += 1; return { activated: body.token === "opaque", loginRequired: true }; },
+  acceptExisting: async (_db, body, identity) => ({ activated: body.token === "opaque" && identity.sub === "existing-user", loginRequired: true }),
+});
+const resolvedNew = await invoke(activation, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer issuer-must-not-select-mode" }, body: { action: "RESOLVE", token: "opaque" } });
+check("server resolves new identity independent of ambient bearer", resolvedNew.statusCode === 200 && resolvedNew.body?.mode === "NEW_IDENTITY");
+const activated = await invoke(activation, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer issuer-must-be-ignored" }, body: { action: "ACTIVATE", token: "opaque", name: "Administradora", password: "Synthetic-Password-1!" } });
+check("new activation does not use ambient session or auto login", activated.statusCode === 200 && activated.body?.loginRequired === true && activationCalls === 1 && !activated.headers.has("set-cookie") && privateHeaders(activated));
+selectedMode = "EXISTING_IDENTITY";
+const missingBearer = await invoke(activation, { method: "POST", headers: { "content-type": "application/json" }, body: { action: "ACTIVATE", token: "opaque" } });
+check("existing identity requires matching LEGACY bearer", missingBearer.statusCode === 400 && missingBearer.body?.error === "ADMIN_IDENTITY_ACTIVATION_INVALID");
+const invalid = await invoke(activation, { method: "POST", headers: { "content-type": "application/json" }, body: { action: "ACTIVATE", token: "bad", name: "Administradora", password: "Synthetic-Password-1!", userId: "forbidden" } });
 check("activation input closed and generic", invalid.statusCode === 400 && invalid.body?.error === "ADMIN_IDENTITY_ACTIVATION_INVALID");
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, routes: 3, results }, null, 2)}\n`);

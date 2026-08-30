@@ -1,5 +1,4 @@
 import { prisma as defaultPrisma } from "./db.js";
-import { Prisma } from "@prisma/client";
 import { JsonBodyError, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { setAuthPrivateHeaders } from "./authHttp.js";
@@ -17,9 +16,11 @@ import {
   AdminIdentityInvitationError,
   acceptExistingAdminIdentity,
   activateNewAdminIdentity,
+  ADMIN_IDENTITY_ACTIVATION_MODES,
   issueAdminIdentityInvitation,
-  hashAdminInvitationToken,
   listAdminIdentityInvitations,
+  normalizeAdminInvitationEmail,
+  resolveAdminIdentityActivation,
   revokeAdminIdentityInvitation,
 } from "./adminIdentityInvitationDomain.js";
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
@@ -31,7 +32,9 @@ import {
 
 const ISSUE_FIELDS = new Set(["requestId", "email"]);
 const REVOKE_FIELDS = new Set(["requestId", "action"]);
-const ACTIVATE_FIELDS = new Set(["token", "name", "password"]);
+const RESOLVE_FIELDS = new Set(["action", "token"]);
+const ACTIVATE_NEW_FIELDS = new Set(["action", "token", "name", "password"]);
+const ACTIVATE_EXISTING_FIELDS = new Set(["action", "token"]);
 
 function exact(body, fields, code = "ADMIN_IDENTITY_INVITATION_INVALID") {
   if (Object.keys(body).some((key) => !fields.has(key))) throw new AdminIdentityInvitationError(code, 400);
@@ -76,27 +79,26 @@ function sendActivationError(res, error) {
   return res.status(unavailable ? 503 : 400).json({ ok: false, error: unavailable ? "ADMIN_IDENTITY_ACTIVATION_UNAVAILABLE" : "ADMIN_IDENTITY_ACTIVATION_INVALID" });
 }
 
-async function requireProductionPilotInvitationToken(prisma, env, token, now = new Date()) {
-  let tokenHash;
-  try { tokenHash = hashAdminInvitationToken(token); } catch { throw new AdminIdentityInvitationError("ADMIN_IDENTITY_ACTIVATION_INVALID", 400); }
-  const rows = await prisma.$queryRaw(Prisma.sql`
-    SELECT t."code" AS "tenant_code"
-    FROM "osi"."admin_identity_invitations" invitation
-    JOIN "osi"."tenants" t ON t."id"=invitation."tenant_id"
-    WHERE invitation."token_hash"=${tokenHash} AND invitation."status"='PENDING'
-      AND invitation."expires_at">${now} AND t."status"='ACTIVE'
-    LIMIT 2
-  `);
+function productionPilotRecipient(env, mode) {
+  if (mode !== ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT) return undefined;
+  const raw = env.V17_PRODUCTION_PILOT_ADMIN_EMAIL;
   try {
-    if (rows.length !== 1) throw new Error("not found");
+    const normalized = normalizeAdminInvitationEmail(raw);
+    if (raw !== normalized) throw new Error("non-canonical");
+    return normalized;
+  } catch {
+    throw new AdminMembershipAccessError("ADMIN_IDENTITY_INVITATION_CONFIGURATION_INVALID", 503);
+  }
+}
+
+function requireProductionPilotActivationTenant(env, mode, tenantCode) {
+  if (mode !== ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT) return;
+  try {
     requireV17ProductionPilotTenant(
-      resolveV17ProductionPilotActivation(env),
-      rows[0].tenant_code,
+      resolveV17ProductionPilotActivation(env), tenantCode,
       V17_PRODUCTION_PILOT_GATES.ADMIN_IDENTITY_INVITATIONS,
     );
-  } catch {
-    throw new AdminIdentityInvitationError("ADMIN_IDENTITY_ACTIVATION_INVALID", 400);
-  }
+  } catch { throw new AdminIdentityInvitationError("ADMIN_IDENTITY_ACTIVATION_INVALID", 400); }
 }
 
 export function createAdminIdentityInvitationCollectionHandler({
@@ -116,6 +118,10 @@ export function createAdminIdentityInvitationCollectionHandler({
       }
       if (req.method === "POST") {
         const body = exact(await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 8 * 1024 }), ISSUE_FIELDS);
+        const expectedRecipientEmail = productionPilotRecipient(env, mode);
+        if (expectedRecipientEmail !== undefined && normalizeAdminInvitationEmail(body.email) !== expectedRecipientEmail) {
+          throw new AdminIdentityInvitationError("ADMIN_IDENTITY_INVITATION_INVALID", 400);
+        }
         const result = await issue(prisma, context, body);
         return res.status(201).json({ ok: true, ...result });
       }
@@ -155,6 +161,7 @@ export function createAdminIdentityInvitationDetailHandler({
 
 export function createAdminIdentityActivationHandler({
   env = process.env, prisma = defaultPrisma,
+  resolveActivation = resolveAdminIdentityActivation,
   activateNew = activateNewAdminIdentity, acceptExisting = acceptExistingAdminIdentity,
 } = {}) {
   return withPrivateApiHeaders(async (req, res) => {
@@ -163,18 +170,33 @@ export function createAdminIdentityActivationHandler({
       const mode = requireAdminIdentityInvitationAccess(req, env);
       if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
       sameOrigin(req);
+      const body = await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 16 * 1024 });
+      if (body.action !== "RESOLVE" && body.action !== "ACTIVATE") {
+        throw new AdminIdentityInvitationError("ADMIN_IDENTITY_ACTIVATION_INVALID", 400);
+      }
+      if (body.action === "RESOLVE") exact(body, RESOLVE_FIELDS, "ADMIN_IDENTITY_ACTIVATION_INVALID");
+      else exact(body, ACTIVATE_NEW_FIELDS, "ADMIN_IDENTITY_ACTIVATION_INVALID");
+      const expectedRecipientEmail = productionPilotRecipient(env, mode);
+      const resolution = await resolveActivation(prisma, { token: body.token }, { expectedRecipientEmail });
+      requireProductionPilotActivationTenant(env, mode, resolution.tenantCode);
+      if (body.action === "RESOLVE") {
+        return res.status(200).json({ ok: true, mode: resolution.mode });
+      }
+      if (resolution.mode === ADMIN_IDENTITY_ACTIVATION_MODES.NEW_IDENTITY) {
+        exact(body, ACTIVATE_NEW_FIELDS, "ADMIN_IDENTITY_ACTIVATION_INVALID");
+        const result = await activateNew(prisma, body, { expectedRecipientEmail });
+        return res.status(200).json({ ok: true, ...result });
+      }
+      if (resolution.mode !== ADMIN_IDENTITY_ACTIVATION_MODES.EXISTING_IDENTITY) {
+        throw new AdminIdentityInvitationError("ADMIN_IDENTITY_ACTIVATION_INVALID", 400);
+      }
+      exact(body, ACTIVATE_EXISTING_FIELDS, "ADMIN_IDENTITY_ACTIVATION_INVALID");
       const bearer = getBearerToken(req);
-      let legacyIdentity = null;
-      if (bearer) {
-        try { legacyIdentity = verifyStrictLegacyAccessToken(bearer); } catch { throw new AdminIdentityInvitationError("ADMIN_IDENTITY_ACTIVATION_INVALID", 400); }
+      let legacyIdentity;
+      try { legacyIdentity = verifyStrictLegacyAccessToken(bearer); } catch {
+        throw new AdminIdentityInvitationError("ADMIN_IDENTITY_ACTIVATION_INVALID", 400);
       }
-      const body = exact(await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 16 * 1024 }), ACTIVATE_FIELDS, "ADMIN_IDENTITY_ACTIVATION_INVALID");
-      if (mode === ADMIN_IDENTITY_INVITATION_MODES.PRODUCTION_PILOT) {
-        await requireProductionPilotInvitationToken(prisma, env, body.token);
-      }
-      const result = legacyIdentity
-        ? await acceptExisting(prisma, body, legacyIdentity)
-        : await activateNew(prisma, body);
+      const result = await acceptExisting(prisma, body, legacyIdentity, { expectedRecipientEmail });
       return res.status(200).json({ ok: true, ...result });
     } catch (error) {
       return sendActivationError(res, error);

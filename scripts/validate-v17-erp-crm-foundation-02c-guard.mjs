@@ -21,8 +21,12 @@ const protectedUi = [
 assert.match(files.production, /hubMode === V17_COMMERCIAL_CRM_PRODUCTION_MODE[\s\S]*clientMode === V17_COMMERCIAL_CRM_PRODUCTION_MODE[\s\S]*readMode === V17_COMMERCIAL_CRM_PRODUCTION_MODE/u);
 assert.match(files.production, /vercelEnvironment === "production"[\s\S]*gitBranch === V17_COMMERCIAL_CRM_PRODUCTION_BRANCH/u);
 assert.match(files.auth, /CRM_PIPELINE_MUTATION_MODES\.DISABLED/u);
+assert.match(files.auth, /CRM_PIPELINE_MUTATION_MODES\.PRODUCTION_PILOT/u);
 assert.match(files.auth, /COMMERCIAL_TENANCY_MUTATION_MODES\.DISABLED/u);
 assert.match(files.auth, /resolveCrmPipelineContext/u);
+assert.match(files.auth, /resolveV17ProductionPilotActivation/u);
+assert.match(files.auth, /requireV17ProductionPilotTenant/u);
+assert.match(files.auth, /V17_PRODUCTION_PILOT_GATES\.CRM_CASE_MUTATIONS/u);
 assert.match(files.app, /!hubMode\.valid \|\| !serverConfirmed/u);
 assert.match(files.app, /commercialCrmProductionAuthorized !== true/u);
 assert.ok(files.app.indexOf("!hubMode.valid || !serverConfirmed") < files.app.indexOf("<AuthorizedHubEntry"));
@@ -38,4 +42,4 @@ for (const source of Object.values(files)) {
   assert.doesNotMatch(source, /prefetch|localStorage\.getItem\([^)]*(?:permission|role)|x-osi-/iu);
 }
 
-process.stdout.write(JSON.stringify({ ok: true, assertions: 21, protectedBoundary: "pre-lazy", mutations: "DISABLED", browserCi: 18 }));
+process.stdout.write(JSON.stringify({ ok: true, assertions: 25, protectedBoundary: "pre-lazy", sessionMutationModes: ["DISABLED", "PRODUCTION_PILOT"], browserCi: 18 }));

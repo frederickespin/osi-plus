@@ -34,6 +34,41 @@ const tenantId = `icp_t_${marker}`;
 const otherTenantId = `icp_o_${marker}`;
 const clientId = `icp_c_${marker}`;
 const otherClientId = `icp_oc_${marker}`;
+let fixturesCleaned = false;
+
+async function cleanupFixtures() {
+  await prisma.$executeRawUnsafe(`ALTER TABLE "osi"."pipeline_case_route_snapshots" DISABLE TRIGGER USER`);
+  await prisma.$executeRawUnsafe(`ALTER TABLE "osi"."client_addresses" DISABLE TRIGGER USER`);
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`
+        DELETE FROM "osi"."osi_pipeline_case_quotes"
+        WHERE "caseId" IN (
+          SELECT "id" FROM "osi"."osi_pipeline_cases" WHERE "tenant_id" IN ($1, $2)
+        )
+      `, tenantId, otherTenantId);
+      await tx.$executeRawUnsafe(`
+        DELETE FROM "osi"."pipeline_case_route_snapshots" WHERE "tenant_id" IN ($1, $2)
+      `, tenantId, otherTenantId);
+      await tx.$executeRawUnsafe(`
+        DELETE FROM "osi"."osi_pipeline_cases" WHERE "tenant_id" IN ($1, $2)
+      `, tenantId, otherTenantId);
+      await tx.$executeRawUnsafe(`
+        DELETE FROM "osi"."client_addresses" WHERE "tenant_id" IN ($1, $2)
+      `, tenantId, otherTenantId);
+      await tx.$executeRawUnsafe(`
+        DELETE FROM "osi"."osi_clients" WHERE "tenant_id" IN ($1, $2)
+      `, tenantId, otherTenantId);
+      await tx.$executeRawUnsafe(`
+        DELETE FROM "osi"."tenants" WHERE "id" IN ($1, $2)
+      `, tenantId, otherTenantId);
+    });
+    fixturesCleaned = true;
+  } finally {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "osi"."client_addresses" ENABLE TRIGGER USER`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE "osi"."pipeline_case_route_snapshots" ENABLE TRIGGER USER`);
+  }
+}
 
 async function insertTenant(id, code) {
   await prisma.$executeRawUnsafe(`
@@ -186,7 +221,19 @@ try {
     WHERE "route_contract_version"=1 AND "route_revision"=0 AND "destination_status" IS NULL
   `);
   check("casos no estructurados conservan contrato v1 sin backfill inferido", legacyRows[0].count >= 2);
+  await cleanupFixtures();
+  const remainingFixtures = await prisma.$queryRawUnsafe(`
+    SELECT
+      (SELECT count(*)::int FROM "osi"."tenants" WHERE "id" IN ($1, $2)) AS "tenants",
+      (SELECT count(*)::int FROM "osi"."osi_clients" WHERE "tenant_id" IN ($1, $2)) AS "clients",
+      (SELECT count(*)::int FROM "osi"."osi_pipeline_cases" WHERE "tenant_id" IN ($1, $2)) AS "cases",
+      (SELECT count(*)::int FROM "osi"."client_addresses" WHERE "tenant_id" IN ($1, $2)) AS "addresses",
+      (SELECT count(*)::int FROM "osi"."pipeline_case_route_snapshots" WHERE "tenant_id" IN ($1, $2)) AS "snapshots"
+  `, tenantId, otherTenantId);
+  check("fixtures ICP se eliminan antes de continuar la suite canónica",
+    Object.values(remainingFixtures[0]).every((count) => count === 0));
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } finally {
+  if (!fixturesCleaned) await cleanupFixtures();
   await prisma.$disconnect();
 }

@@ -61,7 +61,7 @@ function fail(message) { throw new Error(`V17_HUB_GUARD_FAILED: ${message}`); }
 function text(path) { return readFileSync(path, "utf8"); }
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-if (migrations.length !== 21) fail(`expected 21 migrations, found ${migrations.length}`);
+if (migrations.length !== 22 || !migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation")) fail(`expected 22 canonical migrations, found ${migrations.length}`);
 const migrationChanges = execFileSync("git", ["diff", "--name-only", BASE, "--", "prisma/migrations"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
 if (migrationChanges.some((path) => !allowedPrismaChanges.has(path))) fail("canonical migrations changed outside V17-CASE-PUBLIC-REF");
 

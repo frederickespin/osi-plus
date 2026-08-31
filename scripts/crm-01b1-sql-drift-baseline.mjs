@@ -195,7 +195,7 @@ export async function inspectCrm01b1SqlDriftBaseline({
         FROM "osi"."_prisma_migrations"
         WHERE rolled_back_at IS NULL
       `);
-      invariant(history.complete === 21 && history.failed === 0, "historial no es 21/21 completo");
+      invariant(history.complete === 22 && history.failed === 0, "historial no es 22/22 completo");
       const rows = (await tx.$queryRawUnsafe(CATALOG_SQL)).map((row) => Object.freeze({
         kind: row.kind,
         schema: row.schema_name,

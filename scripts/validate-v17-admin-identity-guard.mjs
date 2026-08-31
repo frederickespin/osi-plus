@@ -7,7 +7,7 @@ export function validateV17AdminIdentityGuard({ root = process.cwd(), overrides 
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   const migrationName = "20260827020000_v17_admin_identity_invitation";
-  invariant(migrations.length === 21 && migrations.at(-1) === migrationName, "migración 21 exacta ausente o fuera de orden");
+  invariant(migrations.length === 22 && migrations.includes(migrationName) && migrations.at(-1) === "20260831010000_v17_crm_icp_foundation", "cadena 22 exacta o migración Identity ausente");
   const migration = read(`prisma/migrations/${migrationName}/migration.sql`);
   const schema = read("prisma/schema.prisma");
   const domain = read("api/_lib/adminIdentityInvitationDomain.js");
@@ -85,7 +85,7 @@ export function validateV17AdminIdentityGuard({ root = process.cwd(), overrides 
   const platformApiRules = (JSON.parse(vercel).headers || []).filter((rule) => String(rule?.source || "").startsWith("/api/"));
   invariant(platformApiRules.length === 0, "Admin puede heredar CORS global");
   invariant(workflow.includes("guard:v17-admin-identity") && workflow.includes("test:v17-admin-identity:http"), "CI no exige guardia y HTTP");
-  return Object.freeze({ ok: true, migrations: 21, invitationRoutes: 3, tokenStorage: "SHA256_ONLY", maxExpiryHours: 24, bootstrapDefault: "DRY_RUN" });
+  return Object.freeze({ ok: true, migrations: 22, invitationRoutes: 3, tokenStorage: "SHA256_ONLY", maxExpiryHours: 24, bootstrapDefault: "DRY_RUN" });
 }
 
 if (process.argv[1]?.endsWith("validate-v17-admin-identity-guard.mjs")) {

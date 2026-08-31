@@ -96,7 +96,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   const files = snapshot?.files || {};
   const migrations = snapshot?.migrations || [];
 
-  if (migrations.length !== 21) fail(`se esperaban 21 migraciones, existen ${migrations.length}`);
+  if (migrations.length !== 22 || !migrations.includes("20260831010000_v17_crm_icp_foundation")) fail(`se esperaban 22 migraciones canónicas, existen ${migrations.length}`);
 
   const shared = "shared/v17CommercialCrmPreview.js";
   for (const signature of [

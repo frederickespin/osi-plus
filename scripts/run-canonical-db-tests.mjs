@@ -348,7 +348,7 @@ try {
   invariant(v17CaseClientPerformanceRun.report.ok === true && v17CaseClientPerformanceRun.report.fixtureCases === 10_000, "V17-CASE-CLIENT rendimiento incompleto");
   invariant(v17CaseClientAdversarialRun.report.ok === true && v17CaseClientAdversarialRun.report.raceMetrics?.operations === 160, "V17-CASE-CLIENT adversarial incompleto");
   invariant(v17CaseClientDatabaseGuardRun.assertions >= 13, `V17-CASE-CLIENT database guard esperaba al menos 13 pruebas y obtuvo ${v17CaseClientDatabaseGuardRun.assertions}`);
-  invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === 21, "V17-CASE-CLIENT guard falló");
+  invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === 22, "V17-CASE-CLIENT guard falló");
   invariant(v17CaseClientGuardTestsRun.assertions >= 10, `V17-CASE-CLIENT guard tests esperaba al menos 10 pruebas y obtuvo ${v17CaseClientGuardTestsRun.assertions}`);
   invariant(v17CasePublicRefRun.report.ok === true && v17CasePublicRefRun.assertions >= 15, "V17-CASE-PUBLIC-REF tests fallaron");
   invariant(v17CasePublicRefRaceRun.report.ok === true && v17CasePublicRefRaceRun.report.backfill?.rows === 10_000

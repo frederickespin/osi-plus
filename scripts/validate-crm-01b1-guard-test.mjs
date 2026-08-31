@@ -57,12 +57,12 @@ try {
     overrides: { ".github/workflows/ci.yml": workflow.replace("node scripts/crm-01b1-sql-drift-baseline.mjs", "echo baseline-removed") },
   }, /CI no exige baseline/);
   rejectedCatalog("objeto agregado a baseline rechazado", {
-    count: 4347,
+    count: 4487,
     sha256: "4ecc54d31708c31c32930273eca91800185b62761ce5b310ed0aa3d195c5ba57",
     categories: {},
   }, /conteo total/);
   rejectedCatalog("definición cambiada en baseline rechazada", {
-    count: 4346,
+    count: 4486,
     sha256: "0".repeat(64),
     categories: {},
   }, /firma total/);

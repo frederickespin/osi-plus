@@ -22,7 +22,10 @@ function expectFailure(name, files, env, pattern) {
 
 try {
   base();
-  const migrations = Array.from({ length: 21 }, (_, index) => `prisma/migrations/${String(index).padStart(2, "0")}/migration.sql`);
+  const migrations = [
+    ...Array.from({ length: 21 }, (_, index) => `prisma/migrations/${String(index).padStart(2, "0")}/migration.sql`),
+    "prisma/migrations/20260831010000_v17_crm_icp_foundation/migration.sql",
+  ];
   for (const migration of migrations) write(migration, "-- synthetic\n");
   const safeFiles = ["api/_lib/employeeProvisioningDomain.js", "api/_lib/employeeProvisioningPolicy.js", "api/_lib/rbac.js", "scripts/mt-01c1b2b-database-guard.mjs", "scripts/mt-01c1b2b-test.mjs", "scripts/run-canonical-db-tests.mjs", ...migrations];
   check("estado inactivo permitido", validateMt01c1b2bGuard({ root, files: safeFiles, env: {} }).ok);
@@ -40,7 +43,7 @@ try {
   write("api/_lib/employeeProvisioningDomain.js", 'const MT01C1B2B_PAYLOAD_HASH_PEPPER = true; createHmac("sha256", "synthetic"); async function unsafe(tx){ return tx.user.create({data:{}}); }\n');
   expectFailure("creación de identidad rechazada", safeFiles, {}, /no puede crear User/);
   base();
-  expectFailure("migración número 21 rechazada", [...safeFiles, "prisma/migrations/20/migration.sql"], {}, /exactamente 21 migraciones/);
+  expectFailure("migración número 23 rechazada", [...safeFiles, "prisma/migrations/20260901010000_future/migration.sql"], {}, /exactamente 22 migraciones/);
   base();
   write("scripts/mt-01c1b2b-database-guard.mjs", "const raw = process.env.MT01C1B2B_TEST_DATABASE_URL || process.env.DATABASE_URL;\n");
   expectFailure("fallback DATABASE_URL rechazado", safeFiles, {}, /no puede usar DATABASE_URL/);

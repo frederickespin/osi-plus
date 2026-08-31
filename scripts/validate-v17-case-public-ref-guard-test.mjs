@@ -41,7 +41,7 @@ const backfill = sql.match(/UPDATE "osi"\."osi_pipeline_cases"[\s\S]*?WHERE "pub
 rejected("orden inseguro rechazado", { migrationSource: sql.replace(backfill, "").replace('ADD COLUMN "public_ref" UUID;', `${backfill}\n\nADD COLUMN "public_ref" UUID;`) }, /orden|eventos de triggers/);
 rejected("CUID como fallback rechazado", { schemaSource: mutatePipeline((block) => block.replace('dbgenerated("gen_random_uuid()")', "cuid()")) }, /default PostgreSQL|Prisma no puede/);
 rejected("JWT como fuente rechazado", { migrationSource: sql.replace("COMMIT;", "-- derive from JWT secret\nCOMMIT;") }, /fallback|debilitamiento/);
-rejected("migración 22 rechazada", { migrationNames: [...migrations, "20260828010000_future"] }, /21 migraciones|migración 20/);
+rejected("migración 23 rechazada", { migrationNames: [...migrations, "20260901010000_future"] }, /22 migraciones|migración 20/);
 rejected("consumidor backend adicional rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/public-ref.js": "const value = row.publicRef;" } }, /sólo puede consumirse/);
 rejected("mutación consumidora rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/pipelineCaseMutationHttp.js": "const value = command.publicRef;" } }, /sólo puede consumirse/);
 rejected("consumidor frontend rechazado", { extraRuntimeSources: { ...canonicalRuntime, "src/unsafe.ts": "const leaked = value.publicRef;" } }, /sólo puede consumirse|frontend/);

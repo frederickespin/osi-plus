@@ -45,6 +45,7 @@ export const CANONICAL_MIGRATIONS = Object.freeze([
   "20260824010000_v17_client_public_ref_case_mutations",
   "20260827010000_v17_tenant_membership_public_ref",
   "20260827020000_v17_admin_identity_invitation",
+  "20260831010000_v17_crm_icp_foundation",
 ]);
 
 function invariant(condition, message) {

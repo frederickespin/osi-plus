@@ -65,7 +65,7 @@ await assert.rejects(
 assertions += 1;
 
 const migrations = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-check(migrations.length === 21, "cantidad de migraciones distinta de 21");
+check(migrations.length === 22 && migrations.at(-1) === "20260831010000_v17_crm_icp_foundation", "cadena canónica distinta de 22");
 check(!migrations.some((entry) => /commercial_case_foundation/i.test(entry.name)), "migración comercial ambigua creada fuera de autoridad");
 
 const schema = readFileSync("prisma/schema.prisma", "utf8");

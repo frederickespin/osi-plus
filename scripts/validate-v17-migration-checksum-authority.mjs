@@ -9,6 +9,7 @@ export const CANONICAL_MIGRATION_CHECKSUMS = Object.freeze({
   "prisma/migrations/20260824010000_v17_client_public_ref_case_mutations/migration.sql": "dbb093f15eb2ee708328518dcf19e52fd8b0623fbc893cec1a001cf819a6da70",
   "prisma/migrations/20260827010000_v17_tenant_membership_public_ref/migration.sql": "b1284e443778ad1c7336d7703c9478ac09215b81a00f6b09bad48ceba6d5051c",
   "prisma/migrations/20260827020000_v17_admin_identity_invitation/migration.sql": "9ee56aaee53d5629db8dada22bcf86511d10c837c4ad61fb37fbd0b4caf53808",
+  "prisma/migrations/20260831010000_v17_crm_icp_foundation/migration.sql": "d085a74f4be3bd7be727d182993598008f53f019c8f1d626863b987be6726f37",
 });
 
 export function sha256(buffer) {

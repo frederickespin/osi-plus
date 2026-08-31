@@ -82,9 +82,11 @@ model Tenant {
   employeeAdminRoleProposals       EmployeeAdminRoleProposal[]
   adminIdentityInvitations         AdminIdentityInvitation[]
   clients                          Client[]
+  clientAddresses                  ClientAddress[]
   projects                         Project[]
   leads                            Lead[]
   pipelineCases                    PipelineCase[]
+  pipelineCaseRouteSnapshots       PipelineCaseRouteSnapshot[]
   pipelineCaseCommands             PipelineCaseCommand[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
@@ -389,17 +391,17 @@ model AuthRefreshToken {
 }
 
 model Client {
-  id                        String         @id @default(cuid())
-  publicRef                 String         @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
-  tenantId                  String?        @map("tenant_id")
-  code                      String         @unique
+  id                        String          @id @default(cuid())
+  publicRef                 String          @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
+  tenantId                  String?         @map("tenant_id")
+  code                      String          @unique
   name                      String
   email                     String
   phone                     String
   address                   String
   type                      String
   status                    String
-  totalServices             Int            @default(0)
+  totalServices             Int             @default(0)
   lastService               String?
   createdAt                 String
   fiscalName                String?
@@ -412,25 +414,58 @@ model Client {
   accountsPayableEmail      String?
   accountsPayablePhone      String?
   complianceNotes           String?
-  kycCompleted              Boolean        @default(false)
+  kycCompleted              Boolean         @default(false)
   normalizedPhone           String?
+  normalizedEmail           String?         @map("normalized_email") @db.VarChar(320)
+  taxIdNormalized           String?         @map("tax_id_normalized") @db.VarChar(32)
   billingTaxId              String?
   serviceOriginAddress      String?
   serviceDestinationAddress String?
-  updatedAt                 DateTime       @default(now()) @updatedAt
+  updatedAt                 DateTime        @default(now()) @updatedAt
   kycDocuments              KycDocument[]
   leads                     Lead[]
   projects                  Project[]
-  tenant                    Tenant?        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
-  tenantLeads               Lead[]         @relation("LeadTenantCustomer")
-  tenantProjects            Project[]      @relation("ProjectTenantClient")
-  pipelineCases             PipelineCase[] @relation("PipelineCaseServiceClient")
+  tenant                    Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
+  tenantLeads               Lead[]          @relation("LeadTenantCustomer")
+  tenantProjects            Project[]       @relation("ProjectTenantClient")
+  pipelineCases             PipelineCase[]  @relation("PipelineCaseServiceClient")
+  addresses                 ClientAddress[]
   surveys                   Survey[]
 
   @@unique([tenantId, id], map: "osi_clients_tenant_id_id_key")
   @@unique([tenantId, publicRef], map: "osi_clients_tenant_id_public_ref_key")
   @@index([tenantId, status], map: "osi_clients_tenant_id_status_idx")
   @@map("osi_clients")
+}
+
+model ClientAddress {
+  id                   String                      @id @default(cuid())
+  addressRef           String                      @default(dbgenerated("gen_random_uuid()")) @map("address_ref") @db.Uuid
+  tenantId             String                      @map("tenant_id")
+  clientId             String                      @map("client_id")
+  countryCode          String                      @map("country_code") @db.Char(2)
+  provinceState        String?                     @map("province_state") @db.VarChar(160)
+  cityMunicipality     String                      @map("city_municipality") @db.VarChar(160)
+  sector               String?                     @db.VarChar(160)
+  streetAndNumber      String?                     @map("street_and_number") @db.VarChar(240)
+  buildingResidential  String?                     @map("building_residential") @db.VarChar(160)
+  floorUnit            String?                     @map("floor_unit") @db.VarChar(80)
+  arrivalReference     String?                     @map("arrival_reference") @db.VarChar(320)
+  locationContactName  String?                     @map("location_contact_name") @db.VarChar(160)
+  locationContactPhone String?                     @map("location_contact_phone") @db.VarChar(40)
+  label                String?                     @db.VarChar(80)
+  status               ClientAddressStatus         @default(ACTIVE)
+  createdAt            DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant               Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_addresses_tenant_fkey")
+  client               Client                      @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_addresses_tenant_client_fkey")
+  routeSnapshots       PipelineCaseRouteSnapshot[] @relation("RouteSnapshotSourceAddress")
+
+  @@unique([tenantId, id], map: "client_addresses_tenant_id_key")
+  @@unique([tenantId, addressRef], map: "client_addresses_tenant_address_ref_key")
+  @@index([tenantId, clientId, status, label], map: "client_addresses_tenant_client_status_label_idx")
+  @@index([tenantId, countryCode, provinceState, cityMunicipality], map: "client_addresses_tenant_geography_idx")
+  @@map("client_addresses")
 }
 
 model Project {
@@ -1318,6 +1353,16 @@ model PipelineCase {
   originLocation                String
   destinationLocation           String
   destinationContracted         Boolean                       @default(true)
+  caseContactName               String?                       @map("case_contact_name") @db.VarChar(160)
+  caseContactPhone              String?                       @map("case_contact_phone") @db.VarChar(40)
+  caseContactPhoneNormalized    String?                       @map("case_contact_phone_normalized") @db.VarChar(32)
+  caseContactEmail              String?                       @map("case_contact_email") @db.VarChar(320)
+  caseContactEmailNormalized    String?                       @map("case_contact_email_normalized") @db.VarChar(320)
+  intakeChannel                 PipelineIntakeChannel?        @map("intake_channel")
+  clientProfileType             PipelineClientProfileType?    @map("client_profile_type")
+  routeContractVersion          Int                           @default(1) @map("route_contract_version")
+  routeRevision                 Int                           @default(0) @map("route_revision")
+  destinationStatus             PipelineDestinationStatus?    @map("destination_status")
   destinationOverrideType       String?
   destinationAcceptanceUploaded Boolean                       @default(false)
   noDestinationCaseType         String?
@@ -1333,6 +1378,7 @@ model PipelineCase {
   events                        PipelineEvent[]
   quote_change_order_subjects   quote_change_order_subjects[]
   commands                      PipelineCaseCommand[]
+  routeSnapshots                PipelineCaseRouteSnapshot[]
   projects                      Project[]                     @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -1346,6 +1392,35 @@ model PipelineCase {
   @@index([ownerId, status, updatedAt])
   @@index([createdAt])
   @@map("osi_pipeline_cases")
+}
+
+model PipelineCaseRouteSnapshot {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String                @map("tenant_id")
+  pipelineCaseId       String                @map("pipeline_case_id")
+  routeVersion         Int                   @map("route_version")
+  role                 PipelineCaseRouteRole
+  stopOrder            Int                   @default(0) @map("stop_order")
+  sourceAddressRef     String?               @map("source_address_ref") @db.Uuid
+  countryCode          String                @map("country_code") @db.Char(2)
+  provinceState        String?               @map("province_state") @db.VarChar(160)
+  cityMunicipality     String                @map("city_municipality") @db.VarChar(160)
+  sector               String?               @db.VarChar(160)
+  streetAndNumber      String?               @map("street_and_number") @db.VarChar(240)
+  buildingResidential  String?               @map("building_residential") @db.VarChar(160)
+  floorUnit            String?               @map("floor_unit") @db.VarChar(80)
+  arrivalReference     String?               @map("arrival_reference") @db.VarChar(320)
+  locationContactName  String?               @map("location_contact_name") @db.VarChar(160)
+  locationContactPhone String?               @map("location_contact_phone") @db.VarChar(40)
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_route_snapshots_tenant_fkey")
+  pipelineCase         PipelineCase          @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_route_snapshots_tenant_case_fkey")
+  sourceAddress        ClientAddress?        @relation("RouteSnapshotSourceAddress", fields: [tenantId, sourceAddressRef], references: [tenantId, addressRef], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_route_snapshots_source_address_fkey")
+
+  @@unique([tenantId, pipelineCaseId, routeVersion, role, stopOrder], map: "pipeline_case_route_snapshots_position_key")
+  @@index([tenantId, pipelineCaseId, routeVersion], map: "pipeline_case_route_snapshots_route_idx")
+  @@index([tenantId, sourceAddressRef], map: "pipeline_case_route_snapshots_source_address_idx")
+  @@map("pipeline_case_route_snapshots")
 }
 
 model PipelineCaseCommand {
@@ -3270,6 +3345,45 @@ enum PipelineMode {
   LOCAL
   EXPORT
   IMPORT
+}
+
+enum ClientAddressStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PipelineCaseRouteRole {
+  ORIGIN
+  DESTINATION
+  ADDITIONAL_STOP
+}
+
+enum PipelineDestinationStatus {
+  CONFIRMED
+  APPROXIMATE
+  PENDING
+}
+
+enum PipelineIntakeChannel {
+  WHATSAPP
+  INSTAGRAM
+  FACEBOOK
+  RECOMMENDATION
+  YOUTUBE
+  OTHER_SOCIAL
+  PROMOTION
+  CALL
+  EMAIL
+  WEB
+  REFERRED
+}
+
+enum PipelineClientProfileType {
+  INDIVIDUAL
+  CORPORATE
+  LEAD_ACCOUNT
+  COMMERCIAL
+  DIPLOMATIC
 }
 
 enum PipelineCustomerType {

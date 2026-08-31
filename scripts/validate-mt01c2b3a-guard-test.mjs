@@ -16,7 +16,7 @@ function rejected(name, options, pattern) {
 
 try {
   const baseline = validateMt01c2b3a({ root, env: { MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false", COMMERCIAL_TENANCY_WRITE_MODE: "LEGACY_ONLY" } });
-  check("estado actual aprobado", baseline.ok && baseline.migrations === 21 && baseline.preparedConsumers.length === 2);
+  check("estado actual aprobado", baseline.ok && baseline.migrations === 22 && baseline.preparedConsumers.length === 2);
   rejected("TENANT_WRITE en CI rechazado", { env: { COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE" } }, /configuración comercial/);
   rejected("LEGACY_ONLY con casing distinto rechazado", { env: { COMMERCIAL_TENANCY_WRITE_MODE: "legacy_only" } }, /configuración comercial/);
   rejected("LEGACY_ONLY con espacio rechazado", { env: { COMMERCIAL_TENANCY_WRITE_MODE: "LEGACY_ONLY " } }, /configuración comercial/);
@@ -24,7 +24,7 @@ try {
   rejected("HYBRID rechazado", { env: { MT01B_AUTH_MODE: "HYBRID" } }, /HYBRID/);
   rejected("tenant switch rechazado", { env: { MT01B_TENANT_SWITCH_ENABLED: "true" } }, /tenant switch/);
   rejected("cliente V2 rechazado", { env: { VITE_MT01B2_CLIENT_ENABLED: "true" } }, /cliente V2/);
-  rejected("migración 22 rechazada", { migrations: [...Array.from({ length: 21 }, (_, index) => `m${index}`), "20260828010000_unexpected"] }, /21 migraciones/);
+  rejected("migración 23 rechazada", { migrations: [...Array.from({ length: 22 }, (_, index) => `m${index}`), "20260901010000_unexpected"] }, /22 migraciones/);
   rejected("consumidor runtime nuevo rechazado", { extraRuntimeSources: { "api/new-endpoint.js": 'await createTenantClient(prisma, {});' } }, /consumidores preparados/);
   rejected("creación PipelineCase sin puente rechazada", { extraRuntimeSources: { "api/pipeline/new.js": "await prisma.pipelineCase.create({data:{}});" } }, /creadores runtime/);
   const clientSource = readFileSync(resolve(root, "api/clients/index.js"), "utf8");

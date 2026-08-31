@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {
   V17_COMMERCIAL_CRM_PRODUCTION_MODE,
   resolveV17CommercialCrmProductionClientAuthority,
 } from "../shared/v17CommercialCrmProduction.js";
-import { requireV17CommercialCrmProductionSessionMode } from "../api/_lib/v17CommercialCrmProductionAuth.js";
+import {
+  requireV17CommercialCrmProductionSessionMode,
+  requireV17CommercialCrmProductionTenantMode,
+} from "../api/_lib/v17CommercialCrmProductionAuth.js";
+import {
+  V17_PRODUCTION_PILOT_BATCH,
+  V17_PRODUCTION_PILOT_GATES,
+} from "../api/_lib/v17ProductionPilotGate.js";
 
 const root = process.cwd();
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
@@ -32,6 +40,27 @@ const exactServer = Object.freeze({
   MT01B_TENANT_SWITCH_ENABLED: "false",
   VITE_MT01B2_CLIENT_ENABLED: "false",
 });
+
+function canonical(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
+}
+
+function pilotServer(gates = [V17_PRODUCTION_PILOT_GATES.CRM_CASE_MUTATIONS]) {
+  const manifest = canonical({
+    batch: V17_PRODUCTION_PILOT_BATCH,
+    tenants: [{ code: "PILOT-TENANT", gates: [...gates].sort() }],
+    version: 1,
+  });
+  return {
+    ...exactServer,
+    CRM_PIPELINE_MUTATION_MODE: "PRODUCTION_PILOT",
+    V17_PRODUCTION_PILOT_ACTIVATION_BATCH: V17_PRODUCTION_PILOT_BATCH,
+    V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST: manifest,
+    V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST_SHA256: createHash("sha256").update(manifest, "utf8").digest("hex"),
+  };
+}
 
 let assertions = 0;
 function check(label, callback) {
@@ -75,6 +104,22 @@ check("servidor exacto confirma lectura productiva", () => {
   assert.equal(requireV17CommercialCrmProductionSessionMode(exactServer), true);
 });
 
+check("sesión productiva acepta el piloto CRM canónico", () => {
+  assert.equal(requireV17CommercialCrmProductionSessionMode(pilotServer()), true);
+});
+
+check("sesión productiva revalida el tenant autorizado para CRM", () => {
+  const context = { tenantCode: "PILOT-TENANT" };
+  assert.equal(requireV17CommercialCrmProductionTenantMode(pilotServer(), context), context);
+});
+
+check("sesión productiva rechaza un tenant fuera del manifiesto", () => {
+  assert.throws(
+    () => requireV17CommercialCrmProductionTenantMode(pilotServer(), { tenantCode: "OTHER-TENANT" }),
+    (error) => error?.code === "V17_PRODUCTION_PILOT_ACCESS_FORBIDDEN" && error?.status === 403,
+  );
+});
+
 for (const [label, patch] of [
   ["batch ausente", { CRM_PIPELINE_ACTIVATION_BATCH: undefined }],
   ["runtime ausente", { CRM_PIPELINE_RUNTIME_MODE: undefined }],
@@ -98,6 +143,35 @@ for (const [label, patch] of [
     assert.throws(() => requireV17CommercialCrmProductionSessionMode({ ...exactServer, ...patch }), (error) => error?.code === "CRM_PIPELINE_CONFIGURATION_INVALID" && error?.status === 503);
   });
 }
+
+for (const [label, patch] of [
+  ["modo piloto mal normalizado", { CRM_PIPELINE_MUTATION_MODE: "PRODUCTION_PILOT " }],
+  ["modo piloto sólo en VITE", { CRM_PIPELINE_MUTATION_MODE: undefined, VITE_CRM_PIPELINE_CASE_MUTATION_MODE: "PRODUCTION_PILOT" }],
+  ["manifest ausente", { V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST: undefined }],
+  ["hash ausente", { V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST_SHA256: undefined }],
+  ["hash alterado", { V17_PRODUCTION_PILOT_ACTIVATION_MANIFEST_SHA256: "0".repeat(64) }],
+  ["batch piloto alterado", { V17_PRODUCTION_PILOT_ACTIVATION_BATCH: `${V17_PRODUCTION_PILOT_BATCH}-OTHER` }],
+  ["entorno Development", { VERCEL_ENV: "development" }],
+  ["entorno Preview", { VERCEL_ENV: "preview" }],
+  ["rama no main", { VERCEL_GIT_COMMIT_REF: "feature/pilot" }],
+  ["Auth no LEGACY", { MT01B_AUTH_MODE: "MEMBERSHIP_ONLY" }],
+  ["tenancy no canónica", { COMMERCIAL_TENANCY_READ_MODE: "LEGACY_ONLY" }],
+  ["mutaciones generales habilitadas", { COMMERCIAL_TENANCY_MUTATION_MODE: "LOCAL_ONLY" }],
+]) {
+  check(`piloto CRM falla cerrado: ${label}`, () => {
+    assert.throws(
+      () => requireV17CommercialCrmProductionSessionMode({ ...pilotServer(), ...patch }),
+      (error) => error?.code === "CRM_PIPELINE_CONFIGURATION_INVALID" && error?.status === 503,
+    );
+  });
+}
+
+check("piloto CRM falla cerrado si el manifiesto no contiene su autoridad", () => {
+  assert.throws(
+    () => requireV17CommercialCrmProductionSessionMode(pilotServer([V17_PRODUCTION_PILOT_GATES.ADMIN_MEMBERSHIPS])),
+    (error) => error?.code === "CRM_PIPELINE_CONFIGURATION_INVALID" && error?.status === 503,
+  );
+});
 
 check("servidor inactivo no solicita autoridad productiva", () => {
   assert.equal(requireV17CommercialCrmProductionSessionMode({}), false);
@@ -145,4 +219,4 @@ check("no existe migración comercial ambigua", () => {
   assert.equal(migrations.some((entry) => /v17_(?:party|location|service|compliance)|migration.?19/iu.test(entry.name)), false);
 });
 
-process.stdout.write(JSON.stringify({ ok: true, assertions, productionRead: true, mutations: "DISABLED", ambiguousCommercialMigration: false }));
+process.stdout.write(JSON.stringify({ ok: true, assertions, productionRead: true, sessionMutationModes: ["DISABLED", "PRODUCTION_PILOT"], ambiguousCommercialMigration: false }));

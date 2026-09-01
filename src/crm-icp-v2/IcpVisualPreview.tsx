@@ -1,36 +1,77 @@
-import { useState } from "react";
-import { BriefcaseBusiness, LayoutGrid, MapPin, Route, Users } from "lucide-react";
+import { useState, type ComponentType, type ReactNode } from "react";
+import {
+  ArrowLeft, BriefcaseBusiness, CalendarDays, ClipboardCheck, FileText, History, Images,
+  LayoutGrid, ListChecks, MessageSquare, PackageSearch, Paperclip, Plus, Route, Search,
+  StickyNote, Users, Video, X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import IcpIntakeForm from "./IcpIntakeForm";
-import type { CrmIcpV2Api, IcpCreateReceipt } from "./api";
 
-const CLIENT_REF = "028f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
-const CASE_REF = "038f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+type IcpStep = 1 | 2;
+type ClientOverlay = "SEARCH" | "CREATE" | null;
+type CaseTab = "SUMMARY" | "SERVICES" | "SURVEY" | "ACTIVITY" | "TASKS" | "QUOTE" | "NOTES" | "FILES" | "COMMUNICATION";
 
-const visualApi: Pick<CrmIcpV2Api, "searchClients" | "create"> = Object.freeze({
-  async searchClients(query: string) {
-    return Object.freeze({
-      total: 1,
-      data: Object.freeze([{
-        clientRef: CLIENT_REF,
-        displayName: `Cliente de muestra · ${query.trim()}`,
-        type: "INDIVIDUAL",
-        status: "ACTIVE",
-        matchHints: { taxId: "••••0042", phone: "••••0199", email: "m•••@example.invalid" },
-      }]),
-    });
-  },
-  async create() {
-    return Object.freeze({ caseRef: CASE_REF, clientRef: CLIENT_REF, version: 1, routeRevision: 1, replayed: false });
-  },
-});
+const inputClass = "mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none focus:border-[#0b5b91] focus:ring-2 focus:ring-sky-100";
+const labelClass = "text-[11px] font-bold uppercase tracking-[.06em] text-slate-500";
+const CASE_TABS: ReadonlyArray<readonly [CaseTab, string, ComponentType<{ className?: string }>]> = [
+  ["SUMMARY", "Resumen", FileText], ["SERVICES", "Servicios", BriefcaseBusiness], ["SURVEY", "Survey", ClipboardCheck],
+  ["ACTIVITY", "Actividad", History], ["TASKS", "Tareas", ListChecks], ["QUOTE", "Cotización", BriefcaseBusiness],
+  ["NOTES", "Notas", StickyNote], ["FILES", "Archivos", Paperclip], ["COMMUNICATION", "Comunicación", MessageSquare],
+];
+
+function SelectField({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
+  return <label className={labelClass}>{label}<select className={inputClass}>{children}</select></label>;
+}
+
+function TextField({ label, placeholder, required = false }: Readonly<{ label: string; placeholder: string; required?: boolean }>) {
+  return <label className={labelClass}>{label}{required ? " *" : ""}<input className={inputClass} placeholder={placeholder} /></label>;
+}
+
+function ClientOverlayDialog({ value, onChange }: Readonly<{ value: ClientOverlay; onChange(value: ClientOverlay): void }>) {
+  if (!value) return null;
+  return <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-3">
+    <section role="dialog" aria-modal="true" aria-labelledby="client-overlay-title" className="w-full max-w-xl rounded-xl border border-slate-200 bg-white p-4 shadow-2xl">
+      <header className="flex items-center justify-between gap-3"><h2 id="client-overlay-title" className="text-xl font-black text-[#003366]">{value === "SEARCH" ? "Seleccionar cliente" : "Crear cliente inline"}</h2><button type="button" aria-label="Cerrar" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={() => onChange(null)}><X className="h-4 w-4" /></button></header>
+      {value === "SEARCH" ? <><div className="mt-4 flex gap-2"><input autoFocus aria-label="Buscar cliente" className={inputClass} placeholder="Buscar por nombre, teléfono o correo" /><Button type="button" variant="outline" className="mt-1" onClick={() => onChange("CREATE")}><Plus />Crear</Button></div><div className="mt-3 rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">Escribe para buscar clientes existentes.</div></> : <><div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="sm:col-span-2"><TextField label="Nombre / razón social" placeholder="Nombre del cliente" required /></div><TextField label="Teléfono" placeholder="809…" required /><TextField label="Correo" placeholder="cliente@correo.com" /></div><footer className="mt-5 flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => onChange(null)}>Cancelar</Button><Button type="button" onClick={() => onChange(null)}>Guardar cliente</Button></footer></>}
+    </section>
+  </div>;
+}
+
+function IcpDialog({ onClose, onCreate }: Readonly<{ onClose(): void; onCreate(): void }>) {
+  const [step, setStep] = useState<IcpStep>(1);
+  const [clientOverlay, setClientOverlay] = useState<ClientOverlay>(null);
+  return <>
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/55 p-3" data-testid="crm-icp-v2-preview-dialog">
+      <section role="dialog" aria-modal="true" aria-labelledby="icp-preview-title" className="my-auto w-full max-w-4xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3"><h2 id="icp-preview-title" className="text-xl font-black text-[#003366]">Nuevo Caso (ICP mínimo)</h2><button type="button" aria-label="Cerrar ICP" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" onClick={onClose}><X className="h-4 w-4" /></button></header>
+        <div role="tablist" aria-label="Pasos del ICP" className="grid gap-2 px-4 pt-3 sm:grid-cols-2"><button type="button" role="tab" aria-selected={step === 1} onClick={() => setStep(1)} className={`rounded-lg border px-3 py-2 text-left text-sm ${step === 1 ? "border-[#0b5b91] bg-sky-50 font-bold text-[#003366]" : "border-slate-200 text-slate-500"}`}>Paso 1 · Definición rápida</button><button type="button" role="tab" aria-selected={step === 2} onClick={() => setStep(2)} className={`rounded-lg border px-3 py-2 text-left text-sm ${step === 2 ? "border-[#0b5b91] bg-sky-50 font-bold text-[#003366]" : "border-slate-200 text-slate-500"}`}>Paso 2 · Origen, destino y notas</button></div>
+        <div className="p-4">{step === 1 ? <div role="tabpanel" className="grid gap-3 sm:grid-cols-12">
+          <div className="sm:col-span-6"><span className={labelClass}>Cliente *</span><div className="mt-1 flex min-h-16 flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><div className="min-w-40 flex-1"><strong className="block text-sm text-slate-900">Seleccionar cliente</strong><span className="text-xs text-slate-500">Busca uno existente o créalo inline</span></div><Button type="button" size="sm" variant="outline" onClick={() => setClientOverlay("SEARCH")}><Search />Buscar</Button><Button type="button" size="sm" variant="outline" onClick={() => setClientOverlay("CREATE")}><Plus />Nuevo</Button></div></div>
+          <div className="sm:col-span-6"><TextField label="Contacto del caso" placeholder="Nombre de la persona de contacto" required /></div>
+          <div className="sm:col-span-4"><SelectField label="Tipo de cliente *"><option>Individual</option><option>Corporativo</option><option>Diplomático</option><option>Comercial</option></SelectField></div><div className="sm:col-span-4"><TextField label="Teléfono / WhatsApp" placeholder="809…" required /></div><div className="sm:col-span-4"><TextField label="Correo" placeholder="cliente@correo.com" /></div><div className="sm:col-span-4"><SelectField label="Canal *"><option>WhatsApp</option><option>Llamada</option><option>Correo</option><option>Web</option><option>Referido</option></SelectField></div>
+        </div> : <div role="tabpanel" className="grid gap-3 sm:grid-cols-2"><fieldset className="rounded-lg border border-slate-200 p-3"><legend className="px-1 text-sm font-black text-[#003366]">Origen *</legend><div className="grid gap-2 sm:grid-cols-2"><TextField label="Ciudad / municipio" placeholder="Ciudad / municipio" required /><TextField label="Sector" placeholder="Sector" /><div className="sm:col-span-2"><TextField label="Dirección" placeholder="Calle, edificio y referencia" required /></div></div></fieldset><fieldset className="rounded-lg border border-slate-200 p-3"><legend className="px-1 text-sm font-black text-[#003366]">Destino</legend><div className="grid gap-2 sm:grid-cols-2"><TextField label="Ciudad / municipio" placeholder="Ciudad / municipio" /><SelectField label="Estado"><option>Confirmado</option><option>Aproximado</option><option>Pendiente</option></SelectField><div className="sm:col-span-2"><TextField label="Dirección" placeholder="Calle, edificio y referencia" /></div></div></fieldset><label className={`${labelClass} sm:col-span-2`}>Notas del requerimiento<textarea className="mt-1 min-h-24 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none focus:border-[#0b5b91] focus:ring-2 focus:ring-sky-100" placeholder="Particularidades, fechas deseadas, restricciones, tipo de bienes o cualquier requerimiento expresado por el cliente" /></label></div>}</div>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3"><span className="text-xs text-slate-500">ICP inicial · captura comercial mínima</span><div className="flex gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>{step === 1 ? <Button type="button" onClick={() => setStep(2)}>Continuar</Button> : <Button type="button" onClick={onCreate}>Crear caso</Button>}</div></footer>
+      </section>
+    </div><ClientOverlayDialog value={clientOverlay} onChange={setClientOverlay} />
+  </>;
+}
+
+function ServicesPanel() {
+  return <section role="tabpanel" className="border border-slate-200 bg-white"><header className="border-b border-slate-200 bg-slate-50 px-4 py-3"><h3 className="font-black text-[#003366]">Servicios del caso</h3><p className="mt-0.5 text-xs text-slate-500">Definición comercial posterior al ICP.</p></header><div className="grid gap-3 p-4 sm:grid-cols-2"><SelectField label="Servicio principal *"><option>Mudanza</option><option>Almacenaje</option><option>Logística / transporte</option><option>Gestión aduanal</option><option>Record storage</option><option>Embalaje especializado</option><option>Otro servicio</option></SelectField><SelectField label="Alcance *"><option>Local</option><option>Nacional</option><option>Exportación</option><option>Importación</option><option>No aplica</option></SelectField><label className={`${labelClass} sm:col-span-2`}>Servicios complementarios<input className={inputClass} placeholder="Ej.: almacenaje, gestión aduanal, embalaje especializado" /></label></div><footer className="flex justify-end border-t border-slate-200 px-4 py-3"><Button type="button">Guardar servicios</Button></footer></section>;
+}
+
+const SURVEY_METHODS = [["Presencial", "Agendar visita en ubicación", CalendarDays], ["Virtual", "Coordinar videollamada", Video], ["Mini Survey", "Selección rápida de pocos artículos", PackageSearch], ["Información del cliente", "Listado, fotos y/o videos", Images]] as const;
+function SurveyPanel() {
+  const [method, setMethod] = useState("Presencial");
+  return <section role="tabpanel" className="border border-slate-200 bg-white"><header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3"><div><h3 className="font-black text-[#003366]">Survey del caso</h3><p className="mt-0.5 text-xs text-slate-500">Se coordina después de crear el ICP.</p></div><Button type="button" size="sm"><CalendarDays />Coordinar Survey</Button></header><div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">{SURVEY_METHODS.map(([name, description, Icon]) => <button key={name} type="button" aria-pressed={method === name} onClick={() => setMethod(name)} className={`min-h-28 rounded-lg border p-3 text-left ${method === name ? "border-[#0b5b91] bg-sky-50 ring-2 ring-sky-100" : "border-slate-200 bg-white hover:bg-slate-50"}`}><Icon className="h-5 w-5 text-[#0b5b91]" /><strong className="mt-2 block text-sm text-[#003366]">{name}</strong><span className="mt-1 block text-xs leading-5 text-slate-500">{description}</span></button>)}</div><div className="grid gap-3 border-t border-slate-200 p-4 sm:grid-cols-3"><TextField label="Fecha propuesta" placeholder="dd/mm/aaaa" /><TextField label="Hora" placeholder="00:00" /><SelectField label="Responsable"><option>Por asignar</option><option>Evaluador disponible</option></SelectField></div></section>;
+}
+
+function CaseWorkspace({ onBack }: Readonly<{ onBack(): void }>) {
+  const [tab, setTab] = useState<CaseTab>("SERVICES");
+  return <section className="min-h-full bg-white" data-testid="crm-icp-v2-preview-case"><header className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[.18em] text-[#0070a8]">Ficha del caso</p><h1 className="mt-1 text-2xl font-black text-[#003366]">Cliente de ejemplo</h1><p className="mt-1 text-sm text-slate-500"><span className="font-mono font-bold">ICP-001</span> · Caso recién creado</p></div><Button type="button" variant="outline" onClick={onBack}><ArrowLeft />Volver al Inbox</Button></div></header><div role="tablist" aria-label="Áreas del Caso Comercial" className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-stone-200 p-1">{CASE_TABS.map(([value, label, Icon]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`flex shrink-0 items-center gap-1.5 rounded px-3 py-2 text-xs font-bold ${tab === value ? "bg-[#df8750] text-white shadow-sm" : "text-slate-700 hover:bg-white/60"}`}><Icon className="h-3.5 w-3.5" />{label}</button>)}</div><div className="p-4">{tab === "SERVICES" ? <ServicesPanel /> : tab === "SURVEY" ? <SurveyPanel /> : <section role="tabpanel" className="border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center"><h3 className="font-black text-[#003366]">{CASE_TABS.find(([value]) => value === tab)?.[1]}</h3><p className="mt-2 text-sm text-slate-500">Área visible en la Ficha del caso.</p></section>}</div></section>;
+}
 
 export default function IcpVisualPreview() {
-  const [open, setOpen] = useState(true);
-  const [receipt, setReceipt] = useState<IcpCreateReceipt | null>(null);
-  return <div className="flex min-h-screen bg-[#f4f7fb]" data-testid="crm-icp-v2-visual-preview">
-    <aside className="hidden w-64 shrink-0 bg-[#003366] text-white lg:block"><div className="flex h-16 items-center gap-3 border-b border-white/15 px-5"><span className="grid h-9 w-9 place-items-center rounded-lg bg-white font-black text-[#003366]">OS</span><div><strong className="block">OSi Plus ERP</strong><small className="text-blue-200">Preview visual</small></div></div><nav className="space-y-2 p-4"><div className="flex items-center gap-3 rounded-lg px-3 py-2 text-blue-100"><LayoutGrid className="h-4 w-4" />General</div><div className="flex items-center gap-3 rounded-lg bg-sky-500 px-3 py-2 font-semibold"><BriefcaseBusiness className="h-4 w-4" />Comercial</div><div className="flex items-center gap-3 rounded-lg px-3 py-2 text-blue-100"><Route className="h-4 w-4" />Coordinación</div><div className="flex items-center gap-3 rounded-lg px-3 py-2 text-blue-100"><Users className="h-4 w-4" />Clientes</div></nav></aside>
-    <main className="min-w-0 flex-1"><header className="flex h-16 items-center justify-between border-b bg-white px-6"><div><p className="text-sm font-black text-[#003366]">Comercial y CRM</p><p className="text-[10px] uppercase tracking-[.16em] text-slate-500">Comprobación visual · sin datos reales</p></div><span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900">Preview aislado</span></header><section className="p-6"><div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-white p-5 shadow-sm"><div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#0070a8]">Control Comercial</p><h1 className="text-2xl font-black text-[#003366]">Inbox Comercial</h1><p className="mt-1 text-sm text-slate-500">Vista de referencia del ICP v2. No realiza solicitudes al servidor.</p></div><Button onClick={() => { setReceipt(null); setOpen(true); }}>Nuevo ICP</Button></div>{receipt ? <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950"><strong>ICP de muestra creado.</strong><p className="mt-1 text-sm">Ruta versión 1 · Volumen pendiente hasta Survey o datos proporcionados.</p></div> : <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]"><div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center"><MapPin className="mx-auto h-8 w-8 text-slate-400" /><p className="mt-3 font-bold text-slate-700">Cola comercial de muestra</p><p className="mt-1 text-sm text-slate-500">El diálogo permite revisar el flujo completo sin PII ni persistencia.</p></div><div className="rounded-xl border bg-white p-5"><h2 className="font-black text-[#003366]">Regla de volumen</h2><p className="mt-2 text-sm leading-6 text-slate-600">El ICP captura intención, contacto y ruta. El volumen todavía no se conoce y no se calcula aquí.</p></div></div>}</section></main>
-    <IcpIntakeForm open={open} api={visualApi} canCreatePendingDestination onOpenChange={setOpen} onCommitted={(value) => setReceipt(value)} />
-  </div>;
+  const [dialogOpen, setDialogOpen] = useState(true);
+  const [caseCreated, setCaseCreated] = useState(false);
+  return <div className="flex min-h-screen bg-[#f4f7fb]" data-testid="crm-icp-v2-visual-preview"><aside className="hidden w-64 shrink-0 bg-[#003366] text-white lg:block"><div className="flex h-16 items-center gap-3 border-b border-white/15 px-5"><span className="grid h-9 w-9 place-items-center rounded-lg bg-white font-black text-[#003366]">OS</span><div><strong className="block">OSi Plus ERP</strong><small className="text-blue-200">Preview visual</small></div></div><nav className="space-y-2 p-4"><div className="flex items-center gap-3 rounded-lg px-3 py-2 text-blue-100"><LayoutGrid className="h-4 w-4" />General</div><div className="flex items-center gap-3 rounded-lg bg-sky-500 px-3 py-2 font-semibold"><BriefcaseBusiness className="h-4 w-4" />Comercial</div><div className="flex items-center gap-3 rounded-lg px-3 py-2 text-blue-100"><Route className="h-4 w-4" />Coordinación</div><div className="flex items-center gap-3 rounded-lg px-3 py-2 text-blue-100"><Users className="h-4 w-4" />Clientes</div></nav></aside><main className="min-w-0 flex-1"><header className="flex h-16 items-center justify-between border-b bg-white px-4 sm:px-6"><div><p className="text-sm font-black text-[#003366]">Comercial y CRM</p><p className="text-[10px] uppercase tracking-[.16em] text-slate-500">Comprobación visual · sin datos reales</p></div><span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900">Preview aislado</span></header>{caseCreated ? <CaseWorkspace onBack={() => { setCaseCreated(false); setDialogOpen(false); }} /> : <section className="p-4 sm:p-6"><div className="flex flex-wrap items-center justify-between gap-4 border bg-white p-4"><div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#0070a8]">Control Comercial</p><h1 className="text-2xl font-black text-[#003366]">Inbox Comercial</h1><p className="mt-1 text-sm text-slate-500">Preview visual autónomo. No realiza solicitudes al servidor.</p></div><Button onClick={() => setDialogOpen(true)}><Plus />Nuevo ICP</Button></div><div className="mt-4 border border-dashed border-slate-300 bg-white px-6 py-16 text-center"><Users className="mx-auto h-7 w-7 text-slate-400" /><p className="mt-3 font-bold text-slate-700">Cola comercial de muestra</p><p className="mt-1 text-sm text-slate-500">Datos sintéticos en memoria para comprobar el flujo.</p></div></section>}</main>{dialogOpen && !caseCreated && <IcpDialog onClose={() => setDialogOpen(false)} onCreate={() => { setDialogOpen(false); setCaseCreated(true); }} />}</div>;
 }

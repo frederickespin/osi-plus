@@ -51,7 +51,7 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
     requireText(mode, value, `Preview visual no exige build exacto: ${value}`);
   }
   const visual = read("src/crm-icp-v2/IcpVisualPreview.tsx");
-  for (const value of ["Preview visual", "sin datos reales", "visualApi", "No realiza solicitudes al servidor"]) {
+  for (const value of ["Preview visual", "sin datos reales", "No realiza solicitudes al servidor", "Nuevo Caso (ICP mínimo)", "Servicios del caso", "Survey del caso"]) {
     requireText(visual, value, `demostración visual incompleta: ${value}`);
   }
   forbid(visual, /fetch\(|XMLHttpRequest|localStorage|sessionStorage|Authorization/i, "demostración visual ejecuta red, auth o storage");

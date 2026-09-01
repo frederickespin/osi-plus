@@ -146,8 +146,8 @@ async function createPayload(draft: IcpDraft, requestId: string) {
   const normalizedClient = draft.client.kind === "EXISTING" ? client : {
     ...client,
     taxId: client.taxId ? { display: client.taxId, normalized: client.taxId.toUpperCase().replace(/[^A-Z0-9]/g, "") } : null,
-    phoneNormalized: normalizePhone(client.phone),
-    emailNormalized: client.email?.toLowerCase() ?? null,
+    phoneNormalized: normalizePhone(draft.client.phone.trim()),
+    emailNormalized: draft.client.email.trim().toLowerCase() || null,
   };
   const route = {
     destinationStatus: draft.destinationStatus,
@@ -207,7 +207,13 @@ function assertPrivateJson(response: Response) {
 }
 
 export class CrmIcpV2Api {
-  constructor(private readonly tokenProvider: () => string | null, private readonly fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis)) {}
+  private readonly tokenProvider: () => string | null;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(tokenProvider: () => string | null, fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis)) {
+    this.tokenProvider = tokenProvider;
+    this.fetchImpl = fetchImpl;
+  }
 
   private async post(path: string, body: unknown, signal?: AbortSignal) {
     const token = this.tokenProvider();

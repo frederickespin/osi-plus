@@ -16,7 +16,7 @@ const CHANNELS = new Set([
 const SURVEY_METHODS = new Set(["PRESENCIAL", "VIRTUAL", "LISTADO_FOTOS", "NO_APLICA"]);
 const ROOT_FIELDS = new Set([
   "requestId", "payloadHash", "client", "clientProfileType", "caseContact", "mode", "serviceType",
-  "intakeChannel", "estimatedCbm", "requiresSurvey", "surveyMethod", "route",
+  "intakeChannel", "requiresSurvey", "surveyMethod", "route",
 ]);
 const UNSIGNED_ROOT_FIELDS = new Set([...ROOT_FIELDS].filter((field) => field !== "payloadHash"));
 const CONTACT_FIELDS = new Set(["displayName", "phone", "email"]);
@@ -71,12 +71,6 @@ function enumValue(value, allowed) {
 }
 function boolean(value) {
   if (typeof value !== "boolean") fail("CRM_ICP_INPUT_INVALID", 400);
-  return value;
-}
-function nonNegativeNumber(value) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1_000_000) {
-    fail("CRM_ICP_INPUT_INVALID", 400);
-  }
   return value;
 }
 function positiveInteger(value, max) {
@@ -235,7 +229,7 @@ export function normalizeCrmIcpV2UnsignedInput(input) {
     mode: enumValue(input.mode, MODES),
     serviceType: cleanText(input.serviceType, { min: 2, max: 80 }),
     intakeChannel: enumValue(input.intakeChannel, CHANNELS),
-    estimatedCbm: nonNegativeNumber(input.estimatedCbm),
+    estimatedCbm: null,
     requiresSurvey: boolean(input.requiresSurvey),
     surveyMethod: enumValue(input.surveyMethod, SURVEY_METHODS),
     route: normalizeRoute(input.route),

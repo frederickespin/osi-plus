@@ -262,7 +262,7 @@ try {
   invariant(crmDisabledOptionsRun.report.ok === true && crmDisabledOptionsRun.assertions >= 300, `CRM-01B3B3 OPTIONS esperaba al menos 300 pruebas y obtuvo ${crmDisabledOptionsRun.assertions}`);
   invariant(crmProductionAdversarialRun.report.ok === true && crmProductionAdversarialRun.assertions >= 20
     && Object.values(crmProductionAdversarialRun.report.performance || {}).every((entry) => entry.requests === 100), "CRM-01B3B1 adversarial/rendimiento no se completó");
-  invariant(crmProductionGateGuardRun.report.ok === true && crmProductionGateGuardRun.report.routes === 9, "CRM-01B3B1 guard falló");
+  invariant(crmProductionGateGuardRun.report.ok === true && crmProductionGateGuardRun.report.routes === 12, "CRM-01B3B1 guard falló");
   invariant(crmProductionGateGuardTestsRun.assertions >= 15, `CRM-01B3B1 guard tests esperaba al menos 15 pruebas y obtuvo ${crmProductionGateGuardTestsRun.assertions}`);
   invariant(crmOwnerCatalogRun.assertions >= 21, `CRM-01B3B3 esperaba al menos 21 pruebas y obtuvo ${crmOwnerCatalogRun.assertions}`);
   invariant(crmOwnerCatalogContractRun.report.ok === true && crmOwnerCatalogContractRun.assertions >= 14
@@ -270,7 +270,7 @@ try {
   `CRM-01B3B3 contrato estructural esperaba 1.000 generaciones y obtuvo ${crmOwnerCatalogContractRun.report.deterministicGenerations ?? 0}`);
   invariant(crmOwnerCatalogIntegrationRun.report.ok === true && crmOwnerCatalogIntegrationRun.report.fixtureMemberships === 2_001
     && crmOwnerCatalogIntegrationRun.assertions >= 14, "CRM-01B3B3 integración/rendimiento no se completó");
-  invariant(crmOwnerCatalogGuardRun.report.ok === true && crmOwnerCatalogGuardRun.report.routes === 9, "CRM-01B3B3 guard falló");
+  invariant(crmOwnerCatalogGuardRun.report.ok === true && crmOwnerCatalogGuardRun.report.routes === 12, "CRM-01B3B3 guard falló");
   invariant(crmOwnerCatalogGuardTestsRun.assertions >= 5, `CRM-01B3B3 guard tests esperaba al menos 5 pruebas y obtuvo ${crmOwnerCatalogGuardTestsRun.assertions}`);
 
   let dbPassed = 0;
@@ -354,7 +354,7 @@ try {
   invariant(v17CasePublicRefRaceRun.report.ok === true && v17CasePublicRefRaceRun.report.backfill?.rows === 10_000
     && v17CasePublicRefRaceRun.report.atomicity?.concurrentInsert === "blocked_then_uuid", "V17-CASE-PUBLIC-REF carrera de migración falló");
   invariant(v17CasePublicRefGuardRun.report.ok === true
-    && v17CasePublicRefGuardRun.report.runtimeConsumers === 6
+    && v17CasePublicRefGuardRun.report.runtimeConsumers === 7
     && v17CasePublicRefGuardRun.report.runtimeConsumer === "api/_lib/crmPipelineRead.js"
     && v17CasePublicRefGuardRun.report.publicContract === "caseRef", "V17-CASE-PUBLIC-REF guard falló");
   invariant(v17CasePublicRefGuardTestsRun.assertions >= 13, "V17-CASE-PUBLIC-REF guard tests incompletos");

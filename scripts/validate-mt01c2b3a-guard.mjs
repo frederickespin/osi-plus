@@ -109,6 +109,10 @@ function validateUpdateBlocks(path, text) {
     invariant(calls.length === 1 && calls[0].model === "pipelineCase" && calls[0].method === "updateMany", `${path} contiene updates comerciales no inventariados`);
     invariant(/tenantId:\s*who\.tenantId[\s\S]*version:\s*command\.expectedVersion/.test(calls[0].body), `${path} no limita UPDATE por tenant y versión`);
     invariant(/data:\s*\{\s*\.\.\.data\(command, client\),\s*version:\s*next\s*\}/.test(calls[0].body), `${path} cambió el payload cerrado de UPDATE`);
+  } else if (path === "api/_lib/crmIcpV2ApiDomain.js") {
+    invariant(calls.length === 1 && calls[0].model === "pipelineCase" && calls[0].method === "updateMany", `${path} contiene updates comerciales no inventariados`);
+    invariant(/id:\s*pipelineCase\.id[\s\S]*tenantId:\s*actor\.tenantId[\s\S]*routeContractVersion:\s*1[\s\S]*routeRevision:\s*0/.test(calls[0].body), `${path} no limita promoción por caso, tenant y revisión inicial`);
+    invariant(/data:\s*\{\s*routeContractVersion:\s*2,\s*routeRevision:\s*plan\.nextRouteRevision,\s*destinationStatus:\s*command\.route\.destinationStatus\s*\}/.test(calls[0].body), `${path} cambió el payload cerrado de promoción ICP v2`);
   } else if (!path.startsWith("api/_disabled/")) {
     invariant(calls.length === 0, `${path} contiene updates comerciales no inventariados`);
   }
@@ -174,6 +178,8 @@ export function validateMt01c2b3a({
     "api/_lib/commercialTenancyWrite.js:client.create",
     "api/_lib/commercialTenancyWrite.js:project.create",
     "api/_lib/crmCaseMutationDomain.js:pipelineCase.create",
+    "api/_lib/crmIcpV2ApiDomain.js:client.create",
+    "api/_lib/crmIcpV2ApiDomain.js:pipelineCase.create",
     "api/clients/index.js:client.create",
     "api/projects/index.js:project.create",
   ]), `creadores runtime no preparados: ${creatorLocations.join(", ")}`);
@@ -188,7 +194,7 @@ export function validateMt01c2b3a({
     preparedConsumers: Object.freeze([...consumers].sort()),
     runtimeCreators: Object.freeze([...creatorLocations].sort()),
     pipelineCaseCreateGoverned:
-      creatorLocations.filter((item) => item.includes(":pipelineCase.")).length === 1,
+      creatorLocations.filter((item) => item.includes(":pipelineCase.")).length === 2,
     leadCreateBlocked: !creatorLocations.some((item) => item.includes(":lead.")),
   });
 }

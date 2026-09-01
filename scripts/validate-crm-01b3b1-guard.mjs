@@ -16,6 +16,11 @@ const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/[caseKey]/transition.js",
   "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
+const ICP_V2_API_ROUTES = Object.freeze([
+  "api/crm/icp-v2/clients/search.js",
+  "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
+  "api/crm/icp-v2/pipeline-cases/index.js",
+]);
 const CONFIG_NAMES = Object.freeze([
   "CRM_PIPELINE_RUNTIME_MODE",
   "CRM_PIPELINE_MUTATION_MODE",
@@ -70,7 +75,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   }
 
   const actualRoutes = apiFiles.map((path) => relative(root, path).replaceAll("\\", "/")).filter((path) => path.startsWith("api/crm/")).sort();
-  invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES].sort()), "inventario de rutas CRM cambió");
+  invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES, ...ICP_V2_API_ROUTES].sort()), "inventario de rutas CRM cambió");
   for (const path of CRM_ROUTES) {
     const source = read(path);
     invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp|crmClientOptions/.test(source), `${path} omite compuerta central`);
@@ -129,7 +134,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const suite of ["crm-01b3b1-gate-test.mjs", "crm-01b3b1-adversarial-test.mjs", "validate-crm-01b3b1-guard.mjs", "validate-crm-01b3b1-guard-test.mjs", "crm-01a-test.mjs", "crm-01b3a-integration-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
-  return Object.freeze({ ok: true, migrations: 22, routes: 9, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 3 });
+  return Object.freeze({ ok: true, migrations: 22, routes: 12, historicalRoutes: 9, isolatedApiRoutes: 3, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 3 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

@@ -15,7 +15,8 @@ const adapter = readFileSync("api/_lib/pipelineCaseMutationHttp.js", "utf8");
 const domain = readFileSync("api/_lib/pipelineCaseDomain.js", "utf8");
 
 try {
-  check("baseline CRM-01B3B1", validateCrm01b3b1Guard({ env: {} }).ok);
+  const baseline = validateCrm01b3b1Guard({ env: {} });
+  check("baseline CRM-01B3B1", baseline.ok && baseline.routes === 12 && baseline.historicalRoutes === 9 && baseline.isolatedApiRoutes === 3);
   rejected("migración 23 rechazada", { migrationNames: [...Array.from({ length: 22 }, (_, index) => `m${index}`), "20260901010000_unexpected"] }, /22 migraciones/);
   rejected("producción CRM en CI rechazada", { env: { CRM_PIPELINE_RUNTIME_MODE: "PRODUCTION_READ" } }, /lectura CRM/);
   rejected("batch residual en CI rechazado", { env: { CRM_PIPELINE_ACTIVATION_BATCH: "CRM-01B3B1-PRODUCTION-V1" } }, /batch CRM/);

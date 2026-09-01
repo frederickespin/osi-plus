@@ -120,6 +120,7 @@ export function validateV17CasePublicRefGuard({
     "api/_lib/adminMembershipDomain.js",
     "api/_lib/crmCaseMutationDomain.js",
     "api/_lib/crmClientOptions.js",
+    "api/_lib/crmIcpV2ApiDomain.js",
     "api/_lib/crmIcpV2Domain.js",
   ]);
   const publicRefConsumers = Object.entries(runtime)

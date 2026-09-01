@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 
 const DOMAIN = "api/_lib/pipelineCaseDomain.js";
 const CASE_MUTATION_DOMAIN = "api/_lib/crmCaseMutationDomain.js";
+const ICP_API_DOMAIN = "api/_lib/crmIcpV2ApiDomain.js";
 const CASE_MUTATION_FRONTEND_AUTH = "src/crm-relational/mutationAccess.ts";
 const AUTHORIZED_CONSUMERS = Object.freeze([
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
@@ -92,8 +93,8 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
   for (const path of allFiles.filter((path) => /^(?:api|src)\/.+\.(?:[cm]?[jt]sx?)$/.test(path))) {
     const source = extraSources[path] ?? read(path);
     if (path !== DOMAIN && /(?:from|import\s*\()\s*["'][^"']*pipelineCaseDomain\.js/.test(source)) consumers.push(path);
-    if (![DOMAIN, CASE_MUTATION_DOMAIN].includes(path) && /pipelineCase\s*\.\s*(?:update|updateMany|upsert|delete|deleteMany)\s*\(|UPDATE\s+"osi"\."osi_pipeline_cases"/i.test(source)) mutations.push(path);
-    if (![DOMAIN, CASE_MUTATION_DOMAIN].includes(path) && /pipelineCaseCommand\s*\.\s*create\s*\(|INSERT\s+INTO\s+"osi"\."pipeline_case_commands"/i.test(source)) journalBypasses.push(path);
+    if (![DOMAIN, CASE_MUTATION_DOMAIN, ICP_API_DOMAIN].includes(path) && /pipelineCase\s*\.\s*(?:update|updateMany|upsert|delete|deleteMany)\s*\(|UPDATE\s+"osi"\."osi_pipeline_cases"/i.test(source)) mutations.push(path);
+    if (![DOMAIN, CASE_MUTATION_DOMAIN, ICP_API_DOMAIN].includes(path) && /pipelineCaseCommand\s*\.\s*create\s*\(|INSERT\s+INTO\s+"osi"\."pipeline_case_commands"/i.test(source)) journalBypasses.push(path);
     if (path.startsWith("src/") && path !== CASE_MUTATION_FRONTEND_AUTH && /pipeline:(?:update|transition|assign)|PipelineCaseCommand/.test(source)) mutations.push(path);
   }
   for (const [path, source] of Object.entries(extraSources)) {

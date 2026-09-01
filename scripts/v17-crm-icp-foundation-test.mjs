@@ -57,7 +57,6 @@ function unsigned(overrides = {}) {
     mode: "LOCAL",
     serviceType: "LOCAL_MOVE",
     intakeChannel: "WHATSAPP",
-    estimatedCbm: 12.5,
     requiresSurvey: true,
     surveyMethod: "PRESENCIAL",
     route: {
@@ -88,6 +87,8 @@ check("contrato permanece fundacional y no habilita API productiva", CRM_ICP_V2_
   && CRM_ICP_V2_CONTRACT.routeContractVersion === 2 && CRM_ICP_V2_CONTRACT.maximumAdditionalStops === 8);
 
 const local = command();
+check("ICP no acepta ni calcula volumen antes de una fuente posterior", local.estimatedCbm === null);
+reject("volumen adelantado en ICP es rechazado", "CRM_ICP_INPUT_INVALID", () => command(unsigned({ estimatedCbm: 12.5 })));
 const localPlan = buildCrmIcpV2AtomicPlan(local, authority());
 check("Client inline, caso, ruta, comando y auditoría comparten una transacción", localPlan.transaction === "CASE_CLIENT_ROUTE_COMMAND_AUDIT"
   && localPlan.client.action === "CREATE_INLINE" && localPlan.client.codeAuthority === "osi.next_icp_client_code"

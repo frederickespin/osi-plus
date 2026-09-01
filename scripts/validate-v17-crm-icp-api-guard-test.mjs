@@ -48,7 +48,7 @@ rejected("consumidor UI fuera del cliente autorizado", { "src/App.tsx": `${read(
 rejected("límite documental retirado", { "docs/V17-CRM-ICP-05B1-API-CONTRACT.md": docs.replace("no añade consumidores frontend", "añade frontend") }, /límite contractual/);
 rejected("ruta fuera de inventario auth", { "scripts/validate-mt01b3a-auth-guard.mjs": authInventory.replace('  "api/crm/icp-v2/clients/search.js",', "") }, /inventario auth/);
 rejected("promoción fuera de inventario comercial", { "scripts/validate-mt01c2b3a-guard.mjs": commercialWriteGuard.replace('  } else if (path === "api/_lib/crmIcpV2ApiDomain.js") {', '  } else if (path === "api/_lib/removed.js") {') }, /inventario comercial/);
-rejected("volumen anticipado vuelve al ICP", { "api/_lib/crmIcpV2Domain.js": foundation.replace('  "intakeChannel", "requiresSurvey"', '  "intakeChannel", "estimatedCbm", "requiresSurvey"') }, /volumen anticipado/);
+rejected("volumen anticipado vuelve al ICP", { "api/_lib/crmIcpV2Domain.js": foundation.replace('const ROOT_FIELDS = new Set([...REQUIRED_ROOT_FIELDS, "requirementNotes"]);', 'const ROOT_FIELDS = new Set([...REQUIRED_ROOT_FIELDS, "requirementNotes", "estimatedCbm"]);') }, /volumen anticipado/);
 rejected("dominio fuera de inventario publicRef", { "scripts/validate-v17-case-public-ref-guard.mjs": publicRefGuard.replace('    "api/_lib/crmIcpV2ApiDomain.js",', "") }, /inventario publicRef/);
 rejected("ruta fuera de inventario CRM-01A", { "scripts/validate-crm-01a-guard.mjs": crm01aGuard.replace('  "api/crm/icp-v2/clients/search.js",', "") }, /inventario CRM-01A/);
 rejected("dominio fuera de inventario journal", { "scripts/validate-crm-01b1-guard.mjs": crm01b1Guard.replace(', "api/_lib/crmIcpV2ApiDomain.js"', "") }, /inventario journal/);

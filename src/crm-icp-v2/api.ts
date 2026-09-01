@@ -2,16 +2,15 @@ const API_ROOT = "/api/crm/icp-v2";
 const MAX_RESPONSE_BYTES = 1_000_000;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-export type IcpMode = "LOCAL" | "EXPORT" | "IMPORT";
 export type IcpClientProfile = "INDIVIDUAL" | "CORPORATE" | "LEAD_ACCOUNT" | "COMMERCIAL" | "DIPLOMATIC";
 export type IcpChannel = "WHATSAPP" | "INSTAGRAM" | "FACEBOOK" | "RECOMMENDATION" | "YOUTUBE" | "OTHER_SOCIAL" | "PROMOTION" | "CALL" | "EMAIL" | "WEB" | "REFERRED";
-export type IcpSurveyMethod = "PRESENCIAL" | "VIRTUAL" | "LISTADO_FOTOS" | "NO_APLICA";
 export type IcpDestinationStatus = "CONFIRMED" | "APPROXIMATE" | "PENDING";
 
 export type IcpAddressInput = Readonly<{
   countryCode: string;
   provinceState: string;
   cityMunicipality: string;
+  sector: string;
   streetAndNumber: string;
   saveForClient: boolean;
   label: string;
@@ -21,22 +20,17 @@ export type IcpDraft = Readonly<{
   client: Readonly<{ kind: "EXISTING"; clientRef: string }> | Readonly<{
     kind: "INLINE";
     displayName: string;
-    taxId: string;
     phone: string;
     email: string;
     duplicateFingerprint?: string | null;
   }>;
   clientProfileType: IcpClientProfile;
   caseContact: Readonly<{ displayName: string; phone: string; email: string }>;
-  mode: IcpMode;
-  serviceType: string;
   intakeChannel: IcpChannel;
-  requiresSurvey: boolean;
-  surveyMethod: IcpSurveyMethod;
+  requirementNotes: string;
   destinationStatus: IcpDestinationStatus;
   origin: IcpAddressInput;
   destination: IcpAddressInput;
-  additionalStops: readonly IcpAddressInput[];
 }>;
 
 export type IcpClientSearchResult = Readonly<{
@@ -85,7 +79,7 @@ function normalizeAddress(input: IcpAddressInput) {
     countryCode: input.countryCode.trim().toUpperCase(),
     provinceState: input.provinceState.trim() || null,
     cityMunicipality: input.cityMunicipality.trim(),
-    sector: null,
+    sector: input.sector.trim() || null,
     streetAndNumber: input.streetAndNumber.trim() || null,
     buildingResidential: null,
     floorUnit: null,
@@ -106,6 +100,12 @@ function rawSelection(input: IcpAddressInput) {
 
 function normalizedSelection(input: IcpAddressInput) {
   return rawSelection(input);
+}
+
+function deriveMode(originCountry: string, destinationCountry: string | null) {
+  if (destinationCountry === null || (originCountry === "DO" && destinationCountry === "DO")) return "LOCAL";
+  if (originCountry === "DO") return "EXPORT";
+  return "IMPORT";
 }
 
 function canonical(value: unknown): string {
@@ -136,7 +136,7 @@ async function createPayload(draft: IcpDraft, requestId: string) {
     : {
         kind: "INLINE",
         displayName: draft.client.displayName.trim(),
-        taxId: draft.client.taxId.trim() || null,
+        taxId: null,
         phone: draft.client.phone.trim(),
         email: draft.client.email.trim() || null,
         duplicateConfirmation: draft.client.duplicateFingerprint
@@ -145,7 +145,7 @@ async function createPayload(draft: IcpDraft, requestId: string) {
       };
   const normalizedClient = draft.client.kind === "EXISTING" ? client : {
     ...client,
-    taxId: client.taxId ? { display: client.taxId, normalized: client.taxId.toUpperCase().replace(/[^A-Z0-9]/g, "") } : null,
+    taxId: null,
     phoneNormalized: normalizePhone(draft.client.phone.trim()),
     emailNormalized: draft.client.email.trim().toLowerCase() || null,
   };
@@ -153,18 +153,20 @@ async function createPayload(draft: IcpDraft, requestId: string) {
     destinationStatus: draft.destinationStatus,
     origin: rawSelection(draft.origin),
     destination: draft.destinationStatus === "PENDING" ? null : rawSelection(draft.destination),
-    additionalStops: draft.additionalStops.map(rawSelection),
+    additionalStops: [],
   };
+  const mode = deriveMode(draft.origin.countryCode.trim().toUpperCase(), draft.destinationStatus === "PENDING" ? null : draft.destination.countryCode.trim().toUpperCase());
   const unsigned = {
     requestId,
     client,
     clientProfileType: draft.clientProfileType,
     caseContact,
-    mode: draft.mode,
-    serviceType: draft.serviceType.trim(),
+    mode,
+    serviceType: "PENDING_DEFINITION",
     intakeChannel: draft.intakeChannel,
-    requiresSurvey: draft.requiresSurvey,
-    surveyMethod: draft.surveyMethod,
+    requirementNotes: draft.requirementNotes.trim() || null,
+    requiresSurvey: false,
+    surveyMethod: "NO_APLICA",
     route,
   };
   const normalized = {
@@ -173,17 +175,18 @@ async function createPayload(draft: IcpDraft, requestId: string) {
     client: normalizedClient,
     clientProfileType: draft.clientProfileType,
     caseContact: normalizedContact,
-    mode: draft.mode,
-    serviceType: draft.serviceType.trim(),
+    mode,
+    serviceType: "PENDING_DEFINITION",
     intakeChannel: draft.intakeChannel,
+    requirementNotes: draft.requirementNotes.trim() || null,
     estimatedCbm: null,
-    requiresSurvey: draft.requiresSurvey,
-    surveyMethod: draft.surveyMethod,
+    requiresSurvey: false,
+    surveyMethod: "NO_APLICA",
     route: {
       destinationStatus: draft.destinationStatus,
       origin: normalizedSelection(draft.origin),
       destination: draft.destinationStatus === "PENDING" ? null : normalizedSelection(draft.destination),
-      additionalStops: draft.additionalStops.map((selection, index) => ({ order: index + 1, selection: normalizedSelection(selection) })),
+      additionalStops: [],
     },
   };
   return { ...unsigned, payloadHash: await sha256(normalized) };

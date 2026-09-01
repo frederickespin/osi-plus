@@ -36,15 +36,16 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
   const unsigned = api.slice(api.indexOf("const unsigned ="), api.indexOf("const normalized ="));
   forbid(unsigned, /estimatedCbm|volume|cbm/i, "payload enviado volvió a incluir volumen");
   requireText(api, "estimatedCbm: null", "hash normalizado no representa volumen pendiente");
-  requireText(api, "additionalStops: draft.additionalStops.map", "cliente no conserva orden de paradas");
+  requireText(api, "additionalStops: []", "cliente aprobado no fija cero paradas");
+  forbid(api, /draft\.additionalStops/, "cliente aprobado volvió a capturar paradas");
 
   const form = read("src/crm-icp-v2/IcpIntakeForm.tsx");
-  for (const value of ["Volumen pendiente", "El ICP no calcula volumen", "máximo 8", "pipeline:create:pending-destination", "Crear ICP"]) {
-    if (value === "pipeline:create:pending-destination") continue;
+  for (const value of ["Nuevo Caso (ICP mínimo)", "Paso 1 · Definición rápida", "Paso 2 · Origen, destino y notas", "Notas del requerimiento", "País (ISO)", "Crear caso"]) {
     requireText(form, value, `formulario ICP incompleto: ${value}`);
   }
-  forbid(form, /estimatedCbm|type="number"|localStorage|sessionStorage/i, "formulario captura volumen o persiste datos sensibles");
-  requireText(form, "stops.length >= 8", "límite de ocho paradas ausente");
+  forbid(form, /estimatedCbm|type="number"|localStorage|sessionStorage|rnc|cédula|volumen|cbm|paradas adicionales|servicio principal|requiere Survey/i, "formulario aprobado volvió a capturar datos excluidos");
+  requireText(api, 'serviceType: "PENDING_DEFINITION"', "servicio no queda pendiente internamente");
+  requireText(api, 'surveyMethod: "NO_APLICA"', "Survey no queda pendiente fuera del ICP");
   requireText(form, "canCreatePendingDestination", "destino pendiente no depende del permiso UI");
 
   for (const value of ['pathname === "/experience-preview/icp"', 'runtime.vercelEnvironment === "preview"', "runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH"]) {
@@ -61,7 +62,7 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
   const access = read("src/crm-relational/mutationAccess.ts");
   requireText(access, 'pipeline:create:pending-destination', "permiso explícito de destino pendiente ausente");
   const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");
-  for (const value of ["isCrmIcpV2UiEnabled", "<IcpIntakeForm", "Nuevo ICP", "El volumen continúa pendiente", "Pendiente de Survey o datos proporcionados"]) {
+  for (const value of ["isCrmIcpV2UiEnabled", "<IcpIntakeForm", "Nuevo ICP", "listo para continuar en su Ficha", "onUnauthorized={onUnauthorized}"]) {
     requireText(inbox, value, `integración Inbox incompleta: ${value}`);
   }
   const crm01aGuard = read("scripts/validate-crm-01a-guard.mjs");
@@ -83,7 +84,7 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
   requireText(sharedPreview, "environment.CRM_PIPELINE_MUTATION_MODE === DISABLED", "Preview UI no fija mutación histórica en DISABLED");
 
   const docs = read("docs/V17-CRM-ICP-05C1-UI-CONTRACT.md");
-  for (const value of ["productionApiEnabled=false", "no contiene entrada de volumen ni CBM", "hasta ocho paradas", "Production, `main`", "Fuera de alcance"]) {
+  for (const value of ["productionApiEnabled=false", "no contiene entrada de volumen ni CBM", "cero paradas", "Production, `main`", "Fuera de alcance"]) {
     requireText(docs, value, `documentación UI incompleta: ${value}`);
   }
   const packageJson = read("package.json");
@@ -96,7 +97,7 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
     fail("CI no ejecuta guardias y navegadores del lote UI en sus fases canónicas");
   }
 
-  return Object.freeze({ ok: true, migrations: 22, productionApiEnabled: false, uiConsumers: 1, maximumAdditionalStops: 8 });
+  return Object.freeze({ ok: true, migrations: 22, productionApiEnabled: false, uiConsumers: 1, uiAdditionalStops: 0 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

@@ -24,8 +24,8 @@ rejected("API remoto", { "src/crm-icp-v2/api.ts": api.replace('const API_ROOT = 
 rejected("credenciales omitidas", { "src/crm-icp-v2/api.ts": api.replace('credentials: "same-origin"', 'credentials: "omit"') }, /protección cliente/);
 rejected("tenant desde navegador", { "src/crm-icp-v2/api.ts": `${api}\nconst tenantId = "unsafe";` }, /autoridad interna/);
 rejected("volumen enviado", { "src/crm-icp-v2/api.ts": api.replace("const unsigned = {", "const unsigned = { estimatedCbm: 12,") }, /payload enviado/);
-rejected("campo numérico", { "src/crm-icp-v2/IcpIntakeForm.tsx": `${form}\nconst unsafe = <input type=\"number\" />;` }, /captura volumen/);
-rejected("más de ocho paradas", { "src/crm-icp-v2/IcpIntakeForm.tsx": form.replace("stops.length >= 8", "stops.length >= 20") }, /ocho paradas/);
+rejected("campo numérico", { "src/crm-icp-v2/IcpIntakeForm.tsx": `${form}\nconst unsafe = <input type=\"number\" />;` }, /datos excluidos/);
+rejected("paradas reintroducidas", { "src/crm-icp-v2/IcpIntakeForm.tsx": `${form}\nconst unsafe = "Paradas adicionales";` }, /datos excluidos/);
 rejected("permiso pendiente retirado", { "src/crm-relational/mutationAccess.ts": access.replace('const CREATE_PENDING_DESTINATION = "pipeline:create:pending-destination";', 'const CREATE_PENDING_DESTINATION = "pipeline:create";') }, /permiso explícito/);
 rejected("Inbox desconectado", { "src/commercial-crm/CommercialInboxModule.tsx": inbox.replace("<IcpIntakeForm", "<LegacyForm") }, /integración Inbox/);
 rejected("API Preview UI desconectada", { "api/_lib/crmIcpV2ApiHttp.js": server.replace("isExactV17CommercialCrmPreviewServerEnvironment(env)", "true") }, /perfil Preview UI/);

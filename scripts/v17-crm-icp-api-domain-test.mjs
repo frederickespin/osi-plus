@@ -177,7 +177,7 @@ function creationDatabase({ actor = actorRow(), duplicateRows = [] } = {}) {
 }
 
 const creation = creationDatabase();
-const created = await createCrmIcpV2Case(context, signed(), creation.database);
+const created = await createCrmIcpV2Case(context, signed(unsigned({ requirementNotes: "Acceso limitado para camión." })), creation.database);
 check("creación retorna referencias públicas y revisión 1", created.replayed === false
   && created.case.route.contractVersion === 2 && created.case.route.revision === 1
   && PUBLIC_REF(created.case.caseRef) && PUBLIC_REF(created.case.client.clientRef));
@@ -185,6 +185,10 @@ check("Client inline usa secuencia y no duplica PII en texto legacy", creation.s
   && creation.state.caseCreate.destinationLocation === "ICP_V2_STRUCTURED_ROUTE"
   && creation.state.caseCreate.routeRevision === 0 && creation.state.caseCreate.estimatedCbm === 0
   && created.case.volume.status === "PENDING_SOURCE" && created.case.volume.estimatedCbm === null);
+check("notas y decisiones posteriores quedan namespaced y pendientes", creation.state.caseCreate.milestonesJson?.icpV2?.requirementNotes === "Acceso limitado para camión."
+  && creation.state.caseCreate.milestonesJson?.icpV2?.serviceDefinitionStatus === "PENDING"
+  && creation.state.caseCreate.milestonesJson?.icpV2?.surveyDecisionStatus === "PENDING"
+  && creation.state.caseCreate.flags.includes("ICP_SERVICE_PENDING") && creation.state.caseCreate.flags.includes("ICP_SURVEY_PENDING"));
 check("dirección reutilizable y snapshots viven en la misma transacción", creation.state.savedAddresses.length === 1
   && creation.state.snapshots.length === 2 && creation.state.snapshots.every((row) => row.routeVersion === 1));
 check("caso se promueve a contrato 2 antes de journal/auditoría", creation.state.casePromotion.routeContractVersion === 2

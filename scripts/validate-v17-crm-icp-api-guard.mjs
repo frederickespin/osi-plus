@@ -134,8 +134,11 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   ]) if (!hubGuard.includes(`\"${path}\"`)) fail(`archivo fuera de la guardia Hub: ${path}`);
 
   const srcFiles = walk(resolve(root, "src")).filter((path) => /\.(?:js|jsx|ts|tsx)$/.test(path));
-  const frontend = srcFiles.map((path) => read(relative(resolve(root), path).replaceAll("\\", "/"))).join("\n");
-  forbidMatch(frontend, /\/api\/crm\/icp-v2|crmIcpV2Api/, "el lote API conectó un consumidor UI");
+  const frontendConsumers = srcFiles.map((path) => relative(resolve(root), path).replaceAll("\\", "/"))
+    .filter((path) => /\/api\/crm\/icp-v2/.test(read(path)));
+  if (frontendConsumers.length !== 1 || frontendConsumers[0] !== "src/crm-icp-v2/api.ts") {
+    fail(`consumidores UI fuera del cliente ICP autorizado: ${frontendConsumers.join(",")}`);
+  }
   const oldRoutes = `${read("api/crm/pipeline-cases/index.js")}\n${read("api/crm/pipeline-cases/[caseKey]/index.js")}\n${read("api/clients/index.js")}`;
   forbidMatch(oldRoutes, /crmIcpV2|icp-v2/i, "el lote cambió autoridad de rutas históricas");
 
@@ -153,7 +156,7 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
     ]),
     modes: Object.freeze(["DISABLED", "LOCAL_ONLY", "PREVIEW_REHEARSAL"]),
     productionApiEnabled: false,
-    uiConsumers: 0,
+    uiConsumers: 1,
   });
 }
 

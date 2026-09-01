@@ -1,6 +1,7 @@
 export const V17_COMMERCIAL_CRM_PREVIEW_MODE: "PREVIEW_REHEARSAL";
 export const V17_COMMERCIAL_CRM_PREVIEW_BATCH: "V17-COMMERCIAL-CRM-PREVIEW-01";
 export const V17_COMMERCIAL_CRM_PREVIEW_BRANCH: "feature/v17-commercial-crm-preview";
+export const V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH: "feature/v17-crm-icp-ui-05c1";
 
 export type V17CommercialCrmPreviewClientConfiguration = Readonly<{
   hubMode?: unknown;

@@ -5,6 +5,7 @@ import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { CrmIcpV2Error } from "./crmIcpV2Domain.js";
 import { CrmIcpV2ApiError } from "./crmIcpV2ApiDomain.js";
 import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "./http.js";
+import { isExactV17CommercialCrmPreviewServerEnvironment } from "../../shared/v17CommercialCrmPreview.js";
 
 export const CRM_ICP_V2_API_MODES = Object.freeze({
   DISABLED: "DISABLED",
@@ -14,6 +15,8 @@ export const CRM_ICP_V2_API_MODES = Object.freeze({
 
 export const CRM_ICP_V2_API_PREVIEW_BRANCH = "feature/v17-crm-icp-api-05b1";
 export const CRM_ICP_V2_API_PREVIEW_BATCH = "V17-CRM-ICP-05B1-PREVIEW";
+export const CRM_ICP_V2_UI_PREVIEW_BRANCH = "feature/v17-crm-icp-ui-05c1";
+export const CRM_ICP_V2_UI_PREVIEW_BATCH = "V17-CRM-ICP-05C1-PREVIEW";
 
 function apiError(code, status) {
   return new CrmIcpV2ApiError(code, status);
@@ -44,7 +47,7 @@ export function resolveCrmIcpV2ApiMode(env = process.env, req = undefined) {
   } catch {
     historicalCrmDisabled = false;
   }
-  const exactPreview = env.VERCEL === "1"
+  const apiOnlyPreview = env.VERCEL === "1"
     && env.VERCEL_ENV === "preview"
     && env.VERCEL_GIT_COMMIT_REF === CRM_ICP_V2_API_PREVIEW_BRANCH
     && env.CRM_ICP_V2_API_BATCH === CRM_ICP_V2_API_PREVIEW_BATCH
@@ -53,6 +56,16 @@ export function resolveCrmIcpV2ApiMode(env = process.env, req = undefined) {
     && env.MT01B_TENANT_SWITCH_ENABLED === "false"
     && env.VITE_MT01B2_CLIENT_ENABLED === "false"
     && ["LEGACY", "MEMBERSHIP_ONLY"].includes(env.MT01B_AUTH_MODE);
+  const uiPreview = env.VERCEL === "1"
+    && env.VERCEL_ENV === "preview"
+    && env.VERCEL_GIT_COMMIT_REF === CRM_ICP_V2_UI_PREVIEW_BRANCH
+    && env.CRM_ICP_V2_API_BATCH === CRM_ICP_V2_UI_PREVIEW_BATCH
+    && env.VITE_CRM_ICP_V2_UI_MODE === "PREVIEW_REHEARSAL"
+    && env.VITE_CRM_ICP_V2_UI_BATCH === CRM_ICP_V2_UI_PREVIEW_BATCH
+    && isExactV17CommercialCrmPreviewServerEnvironment(env)
+    && env.CRM_PIPELINE_MUTATION_MODE === "DISABLED"
+    && env.COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED";
+  const exactPreview = apiOnlyPreview || uiPreview;
   if (!exactPreview) throw apiError("CRM_ICP_V2_API_CONFIGURATION_INVALID", 503);
   return mode;
 }

@@ -44,7 +44,7 @@ rejected("permiso pending automático", { "api/_lib/rbac.js": rbac.replace("PERM
 rejected("ruta crear interpreta body", { "api/crm/icp-v2/pipeline-cases/index.js": `${createRoute}\nconst forbidden = req.body;` }, /ruta interpreta/);
 rejected("ruta búsqueda desconectada", { "api/crm/icp-v2/clients/search.js": searchRoute.replace("=> searchCrmIcpClients", "=> legacySearch") }, /POST buscar/);
 rejected("detalle desconectado", { "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js": detailRoute.replace("=> findCrmIcpV2Case", "=> legacyDetail") }, /GET detalle/);
-rejected("UI consumidora", { "src/App.tsx": `${read("src/App.tsx")}\nconst icpEndpoint = "/api/crm/icp-v2/pipeline-cases";` }, /consumidor UI/);
+rejected("consumidor UI fuera del cliente autorizado", { "src/App.tsx": `${read("src/App.tsx")}\nconst icpEndpoint = "/api/crm/icp-v2/pipeline-cases";` }, /consumidores UI/);
 rejected("límite documental retirado", { "docs/V17-CRM-ICP-05B1-API-CONTRACT.md": docs.replace("no añade consumidores frontend", "añade frontend") }, /límite contractual/);
 rejected("ruta fuera de inventario auth", { "scripts/validate-mt01b3a-auth-guard.mjs": authInventory.replace('  "api/crm/icp-v2/clients/search.js",', "") }, /inventario auth/);
 rejected("promoción fuera de inventario comercial", { "scripts/validate-mt01c2b3a-guard.mjs": commercialWriteGuard.replace('  } else if (path === "api/_lib/crmIcpV2ApiDomain.js") {', '  } else if (path === "api/_lib/removed.js") {') }, /inventario comercial/);
@@ -53,10 +53,10 @@ rejected("dominio fuera de inventario publicRef", { "scripts/validate-v17-case-p
 rejected("ruta fuera de inventario CRM-01A", { "scripts/validate-crm-01a-guard.mjs": crm01aGuard.replace('  "api/crm/icp-v2/clients/search.js",', "") }, /inventario CRM-01A/);
 rejected("dominio fuera de inventario journal", { "scripts/validate-crm-01b1-guard.mjs": crm01b1Guard.replace(', "api/_lib/crmIcpV2ApiDomain.js"', "") }, /inventario journal/);
 rejected("dominio fuera de inventario de mutación", { "scripts/validate-crm-01b2-guard.mjs": crm01b2Guard.replace(', ICP_API_DOMAIN', "") }, /inventario de mutación/);
-rejected("ruta fuera de inventario CORS", { "scripts/protected-cors-route-inventory.json": corsInventory.replace('      "/api/crm/icp-v2/clients/search",\n', "") }, /inventario CORS/);
-rejected("ruta fuera de inventario Vary", { "scripts/validate-v17-crm-vary-guard.mjs": varyGuard.replace('  "api/crm/icp-v2/clients/search.js": "createCrmIcpClientSearchHandler",\n', "") }, /inventario Vary/);
+rejected("ruta fuera de inventario CORS", { "scripts/protected-cors-route-inventory.json": corsInventory.replace('"/api/crm/icp-v2/clients/search",', '"/api/crm/icp-v2/clients/removed",') }, /inventario CORS/);
+rejected("ruta fuera de inventario Vary", { "scripts/validate-v17-crm-vary-guard.mjs": varyGuard.replace('"api/crm/icp-v2/clients/search.js": "createCrmIcpClientSearchHandler"', '"api/crm/icp-v2/clients/removed.js": "createCrmIcpClientSearchHandler"') }, /inventario Vary/);
 rejected("ruta fuera de inventario CRM-01B3B3", { "scripts/validate-crm-01b3b3-guard.mjs": crm01b3b3Guard.replace("routes.length === 12", "routes.length === 9") }, /inventario CRM-01B3B3/);
 rejected("agregador canónico desactualizado", { "scripts/run-canonical-db-tests.mjs": canonicalRunner.replace("v17CasePublicRefGuardRun.report.runtimeConsumers === 7", "v17CasePublicRefGuardRun.report.runtimeConsumers === 6") }, /agregador canónico/);
-rejected("ruta fuera de guardia Hub", { "scripts/validate-v17-hub-guard.mjs": hubGuard.replace('  "api/crm/icp-v2/clients/search.js",\n', "") }, /guardia Hub/);
+rejected("ruta fuera de guardia Hub", { "scripts/validate-v17-hub-guard.mjs": hubGuard.replace('"api/crm/icp-v2/clients/search.js"', '"api/crm/icp-v2/clients/removed.js"') }, /guardia Hub/);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);

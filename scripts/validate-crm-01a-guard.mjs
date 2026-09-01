@@ -17,7 +17,12 @@ const CRM_MUTATION_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/[caseKey]/transition.js",
   "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
-const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES]);
+const ICP_V2_API_ROUTES = Object.freeze([
+  "api/crm/icp-v2/clients/search.js",
+  "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
+  "api/crm/icp-v2/pipeline-cases/index.js",
+]);
+const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES, ...ICP_V2_API_ROUTES]);
 const AUTHORIZED_FRONTEND_CONSUMERS = Object.freeze([
   "src/crm-relational/api.ts",
   "src/crm-relational/mutationApi.ts",
@@ -158,6 +163,7 @@ export function validateCrm01aGuard({
     legacyHeaderExceptions: authInventory.legacyHeaderExceptions,
     frontendConsumers: AUTHORIZED_FRONTEND_CONSUMERS.length,
     writeEndpoints: 2,
+    isolatedApiRoutes: ICP_V2_API_ROUTES.length,
     disabledOptionsGate: true,
   });
 }

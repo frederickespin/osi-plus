@@ -71,9 +71,9 @@ export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, e
     .filter((path) => path.endsWith(".js"))
     .map((path) => relative(root, path).replaceAll("\\", "/"));
   const routes = [...new Set([...discovered, ...Object.keys(extraSources).filter((path) => path.startsWith("api/crm/") && path.endsWith(".js"))])].sort();
-  invariant(routes.length === 9, `inventario recursivo de rutas CRM cambió: ${routes.length}`);
+  invariant(routes.length === 12, `inventario recursivo de rutas CRM cambió: ${routes.length}`);
   for (const path of routes) {
-    invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp|crmClientOptions/.test(source(path)), `${path} omite la compuerta CRM central`);
+    invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp|crmClientOptions|crmIcpV2ApiHttp/.test(source(path)), `${path} omite la compuerta CRM central`);
   }
   return Object.freeze({ ok: true, migrations: 22, routes: routes.length, ttlSeconds: 300 });
 }

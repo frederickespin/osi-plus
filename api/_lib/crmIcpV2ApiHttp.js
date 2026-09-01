@@ -1,6 +1,6 @@
 import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
-import { resolveCrmPipelineContext } from "./crmPipelineAccess.js";
+import { requireCrmPipelineExplicitlyDisabled, resolveCrmPipelineContext } from "./crmPipelineAccess.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { CrmIcpV2Error } from "./crmIcpV2Domain.js";
 import { CrmIcpV2ApiError } from "./crmIcpV2ApiDomain.js";
@@ -37,13 +37,18 @@ export function resolveCrmIcpV2ApiMode(env = process.env, req = undefined) {
     }
     return mode;
   }
+  let historicalCrmDisabled = false;
+  try {
+    requireCrmPipelineExplicitlyDisabled(env);
+    historicalCrmDisabled = true;
+  } catch {
+    historicalCrmDisabled = false;
+  }
   const exactPreview = env.VERCEL === "1"
     && env.VERCEL_ENV === "preview"
     && env.VERCEL_GIT_COMMIT_REF === CRM_ICP_V2_API_PREVIEW_BRANCH
     && env.CRM_ICP_V2_API_BATCH === CRM_ICP_V2_API_PREVIEW_BATCH
-    && env.CRM_PIPELINE_RUNTIME_MODE === "DISABLED"
-    && env.CRM_PIPELINE_MUTATION_MODE === "DISABLED"
-    && env.CRM_PIPELINE_ACTIVATION_BATCH === undefined
+    && historicalCrmDisabled
     && env.COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED"
     && env.MT01B_TENANT_SWITCH_ENABLED === "false"
     && env.VITE_MT01B2_CLIENT_ENABLED === "false"

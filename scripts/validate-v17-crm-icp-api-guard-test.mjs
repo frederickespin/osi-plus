@@ -20,10 +20,18 @@ const detailRoute = read("api/crm/icp-v2/pipeline-cases/[caseKey]/index.js");
 const docs = read("docs/V17-CRM-ICP-05B1-API-CONTRACT.md");
 const authInventory = read("scripts/validate-mt01b3a-auth-guard.mjs");
 const commercialWriteGuard = read("scripts/validate-mt01c2b3a-guard.mjs");
+const publicRefGuard = read("scripts/validate-v17-case-public-ref-guard.mjs");
+const crm01aGuard = read("scripts/validate-crm-01a-guard.mjs");
+const crm01b1Guard = read("scripts/validate-crm-01b1-guard.mjs");
+const crm01b2Guard = read("scripts/validate-crm-01b2-guard.mjs");
+const corsInventory = read("scripts/protected-cors-route-inventory.json");
+const varyGuard = read("scripts/validate-v17-crm-vary-guard.mjs");
+const crm01b3b3Guard = read("scripts/validate-crm-01b3b3-guard.mjs");
+const canonicalRunner = read("scripts/run-canonical-db-tests.mjs");
 
 rejected("Production habilitado", { "api/_lib/crmIcpV2Domain.js": foundation.replace("productionApiEnabled: false", "productionApiEnabled: true") }, /API productiva|productionApiEnabled/);
 rejected("modo productivo añadido", { "api/_lib/crmIcpV2ApiHttp.js": `${http}\nconst V17_PRODUCTION_PILOT = true;` }, /modo productivo/);
-rejected("Preview permite mutación histórica", { "api/_lib/crmIcpV2ApiHttp.js": http.replace('env.CRM_PIPELINE_MUTATION_MODE === "DISABLED"', 'env.CRM_PIPELINE_MUTATION_MODE === "PRODUCTION_PILOT"') }, /runtime incompleto|modo productivo/);
+rejected("Preview permite mutación histórica", { "api/_lib/crmIcpV2ApiHttp.js": http.replace("requireCrmPipelineExplicitlyDisabled(env)", "true") }, /runtime incompleto|modo productivo/);
 rejected("auth antes del gate", { "api/_lib/crmIcpV2ApiHttp.js": http.replace("resolveCrmIcpV2ApiMode(env, req);", "void resolveContext(req); resolveCrmIcpV2ApiMode(env, req);") }, /orden/);
 rejected("sin socket loopback", { "api/_lib/crmIcpV2ApiHttp.js": http.replace("|| !isRealLoopbackRequest(req)", "|| false") }, /LOCAL_ONLY/);
 rejected("MAX para código Client", { "api/_lib/crmIcpV2ApiDomain.js": domain.replace('SELECT "osi"."next_icp_client_code"() AS "code"', 'SELECT MAX("code") AS "code"') }, /autoridad insegura|ejecutor atómico/);
@@ -40,5 +48,13 @@ rejected("límite documental retirado", { "docs/V17-CRM-ICP-05B1-API-CONTRACT.md
 rejected("ruta fuera de inventario auth", { "scripts/validate-mt01b3a-auth-guard.mjs": authInventory.replace('  "api/crm/icp-v2/clients/search.js",', "") }, /inventario auth/);
 rejected("promoción fuera de inventario comercial", { "scripts/validate-mt01c2b3a-guard.mjs": commercialWriteGuard.replace('  } else if (path === "api/_lib/crmIcpV2ApiDomain.js") {', '  } else if (path === "api/_lib/removed.js") {') }, /inventario comercial/);
 rejected("volumen anticipado vuelve al ICP", { "api/_lib/crmIcpV2Domain.js": foundation.replace('  "intakeChannel", "requiresSurvey"', '  "intakeChannel", "estimatedCbm", "requiresSurvey"') }, /volumen anticipado/);
+rejected("dominio fuera de inventario publicRef", { "scripts/validate-v17-case-public-ref-guard.mjs": publicRefGuard.replace('    "api/_lib/crmIcpV2ApiDomain.js",', "") }, /inventario publicRef/);
+rejected("ruta fuera de inventario CRM-01A", { "scripts/validate-crm-01a-guard.mjs": crm01aGuard.replace('  "api/crm/icp-v2/clients/search.js",', "") }, /inventario CRM-01A/);
+rejected("dominio fuera de inventario journal", { "scripts/validate-crm-01b1-guard.mjs": crm01b1Guard.replace(', "api/_lib/crmIcpV2ApiDomain.js"', "") }, /inventario journal/);
+rejected("dominio fuera de inventario de mutación", { "scripts/validate-crm-01b2-guard.mjs": crm01b2Guard.replace(', ICP_API_DOMAIN', "") }, /inventario de mutación/);
+rejected("ruta fuera de inventario CORS", { "scripts/protected-cors-route-inventory.json": corsInventory.replace('      "/api/crm/icp-v2/clients/search",\n', "") }, /inventario CORS/);
+rejected("ruta fuera de inventario Vary", { "scripts/validate-v17-crm-vary-guard.mjs": varyGuard.replace('  "api/crm/icp-v2/clients/search.js": "createCrmIcpClientSearchHandler",\n', "") }, /inventario Vary/);
+rejected("ruta fuera de inventario CRM-01B3B3", { "scripts/validate-crm-01b3b3-guard.mjs": crm01b3b3Guard.replace("routes.length === 12", "routes.length === 9") }, /inventario CRM-01B3B3/);
+rejected("agregador canónico desactualizado", { "scripts/run-canonical-db-tests.mjs": canonicalRunner.replace("v17CasePublicRefGuardRun.report.runtimeConsumers === 7", "v17CasePublicRefGuardRun.report.runtimeConsumers === 6") }, /agregador canónico/);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);

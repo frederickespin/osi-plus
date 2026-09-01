@@ -33,8 +33,7 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
     'DISABLED: "DISABLED"', 'LOCAL_ONLY: "LOCAL_ONLY"', 'PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL"',
     'CRM_ICP_V2_API_PREVIEW_BRANCH = "feature/v17-crm-icp-api-05b1"',
     'CRM_ICP_V2_API_PREVIEW_BATCH = "V17-CRM-ICP-05B1-PREVIEW"',
-    'CRM_PIPELINE_RUNTIME_MODE === "DISABLED"', 'CRM_PIPELINE_MUTATION_MODE === "DISABLED"',
-    'CRM_PIPELINE_ACTIVATION_BATCH === undefined', 'COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED"',
+    'requireCrmPipelineExplicitlyDisabled(env)', 'COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED"',
   ]) if (!http.includes(signature)) fail(`runtime incompleto: ${signature}`);
   forbidMatch(http, /PRODUCTION_(?:WRITE|PILOT|READ)|VERCEL_ENV\s*===\s*"production"|V17_PRODUCTION_PILOT/, "runtime ICP contiene modo productivo");
   requireMatch(http, /mode === CRM_ICP_V2_API_MODES\.LOCAL_ONLY[\s\S]*hasVercelSignal\(env\)[\s\S]*!isRealLoopbackRequest\(req\)/, "LOCAL_ONLY no exige socket real y ausencia de Vercel");
@@ -96,6 +95,35 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   const commercialWriteGuard = read("scripts/validate-mt01c2b3a-guard.mjs");
   requireMatch(commercialWriteGuard, /path === "api\/_lib\/crmIcpV2ApiDomain\.js"[\s\S]*no limita promoción por caso, tenant y revisión inicial/, "promoción ICP fuera del inventario comercial");
   requireMatch(commercialWriteGuard, /api\/_lib\/crmIcpV2ApiDomain\.js:client\.create[\s\S]*api\/_lib\/crmIcpV2ApiDomain\.js:pipelineCase\.create/, "creadores ICP fuera del inventario comercial");
+  const publicRefGuard = read("scripts/validate-v17-case-public-ref-guard.mjs");
+  requireMatch(publicRefGuard, /authorizedPublicRefConsumers[\s\S]*"api\/_lib\/crmIcpV2ApiDomain\.js"/, "dominio ICP fuera del inventario publicRef");
+  const crm01aGuard = read("scripts/validate-crm-01a-guard.mjs");
+  const crm01b1Guard = read("scripts/validate-crm-01b1-guard.mjs");
+  const crm01b2Guard = read("scripts/validate-crm-01b2-guard.mjs");
+  const corsInventory = read("scripts/protected-cors-route-inventory.json");
+  const crm01b3b1Guard = read("scripts/validate-crm-01b3b1-guard.mjs");
+  const crm01b3b3Guard = read("scripts/validate-crm-01b3b3-guard.mjs");
+  const varyGuard = read("scripts/validate-v17-crm-vary-guard.mjs");
+  const canonicalRunner = read("scripts/run-canonical-db-tests.mjs");
+  requireMatch(crm01b1Guard, /RUNTIME_SERVICE_ALLOWLIST[\s\S]*api\/_lib\/crmIcpV2ApiDomain\.js/, "dominio ICP fuera del inventario journal");
+  requireMatch(crm01b2Guard, /ICP_API_DOMAIN = "api\/_lib\/crmIcpV2ApiDomain\.js"/, "dominio ICP fuera del inventario de mutación");
+  if (crm01b2Guard.split("CASE_MUTATION_DOMAIN, ICP_API_DOMAIN").length - 1 !== 2) {
+    fail("dominio ICP fuera del inventario de mutación");
+  }
+  for (const path of ["/api/crm/icp-v2/clients/search", "/api/crm/icp-v2/pipeline-cases", "/api/crm/icp-v2/pipeline-cases/[caseKey]"]) {
+    if (!corsInventory.includes(`\"${path}\"`)) fail(`ruta fuera del inventario CORS privado: ${path}`);
+  }
+  for (const [name, inventory] of [["CRM-01A", crm01aGuard], ["CRM-01B3B1", crm01b3b1Guard]]) {
+    for (const path of Object.keys(routes).map((key) => ({
+      create: "api/crm/icp-v2/pipeline-cases/index.js",
+      search: "api/crm/icp-v2/clients/search.js",
+      detail: "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
+    })[key])) if (!inventory.includes(`\"${path}\"`)) fail(`ruta fuera del inventario ${name}: ${path}`);
+  }
+  requireMatch(varyGuard, /EXPECTED_ROUTES[\s\S]*"api\/crm\/icp-v2\/clients\/search\.js": "createCrmIcpClientSearchHandler"[\s\S]*"api\/crm\/icp-v2\/pipeline-cases\/index\.js": "createCrmIcpV2CreateHandler"[\s\S]*"api\/crm\/icp-v2\/pipeline-cases\/\[caseKey\]\/index\.js": "createCrmIcpV2DetailHandler"/, "rutas ICP fuera del inventario Vary");
+  requireMatch(varyGuard, /api\/_lib\/crmIcpV2ApiHttp\.js/, "wrapper ICP fuera del inventario Vary");
+  requireMatch(crm01b3b3Guard, /routes\.length === 12[\s\S]*crmIcpV2ApiHttp/, "rutas ICP fuera del inventario CRM-01B3B3");
+  requireMatch(canonicalRunner, /crmProductionGateGuardRun\.report\.routes === 12[\s\S]*crmOwnerCatalogGuardRun\.report\.routes === 12[\s\S]*v17CasePublicRefGuardRun\.report\.runtimeConsumers === 7/, "agregador canónico no reconoce los consumidores ICP");
 
   const srcFiles = walk(resolve(root, "src")).filter((path) => /\.(?:js|jsx|ts|tsx)$/.test(path));
   const frontend = srcFiles.map((path) => read(relative(resolve(root), path).replaceAll("\\", "/"))).join("\n");

@@ -23,7 +23,9 @@ Ejecuta el contrato cerrado de `normalizeCrmIcpV2CreateInput`. Recalcula `payloa
 
 El caso nace temporalmente con revisión 0 dentro de la transacción, recibe snapshots inmutables de revisión 1 y se promueve a contrato 2 antes del commit. Los campos de ubicación legacy reciben marcadores no autoritativos y nunca una copia de PII estructurada.
 
-La respuesta sólo contiene `caseRef`, `clientRef`, versión, revisión y bandera de replay. Un `requestId` repetido con el mismo hash y actor retorna el mismo caso; cualquier diferencia produce conflicto.
+El ICP no recibe, calcula ni acepta `estimatedCbm`. El volumen permanece como `{ status: "PENDING_SOURCE", estimatedCbm: null, source: null }` hasta que un lote posterior lo establezca desde un survey o desde datos proporcionados con procedencia explícita. La columna legacy no nullable conserva `0` únicamente como marcador interno de compatibilidad; no es un volumen conocido, no se expone como tal y no puede alimentar cotización, logística ni capacidad.
+
+La respuesta contiene referencias públicas, estado, datos mínimos del caso, ruta vigente, volumen pendiente y bandera de replay. Un `requestId` repetido con el mismo hash y actor retorna el mismo caso; cualquier diferencia produce conflicto.
 
 ### `POST /api/crm/icp-v2/clients/search`
 
@@ -45,4 +47,6 @@ Una coincidencia exacta de RNC o teléfono+correo bloquea el Client inline. Una 
 
 ## Fuera de alcance
 
-Este lote no actualiza casos ni crea revisiones 2+, no cambia las rutas CRM históricas, no añade consumidores frontend, no activa el runtime remoto y no aplica la migración 22 a Production. La edición de ruta será un lote posterior sobre el contrato de versión ya publicado.
+Este lote no actualiza casos ni crea revisiones 2+, no captura ni estima volumen, no cambia las rutas CRM históricas, no añade consumidores frontend, no activa el runtime remoto y no aplica la migración 22 a Production. La edición de ruta y la autoridad de volumen procedente de survey/datos proporcionados serán lotes posteriores sobre el contrato de versión ya publicado.
+
+La referencia visual para el futuro lote UI es `https://osi-plus-v17-experience-preview-02a-cxp80thtn.vercel.app/sales/pipeline`, identificada como la experiencia ERP más reciente previa a la integración CRM. Se documenta como baseline; este lote no importa, copia ni conecta ese frontend.

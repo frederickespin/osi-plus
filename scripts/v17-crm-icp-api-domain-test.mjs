@@ -78,7 +78,6 @@ function unsigned(overrides = {}) {
     mode: "LOCAL",
     serviceType: "LOCAL_MOVE",
     intakeChannel: "WHATSAPP",
-    estimatedCbm: 12.5,
     requiresSurvey: true,
     surveyMethod: "PRESENCIAL",
     route: {
@@ -184,7 +183,8 @@ check("creación retorna referencias públicas y revisión 1", created.replayed 
   && PUBLIC_REF(created.case.caseRef) && PUBLIC_REF(created.case.client.clientRef));
 check("Client inline usa secuencia y no duplica PII en texto legacy", creation.state.caseCreate.originLocation === "ICP_V2_STRUCTURED_ROUTE"
   && creation.state.caseCreate.destinationLocation === "ICP_V2_STRUCTURED_ROUTE"
-  && creation.state.caseCreate.routeRevision === 0);
+  && creation.state.caseCreate.routeRevision === 0 && creation.state.caseCreate.estimatedCbm === 0
+  && created.case.volume.status === "PENDING_SOURCE" && created.case.volume.estimatedCbm === null);
 check("dirección reutilizable y snapshots viven en la misma transacción", creation.state.savedAddresses.length === 1
   && creation.state.snapshots.length === 2 && creation.state.snapshots.every((row) => row.routeVersion === 1));
 check("caso se promueve a contrato 2 antes de journal/auditoría", creation.state.casePromotion.routeContractVersion === 2
@@ -241,7 +241,8 @@ function readDatabase({ role = "A", denied = [], item = true } = {}) {
 const sellerRead = readDatabase({ role: "V" });
 const detail = await findCrmIcpV2Case(context, sellerRead.ref, sellerRead.database);
 check("V lee sólo por owner Membership/User completo", detail.caseRef === sellerRead.ref
-  && sellerRead.where().ownerMembershipId === membershipId && sellerRead.where().ownerUserId === userId);
+  && sellerRead.where().ownerMembershipId === membershipId && sellerRead.where().ownerUserId === userId
+  && detail.volume.status === "PENDING_SOURCE" && detail.volume.estimatedCbm === null);
 await reject("referencia de caso inválida produce 404 estable", "CRM_PIPELINE_RESOURCE_NOT_FOUND", () =>
   findCrmIcpV2Case(context, "internal-id", sellerRead.database));
 

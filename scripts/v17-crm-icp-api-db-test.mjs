@@ -80,7 +80,6 @@ function unsigned(overrides = {}) {
     mode: "LOCAL",
     serviceType: "LOCAL_MOVE",
     intakeChannel: "WEB",
-    estimatedCbm: 9.5,
     requiresSurvey: false,
     surveyMethod: "NO_APLICA",
     route: {
@@ -151,7 +150,8 @@ try {
   const command = signed(values);
   const created = await createCrmIcpV2Case(context, command, prisma);
   check("executor crea caso ICP v2 real", created.replayed === false && created.case.route.contractVersion === 2
-    && created.case.route.revision === 1 && created.case.route.destinationStatus === "CONFIRMED");
+    && created.case.route.revision === 1 && created.case.route.destinationStatus === "CONFIRMED"
+    && created.case.volume.status === "PENDING_SOURCE" && created.case.volume.estimatedCbm === null);
   const [clients, addresses, snapshots, commands, audits] = await Promise.all([
     prisma.client.count({ where: { tenantId } }),
     prisma.clientAddress.count({ where: { tenantId } }),
@@ -167,7 +167,10 @@ try {
 
   const detail = await findCrmIcpV2Case(context, created.case.caseRef, prisma);
   check("detalle lee sólo snapshot vigente", detail.route.revision === 1 && detail.route.origin.countryCode === "DO"
-    && detail.route.destination.streetAndNumber === "Synthetic destination 2");
+    && detail.route.destination.streetAndNumber === "Synthetic destination 2"
+    && detail.volume.status === "PENDING_SOURCE" && detail.volume.estimatedCbm === null);
+  const storedCase = await prisma.pipelineCase.findFirst({ where: { tenantId, publicRef: created.case.caseRef }, select: { estimatedCbm: true } });
+  check("cero legacy es sólo marcador interno no autoritativo", storedCase?.estimatedCbm === 0);
   const search = await searchCrmIcpClients(context, { query: marker, page: 1, pageSize: 20 }, prisma);
   const searchJson = JSON.stringify(search);
   check("búsqueda real es tenant-first y enmascarada", search.total === 1 && search.data[0].clientRef === created.case.client.clientRef

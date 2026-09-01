@@ -18,6 +18,8 @@ const createRoute = read("api/crm/icp-v2/pipeline-cases/index.js");
 const searchRoute = read("api/crm/icp-v2/clients/search.js");
 const detailRoute = read("api/crm/icp-v2/pipeline-cases/[caseKey]/index.js");
 const docs = read("docs/V17-CRM-ICP-05B1-API-CONTRACT.md");
+const authInventory = read("scripts/validate-mt01b3a-auth-guard.mjs");
+const commercialWriteGuard = read("scripts/validate-mt01c2b3a-guard.mjs");
 
 rejected("Production habilitado", { "api/_lib/crmIcpV2Domain.js": foundation.replace("productionApiEnabled: false", "productionApiEnabled: true") }, /API productiva|productionApiEnabled/);
 rejected("modo productivo añadido", { "api/_lib/crmIcpV2ApiHttp.js": `${http}\nconst V17_PRODUCTION_PILOT = true;` }, /modo productivo/);
@@ -35,5 +37,8 @@ rejected("ruta búsqueda desconectada", { "api/crm/icp-v2/clients/search.js": se
 rejected("detalle desconectado", { "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js": detailRoute.replace("=> findCrmIcpV2Case", "=> legacyDetail") }, /GET detalle/);
 rejected("UI consumidora", { "src/App.tsx": `${read("src/App.tsx")}\nconst icpEndpoint = "/api/crm/icp-v2/pipeline-cases";` }, /consumidor UI/);
 rejected("límite documental retirado", { "docs/V17-CRM-ICP-05B1-API-CONTRACT.md": docs.replace("no añade consumidores frontend", "añade frontend") }, /límite contractual/);
+rejected("ruta fuera de inventario auth", { "scripts/validate-mt01b3a-auth-guard.mjs": authInventory.replace('  "api/crm/icp-v2/clients/search.js",', "") }, /inventario auth/);
+rejected("promoción fuera de inventario comercial", { "scripts/validate-mt01c2b3a-guard.mjs": commercialWriteGuard.replace('  } else if (path === "api/_lib/crmIcpV2ApiDomain.js") {', '  } else if (path === "api/_lib/removed.js") {') }, /inventario comercial/);
+rejected("volumen anticipado vuelve al ICP", { "api/_lib/crmIcpV2Domain.js": foundation.replace('  "intakeChannel", "requiresSurvey"', '  "intakeChannel", "estimatedCbm", "requiresSurvey"') }, /volumen anticipado/);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);

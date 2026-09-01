@@ -55,6 +55,15 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
     "CRM_PIPELINE_IDEMPOTENCY_CONFLICT", "CRM_ICP_V2_API_05B1", "PERMS.PIPELINE_CREATE_PENDING_DESTINATION",
   ]) if (!domain.includes(signature)) fail(`ejecutor atómico incompleto: ${signature}`);
   forbidMatch(domain, /MAX\s*\(|Math\.max\([^\n]*client|console\.(?:log|warn|error)\([^\n]*(?:phone|email|tax|address)/i, "código Client o PII usa autoridad insegura");
+  const foundationVolumeContract = read("api/_lib/crmIcpV2Domain.js");
+  const rootFieldContract = foundationVolumeContract.slice(
+    foundationVolumeContract.indexOf("const ROOT_FIELDS"),
+    foundationVolumeContract.indexOf("const UNSIGNED_ROOT_FIELDS"),
+  );
+  forbidMatch(rootFieldContract, /estimatedCbm/, "ICP volvió a aceptar volumen anticipado");
+  requireMatch(foundationVolumeContract, /estimatedCbm:\s*null/, "ICP no fija volumen como pendiente");
+  requireMatch(domain, /estimatedCbm:\s*0/, "marcador legacy de volumen dejó de ser cero no autoritativo");
+  requireMatch(domain, /volume:\s*Object\.freeze\(\{\s*status:\s*"PENDING_SOURCE",\s*estimatedCbm:\s*null,\s*source:\s*null\s*\}\)/, "respuesta de volumen pendiente incompleta");
   requireMatch(domain, /m\."tenant_id"=\$\{tenantId\}\s+AND m\."id"=\$\{membershipId\}\s+AND m\."user_id"=\$\{userId\}/, "actor no se revalida tenant-first");
   requireMatch(domain, /tenantId:\s*actor\.tenantId,\s*clientId,[\s\S]*addressRef:\s*\{\s*in:\s*refs\s*\}/, "ClientAddress no queda ligada a Tenant y Client");
   requireMatch(domain, /actor\.role === "V"\s*\?\s*\{\s*ownerMembershipId:\s*actor\.membershipId,\s*ownerUserId:\s*actor\.userId\s*\}/, "detalle V no exige owner completo");
@@ -77,6 +86,16 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   for (const source of Object.values(routes)) {
     forbidMatch(source, /req\.body|tenantId|membershipId|userId|clientId/, "ruta interpreta autoridad o ID interno");
   }
+  const authInventory = read("scripts/validate-mt01b3a-auth-guard.mjs");
+  for (const path of [
+    "api/crm/icp-v2/clients/search.js",
+    "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
+    "api/crm/icp-v2/pipeline-cases/index.js",
+  ]) if (authInventory.split(`\"${path}\"`).length - 1 !== 2) fail(`ruta fuera del inventario auth: ${path}`);
+  requireMatch(authInventory, /ICP_V2_API_ROUTES[\s\S]*crmIcpV2ApiHttp\\\.js/, "rutas ICP no exigen su contrato HTTP en el inventario auth");
+  const commercialWriteGuard = read("scripts/validate-mt01c2b3a-guard.mjs");
+  requireMatch(commercialWriteGuard, /path === "api\/_lib\/crmIcpV2ApiDomain\.js"[\s\S]*no limita promoción por caso, tenant y revisión inicial/, "promoción ICP fuera del inventario comercial");
+  requireMatch(commercialWriteGuard, /api\/_lib\/crmIcpV2ApiDomain\.js:client\.create[\s\S]*api\/_lib\/crmIcpV2ApiDomain\.js:pipelineCase\.create/, "creadores ICP fuera del inventario comercial");
 
   const srcFiles = walk(resolve(root, "src")).filter((path) => /\.(?:js|jsx|ts|tsx)$/.test(path));
   const frontend = srcFiles.map((path) => read(relative(resolve(root), path).replaceAll("\\", "/"))).join("\n");
@@ -85,7 +104,7 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   forbidMatch(oldRoutes, /crmIcpV2|icp-v2/i, "el lote cambió autoridad de rutas históricas");
 
   const docs = read("docs/V17-CRM-ICP-05B1-API-CONTRACT.md");
-  for (const statement of ["productionApiEnabled` permanece en `false`", "no actualiza casos", "no añade consumidores frontend"]) {
+  for (const statement of ["productionApiEnabled` permanece en `false`", "no actualiza casos", "no añade consumidores frontend", "no recibe, calcula ni acepta `estimatedCbm`", "experiencia ERP más reciente previa a la integración CRM"]) {
     if (!docs.includes(statement)) fail(`límite contractual ausente: ${statement}`);
   }
   return Object.freeze({

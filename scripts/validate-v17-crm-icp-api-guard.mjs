@@ -105,6 +105,7 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   const crm01b3b3Guard = read("scripts/validate-crm-01b3b3-guard.mjs");
   const varyGuard = read("scripts/validate-v17-crm-vary-guard.mjs");
   const canonicalRunner = read("scripts/run-canonical-db-tests.mjs");
+  const hubGuard = read("scripts/validate-v17-hub-guard.mjs");
   requireMatch(crm01b1Guard, /RUNTIME_SERVICE_ALLOWLIST[\s\S]*api\/_lib\/crmIcpV2ApiDomain\.js/, "dominio ICP fuera del inventario journal");
   requireMatch(crm01b2Guard, /ICP_API_DOMAIN = "api\/_lib\/crmIcpV2ApiDomain\.js"/, "dominio ICP fuera del inventario de mutación");
   if (crm01b2Guard.split("CASE_MUTATION_DOMAIN, ICP_API_DOMAIN").length - 1 !== 2) {
@@ -124,6 +125,13 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   requireMatch(varyGuard, /api\/_lib\/crmIcpV2ApiHttp\.js/, "wrapper ICP fuera del inventario Vary");
   requireMatch(crm01b3b3Guard, /routes\.length === 12[\s\S]*crmIcpV2ApiHttp/, "rutas ICP fuera del inventario CRM-01B3B3");
   requireMatch(canonicalRunner, /crmProductionGateGuardRun\.report\.routes === 12[\s\S]*crmOwnerCatalogGuardRun\.report\.routes === 12[\s\S]*v17CasePublicRefGuardRun\.report\.runtimeConsumers === 7/, "agregador canónico no reconoce los consumidores ICP");
+  for (const path of [
+    "api/_lib/crmIcpV2ApiDomain.js",
+    "api/_lib/crmIcpV2ApiHttp.js",
+    "api/crm/icp-v2/clients/search.js",
+    "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
+    "api/crm/icp-v2/pipeline-cases/index.js",
+  ]) if (!hubGuard.includes(`\"${path}\"`)) fail(`archivo fuera de la guardia Hub: ${path}`);
 
   const srcFiles = walk(resolve(root, "src")).filter((path) => /\.(?:js|jsx|ts|tsx)$/.test(path));
   const frontend = srcFiles.map((path) => read(relative(resolve(root), path).replaceAll("\\", "/"))).join("\n");

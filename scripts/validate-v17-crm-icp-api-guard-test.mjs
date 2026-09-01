@@ -28,6 +28,7 @@ const corsInventory = read("scripts/protected-cors-route-inventory.json");
 const varyGuard = read("scripts/validate-v17-crm-vary-guard.mjs");
 const crm01b3b3Guard = read("scripts/validate-crm-01b3b3-guard.mjs");
 const canonicalRunner = read("scripts/run-canonical-db-tests.mjs");
+const hubGuard = read("scripts/validate-v17-hub-guard.mjs");
 
 rejected("Production habilitado", { "api/_lib/crmIcpV2Domain.js": foundation.replace("productionApiEnabled: false", "productionApiEnabled: true") }, /API productiva|productionApiEnabled/);
 rejected("modo productivo añadido", { "api/_lib/crmIcpV2ApiHttp.js": `${http}\nconst V17_PRODUCTION_PILOT = true;` }, /modo productivo/);
@@ -56,5 +57,6 @@ rejected("ruta fuera de inventario CORS", { "scripts/protected-cors-route-invent
 rejected("ruta fuera de inventario Vary", { "scripts/validate-v17-crm-vary-guard.mjs": varyGuard.replace('  "api/crm/icp-v2/clients/search.js": "createCrmIcpClientSearchHandler",\n', "") }, /inventario Vary/);
 rejected("ruta fuera de inventario CRM-01B3B3", { "scripts/validate-crm-01b3b3-guard.mjs": crm01b3b3Guard.replace("routes.length === 12", "routes.length === 9") }, /inventario CRM-01B3B3/);
 rejected("agregador canónico desactualizado", { "scripts/run-canonical-db-tests.mjs": canonicalRunner.replace("v17CasePublicRefGuardRun.report.runtimeConsumers === 7", "v17CasePublicRefGuardRun.report.runtimeConsumers === 6") }, /agregador canónico/);
+rejected("ruta fuera de guardia Hub", { "scripts/validate-v17-hub-guard.mjs": hubGuard.replace('  "api/crm/icp-v2/clients/search.js",\n', "") }, /guardia Hub/);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);

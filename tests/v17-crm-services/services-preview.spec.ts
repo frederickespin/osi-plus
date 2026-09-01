@@ -1,0 +1,36 @@
+import { expect, test } from "@playwright/test";
+
+test("Preview de Servicios muestra catálogo administrable, Otro controlado y complementarios medibles", async ({ page }) => {
+  const apiRequests: string[] = [];
+  page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/")) apiRequests.push(request.url()); });
+  await page.goto("/experience-preview/services");
+  await expect(page.getByTestId("crm-services-visual-preview")).toBeVisible();
+  const expectedTabs = ["Resumen", "Servicios", "Survey", "Actividad", "Tareas", "Cotización", "Notas", "Archivos", "Comunicación"];
+  await expect(page.getByRole("tab")).toHaveCount(expectedTabs.length);
+  expect(await page.getByRole("tab").allTextContents()).toEqual(expectedTabs);
+  await expect(page.getByTestId("services-case-panel")).toBeVisible();
+  await page.getByLabel("Servicio principal").selectOption("OTHER");
+  await page.getByLabel("Alcance").selectOption({ label: "Local" });
+  await expect(page.getByLabel("Descripción de otro servicio")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Guardar definición" })).toBeDisabled();
+  await page.getByLabel("Descripción de otro servicio").fill("Servicio logístico especial pendiente de clasificación");
+  await page.getByRole("button", { name: "Embalaje y desembalaje" }).click();
+  await page.getByRole("button", { name: "Gestión aduanal" }).click();
+  await expect(page.getByText("Complementarios").locator("..").getByText("2", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Guardar definición" }).click();
+  await expect(page.getByText("Definido", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Configurar catálogo" }).click();
+  const catalog = page.getByTestId("services-admin-catalog");
+  await expect(catalog).toBeVisible();
+  await expect(catalog.getByText("Catálogo de servicios", { exact: true })).toBeVisible();
+  await expect(catalog.getByText("Otros por clasificar", { exact: true })).toBeVisible();
+  await catalog.getByRole("tab", { name: "Complementarios" }).click();
+  await expect(catalog.getByText("PACK_UNPACK", { exact: true })).toBeVisible();
+  await catalog.getByRole("button", { name: "Nuevo tipo de servicio" }).click();
+  await expect(catalog.getByPlaceholder("Nombre administrable")).toBeVisible();
+  await catalog.getByRole("button", { name: "Cerrar catálogo" }).click();
+  await page.setViewportSize({ width: 360, height: 900 });
+  await expect(page.getByRole("tab", { name: "Servicios", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  expect(apiRequests).toEqual([]);
+});

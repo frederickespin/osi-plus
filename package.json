@@ -54,6 +54,8 @@
     "test:v17-crm-icp-ui:browser": "playwright test -c playwright.v17-crm-icp-ui.config.ts",
     "test:v17-crm-icp-ui:visual": "playwright test -c playwright.v17-crm-icp-visual.config.ts",
     "guard:v17-crm-icp-ui": "node scripts/validate-v17-crm-icp-ui-guard.mjs && node scripts/validate-v17-crm-icp-ui-guard-test.mjs",
+    "test:v17-crm-services-preview:visual": "playwright test -c playwright.v17-crm-services-visual.config.ts",
+    "guard:v17-crm-services-preview": "node scripts/validate-v17-crm-services-preview-guard.mjs && node scripts/validate-v17-crm-services-preview-guard-test.mjs",
     "test:v17-admin-tenant-memberships:http": "node scripts/v17-admin-tenant-memberships-http-test.mjs",
     "test:v17-admin-tenant-memberships": "node scripts/v17-admin-tenant-memberships-test.mjs",
     "test:v17-admin-membership-bootstrap": "node scripts/v17-admin-membership-bootstrap-test.mjs",

@@ -161,6 +161,8 @@ jobs:
           npm run test:v17-production-pilot-gates
           npm run guard:v17-crm-icp-foundation
           npm run test:v17-crm-icp-foundation
+          npm run guard:v17-crm-icp-api
+          npm run test:v17-crm-icp-api
           node scripts/validate-v17-commercial-crm-guard.mjs
           npm run guard:v17-commercial-inbox-reload-race
           npm run guard:v17-commercial-crm-preview
@@ -385,6 +387,8 @@ jobs:
           node scripts/validate-v17-crm-case-mutations-guard-test.mjs
           npm run guard:v17-crm-icp-foundation
           npm run test:v17-crm-icp-foundation
+          npm run guard:v17-crm-icp-api
+          npm run test:v17-crm-icp-api
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           npm run guard:v17-admin-tenant-memberships
@@ -471,6 +475,11 @@ jobs:
         env:
           V17_CRM_ICP_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: npm run test:v17-crm-icp-foundation:db
+
+      - name: Validate V17 ICP v2 isolated API against PostgreSQL
+        env:
+          V17_CRM_ICP_API_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-crm-icp-api:db
 
       - name: Verify canonical history and safe modes
         run: node scripts/validate-canonical-ci.mjs

@@ -16,6 +16,7 @@ const server = read("api/_lib/crmIcpV2ApiHttp.js");
 const docs = read("docs/V17-CRM-ICP-05C1-UI-CONTRACT.md");
 const visual = read("src/crm-icp-v2/IcpVisualPreview.tsx");
 const workflow = read(".github/workflows/ci.yml");
+const crm01aGuard = read("scripts/validate-crm-01a-guard.mjs");
 
 rejected("UI productiva", { "src/crm-icp-v2/clientMode.ts": `${mode}\nconst PRODUCTION = true;` }, /productiva/);
 rejected("rama Preview relajada", { "src/crm-icp-v2/clientMode.ts": mode.replace("runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH", "true") }, /compuerta UI/);
@@ -31,5 +32,6 @@ rejected("API Preview UI desconectada", { "api/_lib/crmIcpV2ApiHttp.js": server.
 rejected("documentación sin límite", { "docs/V17-CRM-ICP-05C1-UI-CONTRACT.md": docs.replace("no contiene entrada de volumen ni CBM", "captura volumen") }, /documentación UI/);
 rejected("Preview visual con red", { "src/crm-icp-v2/IcpVisualPreview.tsx": `${visual}\nfetch(\"/api/private\");` }, /demostración visual/);
 rejected("CI omite navegador ICP", { ".github/workflows/ci.yml": workflow.replace("npm run test:v17-crm-icp-ui:browser", "true") }, /CI no ejecuta/);
+rejected("cliente fuera de inventario CRM", { "scripts/validate-crm-01a-guard.mjs": crm01aGuard.replace('"src/crm-icp-v2/api.ts"', '"src/crm-icp-v2/removed.ts"') }, /inventario frontend CRM/);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);

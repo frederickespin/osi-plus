@@ -27,6 +27,7 @@ const AUTHORIZED_FRONTEND_CONSUMERS = Object.freeze([
   "src/crm-relational/api.ts",
   "src/crm-relational/mutationApi.ts",
   "src/crm-relational/readApi.ts",
+  "src/crm-icp-v2/api.ts",
 ]);
 
 function invariant(condition, message) {
@@ -135,7 +136,8 @@ export function validateCrm01aGuard({
   for (const [path, source] of Object.entries(runtimeSources)) {
     if (path.startsWith("src/")) {
       if (AUTHORIZED_FRONTEND_CONSUMERS.includes(path)) {
-        invariant(/(?:API_PREFIX|API)\s*=\s*["']\/api\/crm["']/.test(source), `${path} no usa el adaptador CRM autorizado`);
+        const endpoint = path === "src/crm-icp-v2/api.ts" ? "/api/crm/icp-v2" : "/api/crm";
+        invariant(source.includes(`= "${endpoint}"`) || source.includes(`= '${endpoint}'`), `${path} no usa el adaptador CRM autorizado`);
       } else {
         invariant(!/api\/crm|crmPipelineRead|CRM_PIPELINE_RUNTIME_MODE/.test(source), `${path} conecta CRM-01A al frontend fuera del adaptador autorizado`);
       }

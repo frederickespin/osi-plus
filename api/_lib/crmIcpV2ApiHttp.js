@@ -63,7 +63,6 @@ export function resolveCrmIcpV2ApiMode(env = process.env, req = undefined) {
     && env.VITE_CRM_ICP_V2_UI_MODE === "PREVIEW_REHEARSAL"
     && env.VITE_CRM_ICP_V2_UI_BATCH === CRM_ICP_V2_UI_PREVIEW_BATCH
     && isExactV17CommercialCrmPreviewServerEnvironment(env)
-    && env.CRM_PIPELINE_MUTATION_MODE === "DISABLED"
     && env.COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED";
   const exactPreview = apiOnlyPreview || uiPreview;
   if (!exactPreview) throw apiError("CRM_ICP_V2_API_CONFIGURATION_INVALID", 503);

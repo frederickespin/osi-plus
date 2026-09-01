@@ -211,6 +211,11 @@ const uiSearchResponse = await invoke(uiSearch, request({
 }));
 check("Preview UI exacto consume API sin habilitar Production", uiSearchResponse.statusCode === 200
   && uiSearchResponse.body?.total === 0);
+const uiHistoricalMutation = await invoke(createIcpV2ClientSearchHandler({ env: {
+  ...uiPreview, CRM_PIPELINE_MUTATION_MODE: "PREVIEW_REHEARSAL",
+} }), request({ localAddress: "10.0.0.8", remoteAddress: "10.0.0.9" }));
+check("Preview UI rechaza mutación CRM histórica", uiHistoricalMutation.statusCode === 503
+  && uiHistoricalMutation.body?.error === "CRM_ICP_V2_API_CONFIGURATION_INVALID");
 
 const detail = createIcpV2PipelineCaseDetailHandler({
   env: local,

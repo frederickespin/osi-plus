@@ -64,14 +64,23 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
   for (const value of ["isCrmIcpV2UiEnabled", "<IcpIntakeForm", "Nuevo ICP", "El volumen continúa pendiente", "Pendiente de Survey o datos proporcionados"]) {
     requireText(inbox, value, `integración Inbox incompleta: ${value}`);
   }
+  const crm01aGuard = read("scripts/validate-crm-01a-guard.mjs");
+  const crm01b3b1Guard = read("scripts/validate-crm-01b3b1-guard.mjs");
+  for (const inventory of [crm01aGuard, crm01b3b1Guard]) {
+    if (inventory.split('"src/crm-icp-v2/api.ts"').length - 1 !== 2) fail("cliente ICP fuera del inventario frontend CRM o de su rama de validación");
+  }
+  requireText(crm01aGuard, "frontendConsumers: AUTHORIZED_FRONTEND_CONSUMERS.length", "CRM-01A no deriva el conteo frontend de su inventario");
+  requireText(crm01b3b1Guard, "frontendConsumers: 4", "CRM-01B3B1 no reconoce el cuarto cliente frontend");
 
   const server = read("api/_lib/crmIcpV2ApiHttp.js");
   for (const value of [
     'CRM_ICP_V2_UI_PREVIEW_BRANCH = "feature/v17-crm-icp-ui-05c1"',
     'CRM_ICP_V2_UI_PREVIEW_BATCH = "V17-CRM-ICP-05C1-PREVIEW"',
     "isExactV17CommercialCrmPreviewServerEnvironment(env)",
-    'env.CRM_PIPELINE_MUTATION_MODE === "DISABLED"',
   ]) requireText(server, value, `perfil Preview UI incompleto: ${value}`);
+  const sharedPreview = read("shared/v17CommercialCrmPreview.js");
+  requireText(sharedPreview, "environment.VERCEL_GIT_COMMIT_REF !== V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH", "Preview UI no exige mutación histórica desactivada");
+  requireText(sharedPreview, "environment.CRM_PIPELINE_MUTATION_MODE === DISABLED", "Preview UI no fija mutación histórica en DISABLED");
 
   const docs = read("docs/V17-CRM-ICP-05C1-UI-CONTRACT.md");
   for (const value of ["productionApiEnabled=false", "no contiene entrada de volumen ni CBM", "hasta ocho paradas", "Production, `main`", "Fuera de alcance"]) {

@@ -13,12 +13,14 @@ const CHANNELS = new Set([
   "WHATSAPP", "INSTAGRAM", "FACEBOOK", "RECOMMENDATION", "YOUTUBE", "OTHER_SOCIAL",
   "PROMOTION", "CALL", "EMAIL", "WEB", "REFERRED",
 ]);
-const SURVEY_METHODS = new Set(["PRESENCIAL", "VIRTUAL", "LISTADO_FOTOS", "NO_APLICA"]);
-const ROOT_FIELDS = new Set([
+const REQUIRED_ROOT_FIELDS = new Set([
   "requestId", "payloadHash", "client", "clientProfileType", "caseContact", "mode", "serviceType",
   "intakeChannel", "requiresSurvey", "surveyMethod", "route",
 ]);
-const UNSIGNED_ROOT_FIELDS = new Set([...ROOT_FIELDS].filter((field) => field !== "payloadHash"));
+const ROOT_FIELDS = new Set([...REQUIRED_ROOT_FIELDS, "requirementNotes"]);
+const REQUIRED_UNSIGNED_ROOT_FIELDS = new Set([...REQUIRED_ROOT_FIELDS].filter((field) => field !== "payloadHash"));
+const UNSIGNED_ROOT_FIELDS = new Set([...REQUIRED_UNSIGNED_ROOT_FIELDS, "requirementNotes"]);
+const SURVEY_METHODS = new Set(["PRESENCIAL", "VIRTUAL", "LISTADO_FOTOS", "NO_APLICA"]);
 const CONTACT_FIELDS = new Set(["displayName", "phone", "email"]);
 const EXISTING_CLIENT_FIELDS = new Set(["kind", "clientRef"]);
 const INLINE_CLIENT_FIELDS = new Set([
@@ -50,6 +52,11 @@ function exactObject(value, fields, code = "CRM_ICP_INPUT_INVALID") {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail(code, 400);
   const keys = Object.keys(value);
   if (keys.length !== fields.size || keys.some((key) => !fields.has(key))) fail(code, 400);
+}
+function exactObjectWithOptional(value, fields, required, code = "CRM_ICP_INPUT_INVALID") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail(code, 400);
+  const keys = Object.keys(value);
+  if (keys.some((key) => !fields.has(key)) || [...required].some((key) => !keys.includes(key))) fail(code, 400);
 }
 function optionalExactObject(value, fields, code = "CRM_ICP_INPUT_INVALID") {
   if (value === null || value === undefined) return null;
@@ -219,7 +226,8 @@ function normalizeRoute(input) {
 }
 
 export function normalizeCrmIcpV2UnsignedInput(input) {
-  exactObject(input, UNSIGNED_ROOT_FIELDS);
+  exactObjectWithOptional(input, UNSIGNED_ROOT_FIELDS, REQUIRED_UNSIGNED_ROOT_FIELDS);
+  const route = normalizeRoute(input.route);
   const normalized = Object.freeze({
     operation: "CREATE_ICP_V2",
     requestId: requestId(input.requestId),
@@ -229,20 +237,19 @@ export function normalizeCrmIcpV2UnsignedInput(input) {
     mode: enumValue(input.mode, MODES),
     serviceType: cleanText(input.serviceType, { min: 2, max: 80 }),
     intakeChannel: enumValue(input.intakeChannel, CHANNELS),
+    requirementNotes: cleanText(input.requirementNotes, { max: 2000, optional: true }),
     estimatedCbm: null,
     requiresSurvey: boolean(input.requiresSurvey),
     surveyMethod: enumValue(input.surveyMethod, SURVEY_METHODS),
-    route: normalizeRoute(input.route),
+    route,
   });
   if ((normalized.requiresSurvey && normalized.surveyMethod === "NO_APLICA")
-    || (!normalized.requiresSurvey && normalized.surveyMethod !== "NO_APLICA")) {
-    fail("CRM_ICP_SURVEY_INVALID", 400);
-  }
+    || (!normalized.requiresSurvey && normalized.surveyMethod !== "NO_APLICA")) fail("CRM_ICP_SURVEY_INVALID", 400);
   return normalized;
 }
 
 export function normalizeCrmIcpV2CreateInput(input) {
-  exactObject(input, ROOT_FIELDS);
+  exactObjectWithOptional(input, ROOT_FIELDS, REQUIRED_ROOT_FIELDS);
   const { payloadHash, ...unsignedInput } = input;
   const normalized = normalizeCrmIcpV2UnsignedInput(unsignedInput);
   if (typeof payloadHash !== "string" || !HASH.test(payloadHash)

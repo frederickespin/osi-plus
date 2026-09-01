@@ -4,6 +4,8 @@ import { CrmIcpV2ApiError } from "../api/_lib/crmIcpV2ApiDomain.js";
 import {
   CRM_ICP_V2_API_PREVIEW_BATCH,
   CRM_ICP_V2_API_PREVIEW_BRANCH,
+  CRM_ICP_V2_UI_PREVIEW_BATCH,
+  CRM_ICP_V2_UI_PREVIEW_BRANCH,
 } from "../api/_lib/crmIcpV2ApiHttp.js";
 import { createIcpV2ClientSearchHandler } from "../api/crm/icp-v2/clients/search.js";
 import { createIcpV2PipelineCaseHandler } from "../api/crm/icp-v2/pipeline-cases/index.js";
@@ -57,6 +59,29 @@ const preview = {
   CRM_PIPELINE_RUNTIME_MODE: "DISABLED",
   CRM_PIPELINE_MUTATION_MODE: "DISABLED",
   COMMERCIAL_TENANCY_MUTATION_MODE: "DISABLED",
+  MT01B_AUTH_MODE: "LEGACY",
+  MT01B_TENANT_SWITCH_ENABLED: "false",
+  VITE_MT01B2_CLIENT_ENABLED: "false",
+};
+const uiPreview = {
+  CRM_ICP_V2_API_MODE: "PREVIEW_REHEARSAL",
+  CRM_ICP_V2_API_BATCH: CRM_ICP_V2_UI_PREVIEW_BATCH,
+  VERCEL: "1",
+  VERCEL_ENV: "preview",
+  VERCEL_GIT_COMMIT_REF: CRM_ICP_V2_UI_PREVIEW_BRANCH,
+  CRM_PIPELINE_RUNTIME_MODE: "PREVIEW_REHEARSAL",
+  CRM_PIPELINE_MUTATION_MODE: "DISABLED",
+  CRM_PIPELINE_ACTIVATION_BATCH: "V17-COMMERCIAL-CRM-PREVIEW-01",
+  VITE_OSI_HUB_MODE: "PREVIEW_REHEARSAL",
+  VITE_CRM_PIPELINE_CLIENT_MODE: "PREVIEW_REHEARSAL",
+  VITE_CRM_PIPELINE_READ_MODE: "PREVIEW_REHEARSAL",
+  VITE_V17_COMMERCIAL_CRM_PREVIEW_BATCH: "V17-COMMERCIAL-CRM-PREVIEW-01",
+  VITE_CRM_ICP_V2_UI_MODE: "PREVIEW_REHEARSAL",
+  VITE_CRM_ICP_V2_UI_BATCH: CRM_ICP_V2_UI_PREVIEW_BATCH,
+  COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE",
+  COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ",
+  COMMERCIAL_TENANCY_MUTATION_MODE: "DISABLED",
+  COMMERCIAL_TENANCY_ACTIVATION_BATCH: "MT-01C2B2-IPACKERS-DO-V1",
   MT01B_AUTH_MODE: "LEGACY",
   MT01B_TENANT_SWITCH_ENABLED: "false",
   VITE_MT01B2_CLIENT_ENABLED: "false",
@@ -173,6 +198,24 @@ const searchResponse = await invoke(search, request({
 }));
 check("búsqueda POST funciona en Preview exacto", searchResponse.statusCode === 200
   && searchResponse.body?.page === 2 && searchResponse.body?.data?.[0]?.clientRef === clientRef);
+
+const uiSearch = createIcpV2ClientSearchHandler({
+  env: uiPreview,
+  prismaClient: {},
+  resolveContext: async () => context,
+  execute: async ({ input }) => ({ total: 0, page: input.page, pageSize: input.pageSize, data: [] }),
+});
+const uiSearchResponse = await invoke(uiSearch, request({
+  body: { query: "Visual", page: 1, pageSize: 10 },
+  localAddress: "10.0.0.8", remoteAddress: "10.0.0.9",
+}));
+check("Preview UI exacto consume API sin habilitar Production", uiSearchResponse.statusCode === 200
+  && uiSearchResponse.body?.total === 0);
+const uiHistoricalMutation = await invoke(createIcpV2ClientSearchHandler({ env: {
+  ...uiPreview, CRM_PIPELINE_MUTATION_MODE: "PREVIEW_REHEARSAL",
+} }), request({ localAddress: "10.0.0.8", remoteAddress: "10.0.0.9" }));
+check("Preview UI rechaza mutación CRM histórica", uiHistoricalMutation.statusCode === 503
+  && uiHistoricalMutation.body?.error === "CRM_ICP_V2_API_CONFIGURATION_INVALID");
 
 const detail = createIcpV2PipelineCaseDetailHandler({
   env: local,

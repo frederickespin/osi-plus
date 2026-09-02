@@ -25,7 +25,9 @@ El Preview presenta el futuro catálogo tenant-first con código estable, nombre
 
 ## Combos de complementarios
 
-Administración puede guardar grupos frecuentes de complementarios vinculados a un servicio principal. Al seleccionar un combo se precarga su contenido como sugerencia, pero el usuario puede agregar o quitar elementos antes de guardar la definición del caso. Los combos también son editables y activables/desactivables; nunca sustituyen el registro individual de cada servicio complementario.
+Administración puede guardar grupos frecuentes de complementarios vinculados a un servicio principal y establecer un único combo predeterminado. Al seleccionar el servicio principal, el combo predeterminado precarga automáticamente sus complementarios. El usuario puede agregar o quitar elementos para el caso sin alterar el combo original. Los combos también son editables y activables/desactivables; nunca sustituyen el registro individual de cada servicio complementario.
+
+Los complementarios elegidos se presentan como una lista tabular compacta, con líneas alternadas y una acción de quitar por fila. El total aparece junto al encabezado y no ocupa un control de ancho completo.
 
 ## Analítica
 

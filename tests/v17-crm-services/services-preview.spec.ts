@@ -11,17 +11,22 @@ test("Preview de Servicios muestra complementarios agrupados, combos y catálogo
   await expect(page.getByTestId("services-case-panel")).toBeVisible();
   await page.getByLabel("Servicio principal").selectOption("MOV_RES");
   await page.getByLabel("Alcance").selectOption({ label: "Local" });
-  await page.getByLabel("Combo de complementarios").selectOption("MOV_RES_STD");
-  await expect(page.getByLabel("Servicios complementarios")).toContainText("4 seleccionados");
+  await expect(page.getByLabel("Combo de complementarios")).toHaveValue("MOV_RES_STD");
+  await expect(page.getByTestId("selected-complementaries-list").getByText("Embalaje y desembalaje", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("selected-complementaries-list").getByRole("button")).toHaveCount(4);
   await page.getByLabel("Servicios complementarios").click();
   await expect(page.getByText("Seleccionar todos", { exact: true })).toBeVisible();
   await page.getByLabel("Gestión aduanal").check();
   await page.getByRole("button", { name: /Aplicar/ }).click();
-  await expect(page.getByLabel("Servicios complementarios")).toContainText("5 seleccionados");
+  await expect(page.getByTestId("selected-complementaries-list").getByRole("button")).toHaveCount(5);
   await page.getByRole("button", { name: "Guardar como combo" }).click();
   await page.getByLabel("Nombre del nuevo combo").fill("Residencial local completo");
-  await page.getByRole("button", { name: "Guardar combo", exact: true }).click();
+  await page.getByRole("button", { name: "Guardar como predeterminado", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Residencial local completo");
+  await page.getByLabel("Servicio principal").selectOption("MOV_CORP");
+  await page.getByLabel("Servicio principal").selectOption("MOV_RES");
+  await expect(page.getByLabel("Combo de complementarios")).toHaveValue("CUSTOM-MOV_RES");
+  await expect(page.getByTestId("selected-complementaries-list").getByRole("button")).toHaveCount(5);
   await page.getByRole("button", { name: "Guardar definición" }).click();
   await expect(page.getByText("Definido", { exact: true })).toBeVisible();
 
@@ -42,6 +47,7 @@ test("Preview de Servicios muestra complementarios agrupados, combos y catálogo
   await expect(catalog.getByRole("button", { name: "Activar Embalaje y desembalaje" })).toBeVisible();
   await catalog.getByRole("tab", { name: "Combos" }).click();
   await expect(catalog.getByText("MOV_RES_STD", { exact: true })).toBeVisible();
+  await expect(catalog.getByText("Predeterminado", { exact: true }).first()).toBeVisible();
   await expect(catalog.getByRole("button", { name: "Editar Residencial estándar" })).toBeVisible();
   await catalog.getByRole("button", { name: "Cerrar catálogo" }).click();
   await page.setViewportSize({ width: 360, height: 900 });

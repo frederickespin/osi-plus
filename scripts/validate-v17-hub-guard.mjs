@@ -24,6 +24,7 @@ const allowedBackendChanges = new Set([
   "api/_lib/crmPipelineAccess.js",
   "api/_lib/crmPipelineRead.js",
   "api/_lib/crmPipelineReadHttp.js",
+  "api/_lib/crmQuoteProposalDomain.js",
   "api/_lib/http.js",
   "api/_lib/membershipAuthorization.js",
   "api/_lib/pipelineCaseMutationHttp.js",

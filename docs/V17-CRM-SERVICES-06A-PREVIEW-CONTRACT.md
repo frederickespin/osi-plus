@@ -14,14 +14,18 @@ Servicios contiene una selección estructurada de:
 
 1. un servicio principal administrable;
 2. un alcance confirmado;
-3. cero o más servicios complementarios administrables;
+3. cero o más servicios complementarios administrables, elegidos desde un selector compacto agrupado;
 4. `Otro servicio no catalogado` sólo como excepción y con descripción obligatoria.
 
 Los registros `Otro` quedan visibles como pendientes de clasificación. No se convierten silenciosamente en catálogo ni se agrupan con un servicio existente.
 
 ## Administración
 
-El Preview presenta el futuro catálogo tenant-first con código estable, nombre, categoría para reportes, uso principal/complementario y estado activo. Los tipos utilizados históricamente se desactivarán; no se eliminarán ni cambiarán el significado de casos anteriores.
+El Preview presenta el futuro catálogo tenant-first con código estable, nombre, categoría para reportes, uso principal/complementario y estado activo. Administración puede editar el nombre y la clasificación, y activar o desactivar cada elemento. Los tipos utilizados históricamente se desactivarán; no se eliminarán ni cambiarán el significado de casos anteriores.
+
+## Combos de complementarios
+
+Administración puede guardar grupos frecuentes de complementarios vinculados a un servicio principal. Al seleccionar un combo se precarga su contenido como sugerencia, pero el usuario puede agregar o quitar elementos antes de guardar la definición del caso. Los combos también son editables y activables/desactivables; nunca sustituyen el registro individual de cada servicio complementario.
 
 ## Analítica
 

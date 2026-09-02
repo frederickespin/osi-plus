@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("Preview de Servicios muestra catálogo administrable, Otro controlado y complementarios medibles", async ({ page }) => {
+test("Preview de Servicios muestra complementarios agrupados, combos y catálogo administrable", async ({ page }) => {
   const apiRequests: string[] = [];
   page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/")) apiRequests.push(request.url()); });
   await page.goto("/experience-preview/services");
@@ -9,16 +9,26 @@ test("Preview de Servicios muestra catálogo administrable, Otro controlado y co
   await expect(page.getByRole("tab")).toHaveCount(expectedTabs.length);
   expect(await page.getByRole("tab").allTextContents()).toEqual(expectedTabs);
   await expect(page.getByTestId("services-case-panel")).toBeVisible();
-  await page.getByLabel("Servicio principal").selectOption("OTHER");
+  await page.getByLabel("Servicio principal").selectOption("MOV_RES");
   await page.getByLabel("Alcance").selectOption({ label: "Local" });
+  await page.getByLabel("Combo de complementarios").selectOption("MOV_RES_STD");
+  await expect(page.getByLabel("Servicios complementarios")).toContainText("4 seleccionados");
+  await page.getByLabel("Servicios complementarios").click();
+  await expect(page.getByText("Seleccionar todos", { exact: true })).toBeVisible();
+  await page.getByLabel("Gestión aduanal").check();
+  await page.getByRole("button", { name: /Aplicar/ }).click();
+  await expect(page.getByLabel("Servicios complementarios")).toContainText("5 seleccionados");
+  await page.getByRole("button", { name: "Guardar como combo" }).click();
+  await page.getByLabel("Nombre del nuevo combo").fill("Residencial local completo");
+  await page.getByRole("button", { name: "Guardar combo", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Residencial local completo");
+  await page.getByRole("button", { name: "Guardar definición" }).click();
+  await expect(page.getByText("Definido", { exact: true })).toBeVisible();
+
+  await page.getByLabel("Servicio principal").selectOption("OTHER");
   await expect(page.getByLabel("Descripción de otro servicio")).toBeVisible();
   await expect(page.getByRole("button", { name: "Guardar definición" })).toBeDisabled();
   await page.getByLabel("Descripción de otro servicio").fill("Servicio logístico especial pendiente de clasificación");
-  await page.getByRole("button", { name: "Embalaje y desembalaje" }).click();
-  await page.getByRole("button", { name: "Gestión aduanal" }).click();
-  await expect(page.getByText("Complementarios").locator("..").getByText("2", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Guardar definición" }).click();
-  await expect(page.getByText("Definido", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Configurar catálogo" }).click();
   const catalog = page.getByTestId("services-admin-catalog");
   await expect(catalog).toBeVisible();
@@ -26,8 +36,13 @@ test("Preview de Servicios muestra catálogo administrable, Otro controlado y co
   await expect(catalog.getByText("Otros por clasificar", { exact: true })).toBeVisible();
   await catalog.getByRole("tab", { name: "Complementarios" }).click();
   await expect(catalog.getByText("PACK_UNPACK", { exact: true })).toBeVisible();
-  await catalog.getByRole("button", { name: "Nuevo tipo de servicio" }).click();
-  await expect(catalog.getByPlaceholder("Nombre administrable")).toBeVisible();
+  await catalog.getByRole("button", { name: "Editar Embalaje y desembalaje" }).click();
+  await expect(catalog.getByLabel("Nombre visible de Embalaje y desembalaje")).toBeVisible();
+  await catalog.getByRole("button", { name: "Desactivar Embalaje y desembalaje" }).click();
+  await expect(catalog.getByRole("button", { name: "Activar Embalaje y desembalaje" })).toBeVisible();
+  await catalog.getByRole("tab", { name: "Combos" }).click();
+  await expect(catalog.getByText("MOV_RES_STD", { exact: true })).toBeVisible();
+  await expect(catalog.getByRole("button", { name: "Editar Residencial estándar" })).toBeVisible();
   await catalog.getByRole("button", { name: "Cerrar catálogo" }).click();
   await page.setViewportSize({ width: 360, height: 900 });
   await expect(page.getByRole("tab", { name: "Servicios", exact: true })).toBeVisible();

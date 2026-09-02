@@ -9,7 +9,7 @@ const visual = read("src/crm-services-preview/ServicesVisualPreview.tsx");
 const route = read("src/crm-services-preview/clientMode.ts");
 const docs = read("docs/V17-CRM-SERVICES-06A-PREVIEW-CONTRACT.md");
 assert.throws(() => validateV17CrmServicesPreviewGuard({ overrides: { "src/crm-services-preview/ServicesVisualPreview.tsx": `${visual}\nfetch("/api/services");` } }), /realiza red/); assertions += 1;
-assert.throws(() => validateV17CrmServicesPreviewGuard({ overrides: { "src/crm-services-preview/ServicesVisualPreview.tsx": visual.replace("Servicios complementarios", "Texto libre") } }), /Preview incompleto/); assertions += 1;
+assert.throws(() => validateV17CrmServicesPreviewGuard({ overrides: { "src/crm-services-preview/ServicesVisualPreview.tsx": visual.replaceAll("Servicios complementarios", "Texto libre") } }), /Preview incompleto/); assertions += 1;
 assert.throws(() => validateV17CrmServicesPreviewGuard({ overrides: { "src/crm-services-preview/clientMode.ts": route.replace('runtime.vercelEnvironment === "preview"', "true") } }), /ruta visual/); assertions += 1;
 assert.throws(() => validateV17CrmServicesPreviewGuard({ overrides: { "docs/V17-CRM-SERVICES-06A-PREVIEW-CONTRACT.md": docs.replace("Production permanece sin cambios", "Production activa") } }), /contrato incompleto/); assertions += 1;
 process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);

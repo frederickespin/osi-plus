@@ -6,9 +6,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AdminLogisticEnginePreview from "@/crm-costing-preview/AdminLogisticEnginePreview";
+import CaseManagementPanel from "@/crm-costing-preview/CaseManagementPanel";
 import QuoteProposalPanel from "@/crm-costing-preview/QuoteProposalPanel";
 
-type CaseTab = "SUMMARY" | "SERVICES" | "SURVEY" | "COSTING" | "ACTIVITY" | "TASKS" | "QUOTE" | "NOTES" | "FILES" | "COMMUNICATION";
+type CaseTab = "SUMMARY" | "SERVICES" | "SURVEY" | "COSTING" | "MANAGEMENT" | "ACTIVITY" | "TASKS" | "QUOTE" | "NOTES" | "FILES" | "COMMUNICATION";
 type CostFamily = "Personal" | "Transporte" | "Materiales" | "Cajas de madera" | "Equipos" | "Compensaciones" | "Terceros" | "Fletes" | "Aduanas" | "Cargos adicionales" | "Riesgo";
 type CostSource = "SURVEY" | "SERVICIO" | "COMBO" | "ADMIN" | "MOTOR" | "PROVEEDOR";
 type BillingMode = "INCLUIDO" | "EXTRA" | "TRASLADADO" | "NO COBRABLE";
@@ -32,6 +33,7 @@ type CostRow = Readonly<{
 const TABS: ReadonlyArray<readonly [CaseTab, string, ComponentType<{ className?: string }>]> = [
   ["SUMMARY", "Resumen", FileText], ["SERVICES", "Servicios", BriefcaseBusiness],
   ["SURVEY", "Survey", ClipboardCheck], ["COSTING", "Costos", Calculator],
+  ["MANAGEMENT", "Gestiones", ListChecks],
   ["ACTIVITY", "Actividad", History], ["TASKS", "Tareas", ListChecks],
   ["QUOTE", "Cotización", BriefcaseBusiness], ["NOTES", "Notas", StickyNote],
   ["FILES", "Archivos", Paperclip], ["COMMUNICATION", "Comunicación", MessageSquare],
@@ -99,11 +101,12 @@ function Placeholder({ tab }: Readonly<{ tab: CaseTab }>) {
 export default function CostingVisualPreview() {
   const [tab, setTab] = useState<CaseTab>("COSTING");
   const [adminEngineOpen, setAdminEngineOpen] = useState(false);
+  const [permitResolved, setPermitResolved] = useState(false);
   if (adminEngineOpen) return <AdminLogisticEnginePreview onBack={() => setAdminEngineOpen(false)} />;
   return <div className="flex min-h-screen bg-[#f4f7fb]" data-testid="crm-costing-visual-preview"><aside className="hidden w-64 shrink-0 bg-[#003b70] text-white lg:flex lg:flex-col"><div className="flex h-16 items-center gap-3 border-b border-white/15 px-5"><span className="grid h-9 w-9 place-items-center rounded-lg bg-white font-black text-[#003b70]">OS</span><div><strong className="block">OSi Plus ERP</strong><small className="uppercase tracking-[.15em] text-blue-200">Gestión integrada</small></div></div><nav className="space-y-1 p-3"><div className="mb-3 flex items-center gap-3 rounded-lg border border-white/15 px-3 py-2 text-blue-100"><LayoutGrid className="h-4 w-4 text-amber-300" />OSi Plus Hub</div><p className="px-3 py-2 text-[10px] font-bold uppercase tracking-[.15em] text-blue-300">Aplicaciones ERP</p><div className="flex items-center gap-3 rounded-lg px-3 py-2 text-blue-200"><LayoutGrid className="h-4 w-4" />General</div><div className="flex items-center gap-3 rounded-lg px-3 py-2 text-blue-200"><Settings2 className="h-4 w-4" />Administración</div><div className="rounded-lg bg-sky-500 px-3 py-2 font-bold"><span className="flex items-center gap-3"><BriefcaseBusiness className="h-4 w-4" />Comercial</span><div className="ml-7 mt-3 border-l border-sky-200/40 pl-3 text-xs"><strong>Pipeline</strong><p className="mt-3 text-sky-100">Clientes · En integración</p><p className="mt-3 text-sky-100">Seguimiento · En integración</p></div></div><div className="flex items-center gap-3 rounded-lg px-3 py-2 text-blue-200"><Users className="h-4 w-4" />Coordinación</div></nav><div className="mt-auto border-t border-white/15 p-4"><strong className="block text-sm">FREDERICK ESPINAL</strong><span className="text-xs text-blue-200">ROL A · Preview visual</span></div></aside>
     <main className="min-w-0 flex-1"><header className="border-b border-slate-200 bg-white px-4 py-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[.2em] text-[#0070a8]">Ficha del caso</p><h1 className="mt-2 text-2xl font-black text-[#003366]">Mudanza internacional de ejemplo</h1><p className="mt-1 text-sm text-slate-500"><span className="font-mono font-bold text-[#003366]">ICP-001</span> · Exportación · Servicios definidos · Survey publicado</p><div className="mt-3 flex gap-2"><span className="rounded bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">Datos para evaluar</span><span className="rounded bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800">Costos por validar</span></div></div><Button type="button" variant="outline"><ArrowLeft />Volver al Inbox</Button></div></header>
       <div role="tablist" aria-label="Áreas de la Ficha del Caso" className="flex gap-1 overflow-x-auto border-b border-slate-300 bg-stone-200 p-1">{TABS.map(([value, label, Icon]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`flex shrink-0 items-center gap-1.5 rounded px-3 py-2 text-xs font-bold ${tab === value ? "bg-[#df8750] text-white shadow-sm" : "text-slate-700 hover:bg-white/70"}`}><Icon className="h-3.5 w-3.5" />{label}</button>)}</div>
-      <div className="p-3 sm:p-4">{tab === "COSTING" ? <CostingPanel onOpenEngine={() => setAdminEngineOpen(true)} /> : tab === "QUOTE" ? <QuoteProposalPanel /> : <Placeholder tab={tab} />}</div>
+      <div className="p-3 sm:p-4">{tab === "COSTING" ? <CostingPanel onOpenEngine={() => setAdminEngineOpen(true)} /> : tab === "MANAGEMENT" ? <CaseManagementPanel permitResolved={permitResolved} onResolvePermit={() => setPermitResolved(true)} /> : tab === "QUOTE" ? <QuoteProposalPanel permitResolved={permitResolved} onResolvePermit={() => setPermitResolved(true)} /> : <Placeholder tab={tab} />}</div>
     </main>
   </div>;
 }

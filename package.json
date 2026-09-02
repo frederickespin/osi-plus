@@ -58,6 +58,8 @@
     "guard:v17-crm-services-preview": "node scripts/validate-v17-crm-services-preview-guard.mjs && node scripts/validate-v17-crm-services-preview-guard-test.mjs",
     "test:v17-crm-costing-preview:visual": "playwright test -c playwright.v17-crm-costing-visual.config.ts",
     "guard:v17-crm-costing-preview": "node scripts/validate-v17-crm-costing-preview-guard.mjs && node scripts/validate-v17-crm-costing-preview-guard-test.mjs",
+    "test:v17-crm-quote-domain": "node scripts/v17-crm-quote-domain-test.mjs",
+    "guard:v17-crm-quote-domain": "node scripts/validate-v17-crm-quote-domain-guard.mjs && node scripts/validate-v17-crm-quote-domain-guard-test.mjs",
     "test:v17-admin-tenant-memberships:http": "node scripts/v17-admin-tenant-memberships-http-test.mjs",
     "test:v17-admin-tenant-memberships": "node scripts/v17-admin-tenant-memberships-test.mjs",
     "test:v17-admin-membership-bootstrap": "node scripts/v17-admin-membership-bootstrap-test.mjs",

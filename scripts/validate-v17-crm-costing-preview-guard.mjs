@@ -11,13 +11,16 @@ export function validateV17CrmCostingPreviewGuard({ root = process.cwd(), overri
   const route = read("src/crm-costing-preview/clientMode.ts");
   for (const value of ['CRM_COSTING_VISUAL_PREVIEW_BRANCH = "feature/v17-crm-costing-preview-07a"', 'pathname === "/experience-preview/costing"', 'runtime.vercelEnvironment === "preview"']) if (!route.includes(value)) fail(`ruta visual incompleta: ${value}`);
   const visual = read("src/crm-costing-preview/CostingVisualPreview.tsx");
-  for (const value of ["Resumen", "Servicios", "Survey", "Costos", "Cotización", "Evaluación de costos", "Survey publicado", "Costo interno", "Tratamiento", "Precio sugerido", "Margen estimado", "Personal", "Transporte", "Materiales", "Cajas de madera", "Equipos", "Compensaciones", "Terceros", "Riesgo", "Catálogos y reglas", "INCLUIDO", "EXTRA", "Snapshot preparado para Cotización", "Los valores mostrados son sintéticos"]) if (!visual.includes(value)) fail(`Preview incompleto: ${value}`);
-  if (/fetch\s*\(|XMLHttpRequest|localStorage|sessionStorage/i.test(visual)) fail("Preview visual realiza red o persiste datos");
+  const quote = read("src/crm-costing-preview/QuoteProposalPanel.tsx");
+  const engine = read("src/crm-costing-preview/AdminLogisticEnginePreview.tsx");
+  const previewSource = `${visual}\n${quote}\n${engine}`;
+  for (const value of ["Resumen", "Servicios", "Survey", "Costos", "Cotización", "Evaluación automática de costos", "Survey publicado", "Costo interno", "Tratamiento", "Precio sugerido", "Margen propio", "Personal", "Transporte", "Materiales", "Cajas de madera", "Equipos", "Compensaciones", "Terceros", "Fletes", "Aduanas", "Cargos adicionales", "Riesgo", "Motor Logístico", "3 / 3", "Aprobada", "ISPM 15", "INCLUIDO", "EXTRA", "TRASLADADO", "Snapshot preparado para Cotización", "Los valores mostrados son sintéticos"]) if (!previewSource.includes(value)) fail(`Preview incompleto: ${value}`);
+  if (/fetch\s*\(|XMLHttpRequest|localStorage|sessionStorage/i.test(previewSource)) fail("Preview visual realiza red o persiste datos");
   const app = read("src/App.tsx");
   if (!app.includes("isCrmCostingVisualPreviewRoute") || !app.includes("<CostingVisualPreview")) fail("ruta no conectada al límite visual");
   const docs = read("docs/V17-CRM-COSTING-07A-PREVIEW-CONTRACT.md");
   for (const value of ["exclusivamente visual", "Survey entrega hechos y cantidades", "costo interno, tratamiento comercial y precio sugerido", "No añade migraciones", "No consume API", "datos sintéticos", "Production permanece sin cambios", "tenant-first"]) if (!docs.includes(value)) fail(`contrato incompleto: ${value}`);
-  return Object.freeze({ ok: true, migrations: 22, productionChanged: false, apiConsumers: 0, families: 8, syntheticRows: 11 });
+  return Object.freeze({ ok: true, migrations: 22, productionChanged: false, apiConsumers: 0, families: 11, syntheticRows: 17, quoteProposals: 3, approvedProposalLimit: 1 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

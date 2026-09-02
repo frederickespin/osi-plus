@@ -5,6 +5,7 @@ const invariant = (condition, message) => { if (!condition) throw new Error(mess
 const domain = read("api/_lib/crmQuoteProposalDomain.js");
 const schema = read("prisma/schema.prisma");
 const contract = read("docs/V17-CRM-QUOTE-DOMAIN-08A-CONTRACT.md");
+const workflow = read(".github/workflows/ci.yml");
 
 invariant(/productionApiEnabled:\s*false/.test(domain), "La API productiva de cotización debe permanecer desactivada");
 invariant(/persistenceEnabled:\s*false/.test(domain), "La persistencia debe permanecer desactivada en esta fase");
@@ -22,5 +23,7 @@ invariant(/SURVEY_PUBLISHED/.test(domain) && /CLIENT_PROVIDED/.test(domain), "El
 invariant(/DEFERRED_NOT_COMPUTED/.test(domain), "El tratamiento tributario diferido debe ser explícito");
 invariant(/model PipelineCaseQuote/.test(schema) && /@@map\("osi_pipeline_case_quotes"\)/.test(schema), "Falta la cabecera canónica existente");
 invariant(/No añade migraciones/.test(contract), "El contrato debe impedir migraciones prematuras");
+invariant(workflow.includes("npm run guard:v17-crm-quote-domain"), "CI debe ejecutar la guardia del dominio de cotización");
+invariant(workflow.includes("npm run test:v17-crm-quote-domain"), "CI debe ejecutar las pruebas del dominio de cotización");
 
-process.stdout.write(JSON.stringify({ ok: true, assertions: 16, target: "V17_CRM_QUOTE_DOMAIN_08A_GUARD" }, null, 2));
+process.stdout.write(JSON.stringify({ ok: true, assertions: 18, target: "V17_CRM_QUOTE_DOMAIN_08A_GUARD" }, null, 2));

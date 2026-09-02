@@ -253,6 +253,9 @@ jobs:
       - name: Validate isolated ICP visual Preview (1/1)
         run: npm run test:v17-crm-icp-ui:visual
 
+      - name: Validate isolated Services visual Preview (1/1)
+        run: npm run test:v17-crm-services-preview:visual
+
       - name: Validate isolated CRM Preview rehearsal in real browsers (24/24)
         run: npm run test:v17-commercial-crm-preview:browser
 

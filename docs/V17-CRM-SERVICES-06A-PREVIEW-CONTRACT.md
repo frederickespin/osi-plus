@@ -12,8 +12,8 @@ La Ficha presenta el orden aprobado: `Resumen → Servicios → Survey → Activ
 
 Servicios contiene una selección estructurada de:
 
-1. un servicio principal administrable;
-2. un alcance confirmado;
+1. un modo o alcance confirmado;
+2. un servicio principal administrable, habilitado y filtrado por el modo elegido;
 3. cero o más servicios complementarios administrables, elegidos desde un selector compacto agrupado;
 4. `Otro servicio no catalogado` sólo como excepción y con descripción obligatoria.
 
@@ -28,6 +28,8 @@ El Preview presenta el futuro catálogo tenant-first con código estable, nombre
 Administración puede guardar grupos frecuentes de complementarios vinculados a un servicio principal y establecer un único combo predeterminado. Al seleccionar el servicio principal, el combo predeterminado precarga automáticamente sus complementarios. El usuario puede agregar o quitar elementos para el caso sin alterar el combo original. Los combos también son editables y activables/desactivables; nunca sustituyen el registro individual de cada servicio complementario.
 
 Los complementarios elegidos se presentan como una lista tabular compacta, con líneas alternadas y una acción de quitar por fila. El total aparece junto al encabezado y no ocupa un control de ancho completo.
+
+La cabecera comercial sigue el orden `Modo/Alcance → Servicio principal → Servicios que incluye`. El concepto interno de combo no se expone como término técnico al usuario comercial. Las acciones de guardar, configurar, elegir, aplicar y cancelar se muestran como iconos compactos sin texto adjunto, conservando nombre accesible y ayuda emergente.
 
 ## Analítica
 

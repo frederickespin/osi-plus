@@ -191,8 +191,22 @@ test("Survey integra agenda, inventario rápido, medidas duales y accesos histó
   const signButton = signature.getByRole("button", { name: "Firmar reporte" });
   await expect(signButton).toBeDisabled();
   await signature.getByRole("checkbox").check();
+  await expect(signButton).toBeDisabled();
+  const signaturePad = signature.getByRole("img", { name: "Área para la firma manuscrita" });
+  const signatureBounds = await signaturePad.boundingBox();
+  if (!signatureBounds) throw new Error("No se encontró el área de firma");
+  await page.mouse.move(signatureBounds.x + 60, signatureBounds.y + 85);
+  await page.mouse.down();
+  await page.mouse.move(signatureBounds.x + 120, signatureBounds.y + 40, { steps: 5 });
+  await page.mouse.move(signatureBounds.x + 180, signatureBounds.y + 95, { steps: 5 });
+  await page.mouse.move(signatureBounds.x + 250, signatureBounds.y + 55, { steps: 5 });
+  await page.mouse.up();
+  await expect(signButton).toBeEnabled();
   await signButton.click();
   await expect(signature.getByRole("button", { name: /Firmado por el cliente/ })).toBeVisible();
+  if (process.env.SURVEY_SIGNATURE_SCREENSHOT_PATH) {
+    await signature.screenshot({ path: process.env.SURVEY_SIGNATURE_SCREENSHOT_PATH });
+  }
   const downloadPromise = page.waitForEvent("download");
   await signature.getByRole("button", { name: "Generar y entregar copia PDF" }).click();
   const download = await downloadPromise;

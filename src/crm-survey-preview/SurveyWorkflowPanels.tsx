@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   Camera, Check, CheckCircle2, ChevronLeft, ChevronRight, Download, FileSignature,
-  Image, Minus, Package, Plus, Ruler, Search, Settings2, Trash2, X,
+  Eraser, Eye, Image, Minus, Package, Plus, Ruler, Search, Settings2, Trash2, X,
 } from "lucide-react";
+import { downloadSurveyPdf as downloadStructuredSurveyPdf, previewSurveyPdf, type SignatureStroke, type SurveyReportContext } from "./SurveyPdf";
 
 export type SurveyShipmentMode = "Marítimo" | "Aéreo" | "Terrestre" | "Local" | "Almacenaje";
 export type SurveyArticleCondition = "Buen estado" | "Desgaste visible" | "Averiado" | "Daño preexistente";
@@ -57,43 +58,6 @@ const CATALOG: readonly CatalogItem[] = [
 const cubicFeet = (m3: number) => m3 * 35.3147;
 const pounds = (kg: number) => kg * 2.20462;
 const inches = (cm: number) => cm / 2.54;
-
-const pdfText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "?").replace(/([\\()])/g, "\\$1");
-
-function downloadSurveyPdf(client: string, articles: readonly SurveyArticle[]) {
-  const lines = [
-    "OSi Survey - Reporte firmado",
-    `Cliente: ${client}`,
-    `Articulos: ${articles.reduce((sum, item) => sum + item.quantity, 0)}`,
-    "",
-    ...articles.flatMap((item) => [
-      `${item.room} | ${item.name} | Cant. ${item.quantity} | ${item.condition}`,
-      item.flags.length ? `Condiciones: ${item.flags.join(", ")}` : "",
-      item.note ? `Nota: ${item.note}` : "",
-      item.photoCount ? `Fotos: ${item.photoCount}` : "",
-    ].filter(Boolean)),
-    "",
-    "El cliente reviso y firmo el levantamiento. No constituye cotizacion.",
-  ].slice(0, 54);
-  const stream = `BT\n/F1 10 Tf\n48 750 Td\n13 TL\n${lines.map((line) => `(${pdfText(line)}) Tj T*`).join("\n")}\nET`;
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
-  ];
-  let pdf = "%PDF-1.4\n";
-  const offsets: number[] = [0];
-  objects.forEach((object, index) => { offsets.push(pdf.length); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
-  const xref = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n `).join("\n")}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([new TextEncoder().encode(pdf)], { type: "application/pdf" }));
-  link.download = `survey-${client.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase()}.pdf`;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(link.href), 1_000);
-}
 
 function QuantityStepper({ value, onChange }: Readonly<{ value: number; onChange(value: number): void }>) {
   const update = (next: number) => onChange(Math.max(1, Math.min(999, next)));
@@ -207,9 +171,61 @@ export function SurveyReviewPanel({ articles, onNavigate }: Readonly<{ articles:
   return <section className="space-y-3" data-testid="survey-review"><div className="grid grid-cols-4 rounded-lg border border-sky-200 bg-sky-50 py-3 text-center"><span><small className="block text-[8px] uppercase">Renglones</small><strong>{articles.length}</strong></span><span><small className="block text-[8px] uppercase">Piezas</small><strong>{articles.reduce((sum, item) => sum + item.quantity, 0)}</strong></span><span><small className="block text-[8px] uppercase">Volumen</small><strong>{totalVolume.toFixed(2)} m³</strong><small className="block text-[8px]">{cubicFeet(totalVolume).toFixed(1)} ft³</small></span><span><small className="block text-[8px] uppercase">Peso</small><strong>{totalWeight.toFixed(0)} kg</strong><small className="block text-[8px]">{pounds(totalWeight).toFixed(0)} lb</small></span></div><div className="grid gap-3 xl:grid-cols-2"><GroupReport title="Agrupado por área" rows={areaRows} onOpen={(row) => onNavigate({ room: row.label, mode: row.items[0].mode, filterMode: false })} /><GroupReport title="Agrupado por modo" rows={modeRows} onOpen={(row) => onNavigate({ room: row.items[0].room, mode: row.label as SurveyShipmentMode, filterMode: true })} /></div><p className="text-[10px] text-slate-500">Selecciona un área o modo para regresar al Inventario con ese contexto.</p></section>;
 }
 
-export function SurveySignaturePanel({ client, articles }: Readonly<{ client: string; articles: readonly SurveyArticle[] }>) {
+function SignaturePad({ strokes, onChange }: Readonly<{ strokes: readonly SignatureStroke[]; onChange(strokes: readonly SignatureStroke[]): void }>) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawingRef = useRef<readonly { x: number; y: number }[] | null>(null);
+  const baseStrokesRef = useRef<readonly SignatureStroke[]>([]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.strokeStyle = "#003b70";
+    context.lineWidth = 3;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    strokes.forEach((stroke) => {
+      if (stroke.length < 2) return;
+      context.beginPath();
+      context.moveTo(stroke[0].x * canvas.width, stroke[0].y * canvas.height);
+      stroke.slice(1).forEach((point) => context.lineTo(point.x * canvas.width, point.y * canvas.height));
+      context.stroke();
+    });
+  }, [strokes]);
+
+  const point = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+    };
+  };
+  const start = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    baseStrokesRef.current = strokes;
+    drawingRef.current = [point(event)];
+  };
+  const move = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    const next = [...drawingRef.current, point(event)];
+    drawingRef.current = next;
+    onChange([...baseStrokesRef.current, next]);
+  };
+  const finish = () => { drawingRef.current = null; };
+
+  return <div className="overflow-hidden rounded-lg border border-slate-300 bg-white"><canvas ref={canvasRef} width={720} height={220} aria-label="Área para la firma manuscrita" role="img" onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} className="block h-36 w-full touch-none cursor-crosshair" /><div className="flex items-center justify-between border-t border-slate-200 px-3 py-1.5 text-[9px] text-slate-500"><span>Firme con el dedo o lápiz digital.</span><button type="button" aria-label="Borrar firma" title="Borrar firma" onClick={() => onChange([])} className="grid h-7 w-7 place-items-center rounded text-rose-700"><Eraser className="h-4 w-4" /></button></div></div>;
+}
+
+export function SurveySignaturePanel({ report: reportOverride, client, articles }: Readonly<{ report?: SurveyReportContext; client?: string; articles: readonly SurveyArticle[] }>) {
+  const report: SurveyReportContext = reportOverride || { reference: "VIS-021", client: client || "Cliente", company: "Coca-Cola", leadAccount: "SIRVA", booker: "María López · SIRVA", service: "Mudanza internacional", origin: { city: "Santo Domingo", sector: "Piantini", street: "Av. Abraham Lincoln núm. 456", unit: "Torre Central · apartamento 8-B" }, destination: { city: "Madrid", sector: "Salamanca", street: "Calle Serrano núm. 120", unit: "Apartamento 4-A" }, instruction: "Llamar 15 minutos antes. Iniciar la visita por el dormitorio principal.", surveyDate: "2 sep 2026 · 5:30 p. m.", evaluator: "Ana Evaluadora" };
   const [accepted, setAccepted] = useState(false);
-  const [signed, setSigned] = useState(false);
+  const [signatureStrokes, setSignatureStrokes] = useState<readonly SignatureStroke[]>([]);
+  const [signatoryName, setSignatoryName] = useState(report.client);
+  const [relationship, setRelationship] = useState("Cliente");
+  const [signedAt, setSignedAt] = useState<string | null>(null);
   const [copyRecordedAt, setCopyRecordedAt] = useState<string | null>(null);
   const totalVolume = articles.reduce((sum, item) => sum + item.volumeM3 * item.quantity, 0);
   const totalWeight = articles.reduce((sum, item) => sum + item.weightKg * item.quantity, 0);
@@ -222,8 +238,15 @@ export function SurveySignaturePanel({ client, articles }: Readonly<{ client: st
     { label: "SD · Sobredimensionado", items: articles.filter((item) => item.flags.includes("Sobredimensionado")) },
   ].filter((section) => section.items.length);
   const noteOnly = articles.filter((item) => item.flags.length === 0 && (item.note || item.photoCount));
-  const deliverCopy = () => { downloadSurveyPdf(client, articles); setCopyRecordedAt(new Intl.DateTimeFormat("es-DO", { dateStyle: "medium", timeStyle: "short" }).format(new Date())); };
-  return <section className="space-y-3" data-testid="survey-signature"><div className="rounded-lg border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-wider text-sky-700">Reporte para aceptación del cliente</p><h2 className="text-base font-black text-[#003b70]">{client}</h2></div><FileSignature className="h-6 w-6 text-[#003b70]" /></div><div className="mt-3 grid grid-cols-3 rounded border border-slate-200 py-2 text-center text-[10px]"><span><small className="block text-slate-500">Piezas</small><strong>{articles.reduce((sum, item) => sum + item.quantity, 0)}</strong></span><span><small className="block text-slate-500">Volumen</small><strong>{totalVolume.toFixed(2)} m³</strong></span><span><small className="block text-slate-500">Peso ref.</small><strong>{totalWeight.toFixed(0)} kg</strong></span></div><div className="mt-3 overflow-hidden rounded border border-slate-200"><div className="grid grid-cols-[90px_1fr_38px_100px] bg-slate-100 px-2 py-1.5 text-[8px] font-black uppercase text-slate-500"><span>Área</span><span>Artículo</span><span>Cant.</span><span>Condición</span></div>{articles.map((item) => <div key={item.id} className="grid grid-cols-[90px_1fr_38px_100px] border-t border-slate-100 px-2 py-2 text-[9px]"><span>{item.room}</span><strong>{item.name}</strong><span>{item.quantity}</span><span>{item.condition}</span></div>)}</div><div className="mt-3" data-testid="signature-special-conditions"><strong className="text-[10px] text-[#003b70]">Condiciones y observaciones</strong><div className="mt-1 grid gap-1.5 sm:grid-cols-2">{specialSections.map((section) => <article key={section.label} className="rounded border border-slate-200 bg-slate-50 p-2"><strong className="text-[9px] text-sky-800">{section.label}</strong>{section.items.map((item) => <AcceptanceSpecialItem key={`${section.label}-${item.id}`} item={item} />)}</article>)}{noteOnly.length > 0 && <article className="rounded border border-slate-200 bg-slate-50 p-2"><strong className="text-[9px] text-sky-800">Otras notas y fotos</strong>{noteOnly.map((item) => <AcceptanceSpecialItem key={item.id} item={item} />)}</article>}</div></div><p className="mt-3 text-[9px] text-slate-500">Este reporte confirma los artículos y condiciones levantados durante la visita. No constituye una cotización ni aceptación de precios.</p></div><label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-3 text-[10px]"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} /><span>He revisado el reporte de artículos y confirmo que representa la información levantada durante la visita.</span></label><button type="button" onClick={() => setSigned(true)} disabled={!accepted} className="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:bg-slate-300"><FileSignature className="h-4 w-4" />{signed ? "Firmado por el cliente" : "Firmar reporte"}{signed && <Check className="h-4 w-4" />}</button>{signed && <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2"><button type="button" onClick={deliverCopy} aria-label="Generar y entregar copia PDF" title="Generar copia PDF" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#003b70] text-white"><Download className="h-4 w-4" /></button><span className="text-[9px] text-emerald-950">{copyRecordedAt ? <span role="status"><strong className="block">Cliente firmó y recibió copia PDF</strong>Registro CRM del preview · {copyRecordedAt}</span> : <><strong className="block">Copia PDF disponible</strong>Genera la copia para el cliente y registra la entrega.</>}</span></div>}</section>;
+  const signature = { name: signatoryName.trim(), relationship, signedAt: signedAt || undefined, strokes: signatureStrokes };
+  const resetSignatureState = () => { setSignedAt(null); setCopyRecordedAt(null); };
+  const recordSignature = () => setSignedAt(new Intl.DateTimeFormat("es-DO", { dateStyle: "medium", timeStyle: "short" }).format(new Date()));
+  const deliverCopy = () => {
+    downloadStructuredSurveyPdf(report, articles, signature);
+    setCopyRecordedAt(new Intl.DateTimeFormat("es-DO", { dateStyle: "medium", timeStyle: "short" }).format(new Date()));
+  };
+
+  return <section className="space-y-3" data-testid="survey-signature"><div className="grid grid-cols-4 overflow-hidden rounded-lg border border-slate-200 bg-white text-center text-[8px] font-bold text-slate-500"><span className="border-r border-slate-200 bg-sky-50 px-1 py-2 text-sky-800">1 · Vista previa</span><span className="border-r border-slate-200 px-1 py-2">2 · Firmar</span><span className="border-r border-slate-200 px-1 py-2">3 · Generar PDF</span><span className="px-1 py-2">4 · Entregar copia</span></div><div className="rounded-lg border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-wider text-sky-700">Reporte para aceptación del cliente</p><h2 className="text-base font-black text-[#003b70]">{report.client}</h2><p className="text-[9px] text-slate-500">{report.reference} · {report.service}</p></div><button type="button" onClick={() => previewSurveyPdf(report, articles, signature)} aria-label="Abrir vista previa del PDF" title="Vista previa" className="grid h-9 w-9 place-items-center rounded-full border border-sky-200 text-[#003b70]"><Eye className="h-4 w-4" /></button></div><div className="mt-3 grid grid-cols-3 rounded border border-slate-200 py-2 text-center text-[10px]"><span><small className="block text-slate-500">Piezas</small><strong>{articles.reduce((sum, item) => sum + item.quantity, 0)}</strong></span><span><small className="block text-slate-500">Volumen</small><strong>{totalVolume.toFixed(2)} m³</strong></span><span><small className="block text-slate-500">Peso ref.</small><strong>{totalWeight.toFixed(0)} kg</strong></span></div><div className="mt-3 overflow-hidden rounded border border-slate-200"><div className="grid grid-cols-[70px_1fr_32px_86px] bg-slate-100 px-2 py-1.5 text-[8px] font-black uppercase text-slate-500 sm:grid-cols-[90px_1fr_38px_100px]"><span>Área</span><span>Artículo</span><span>Cant.</span><span>Condición</span></div>{articles.map((item) => <div key={item.id} className="grid grid-cols-[70px_1fr_32px_86px] border-t border-slate-100 px-2 py-2 text-[9px] sm:grid-cols-[90px_1fr_38px_100px]"><span>{item.room}</span><strong>{item.name}</strong><span>{item.quantity}</span><span>{item.condition}</span></div>)}</div><div className="mt-3" data-testid="signature-special-conditions"><strong className="text-[10px] text-[#003b70]">Condiciones y observaciones</strong><div className="mt-1 grid gap-1.5 sm:grid-cols-2">{specialSections.map((section) => <article key={section.label} className="rounded border border-slate-200 bg-slate-50 p-2"><strong className="text-[9px] text-sky-800">{section.label}</strong>{section.items.map((item) => <AcceptanceSpecialItem key={`${section.label}-${item.id}`} item={item} />)}</article>)}{noteOnly.length > 0 && <article className="rounded border border-slate-200 bg-slate-50 p-2"><strong className="text-[9px] text-sky-800">Otras notas y fotos</strong>{noteOnly.map((item) => <AcceptanceSpecialItem key={item.id} item={item} />)}</article>}</div></div><p className="mt-3 text-[9px] text-slate-500">Este reporte confirma los artículos y condiciones levantados durante la visita. No constituye una cotización ni aceptación de precios.</p></div><label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-3 text-[10px]"><input type="checkbox" checked={accepted} onChange={(event) => { setAccepted(event.target.checked); resetSignatureState(); }} /><span>He revisado el reporte de artículos y confirmo que representa la información levantada durante la visita.</span></label><div className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_170px]"><label><span className="block text-[9px] font-black uppercase text-slate-500">Nombre de quien firma</span><input aria-label="Nombre de quien firma" value={signatoryName} onChange={(event) => { setSignatoryName(event.target.value); resetSignatureState(); }} className="mt-1 h-9 w-full rounded border border-slate-300 px-3 text-sm" /></label><label><span className="block text-[9px] font-black uppercase text-slate-500">Relación</span><select aria-label="Relación de quien firma" value={relationship} onChange={(event) => { setRelationship(event.target.value); resetSignatureState(); }} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm"><option>Cliente</option><option>Representante autorizado</option><option>Familiar</option><option>Encargado de residencia</option></select></label><div className="sm:col-span-2"><SignaturePad strokes={signatureStrokes} onChange={(next) => { setSignatureStrokes(next); resetSignatureState(); }} /></div></div><button type="button" onClick={recordSignature} disabled={!accepted || !signatoryName.trim() || signatureStrokes.length === 0} className="flex w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:bg-slate-300"><FileSignature className="h-4 w-4" />{signedAt ? "Firmado por el cliente" : "Firmar reporte"}{signedAt && <Check className="h-4 w-4" />}</button>{signedAt && <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2"><button type="button" onClick={deliverCopy} aria-label="Generar y entregar copia PDF" title="Generar copia PDF" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#003b70] text-white"><Download className="h-4 w-4" /></button><span className="text-[9px] text-emerald-950">{copyRecordedAt ? <span role="status"><strong className="block">Cliente firmó y recibió copia PDF</strong>Registro CRM del preview · {copyRecordedAt}</span> : <><strong className="block">Copia PDF disponible</strong>Genera la copia firmada y registra la entrega.</>}</span></div>}</section>;
 }
 
 function AcceptanceSpecialItem({ item }: Readonly<{ item: SurveyArticle }>) {

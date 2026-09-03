@@ -23,6 +23,7 @@ import { isAdminIdentityInvitationEnabled } from '@/admin-tenant/adminMode';
 import { isCrmIcpV2VisualPreviewRoute } from '@/crm-icp-v2/clientMode';
 import { isCrmServicesVisualPreviewRoute } from '@/crm-services-preview/clientMode';
 import { isCrmCostingVisualPreviewRoute } from '@/crm-costing-preview/clientMode';
+import { isCrmSurveyVisualPreviewRoute } from '@/crm-survey-preview/clientMode';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const AdminIdentityActivation = lazy(() =>
@@ -31,6 +32,7 @@ const AdminIdentityActivation = lazy(() =>
 const IcpVisualPreview = lazy(() => import('@/crm-icp-v2/IcpVisualPreview'));
 const ServicesVisualPreview = lazy(() => import('@/crm-services-preview/ServicesVisualPreview'));
 const CostingVisualPreview = lazy(() => import('@/crm-costing-preview/CostingVisualPreview'));
+const SurveyVisualPreview = lazy(() => import('@/crm-survey-preview/SurveyVisualPreview'));
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
 );
@@ -645,6 +647,7 @@ function SessionApp() {
 }
 
 function App() {
+  if (isCrmSurveyVisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-[#003366]" />}><SurveyVisualPreview /></Suspense>;
   if (isCrmCostingVisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-[#003366]" />}><CostingVisualPreview /></Suspense>;
   if (isCrmServicesVisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-[#003366]" />}><ServicesVisualPreview /></Suspense>;
   if (isCrmIcpV2VisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-[#003366]" />}><IcpVisualPreview /></Suspense>;

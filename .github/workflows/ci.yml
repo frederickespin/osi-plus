@@ -166,6 +166,7 @@ jobs:
           npm run guard:v17-crm-icp-ui
           npm run guard:v17-crm-quote-domain
           npm run test:v17-crm-quote-domain
+          npm run guard:v17-crm-survey-preview
           node scripts/validate-v17-commercial-crm-guard.mjs
           npm run guard:v17-commercial-inbox-reload-race
           npm run guard:v17-commercial-crm-preview
@@ -260,6 +261,9 @@ jobs:
 
       - name: Validate isolated Costing visual Preview (1/1)
         run: npm run test:v17-crm-costing-preview:visual
+
+      - name: Validate isolated Survey visual Preview (1/1)
+        run: npm run test:v17-crm-survey-preview:visual
 
       - name: Validate isolated CRM Preview rehearsal in real browsers (24/24)
         run: npm run test:v17-commercial-crm-preview:browser
@@ -407,6 +411,7 @@ jobs:
           npm run guard:v17-crm-icp-ui
           npm run guard:v17-crm-quote-domain
           npm run test:v17-crm-quote-domain
+          npm run guard:v17-crm-survey-preview
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           npm run guard:v17-admin-tenant-memberships
@@ -579,4 +584,5 @@ jobs:
           npm run guard:v17-crm-icp-ui
           npm run guard:v17-crm-quote-domain
           npm run test:v17-crm-quote-domain
+          npm run guard:v17-crm-survey-preview
           git diff --exit-code

@@ -73,12 +73,22 @@ test("Survey integra agenda, inventario rápido, medidas duales y accesos histó
   await inventory.getByLabel("Condición del artículo").selectOption("Averiado");
   await expect(inventory.getByRole("alert")).toContainText("requiere una fotografía");
   await expect(inventory.getByRole("button", { name: "Próximo" })).toBeDisabled();
-  await inventory.getByRole("button", { name: "Añadir foto de comprobación" }).click();
+  const cameraInput = inventory.getByTestId("article-camera-input");
+  await expect(cameraInput).toHaveAttribute("accept", "image/*");
+  await expect(cameraInput).toHaveAttribute("capture", "environment");
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await inventory.getByRole("button", { name: "Activar cámara para el artículo" }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({ name: "sofa-averiado.jpg", mimeType: "image/jpeg", buffer: Buffer.from("survey-photo") });
   await inventory.getByLabel("Caja de madera").check();
   await expect(page.getByTestId("conditional-measurements")).not.toContainText("Medidas activadas");
   await expect(inventory.getByLabel("Largo en centímetros")).toHaveValue("120");
   await expect(page.getByTestId("conditional-measurements")).toContainText("Equiv. 47.2 pulg");
   await inventory.getByRole("button", { name: "Próximo" }).click();
+  await expect(inventory.getByLabel("Buscar artículo del catálogo")).toHaveValue("");
+  await expect(inventory.getByLabel("Buscar artículo del catálogo")).toBeFocused();
+  await expect(inventory.getByRole("button", { name: "Próximo" })).toBeDisabled();
+  await expect(inventory.getByRole("button", { name: /Sofá de 3 plazas/ })).toHaveCount(2);
   await expect(inventory.getByLabel("Área o habitación")).toHaveValue("Sala");
   await expect(inventory.getByLabel("Modo de traslado")).toHaveValue("Marítimo");
   await expect(quantity).toHaveValue("1");
@@ -154,11 +164,24 @@ test("Survey integra agenda, inventario rápido, medidas duales y accesos histó
   const signature = page.getByTestId("survey-signature");
   await expect(signature).toContainText("Reporte para aceptación del cliente");
   await expect(signature).toContainText("No constituye una cotización ni aceptación de precios");
+  const specialConditions = signature.getByTestId("signature-special-conditions");
+  await expect(specialConditions).toContainText("Huacal");
+  await expect(specialConditions).toContainText("Frágil");
+  await expect(specialConditions).toContainText("Armar / desarmar");
+  await expect(specialConditions).toContainText("Desgaste visible en esquina inferior");
+  await expect(specialConditions).toContainText("Revisar desmontaje con el cliente");
   const signButton = signature.getByRole("button", { name: "Firmar reporte" });
   await expect(signButton).toBeDisabled();
   await signature.getByRole("checkbox").check();
   await signButton.click();
   await expect(signature.getByRole("button", { name: /Firmado por el cliente/ })).toBeVisible();
+  const downloadPromise = page.waitForEvent("download");
+  await signature.getByRole("button", { name: "Generar y entregar copia PDF" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("survey-ana-maria-gomez.pdf");
+  if (process.env.SURVEY_PDF_PATH) await download.saveAs(process.env.SURVEY_PDF_PATH);
+  await expect(signature.getByRole("status")).toContainText("Cliente firmó y recibió copia PDF");
+  await expect(signature.getByRole("status")).toContainText("Registro CRM del preview");
 
   await page.setViewportSize({ width: 360, height: 900 });
   await page.getByRole("tab", { name: "Agenda" }).click();
@@ -166,6 +189,9 @@ test("Survey integra agenda, inventario rápido, medidas duales y accesos histó
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   await page.getByRole("tab", { name: "Inventario" }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  const conditionBox = await inventory.getByLabel("Condición del artículo").boundingBox();
+  const mobileViewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  expect((conditionBox?.x || 0) + (conditionBox?.width || 0)).toBeLessThanOrEqual(mobileViewportWidth);
   const mobileControlFontSizes = await page.getByTestId("survey-inventory").locator("input, select, textarea").evaluateAll((elements) => elements.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
   expect(Math.min(...mobileControlFontSizes)).toBeGreaterThanOrEqual(16);
   if (process.env.SURVEY_MOBILE_SCREENSHOT_PATH) {

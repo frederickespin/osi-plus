@@ -95,6 +95,20 @@
   [data-testid="crm-survey-visual-preview"] textarea {
     font-size: 16px;
   }
+
+  [data-testid="survey-inventory"] div:has(> label > select[aria-label="Condición del artículo"]) {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  [data-testid="survey-inventory"] div:has(> label > select[aria-label="Condición del artículo"]) > *,
+  [data-testid="survey-inventory"] select[aria-label="Condición del artículo"] {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 @layer base {

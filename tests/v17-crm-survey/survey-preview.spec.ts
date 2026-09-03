@@ -75,7 +75,9 @@ test("Survey integra agenda, inventario rápido, medidas duales y accesos histó
   await expect(inventory.getByRole("button", { name: "Próximo" })).toBeDisabled();
   await inventory.getByRole("button", { name: "Añadir foto de comprobación" }).click();
   await inventory.getByLabel("Caja de madera").check();
-  await expect(page.getByTestId("conditional-measurements")).toContainText("cm · 47.2 in");
+  await expect(page.getByTestId("conditional-measurements")).not.toContainText("Medidas activadas");
+  await expect(inventory.getByLabel("Largo en centímetros")).toHaveValue("120");
+  await expect(page.getByTestId("conditional-measurements")).toContainText("Equiv. 47.2 pulg");
   await inventory.getByRole("button", { name: "Próximo" }).click();
   await expect(inventory.getByLabel("Área o habitación")).toHaveValue("Sala");
   await expect(inventory.getByLabel("Modo de traslado")).toHaveValue("Marítimo");
@@ -91,9 +93,17 @@ test("Survey integra agenda, inventario rápido, medidas duales y accesos histó
   await expect(inventory.getByRole("button", { name: "Actualizar" })).toBeVisible();
   await inventory.getByLabel("Nota opcional del artículo").fill("Revisar desmontaje con el cliente.");
   await inventory.getByRole("button", { name: "Actualizar" }).click();
+  await inventory.getByRole("button", { name: /Mesa de comedor/ }).click();
+  const arrowBeforeMeasurements = await inventory.getByRole("button", { name: "Artículo anterior" }).boundingBox();
   await inventory.getByRole("button", { name: "Artículo anterior" }).click();
   await expect(inventory.getByRole("button", { name: "Actualizar" })).toBeVisible();
-  await expect(inventory.getByLabel("Nota opcional del artículo")).toHaveValue("Revisar desmontaje con el cliente.");
+  await expect(inventory.getByLabel("Área o habitación")).toHaveValue("Sala");
+  await expect(inventory.getByLabel("Modo de traslado")).toHaveValue("Aéreo");
+  await expect(inventory.getByLabel("Buscar artículo del catálogo")).toHaveValue("Cuadro enmarcado");
+  await expect(inventory.getByTestId("global-article-position")).toContainText("Artículo 2 / 4");
+  await expect(inventory.getByLabel("Nota opcional del artículo")).toHaveValue("Desgaste visible en esquina inferior.");
+  const arrowAfterMeasurements = await inventory.getByRole("button", { name: "Artículo anterior" }).boundingBox();
+  expect(Math.abs((arrowBeforeMeasurements?.y ?? 0) - (arrowAfterMeasurements?.y ?? 0))).toBeLessThanOrEqual(1);
   await inventory.getByRole("button", { name: "Eliminar artículo" }).click();
   await expect(inventory.getByRole("button", { name: "Confirmar eliminación" })).toBeVisible();
   await inventory.getByRole("button", { name: "Cancelar" }).click();
@@ -106,6 +116,10 @@ test("Survey integra agenda, inventario rápido, medidas duales y accesos histó
   await expect(page.getByTestId("catalog-configuration")).toContainText("Áreas configurables");
   await expect(page.getByTestId("catalog-configuration")).toContainText("Receta local");
   await expect(page.getByTestId("catalog-configuration")).toContainText("Receta internacional");
+  await expect(page.getByTestId("catalog-configuration")).toContainText("Preferencia de medidas");
+  await page.getByTestId("catalog-configuration").getByRole("button", { name: "Pulgadas (pulg)" }).click();
+  await expect(inventory.getByLabel("Largo en pulgadas")).toHaveValue("47.2");
+  await expect(page.getByTestId("conditional-measurements")).toContainText("Equiv. 120 cm");
 
   await page.getByRole("tab", { name: "Accesos" }).click();
   await expect(page.getByTestId("survey-access")).toContainText("Acarreo largo");
@@ -152,6 +166,8 @@ test("Survey integra agenda, inventario rápido, medidas duales y accesos histó
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   await page.getByRole("tab", { name: "Inventario" }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  const mobileControlFontSizes = await page.getByTestId("survey-inventory").locator("input, select, textarea").evaluateAll((elements) => elements.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
+  expect(Math.min(...mobileControlFontSizes)).toBeGreaterThanOrEqual(16);
   if (process.env.SURVEY_MOBILE_SCREENSHOT_PATH) {
     await page.screenshot({ path: process.env.SURVEY_MOBILE_SCREENSHOT_PATH, fullPage: true });
   }

@@ -89,6 +89,14 @@
   }
 }
 
+@media (max-width: 639px) {
+  [data-testid="crm-survey-visual-preview"] input,
+  [data-testid="crm-survey-visual-preview"] select,
+  [data-testid="crm-survey-visual-preview"] textarea {
+    font-size: 16px;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -14,10 +14,13 @@ Este lote es exclusivamente visual y presenta la terminal móvil de Survey acord
 - Las áreas nacen de un catálogo configurable de áreas del tenant; pueden editarse, ordenarse y desactivarse, y el evaluador trabaja con sus áreas frecuentes.
 - El inventario utiliza búsqueda progresiva: prioriza artículos relacionados con el área actual y conserva área y modo después de agregar cada artículo.
 - El talonario inferior filtra por el área activa; desde Revisión también puede aplicar temporalmente un modo. Cada renglón se puede abrir para corregir o eliminar con confirmación, y dispone de navegación anterior/siguiente.
+- Las flechas realizan navegación global por todos los artículos del Survey, independientemente del área visible. Al abrir otro artículo, el formulario recupera automáticamente su área y modo; el contador y las flechas conservan una posición fija aunque aparezcan medidas.
 - La cantidad inicia en uno, admite un máximo visual de tres cifras y combina botones circulares de menos/más con un campo compacto seleccionable.
 - La condición, el icono de cámara y las condiciones especiales se concentran en una sola zona compacta. Las condiciones especiales usan abreviaturas visibles con su nombre completo accesible y cada artículo admite una nota opcional.
 - Las condiciones `Averiado` y `Daño preexistente` requieren fotografía obligatoria vinculada al artículo; otras condiciones especiales habilitan evidencia opcional mediante un único icono.
-- Las medidas permanecen ocultas salvo para caja de madera, sobredimensionado o medición excepcional y se presentan en sistema métrico e imperial.
+- Las medidas permanecen ocultas salvo para caja de madera, sobredimensionado o medición excepcional. Se presentan como una fila compacta sin recuadro ni aviso adicional, con la unidad `cm` o `pulg` visible en cada campo y su equivalencia.
+- La configuración del evaluador contiene su preferencia de medidas entre centímetros y pulgadas. La futura persistencia deberá asociarla al perfil del evaluador sin cambiar la unidad normalizada de autoridad.
+- En pantallas móviles, los controles de entrada utilizan un tamaño compatible que evita el acercamiento automático del navegador al seleccionar un campo.
 - El evaluador no selecciona materiales de empaque. Cada artículo puede relacionarse administrativamente con una receta versionada y el resultado aparece sólo como detalle técnico automático.
 - La pestaña de Evidencias desaparece: cada fotografía queda asociada directamente al artículo, daño, acceso o condición que la originó.
 - La pestaña Firma presenta al cliente un reporte para aceptación con artículos, cantidades, condiciones y totales; excluye precios, costos, márgenes y notas internas.
@@ -32,7 +35,7 @@ Este lote es exclusivamente visual y presenta la terminal móvil de Survey acord
 
 El volumen nace en Survey o en evidencia suministrada por el cliente; nunca se calcula en ICP. El peso conserva fuente y nivel de confianza: real, medido, catálogo o densidad. Peso volumétrico y peso cobrable se resuelven posteriormente conforme al modo y la tarifa aplicable.
 
-La interfaz muestra centímetros/pulgadas, metros cúbicos/pies cúbicos y kilogramos/libras sin duplicar autoridades de cálculo. La implementación futura deberá guardar el valor original introducido y una representación normalizada auditada.
+La interfaz conserva los sistemas métrico e imperial y muestra centímetros/pulgadas, metros cúbicos/pies cúbicos y kilogramos/libras sin duplicar autoridades de cálculo. La implementación futura deberá guardar el valor original introducido y una representación normalizada auditada.
 
 ## Accesos y aprendizaje operativo
 

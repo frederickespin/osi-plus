@@ -132,7 +132,25 @@ test("Survey integra agenda, inventario rápido, medidas duales y accesos histó
   await expect(page.getByTestId("conditional-measurements")).toContainText("Equiv. 120 cm");
 
   await page.getByRole("tab", { name: "Accesos" }).click();
-  await expect(page.getByTestId("survey-access")).toContainText("Acarreo largo");
+  const access = page.getByTestId("survey-access");
+  await expect(access).toContainText("Acarreo largo");
+  const originAccessCamera = access.getByTestId("access-camera-origen");
+  const destinationAccessCamera = access.getByTestId("access-camera-destino");
+  await expect(originAccessCamera).toHaveAttribute("accept", "image/*");
+  await expect(originAccessCamera).toHaveAttribute("capture", "environment");
+  await expect(destinationAccessCamera).toHaveAttribute("capture", "environment");
+  await originAccessCamera.dispatchEvent("change");
+  await expect(access.getByRole("button", { name: "Activar cámara de origen" }).locator("span")).toHaveCount(0);
+  const originAccessChooserPromise = page.waitForEvent("filechooser");
+  await access.getByRole("button", { name: "Activar cámara de origen" }).click();
+  const originAccessChooser = await originAccessChooserPromise;
+  await originAccessChooser.setFiles({ name: "acceso-origen.jpg", mimeType: "image/jpeg", buffer: Buffer.from("origin-access") });
+  await expect(access.getByRole("button", { name: "Activar cámara de origen" }).locator("span")).toHaveText("1");
+  const destinationAccessChooserPromise = page.waitForEvent("filechooser");
+  await access.getByRole("button", { name: "Activar cámara de destino" }).click();
+  const destinationAccessChooser = await destinationAccessChooserPromise;
+  await destinationAccessChooser.setFiles({ name: "acceso-destino.jpg", mimeType: "image/jpeg", buffer: Buffer.from("destination-access") });
+  await expect(access.getByRole("button", { name: "Activar cámara de destino" }).locator("span")).toHaveText("1");
   await expect(page.getByTestId("survey-access")).toContainText("No cabe en elevador");
   await expect(page.getByTestId("building-access-catalog")).toContainText("Perfil interno del edificio");
   await expect(page.getByTestId("building-access-catalog")).toContainText("Aprendizaje de zona");

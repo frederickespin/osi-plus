@@ -41,6 +41,7 @@ La interfaz conserva los sistemas métrico e imperial y muestra centímetros/pul
 ## Accesos y aprendizaje operativo
 
 - Origen y destino comparten una matriz compacta de condiciones con selecciones independientes.
+- Origen y destino disponen de cámaras independientes. Cada icono solicita la cámara posterior o el selector de imágenes, registra únicamente archivos recibidos y muestra un contador compacto vinculado al punto correspondiente; cancelar no crea evidencia.
 - Escaleras por encima del segundo piso y elevadores por encima del quinto generan advertencias y tiempo adicional mediante reglas administrativas configurables.
 - Cada edificio o instalación tendrá un perfil histórico versionado de facilidades, inconvenientes, fotografías, fecha y evaluador; una visita nueva no sobrescribe evidencia anterior.
 - Los futuros análisis agregados por zona no expondrán datos personales ni fotografías residenciales.

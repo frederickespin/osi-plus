@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from "react";
+import { useRef, useState, type ComponentType } from "react";
 import {
   AlertTriangle, ArrowLeft, Building2, CalendarDays, Camera,
   CheckCircle2, ChevronRight, ClipboardCheck, Clock3, FileSignature, Home,
@@ -146,7 +146,201 @@ const ACCESS_ROWS = [
 ] as const;
 
 function AccessPanel() {
-  return <section className="space-y-3" data-testid="survey-access"><div className="grid gap-2 sm:grid-cols-2">{[{ point: "Origen", floor: 6, access: "Elevador de carga" }, { point: "Destino", floor: 3, access: "Escalera" }].map((site) => <article key={site.point} className="rounded-lg border border-slate-200 bg-white p-3"><div className="flex items-center gap-2"><span className={`grid h-6 w-6 place-items-center rounded text-[10px] font-black ${site.point === "Origen" ? "bg-sky-100 text-sky-800" : "bg-indigo-100 text-indigo-800"}`}>{site.point[0]}</span><strong className="text-sm">{site.point}</strong></div><div className="mt-2 grid grid-cols-2 gap-2"><label><span className="block text-[9px] font-black uppercase text-slate-500">Piso</span><input type="number" defaultValue={site.floor} className="mt-1 h-8 w-full rounded border border-slate-300 px-2 text-xs" /></label><label><span className="block text-[9px] font-black uppercase text-slate-500">Acceso principal</span><input value={site.access} readOnly className="mt-1 h-8 w-full rounded border border-slate-300 bg-slate-50 px-2 text-xs" /></label></div></article>)}</div><div className="overflow-hidden rounded-lg border border-slate-200 bg-white"><div className="grid grid-cols-[minmax(140px,1fr)_54px_54px] items-center bg-slate-100 px-3 py-2 text-[9px] font-black uppercase text-slate-500 sm:grid-cols-[170px_minmax(150px,1fr)_70px_70px]"><span>Condición</span><span className="hidden sm:block">Qué representa</span><span className="text-center">Origen</span><span className="text-center">Destino</span></div>{ACCESS_ROWS.map(([label, detail, origin, destination]) => <div key={label} className="grid grid-cols-[minmax(140px,1fr)_54px_54px] items-center border-t border-slate-100 px-3 py-2 text-[10px] sm:grid-cols-[170px_minmax(150px,1fr)_70px_70px]"><strong>{label}</strong><span className="hidden text-slate-500 sm:block">{detail}</span><span className="text-center"><input aria-label={`${label} en origen`} type="checkbox" defaultChecked={origin} /></span><span className="text-center"><input aria-label={`${label} en destino`} type="checkbox" defaultChecked={destination} /></span></div>)}</div><div className="grid gap-2 lg:grid-cols-2" data-testid="building-access-catalog"><article className="rounded-lg border border-sky-200 bg-sky-50 p-3"><div className="flex items-start justify-between gap-2"><div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-sky-800" /><div><strong className="block text-xs text-[#003b70]">Torre Empresarial Piantini</strong><span className="text-[9px] text-slate-500">Perfil interno del edificio · Origen</span></div></div><button type="button" aria-label="Añadir foto del edificio" title="Añadir foto del edificio" className="grid h-8 w-8 place-items-center rounded-full border border-sky-300 bg-white text-sky-700"><Camera className="h-4 w-4" /></button></div><div className="mt-2 grid grid-cols-2 gap-2 text-[9px]"><span>4 visitas verificadas</span><span>6 fotos históricas</span><span>Elevador de carga</span><span>Parqueo restringido</span></div></article><article className="rounded-lg border border-indigo-200 bg-indigo-50 p-3"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-indigo-800" /><strong className="text-xs text-[#003b70]">Aprendizaje de zona</strong></div><p className="mt-2 text-[10px] text-slate-600">Cada visita agrega una versión fechada de facilidades, inconvenientes y evidencias. Los futuros análisis de zonas usan datos agrupados sin exponer al cliente.</p></article></div><div className="grid gap-2 sm:grid-cols-2"><div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[10px] text-amber-950"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p><strong>Destino · piso 3 por escalera:</strong> aumenta tiempo y esfuerzo según la regla configurada.</p></div><div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[10px] text-amber-950"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><p><strong>Origen · elevador sobre piso 5:</strong> añade tiempo operativo sin fijar aquí el precio.</p></div></div><p className="text-[10px] text-slate-500">El Motor Logístico convierte estas condiciones en minutos, recursos, advertencias y conceptos para Costos y Cotización.</p></section>;
+  const originCameraRef = useRef<HTMLInputElement>(null);
+  const destinationCameraRef = useRef<HTMLInputElement>(null);
+  const [accessPhotos, setAccessPhotos] = useState({ Origen: 0, Destino: 0 });
+  const recordAccessPhotos = (
+    point: "Origen" | "Destino",
+    files: FileList | null,
+  ) => {
+    const count = files?.length || 0;
+    if (count) {
+      setAccessPhotos((current) => ({
+        ...current,
+        [point]: current[point] + count,
+      }));
+    }
+  };
+
+  return (
+    <section className="space-y-3" data-testid="survey-access">
+      <div className="grid gap-2 sm:grid-cols-2">
+        {([
+          { point: "Origen", floor: 6, access: "Elevador de carga" },
+          { point: "Destino", floor: 3, access: "Escalera" },
+        ] as const).map((site) => (
+          <article
+            key={site.point}
+            className="rounded-lg border border-slate-200 bg-white p-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`grid h-6 w-6 place-items-center rounded text-[10px] font-black ${site.point === "Origen" ? "bg-sky-100 text-sky-800" : "bg-indigo-100 text-indigo-800"}`}
+                >
+                  {site.point[0]}
+                </span>
+                <strong className="text-sm">{site.point}</strong>
+              </div>
+              <input
+                ref={
+                  site.point === "Origen"
+                    ? originCameraRef
+                    : destinationCameraRef
+                }
+                data-testid={`access-camera-${site.point.toLowerCase()}`}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only"
+                onChange={(event) => {
+                  recordAccessPhotos(site.point, event.currentTarget.files);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  (site.point === "Origen"
+                    ? originCameraRef
+                    : destinationCameraRef
+                  ).current?.click()
+                }
+                aria-label={`Activar cámara de ${site.point.toLowerCase()}`}
+                title={`Fotografiar acceso de ${site.point.toLowerCase()}`}
+                className={`relative grid h-8 w-8 place-items-center rounded-full border ${site.point === "Origen" ? "border-sky-300 bg-sky-50 text-sky-700" : "border-indigo-300 bg-indigo-50 text-indigo-700"}`}
+              >
+                <Camera className="h-4 w-4" />
+                {accessPhotos[site.point] > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-emerald-700 px-1 text-[8px] font-black text-white"
+                  >
+                    {accessPhotos[site.point]}
+                  </span>
+                )}
+              </button>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label>
+                <span className="block text-[9px] font-black uppercase text-slate-500">
+                  Piso
+                </span>
+                <input
+                  type="number"
+                  defaultValue={site.floor}
+                  className="mt-1 h-8 w-full rounded border border-slate-300 px-2 text-xs"
+                />
+              </label>
+              <label>
+                <span className="block text-[9px] font-black uppercase text-slate-500">
+                  Acceso principal
+                </span>
+                <input
+                  value={site.access}
+                  readOnly
+                  className="mt-1 h-8 w-full rounded border border-slate-300 bg-slate-50 px-2 text-xs"
+                />
+              </label>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="grid grid-cols-[minmax(140px,1fr)_54px_54px] items-center bg-slate-100 px-3 py-2 text-[9px] font-black uppercase text-slate-500 sm:grid-cols-[170px_minmax(150px,1fr)_70px_70px]">
+          <span>Condición</span>
+          <span className="hidden sm:block">Qué representa</span>
+          <span className="text-center">Origen</span>
+          <span className="text-center">Destino</span>
+        </div>
+        {ACCESS_ROWS.map(([label, detail, origin, destination]) => (
+          <div
+            key={label}
+            className="grid grid-cols-[minmax(140px,1fr)_54px_54px] items-center border-t border-slate-100 px-3 py-2 text-[10px] sm:grid-cols-[170px_minmax(150px,1fr)_70px_70px]"
+          >
+            <strong>{label}</strong>
+            <span className="hidden text-slate-500 sm:block">{detail}</span>
+            <span className="text-center">
+              <input
+                aria-label={`${label} en origen`}
+                type="checkbox"
+                defaultChecked={origin}
+              />
+            </span>
+            <span className="text-center">
+              <input
+                aria-label={`${label} en destino`}
+                type="checkbox"
+                defaultChecked={destination}
+              />
+            </span>
+          </div>
+        ))}
+      </div>
+      <div
+        className="grid gap-2 lg:grid-cols-2"
+        data-testid="building-access-catalog"
+      >
+        <article className="rounded-lg border border-sky-200 bg-sky-50 p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-sky-800" />
+              <div>
+                <strong className="block text-xs text-[#003b70]">
+                  Torre Empresarial Piantini
+                </strong>
+                <span className="text-[9px] text-slate-500">
+                  Perfil interno del edificio · Origen
+                </span>
+              </div>
+            </div>
+            <span className="text-[9px] font-bold text-sky-800">
+              {6 + accessPhotos.Origen} fotos
+            </span>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[9px]">
+            <span>4 visitas verificadas</span>
+            <span>6 fotos históricas</span>
+            <span>Elevador de carga</span>
+            <span>Parqueo restringido</span>
+          </div>
+        </article>
+        <article className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+          <div className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-indigo-800" />
+            <strong className="text-xs text-[#003b70]">
+              Aprendizaje de zona
+            </strong>
+          </div>
+          <p className="mt-2 text-[10px] text-slate-600">
+            Cada visita agrega una versión fechada de facilidades,
+            inconvenientes y evidencias. Los futuros análisis de zonas usan
+            datos agrupados sin exponer al cliente.
+          </p>
+        </article>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[10px] text-amber-950">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            <strong>Destino · piso 3 por escalera:</strong> aumenta tiempo y
+            esfuerzo según la regla configurada.
+          </p>
+        </div>
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[10px] text-amber-950">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            <strong>Origen · elevador sobre piso 5:</strong> añade tiempo
+            operativo sin fijar aquí el precio.
+          </p>
+        </div>
+      </div>
+      <p className="text-[10px] text-slate-500">
+        El Motor Logístico convierte estas condiciones en minutos, recursos,
+        advertencias y conceptos para Costos y Cotización.
+      </p>
+    </section>
+  );
 }
 
 export default function SurveyVisualPreview() {

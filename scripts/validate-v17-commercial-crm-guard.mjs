@@ -5,7 +5,7 @@ const read = (path) => readFileSync(path, "utf8");
 const invariant = (condition, message) => { if (!condition) throw new Error(`V17_COMMERCIAL_CRM_GUARD:${message}`); };
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-invariant(migrations.length === 21, `se esperaban 21 migraciones, existen ${migrations.length}`);
+invariant(migrations.length === 22 && migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation"), `se esperaban 22 migraciones canónicas, existen ${migrations.length}`);
 
 const catalog = read("src/hub/appCatalog.ts");
 invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");
@@ -86,4 +86,4 @@ for (const command of ["npm run typecheck:v17-commercial-crm", "npm run test:v17
 }
 const vite = read("vite.config.ts");
 invariant(/base:\s*["']\/["']/.test(vite), "assets deben usar raíz absoluta para deep links anidados");
-console.log(JSON.stringify({ ok: true, migrations: 21, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], authorizationBoundary: "PRE_LAZY" }));
+console.log(JSON.stringify({ ok: true, migrations: 22, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], authorizationBoundary: "PRE_LAZY" }));

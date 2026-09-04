@@ -13,6 +13,7 @@ const baseline = new Map([
   ["api/_lib/adminIdentityInvitationHttp.js", read("api/_lib/adminIdentityInvitationHttp.js")],
   ["api/_lib/adminMembershipHttp.js", read("api/_lib/adminMembershipHttp.js")], ["api/_lib/authHttp.js", read("api/_lib/authHttp.js")],
   ["api/_lib/authOrigin.js", read("api/_lib/authOrigin.js")], ["api/_lib/crmCaseMutationHttp.js", read("api/_lib/crmCaseMutationHttp.js")],
+  ["api/_lib/crmIcpV2ApiHttp.js", read("api/_lib/crmIcpV2ApiHttp.js")],
   ["api/_lib/crmOwnerCatalogHttp.js", read("api/_lib/crmOwnerCatalogHttp.js")], ["api/_lib/crmPipelineReadHttp.js", read("api/_lib/crmPipelineReadHttp.js")],
   ["api/_lib/pipelineCaseMutationHttp.js", read("api/_lib/pipelineCaseMutationHttp.js")],
   ["api/clients/index.js", read("api/clients/index.js")], ["api/projects/index.js", read("api/projects/index.js")],
@@ -38,8 +39,8 @@ function mutateManifest(mutator) {
 
 const current = validateCrmCorsGuard({ overrides: baseline });
 const inventory = loadProtectedCorsInventory({ overrides: baseline });
-check("inventario completo 55/55", current.ok && current.routes === 55 && current.classifiedRoutes === 55);
-check("28 rutas same-origin", current.protectedSameOrigin === 28);
+check("inventario completo 58/58", current.ok && current.routes === 58 && current.classifiedRoutes === 58);
+check("31 rutas same-origin", current.protectedSameOrigin === 31);
 check("allowlist pública 2/2", current.publicDeliberate === 2 && current.webhookOwnAuth === 0);
 check("25 rutas legacy cerradas", current.legacyPending === 25);
 check("categorías exactas sin solapamientos", current.duplicates === 0 && current.unclassified === 0 && current.overlaps === 0);
@@ -64,8 +65,8 @@ rejected("ruta duplicada en manifiesto", "scripts/protected-cors-route-inventory
 rejected("ruta en dos categorías", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
   categories.publicDeliberate.push("/api/admin/memberships");
 }), /superpuestas/);
-reportRejected("resumen alterado no coincide con manifiesto", { ...current, protectedSameOrigin: 27 }, /protectedSameOrigin/);
-reportRejected("éxito incompleto no engaña al agregador", { ...current, routes: 54, classifiedRoutes: 54 }, /routes/);
+reportRejected("resumen alterado no coincide con manifiesto", { ...current, protectedSameOrigin: 30 }, /protectedSameOrigin/);
+reportRejected("éxito incompleto no engaña al agregador", { ...current, routes: 57, classifiedRoutes: 57 }, /routes/);
 rejected("wildcard Clients", "api/clients/index.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard Projects con casing", "api/projects/index.js", (value) => `${value}\nres.setHeader("aCcEsS-CoNtRoL-AlLoW-OrIgIn", "*");`);
 rejected("wildcard Admin", "api/_lib/adminMembershipHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);

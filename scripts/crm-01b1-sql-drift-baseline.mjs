@@ -12,20 +12,21 @@ export const LOCAL_18_CATALOG_SHA256 = "4ecc54d31708c31c32930273eca91800185b6276
 export const LOCAL_19_CATALOG_SHA256 = "2de9d06124876f1a1ba2fb97898d52746bf45d2fa1f3ef9c09c5460cb651758e";
 export const LOCAL_20_CATALOG_SHA256 = "c8301cc67acb2cd4993c3dc10565e6933e45b006520492d71839fde51c39f3d2";
 export const LOCAL_21_CATALOG_SHA256 = "a1a4da277070269bbad2452471717ef588c6c58cc2bc0cf55203835abb0cd930";
+export const LOCAL_22_CATALOG_SHA256 = "ddf3e8851410807ce123160010ef727ff8c1e757f545b299a871f5bc9ab7427e";
 export const RESTORED_NEON_15_CATALOG_SHA256 = "4d5959dc99b03a7866bc3e038fcaea611fe665a5412cb235522cc05ab5e011d3";
 
 const EXPECTED_CATALOG = Object.freeze({
-  count: 4346,
-  sha256: LOCAL_21_CATALOG_SHA256,
+  count: 4486,
+  sha256: LOCAL_22_CATALOG_SHA256,
   categories: Object.freeze({
-    check: Object.freeze({ count: 161, sha256: "48e47c7aad139954c889a5a87aa72e20dcfb9b3cd6920643f99ad9f899e726a7" }),
-    column: Object.freeze({ count: 1725, sha256: "90fe610b648ee600c8c8cb5da5b1ae8cfe7c0195a31c36f78a8b667e10d77f52" }),
-    constraint: Object.freeze({ count: 1277, sha256: "3409723fbd1d841e9091f4242492cae0085f2e32bce2428e83713010eb72fc70" }),
-    enum: Object.freeze({ count: 447, sha256: "daf479a2906fa5aed091cb003a14035682dc4cec176d992dc4da21ff48eeed40" }),
-    foreign_key: Object.freeze({ count: 214, sha256: "04c68dbbe3de1a5b1e9bfc8bd58bbaf1c00c68731876411141ae523cff5a5303" }),
-    function: Object.freeze({ count: 32, sha256: "d8ed1c460d1de7a14b92f0c50361054139e84f7b628c48b4f1f370e0a60f7b60" }),
-    index: Object.freeze({ count: 453, sha256: "94d7424d4b00edcb20156df38708f1e4347932a9ad6c1121f1d8b61aa6acc6e1" }),
-    trigger: Object.freeze({ count: 37, sha256: "3f10479d2301305d6a16e4c14079e8fc5bafd84f2983514e90896c475b7c8535" }),
+    check: Object.freeze({ count: 172, sha256: "0c22d0e00510659e85cbabea9cd830b4242c8281db0ac37b9cbe773fec526b3d" }),
+    column: Object.freeze({ count: 1773, sha256: "e7930dfa273a799c57a94b77be8ee12dd59dcd838bb8ef2787c0457ad1567f36" }),
+    constraint: Object.freeze({ count: 1303, sha256: "af90211c1bea442b7ec702db1b843b5fe1bd84afe21d036ad5ab9f812293695f" }),
+    enum: Object.freeze({ count: 471, sha256: "d7cdb1d874ac8032081d4173dd108acada5dddb93644ae94b773cbc746a57f1f" }),
+    foreign_key: Object.freeze({ count: 219, sha256: "6dab0218a95df64515764fec5acfba9a25151d02238734bf82a070a8bf138162" }),
+    function: Object.freeze({ count: 39, sha256: "d1599d25efd2b8c3bf51b6d5fc89a6a9563130fd81c7f25a62b90d37340b0423" }),
+    index: Object.freeze({ count: 466, sha256: "cfde50179c684b8903ca30f05f49709413193a3993a76c7906115f171725c278" }),
+    trigger: Object.freeze({ count: 43, sha256: "43436df3b17d138e22be657081b2a11e414477230abb5c07d999773741067fcb" }),
   }),
 });
 
@@ -51,6 +52,7 @@ const EXPECTED_SQL_ONLY_COUNTS = Object.freeze({
   "20260824010000_v17_client_public_ref_case_mutations": Object.freeze({ function: 1, trigger: 1 }),
   "20260827010000_v17_tenant_membership_public_ref": Object.freeze({ function: 1, trigger: 1 }),
   "20260827020000_v17_admin_identity_invitation": Object.freeze({ check: 6, function: 1, special_index: 1, trigger: 1 }),
+  "20260831010000_v17_crm_icp_foundation": Object.freeze({ check: 11, function: 7, special_index: 4, trigger: 6 }),
 });
 
 const CATALOG_SQL = `
@@ -195,7 +197,7 @@ export async function inspectCrm01b1SqlDriftBaseline({
         FROM "osi"."_prisma_migrations"
         WHERE rolled_back_at IS NULL
       `);
-      invariant(history.complete === 21 && history.failed === 0, "historial no es 21/21 completo");
+      invariant(history.complete === 22 && history.failed === 0, "historial no es 22/22 completo");
       const rows = (await tx.$queryRawUnsafe(CATALOG_SQL)).map((row) => Object.freeze({
         kind: row.kind,
         schema: row.schema_name,

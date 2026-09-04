@@ -117,8 +117,8 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  if (migrations.length !== 21 || !migrations.includes(MIGRATION) || !migrations.includes("20260827010000_v17_tenant_membership_public_ref")
-    || migrations.at(-1) !== "20260827020000_v17_admin_identity_invitation") fail("cadena canónica distinta de 21 o migración 21 no es la última");
+  if (migrations.length !== 22 || !migrations.includes(MIGRATION) || !migrations.includes("20260827010000_v17_tenant_membership_public_ref")
+    || !migrations.includes("20260827020000_v17_admin_identity_invitation") || migrations.at(-1) !== "20260831010000_v17_crm_icp_foundation") fail("cadena canónica distinta de 22 o migración ICP no es la última");
 
   const schema = read("prisma/schema.prisma");
   const migration = read(`prisma/migrations/${MIGRATION}/migration.sql`);
@@ -186,7 +186,7 @@ export function validateV17CrmCaseMutationsGuard({ root = process.cwd(), overrid
   requireMatch(browserSuite, /V17_CAPTURE_MUTATION_EVIDENCE === "1"/, "captura documental no exige autorización explícita");
   requireMatch(browserSuite, /CAPTURE_MUTATION_EVIDENCE && \["chromium-desktop", "chromium-mobile"\]\.includes/, "suite browser puede reescribir evidencia por defecto");
 
-  return Object.freeze({ ok: true, migrations: 21, migration: MIGRATION, endpoints: Object.freeze(["POST /api/crm/pipeline-cases", "PATCH /api/crm/pipeline-cases/:caseRef", "GET /api/crm/client-options"]), mutationModes: Object.freeze(["LOCAL_ONLY", "PREVIEW_REHEARSAL", "PRODUCTION_PILOT"]), productionMutationMode: "PRODUCTION_PILOT" });
+  return Object.freeze({ ok: true, migrations: 22, migration: MIGRATION, endpoints: Object.freeze(["POST /api/crm/pipeline-cases", "PATCH /api/crm/pipeline-cases/:caseRef", "GET /api/crm/client-options"]), mutationModes: Object.freeze(["LOCAL_ONLY", "PREVIEW_REHEARSAL", "PRODUCTION_PILOT"]), productionMutationMode: "PRODUCTION_PILOT" });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

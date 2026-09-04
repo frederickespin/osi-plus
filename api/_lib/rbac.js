@@ -35,6 +35,7 @@ export const PERMS = Object.freeze({
   PIPELINE_TRANSITION: "pipeline:transition",
   PIPELINE_ASSIGN: "pipeline:assign",
   PIPELINE_CREATE: "pipeline:create",
+  PIPELINE_CREATE_PENDING_DESTINATION: "pipeline:create:pending-destination",
   PIPELINE_UPDATE_OWN: "pipeline:update:own",
   PIPELINE_UPDATE_ANY: "pipeline:update:any",
 
@@ -86,6 +87,7 @@ export const PERMS = Object.freeze({
 // holding a baseline role never enables a transactional case mutation.
 const EXPLICIT_PIPELINE_MUTATION_PERMISSIONS = new Set([
   PERMS.PIPELINE_CREATE,
+  PERMS.PIPELINE_CREATE_PENDING_DESTINATION,
   PERMS.PIPELINE_UPDATE_OWN,
   PERMS.PIPELINE_UPDATE_ANY,
 ]);

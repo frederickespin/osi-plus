@@ -16,7 +16,7 @@ function rejected(name, options, pattern) {
 
 try {
   const baseline = validateMt01c2b3a({ root, env: { MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false", COMMERCIAL_TENANCY_WRITE_MODE: "LEGACY_ONLY" } });
-  check("estado actual aprobado", baseline.ok && baseline.migrations === 21 && baseline.preparedConsumers.length === 2);
+  check("estado actual aprobado", baseline.ok && baseline.migrations === 22 && baseline.preparedConsumers.length === 2 && baseline.runtimeCreators.length === 7 && baseline.pipelineCaseCreateGoverned);
   rejected("TENANT_WRITE en CI rechazado", { env: { COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE" } }, /configuración comercial/);
   rejected("LEGACY_ONLY con casing distinto rechazado", { env: { COMMERCIAL_TENANCY_WRITE_MODE: "legacy_only" } }, /configuración comercial/);
   rejected("LEGACY_ONLY con espacio rechazado", { env: { COMMERCIAL_TENANCY_WRITE_MODE: "LEGACY_ONLY " } }, /configuración comercial/);
@@ -24,7 +24,7 @@ try {
   rejected("HYBRID rechazado", { env: { MT01B_AUTH_MODE: "HYBRID" } }, /HYBRID/);
   rejected("tenant switch rechazado", { env: { MT01B_TENANT_SWITCH_ENABLED: "true" } }, /tenant switch/);
   rejected("cliente V2 rechazado", { env: { VITE_MT01B2_CLIENT_ENABLED: "true" } }, /cliente V2/);
-  rejected("migración 22 rechazada", { migrations: [...Array.from({ length: 21 }, (_, index) => `m${index}`), "20260828010000_unexpected"] }, /21 migraciones/);
+  rejected("migración 23 rechazada", { migrations: [...Array.from({ length: 22 }, (_, index) => `m${index}`), "20260901010000_unexpected"] }, /22 migraciones/);
   rejected("consumidor runtime nuevo rechazado", { extraRuntimeSources: { "api/new-endpoint.js": 'await createTenantClient(prisma, {});' } }, /consumidores preparados/);
   rejected("creación PipelineCase sin puente rechazada", { extraRuntimeSources: { "api/pipeline/new.js": "await prisma.pipelineCase.create({data:{}});" } }, /creadores runtime/);
   const clientSource = readFileSync(resolve(root, "api/clients/index.js"), "utf8");
@@ -34,6 +34,9 @@ try {
   rejected("actualización de tenant bloqueada", { overrides: { "api/k/project-validate.js": projectValidate.replaceAll('data: { kState: "VALIDATED"', 'data: { tenantId: body.tenantId, kState: "VALIDATED"') } }, /autoridad empresarial/);
   rejected("spread dentro de update K rechazado", { overrides: { "api/k/project-validate.js": projectValidate.replaceAll('data: { kState: "VALIDATED"', 'data: { ...body, kState: "VALIDATED"') } }, /campos permitidos/);
   rejected("ownerId heredado dentro de update rechazado", { overrides: { "api/k/project-validate.js": projectValidate.replaceAll('data: { kState: "VALIDATED"', 'data: { ownerId: body.ownerId, kState: "VALIDATED"') } }, /autoridad empresarial/);
+  const icpApiDomain = readFileSync(resolve(root, "api/_lib/crmIcpV2ApiDomain.js"), "utf8");
+  rejected("promoción ICP sin tenant bloqueada", { overrides: { "api/_lib/crmIcpV2ApiDomain.js": icpApiDomain.replace("tenantId: actor.tenantId, routeContractVersion: 1", "routeContractVersion: 1") } }, /promoción por caso, tenant/);
+  rejected("payload de promoción ICP ampliado rechazado", { overrides: { "api/_lib/crmIcpV2ApiDomain.js": icpApiDomain.replace("data: { routeContractVersion: 2", "data: { ownerId: actor.userId, routeContractVersion: 2") } }, /autoridad empresarial|payload cerrado/);
   rejected("upsert comercial nuevo rechazado", { extraRuntimeSources: { "api/new-upsert.js": "await prisma.client.upsert({ where: { id }, update: {}, create: {} });" } }, /updates comerciales|creadores runtime/);
   rejected("createMany Lead nuevo rechazado", { extraRuntimeSources: { "api/new-lead.js": "await prisma.lead.createMany({ data: [] });" } }, /creadores runtime/);
   rejected("SQL raw comercial rechazado", { extraRuntimeSources: { "api/new-raw.js": "await prisma.$executeRawUnsafe('delete from osi.osi_clients');" } }, /SQL cruda/);

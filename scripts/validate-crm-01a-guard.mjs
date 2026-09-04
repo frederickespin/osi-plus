@@ -3,7 +3,7 @@ import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 
-const EXPECTED_MIGRATIONS = 21;
+const EXPECTED_MIGRATIONS = 22;
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
@@ -17,11 +17,17 @@ const CRM_MUTATION_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/[caseKey]/transition.js",
   "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
-const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES]);
+const ICP_V2_API_ROUTES = Object.freeze([
+  "api/crm/icp-v2/clients/search.js",
+  "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
+  "api/crm/icp-v2/pipeline-cases/index.js",
+]);
+const AUTHORIZED_CRM_ROUTES = Object.freeze([...CRM_ROUTES, ...CRM_MUTATION_ROUTES, ...ICP_V2_API_ROUTES]);
 const AUTHORIZED_FRONTEND_CONSUMERS = Object.freeze([
   "src/crm-relational/api.ts",
   "src/crm-relational/mutationApi.ts",
   "src/crm-relational/readApi.ts",
+  "src/crm-icp-v2/api.ts",
 ]);
 
 function invariant(condition, message) {
@@ -130,7 +136,8 @@ export function validateCrm01aGuard({
   for (const [path, source] of Object.entries(runtimeSources)) {
     if (path.startsWith("src/")) {
       if (AUTHORIZED_FRONTEND_CONSUMERS.includes(path)) {
-        invariant(/(?:API_PREFIX|API)\s*=\s*["']\/api\/crm["']/.test(source), `${path} no usa el adaptador CRM autorizado`);
+        const endpoint = path === "src/crm-icp-v2/api.ts" ? "/api/crm/icp-v2" : "/api/crm";
+        invariant(source.includes(`= "${endpoint}"`) || source.includes(`= '${endpoint}'`), `${path} no usa el adaptador CRM autorizado`);
       } else {
         invariant(!/api\/crm|crmPipelineRead|CRM_PIPELINE_RUNTIME_MODE/.test(source), `${path} conecta CRM-01A al frontend fuera del adaptador autorizado`);
       }
@@ -158,6 +165,7 @@ export function validateCrm01aGuard({
     legacyHeaderExceptions: authInventory.legacyHeaderExceptions,
     frontendConsumers: AUTHORIZED_FRONTEND_CONSUMERS.length,
     writeEndpoints: 2,
+    isolatedApiRoutes: ICP_V2_API_ROUTES.length,
     disabledOptionsGate: true,
   });
 }

@@ -7,6 +7,7 @@ export const V17_CASE_PUBLIC_REF_MIGRATION = "20260821010000_v17_pipeline_case_p
 const V17_CLIENT_PUBLIC_REF_MIGRATION = "20260824010000_v17_client_public_ref_case_mutations";
 const V17_MEMBERSHIP_PUBLIC_REF_MIGRATION = "20260827010000_v17_tenant_membership_public_ref";
 const V17_ADMIN_IDENTITY_INVITATION_MIGRATION = "20260827020000_v17_admin_identity_invitation";
+const V17_CRM_ICP_FOUNDATION_MIGRATION = "20260831010000_v17_crm_icp_foundation";
 const PREVIOUS_MIGRATION_HASHES = Object.freeze({
   "20260801000000_production_baseline": "59a6060c78107a73cf9793da65cc5fc1a35d9d3c5e60ae37e04e5f395812bb2c",
   "20260801001000_mt01a_tenant_memberships": "015c8bd39f050f71fbe1bea0f94198091149296269fed77905bcefd23094cd44",
@@ -64,11 +65,12 @@ export function validateV17CasePublicRefGuard({
 } = {}) {
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  invariant(migrations.length === 21, "se exigen exactamente 21 migraciones");
+  invariant(migrations.length === 22, "se exigen exactamente 22 migraciones");
   invariant(migrations.includes(V17_CASE_PUBLIC_REF_MIGRATION), "migración 18 exacta ausente");
   invariant(migrations.includes(V17_CLIENT_PUBLIC_REF_MIGRATION), "migración 19 exacta ausente");
   invariant(migrations.includes(V17_MEMBERSHIP_PUBLIC_REF_MIGRATION), "migración 20 exacta ausente");
-  invariant(migrations.at(-1) === V17_ADMIN_IDENTITY_INVITATION_MIGRATION, "migración 21 exacta ausente o fuera de orden");
+  invariant(migrations.includes(V17_ADMIN_IDENTITY_INVITATION_MIGRATION), "migración 21 exacta ausente");
+  invariant(migrations.at(-1) === V17_CRM_ICP_FOUNDATION_MIGRATION, "migración 22 ICP exacta ausente o fuera de orden");
 
   const schema = schemaSource ?? readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
   const sql = (migrationSource ?? readFileSync(resolve(root, "prisma/migrations", V17_CASE_PUBLIC_REF_MIGRATION, "migration.sql"), "utf8")).replaceAll("\r\n", "\n");
@@ -118,6 +120,8 @@ export function validateV17CasePublicRefGuard({
     "api/_lib/adminMembershipDomain.js",
     "api/_lib/crmCaseMutationDomain.js",
     "api/_lib/crmClientOptions.js",
+    "api/_lib/crmIcpV2ApiDomain.js",
+    "api/_lib/crmIcpV2Domain.js",
   ]);
   const publicRefConsumers = Object.entries(runtime)
     .filter(([, source]) => /\bpublicRef\b|\bpublic_ref\b/.test(source))
@@ -207,7 +211,7 @@ export function validateV17CasePublicRefGuard({
 
   return Object.freeze({
     ok: true,
-    migrations: 21,
+    migrations: 22,
     runtimeConsumers: publicRefConsumers.length,
     runtimeConsumer: canonicalReadPath,
     publicContract: "caseRef",

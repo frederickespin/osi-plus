@@ -3,11 +3,12 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const V17_CASE_CLIENT_MIGRATION = "20260801020000_v17_pipeline_case_client_authority";
-const EXPECTED_MIGRATIONS = 21;
+const EXPECTED_MIGRATIONS = 22;
 const V17_CASE_PUBLIC_REF_MIGRATION = "20260821010000_v17_pipeline_case_public_ref";
 const V17_CLIENT_PUBLIC_REF_MIGRATION = "20260824010000_v17_client_public_ref_case_mutations";
 const V17_MEMBERSHIP_PUBLIC_REF_MIGRATION = "20260827010000_v17_tenant_membership_public_ref";
 const V17_ADMIN_IDENTITY_INVITATION_MIGRATION = "20260827020000_v17_admin_identity_invitation";
+const V17_CRM_ICP_FOUNDATION_MIGRATION = "20260831010000_v17_crm_icp_foundation";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`V17_CASE_CLIENT_GUARD: ${message}`);
@@ -33,7 +34,8 @@ export function validateV17CaseClientGuard({
   invariant(migrations.includes(V17_CASE_PUBLIC_REF_MIGRATION), "la migración 18 autorizada debe existir");
   invariant(migrations.includes(V17_CLIENT_PUBLIC_REF_MIGRATION), "la migración 19 autorizada debe existir");
   invariant(migrations.includes(V17_MEMBERSHIP_PUBLIC_REF_MIGRATION), "la migración 20 autorizada debe existir");
-  invariant(migrations.at(-1) === V17_ADMIN_IDENTITY_INVITATION_MIGRATION, "la migración 21 autorizada debe ser la última");
+  invariant(migrations.includes(V17_ADMIN_IDENTITY_INVITATION_MIGRATION), "la migración 21 autorizada debe existir");
+  invariant(migrations.at(-1) === V17_CRM_ICP_FOUNDATION_MIGRATION, "la migración 22 ICP debe ser la última");
 
   const schema = schemaSource ?? readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
   const sql = (migrationSource ?? readFileSync(resolve(root, "prisma/migrations", V17_CASE_CLIENT_MIGRATION, "migration.sql"), "utf8")).replaceAll("\r\n", "\n");

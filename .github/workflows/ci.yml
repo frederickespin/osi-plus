@@ -163,6 +163,12 @@ jobs:
           npm run guard:v17-admin-identity
           npm run test:v17-admin-identity:http
           npm run test:v17-production-pilot-gates
+          npm run guard:v17-crm-icp-foundation
+          npm run test:v17-crm-icp-foundation
+          npm run guard:v17-crm-icp-api
+          npm run test:v17-crm-icp-api
+          npm run guard:v17-crm-icp-ui
+          npm run guard:v17-icp-consolidation
           node scripts/validate-v17-commercial-crm-guard.mjs
           npm run guard:v17-commercial-inbox-reload-race
           npm run guard:v17-commercial-crm-preview
@@ -245,6 +251,12 @@ jobs:
         env:
           COMMERCIAL_CRM_ARTIFACT_DIR: ${{ runner.temp }}/v17-commercial-crm-playwright-artifacts
         run: npm run test:v17-commercial-crm:browser
+
+      - name: Validate consolidated ICP v2 UI in real browsers (24/24)
+        run: npm run test:v17-crm-icp-ui:browser
+
+      - name: Validate isolated ICP visual Preview (1/1)
+        run: npm run test:v17-crm-icp-ui:visual
 
       - name: Validate isolated CRM Preview rehearsal in real browsers (24/24)
         run: npm run test:v17-commercial-crm-preview:browser
@@ -389,6 +401,12 @@ jobs:
           node scripts/validate-v17-case-public-ref-guard-test.mjs
           node scripts/validate-v17-crm-case-mutations-guard.mjs
           node scripts/validate-v17-crm-case-mutations-guard-test.mjs
+          npm run guard:v17-crm-icp-foundation
+          npm run test:v17-crm-icp-foundation
+          npm run guard:v17-crm-icp-api
+          npm run test:v17-crm-icp-api
+          npm run guard:v17-crm-icp-ui
+          npm run guard:v17-icp-consolidation
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           npm run guard:v17-admin-tenant-memberships
@@ -471,6 +489,16 @@ jobs:
       - name: Verify explicit SQL-only catalog baseline
         run: node scripts/crm-01b1-sql-drift-baseline.mjs
 
+      - name: Validate V17 ICP v2 database foundation
+        env:
+          V17_CRM_ICP_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-crm-icp-foundation:db
+
+      - name: Validate V17 ICP v2 isolated API against PostgreSQL
+        env:
+          V17_CRM_ICP_API_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-crm-icp-api:db
+
       - name: Verify canonical history and safe modes
         run: node scripts/validate-canonical-ci.mjs
 
@@ -548,4 +576,6 @@ jobs:
           node scripts/validate-v17-crm-vary-guard.mjs
           node scripts/validate-v17-crm-vary-guard-test.mjs
           npm run guard:auth-legacy-private-headers
+          npm run guard:v17-crm-icp-ui
+          npm run guard:v17-icp-consolidation
           git diff --exit-code

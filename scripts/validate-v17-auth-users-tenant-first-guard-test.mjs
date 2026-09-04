@@ -7,7 +7,7 @@ const files = [
   "api/_lib/authContext.js", "api/auth/login.js", "api/auth/me.js", "api/users/index.js",
   "api/_lib/adminMembershipDomain.js", "src/admin-tenant/adminApi.ts", "src/App.tsx", "src/components/layout/Sidebar.tsx", "src/lib/roleModuleMap.ts",
   "src/components/auth/LoginScreen.tsx", "src/lib/sessionStore.ts", "prisma/schema.prisma",
-  "src/lib/api.ts", "src/crm-relational/api.ts", "src/crm-relational/readApi.ts", "src/crm-relational/mutationApi.ts",
+  "src/lib/api.ts", "src/crm-relational/api.ts", "src/crm-relational/readApi.ts", "src/crm-relational/mutationApi.ts", "src/crm-icp-v2/api.ts",
 ];
 const sources = new Map(files.map((file) => [file, fs.readFileSync(path.join(root, file), "utf8")]));
 const results = [];
@@ -36,5 +36,6 @@ rejected("cambio no limpia storage", (m) => m.set("src/lib/sessionStore.ts", m.g
 rejected("User obtiene publicRef", (m) => m.set("prisma/schema.prisma", m.get("prisma/schema.prisma").replace("model User {", "model User {\n  publicRef String")));
 rejected("User.role vuelve al DTO de login", (m) => m.set("api/auth/login.js", m.get("api/auth/login.js").replace("name: user.name,", "name: user.name, role: user.role,")));
 rejected("cliente CRM omite membershipRef", (m) => m.set("src/crm-relational/readApi.ts", m.get("src/crm-relational/readApi.ts").replaceAll('"X-OSI-Membership-Ref"', '"X-Removed-Ref"')));
+rejected("cliente ICP omite membershipRef", (m) => m.set("src/crm-icp-v2/api.ts", m.get("src/crm-icp-v2/api.ts").replaceAll('"X-OSI-Membership-Ref"', '"X-Removed-Ref"')));
 
 process.stdout.write(`${JSON.stringify({ ok: true, passed: results.length, results }, null, 2)}\n`);

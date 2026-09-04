@@ -20,6 +20,7 @@ export function validateV17AuthUsersTenantFirstSources(sources) {
   const loginUi = sources.get("src/components/auth/LoginScreen.tsx") || "";
   const session = sources.get("src/lib/sessionStore.ts") || "";
   const centralApi = sources.get("src/lib/api.ts") || "";
+  const icpApi = sources.get("src/crm-icp-v2/api.ts") || "";
   const schema = sources.get("prisma/schema.prisma") || "";
 
   invariant(/x-osi-membership-ref/.test(context) && /UUID_V4\.test\(value\)/.test(context), "membershipRef no se valida canónicamente antes de resolver");
@@ -54,9 +55,10 @@ export function validateV17AuthUsersTenantFirstSources(sources) {
   invariant(userRoleUses === 1 && /signAccessToken\([\s\S]{0,180}role: user\.role/.test(login), "User.role debe quedar sólo como claim LEGACY de compatibilidad en login");
   invariant(!/response\.user\.id|response\.user\.email|response\.user\.role\s+as/.test(loginUi), "frontend volvió a usar identidad global o User.role como autoridad");
 
-  for (const file of ["src/lib/api.ts", "src/admin-tenant/adminApi.ts", "src/crm-relational/api.ts", "src/crm-relational/readApi.ts", "src/crm-relational/mutationApi.ts"]) {
+  for (const file of ["src/lib/api.ts", "src/admin-tenant/adminApi.ts", "src/crm-relational/api.ts", "src/crm-relational/readApi.ts", "src/crm-relational/mutationApi.ts", "src/crm-icp-v2/api.ts"]) {
     invariant(/X-OSI-Membership-Ref|x-osi-membership-ref/.test(sources.get(file) || ""), `${file} no propaga la preferencia revalidable`);
   }
+  invariant(/membershipRefProvider[\s\S]*getMembershipRef[\s\S]*MT01B_MEMBERSHIP_SELECTION_INVALID/.test(icpApi), "cliente ICP no falla cerrado sin Membership seleccionada");
   return Object.freeze({ retiredUserRoutes: 1, publicReferencesAdded: 0, schemaMigrationsAdded: 0 });
 }
 
@@ -65,7 +67,7 @@ export function validateV17AuthUsersTenantFirstRepository(root = process.cwd()) 
     "api/_lib/authContext.js", "api/auth/login.js", "api/auth/me.js", "api/users/index.js",
     "api/_lib/adminMembershipDomain.js", "src/admin-tenant/adminApi.ts", "src/App.tsx", "src/components/layout/Sidebar.tsx", "src/lib/roleModuleMap.ts",
     "src/components/auth/LoginScreen.tsx", "src/lib/sessionStore.ts", "prisma/schema.prisma",
-    "src/lib/api.ts", "src/crm-relational/api.ts", "src/crm-relational/readApi.ts", "src/crm-relational/mutationApi.ts",
+    "src/lib/api.ts", "src/crm-relational/api.ts", "src/crm-relational/readApi.ts", "src/crm-relational/mutationApi.ts", "src/crm-icp-v2/api.ts",
   ];
   return validateV17AuthUsersTenantFirstSources(new Map(files.map((file) => [file, read(root, file)])));
 }

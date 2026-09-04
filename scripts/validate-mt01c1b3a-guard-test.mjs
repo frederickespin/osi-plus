@@ -32,7 +32,10 @@ function expectFailure(name, files, env, pattern) {
 
 try {
   safeExecutor();
-  const migrations = Array.from({ length: 21 }, (_, index) => `prisma/migrations/${String(index).padStart(2, "0")}/migration.sql`);
+  const migrations = [
+    ...Array.from({ length: 21 }, (_, index) => `prisma/migrations/${String(index).padStart(2, "0")}/migration.sql`),
+    "prisma/migrations/20260831010000_v17_crm_icp_foundation/migration.sql",
+  ];
   for (const migration of migrations) write(migration, "-- synthetic\n");
   const safeFiles = ["api/_lib/employeeProvisioningExecutor.js", "api/_lib/employeeProvisioningPolicy.js", "api/users/index.js", ...migrations];
   check("estado actual permitido", validateMt01c1b3aGuard({ root, files: safeFiles, env: {} }).ok);
@@ -45,7 +48,7 @@ try {
   expectFailure("HYBRID rechazado", safeFiles, { MT01B_AUTH_MODE: "HYBRID" }, /HYBRID/);
   expectFailure("tenant switch rechazado", safeFiles, { MT01B_TENANT_SWITCH_ENABLED: "true" }, /tenant switch/);
   expectFailure("cliente V2 rechazado", safeFiles, { VITE_MT01B2_CLIENT_ENABLED: "true" }, /cliente V2/);
-  expectFailure("migración 22 rechazada", [...safeFiles, "prisma/migrations/20/migration.sql"], {}, /21 migraciones/);
+  expectFailure("migración 23 rechazada", [...safeFiles, "prisma/migrations/20260901010000_future/migration.sql"], {}, /22 migraciones/);
   safeExecutor();
   write("api/_lib/employeeProvisioningExecutor.js", readFileSync(join(root, "api/_lib/employeeProvisioningExecutor.js"), "utf8").replace("critical: true", "critical: false"));
   expectFailure("auditoría no crítica rechazada", safeFiles, {}, /auditoría crítica/);

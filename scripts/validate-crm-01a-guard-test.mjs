@@ -19,10 +19,10 @@ try {
   const baseline = validateCrm01aGuard({ root, env: {} });
   check("estado actual DISABLED aprobado", baseline.ok && baseline.mode === "DISABLED" && baseline.routes.length === 3);
   check("OPTIONS desactivado congelado antes del wrapper", baseline.disabledOptionsGate === true);
-  check("adaptadores frontend relacionales gobernados", baseline.frontendConsumers === 3 && baseline.writeEndpoints === 2);
+  check("adaptadores frontend relacionales gobernados", baseline.frontendConsumers === 4 && baseline.writeEndpoints === 2 && baseline.isolatedApiRoutes === 3);
   check("pipeline:view limitado a A y V", baseline.permission === "pipeline:view" && JSON.stringify(baseline.baseRoles) === JSON.stringify(["A", "V"]));
   rejected("READ_ONLY en CI rechazado", { env: { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" } }, /READ_ONLY/);
-  rejected("migración 22 rechazada", { migrations: [...Array.from({ length: 21 }, (_, index) => `m${index}`), "20260828010000_unexpected"] }, /21 migraciones/);
+  rejected("migración 23 rechazada", { migrations: [...Array.from({ length: 22 }, (_, index) => `m${index}`), "20260901010000_unexpected"] }, /22 migraciones/);
   const service = read("api/_lib/crmPipelineRead.js");
   rejected("clients:view como autoridad rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("PERMS.PIPELINE_VIEW", '"clients:view"') } }, /pipeline:view/);
   const rbac = read("api/_lib/rbac.js");

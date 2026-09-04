@@ -16,6 +16,11 @@ const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/[caseKey]/transition.js",
   "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
 ]);
+const ICP_V2_API_ROUTES = Object.freeze([
+  "api/crm/icp-v2/clients/search.js",
+  "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
+  "api/crm/icp-v2/pipeline-cases/index.js",
+]);
 const CONFIG_NAMES = Object.freeze([
   "CRM_PIPELINE_RUNTIME_MODE",
   "CRM_PIPELINE_MUTATION_MODE",
@@ -33,7 +38,7 @@ function filesBelow(directory) {
 export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env, migrationNames } = {}) {
   const read = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 21 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "se exigen 21 migraciones, incluidas V17-CASE-CLIENT y V17-CASE-PUBLIC-REF");
+  invariant(migrations.length === 22 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exigen 22 migraciones canónicas, incluida la fundación ICP");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
   invariant(/model PipelineCaseCommand\s*\{/.test(read("prisma/schema.prisma")), "datamodel no contiene autoridad PipelineCaseCommand");
 
@@ -70,7 +75,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   }
 
   const actualRoutes = apiFiles.map((path) => relative(root, path).replaceAll("\\", "/")).filter((path) => path.startsWith("api/crm/")).sort();
-  invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES].sort()), "inventario de rutas CRM cambió");
+  invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES, ...ICP_V2_API_ROUTES].sort()), "inventario de rutas CRM cambió");
   for (const path of CRM_ROUTES) {
     const source = read(path);
     invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp|crmClientOptions/.test(source), `${path} omite compuerta central`);
@@ -97,13 +102,14 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   invariant(!/CLIENTS_VIEW|clients:view/.test(`${access}\n${domain}\n${adapter}`), "clients:view no puede autorizar CRM");
   invariant(!/PERMS\.PIPELINE_UPDATE/.test(domain), "pipeline:update está reservado y no autoriza acciones actuales");
 
-  const authorizedFrontendAdapters = new Set(["src/crm-relational/api.ts", "src/crm-relational/mutationApi.ts", "src/crm-relational/readApi.ts"]);
+  const authorizedFrontendAdapters = new Set(["src/crm-relational/api.ts", "src/crm-relational/mutationApi.ts", "src/crm-relational/readApi.ts", "src/crm-icp-v2/api.ts"]);
   const srcFiles = filesBelow(resolve(root, "src")).filter((path) => /\.[cm]?[jt]sx?$/.test(path));
   for (const absolute of srcFiles) {
     const path = relative(root, absolute).replaceAll("\\", "/");
     const source = read(path);
     if (authorizedFrontendAdapters.has(path)) {
-      invariant(/(?:API_PREFIX|API)\s*=\s*["']\/api\/crm["']/.test(source), `${path} no contiene el adaptador autorizado`);
+      const endpoint = path === "src/crm-icp-v2/api.ts" ? "/api/crm/icp-v2" : "/api/crm";
+      invariant(source.includes(`= "${endpoint}"`) || source.includes(`= '${endpoint}'`), `${path} no contiene el adaptador autorizado`);
     } else {
       invariant(!/api\/crm|crmPipelineAccess|CRM_PIPELINE_(?:RUNTIME|MUTATION|ACTIVATION)/.test(source), `${path} conecta frontend CRM fuera del adaptador autorizado`);
     }
@@ -129,7 +135,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const suite of ["crm-01b3b1-gate-test.mjs", "crm-01b3b1-adversarial-test.mjs", "validate-crm-01b3b1-guard.mjs", "validate-crm-01b3b1-guard-test.mjs", "crm-01a-test.mjs", "crm-01b3a-integration-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
-  return Object.freeze({ ok: true, migrations: 21, routes: 9, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 3 });
+  return Object.freeze({ ok: true, migrations: 22, routes: 12, historicalRoutes: 9, isolatedApiRoutes: 3, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 4 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

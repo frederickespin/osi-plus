@@ -132,6 +132,18 @@ export function resolveCrmPipelineModes(env = process.env) {
   });
 }
 
+export function requireCrmPipelineExplicitlyDisabled(env = process.env) {
+  const modes = resolveCrmPipelineModes(env);
+  if (env.CRM_PIPELINE_RUNTIME_MODE !== CRM_PIPELINE_READ_MODES.DISABLED
+    || env.CRM_PIPELINE_MUTATION_MODE !== CRM_PIPELINE_MUTATION_MODES.DISABLED
+    || env.CRM_PIPELINE_ACTIVATION_BATCH !== undefined
+    || modes.readMode !== CRM_PIPELINE_READ_MODES.DISABLED
+    || modes.mutationMode !== CRM_PIPELINE_MUTATION_MODES.DISABLED) {
+    invalidConfiguration();
+  }
+  return modes;
+}
+
 export function requireCrmPipelineRead(env = process.env) {
   const modes = resolveCrmPipelineModes(env);
   if (modes.readMode === CRM_PIPELINE_READ_MODES.DISABLED) {

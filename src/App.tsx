@@ -21,11 +21,13 @@ import type { HubAccessContext } from '@/hub/hubAccess';
 import { evaluateHubRouteAccess } from '@/hub/hubRouteAccess';
 import { isAdminIdentityActivationRoute } from '@/admin-tenant/adminIdentityActivationRoute';
 import { isAdminIdentityInvitationEnabled } from '@/admin-tenant/adminMode';
+import { isCrmIcpV2VisualPreviewRoute } from '@/crm-icp-v2/clientMode';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const AdminIdentityActivation = lazy(() =>
   import('@/admin-tenant/AdminIdentityActivation').then((module) => ({ default: module.AdminIdentityActivation }))
 );
+const IcpVisualPreview = lazy(() => import('@/crm-icp-v2/IcpVisualPreview'));
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
 );
@@ -663,6 +665,7 @@ function SessionApp() {
 }
 
 function App() {
+  if (isCrmIcpV2VisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-[#003366]" />}><IcpVisualPreview /></Suspense>;
   if (!isAdminIdentityActivationRoute() || !isAdminIdentityInvitationEnabled()) return <SessionApp />;
   return <Suspense fallback={<div className="min-h-screen bg-slate-950" />}><AdminIdentityActivation /></Suspense>;
 }

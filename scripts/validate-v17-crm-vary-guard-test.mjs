@@ -8,6 +8,7 @@ const paths = [
   "api/_lib/crmPipelineReadHttp.js",
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/crmOwnerCatalogHttp.js",
+  "api/_lib/crmIcpV2ApiHttp.js",
   ".github/workflows/ci.yml",
 ];
 const baseline = Object.fromEntries(paths.map((path) => [path, readFileSync(resolve(path), "utf8")]));
@@ -21,6 +22,9 @@ const canonicalRoutes = [
   "api/crm/pipeline-cases/[caseKey]/transition.js",
   "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
   "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
+  "api/crm/icp-v2/clients/search.js",
+  "api/crm/icp-v2/pipeline-cases/index.js",
+  "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
 ].sort();
 
 let assertions = 0;
@@ -54,6 +58,10 @@ rejected("wildcard permitido", {
 }, /wildcard/);
 rejected("gate antes de headers", {
   sources: { ...baseline, "api/_lib/pipelineCaseMutationHttp.js": baseline["api/_lib/pipelineCaseMutationHttp.js"].replace("setCrmPrivateHeaders(res);", "") },
+  routes: canonicalRoutes,
+}, /orden/);
+rejected("API ICP antes de headers", {
+  sources: { ...baseline, "api/_lib/crmIcpV2ApiHttp.js": baseline["api/_lib/crmIcpV2ApiHttp.js"].replace("setCrmPrivateHeaders(res);", "") },
   routes: canonicalRoutes,
 }, /orden/);
 rejected("ruta futura sin contrato", { sources: baseline, routes: [...canonicalRoutes, "api/crm/future.js"].sort() }, /ruta CRM nueva/);

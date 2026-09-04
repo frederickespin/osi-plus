@@ -12,6 +12,9 @@ const EXPECTED_ROUTES = Object.freeze({
   "api/crm/pipeline-cases/[caseKey]/transition.js": "createTransitionHandler",
   "api/crm/pipeline-cases/[caseKey]/assign-owner.js": "createAssignOwnerHandler",
   "api/crm/pipeline-cases/[caseKey]/unassign-owner.js": "createUnassignOwnerHandler",
+  "api/crm/icp-v2/clients/search.js": "createCrmIcpClientSearchHandler",
+  "api/crm/icp-v2/pipeline-cases/index.js": "createCrmIcpV2CreateHandler",
+  "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js": "createCrmIcpV2DetailHandler",
 });
 
 function invariant(condition, message) {
@@ -31,6 +34,7 @@ function readSources(root) {
     "api/_lib/crmPipelineReadHttp.js",
     "api/_lib/pipelineCaseMutationHttp.js",
     "api/_lib/crmOwnerCatalogHttp.js",
+    "api/_lib/crmIcpV2ApiHttp.js",
     ".github/workflows/ci.yml",
   ];
   return Object.fromEntries(paths.map((path) => [path, readFileSync(resolve(root, path), "utf8")]));
@@ -59,6 +63,7 @@ export function validateV17CrmVaryGuard({
   const readHttp = sources["api/_lib/crmPipelineReadHttp.js"];
   const mutationHttp = sources["api/_lib/pipelineCaseMutationHttp.js"];
   const ownerHttp = sources["api/_lib/crmOwnerCatalogHttp.js"];
+  const icpApiHttp = sources["api/_lib/crmIcpV2ApiHttp.js"];
   const workflow = sources[".github/workflows/ci.yml"];
 
   invariant(/CRM_REQUIRED_VARY_TOKENS\s*=\s*Object\.freeze\(\["Authorization", "Origin"\]\)/.test(helper), "tokens requeridos alterados");
@@ -71,6 +76,7 @@ export function validateV17CrmVaryGuard({
   before(readHttp, "setCrmPrivateHeaders(res);", "requireCrmPipelineReadOnly(env);", "lecturas");
   before(mutationHttp, "setCrmPrivateHeaders(res);", "requireCrmPipelineMutationsLocal(env);", "mutaciones");
   before(ownerHttp, "setCrmPrivateHeaders(res);", "requireCrmPipelineMutationsLocal(env);", "owner catalog");
+  before(icpApiHttp, "setCrmPrivateHeaders(res);", "resolveCrmIcpV2ApiMode(env, req);", "API ICP v2");
   invariant(!/function appendVary\(/.test(mutationHttp), "mutaciones conservan combinador Vary paralelo");
 
   const expected = Object.keys(EXPECTED_ROUTES).sort();
@@ -90,7 +96,7 @@ export function validateV17CrmVaryGuard({
     invariant(workflow.includes(command), `CI no exige ${command}`);
   }
 
-  return Object.freeze({ ok: true, routes: routes.length, wrappers: 3, requiredVary: ["Authorization", "Origin"] });
+  return Object.freeze({ ok: true, routes: routes.length, wrappers: 4, requiredVary: ["Authorization", "Origin"] });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

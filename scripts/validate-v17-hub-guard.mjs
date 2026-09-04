@@ -17,6 +17,9 @@ const allowedBackendChanges = new Set([
   "api/_lib/crmCaseMutationHttp.js",
   "api/_lib/crmClientOptions.js",
   "api/_lib/crmHttpHeaders.js",
+  "api/_lib/crmIcpV2ApiDomain.js",
+  "api/_lib/crmIcpV2ApiHttp.js",
+  "api/_lib/crmIcpV2Domain.js",
   "api/_lib/crmOwnerCatalogHttp.js",
   "api/_lib/crmPipelineAccess.js",
   "api/_lib/crmPipelineRead.js",
@@ -37,6 +40,9 @@ const allowedBackendChanges = new Set([
   "api/auth/admin-invitations/activate.js",
   "api/clients/index.js",
   "api/crm/client-options.js",
+  "api/crm/icp-v2/clients/search.js",
+  "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
+  "api/crm/icp-v2/pipeline-cases/index.js",
   "api/crm/pipeline-summary.js",
   "api/crm/pipeline-cases/[id].js",
   "api/crm/pipeline-cases/index.js",
@@ -56,14 +62,15 @@ const allowedPrismaChanges = new Set([
   "prisma/migrations/20260824010000_v17_client_public_ref_case_mutations/migration.sql",
   "prisma/migrations/20260827010000_v17_tenant_membership_public_ref/migration.sql",
   "prisma/migrations/20260827020000_v17_admin_identity_invitation/migration.sql",
+  "prisma/migrations/20260831010000_v17_crm_icp_foundation/migration.sql",
 ]);
 function fail(message) { throw new Error(`V17_HUB_GUARD_FAILED: ${message}`); }
 function text(path) { return readFileSync(path, "utf8"); }
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-if (migrations.length !== 21) fail(`expected 21 migrations, found ${migrations.length}`);
+if (migrations.length !== 22 || !migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation")) fail(`expected 22 canonical migrations, found ${migrations.length}`);
 const migrationChanges = execFileSync("git", ["diff", "--name-only", BASE, "--", "prisma/migrations"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-if (migrationChanges.some((path) => !allowedPrismaChanges.has(path))) fail("canonical migrations changed outside V17-CASE-PUBLIC-REF");
+if (migrationChanges.some((path) => !allowedPrismaChanges.has(path))) fail("canonical migrations changed outside authorized V17 foundations");
 
 const mode = text(join("src", "hub", "hubMode.ts"));
 if (!mode.includes('DISABLED: "DISABLED"') || !mode.includes('LOCAL_ONLY: "LOCAL_ONLY"') || !mode.includes('PREVIEW_REHEARSAL: V17_COMMERCIAL_CRM_PREVIEW_MODE')) fail("strict gate values missing");

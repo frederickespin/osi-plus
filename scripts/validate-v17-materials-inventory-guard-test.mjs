@@ -16,9 +16,9 @@ rejects("api/_lib/materialsInventoryDomain.js", (text) => text.replaceAll("pg_ad
 rejects("api/_lib/materialsInventoryHttp.js", (text) => text.replace("resolveMaterialsApiMode(env, req); assertSameOrigin(req);", "assertSameOrigin(req);"));
 rejects("src/materials-inventory/mode.ts", (text) => text.replace("PREVIEW_REHEARSAL", "PRODUCTION"));
 rejects("src/hub/HubWorkspace.tsx", (text) => text.replace("selected?.appId === \"materials-equipment\" && materialsEnabled", "selected?.appId === \"materials-equipment\""));
-rejects("src/hub/appCatalog.ts", (text) => text.replace('requiresExplicitPermissions: true, baselineRoles: [], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },\n  { appId: "workshop"', 'baselineRoles: ["A"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },\n  { appId: "workshop"'));
+rejects("src/hub/appCatalog.ts", (text) => text.replace(/(appId: "materials-equipment"[\s\S]*?)baselineRoles: \[\]/u, '$1baselineRoles: ["A"]'));
 rejects("src/survey/SurveyApp.tsx", (text) => `${text}\nconst materialRef = 'manual';`);
-rejects("prisma/schema.prisma", (text) => text.replace("model MaterialPurchaseRequest {", "model AssetInstance {\n id String @id\n}\nmodel MaterialPurchaseRequest {"));
+rejects("prisma/schema.prisma", (text) => text.replace("model MaterialCatalogItem {", "model MaterialCatalogItem {\n  assetInstance AssetInstance?"));
 rejects("prisma/schema.prisma", (text) => text.replace("model MaterialCatalogItem {", "model MaterialCatalogItem {\n  quantity Decimal"));
 rejects("api/_lib/materialsInventoryDomain.js", (text) => text.replace("export async function assignReservation", "export async function removedAssignReservation"));
 rejects("api/_lib/materialsInventoryDomain.js", (text) => text.replace("export async function createRecipeVersion", "export async function removedCreateRecipeVersion"));

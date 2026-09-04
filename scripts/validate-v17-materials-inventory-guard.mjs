@@ -26,14 +26,14 @@ export function validateMaterialsInventoryGuard({ root = process.cwd(), override
   invariant(!/PRODUCTION/u.test(Object.values(JSON.parse(JSON.stringify({ mode }))).join("")) || !/PRODUCTION[_A-Z]*\s*:/u.test(mode), "modo Production introducido");
   invariant(/DISABLED/u.test(mode) && /LOCAL_ONLY/u.test(mode) && /PREVIEW_REHEARSAL/u.test(mode), "matriz de modos cerrada incompleta");
   invariant(/const MaterialsInventoryApp = lazy/u.test(hub) && /if \(selected\?\.appId === "materials-equipment" && materialsEnabled\)/u.test(hub) && hub.indexOf("if (selected?.appId === \"materials-equipment\" && materialsEnabled)") < hub.indexOf("<MaterialsInventoryApp"), "lazy boundary de inventario no autorizada");
-  const materialApp = catalog.slice(catalog.indexOf('{ appId: "materials-equipment"'), catalog.indexOf('{ appId: "workshop"'));
+  const materialApp = catalog.slice(catalog.indexOf('{ appId: "materials-equipment"'), catalog.indexOf('{ appId: "tools-equipment"'));
   invariant(/requiresExplicitPermissions: true/u.test(materialApp) && /baselineRoles: \[\]/u.test(materialApp) && /inventory:catalog:view/u.test(materialApp) && /inventory:stock:view/u.test(materialApp), "catálogo Hub concede acceso implícito");
   invariant(/El evaluador no selecciona materiales/u.test(survey) && !/materialRef|materialId/u.test(survey), "Survey selecciona materiales manualmente");
   invariant(/resolveRecipeQuantity/u.test(contract) && /surveyPublication.*recipeVersion/u.test(domain), "resolución Survey→receta ausente");
   invariant(/export async function createRecipeVersion\(/u.test(domain) && /RECIPE_VERSION_ACTIVATE/u.test(contract), "versionado administrable de receta ausente");
   invariant(/export async function assignReservation\(/u.test(domain) && /RESERVED[\s\S]*ASSIGNED/u.test(domain), "asignación explícita ausente");
   invariant(/export async function transitionPurchaseRequest\(/u.test(domain) && /purchaseRequestId/u.test(schema) && /movementType: "RECEIPT"/u.test(domain), "compra aprobada no genera recepción trazable");
-  invariant(!/AssetInstance|maintenance|vehicleId/iu.test(schema.slice(schema.indexOf("model MaterialUnit"), schema.indexOf("model CatalogMaterial"))), "herramientas/equipos mezclados con consumibles");
+  invariant(!/AssetInstance|maintenance|vehicleId/iu.test(materialModel), "herramientas/equipos mezclados con consumibles");
   return Object.freeze({ ok: true, models: REQUIRED_MODELS.length, productionApiEnabled: false, tenantFirst: true, appendOnly: true });
 }
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) { try { process.stdout.write(JSON.stringify(validateMaterialsInventoryGuard()) + "\n"); } catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; } }

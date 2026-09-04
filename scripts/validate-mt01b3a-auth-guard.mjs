@@ -18,13 +18,7 @@ const INVENTORIED_ROUTES = new Set([
   "api/users/index.js",
 ]);
 
-const LEGACY_HEADER_ROUTES = new Set([
-  "api/k/pgd/apply.js", "api/k/pgd/item.js", "api/k/project-release.js", "api/k/project-validate.js", "api/k/project.js", "api/k/signal.js",
-  "api/osis/[id].js", "api/osis/[id]/handshake.js", "api/osis/[id]/return.js", "api/osis/index.js",
-  "api/pst/[serviceCode].js", "api/pst/active.js",
-  "api/ptf/suggestions/action.js", "api/ptf/suggestions/index.js", "api/ptf/suggestions/recompute.js",
-  "api/templates/approve-batch.js", "api/templates/approve.js", "api/templates/draft.js", "api/templates/list.js", "api/templates/pending.js", "api/templates/publish.js", "api/templates/reject.js", "api/templates/submit.js", "api/templates/version.js",
-]);
+const LEGACY_HEADER_ROUTES = new Set();
 
 const CRM_MUTATION_ROUTES = new Set([
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js",
@@ -59,7 +53,7 @@ function collectJs(directory) {
 }
 
 export function validateMt01b3aSources({ routeSources, envExample, authContextSource }) {
-  invariant(LEGACY_HEADER_ROUTES.size === 24, `MT-01B3A: la allowlist heredada debe contener exactamente 24 rutas; contiene ${LEGACY_HEADER_ROUTES.size}`);
+  invariant(LEGACY_HEADER_ROUTES.size === 0, `MT-01B3A: rutas activas basadas en headers: ${LEGACY_HEADER_ROUTES.size}`);
   for (const route of routeSources.keys()) {
     invariant(INVENTORIED_ROUTES.has(route), `MT-01B3A: ruta nueva sin clasificación: ${route}`);
   }

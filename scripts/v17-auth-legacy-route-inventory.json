@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "remainingDisabledFiles": [
+    "api/_disabled/legacyHeaderAuthorization.js",
+    "api/_disabled/pgd/apply.js",
+    "api/_disabled/pgd/item.js",
+    "api/_disabled/project-release.js",
+    "api/_disabled/project-validate.js",
+    "api/_disabled/signal.js"
+  ],
+  "migratedActiveFiles": [
+    "api/k/pgd/apply.js",
+    "api/k/pgd/item.js",
+    "api/k/project-release.js",
+    "api/k/project-validate.js",
+    "api/k/project.js",
+    "api/k/signal.js",
+    "api/osis/[id].js",
+    "api/osis/[id]/handshake.js",
+    "api/osis/[id]/return.js",
+    "api/osis/index.js",
+    "api/pst/[serviceCode].js",
+    "api/pst/active.js",
+    "api/ptf/suggestions/action.js",
+    "api/ptf/suggestions/index.js",
+    "api/ptf/suggestions/recompute.js",
+    "api/templates/approve-batch.js",
+    "api/templates/approve.js",
+    "api/templates/draft.js",
+    "api/templates/list.js",
+    "api/templates/pending.js",
+    "api/templates/publish.js",
+    "api/templates/reject.js",
+    "api/templates/submit.js",
+    "api/templates/version.js"
+  ]
+}

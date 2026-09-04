@@ -157,7 +157,12 @@ try {
 
   const legacyToken = signAccessToken({ sub: valid.identity.userId, email: "legacy@example.invalid", role: "V" });
   const legacyContext = await resolveAuthContext(bearer(legacyToken), { prisma, env: { ...process.env, MT01B_AUTH_MODE: "LEGACY" }, now });
-  check("LEGACY no exige tenant ni membership", legacyContext.authType === "LEGACY" && legacyContext.userId === valid.identity.userId && legacyContext.tenantId === null && legacyContext.membershipId === null && legacyContext.role === "V");
+  check("LEGACY converge en contexto tenant-first revalidado", legacyContext.authType === "LEGACY"
+    && legacyContext.sessionKind === "LEGACY"
+    && legacyContext.userId === valid.identity.userId
+    && legacyContext.tenantId === valid.identity.tenantId
+    && legacyContext.membershipId === valid.identity.membershipId
+    && legacyContext.role === "V");
 
   const previousMode = process.env.MT01B_AUTH_MODE;
   process.env.MT01B_AUTH_MODE = "LEGACY";
@@ -167,7 +172,11 @@ try {
   const missingMeRes = mockResponse();
   await meHandler({ method: "GET", headers: {} }, missingMeRes);
   process.env.MT01B_AUTH_MODE = previousMode;
-  check("/auth/me LEGACY conserva forma exacta", meRes.statusCode === 200 && JSON.stringify(Object.keys(meRes.body).sort()) === JSON.stringify(["ok", "user"]) && JSON.stringify(Object.keys(meRes.body.user).sort()) === JSON.stringify(["code", "department", "email", "id", "joinDate", "name", "phone", "points", "rating", "role", "status"]));
+  check("/auth/me LEGACY publica capacidades efectivas revalidadas", meRes.statusCode === 200
+    && JSON.stringify(Object.keys(meRes.body).sort()) === JSON.stringify(["ok", "user"])
+    && Array.isArray(meRes.body.user.permissions)
+    && Array.isArray(meRes.body.user.deniedPermissions)
+    && meRes.body.user.role === "V");
   check("/auth/me LEGACY conserva error 401 exacto", missingMeRes.statusCode === 401 && JSON.stringify(missingMeRes.body) === JSON.stringify({ ok: false, error: "Unauthorized" }));
 
   const meV2Req = bearer(valid.session.accessToken);

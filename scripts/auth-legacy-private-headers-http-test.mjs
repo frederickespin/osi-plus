@@ -46,11 +46,32 @@ const handlers = new Map([
 let lookupMode = "FOUND";
 let lookupCount = 0;
 const originalFindUnique = prisma.user.findUnique;
+const originalQueryRaw = prisma.$queryRaw;
 prisma.user.findUnique = async () => {
   lookupCount += 1;
   if (lookupMode === "FAIL") throw new Error("postgresql://must-not-leak");
   if (lookupMode === "MISSING") return null;
   return user;
+};
+prisma.$queryRaw = async () => {
+  lookupCount += 1;
+  if (lookupMode === "FAIL") throw new Error("postgresql://must-not-leak");
+  if (lookupMode === "MISSING") return [];
+  return [{
+    user_id: user.id,
+    user_email: user.email,
+    user_status: user.status,
+    tenant_id: "auth-hf1a-tenant",
+    tenant_code: "AUTH-HF1A-TENANT",
+    tenant_status: "ACTIVE",
+    membership_id: "auth-hf1a-membership",
+    membership_role: user.role,
+    membership_status: "ACTIVE",
+    authorization_version: 1,
+    granted_permissions: [],
+    denied_permissions: [],
+    is_default: true,
+  }];
 };
 
 function responseAdapter(response) {
@@ -176,13 +197,13 @@ try {
   check("auth/me válido conserva 200", meOk.status === 200 && meOk.json?.user?.id === user.id);
   secure("auth/me válido", meOk);
 
-  for (const [name, authorization] of [
-    ["Bearer ausente", undefined],
-    ["Bearer manipulado", "Bearer invalid.invalid.invalid"],
-    ["Bearer expirado", `Bearer ${jwt.sign({ sub: user.id, email: user.email, role: user.role }, legacyJwtSecretMaterial(), { expiresIn: -1 })}`],
+  for (const [name, authorization, expectedCode] of [
+    ["Bearer ausente", undefined, "MT01B_TOKEN_REQUIRED"],
+    ["Bearer manipulado", "Bearer invalid.invalid.invalid", "MT01B_TOKEN_INVALID"],
+    ["Bearer expirado", `Bearer ${jwt.sign({ sub: user.id, email: user.email, role: user.role }, legacyJwtSecretMaterial(), { expiresIn: -1 })}`, "MT01B_TOKEN_INVALID"],
   ]) {
     const response = await call("/api/auth/me", { headers: authorization ? { Authorization: authorization } : {} });
-    check(`${name} devuelve 401`, response.status === 401 && response.json?.error === "Unauthorized");
+    check(`${name} devuelve 401`, response.status === 401 && response.json?.error === expectedCode);
     secure(name, response);
   }
 
@@ -218,7 +239,7 @@ try {
   check("falla Prisma login produce 503 sanitizado", databaseLogin.status === 503 && databaseLogin.json?.error === "AUTH_DATABASE_UNAVAILABLE");
   secure("503 login", databaseLogin);
   const databaseMe = await call("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
-  check("falla Prisma auth/me produce 503 sanitizado", databaseMe.status === 503 && databaseMe.json?.error === "AUTH_DATABASE_UNAVAILABLE");
+  check("falla Prisma auth/me produce 503 sanitizado", databaseMe.status === 503 && databaseMe.json?.error === "MT01B_AUTH_DATABASE_UNAVAILABLE");
   secure("503 auth/me", databaseMe);
   lookupMode = "FOUND";
 
@@ -234,6 +255,7 @@ try {
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, routes: handlers.size })}\n`);
 } finally {
   prisma.user.findUnique = originalFindUnique;
+  prisma.$queryRaw = originalQueryRaw;
   await new Promise((resolve) => server.close(resolve));
   await prisma.$disconnect();
 }

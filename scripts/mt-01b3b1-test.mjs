@@ -71,17 +71,31 @@ try {
   const legacyClients = await invoke(clientsHandler, request(legacyToken));
   const legacyProjects = await invoke(projectsHandler, request(legacyToken));
   const legacyAnonymous = await invoke(clientsHandler, request(null));
-  const deniedLegacyToken = signAccessToken({ sub: admin.identity.userId, email: "legacy-denied@example.invalid", role: "N" });
-  const legacyDenied = await invoke(clientsHandler, request(deniedLegacyToken));
+  const forgedLegacyRoleToken = signAccessToken({ sub: admin.identity.userId, email: "legacy-denied@example.invalid", role: "N" });
+  const legacyForgedRole = await invoke(clientsHandler, request(forgedLegacyRoleToken));
+  await prisma.tenantMembership.update({
+    where: { id: admin.identity.membershipId },
+    data: { deniedPermissions: [PERMS.CLIENTS_VIEW] },
+  });
+  const legacyDenied = await invoke(clientsHandler, request(legacyToken));
+  await prisma.tenantMembership.update({
+    where: { id: admin.identity.membershipId },
+    data: { deniedPermissions: [] },
+  });
   const legacySessionCountAfter = await prisma.authSession.count();
   process.env.MT01B_AUTH_MODE = previousMode;
 
-  check("LEGACY /auth/me conserva contrato exacto", legacyMe.statusCode === 200 && JSON.stringify(Object.keys(legacyMe.body).sort()) === JSON.stringify(["ok", "user"]) && JSON.stringify(Object.keys(legacyMe.body.user).sort()) === JSON.stringify(["code", "department", "email", "id", "joinDate", "name", "phone", "points", "rating", "role", "status"]));
+  check("LEGACY /auth/me publica capacidades revalidadas", legacyMe.statusCode === 200
+    && JSON.stringify(Object.keys(legacyMe.body).sort()) === JSON.stringify(["ok", "user"])
+    && Array.isArray(legacyMe.body.user.permissions)
+    && Array.isArray(legacyMe.body.user.deniedPermissions)
+    && legacyMe.body.user.role === "A");
   for (const [name, response] of [["Usuarios", legacyUsers], ["Clientes", legacyClients], ["Proyectos", legacyProjects]]) {
     check(`LEGACY ${name} conserva envoltura`, response.statusCode === 200 && JSON.stringify(Object.keys(response.body).sort()) === JSON.stringify(["data", "ok", "total"]));
   }
-  check("LEGACY anónimo conserva 401 exacto", legacyAnonymous.statusCode === 401 && JSON.stringify(legacyAnonymous.body) === JSON.stringify({ ok: false, error: "Unauthorized" }));
-  check("LEGACY permiso insuficiente conserva 403 exacto", legacyDenied.statusCode === 403 && JSON.stringify(legacyDenied.body) === JSON.stringify({ ok: false, error: "Forbidden", perm: PERMS.CLIENTS_VIEW }));
+  check("LEGACY anónimo falla cerrado", legacyAnonymous.statusCode === 401 && legacyAnonymous.body?.error === "MT01B_TOKEN_REQUIRED");
+  check("rol del JWT LEGACY no reemplaza Membership", legacyForgedRole.statusCode === 200 && legacyForgedRole.body?.ok === true);
+  check("deny de Membership prevalece también en LEGACY", legacyDenied.statusCode === 403 && legacyDenied.body?.error === "MT01B_PERMISSION_FORBIDDEN");
   check("LEGACY no crea AuthSession", legacySessionCountAfter === legacySessionCountBefore, { before: legacySessionCountBefore, after: legacySessionCountAfter });
 
   const meV2 = await invoke(meHandler, request(admin.session.accessToken));

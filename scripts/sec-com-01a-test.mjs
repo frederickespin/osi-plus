@@ -272,7 +272,7 @@ try {
   const unavailableReq = request("GET", { token: authorizedToken });
   const unavailableRes = mockResponse();
   const unavailable = await requirePilotPermission(unavailableReq, unavailableRes, PERMS.OSI_VIEW, { prisma: { user: { findUnique: async () => { throw new Error("sensitive database detail"); } } } });
-  check("falla de autenticación en base devuelve 503 sanitizado", unavailable === null && unavailableRes.statusCode === 503 && unavailableRes.body?.error === "AUTH_DATABASE_UNAVAILABLE" && !JSON.stringify(unavailableRes.body).includes("sensitive"));
+  check("falla de autenticación en base devuelve 503 sanitizado", unavailable === null && unavailableRes.statusCode === 503 && unavailableRes.body?.error === "MT01B_AUTH_DATABASE_UNAVAILABLE" && !JSON.stringify(unavailableRes.body).includes("sensitive"));
 
   process.env.MT01B_AUTH_MODE = "HYBRID";
   process.env.MT01B_LEGACY_TOKEN_ACCEPT_UNTIL = new Date(Date.now() + 60 * 60 * 1_000).toISOString();

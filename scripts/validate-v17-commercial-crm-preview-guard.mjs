@@ -154,7 +154,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   const authMe = "api/auth/me.js";
   requireText(files, authMe, "requireV17CommercialCrmPreviewSessionMode(process.env)", "Auth omite compuerta Preview");
   requireText(files, authMe, "commercialCrmPreviewAuthorized: true", "Auth no confirma Preview al frontend");
-  if (files[authMe].indexOf("requireV17CommercialCrmPreviewSessionMode(process.env)") > files[authMe].indexOf("findCurrentUser(payload.sub)")) {
+  if (files[authMe].indexOf("requireV17CommercialCrmPreviewSessionMode(process.env)") > files[authMe].indexOf("await findCurrentUser(")) {
     fail("configuración Preview se evalúa después de Prisma");
   }
 

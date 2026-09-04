@@ -105,6 +105,8 @@ jobs:
           npm run build
           node scripts/validate-canonical-ci.mjs --preflight
           node scripts/validate-canonical-activation-guard-test.mjs
+          npm run guard:v17-auth-canonical-context
+          npm run test:v17-auth-canonical-context
           node scripts/validate-mt01c1a-guard.mjs
           node scripts/validate-mt01c1b1-guard.mjs
           node scripts/validate-mt01c1b2a-guard.mjs
@@ -365,6 +367,8 @@ jobs:
           node scripts/validate-canonical-activation-guard-test.mjs
           node scripts/validate-mt01b3a-auth-guard.mjs
           node scripts/validate-mt01b3a-auth-guard-test.mjs
+          npm run guard:v17-auth-canonical-context
+          npm run test:v17-auth-canonical-context
           node scripts/validate-mt01c1a-canonical-guard-test.mjs
           node scripts/validate-mt01c1a-guard.mjs
           node scripts/validate-mt01c1b1-canonical-guard-test.mjs

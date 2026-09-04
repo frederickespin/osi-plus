@@ -85,4 +85,3 @@ Cada acción confirma en servidor y recarga el borrador. Los reintentos conserva
 ## Integraciones futuras
 
 Materiales 05A consumirá artículos, cantidades, métricas, flags y accesos publicados para aplicar recetas versionadas. El texto “Materiales derivados: en integración” no representa una receta ni una selección persistida. Costing, Cotización, WMS, Taller y Motor Logístico sólo podrán consumir publicaciones CURRENT sin reescribirlas. La entrega al cliente requerirá después un evento CRM auditado; no se envían correos en 04A.
-

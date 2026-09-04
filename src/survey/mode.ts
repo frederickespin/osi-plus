@@ -14,4 +14,3 @@ export function resolveSurveyUiMode(environment: Readonly<Record<string, unknown
   return preview ? value : SURVEY_UI_MODES.DISABLED;
 }
 export function isSurveyUiEnabled(environment?: Readonly<Record<string, unknown>>, hostname?: string) { return resolveSurveyUiMode(environment, hostname) !== SURVEY_UI_MODES.DISABLED; }
-

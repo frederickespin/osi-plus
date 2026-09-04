@@ -5,6 +5,7 @@ import { HUB_APPLICATIONS, commercialCaseRefFromRoute, findHubApplicationByRoute
 import { visibleHubApplications, type HubAccessContext } from "./hubAccess";
 import type { OsiHubMode } from "./hubMode";
 import { resolveCrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
+import { resolveCrmServicesUiAccess } from "@/crm-services/access";
 import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resolveAdminIdentityInvitationMode } from "@/admin-tenant/adminMode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
@@ -97,6 +98,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         caseRef={commercialCaseRef}
         role={accessContext.role}
         mutationAccess={resolveCrmCaseMutationUiAccess(accessContext)}
+        servicesAccess={resolveCrmServicesUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         userName={userName}
         onNavigate={onNavigate}
         onLogout={onLogout}
@@ -110,6 +112,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         authorization={authorization}
         effectivePermissions={accessContext.effectivePermissions || []}
         deniedPermissions={accessContext.deniedPermissions}
+        servicesAccess={resolveCrmServicesUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         invitationEnabled={adminInvitationsEnabled}
         invitationMode={adminInvitationMode}
         onUnauthorized={onLogout}

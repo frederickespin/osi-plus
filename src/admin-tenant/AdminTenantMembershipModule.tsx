@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Search, ShieldCheck, UserCog, UserPlus, XCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AdminApiError, AdminTenantApi, type AdminIdentityInvitation, type AdminMembership } from "./adminApi";
 import { ADMIN_IDENTITY_INVITATION_MODES, type AdminTenantMembershipMode } from "./adminMode";
+import { NO_CRM_SERVICES_ACCESS, type CrmServicesUiAccess } from "@/crm-services/access";
+import { isCrmServicesUiEnabled } from "@/crm-services/mode";
+
+const ServiceCatalogAdmin = lazy(() => import("@/crm-services/ServiceCatalogAdmin"));
 
 const ADMIN_PERMISSIONS = Object.freeze([
   "membership:view",
@@ -15,6 +19,7 @@ type Props = Readonly<{
   authorization?: string;
   effectivePermissions: readonly string[];
   deniedPermissions: readonly string[];
+  servicesAccess?: CrmServicesUiAccess;
   invitationEnabled?: boolean;
   invitationMode?: AdminTenantMembershipMode;
   onUnauthorized(): void;
@@ -40,7 +45,7 @@ function errorText(error: unknown) {
   } as Record<string, string>)[code] || "No fue posible completar la operación.";
 }
 
-export default function AdminTenantMembershipModule({ authorization, effectivePermissions, deniedPermissions, invitationEnabled = false, invitationMode = ADMIN_IDENTITY_INVITATION_MODES.DISABLED, onUnauthorized, api: suppliedApi }: Props) {
+export default function AdminTenantMembershipModule({ authorization, effectivePermissions, deniedPermissions, servicesAccess = NO_CRM_SERVICES_ACCESS, invitationEnabled = false, invitationMode = ADMIN_IDENTITY_INVITATION_MODES.DISABLED, onUnauthorized, api: suppliedApi }: Props) {
   const api = useMemo(() => suppliedApi || new AdminTenantApi(() => authorization || null), [authorization, suppliedApi]);
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("");
@@ -158,6 +163,7 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
       </div>
       <div className="mt-4 flex items-center justify-between text-xs text-slate-600"><span>{total} membresía(s)</span><div className="flex items-center gap-2"><button disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded border p-2 disabled:opacity-40" aria-label="Página anterior"><ChevronLeft className="h-4 w-4" /></button><span>Página {page}</span><button disabled={page * 20 >= total} onClick={() => setPage((value) => value + 1)} className="rounded border p-2 disabled:opacity-40" aria-label="Página siguiente"><ChevronRight className="h-4 w-4" /></button></div></div>
       {canInvite && <section className="mt-7" aria-labelledby="admin-invitations-title"><div className="flex items-end justify-between"><div><h2 id="admin-invitations-title" className="text-sm font-black text-slate-950">Invitaciones administrativas</h2><p className="text-xs text-slate-500">El enlace sólo se muestra al emitirlo.</p></div><span className="text-xs text-slate-500">{invitations.length} registrada(s)</span></div><div className="mt-2 divide-y overflow-hidden rounded-xl border bg-white">{invitations.map((invitation) => <div key={invitation.invitationRef} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs"><div className="min-w-0"><strong className="block truncate text-slate-900">{corporateRecipient ? "Destinatario corporativo configurado" : invitation.email}</strong><span className="text-slate-500">Administrador · {invitation.status}</span></div>{invitation.status === "PENDING" && <button type="button" onClick={() => void revokeInvitation(invitation.invitationRef)} className="rounded-lg border border-red-200 px-3 py-1.5 font-semibold text-red-700"><XCircle className="mr-1 inline h-3.5 w-3.5" />Revocar</button>}</div>)}{invitations.length === 0 && <p className="p-5 text-center text-xs text-slate-500">No hay invitaciones.</p>}</div></section>}
+      {isCrmServicesUiEnabled() && servicesAccess.canCatalogView && <Suspense fallback={<p className="mt-7 p-6 text-center text-sm text-slate-500">Cargando catálogo de Servicios…</p>}><ServiceCatalogAdmin authorization={authorization} canManage={servicesAccess.canCatalogManage} onUnauthorized={onUnauthorized} /></Suspense>}
     </div>
     <Dialog open={Boolean(draft)} onOpenChange={(openValue) => { if (!openValue) { setSelected(null); setDraft(null); setError(null); } }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">

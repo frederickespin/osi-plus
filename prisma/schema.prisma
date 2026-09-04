@@ -88,6 +88,13 @@ model Tenant {
   pipelineCases                    PipelineCase[]
   pipelineCaseRouteSnapshots       PipelineCaseRouteSnapshot[]
   pipelineCaseCommands             PipelineCaseCommand[]
+  serviceCatalogItems              ServiceCatalogItem[]
+  serviceCatalogCompatibilities    ServiceCatalogCompatibility[]
+  serviceDefaultCombinations       ServiceDefaultCombination[]
+  serviceDefaultCombinationItems   ServiceDefaultCombinationItem[]
+  pipelineCaseServiceRevisions     PipelineCaseServiceRevision[]
+  pipelineCaseServiceItems         PipelineCaseServiceItem[]
+  serviceMutationCommands          ServiceMutationCommand[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -158,6 +165,8 @@ model TenantMembership {
   pipelineCaseCommandsAsActor                                                                                                                   PipelineCaseCommand[]              @relation("PipelineCaseCommandActor")
   pipelineCaseCommandsAsPreviousOwner                                                                                                           PipelineCaseCommand[]              @relation("PipelineCaseCommandPreviousOwner")
   pipelineCaseCommandsAsResultingOwner                                                                                                          PipelineCaseCommand[]              @relation("PipelineCaseCommandResultingOwner")
+  serviceMutationCommandsAsActor                                                                                                                ServiceMutationCommand[]           @relation("ServiceMutationCommandActor")
+  serviceRevisionsCreated                                                                                                                       PipelineCaseServiceRevision[]      @relation("PipelineCaseServiceRevisionActor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, publicRef], map: "tenant_memberships_tenant_id_public_ref_key")
@@ -1379,6 +1388,7 @@ model PipelineCase {
   quote_change_order_subjects   quote_change_order_subjects[]
   commands                      PipelineCaseCommand[]
   routeSnapshots                PipelineCaseRouteSnapshot[]
+  serviceRevisions              PipelineCaseServiceRevision[]
   projects                      Project[]                     @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -1456,6 +1466,154 @@ model PipelineCaseCommand {
   @@index([tenantId, pipelineCaseId, createdAt(sort: Desc), id(sort: Desc)], map: "pipeline_case_commands_tenant_case_created_at_idx")
   @@index([tenantId, actorMembershipId, createdAt(sort: Desc)], map: "pipeline_case_commands_tenant_actor_created_at_idx")
   @@map("pipeline_case_commands")
+}
+
+model ServiceCatalogItem {
+  id                      String                          @id @default(cuid())
+  serviceRef              String                          @default(dbgenerated("gen_random_uuid()")) @map("service_ref") @db.Uuid
+  tenantId                String                          @map("tenant_id")
+  code                    String                          @db.VarChar(64)
+  name                    String                          @db.VarChar(160)
+  category                String?                         @db.VarChar(80)
+  usage                   ServiceCatalogUsage
+  compatibleModes         PipelineMode[]                  @default([]) @map("compatible_modes")
+  status                  ServiceCatalogStatus            @default(ACTIVE)
+  sortOrder               Int                             @default(0) @map("sort_order")
+  version                 Int                             @default(1)
+  createdAt               DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                  Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_catalog_items_tenant_fkey")
+  allowedAsPrimary        ServiceCatalogCompatibility[]   @relation("ServiceCompatibilityPrimary")
+  allowedAsComplementary  ServiceCatalogCompatibility[]   @relation("ServiceCompatibilityComplementary")
+  defaultCombinations     ServiceDefaultCombination[]     @relation("ServiceDefaultPrimary")
+  defaultCombinationItems ServiceDefaultCombinationItem[]
+  caseServiceItems        PipelineCaseServiceItem[]
+
+  @@unique([tenantId, id], map: "service_catalog_items_tenant_id_id_key")
+  @@unique([tenantId, serviceRef], map: "service_catalog_items_tenant_service_ref_key")
+  @@unique([tenantId, code], map: "service_catalog_items_tenant_code_key")
+  @@index([tenantId, usage, status, sortOrder], map: "service_catalog_items_tenant_usage_status_order_idx")
+  @@map("service_catalog_items")
+}
+
+model ServiceCatalogCompatibility {
+  id                     String             @id @default(cuid())
+  tenantId               String             @map("tenant_id")
+  primaryServiceId       String             @map("primary_service_id")
+  complementaryServiceId String             @map("complementary_service_id")
+  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                 Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_catalog_compatibilities_tenant_fkey")
+  primaryService         ServiceCatalogItem @relation("ServiceCompatibilityPrimary", fields: [tenantId, primaryServiceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_catalog_compatibilities_primary_fkey")
+  complementaryService   ServiceCatalogItem @relation("ServiceCompatibilityComplementary", fields: [tenantId, complementaryServiceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_catalog_compatibilities_complementary_fkey")
+
+  @@unique([tenantId, primaryServiceId, complementaryServiceId], map: "service_catalog_compatibilities_unique")
+  @@index([tenantId, complementaryServiceId], map: "service_catalog_compatibilities_complementary_idx")
+  @@map("service_catalog_compatibilities")
+}
+
+model ServiceDefaultCombination {
+  id               String                          @id @default(cuid())
+  combinationRef   String                          @default(dbgenerated("gen_random_uuid()")) @map("combination_ref") @db.Uuid
+  tenantId         String                          @map("tenant_id")
+  primaryServiceId String                          @map("primary_service_id")
+  code             String                          @db.VarChar(64)
+  name             String                          @db.VarChar(160)
+  status           ServiceCatalogStatus            @default(ACTIVE)
+  isDefault        Boolean                         @default(false) @map("is_default")
+  version          Int                             @default(1)
+  createdAt        DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant           Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_default_combinations_tenant_fkey")
+  primaryService   ServiceCatalogItem              @relation("ServiceDefaultPrimary", fields: [tenantId, primaryServiceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_default_combinations_primary_fkey")
+  items            ServiceDefaultCombinationItem[]
+
+  @@unique([tenantId, id], map: "service_default_combinations_tenant_id_id_key")
+  @@unique([tenantId, combinationRef], map: "service_default_combinations_tenant_ref_key")
+  @@unique([tenantId, code], map: "service_default_combinations_tenant_code_key")
+  @@index([tenantId, primaryServiceId, status], map: "service_default_combinations_primary_status_idx")
+  @@map("service_default_combinations")
+}
+
+model ServiceDefaultCombinationItem {
+  id            String                    @id @default(cuid())
+  tenantId      String                    @map("tenant_id")
+  combinationId String                    @map("combination_id")
+  serviceId     String                    @map("service_id")
+  position      Int
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_default_combination_items_tenant_fkey")
+  combination   ServiceDefaultCombination @relation(fields: [tenantId, combinationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_default_combination_items_combination_fkey")
+  service       ServiceCatalogItem        @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_default_combination_items_service_fkey")
+
+  @@unique([tenantId, combinationId, serviceId], map: "service_default_combination_items_service_key")
+  @@unique([tenantId, combinationId, position], map: "service_default_combination_items_position_key")
+  @@map("service_default_combination_items")
+}
+
+model PipelineCaseServiceRevision {
+  id                    String                     @id @default(cuid())
+  selectionRef          String                     @default(dbgenerated("gen_random_uuid()")) @map("selection_ref") @db.Uuid
+  tenantId              String                     @map("tenant_id")
+  pipelineCaseId        String                     @map("pipeline_case_id")
+  revision              Int
+  modeSnapshot          PipelineMode               @map("mode_snapshot")
+  source                CaseServiceSelectionSource
+  defaultCombinationRef String?                    @map("default_combination_ref") @db.Uuid
+  createdByMembershipId String                     @map("created_by_membership_id")
+  createdByUserId       String                     @map("created_by_user_id")
+  createdAt             DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_tenant_fkey")
+  pipelineCase          PipelineCase               @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_case_fkey")
+  createdByMembership   TenantMembership           @relation("PipelineCaseServiceRevisionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_actor_fkey")
+  items                 PipelineCaseServiceItem[]
+
+  @@unique([tenantId, id], map: "pipeline_case_service_revisions_tenant_id_id_key")
+  @@unique([tenantId, selectionRef], map: "pipeline_case_service_revisions_tenant_ref_key")
+  @@unique([tenantId, pipelineCaseId, revision], map: "pipeline_case_service_revisions_case_revision_key")
+  @@index([tenantId, pipelineCaseId, createdAt(sort: Desc)], map: "pipeline_case_service_revisions_case_created_idx")
+  @@map("pipeline_case_service_revisions")
+}
+
+model PipelineCaseServiceItem {
+  id                     String                       @id @default(cuid())
+  tenantId               String                       @map("tenant_id")
+  revisionId             String                       @map("revision_id")
+  serviceId              String?                      @map("service_id")
+  kind                   CaseServiceItemKind
+  source                 CaseServiceItemSource
+  position               Int
+  serviceRefSnapshot     String?                      @map("service_ref_snapshot") @db.Uuid
+  codeSnapshot           String                       @map("code_snapshot") @db.VarChar(64)
+  nameSnapshot           String                       @map("name_snapshot") @db.VarChar(320)
+  categorySnapshot       String?                      @map("category_snapshot") @db.VarChar(80)
+  catalogVersionSnapshot Int?                         @map("catalog_version_snapshot")
+  classificationStatus   ServiceClassificationStatus? @map("classification_status")
+  tenant                 Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_items_tenant_fkey")
+  revision               PipelineCaseServiceRevision  @relation(fields: [tenantId, revisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_items_revision_fkey")
+  service                ServiceCatalogItem?          @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_items_service_fkey")
+
+  @@unique([tenantId, revisionId, position], map: "pipeline_case_service_items_position_key")
+  @@unique([tenantId, revisionId, serviceId], map: "pipeline_case_service_items_service_key")
+  @@index([tenantId, serviceId], map: "pipeline_case_service_items_service_idx")
+  @@map("pipeline_case_service_items")
+}
+
+model ServiceMutationCommand {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String           @map("tenant_id")
+  requestId         String           @map("request_id") @db.VarChar(191)
+  operation         String           @db.VarChar(80)
+  payloadHash       String           @map("payload_hash") @db.Char(64)
+  targetRef         String           @map("target_ref") @db.VarChar(191)
+  resultingVersion  Int              @map("resulting_version")
+  actorMembershipId String           @map("actor_membership_id")
+  actorUserId       String           @map("actor_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_mutation_commands_tenant_fkey")
+  actorMembership   TenantMembership @relation("ServiceMutationCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "service_mutation_commands_actor_fkey")
+
+  @@unique([tenantId, requestId], map: "service_mutation_commands_tenant_request_key")
+  @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "service_mutation_commands_target_idx")
+  @@map("service_mutation_commands")
 }
 
 model GeoRegion {
@@ -3345,6 +3503,38 @@ enum PipelineMode {
   LOCAL
   EXPORT
   IMPORT
+}
+
+enum ServiceCatalogUsage {
+  PRIMARY
+  COMPLEMENTARY
+  BOTH
+}
+
+enum ServiceCatalogStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CaseServiceSelectionSource {
+  MANUAL
+  DEFAULT_COMBINATION
+}
+
+enum CaseServiceItemKind {
+  PRIMARY
+  COMPLEMENTARY
+  OTHER
+}
+
+enum CaseServiceItemSource {
+  MANUAL
+  DEFAULT
+  OTHER
+}
+
+enum ServiceClassificationStatus {
+  PENDING
 }
 
 enum ClientAddressStatus {

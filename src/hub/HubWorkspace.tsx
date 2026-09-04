@@ -7,10 +7,12 @@ import type { OsiHubMode } from "./hubMode";
 import { resolveCrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 import { resolveCrmServicesUiAccess } from "@/crm-services/access";
 import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resolveAdminIdentityInvitationMode } from "@/admin-tenant/adminMode";
+import { isSurveyUiEnabled } from "@/survey/mode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
 const AdminTenantMembershipModule = lazy(() => import("@/admin-tenant/AdminTenantMembershipModule"));
+const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
 
 const ICONS: Record<HubIconId, ElementType> = {
   briefcase: BriefcaseBusiness,
@@ -34,15 +36,17 @@ type Props = {
   onLogout: () => void;
 };
 
-function statusLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean) {
+function statusLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean, surveyEnabled: boolean) {
   if (application.appId === "commercial-crm" && crmReadEnabled) return "Disponible";
   if (application.appId === "administration" && adminEnabled) return "Disponible";
+  if (application.appId === "osi-survey" && surveyEnabled) return "Disponible";
   return application.status === "PLANNED" ? "Próximamente" : "En integración";
 }
 
-function ctaLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean) {
+function ctaLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean, surveyEnabled: boolean) {
   if (application.appId === "commercial-crm" && crmReadEnabled) return "Abrir ERP →";
   if (application.appId === "administration" && adminEnabled) return "Abrir Administración →";
+  if (application.appId === "osi-survey" && surveyEnabled) return "Abrir Survey →";
   return "Ver descriptor →";
 }
 
@@ -54,7 +58,7 @@ function environmentLabel(mode: OsiHubMode) {
     : ENV_LABELS[getAppEnv()];
 }
 
-function HubHome({ applications, crmReadEnabled, adminEnabled, userName, onNavigate }: { applications: readonly HubApplication[]; crmReadEnabled: boolean; adminEnabled: boolean; userName?: string; onNavigate: (pathname: string) => void }) {
+function HubHome({ applications, crmReadEnabled, adminEnabled, surveyEnabled, userName, onNavigate }: { applications: readonly HubApplication[]; crmReadEnabled: boolean; adminEnabled: boolean; surveyEnabled: boolean; userName?: string; onNavigate: (pathname: string) => void }) {
   return (
     <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-11">
       <p className="text-xs font-bold uppercase tracking-[.2em] text-indigo-600">OSi Plus Hub</p>
@@ -65,10 +69,10 @@ function HubHome({ applications, crmReadEnabled, adminEnabled, userName, onNavig
           const Icon = ICONS[application.icon];
           return (
             <button key={application.appId} onClick={() => onNavigate(application.route)} className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg">
-              <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Icon className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">{statusLabel(application, crmReadEnabled, adminEnabled)}</span></div>
+              <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Icon className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">{statusLabel(application, crmReadEnabled, adminEnabled, surveyEnabled)}</span></div>
               <h2 className="mt-5 font-bold text-slate-950">{application.name}</h2>
               <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">{application.description}</p>
-              <p className="mt-5 text-xs font-semibold text-indigo-600">{ctaLabel(application, crmReadEnabled, adminEnabled)}</p>
+              <p className="mt-5 text-xs font-semibold text-indigo-600">{ctaLabel(application, crmReadEnabled, adminEnabled, surveyEnabled)}</p>
             </button>
           );
         })}
@@ -91,6 +95,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const adminEnabled = isAdminTenantMembershipEnabled();
   const adminInvitationsEnabled = isAdminIdentityInvitationEnabled();
   const adminInvitationMode = resolveAdminIdentityInvitationMode();
+  const surveyEnabled = isSurveyUiEnabled();
   if (selected?.appId === "commercial-crm" && crmReadEnabled) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando ERP Comercial…</div>}>
       <AdvancedErpShell
@@ -119,6 +124,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       />
     </Suspense>;
   }
+  if (selected?.appId === "osi-survey" && surveyEnabled) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
+      <SurveyApp authorization={authorization} onUnauthorized={onLogout} />
+    </Suspense>;
+  }
   const sidebar = (
     <aside className="flex h-full w-72 flex-col bg-slate-950 text-white">
       <button onClick={() => onNavigate("/hub")} className="flex items-center gap-3 border-b border-white/10 p-5 text-left"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500"><LayoutGrid className="h-5 w-5" /></span><span><strong className="block">OSi Plus</strong><small className="text-slate-400">Hub de aplicaciones</small></span></button>
@@ -127,7 +137,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     </aside>
   );
   const content = pathname === "/hub"
-    ? <HubHome applications={visible} crmReadEnabled={crmReadEnabled} adminEnabled={adminEnabled} userName={userName} onNavigate={onNavigate} />
+    ? <HubHome applications={visible} crmReadEnabled={crmReadEnabled} adminEnabled={adminEnabled} surveyEnabled={surveyEnabled} userName={userName} onNavigate={onNavigate} />
     : selected
       ? selected.appId === "osi-survey"
             ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>

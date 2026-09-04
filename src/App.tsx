@@ -8,6 +8,7 @@ import type { UserRole } from '@/types/osi.types';
 import { getMe } from '@/lib/api';
 import {
   clearSession,
+  clearTenantScopedState,
   inspectStoredSession,
   normalizeRole,
   saveSession,
@@ -85,9 +86,6 @@ const HRModule = lazy(() =>
 );
 const CarpentryModule = lazy(() =>
   import('@/components/modules/CarpentryModule').then((m) => ({ default: m.CarpentryModule }))
-);
-const UsersModule = lazy(() =>
-  import('@/components/modules/UsersModule').then((m) => ({ default: m.UsersModule }))
 );
 const BillingModule = lazy(() =>
   import('@/components/modules/BillingModule').then((m) => ({ default: m.BillingModule }))
@@ -173,9 +171,10 @@ type AuthorizedHubEntryProps = Readonly<{
   crmReadEnabled: boolean;
   mode: Exclude<OsiHubMode, 'DISABLED'>;
   onLogout: () => void;
+  onMembershipChange: (membershipRef: string) => Promise<void>;
 }>;
 
-function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLogout }: AuthorizedHubEntryProps) {
+function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLogout, onMembershipChange }: AuthorizedHubEntryProps) {
   const [routeState, setRouteState] = useState(() => ({
     status: 'READY' as 'READY' | 'VALIDATING' | 'DENIED' | 'ERROR',
     pathname: currentHubPathname(),
@@ -203,7 +202,7 @@ function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLo
         onLogout();
         return;
       }
-      if (session.userId && validatedSession.userId !== session.userId) {
+      if (validatedSession.membershipRef !== session.membershipRef) {
         onLogout();
         return;
       }
@@ -269,6 +268,7 @@ function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLo
           Verificando acceso…
         </div>
       )}
+      <OrganizationSwitcher session={routeState.session} onMembershipChange={onMembershipChange} />
       <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-600">Cargando Hub local…</div>}>
         <HubWorkspace
           userName={routeState.session.name}
@@ -326,7 +326,7 @@ type AuthState =
     };
 
 type PendingLegacyValidation = {
-  token: string;
+  key: string;
   promise: Promise<Session>;
 };
 
@@ -335,11 +335,12 @@ let pendingLegacyValidation: PendingLegacyValidation | null = null;
 function validateLegacySession(session: Session, signal?: AbortSignal): Promise<Session> {
   const token = session.token;
   if (!token) return Promise.reject(Object.assign(new Error('Token legacy requerido.'), { status: 401 }));
-  if (signal) return resolveValidatedLegacySession(token, signal);
-  if (pendingLegacyValidation?.token === token) return pendingLegacyValidation.promise;
+  const key = `${token}:${session.membershipRef}`;
+  if (signal) return resolveValidatedLegacySession(token, session.membershipRef, signal);
+  if (pendingLegacyValidation?.key === key) return pendingLegacyValidation.promise;
 
-  const promise = resolveValidatedLegacySession(token);
-  const entry = { token, promise };
+  const promise = resolveValidatedLegacySession(token, session.membershipRef);
+  const entry = { key, promise };
   pendingLegacyValidation = entry;
   void promise.then(
     () => { if (pendingLegacyValidation === entry) pendingLegacyValidation = null; },
@@ -348,17 +349,25 @@ function validateLegacySession(session: Session, signal?: AbortSignal): Promise<
   return promise;
 }
 
-function resolveValidatedLegacySession(token: string, signal?: AbortSignal): Promise<Session> {
-  return getMe(token, signal).then((response) => {
+function resolveValidatedLegacySession(token: string, membershipRef: string, signal?: AbortSignal): Promise<Session> {
+  return getMe(token, membershipRef || undefined, signal).then((response) => {
     const role = normalizeRole(response.user.role);
-    if (!role) {
+    const selectedRole = normalizeRole(response.user.membership.role);
+    const memberships = response.user.memberships.flatMap((option) => {
+      const optionRole = normalizeRole(option.role);
+      return optionRole ? [{ ...option, role: optionRole }] : [];
+    });
+    const resolvedMembershipRef = response.user.membership.membershipRef;
+    if (!role || !selectedRole || role !== selectedRole || membershipRef && resolvedMembershipRef !== membershipRef
+      || !memberships.some((option) => option.membershipRef === resolvedMembershipRef)) {
       throw Object.assign(new Error('El servidor devolvió un rol inválido.'), { status: 401 });
     }
     return {
       token,
-      userId: response.user.id,
       name: response.user.name,
       role,
+      membershipRef: resolvedMembershipRef,
+      memberships,
       permissions: Array.isArray(response.user.permissions) ? response.user.permissions : undefined,
       deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
       commercialCrmPreviewAuthorized: response.user.commercialCrmPreviewAuthorized === true,
@@ -402,7 +411,12 @@ async function resolveInitialAuthState(): Promise<AuthState> {
   }
 }
 
-function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
+function OrganizationSwitcher({ session, onMembershipChange }: { session: Session; onMembershipChange: (membershipRef: string) => Promise<void> }) {
+  if (session.memberships.length <= 1) return null;
+  return <label className="fixed bottom-4 right-4 z-[120] rounded-xl border border-slate-200 bg-white p-2 text-xs shadow-lg"><span className="sr-only">Cambiar organización</span><select aria-label="Cambiar organización" value={session.membershipRef} onChange={(event) => void onMembershipChange(event.target.value)} className="h-9 max-w-64 rounded-lg border border-slate-200 px-2 font-semibold">{session.memberships.map((option) => <option key={option.membershipRef} value={option.membershipRef}>{option.tenantName}</option>)}</select></label>;
+}
+
+function AuthenticatedApp({ session, onLogout, onMembershipChange }: { session: Session; onLogout: () => void; onMembershipChange: (membershipRef: string) => Promise<void> }) {
   const hubMode = resolveOsiHubMode();
   const serverConfirmed = hubMode.mode === 'PREVIEW_REHEARSAL'
     ? session.commercialCrmPreviewAuthorized === true
@@ -494,8 +508,6 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
         return <HRModule />;
       case 'carpentry':
         return <CarpentryModule />;
-      case 'users':
-        return <UsersModule />;
       case 'billing':
         return <BillingModule />;
       case 'fleet':
@@ -561,6 +573,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
         crmReadEnabled={crmPipelineClientEnabled}
         mode={hubMode.mode}
         onLogout={onLogout}
+        onMembershipChange={onMembershipChange}
       />
     );
   }
@@ -583,6 +596,7 @@ function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: (
         </AppErrorBoundary>
       </main>
       <Toaster />
+      <OrganizationSwitcher session={session} onMembershipChange={onMembershipChange} />
     </div>
   );
 }
@@ -602,10 +616,7 @@ function SessionApp() {
   const handleLoginSuccess = async (session: LoginSession) => {
     const hubMode = resolveOsiHubMode();
     try {
-      const requiresServerConfirmation = hubMode.mode === 'PREVIEW_REHEARSAL' || hubMode.mode === 'PRODUCTION_READ';
-      const validated = requiresServerConfirmation
-        ? await validateLegacySession(session)
-        : session;
+      const validated = await validateLegacySession(session);
       if (hubMode.mode === 'PREVIEW_REHEARSAL' && validated.commercialCrmPreviewAuthorized !== true) {
         throw Object.assign(new Error('El servidor no confirmó el ensayo CRM.'), { status: 503 });
       }
@@ -618,6 +629,19 @@ function SessionApp() {
       clearSession();
       throw error;
     }
+  };
+
+  const handleMembershipChange = async (membershipRef: string) => {
+    if (authState.status !== 'AUTHENTICATED' || membershipRef === authState.session.membershipRef) return;
+    const selected = authState.session.memberships.find((option) => option.membershipRef === membershipRef);
+    if (!selected) throw new Error('La organización seleccionada no está disponible.');
+    const candidate = { ...authState.session, membershipRef, role: selected.role };
+    const validated = await validateLegacySession(candidate);
+    clearTenantScopedState();
+    saveSession(validated);
+    window.history.replaceState({}, '', '/hub');
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    setAuthState({ status: 'AUTHENTICATED', session: validated });
   };
 
   const handleLogout = () => {
@@ -635,7 +659,7 @@ function SessionApp() {
     );
   }
 
-  return <AuthenticatedApp session={authState.session} onLogout={handleLogout} />;
+  return <AuthenticatedApp key={authState.session.membershipRef} session={authState.session} onLogout={handleLogout} onMembershipChange={handleMembershipChange} />;
 }
 
 function App() {

@@ -1,3 +1,4 @@
+import { getMembershipRef } from "@/lib/sessionStore";
 import {
   CRM_PIPELINE_CLIENT_MODES,
   CRM_PIPELINE_READ_CLIENT_MODES,
@@ -116,21 +117,25 @@ export function isCrmCaseMutationUiEnabled(
 
 export class CrmCaseMutationApi {
   private readonly tokenProvider: () => string | null;
+  private readonly membershipRefProvider: () => string | null;
   private readonly fetchImpl: typeof fetch;
-  constructor(tokenProvider: () => string | null, fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis)) {
+  constructor(tokenProvider: () => string | null, fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis), membershipRefProvider: () => string | null = getMembershipRef) {
     this.tokenProvider = tokenProvider;
     this.fetchImpl = fetchImpl;
+    this.membershipRefProvider = membershipRefProvider;
   }
 
   private async mutation(method: "POST" | "PATCH", path: string, operation: "CREATE" | "UPDATE", fields: CrmCaseFields, expectedVersion: number | undefined, requestId: string) {
     const token = this.tokenProvider();
     if (!token) throw new CrmCaseMutationClientError(401, "COMMERCIAL_AUTH_REQUIRED");
+    const membershipRef = this.membershipRefProvider();
+    if (!membershipRef) throw new CrmCaseMutationClientError(400, "MT01B_MEMBERSHIP_SELECTION_INVALID");
     const command = { operation, requestId, ...fields, ...(operation === "UPDATE" ? { expectedVersion } : {}) };
     const body = { ...command, payloadHash: await sha256(command) };
     delete (body as Record<string, unknown>).operation;
     const response = await this.fetchImpl(`${API}${path}`, {
       method,
-      headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${token}`, "X-OSI-Membership-Ref": membershipRef },
       credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", body: JSON.stringify(body),
     });
     const root = object(await json(response));
@@ -155,10 +160,12 @@ export class CrmCaseMutationApi {
   async clients(search = "", page = 1): Promise<Readonly<{ total: number; data: readonly CrmClientOption[] }>> {
     const token = this.tokenProvider();
     if (!token) throw new CrmCaseMutationClientError(401, "COMMERCIAL_AUTH_REQUIRED");
+    const membershipRef = this.membershipRefProvider();
+    if (!membershipRef) throw new CrmCaseMutationClientError(400, "MT01B_MEMBERSHIP_SELECTION_INVALID");
     const query = new URLSearchParams({ page: String(page), pageSize: "20" });
     if (search) query.set("q", search);
     const response = await this.fetchImpl(`${API}/client-options?${query}`, {
-      headers: { Accept: "application/json", Authorization: `Bearer ${token}` }, credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "X-OSI-Membership-Ref": membershipRef }, credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
     });
     const root = object(await json(response));
     if (!response.ok) throw new CrmCaseMutationClientError(response.status, typeof root.error === "string" ? root.error : "CRM_PIPELINE_REQUEST_FAILED");

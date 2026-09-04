@@ -1,4 +1,4 @@
-import { getToken } from "@/lib/sessionStore";
+import { getMembershipRef, getToken } from "@/lib/sessionStore";
 import {
   PIPELINE_CASE_STATUSES,
   type AssignOwnerInput,
@@ -236,6 +236,9 @@ export class CrmPipelineApi {
     const timer = globalThis.setTimeout(() => controller.abort(new DOMException("Request timeout", "TimeoutError")), this.timeoutMs);
     try {
       const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}` });
+      const membershipRef = getMembershipRef();
+      if (!membershipRef) throw new CrmPipelineError(400, "MT01B_MEMBERSHIP_SELECTION_INVALID");
+      headers.set("X-OSI-Membership-Ref", membershipRef);
       if (options.body !== undefined) headers.set("Content-Type", "application/json");
       if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
       const response = await this.fetchImpl(`${API_PREFIX}${path}`, {

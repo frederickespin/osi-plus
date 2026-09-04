@@ -1,4 +1,4 @@
-import { getToken } from "@/lib/sessionStore";
+import { getMembershipRef, getToken, type MembershipOption } from "@/lib/sessionStore";
 import type { PstTemplateContent } from "@/lib/templateSchemas";
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -17,24 +17,6 @@ export type AppInfoResponse = {
   commit: string | null;
   branch: string | null;
   timestamp: string;
-};
-
-export type UserDto = {
-  id: string;
-  code: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: string;
-  status: string;
-  department?: string | null;
-  joinDate: string;
-  points: number;
-  rating: number;
-  permissions?: string[];
-  deniedPermissions?: string[];
-  commercialCrmPreviewAuthorized?: boolean;
-  commercialCrmProductionAuthorized?: boolean;
 };
 
 export type ClientDto = {
@@ -192,6 +174,7 @@ type RequestOptions = {
   body?: unknown;
   token?: string;
   signal?: AbortSignal;
+  membershipRef?: string;
 };
 
 async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -204,6 +187,8 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   if (bearerToken) {
     headers.Authorization = `Bearer ${bearerToken}`;
   }
+  const membershipRef = options.membershipRef || (!publicPath ? getMembershipRef() : null);
+  if (membershipRef) headers["X-OSI-Membership-Ref"] = membershipRef;
 
   const response = await fetch(`${API_BASE}${path}`, {
     method: options.method || "GET",
@@ -245,27 +230,34 @@ export function getAppInfo() {
   return requestJson<AppInfoResponse>("/info");
 }
 
+export type LegacyLoginResponse = Readonly<{
+  ok: true;
+  token: string;
+  user: Readonly<{ name: string }>;
+  membershipSelection: Readonly<{ required: boolean; options: readonly MembershipOption[] }>;
+}>;
+
+export type CanonicalMeUser = Readonly<{
+  name: string;
+  role: string;
+  status: string;
+  permissions: readonly string[];
+  deniedPermissions: readonly string[];
+  membership: Readonly<{ membershipRef: string; tenantName: string; role: string }>;
+  memberships: readonly MembershipOption[];
+  commercialCrmPreviewAuthorized?: boolean;
+  commercialCrmProductionAuthorized?: boolean;
+}>;
+
 export function login(email: string, password: string) {
-  return requestJson<{ ok: boolean; token: string; user: UserDto }>("/auth/login", {
+  return requestJson<LegacyLoginResponse>("/auth/login", {
     method: "POST",
     body: { email, password },
   });
 }
 
-export function getMe(token: string, signal?: AbortSignal) {
-  return requestJson<{ ok: boolean; user: UserDto }>("/auth/me", { token, signal });
-}
-
-export async function getUsers(query = "") {
-  const suffix = query ? `?q=${encodeURIComponent(query)}` : "";
-  return requestJson<ApiListResponse<UserDto>>(`/users${suffix}`);
-}
-
-export async function createUser(payload: Partial<UserDto> & { password?: string }) {
-  return requestJson<{ ok: boolean; data: UserDto }>("/users", {
-    method: "POST",
-    body: payload,
-  });
+export function getMe(token: string, membershipRef?: string, signal?: AbortSignal) {
+  return requestJson<{ ok: boolean; user: CanonicalMeUser }>("/auth/me", { token, membershipRef, signal });
 }
 
 export async function getClients(query = "") {

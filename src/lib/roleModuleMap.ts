@@ -57,7 +57,7 @@ export type ModuleId =
  */
 export const MODULES_BY_ROLE: Record<UserRole, ModuleId[]> = {
   A: [
-    "dashboard", "users", "settings", "fleet", "a-template-approvals",
+    "dashboard", "settings", "fleet", "a-template-approvals",
     "clients", "sales-quote", "crm-pipeline", "commercial-calendar", "commercial-config", "projects",
     "k-dashboard", "k-templates", "osi-editor",
     "operations", "dispatch", "tracking", "calendar", "wall", "security",
@@ -82,8 +82,8 @@ export const MODULES_BY_ROLE: Record<UserRole, ModuleId[]> = {
   PC: ["field"],
   PD: ["maintenance"],
   PF: ["field"],
-  // I: KPIs 360°, Ecológico, Nómina Variable, Gestión Personal (PDF) – users con permiso restringido a reactivación
-  I: ["hr", "kpi", "nota", "badges", "users"],
+  // I: KPIs 360°, Ecológico, Nómina Variable, Gestión Personal.
+  I: ["hr", "kpi", "nota", "badges"],
   PE: ["supervisor", "field"],
   RB: ["field"],
 };

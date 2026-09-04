@@ -113,16 +113,20 @@ async function responseJson(response: Response) {
 
 export class AdminTenantApi {
   private readonly tokenProvider: () => string | null;
+  private readonly membershipRefProvider: () => string | null;
   private readonly fetchImpl: typeof fetch;
-  constructor(tokenProvider: () => string | null, fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis)) {
+  constructor(tokenProvider: () => string | null, fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis), membershipRefProvider: () => string | null = getMembershipRef) {
     this.tokenProvider = tokenProvider;
     this.fetchImpl = fetchImpl;
+    this.membershipRefProvider = membershipRefProvider;
   }
 
   private headers(json = false) {
     const token = this.tokenProvider();
+    const membershipRef = this.membershipRefProvider();
     if (!token) throw new AdminApiError("COMMERCIAL_AUTH_REQUIRED", 401);
-    return { Authorization: `Bearer ${token}`, ...(json ? { "Content-Type": "application/json" } : {}) };
+    if (!membershipRef) throw new AdminApiError("MT01B_MEMBERSHIP_SELECTION_INVALID", 400);
+    return { Authorization: `Bearer ${token}`, "X-OSI-Membership-Ref": membershipRef, ...(json ? { "Content-Type": "application/json" } : {}) };
   }
 
   async list(filters: Readonly<{ search?: string; role?: string; status?: string; page?: number; pageSize?: number }>, signal?: AbortSignal) {
@@ -192,3 +196,4 @@ export class AdminTenantApi {
     return invitation(body.invitation, corporateRecipient);
   }
 }
+import { getMembershipRef } from "@/lib/sessionStore";

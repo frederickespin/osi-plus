@@ -13,7 +13,6 @@ import {
   Briefcase,
   Hammer,
   Settings,
-  UserCog,
   Car,
   FolderOpen,
   Calendar,
@@ -75,7 +74,6 @@ const menuGroups: MenuGroup[] = [
     label: 'Administración',
     icon: Settings,
     items: [
-      { id: 'users', label: 'Usuarios y Roles', icon: UserCog, roles: ['A', 'I'], description: 'I: Gestión de Personal (solo reactivación)' },
       { id: 'settings', label: 'Configuración', icon: Settings, roles: ['A'] },
       { id: 'fleet', label: 'Registro de Flota', icon: Car, roles: ['A'] },
       { id: 'a-template-approvals', label: 'Aprobaciones (Plantillas)', icon: ClipboardList, roles: ['A'] },

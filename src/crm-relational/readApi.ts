@@ -1,3 +1,4 @@
+import { getMembershipRef } from "@/lib/sessionStore";
 import {
   PIPELINE_CASE_STATUSES,
   type CrmPipelineCase,
@@ -265,24 +266,28 @@ function linkSignal(external: AbortSignal | undefined, controller: AbortControll
 export class CrmPipelineReadApi {
   private readonly fetchImpl: FetchLike;
   private readonly tokenProvider: () => string | null;
+  private readonly membershipRefProvider: () => string | null;
   private readonly timeoutMs: number;
 
-  constructor(options: { fetchImpl?: FetchLike; tokenProvider?: () => string | null; timeoutMs?: number } = {}) {
+  constructor(options: { fetchImpl?: FetchLike; tokenProvider?: () => string | null; membershipRefProvider?: () => string | null; timeoutMs?: number } = {}) {
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.tokenProvider = options.tokenProvider ?? (() => null);
+    this.membershipRefProvider = options.membershipRefProvider ?? getMembershipRef;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   private async get(path: string, signal?: AbortSignal): Promise<unknown> {
     const token = this.tokenProvider();
     if (!token) throw new CrmPipelineReadError(401, "COMMERCIAL_AUTH_REQUIRED");
+    const membershipRef = this.membershipRefProvider();
+    if (!membershipRef) throw new CrmPipelineReadError(400, "MT01B_MEMBERSHIP_SELECTION_INVALID");
     const controller = new AbortController();
     const unlink = linkSignal(signal, controller);
     const timer = globalThis.setTimeout(() => controller.abort(new DOMException("Request timeout", "TimeoutError")), this.timeoutMs);
     try {
       const response = await this.fetchImpl(`${API_PREFIX}${path}`, {
         method: "GET",
-        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "X-OSI-Membership-Ref": membershipRef },
         credentials: "omit",
         cache: "no-store",
         referrerPolicy: "no-referrer",

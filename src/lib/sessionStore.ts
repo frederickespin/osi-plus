@@ -1,9 +1,18 @@
 import type { UserRole } from "@/types/osi.types";
 
+export type MembershipOption = Readonly<{
+  membershipRef: string;
+  tenantName: string;
+  role: UserRole;
+  preferred: boolean;
+}>;
+
 export type Session = {
   userId?: string;
   name?: string;
   role: UserRole; // 'A','V','K',...
+  membershipRef: string;
+  memberships: readonly MembershipOption[];
   token?: string;
   permissions?: readonly string[];
   deniedPermissions?: readonly string[];
@@ -18,6 +27,7 @@ export type StoredSessionInspection =
 
 const KEY = "osi-plus.session";
 const TOKEN_KEY = "osi-plus.token";
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export function normalizeRole(raw: unknown): UserRole | null {
   if (typeof raw !== "string") return null;
@@ -55,7 +65,22 @@ export function inspectStoredSession(): StoredSessionInspection {
 
     const stored = parsed as Record<string, unknown>;
     const role = normalizeRole(stored.role);
-    if (!role) return { kind: "INVALID", session: null };
+    const membershipRef = typeof stored.membershipRef === "string" && UUID_V4.test(stored.membershipRef)
+      ? stored.membershipRef
+      : null;
+    const rawMemberships = Array.isArray(stored.memberships) ? stored.memberships : [];
+    const memberships = rawMemberships.flatMap((value): MembershipOption[] => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const option = value as Record<string, unknown>;
+      const optionRole = normalizeRole(option.role);
+      if (typeof option.membershipRef !== "string" || !UUID_V4.test(option.membershipRef)
+        || typeof option.tenantName !== "string" || !option.tenantName.trim() || !optionRole
+        || typeof option.preferred !== "boolean") return [];
+      return [{ membershipRef: option.membershipRef, tenantName: option.tenantName, role: optionRole, preferred: option.preferred }];
+    });
+    if (!role || (membershipRef !== null && !memberships.some((option) => option.membershipRef === membershipRef))) {
+      return { kind: "INVALID", session: null };
+    }
 
     return {
       kind: "VALID",
@@ -63,7 +88,13 @@ export function inspectStoredSession(): StoredSessionInspection {
         userId: typeof stored.userId === "string" ? stored.userId : undefined,
         name: typeof stored.name === "string" ? stored.name : undefined,
         role,
+        membershipRef: membershipRef || "",
+        memberships,
         token,
+        permissions: Array.isArray(stored.permissions) && stored.permissions.every((value) => typeof value === "string") ? stored.permissions : undefined,
+        deniedPermissions: Array.isArray(stored.deniedPermissions) && stored.deniedPermissions.every((value) => typeof value === "string") ? stored.deniedPermissions : undefined,
+        commercialCrmPreviewAuthorized: stored.commercialCrmPreviewAuthorized === true,
+        commercialCrmProductionAuthorized: stored.commercialCrmProductionAuthorized === true,
       },
     };
   } catch {
@@ -109,6 +140,20 @@ export function clearSession(): void {
  */
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getMembershipRef(): string | null {
+  const stored = inspectStoredSession();
+  return stored.kind === "VALID" ? stored.session.membershipRef : null;
+}
+
+export function clearTenantScopedState(): void {
+  const preserved = new Set([KEY, TOKEN_KEY]);
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index);
+    if (key && !preserved.has(key)) localStorage.removeItem(key);
+  }
+  sessionStorage.clear();
 }
 
 export function isAdminRole(role: UserRole) {

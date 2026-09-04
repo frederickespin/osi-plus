@@ -110,6 +110,23 @@ model Tenant {
   surveyPublicationAccess          SurveyPublicationAccess[]
   surveySignatures                 SurveyPublicationSignature[]
   surveyMutationCommands           SurveyMutationCommand[]
+  materialUnits                    MaterialUnit[]
+  materialCatalogItems             MaterialCatalogItem[]
+  materialUnitConversions          MaterialUnitConversion[]
+  materialCostVersions             MaterialCostVersion[]
+  materialSupplierReferences       MaterialSupplierReference[]
+  materialWarehouses               MaterialWarehouse[]
+  materialLocations                MaterialLocation[]
+  materialInventoryCommands        MaterialInventoryCommand[]
+  materialInventoryMovements       MaterialInventoryMovement[]
+  materialReservations             MaterialReservation[]
+  materialReservationEvents        MaterialReservationEvent[]
+  packingRecipes                   PackingRecipe[]
+  packingRecipeVersions            PackingRecipeVersion[]
+  packingRecipeLines               PackingRecipeLine[]
+  materialRequirementSnapshots     MaterialRequirementSnapshot[]
+  materialRequirementLines         MaterialRequirementLine[]
+  materialPurchaseRequests         MaterialPurchaseRequest[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -187,6 +204,13 @@ model TenantMembership {
   surveyAssignmentsEvaluated                                                                                                                    SurveyAssignment[]                 @relation("SurveyAssignmentEvaluator")
   surveyPublicationsCreated                                                                                                                     SurveyPublication[]                @relation("SurveyPublicationActor")
   surveyMutationCommandsAsActor                                                                                                                 SurveyMutationCommand[]            @relation("SurveyMutationCommandActor")
+  materialInventoryCommandsAsActor                                                                                                              MaterialInventoryCommand[]         @relation("MaterialInventoryCommandActor")
+  materialInventoryMovementsAsActor                                                                                                             MaterialInventoryMovement[]        @relation("MaterialInventoryMovementActor")
+  materialReservationEventsAsActor                                                                                                              MaterialReservationEvent[]         @relation("MaterialReservationEventActor")
+  materialCostVersionsAsActor                                                                                                                   MaterialCostVersion[]              @relation("MaterialCostVersionActor")
+  packingRecipeVersionsAsActor                                                                                                                  PackingRecipeVersion[]             @relation("PackingRecipeVersionActor")
+  materialRequirementSnapshotsAsActor                                                                                                           MaterialRequirementSnapshot[]      @relation("MaterialRequirementSnapshotActor")
+  materialPurchaseRequestsAsActor                                                                                                               MaterialPurchaseRequest[]          @relation("MaterialPurchaseRequestActor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, publicRef], map: "tenant_memberships_tenant_id_public_ref_key")
@@ -1412,6 +1436,8 @@ model PipelineCase {
   surveyAssignments             SurveyAssignment[]
   surveyDrafts                  SurveyDraft[]
   surveyPublications            SurveyPublication[]
+  materialReservations          MaterialReservation[]
+  materialRequirementSnapshots  MaterialRequirementSnapshot[]
   projects                      Project[]                     @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -1926,37 +1952,38 @@ model SurveyPhoto {
 }
 
 model SurveyPublication {
-  id                      String                      @id @default(cuid())
-  publicationRef          String                      @default(dbgenerated("gen_random_uuid()")) @map("publication_ref") @db.Uuid
-  tenantId                String                      @map("tenant_id")
-  draftId                 String                      @map("draft_id")
-  pipelineCaseId          String                      @map("pipeline_case_id")
-  serviceRevisionId       String                      @map("service_revision_id")
+  id                      String                        @id @default(cuid())
+  publicationRef          String                        @default(dbgenerated("gen_random_uuid()")) @map("publication_ref") @db.Uuid
+  tenantId                String                        @map("tenant_id")
+  draftId                 String                        @map("draft_id")
+  pipelineCaseId          String                        @map("pipeline_case_id")
+  serviceRevisionId       String                        @map("service_revision_id")
   revision                Int
-  status                  SurveyPublicationStatus     @default(CURRENT)
-  routeVersion            Int                         @map("route_version")
-  catalogVersion          Int                         @map("catalog_version")
-  serviceSelectionRef     String                      @map("service_selection_ref") @db.Uuid
-  contextSnapshot         Json                        @map("context_snapshot")
-  totalsSnapshot          Json                        @map("totals_snapshot")
-  logicalSha256           String                      @map("logical_sha256") @db.Char(64)
-  pdfBlobObjectId         String                      @unique @map("pdf_blob_object_id")
-  pdfSha256               String                      @map("pdf_sha256") @db.Char(64)
-  replacesPublicationId   String?                     @map("replaces_publication_id")
-  publishedByMembershipId String                      @map("published_by_membership_id")
-  publishedByUserId       String                      @map("published_by_user_id")
-  publishedAt             DateTime                    @default(now()) @map("published_at") @db.Timestamptz(6)
-  tenant                  Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_tenant_fkey")
-  draft                   SurveyDraft                 @relation(fields: [tenantId, draftId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_draft_fkey")
-  pipelineCase            PipelineCase                @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_case_fkey")
-  serviceRevision         PipelineCaseServiceRevision @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_service_revision_fkey")
-  pdfBlobObject           SurveyBlobObject            @relation("SurveyPublicationPdf", fields: [tenantId, pdfBlobObjectId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_pdf_blob_fkey")
-  replacesPublication     SurveyPublication?          @relation("SurveyPublicationReplacement", fields: [tenantId, replacesPublicationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_replaces_fkey")
-  replacement             SurveyPublication?          @relation("SurveyPublicationReplacement")
-  publishedByMembership   TenantMembership            @relation("SurveyPublicationActor", fields: [tenantId, publishedByMembershipId, publishedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_actor_fkey")
+  status                  SurveyPublicationStatus       @default(CURRENT)
+  routeVersion            Int                           @map("route_version")
+  catalogVersion          Int                           @map("catalog_version")
+  serviceSelectionRef     String                        @map("service_selection_ref") @db.Uuid
+  contextSnapshot         Json                          @map("context_snapshot")
+  totalsSnapshot          Json                          @map("totals_snapshot")
+  logicalSha256           String                        @map("logical_sha256") @db.Char(64)
+  pdfBlobObjectId         String                        @unique @map("pdf_blob_object_id")
+  pdfSha256               String                        @map("pdf_sha256") @db.Char(64)
+  replacesPublicationId   String?                       @map("replaces_publication_id")
+  publishedByMembershipId String                        @map("published_by_membership_id")
+  publishedByUserId       String                        @map("published_by_user_id")
+  publishedAt             DateTime                      @default(now()) @map("published_at") @db.Timestamptz(6)
+  tenant                  Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_tenant_fkey")
+  draft                   SurveyDraft                   @relation(fields: [tenantId, draftId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_draft_fkey")
+  pipelineCase            PipelineCase                  @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_case_fkey")
+  serviceRevision         PipelineCaseServiceRevision   @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_service_revision_fkey")
+  pdfBlobObject           SurveyBlobObject              @relation("SurveyPublicationPdf", fields: [tenantId, pdfBlobObjectId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_pdf_blob_fkey")
+  replacesPublication     SurveyPublication?            @relation("SurveyPublicationReplacement", fields: [tenantId, replacesPublicationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_replaces_fkey")
+  replacement             SurveyPublication?            @relation("SurveyPublicationReplacement")
+  publishedByMembership   TenantMembership              @relation("SurveyPublicationActor", fields: [tenantId, publishedByMembershipId, publishedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_publications_actor_fkey")
   items                   SurveyPublicationItem[]
   accessSnapshots         SurveyPublicationAccess[]
   signature               SurveyPublicationSignature?
+  materialRequirements    MaterialRequirementSnapshot[]
 
   @@unique([tenantId, id], map: "survey_publications_tenant_id_key")
   @@unique([tenantId, publicationRef], map: "survey_publications_tenant_ref_key")
@@ -3180,6 +3207,451 @@ model CatalogSpecialHandling {
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("catalog_special_handling")
+}
+
+model MaterialUnit {
+  id                   String                    @id @default(cuid())
+  unitRef              String                    @default(dbgenerated("gen_random_uuid()")) @map("unit_ref") @db.Uuid
+  tenantId             String                    @map("tenant_id")
+  code                 String                    @db.VarChar(24)
+  name                 String                    @db.VarChar(80)
+  decimalPlaces        Int                       @default(3) @map("decimal_places")
+  status               MaterialRecordStatus      @default(ACTIVE)
+  version              Int                       @default(1)
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant               Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_units_tenant_fkey")
+  baseMaterials        MaterialCatalogItem[]     @relation("MaterialBaseUnit")
+  purchaseMaterials    MaterialCatalogItem[]     @relation("MaterialPurchaseUnit")
+  consumptionMaterials MaterialCatalogItem[]     @relation("MaterialConsumptionUnit")
+  conversionSources    MaterialUnitConversion[]  @relation("MaterialConversionSource")
+  conversionTargets    MaterialUnitConversion[]  @relation("MaterialConversionTarget")
+  costVersions         MaterialCostVersion[]
+  recipeLines          PackingRecipeLine[]
+  requirementLines     MaterialRequirementLine[]
+  purchaseRequests     MaterialPurchaseRequest[]
+
+  @@unique([tenantId, id], map: "material_units_tenant_id_key")
+  @@unique([tenantId, unitRef], map: "material_units_tenant_ref_key")
+  @@unique([tenantId, code], map: "material_units_tenant_code_key")
+  @@index([tenantId, status, code], map: "material_units_status_idx")
+  @@map("material_units")
+}
+
+model MaterialCatalogItem {
+  id                 String                      @id @default(cuid())
+  materialRef        String                      @default(dbgenerated("gen_random_uuid()")) @map("material_ref") @db.Uuid
+  tenantId           String                      @map("tenant_id")
+  code               String                      @db.VarChar(64)
+  name               String                      @db.VarChar(160)
+  description        String?                     @db.VarChar(1000)
+  family             String                      @db.VarChar(80)
+  subfamily          String?                     @db.VarChar(80)
+  baseUnitId         String                      @map("base_unit_id")
+  purchaseUnitId     String                      @map("purchase_unit_id")
+  consumptionUnitId  String                      @map("consumption_unit_id")
+  technicalFlags     String[]                    @default([]) @map("technical_flags")
+  dimensionPolicy    Json                        @default("{}") @map("dimension_policy")
+  lotTrackingEnabled Boolean                     @default(false) @map("lot_tracking_enabled")
+  minimumStock       Decimal?                    @map("minimum_stock") @db.Decimal(18, 6)
+  maximumStock       Decimal?                    @map("maximum_stock") @db.Decimal(18, 6)
+  reorderPoint       Decimal?                    @map("reorder_point") @db.Decimal(18, 6)
+  sortOrder          Int                         @default(0) @map("sort_order")
+  status             MaterialRecordStatus        @default(ACTIVE)
+  version            Int                         @default(1)
+  createdAt          DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant             Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_tenant_fkey")
+  baseUnit           MaterialUnit                @relation("MaterialBaseUnit", fields: [tenantId, baseUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_base_unit_fkey")
+  purchaseUnit       MaterialUnit                @relation("MaterialPurchaseUnit", fields: [tenantId, purchaseUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_purchase_unit_fkey")
+  consumptionUnit    MaterialUnit                @relation("MaterialConsumptionUnit", fields: [tenantId, consumptionUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_consumption_unit_fkey")
+  conversions        MaterialUnitConversion[]
+  costs              MaterialCostVersion[]
+  suppliers          MaterialSupplierReference[]
+  movements          MaterialInventoryMovement[]
+  reservations       MaterialReservation[]
+  recipeLines        PackingRecipeLine[]
+  requirementLines   MaterialRequirementLine[]
+  purchaseRequests   MaterialPurchaseRequest[]
+
+  @@unique([tenantId, id], map: "material_catalog_items_tenant_id_key")
+  @@unique([tenantId, materialRef], map: "material_catalog_items_tenant_ref_key")
+  @@unique([tenantId, code], map: "material_catalog_items_tenant_code_key")
+  @@index([tenantId, status, family, sortOrder], map: "material_catalog_items_catalog_idx")
+  @@map("material_catalog_items")
+}
+
+model MaterialUnitConversion {
+  id            String               @id @default(cuid())
+  conversionRef String               @default(dbgenerated("gen_random_uuid()")) @map("conversion_ref") @db.Uuid
+  tenantId      String               @map("tenant_id")
+  materialId    String               @map("material_id")
+  sourceUnitId  String               @map("source_unit_id")
+  targetUnitId  String               @map("target_unit_id")
+  multiplier    Decimal              @db.Decimal(24, 9)
+  validFrom     DateTime             @map("valid_from") @db.Timestamptz(6)
+  validTo       DateTime?            @map("valid_to") @db.Timestamptz(6)
+  version       Int
+  status        MaterialRecordStatus @default(ACTIVE)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_unit_conversions_tenant_fkey")
+  material      MaterialCatalogItem  @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_unit_conversions_material_fkey")
+  sourceUnit    MaterialUnit         @relation("MaterialConversionSource", fields: [tenantId, sourceUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_unit_conversions_source_unit_fkey")
+  targetUnit    MaterialUnit         @relation("MaterialConversionTarget", fields: [tenantId, targetUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_unit_conversions_target_unit_fkey")
+
+  @@unique([tenantId, conversionRef], map: "material_unit_conversions_tenant_ref_key")
+  @@unique([tenantId, materialId, sourceUnitId, targetUnitId, version], map: "material_unit_conversions_version_key")
+  @@index([tenantId, materialId, status, validFrom(sort: Desc)], map: "material_unit_conversions_current_idx")
+  @@map("material_unit_conversions")
+}
+
+model MaterialCostVersion {
+  id                    String                     @id @default(cuid())
+  costVersionRef        String                     @default(dbgenerated("gen_random_uuid()")) @map("cost_version_ref") @db.Uuid
+  tenantId              String                     @map("tenant_id")
+  materialId            String                     @map("material_id")
+  unitId                String                     @map("unit_id")
+  amount                Decimal                    @db.Decimal(18, 6)
+  currency              String                     @db.Char(3)
+  source                String                     @db.VarChar(80)
+  supplierReferenceId   String?                    @map("supplier_reference_id")
+  validFrom             DateTime                   @map("valid_from") @db.Timestamptz(6)
+  validTo               DateTime?                  @map("valid_to") @db.Timestamptz(6)
+  version               Int
+  createdByMembershipId String                     @map("created_by_membership_id")
+  createdByUserId       String                     @map("created_by_user_id")
+  createdAt             DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_cost_versions_tenant_fkey")
+  material              MaterialCatalogItem        @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_cost_versions_material_fkey")
+  unit                  MaterialUnit               @relation(fields: [tenantId, unitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_cost_versions_unit_fkey")
+  supplierReference     MaterialSupplierReference? @relation(fields: [tenantId, supplierReferenceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_cost_versions_supplier_fkey")
+  createdByMembership   TenantMembership           @relation("MaterialCostVersionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "material_cost_versions_actor_fkey")
+
+  @@unique([tenantId, id], map: "material_cost_versions_tenant_id_key")
+  @@unique([tenantId, costVersionRef], map: "material_cost_versions_tenant_ref_key")
+  @@unique([tenantId, materialId, version], map: "material_cost_versions_version_key")
+  @@index([tenantId, materialId, validFrom(sort: Desc)], map: "material_cost_versions_current_idx")
+  @@map("material_cost_versions")
+}
+
+model MaterialSupplierReference {
+  id           String                @id @default(cuid())
+  supplierRef  String                @default(dbgenerated("gen_random_uuid()")) @map("supplier_ref") @db.Uuid
+  tenantId     String                @map("tenant_id")
+  materialId   String                @map("material_id")
+  supplierCode String                @map("supplier_code") @db.VarChar(64)
+  supplierName String                @map("supplier_name") @db.VarChar(160)
+  supplierSku  String?               @map("supplier_sku") @db.VarChar(100)
+  status       MaterialRecordStatus  @default(ACTIVE)
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_supplier_references_tenant_fkey")
+  material     MaterialCatalogItem   @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_supplier_references_material_fkey")
+  costVersions MaterialCostVersion[]
+
+  @@unique([tenantId, id], map: "material_supplier_references_tenant_id_key")
+  @@unique([tenantId, supplierRef], map: "material_supplier_references_tenant_ref_key")
+  @@unique([tenantId, materialId, supplierCode], map: "material_supplier_references_code_key")
+  @@map("material_supplier_references")
+}
+
+model MaterialWarehouse {
+  id           String               @id @default(cuid())
+  warehouseRef String               @default(dbgenerated("gen_random_uuid()")) @map("warehouse_ref") @db.Uuid
+  tenantId     String               @map("tenant_id")
+  code         String               @db.VarChar(64)
+  name         String               @db.VarChar(160)
+  status       MaterialRecordStatus @default(ACTIVE)
+  version      Int                  @default(1)
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_warehouses_tenant_fkey")
+  locations    MaterialLocation[]
+
+  @@unique([tenantId, id], map: "material_warehouses_tenant_id_key")
+  @@unique([tenantId, warehouseRef], map: "material_warehouses_tenant_ref_key")
+  @@unique([tenantId, code], map: "material_warehouses_tenant_code_key")
+  @@map("material_warehouses")
+}
+
+model MaterialLocation {
+  id               String                      @id @default(cuid())
+  locationRef      String                      @default(dbgenerated("gen_random_uuid()")) @map("location_ref") @db.Uuid
+  tenantId         String                      @map("tenant_id")
+  warehouseId      String                      @map("warehouse_id")
+  parentLocationId String?                     @map("parent_location_id")
+  code             String                      @db.VarChar(64)
+  name             String                      @db.VarChar(160)
+  kind             MaterialLocationKind
+  depth            Int                         @default(0)
+  path             String                      @db.VarChar(600)
+  status           MaterialRecordStatus        @default(ACTIVE)
+  version          Int                         @default(1)
+  createdAt        DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant           Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_tenant_fkey")
+  warehouse        MaterialWarehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_warehouse_fkey")
+  parent           MaterialLocation?           @relation("MaterialLocationTree", fields: [tenantId, parentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_parent_fkey")
+  children         MaterialLocation[]          @relation("MaterialLocationTree")
+  movements        MaterialInventoryMovement[]
+  reservations     MaterialReservation[]
+
+  @@unique([tenantId, id], map: "material_locations_tenant_id_key")
+  @@unique([tenantId, locationRef], map: "material_locations_tenant_ref_key")
+  @@unique([tenantId, warehouseId, code], map: "material_locations_warehouse_code_key")
+  @@index([tenantId, warehouseId, parentLocationId, status], map: "material_locations_tree_idx")
+  @@map("material_locations")
+}
+
+model MaterialInventoryCommand {
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String                      @map("tenant_id")
+  requestId         String                      @map("request_id") @db.VarChar(191)
+  operation         String                      @db.VarChar(80)
+  payloadHash       String                      @map("payload_hash") @db.Char(64)
+  targetRef         String                      @map("target_ref") @db.VarChar(191)
+  resultJson        Json                        @map("result_json")
+  actorMembershipId String                      @map("actor_membership_id")
+  actorUserId       String                      @map("actor_user_id")
+  createdAt         DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_commands_tenant_fkey")
+  actorMembership   TenantMembership            @relation("MaterialInventoryCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_commands_actor_fkey")
+  movements         MaterialInventoryMovement[]
+
+  @@unique([tenantId, id], map: "material_inventory_commands_tenant_id_key")
+  @@unique([tenantId, requestId], map: "material_inventory_commands_request_key")
+  @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "material_inventory_commands_target_idx")
+  @@map("material_inventory_commands")
+}
+
+model MaterialInventoryMovement {
+  id                String                   @id @default(cuid())
+  movementRef       String                   @default(dbgenerated("gen_random_uuid()")) @map("movement_ref") @db.Uuid
+  transactionRef    String                   @map("transaction_ref") @db.Uuid
+  tenantId          String                   @map("tenant_id")
+  materialId        String                   @map("material_id")
+  locationId        String                   @map("location_id")
+  commandId         String                   @map("command_id") @db.Uuid
+  reservationId     String?                  @map("reservation_id")
+  requirementLineId String?                  @map("requirement_line_id")
+  purchaseRequestId String?                  @map("purchase_request_id")
+  movementType      MaterialMovementType     @map("movement_type")
+  quantityBase      Decimal                  @map("quantity_base") @db.Decimal(18, 6)
+  lotCode           String?                  @map("lot_code") @db.VarChar(100)
+  reasonCode        String                   @map("reason_code") @db.VarChar(80)
+  actorMembershipId String                   @map("actor_membership_id")
+  actorUserId       String                   @map("actor_user_id")
+  occurredAt        DateTime                 @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  tenant            Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_movements_tenant_fkey")
+  material          MaterialCatalogItem      @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_movements_material_fkey")
+  location          MaterialLocation         @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_movements_location_fkey")
+  command           MaterialInventoryCommand @relation(fields: [tenantId, commandId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_movements_command_fkey")
+  reservation       MaterialReservation?     @relation(fields: [tenantId, reservationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_movements_reservation_fkey")
+  requirementLine   MaterialRequirementLine? @relation(fields: [tenantId, requirementLineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_movements_requirement_fkey")
+  purchaseRequest   MaterialPurchaseRequest? @relation(fields: [tenantId, purchaseRequestId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_movements_purchase_request_fkey")
+  actorMembership   TenantMembership         @relation("MaterialInventoryMovementActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "material_inventory_movements_actor_fkey")
+
+  @@unique([tenantId, id], map: "material_inventory_movements_tenant_id_key")
+  @@unique([tenantId, movementRef], map: "material_inventory_movements_tenant_ref_key")
+  @@index([tenantId, materialId, locationId, occurredAt], map: "material_inventory_movements_stock_idx")
+  @@index([tenantId, transactionRef, movementType], map: "material_inventory_movements_transaction_idx")
+  @@map("material_inventory_movements")
+}
+
+model MaterialReservation {
+  id                String                      @id @default(cuid())
+  reservationRef    String                      @default(dbgenerated("gen_random_uuid()")) @map("reservation_ref") @db.Uuid
+  tenantId          String                      @map("tenant_id")
+  materialId        String                      @map("material_id")
+  locationId        String                      @map("location_id")
+  pipelineCaseId    String?                     @map("pipeline_case_id")
+  requirementLineId String?                     @map("requirement_line_id")
+  cratingReference  String?                     @map("crating_reference") @db.VarChar(191)
+  quantityBase      Decimal                     @map("quantity_base") @db.Decimal(18, 6)
+  status            MaterialReservationStatus   @default(RESERVED)
+  version           Int                         @default(1)
+  createdAt         DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_reservations_tenant_fkey")
+  material          MaterialCatalogItem         @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_reservations_material_fkey")
+  location          MaterialLocation            @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_reservations_location_fkey")
+  pipelineCase      PipelineCase?               @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_reservations_case_fkey")
+  requirementLine   MaterialRequirementLine?    @relation(fields: [tenantId, requirementLineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_reservations_requirement_fkey")
+  events            MaterialReservationEvent[]
+  movements         MaterialInventoryMovement[]
+
+  @@unique([tenantId, id], map: "material_reservations_tenant_id_key")
+  @@unique([tenantId, reservationRef], map: "material_reservations_tenant_ref_key")
+  @@index([tenantId, materialId, locationId, status], map: "material_reservations_availability_idx")
+  @@index([tenantId, pipelineCaseId, status], map: "material_reservations_case_idx")
+  @@map("material_reservations")
+}
+
+model MaterialReservationEvent {
+  id                String                     @id @default(cuid())
+  eventRef          String                     @default(dbgenerated("gen_random_uuid()")) @map("event_ref") @db.Uuid
+  tenantId          String                     @map("tenant_id")
+  reservationId     String                     @map("reservation_id")
+  fromStatus        MaterialReservationStatus? @map("from_status")
+  toStatus          MaterialReservationStatus  @map("to_status")
+  quantityBase      Decimal                    @map("quantity_base") @db.Decimal(18, 6)
+  reasonCode        String                     @map("reason_code") @db.VarChar(80)
+  actorMembershipId String                     @map("actor_membership_id")
+  actorUserId       String                     @map("actor_user_id")
+  createdAt         DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_reservation_events_tenant_fkey")
+  reservation       MaterialReservation        @relation(fields: [tenantId, reservationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_reservation_events_reservation_fkey")
+  actorMembership   TenantMembership           @relation("MaterialReservationEventActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "material_reservation_events_actor_fkey")
+
+  @@unique([tenantId, eventRef], map: "material_reservation_events_tenant_ref_key")
+  @@index([tenantId, reservationId, createdAt], map: "material_reservation_events_history_idx")
+  @@map("material_reservation_events")
+}
+
+model PackingRecipe {
+  id        String                 @id @default(cuid())
+  recipeRef String                 @default(dbgenerated("gen_random_uuid()")) @map("recipe_ref") @db.Uuid
+  tenantId  String                 @map("tenant_id")
+  code      String                 @db.VarChar(64)
+  name      String                 @db.VarChar(160)
+  status    MaterialRecordStatus   @default(ACTIVE)
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "packing_recipes_tenant_fkey")
+  versions  PackingRecipeVersion[]
+
+  @@unique([tenantId, id], map: "packing_recipes_tenant_id_key")
+  @@unique([tenantId, recipeRef], map: "packing_recipes_tenant_ref_key")
+  @@unique([tenantId, code], map: "packing_recipes_tenant_code_key")
+  @@map("packing_recipes")
+}
+
+model PackingRecipeVersion {
+  id                    String                        @id @default(cuid())
+  recipeVersionRef      String                        @default(dbgenerated("gen_random_uuid()")) @map("recipe_version_ref") @db.Uuid
+  tenantId              String                        @map("tenant_id")
+  recipeId              String                        @map("recipe_id")
+  version               Int
+  status                PackingRecipeVersionStatus    @default(DRAFT)
+  applicability         Json
+  applicabilitySha256   String                        @map("applicability_sha256") @db.Char(64)
+  createdByMembershipId String                        @map("created_by_membership_id")
+  createdByUserId       String                        @map("created_by_user_id")
+  activatedAt           DateTime?                     @map("activated_at") @db.Timestamptz(6)
+  createdAt             DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "packing_recipe_versions_tenant_fkey")
+  recipe                PackingRecipe                 @relation(fields: [tenantId, recipeId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "packing_recipe_versions_recipe_fkey")
+  createdByMembership   TenantMembership              @relation("PackingRecipeVersionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "packing_recipe_versions_actor_fkey")
+  lines                 PackingRecipeLine[]
+  requirementSnapshots  MaterialRequirementSnapshot[]
+
+  @@unique([tenantId, id], map: "packing_recipe_versions_tenant_id_key")
+  @@unique([tenantId, recipeVersionRef], map: "packing_recipe_versions_tenant_ref_key")
+  @@unique([tenantId, recipeId, version], map: "packing_recipe_versions_version_key")
+  @@index([tenantId, status, activatedAt(sort: Desc)], map: "packing_recipe_versions_active_idx")
+  @@map("packing_recipe_versions")
+}
+
+model PackingRecipeLine {
+  id                String               @id @default(cuid())
+  tenantId          String               @map("tenant_id")
+  recipeVersionId   String               @map("recipe_version_id")
+  position          Int
+  materialId        String               @map("material_id")
+  unitId            String               @map("unit_id")
+  formulaType       PackingFormulaType   @map("formula_type")
+  fixedQuantity     Decimal?             @map("fixed_quantity") @db.Decimal(18, 6)
+  multiplier        Decimal?             @db.Decimal(18, 6)
+  roundingIncrement Decimal              @default(1) @map("rounding_increment") @db.Decimal(18, 6)
+  wastePercent      Decimal              @default(0) @map("waste_percent") @db.Decimal(7, 4)
+  formulaConfig     Json                 @default("{}") @map("formula_config")
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "packing_recipe_lines_tenant_fkey")
+  recipeVersion     PackingRecipeVersion @relation(fields: [tenantId, recipeVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "packing_recipe_lines_version_fkey")
+  material          MaterialCatalogItem  @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "packing_recipe_lines_material_fkey")
+  unit              MaterialUnit         @relation(fields: [tenantId, unitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "packing_recipe_lines_unit_fkey")
+
+  @@unique([tenantId, recipeVersionId, position], map: "packing_recipe_lines_position_key")
+  @@index([tenantId, materialId], map: "packing_recipe_lines_material_idx")
+  @@map("packing_recipe_lines")
+}
+
+model MaterialRequirementSnapshot {
+  id                    String                            @id @default(cuid())
+  requirementRef        String                            @default(dbgenerated("gen_random_uuid()")) @map("requirement_ref") @db.Uuid
+  tenantId              String                            @map("tenant_id")
+  surveyPublicationId   String                            @map("survey_publication_id")
+  pipelineCaseId        String                            @map("pipeline_case_id")
+  recipeVersionId       String                            @map("recipe_version_id")
+  revision              Int
+  status                MaterialRequirementSnapshotStatus @default(CURRENT)
+  contextSnapshot       Json                              @map("context_snapshot")
+  logicalSha256         String                            @map("logical_sha256") @db.Char(64)
+  createdByMembershipId String                            @map("created_by_membership_id")
+  createdByUserId       String                            @map("created_by_user_id")
+  createdAt             DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_requirement_snapshots_tenant_fkey")
+  surveyPublication     SurveyPublication                 @relation(fields: [tenantId, surveyPublicationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_requirement_snapshots_publication_fkey")
+  pipelineCase          PipelineCase                      @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_requirement_snapshots_case_fkey")
+  recipeVersion         PackingRecipeVersion              @relation(fields: [tenantId, recipeVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_requirement_snapshots_recipe_fkey")
+  createdByMembership   TenantMembership                  @relation("MaterialRequirementSnapshotActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "material_requirement_snapshots_actor_fkey")
+  lines                 MaterialRequirementLine[]
+
+  @@unique([tenantId, id], map: "material_requirement_snapshots_tenant_id_key")
+  @@unique([tenantId, requirementRef], map: "material_requirement_snapshots_tenant_ref_key")
+  @@unique([tenantId, surveyPublicationId, revision], map: "material_requirement_snapshots_publication_revision_key")
+  @@index([tenantId, pipelineCaseId, status, createdAt(sort: Desc)], map: "material_requirement_snapshots_case_idx")
+  @@map("material_requirement_snapshots")
+}
+
+model MaterialRequirementLine {
+  id                    String                      @id @default(cuid())
+  tenantId              String                      @map("tenant_id")
+  requirementSnapshotId String                      @map("requirement_snapshot_id")
+  position              Int
+  materialId            String                      @map("material_id")
+  unitId                String                      @map("unit_id")
+  requiredQuantity      Decimal                     @map("required_quantity") @db.Decimal(18, 6)
+  formulaSnapshot       Json                        @map("formula_snapshot")
+  sourceSnapshot        Json                        @map("source_snapshot")
+  tenant                Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_requirement_lines_tenant_fkey")
+  requirementSnapshot   MaterialRequirementSnapshot @relation(fields: [tenantId, requirementSnapshotId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_requirement_lines_snapshot_fkey")
+  material              MaterialCatalogItem         @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_requirement_lines_material_fkey")
+  unit                  MaterialUnit                @relation(fields: [tenantId, unitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_requirement_lines_unit_fkey")
+  reservations          MaterialReservation[]
+  movements             MaterialInventoryMovement[]
+  purchaseRequests      MaterialPurchaseRequest[]
+
+  @@unique([tenantId, id], map: "material_requirement_lines_tenant_id_key")
+  @@unique([tenantId, requirementSnapshotId, position], map: "material_requirement_lines_position_key")
+  @@index([tenantId, materialId], map: "material_requirement_lines_material_idx")
+  @@map("material_requirement_lines")
+}
+
+model MaterialPurchaseRequest {
+  id                      String                        @id @default(cuid())
+  purchaseRequestRef      String                        @default(dbgenerated("gen_random_uuid()")) @map("purchase_request_ref") @db.Uuid
+  tenantId                String                        @map("tenant_id")
+  materialId              String                        @map("material_id")
+  unitId                  String                        @map("unit_id")
+  requirementLineId       String?                       @map("requirement_line_id")
+  requestedQuantity       Decimal                       @map("requested_quantity") @db.Decimal(18, 6)
+  status                  MaterialPurchaseRequestStatus @default(REQUESTED)
+  version                 Int                           @default(1)
+  requestedByMembershipId String                        @map("requested_by_membership_id")
+  requestedByUserId       String                        @map("requested_by_user_id")
+  createdAt               DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                  Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_purchase_requests_tenant_fkey")
+  material                MaterialCatalogItem           @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_purchase_requests_material_fkey")
+  unit                    MaterialUnit                  @relation(fields: [tenantId, unitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_purchase_requests_unit_fkey")
+  requirementLine         MaterialRequirementLine?      @relation(fields: [tenantId, requirementLineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_purchase_requests_requirement_fkey")
+  requestedByMembership   TenantMembership              @relation("MaterialPurchaseRequestActor", fields: [tenantId, requestedByMembershipId, requestedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "material_purchase_requests_actor_fkey")
+  movements               MaterialInventoryMovement[]
+
+  @@unique([tenantId, id], map: "material_purchase_requests_tenant_id_key")
+  @@unique([tenantId, purchaseRequestRef], map: "material_purchase_requests_tenant_ref_key")
+  @@index([tenantId, status, createdAt], map: "material_purchase_requests_status_idx")
+  @@map("material_purchase_requests")
 }
 
 model CatalogMaterial {
@@ -4572,6 +5044,69 @@ enum VehicleOperationalStatus {
   IN_USE
   UNAVAILABLE
   RETIRED
+}
+
+enum MaterialRecordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MaterialLocationKind {
+  WAREHOUSE_ROOT
+  ZONE
+  AISLE
+  RACK
+  LEVEL
+  BIN
+  RECEIVING
+  DISPATCH
+  QUARANTINE
+  OTHER
+}
+
+enum MaterialMovementType {
+  RECEIPT
+  TRANSFER_OUT
+  TRANSFER_IN
+  ISSUE
+  CONSUMPTION
+  RETURN
+  ADJUSTMENT_POSITIVE
+  ADJUSTMENT_NEGATIVE
+}
+
+enum MaterialReservationStatus {
+  RESERVED
+  ASSIGNED
+  DISPATCHED
+  RELEASED
+  CANCELLED
+}
+
+enum PackingRecipeVersionStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum PackingFormulaType {
+  FIXED
+  PER_ITEM
+  PER_LENGTH
+  PER_AREA
+}
+
+enum MaterialRequirementSnapshotStatus {
+  CURRENT
+  SUPERSEDED
+}
+
+enum MaterialPurchaseRequestStatus {
+  REQUESTED
+  APPROVED
+  ORDERED
+  RECEIVED
+  CANCELLED
 }
 
 enum ZoneRuleKind {

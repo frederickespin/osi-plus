@@ -45,6 +45,13 @@ export const PERMS = Object.freeze({
   SERVICES_CASE_VIEW: "services:case:view",
   SERVICES_CASE_UPDATE: "services:case:update",
 
+  // V17 Survey. Assignment, execution and publication are explicit grants only.
+  SURVEY_ASSIGNMENT_VIEW: "survey:assignment:view",
+  SURVEY_ASSIGNMENT_MANAGE: "survey:assignment:manage",
+  SURVEY_PERFORM: "survey:perform",
+  SURVEY_PUBLISH: "survey:publish",
+  SURVEY_READ: "survey:read",
+
   // Projects
   PROJECTS_VIEW: "projects:view",
   PROJECTS_CREATE: "projects:create",
@@ -112,11 +119,20 @@ const EXPLICIT_SERVICE_PERMISSIONS = new Set([
   PERMS.SERVICES_CASE_UPDATE,
 ]);
 
+const EXPLICIT_SURVEY_PERMISSIONS = new Set([
+  PERMS.SURVEY_ASSIGNMENT_VIEW,
+  PERMS.SURVEY_ASSIGNMENT_MANAGE,
+  PERMS.SURVEY_PERFORM,
+  PERMS.SURVEY_PUBLISH,
+  PERMS.SURVEY_READ,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
     && !EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS.has(permission)
-    && !EXPLICIT_SERVICE_PERMISSIONS.has(permission)),
+    && !EXPLICIT_SERVICE_PERMISSIONS.has(permission)
+    && !EXPLICIT_SURVEY_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

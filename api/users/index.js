@@ -1,89 +1,12 @@
-import { prisma } from "../_lib/db.js";
-import { hashPassword } from "../_lib/auth.js";
-import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "../_lib/http.js";
-import { requirePilotAuth, requirePilotPermission } from "../_lib/authContextPilot.js";
-import { PERMS } from "../_lib/rbac.js";
-import { isCanonicalLegacyPassword } from "../_lib/passwordPolicy.js";
+import { methodNotAllowed, withPrivateApiHeaders } from "../_lib/http.js";
 
 export default withPrivateApiHeaders(async (req, res) => {
-  const permission = req.method === "GET" ? PERMS.USERS_VIEW : req.method === "POST" ? PERMS.USERS_CREATE : null;
-  const auth = permission
-    ? await requirePilotPermission(req, res, permission, { prisma })
-    : await requirePilotAuth(req, res, { prisma });
-  if (!auth) return;
-
-  if (req.method === "GET") {
-    const query = String(req.query?.q || "").toLowerCase().trim();
-    const users = await prisma.user.findMany({
-      where: { memberships: { some: { tenantId: auth.tenantId } } },
-      orderBy: { createdAt: "desc" },
-    });
-
-    const filtered = query
-      ? users.filter(
-          (u) =>
-            u.name.toLowerCase().includes(query) ||
-            u.email.toLowerCase().includes(query) ||
-            u.code.toLowerCase().includes(query),
-        )
-      : users;
-
-    return res.status(200).json({
-      ok: true,
-      total: filtered.length,
-      data: filtered.map((user) => ({
-        id: user.id,
-        code: user.code,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        status: user.status,
-        department: user.department,
-        joinDate: user.joinDate,
-        points: user.points,
-        rating: user.rating,
-      })),
-    });
-  }
-
-  if (req.method === "POST") {
-    const body = await readJsonObject(req, { requireNonEmptyObject: true });
-    if (!Object.hasOwn(body, "password") || !isCanonicalLegacyPassword(body.password)) {
-      return res.status(400).json({ ok: false, error: "USER_PASSWORD_POLICY_INVALID" });
-    }
-    const password = body.password;
-    const created = await prisma.user.create({
-      data: {
-        code: String(body.code || `EMP${Date.now()}`),
-        name: String(body.name || "Usuario"),
-        email: String(body.email || "").toLowerCase().trim(),
-        phone: String(body.phone || ""),
-        role: String(body.role || "B"),
-        status: String(body.status || "active"),
-        department: body.department ? String(body.department) : null,
-        joinDate: String(body.joinDate || new Date().toISOString().slice(0, 10)),
-        points: Number(body.points || 0),
-        rating: Number(body.rating || 0),
-        passwordHash: await hashPassword(password),
-      },
-    });
-
-    return res.status(201).json({
-      ok: true,
-      data: {
-        id: created.id,
-        code: created.code,
-        name: created.name,
-        email: created.email,
-        phone: created.phone,
-        role: created.role,
-        status: created.status,
-        department: created.department,
-        joinDate: created.joinDate,
-        points: created.points,
-        rating: created.rating,
-      },
+  if (req.method === "GET" || req.method === "POST") {
+    return res.status(410).json({
+      ok: false,
+      error: "USERS_ADMINISTRATION_MOVED_TO_MEMBERSHIPS",
+      replacement: "/api/admin/memberships",
+      identityCreation: "ADMIN_IDENTITY_INVITATION",
     });
   }
 

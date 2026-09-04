@@ -47,6 +47,7 @@ export function createAuthorizationContext({
   });
   const frozenMembership = Object.freeze({
     id: String(membership.id),
+    publicRef: membership.publicRef == null ? null : String(membership.publicRef),
     status: upper(membership.status),
     role,
     grantedPermissions,
@@ -57,6 +58,7 @@ export function createAuthorizationContext({
   const frozenTenant = immutableRecord({
     id: String(tenant.id),
     code: String(tenant.code || ""),
+    name: String(tenant.name || ""),
     status: upper(tenant.status),
   });
 
@@ -73,6 +75,7 @@ export function createAuthorizationContext({
     tenantId: frozenTenant.id,
     tenantCode: frozenTenant.code,
     membershipId: frozenMembership.id,
+    membershipRef: frozenMembership.publicRef,
     role,
     grantedPermissions,
     deniedPermissions,

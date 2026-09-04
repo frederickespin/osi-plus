@@ -3,6 +3,7 @@ import { MT01B_AUTH_MODES, resolveMt01bAuthPolicy } from "../_lib/authPolicy.js"
 import { methodNotAllowed, unauthorized, withPrivateApiHeaders } from "../_lib/http.js";
 import { withLegacyAuthHeaders } from "../_lib/authHttp.js";
 import { requireAuthContext } from "../_lib/authContextMiddleware.js";
+import { listLegacyMembershipOptions } from "../_lib/authContext.js";
 import { isGloballyActiveUser } from "../_lib/userStatus.js";
 import { sendCommercialTenancyError } from "../_lib/commercialTenancyWrite.js";
 import {
@@ -14,25 +15,21 @@ import {
   resolveV17CommercialCrmProductionSessionContext,
 } from "../_lib/v17CommercialCrmProductionAuth.js";
 
-function legacyUserDto(user, authorization = null, commercialAuthority = null) {
+function legacyUserDto(user, authorization, memberships, commercialAuthority = null) {
   return {
-    id: user.id,
-    code: user.code,
     name: user.name,
-    email: user.email,
-    phone: user.phone,
-    role: authorization?.role ?? user.role,
+    role: authorization.role,
     status: user.status,
-    department: user.department,
-    joinDate: user.joinDate,
-    points: user.points,
-    rating: user.rating,
-    ...(authorization ? {
-      permissions: authorization.effectivePermissions,
-      deniedPermissions: authorization.deniedPermissions,
-      ...(commercialAuthority === "PREVIEW_REHEARSAL" ? { commercialCrmPreviewAuthorized: true } : {}),
-      ...(commercialAuthority === "PRODUCTION_READ" ? { commercialCrmProductionAuthorized: true } : {}),
-    } : {}),
+    permissions: authorization.effectivePermissions,
+    deniedPermissions: authorization.deniedPermissions,
+    membership: {
+      membershipRef: authorization.membershipRef,
+      tenantName: authorization.tenant.name,
+      role: authorization.role,
+    },
+    memberships,
+    ...(commercialAuthority === "PREVIEW_REHEARSAL" ? { commercialCrmPreviewAuthorized: true } : {}),
+    ...(commercialAuthority === "PRODUCTION_READ" ? { commercialCrmProductionAuthorized: true } : {}),
   };
 }
 
@@ -46,6 +43,14 @@ async function findCurrentUser(userId) {
 
 function databaseUnavailable(res) {
   return res.status(503).json({ ok: false, error: "AUTH_DATABASE_UNAVAILABLE" });
+}
+
+async function findMembershipOptions(userId) {
+  try {
+    return { memberships: await listLegacyMembershipOptions(prisma, userId), unavailable: false };
+  } catch {
+    return { memberships: [], unavailable: true };
+  }
 }
 
 const legacyMeHandler = withPrivateApiHeaders(async (req, res) => {
@@ -70,10 +75,13 @@ const legacyMeHandler = withPrivateApiHeaders(async (req, res) => {
     if (lookup.unavailable) return databaseUnavailable(res);
     const legacyUser = lookup.user;
     if (!legacyUser || !isGloballyActiveUser(legacyUser.status)) return unauthorized(res);
+    const optionsLookup = await findMembershipOptions(canonicalContext.userId);
+    if (optionsLookup.unavailable) return databaseUnavailable(res);
+    const memberships = optionsLookup.memberships;
     if (previewRequested) {
       try {
         const context = await resolveV17CommercialCrmPreviewSessionContext(req, { env: process.env, prisma });
-        return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, context, "PREVIEW_REHEARSAL") });
+        return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, context, memberships, "PREVIEW_REHEARSAL") });
       } catch (error) {
         return sendCommercialTenancyError(res, error);
       }
@@ -81,12 +89,12 @@ const legacyMeHandler = withPrivateApiHeaders(async (req, res) => {
     if (productionRequested) {
       try {
         const context = await resolveV17CommercialCrmProductionSessionContext(req, { env: process.env, prisma });
-        return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, context, "PRODUCTION_READ") });
+        return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, context, memberships, "PRODUCTION_READ") });
       } catch (error) {
         return sendCommercialTenancyError(res, error);
       }
     }
-    return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, canonicalContext) });
+    return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, canonicalContext, memberships) });
   }
 
   const context = await requireAuthContext(req, res, { prisma });
@@ -97,7 +105,10 @@ const legacyMeHandler = withPrivateApiHeaders(async (req, res) => {
     if (lookup.unavailable) return databaseUnavailable(res);
     const user = lookup.user;
     if (!user || !isGloballyActiveUser(user.status)) return unauthorized(res);
-    const legacyUser = legacyUserDto(user);
+    const optionsLookup = await findMembershipOptions(context.userId);
+    if (optionsLookup.unavailable) return databaseUnavailable(res);
+    const memberships = optionsLookup.memberships;
+    const legacyUser = legacyUserDto(user, context, memberships);
     return res.status(200).json({ ok: true, user: legacyUser });
   }
 

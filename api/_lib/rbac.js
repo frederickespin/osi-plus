@@ -80,6 +80,18 @@ export const PERMS = Object.freeze({
   INVENTORY_EDIT: "inventory:edit",
   PURCHASES_VIEW: "purchases:view",
   PURCHASES_CREATE: "purchases:create",
+  INVENTORY_CATALOG_VIEW: "inventory:catalog:view",
+  INVENTORY_CATALOG_MANAGE: "inventory:catalog:manage",
+  INVENTORY_STOCK_VIEW: "inventory:stock:view",
+  INVENTORY_STOCK_RECEIVE: "inventory:stock:receive",
+  INVENTORY_STOCK_TRANSFER: "inventory:stock:transfer",
+  INVENTORY_STOCK_ISSUE: "inventory:stock:issue",
+  INVENTORY_STOCK_ADJUST: "inventory:stock:adjust",
+  INVENTORY_RESERVATION_MANAGE: "inventory:reservation:manage",
+  INVENTORY_PURCHASE_REQUEST: "inventory:purchase:request",
+  INVENTORY_PURCHASE_APPROVE: "inventory:purchase:approve",
+  INVENTORY_RECIPES_VIEW: "inventory:recipes:view",
+  INVENTORY_RECIPES_MANAGE: "inventory:recipes:manage",
 
   // HR
   HR_VIEW: "hr:view",
@@ -127,12 +139,28 @@ const EXPLICIT_SURVEY_PERMISSIONS = new Set([
   PERMS.SURVEY_READ,
 ]);
 
+const EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS = new Set([
+  PERMS.INVENTORY_CATALOG_VIEW,
+  PERMS.INVENTORY_CATALOG_MANAGE,
+  PERMS.INVENTORY_STOCK_VIEW,
+  PERMS.INVENTORY_STOCK_RECEIVE,
+  PERMS.INVENTORY_STOCK_TRANSFER,
+  PERMS.INVENTORY_STOCK_ISSUE,
+  PERMS.INVENTORY_STOCK_ADJUST,
+  PERMS.INVENTORY_RESERVATION_MANAGE,
+  PERMS.INVENTORY_PURCHASE_REQUEST,
+  PERMS.INVENTORY_PURCHASE_APPROVE,
+  PERMS.INVENTORY_RECIPES_VIEW,
+  PERMS.INVENTORY_RECIPES_MANAGE,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
     && !EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS.has(permission)
     && !EXPLICIT_SERVICE_PERMISSIONS.has(permission)
-    && !EXPLICIT_SURVEY_PERMISSIONS.has(permission)),
+    && !EXPLICIT_SURVEY_PERMISSIONS.has(permission)
+    && !EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

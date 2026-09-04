@@ -5,8 +5,8 @@ import {
   verifyStrictLegacyAccessToken,
 } from "./auth.js";
 import { resolveAuthContext } from "./authContext.js";
+import { createAuthorizationContext } from "./authorizationContext.js";
 import { Mt01bAuthError } from "./authPolicy.js";
-import { permsForRole } from "./rbac.js";
 import { isExactV17CommercialCrmPreviewServerEnvironment } from "../../shared/v17CommercialCrmPreview.js";
 
 export const COMMERCIAL_TENANCY_WRITE_MODES = Object.freeze({
@@ -47,23 +47,6 @@ export class CommercialTenancyError extends Error {
 
 function upper(value) {
   return String(value || "").trim().toUpperCase();
-}
-
-function effectivePermissions(role, granted, denied) {
-  const blocked = new Set((Array.isArray(denied) ? denied : []).map(String));
-  return Object.freeze([...new Set([
-    ...permsForRole(role),
-    ...(Array.isArray(granted) ? granted.map(String) : []),
-  ])].filter((permission) => !blocked.has(permission)).sort());
-}
-
-function immutableContext(value) {
-  return Object.freeze({
-    ...value,
-    effectivePermissions: Object.freeze([...(value.effectivePermissions || [])]),
-    permissions: Object.freeze([...(value.effectivePermissions || [])]),
-    deniedPermissions: Object.freeze([...(value.deniedPermissions || [])]),
-  });
 }
 
 export function resolveCommercialTenancyModes(env = process.env) {
@@ -139,7 +122,7 @@ async function resolveLegacyCommercialContext(prisma, token) {
   let rows;
   try {
     rows = await prisma.$queryRaw(Prisma.sql`
-      SELECT tm."tenant_id", tm."id" AS "membership_id", u."id" AS "user_id",
+      SELECT tm."tenant_id", tm."id" AS "membership_id", u."id" AS "user_id", u."email" AS "user_email",
              tm."role"::text AS "membership_role", tm."status"::text AS "membership_status",
              tm."granted_permissions", tm."denied_permissions", tm."authorization_version",
              t."status"::text AS "tenant_status", t."code" AS "tenant_code", u."status" AS "user_status"
@@ -175,20 +158,18 @@ async function resolveLegacyCommercialContext(prisma, token) {
     throw new CommercialTenancyError("COMMERCIAL_TENANT_INACTIVE", 403);
   }
 
-  const role = upper(row.membership_role);
-  return immutableContext({
-    authType: "LEGACY_TENANT_WRITE",
-    userId: String(row.user_id),
-    tenantId: String(row.tenant_id),
-    tenantCode: String(row.tenant_code),
-    membershipId: String(row.membership_id),
-    role,
-    authorizationVersion: Number(row.authorization_version),
-    userStatus: upper(row.user_status),
-    membershipStatus: upper(row.membership_status),
-    tenantStatus: upper(row.tenant_status),
-    deniedPermissions: Array.isArray(row.denied_permissions) ? row.denied_permissions.map(String) : [],
-    effectivePermissions: effectivePermissions(role, row.granted_permissions, row.denied_permissions),
+  return createAuthorizationContext({
+    sessionKind: "LEGACY",
+    user: { id: row.user_id, email: row.user_email, status: row.user_status },
+    membership: {
+      id: row.membership_id,
+      role: row.membership_role,
+      status: row.membership_status,
+      grantedPermissions: row.granted_permissions,
+      deniedPermissions: row.denied_permissions,
+      authorizationVersion: row.authorization_version,
+    },
+    tenant: { id: row.tenant_id, code: row.tenant_code, status: row.tenant_status },
   });
 }
 
@@ -203,7 +184,7 @@ async function resolveV2CommercialContext(prisma, request, env, now) {
         MT01B_TENANT_SWITCH_ENABLED: "false",
       },
     });
-    return immutableContext(context);
+    return context;
   } catch (cause) {
     if (cause instanceof Mt01bAuthError || cause instanceof CommercialTenancyError) throw cause;
     throw databaseUnavailable(cause);

@@ -1,6 +1,6 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, readJsonBody, withPrivateApiHeaders } from "../_lib/http.js";
-import { requireRoleFromHeaders } from "../_lib/rbac.js";
+import { requireRoleFromHeaders } from "./legacyHeaderAuthorization.js";
 import { computeSignalColor, computePgdBlockingColor, ensureDefaultSignals } from "./_lib.js";
 
 function buildBlockers(project) {

@@ -1,13 +1,13 @@
 import { prisma } from "../../_lib/db.js";
 import { methodNotAllowed, withPrivateApiHeaders } from "../../_lib/http.js";
-import { requireRoleFromHeaders } from "../../_lib/rbac.js";
+import { requireRole } from "../../_lib/authContextMiddleware.js";
 
 const ALLOWED_ROLES = ["A", "B", "C", "C1", "I", "K"];
 
 export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
 
-  const actor = requireRoleFromHeaders(req, res, ALLOWED_ROLES);
+  const actor = await requireRole(req, res, ALLOWED_ROLES, { prisma });
   if (!actor) return;
 
   const pstCode = String(req.query?.pstCode || "").trim();

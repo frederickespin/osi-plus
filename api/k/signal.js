@@ -1,12 +1,12 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, readJsonBody, withPrivateApiHeaders } from "../_lib/http.js";
-import { ensureActorUserId, requireRoleFromHeaders } from "../_lib/rbac.js";
+import { requireRole } from "../_lib/authContextMiddleware.js";
 
 export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
-  const actor = requireRoleFromHeaders(req, res, ["K", "A"]);
+  const actor = await requireRole(req, res, ["K", "A"], { prisma });
   if (!actor?.role) return;
-  const actorUserId = await ensureActorUserId(prisma, actor);
+  const actorUserId = actor.userId;
 
   const body = await readJsonBody(req);
   const signalId = String(body.signalId || "").trim();

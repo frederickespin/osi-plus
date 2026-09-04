@@ -1,6 +1,6 @@
 import { unauthorized } from "./http.js";
 
-export const PERMS = {
+export const PERMS = Object.freeze({
   // Templates
   TEMPLATES_VIEW: "templates:view",
   TEMPLATES_CREATE: "templates:create",
@@ -80,7 +80,7 @@ export const PERMS = {
   // Security / Gate
   SECURITY_VIEW: "security:view",
   SECURITY_SCAN: "security:scan",
-};
+});
 
 // These mutation permissions are always explicit membership grants. Merely
 // holding a baseline role never enables a transactional case mutation.
@@ -193,6 +193,14 @@ export function permsForRole(role) {
   return [...(ROLE_PERMS[String(role || "").toUpperCase().trim()] || [])];
 }
 
+export function effectivePermissionsFor(role, grantedPermissions = [], deniedPermissions = []) {
+  const denied = new Set((Array.isArray(deniedPermissions) ? deniedPermissions : []).map(String));
+  return Object.freeze([...new Set([
+    ...permsForRole(role),
+    ...(Array.isArray(grantedPermissions) ? grantedPermissions.map(String) : []),
+  ])].filter((permission) => !denied.has(permission)).sort());
+}
+
 export function requirePerm(req, res, perm) {
   const role = req.user?.role;
   if (!role) {
@@ -205,42 +213,4 @@ export function requirePerm(req, res, perm) {
     return false;
   }
   return true;
-}
-
-export function requirePermFromHeaders(req, res, perm) {
-  const role = String(req.headers["x-osi-role"] || "").toUpperCase().trim();
-  if (!role) return unauthorized(res);
-
-  const allowed = permsForRole(role).includes(perm);
-  if (!allowed) return res.status(403).json({ ok: false, error: "Forbidden", perm });
-
-  const userId = String(req.headers["x-osi-userid"] || "").trim() || null;
-  return { role, userId };
-}
-
-export function requireRoleFromHeaders(req, res, roles) {
-  const role = String(req.headers["x-osi-role"] || "").toUpperCase().trim();
-  if (!role) return unauthorized(res);
-
-  if (!Array.isArray(roles) || roles.length === 0) {
-    return res.status(500).json({ ok: false, error: "Server misconfig", detail: "roles missing" });
-  }
-
-  if (!roles.includes(role)) {
-    return res.status(403).json({ ok: false, error: "Forbidden", role, roles });
-  }
-
-  const userId = String(req.headers["x-osi-userid"] || "").trim() || null;
-  return { role, userId };
-}
-
-export async function ensureActorUserId(prisma, actor) {
-  if (actor.userId) {
-    const byId = await prisma.user.findUnique({ where: { id: actor.userId } });
-    if (byId?.id) return byId.id;
-  }
-
-  const email = actor.role === "K" ? "maria@ipackers.com" : "admin@ipackers.com";
-  const user = await prisma.user.findUnique({ where: { email } });
-  return user?.id || null;
 }

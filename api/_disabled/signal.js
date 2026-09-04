@@ -1,6 +1,6 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, readJsonBody, withPrivateApiHeaders } from "../_lib/http.js";
-import { ensureActorUserId, requireRoleFromHeaders } from "../_lib/rbac.js";
+import { ensureActorUserId, requireRoleFromHeaders } from "./legacyHeaderAuthorization.js";
 
 export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);

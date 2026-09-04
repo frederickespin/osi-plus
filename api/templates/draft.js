@@ -1,13 +1,14 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, readJsonBody, withPrivateApiHeaders } from "../_lib/http.js";
-import { PERMS, ensureActorUserId, requirePermFromHeaders } from "../_lib/rbac.js";
+import { requirePermission } from "../_lib/authContextMiddleware.js";
+import { PERMS } from "../_lib/rbac.js";
 import { validateAndNormalizePstContent } from "./_pst.js";
 
 const TEMPLATE_TYPES = new Set(["PIC", "PGD", "NPS", "PST"]);
 
 export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
-  const actor = requirePermFromHeaders(req, res, PERMS.TEMPLATES_EDIT_DRAFT);
+  const actor = await requirePermission(req, res, PERMS.TEMPLATES_EDIT_DRAFT, { prisma });
   if (!actor) return;
 
   const input = await readJsonBody(req);
@@ -84,7 +85,7 @@ export default withPrivateApiHeaders(async (req, res) => {
 
   const nextVersion = (last?.version ?? 0) + 1;
 
-  const createdById = (await ensureActorUserId(prisma, actor)) || "unknown";
+  const createdById = actor.userId;
   let nextContentJson = input.contentJson ?? undefined;
   if (templateType === "PST") {
     const validated = await validateAndNormalizePstContent({

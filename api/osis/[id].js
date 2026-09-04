@@ -1,7 +1,8 @@
 import { prisma } from "../_lib/db.js";
 import { badRequest, databaseUnavailable, methodNotAllowed, readJsonBody, setPrivateNoStore, withPrivateApiHeaders } from "../_lib/http.js";
 import { requirePilotPermission } from "../_lib/authContextPilot.js";
-import { PERMS, requireRoleFromHeaders } from "../_lib/rbac.js";
+import { requireRole } from "../_lib/authContextMiddleware.js";
+import { PERMS } from "../_lib/rbac.js";
 import { appendOsiChangeLogs, diffPlainObjects, suggestPtfPetByPstCode } from "./_helpers.js";
 
 const OPS_ALLOWED_ROLES = ["A", "B", "K", "V", "D", "E", "C1"];
@@ -59,7 +60,7 @@ export default withPrivateApiHeaders(async (req, res) => {
   if (req.method === "PATCH") {
     const osiId = asString(req.query?.id || "");
     if (!osiId) return badRequest(res, "id es obligatorio");
-    const actor = requireRoleFromHeaders(req, res, OPS_ALLOWED_ROLES);
+    const actor = await requireRole(req, res, OPS_ALLOWED_ROLES, { prisma });
     if (!actor) return;
 
     const before = await prisma.osi.findUnique({ where: { id: osiId } });

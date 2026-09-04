@@ -1,10 +1,12 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, withPrivateApiHeaders } from "../_lib/http.js";
-import { PERMS, requirePermFromHeaders } from "../_lib/rbac.js";
+import { requirePermission } from "../_lib/authContextMiddleware.js";
+import { PERMS } from "../_lib/rbac.js";
 
 export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
-  requirePermFromHeaders(req, res, PERMS.TEMPLATES_VIEW);
+  const context = await requirePermission(req, res, PERMS.TEMPLATES_VIEW, { prisma });
+  if (!context) return;
 
   const id = String(req.query?.id || "").trim();
   if (!id) return res.status(400).json({ ok: false, error: "id requerido" });

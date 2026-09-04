@@ -1,7 +1,8 @@
 import { prisma } from "../_lib/db.js";
 import { databaseUnavailable, methodNotAllowed, readJsonBody, setPrivateNoStore, withPrivateApiHeaders } from "../_lib/http.js";
 import { requirePilotPermission } from "../_lib/authContextPilot.js";
-import { PERMS, requireRoleFromHeaders } from "../_lib/rbac.js";
+import { requireRole } from "../_lib/authContextMiddleware.js";
+import { PERMS } from "../_lib/rbac.js";
 import {
   appendOsiChangeLogs,
   findPstFromProjectFallback,
@@ -72,7 +73,7 @@ export default withPrivateApiHeaders(async (req, res) => {
   }
 
   if (req.method === "POST") {
-    const actor = requireRoleFromHeaders(req, res, OPS_ALLOWED_ROLES);
+    const actor = await requireRole(req, res, OPS_ALLOWED_ROLES, { prisma });
     if (!actor) return;
     const body = await readJsonBody(req);
     const kind = asString(body.kind || "EXTERNAL", "EXTERNAL").toUpperCase();

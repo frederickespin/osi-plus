@@ -1,6 +1,6 @@
 import { prisma } from "../../_lib/db.js";
 import { methodNotAllowed, readJsonBody, withPrivateApiHeaders } from "../../_lib/http.js";
-import { requireRoleFromHeaders } from "../../_lib/rbac.js";
+import { requireRole } from "../../_lib/authContextMiddleware.js";
 
 const ALLOWED_ROLES = ["A", "C", "I", "B"];
 
@@ -25,7 +25,7 @@ function aggregateRecommendation(rows) {
 export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
 
-  const actor = requireRoleFromHeaders(req, res, ALLOWED_ROLES);
+  const actor = await requireRole(req, res, ALLOWED_ROLES, { prisma });
   if (!actor) return;
 
   const body = await readJsonBody(req);

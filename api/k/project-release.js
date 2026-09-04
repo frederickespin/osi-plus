@@ -1,6 +1,7 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, readJsonBody, setPrivateNoStore, withPrivateApiHeaders } from "../_lib/http.js";
-import { PERMS, requireRoleFromHeaders } from "../_lib/rbac.js";
+import { requireRole } from "../_lib/authContextMiddleware.js";
+import { PERMS } from "../_lib/rbac.js";
 import {
   assertNoBrowserCommercialAuthority,
   CommercialTenancyError,
@@ -60,7 +61,7 @@ export default withPrivateApiHeaders(async (req, res) => {
       return res.status(403).json({ ok: false, error: "COMMERCIAL_PERMISSION_FORBIDDEN" });
     }
   } else {
-    actor = requireRoleFromHeaders(req, res, ["K", "A"]);
+    actor = await requireRole(req, res, ["K", "A"], { prisma });
     if (!actor?.role) return;
   }
 

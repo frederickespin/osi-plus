@@ -1,6 +1,7 @@
 import { prisma } from "../_lib/db.js";
 import { methodNotAllowed, withPrivateApiHeaders } from "../_lib/http.js";
-import { PERMS, requirePermFromHeaders } from "../_lib/rbac.js";
+import { requirePermission } from "../_lib/authContextMiddleware.js";
+import { PERMS } from "../_lib/rbac.js";
 
 function toObject(value) {
   if (value && typeof value === "object") return value;
@@ -13,7 +14,7 @@ function normalize(value) {
 
 export default withPrivateApiHeaders(async (req, res) => {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
-  const actor = requirePermFromHeaders(req, res, PERMS.TEMPLATES_VIEW);
+  const actor = await requirePermission(req, res, PERMS.TEMPLATES_VIEW, { prisma });
   if (!actor) return;
 
   const serviceCode = normalize(req.query?.serviceCode);

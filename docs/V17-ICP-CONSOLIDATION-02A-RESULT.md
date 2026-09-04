@@ -4,7 +4,7 @@
 
 El ICP aprobado de PR #73–#75 quedó consolidado sobre Auth 01A/01B sin sustituir su diseño ni incorporar funciones históricas descartadas. La integración mantiene dos pasos, Client existente o inline, direcciones estructuradas, snapshots de ruta, idempotencia y auditoría tenant-first. El cliente transporta la `membershipRef` seleccionada y el servidor revalida User, Membership, Tenant, estados, grants y denies en cada request.
 
-Production no fue consultada ni modificada. `productionApiEnabled=false`; el consumidor visual sólo puede habilitarse en loopback o en el Preview consolidado exacto.
+Production no fue consultada ni modificada. `productionApiEnabled=false`; existen cuatro consumidores compilados (`runtimeConsumers=4`: tres adapters de ruta y un cliente UI), pero `effectiveProductionConsumers=0`. El único consumidor visual autorizado fuera de loopback corresponde al Preview consolidado exacto (`previewConsumers=1`).
 
 ## B. Rama/base/HEAD
 

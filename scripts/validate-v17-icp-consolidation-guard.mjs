@@ -64,6 +64,7 @@ export function validateV17IcpConsolidationGuard({ root = process.cwd(), overrid
     migration: "20260831010000_v17_crm_icp_foundation",
     migrationSha256: MIGRATION_SHA256,
     productionApiEnabled: false,
+    runtimeConsumers: 4,
     effectiveProductionConsumers: 0,
     previewConsumers: 1,
     uiAdditionalStops: 0,

@@ -127,6 +127,20 @@ model Tenant {
   materialRequirementSnapshots     MaterialRequirementSnapshot[]
   materialRequirementLines         MaterialRequirementLine[]
   materialPurchaseRequests         MaterialPurchaseRequest[]
+  assetModels                      AssetModel[]
+  assetInstances                   AssetInstance[]
+  assetCodeCounters                AssetCodeCounter[]
+  assetCostVersions                AssetCostVersion[]
+  assetReservations                AssetReservation[]
+  assetAssignments                 AssetAssignment[]
+  assetInspections                 AssetInspection[]
+  assetIncidents                   AssetIncident[]
+  assetMaintenanceRules            AssetMaintenanceRule[]
+  assetMaintenanceOrders           AssetMaintenanceOrder[]
+  assetHistoryEvents               AssetHistoryEvent[]
+  assetMutationCommands            AssetMutationCommand[]
+  externalResourceOffers           ExternalResourceOffer[]
+  externalResourceReservations     ExternalResourceReservation[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -211,6 +225,16 @@ model TenantMembership {
   packingRecipeVersionsAsActor                                                                                                                  PackingRecipeVersion[]             @relation("PackingRecipeVersionActor")
   materialRequirementSnapshotsAsActor                                                                                                           MaterialRequirementSnapshot[]      @relation("MaterialRequirementSnapshotActor")
   materialPurchaseRequestsAsActor                                                                                                               MaterialPurchaseRequest[]          @relation("MaterialPurchaseRequestActor")
+  assetCommandsAsActor                                                                                                                          AssetMutationCommand[]             @relation("AssetMutationCommandActor")
+  assetReservationsAsActor                                                                                                                      AssetReservation[]                 @relation("AssetReservationActor")
+  assetAssignmentsAsActor                                                                                                                       AssetAssignment[]                  @relation("AssetAssignmentActor")
+  assetAssignmentsAsAssignee                                                                                                                    AssetAssignment[]                  @relation("AssetAssignmentAssignee")
+  assetAssignmentsAsCustodian                                                                                                                   AssetAssignment[]                  @relation("AssetAssignmentCustodian")
+  assetInspectionsAsActor                                                                                                                       AssetInspection[]                  @relation("AssetInspectionActor")
+  assetIncidentsAsActor                                                                                                                         AssetIncident[]                    @relation("AssetIncidentActor")
+  assetMaintenanceOrdersAsActor                                                                                                                 AssetMaintenanceOrder[]            @relation("AssetMaintenanceOrderActor")
+  assetHistoryEventsAsActor                                                                                                                     AssetHistoryEvent[]                @relation("AssetHistoryEventActor")
+  externalResourceReservationsAsActor                                                                                                           ExternalResourceReservation[]      @relation("ExternalResourceReservationActor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, publicRef], map: "tenant_memberships_tenant_id_public_ref_key")
@@ -1438,6 +1462,9 @@ model PipelineCase {
   surveyPublications            SurveyPublication[]
   materialReservations          MaterialReservation[]
   materialRequirementSnapshots  MaterialRequirementSnapshot[]
+  assetReservations             AssetReservation[]
+  assetAssignments              AssetAssignment[]
+  externalResourceReservations  ExternalResourceReservation[]
   projects                      Project[]                     @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -3375,26 +3402,30 @@ model MaterialWarehouse {
 }
 
 model MaterialLocation {
-  id               String                      @id @default(cuid())
-  locationRef      String                      @default(dbgenerated("gen_random_uuid()")) @map("location_ref") @db.Uuid
-  tenantId         String                      @map("tenant_id")
-  warehouseId      String                      @map("warehouse_id")
-  parentLocationId String?                     @map("parent_location_id")
-  code             String                      @db.VarChar(64)
-  name             String                      @db.VarChar(160)
-  kind             MaterialLocationKind
-  depth            Int                         @default(0)
-  path             String                      @db.VarChar(600)
-  status           MaterialRecordStatus        @default(ACTIVE)
-  version          Int                         @default(1)
-  createdAt        DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant           Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_tenant_fkey")
-  warehouse        MaterialWarehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_warehouse_fkey")
-  parent           MaterialLocation?           @relation("MaterialLocationTree", fields: [tenantId, parentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_parent_fkey")
-  children         MaterialLocation[]          @relation("MaterialLocationTree")
-  movements        MaterialInventoryMovement[]
-  reservations     MaterialReservation[]
+  id                     String                      @id @default(cuid())
+  locationRef            String                      @default(dbgenerated("gen_random_uuid()")) @map("location_ref") @db.Uuid
+  tenantId               String                      @map("tenant_id")
+  warehouseId            String                      @map("warehouse_id")
+  parentLocationId       String?                     @map("parent_location_id")
+  code                   String                      @db.VarChar(64)
+  name                   String                      @db.VarChar(160)
+  kind                   MaterialLocationKind
+  depth                  Int                         @default(0)
+  path                   String                      @db.VarChar(600)
+  status                 MaterialRecordStatus        @default(ACTIVE)
+  version                Int                         @default(1)
+  createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                 Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_tenant_fkey")
+  warehouse              MaterialWarehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_warehouse_fkey")
+  parent                 MaterialLocation?           @relation("MaterialLocationTree", fields: [tenantId, parentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_parent_fkey")
+  children               MaterialLocation[]          @relation("MaterialLocationTree")
+  movements              MaterialInventoryMovement[]
+  reservations           MaterialReservation[]
+  currentAssets          AssetInstance[]             @relation("AssetCurrentLocation")
+  assignmentOrigins      AssetAssignment[]           @relation("AssetAssignmentOrigin")
+  assignmentDestinations AssetAssignment[]           @relation("AssetAssignmentDestination")
+  inspectionLocations    AssetInspection[]           @relation("AssetInspectionLocation")
 
   @@unique([tenantId, id], map: "material_locations_tenant_id_key")
   @@unique([tenantId, locationRef], map: "material_locations_tenant_ref_key")
@@ -3652,6 +3683,405 @@ model MaterialPurchaseRequest {
   @@unique([tenantId, purchaseRequestRef], map: "material_purchase_requests_tenant_ref_key")
   @@index([tenantId, status, createdAt], map: "material_purchase_requests_status_idx")
   @@map("material_purchase_requests")
+}
+
+model AssetModel {
+  id                   String                  @id @default(cuid())
+  modelRef             String                  @default(dbgenerated("gen_random_uuid()")) @map("model_ref") @db.Uuid
+  tenantId             String                  @map("tenant_id")
+  code                 String                  @db.VarChar(64)
+  name                 String                  @db.VarChar(160)
+  description          String?                 @db.VarChar(1000)
+  family               String                  @db.VarChar(80)
+  resourceType         AssetResourceType       @map("resource_type")
+  serialPolicy         AssetSerialPolicy       @default(OPTIONAL) @map("serial_policy")
+  identificationPolicy Json                    @default("{}") @map("identification_policy")
+  capacity             Json                    @default("{}")
+  status               AssetRecordStatus       @default(ACTIVE)
+  version              Int                     @default(1)
+  createdAt            DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant               Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_models_tenant_fkey")
+  instances            AssetInstance[]
+  costVersions         AssetCostVersion[]
+  maintenanceRules     AssetMaintenanceRule[]
+  externalOffers       ExternalResourceOffer[]
+
+  @@unique([tenantId, id], map: "asset_models_tenant_id_key")
+  @@unique([tenantId, modelRef], map: "asset_models_tenant_ref_key")
+  @@unique([tenantId, code], map: "asset_models_tenant_code_key")
+  @@index([tenantId, status, resourceType, family], map: "asset_models_catalog_idx")
+  @@map("asset_models")
+}
+
+model AssetCodeCounter {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  prefix    String   @db.VarChar(24)
+  nextValue BigInt   @default(1) @map("next_value")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_code_counters_tenant_fkey")
+
+  @@unique([tenantId, prefix], map: "asset_code_counters_tenant_prefix_key")
+  @@map("asset_code_counters")
+}
+
+model AssetInstance {
+  id                String                  @id @default(cuid())
+  assetRef          String                  @default(dbgenerated("gen_random_uuid()")) @map("asset_ref") @db.Uuid
+  tenantId          String                  @map("tenant_id")
+  assetModelId      String                  @map("asset_model_id")
+  currentLocationId String?                 @map("current_location_id")
+  internalCode      String                  @map("internal_code") @db.VarChar(64)
+  serialNumber      String?                 @map("serial_number") @db.VarChar(160)
+  barcode           String?                 @db.VarChar(160)
+  operationalStatus AssetOperationalStatus  @default(AVAILABLE) @map("operational_status")
+  physicalCondition AssetPhysicalCondition  @default(GOOD) @map("physical_condition")
+  acquiredAt        DateTime?               @map("acquired_at") @db.Date
+  acquisitionCost   Decimal?                @map("acquisition_cost") @db.Decimal(18, 4)
+  replacementCost   Decimal?                @map("replacement_cost") @db.Decimal(18, 4)
+  currency          String?                 @db.Char(3)
+  usageHours        Decimal?                @map("usage_hours") @db.Decimal(14, 2)
+  usageCycles       BigInt?                 @map("usage_cycles")
+  odometerKm        Decimal?                @map("odometer_km") @db.Decimal(14, 2)
+  version           Int                     @default(1)
+  retiredAt         DateTime?               @map("retired_at") @db.Timestamptz(6)
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_instances_tenant_fkey")
+  assetModel        AssetModel              @relation(fields: [tenantId, assetModelId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_instances_model_fkey")
+  currentLocation   MaterialLocation?       @relation("AssetCurrentLocation", fields: [tenantId, currentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_instances_location_fkey")
+  costVersions      AssetCostVersion[]
+  reservations      AssetReservation[]
+  assignments       AssetAssignment[]
+  inspections       AssetInspection[]
+  incidents         AssetIncident[]
+  maintenanceOrders AssetMaintenanceOrder[]
+  historyEvents     AssetHistoryEvent[]
+
+  @@unique([tenantId, id], map: "asset_instances_tenant_id_key")
+  @@unique([tenantId, assetRef], map: "asset_instances_tenant_ref_key")
+  @@unique([tenantId, internalCode], map: "asset_instances_tenant_code_key")
+  @@unique([tenantId, barcode], map: "asset_instances_tenant_barcode_key")
+  @@unique([tenantId, assetModelId, serialNumber], map: "asset_instances_tenant_model_serial_key")
+  @@index([tenantId, operationalStatus, physicalCondition, currentLocationId], map: "asset_instances_availability_idx")
+  @@index([tenantId, assetModelId, operationalStatus], map: "asset_instances_model_status_idx")
+  @@map("asset_instances")
+}
+
+model AssetCostVersion {
+  id                    String         @id @default(cuid())
+  costRef               String         @default(dbgenerated("gen_random_uuid()")) @map("cost_ref") @db.Uuid
+  tenantId              String         @map("tenant_id")
+  assetModelId          String?        @map("asset_model_id")
+  assetInstanceId       String?        @map("asset_instance_id")
+  costType              AssetCostType  @map("cost_type")
+  amount                Decimal        @db.Decimal(18, 4)
+  currency              String         @db.Char(3)
+  temporalUnit          String?        @map("temporal_unit") @db.VarChar(24)
+  validFrom             DateTime       @map("valid_from") @db.Timestamptz(6)
+  validTo               DateTime?      @map("valid_to") @db.Timestamptz(6)
+  version               Int
+  source                String         @db.VarChar(80)
+  createdByMembershipId String         @map("created_by_membership_id")
+  createdByUserId       String         @map("created_by_user_id")
+  createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_cost_versions_tenant_fkey")
+  assetModel            AssetModel?    @relation(fields: [tenantId, assetModelId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_cost_versions_model_fkey")
+  assetInstance         AssetInstance? @relation(fields: [tenantId, assetInstanceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_cost_versions_instance_fkey")
+
+  @@unique([tenantId, costRef], map: "asset_cost_versions_tenant_ref_key")
+  @@unique([tenantId, assetModelId, assetInstanceId, costType, version], map: "asset_cost_versions_scope_version_key")
+  @@index([tenantId, assetModelId, costType, validFrom(sort: Desc)], map: "asset_cost_versions_model_idx")
+  @@index([tenantId, assetInstanceId, costType, validFrom(sort: Desc)], map: "asset_cost_versions_instance_idx")
+  @@map("asset_cost_versions")
+}
+
+model AssetMutationCommand {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String           @map("tenant_id")
+  requestId         String           @map("request_id") @db.VarChar(191)
+  operation         String           @db.VarChar(80)
+  payloadHash       String           @map("payload_hash") @db.Char(64)
+  targetRef         String           @map("target_ref") @db.VarChar(191)
+  resultJson        Json             @map("result_json")
+  actorMembershipId String           @map("actor_membership_id")
+  actorUserId       String           @map("actor_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_mutation_commands_tenant_fkey")
+  actorMembership   TenantMembership @relation("AssetMutationCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "asset_mutation_commands_actor_fkey")
+
+  @@unique([tenantId, requestId], map: "asset_mutation_commands_tenant_request_key")
+  @@index([tenantId, targetRef, createdAt], map: "asset_mutation_commands_target_idx")
+  @@map("asset_mutation_commands")
+}
+
+model AssetReservation {
+  id                   String                 @id @default(cuid())
+  reservationRef       String                 @default(dbgenerated("gen_random_uuid()")) @map("reservation_ref") @db.Uuid
+  tenantId             String                 @map("tenant_id")
+  assetInstanceId      String                 @map("asset_instance_id")
+  pipelineCaseId       String?                @map("pipeline_case_id")
+  operationalReference String?                @map("operational_reference") @db.VarChar(191)
+  startsAt             DateTime               @map("starts_at") @db.Timestamptz(6)
+  endsAt               DateTime               @map("ends_at") @db.Timestamptz(6)
+  status               AssetReservationStatus @default(ACTIVE)
+  version              Int                    @default(1)
+  actorMembershipId    String                 @map("actor_membership_id")
+  actorUserId          String                 @map("actor_user_id")
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant               Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_reservations_tenant_fkey")
+  assetInstance        AssetInstance          @relation(fields: [tenantId, assetInstanceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_reservations_instance_fkey")
+  pipelineCase         PipelineCase?          @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_reservations_case_fkey")
+  actorMembership      TenantMembership       @relation("AssetReservationActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "asset_reservations_actor_fkey")
+  assignments          AssetAssignment[]
+
+  @@unique([tenantId, id], map: "asset_reservations_tenant_id_key")
+  @@unique([tenantId, reservationRef], map: "asset_reservations_tenant_ref_key")
+  @@index([tenantId, assetInstanceId, status, startsAt, endsAt], map: "asset_reservations_interval_idx")
+  @@index([tenantId, pipelineCaseId, status], map: "asset_reservations_case_idx")
+  @@map("asset_reservations")
+}
+
+model AssetAssignment {
+  id                    String                  @id @default(cuid())
+  assignmentRef         String                  @default(dbgenerated("gen_random_uuid()")) @map("assignment_ref") @db.Uuid
+  tenantId              String                  @map("tenant_id")
+  assetInstanceId       String                  @map("asset_instance_id")
+  reservationId         String?                 @map("reservation_id")
+  pipelineCaseId        String?                 @map("pipeline_case_id")
+  assigneeMembershipId  String?                 @map("assignee_membership_id")
+  assigneeUserId        String?                 @map("assignee_user_id")
+  custodianMembershipId String?                 @map("custodian_membership_id")
+  custodianUserId       String?                 @map("custodian_user_id")
+  operationalReference  String?                 @map("operational_reference") @db.VarChar(191)
+  status                AssetAssignmentStatus   @default(PLANNED)
+  originLocationId      String?                 @map("origin_location_id")
+  destinationLocationId String?                 @map("destination_location_id")
+  handoutCondition      AssetPhysicalCondition? @map("handout_condition")
+  returnCondition       AssetPhysicalCondition? @map("return_condition")
+  handedOutAt           DateTime?               @map("handed_out_at") @db.Timestamptz(6)
+  returnedAt            DateTime?               @map("returned_at") @db.Timestamptz(6)
+  version               Int                     @default(1)
+  actorMembershipId     String                  @map("actor_membership_id")
+  actorUserId           String                  @map("actor_user_id")
+  createdAt             DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_assignments_tenant_fkey")
+  assetInstance         AssetInstance           @relation(fields: [tenantId, assetInstanceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_assignments_instance_fkey")
+  reservation           AssetReservation?       @relation(fields: [tenantId, reservationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_assignments_reservation_fkey")
+  pipelineCase          PipelineCase?           @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_assignments_case_fkey")
+  assigneeMembership    TenantMembership?       @relation("AssetAssignmentAssignee", fields: [tenantId, assigneeMembershipId, assigneeUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "asset_assignments_assignee_fkey")
+  custodianMembership   TenantMembership?       @relation("AssetAssignmentCustodian", fields: [tenantId, custodianMembershipId, custodianUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "asset_assignments_custodian_fkey")
+  actorMembership       TenantMembership        @relation("AssetAssignmentActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "asset_assignments_actor_fkey")
+  originLocation        MaterialLocation?       @relation("AssetAssignmentOrigin", fields: [tenantId, originLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_assignments_origin_fkey")
+  destinationLocation   MaterialLocation?       @relation("AssetAssignmentDestination", fields: [tenantId, destinationLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_assignments_destination_fkey")
+  inspections           AssetInspection[]
+  incidents             AssetIncident[]
+
+  @@unique([tenantId, id], map: "asset_assignments_tenant_id_key")
+  @@unique([tenantId, assignmentRef], map: "asset_assignments_tenant_ref_key")
+  @@index([tenantId, assetInstanceId, status], map: "asset_assignments_instance_status_idx")
+  @@index([tenantId, custodianMembershipId, custodianUserId, status], map: "asset_assignments_custodian_idx")
+  @@map("asset_assignments")
+}
+
+model AssetInspection {
+  id                String                 @id @default(cuid())
+  inspectionRef     String                 @default(dbgenerated("gen_random_uuid()")) @map("inspection_ref") @db.Uuid
+  tenantId          String                 @map("tenant_id")
+  assetInstanceId   String                 @map("asset_instance_id")
+  assignmentId      String?                @map("assignment_id")
+  locationId        String?                @map("location_id")
+  inspectionType    AssetInspectionType    @map("inspection_type")
+  physicalCondition AssetPhysicalCondition @map("physical_condition")
+  safeToUse         Boolean                @map("safe_to_use")
+  notes             String?                @db.VarChar(2000)
+  evidenceRefs      String[]               @default([]) @map("evidence_refs") @db.Uuid
+  actorMembershipId String                 @map("actor_membership_id")
+  actorUserId       String                 @map("actor_user_id")
+  inspectedAt       DateTime               @default(now()) @map("inspected_at") @db.Timestamptz(6)
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_inspections_tenant_fkey")
+  assetInstance     AssetInstance          @relation(fields: [tenantId, assetInstanceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_inspections_instance_fkey")
+  assignment        AssetAssignment?       @relation(fields: [tenantId, assignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_inspections_assignment_fkey")
+  location          MaterialLocation?      @relation("AssetInspectionLocation", fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_inspections_location_fkey")
+  actorMembership   TenantMembership       @relation("AssetInspectionActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "asset_inspections_actor_fkey")
+  incidents         AssetIncident[]
+
+  @@unique([tenantId, id], map: "asset_inspections_tenant_id_key")
+  @@unique([tenantId, inspectionRef], map: "asset_inspections_tenant_ref_key")
+  @@index([tenantId, assetInstanceId, inspectedAt(sort: Desc)], map: "asset_inspections_history_idx")
+  @@map("asset_inspections")
+}
+
+model AssetIncident {
+  id                 String                  @id @default(cuid())
+  incidentRef        String                  @default(dbgenerated("gen_random_uuid()")) @map("incident_ref") @db.Uuid
+  tenantId           String                  @map("tenant_id")
+  assetInstanceId    String                  @map("asset_instance_id")
+  assignmentId       String?                 @map("assignment_id")
+  inspectionId       String?                 @map("inspection_id")
+  incidentType       AssetIncidentType       @map("incident_type")
+  severity           AssetIncidentSeverity
+  status             AssetIncidentStatus     @default(OPEN)
+  resultingCondition AssetPhysicalCondition? @map("resulting_condition")
+  description        String                  @db.VarChar(2000)
+  evidenceRefs       String[]                @default([]) @map("evidence_refs") @db.Uuid
+  actorMembershipId  String                  @map("actor_membership_id")
+  actorUserId        String                  @map("actor_user_id")
+  occurredAt         DateTime                @map("occurred_at") @db.Timestamptz(6)
+  resolvedAt         DateTime?               @map("resolved_at") @db.Timestamptz(6)
+  version            Int                     @default(1)
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_incidents_tenant_fkey")
+  assetInstance      AssetInstance           @relation(fields: [tenantId, assetInstanceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_incidents_instance_fkey")
+  assignment         AssetAssignment?        @relation(fields: [tenantId, assignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_incidents_assignment_fkey")
+  inspection         AssetInspection?        @relation(fields: [tenantId, inspectionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_incidents_inspection_fkey")
+  actorMembership    TenantMembership        @relation("AssetIncidentActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "asset_incidents_actor_fkey")
+  maintenanceOrders  AssetMaintenanceOrder[]
+
+  @@unique([tenantId, id], map: "asset_incidents_tenant_id_key")
+  @@unique([tenantId, incidentRef], map: "asset_incidents_tenant_ref_key")
+  @@index([tenantId, assetInstanceId, status, occurredAt(sort: Desc)], map: "asset_incidents_asset_idx")
+  @@map("asset_incidents")
+}
+
+model AssetMaintenanceRule {
+  id                 String                  @id @default(cuid())
+  ruleRef            String                  @default(dbgenerated("gen_random_uuid()")) @map("rule_ref") @db.Uuid
+  tenantId           String                  @map("tenant_id")
+  assetModelId       String                  @map("asset_model_id")
+  ruleType           AssetMaintenanceTrigger @map("rule_type")
+  intervalDays       Int?                    @map("interval_days")
+  intervalUsageHours Decimal?                @map("interval_usage_hours") @db.Decimal(14, 2)
+  intervalOdometerKm Decimal?                @map("interval_odometer_km") @db.Decimal(14, 2)
+  intervalCycles     BigInt?                 @map("interval_cycles")
+  status             AssetRecordStatus       @default(ACTIVE)
+  version            Int                     @default(1)
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_maintenance_rules_tenant_fkey")
+  assetModel         AssetModel              @relation(fields: [tenantId, assetModelId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_maintenance_rules_model_fkey")
+
+  @@unique([tenantId, ruleRef], map: "asset_maintenance_rules_tenant_ref_key")
+  @@index([tenantId, assetModelId, status], map: "asset_maintenance_rules_model_idx")
+  @@map("asset_maintenance_rules")
+}
+
+model AssetMaintenanceOrder {
+  id                String                 @id @default(cuid())
+  maintenanceRef    String                 @default(dbgenerated("gen_random_uuid()")) @map("maintenance_ref") @db.Uuid
+  tenantId          String                 @map("tenant_id")
+  assetInstanceId   String                 @map("asset_instance_id")
+  incidentId        String?                @map("incident_id")
+  maintenanceType   AssetMaintenanceType   @map("maintenance_type")
+  status            AssetMaintenanceStatus @default(SCHEDULED)
+  title             String                 @db.VarChar(240)
+  notes             String?                @db.VarChar(2000)
+  scheduledStart    DateTime               @map("scheduled_start") @db.Timestamptz(6)
+  scheduledEnd      DateTime               @map("scheduled_end") @db.Timestamptz(6)
+  startedAt         DateTime?              @map("started_at") @db.Timestamptz(6)
+  completedAt       DateTime?              @map("completed_at") @db.Timestamptz(6)
+  costAmount        Decimal?               @map("cost_amount") @db.Decimal(18, 4)
+  currency          String?                @db.Char(3)
+  version           Int                    @default(1)
+  actorMembershipId String                 @map("actor_membership_id")
+  actorUserId       String                 @map("actor_user_id")
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_maintenance_orders_tenant_fkey")
+  assetInstance     AssetInstance          @relation(fields: [tenantId, assetInstanceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_maintenance_orders_instance_fkey")
+  incident          AssetIncident?         @relation(fields: [tenantId, incidentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_maintenance_orders_incident_fkey")
+  actorMembership   TenantMembership       @relation("AssetMaintenanceOrderActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "asset_maintenance_orders_actor_fkey")
+
+  @@unique([tenantId, id], map: "asset_maintenance_orders_tenant_id_key")
+  @@unique([tenantId, maintenanceRef], map: "asset_maintenance_orders_tenant_ref_key")
+  @@index([tenantId, assetInstanceId, status, scheduledStart, scheduledEnd], map: "asset_maintenance_orders_interval_idx")
+  @@map("asset_maintenance_orders")
+}
+
+model AssetHistoryEvent {
+  id                String           @id @default(cuid())
+  eventRef          String           @default(dbgenerated("gen_random_uuid()")) @map("event_ref") @db.Uuid
+  tenantId          String           @map("tenant_id")
+  assetInstanceId   String           @map("asset_instance_id")
+  eventType         String           @map("event_type") @db.VarChar(80)
+  previousState     Json?            @map("previous_state")
+  resultingState    Json             @map("resulting_state")
+  referenceType     String?          @map("reference_type") @db.VarChar(80)
+  referenceRef      String?          @map("reference_ref") @db.Uuid
+  actorMembershipId String           @map("actor_membership_id")
+  actorUserId       String           @map("actor_user_id")
+  occurredAt        DateTime         @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_history_events_tenant_fkey")
+  assetInstance     AssetInstance    @relation(fields: [tenantId, assetInstanceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "asset_history_events_instance_fkey")
+  actorMembership   TenantMembership @relation("AssetHistoryEventActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "asset_history_events_actor_fkey")
+
+  @@unique([tenantId, eventRef], map: "asset_history_events_tenant_ref_key")
+  @@index([tenantId, assetInstanceId, occurredAt(sort: Desc)], map: "asset_history_events_asset_idx")
+  @@map("asset_history_events")
+}
+
+model ExternalResourceOffer {
+  id                   String                        @id @default(cuid())
+  offerRef             String                        @default(dbgenerated("gen_random_uuid()")) @map("offer_ref") @db.Uuid
+  tenantId             String                        @map("tenant_id")
+  assetModelId         String?                       @map("asset_model_id")
+  providerReference    String                        @map("provider_reference") @db.VarChar(191)
+  providerNameSnapshot String                        @map("provider_name_snapshot") @db.VarChar(160)
+  resourceDescription  String                        @map("resource_description") @db.VarChar(500)
+  capacity             Json                          @default("{}")
+  rateAmount           Decimal?                      @map("rate_amount") @db.Decimal(18, 4)
+  currency             String?                       @db.Char(3)
+  temporalUnit         String?                       @map("temporal_unit") @db.VarChar(24)
+  validFrom            DateTime?                     @map("valid_from") @db.Timestamptz(6)
+  validTo              DateTime?                     @map("valid_to") @db.Timestamptz(6)
+  availabilityStatus   ExternalAvailabilityStatus    @default(UNCONFIRMED) @map("availability_status")
+  termsSnapshot        Json                          @default("{}") @map("terms_snapshot")
+  contractualReference String?                       @map("contractual_reference") @db.VarChar(191)
+  status               AssetRecordStatus             @default(ACTIVE)
+  version              Int                           @default(1)
+  createdAt            DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant               Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "external_resource_offers_tenant_fkey")
+  assetModel           AssetModel?                   @relation(fields: [tenantId, assetModelId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "external_resource_offers_model_fkey")
+  reservations         ExternalResourceReservation[]
+
+  @@unique([tenantId, id], map: "external_resource_offers_tenant_id_key")
+  @@unique([tenantId, offerRef], map: "external_resource_offers_tenant_ref_key")
+  @@unique([tenantId, providerReference, contractualReference], map: "external_resource_offers_contract_key")
+  @@index([tenantId, status, availabilityStatus, validFrom, validTo], map: "external_resource_offers_availability_idx")
+  @@map("external_resource_offers")
+}
+
+model ExternalResourceReservation {
+  id                   String                            @id @default(cuid())
+  reservationRef       String                            @default(dbgenerated("gen_random_uuid()")) @map("reservation_ref") @db.Uuid
+  tenantId             String                            @map("tenant_id")
+  offerId              String                            @map("offer_id")
+  pipelineCaseId       String?                           @map("pipeline_case_id")
+  startsAt             DateTime                          @map("starts_at") @db.Timestamptz(6)
+  endsAt               DateTime                          @map("ends_at") @db.Timestamptz(6)
+  quantity             Int
+  agreedAmount         Decimal?                          @map("agreed_amount") @db.Decimal(18, 4)
+  currency             String?                           @db.Char(3)
+  status               ExternalResourceReservationStatus @default(REQUESTED)
+  operationalReference String?                           @map("operational_reference") @db.VarChar(191)
+  version              Int                               @default(1)
+  actorMembershipId    String                            @map("actor_membership_id")
+  actorUserId          String                            @map("actor_user_id")
+  createdAt            DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant               Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "external_resource_reservations_tenant_fkey")
+  offer                ExternalResourceOffer             @relation(fields: [tenantId, offerId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "external_resource_reservations_offer_fkey")
+  pipelineCase         PipelineCase?                     @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "external_resource_reservations_case_fkey")
+  actorMembership      TenantMembership                  @relation("ExternalResourceReservationActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "external_resource_reservations_actor_fkey")
+
+  @@unique([tenantId, reservationRef], map: "external_resource_reservations_tenant_ref_key")
+  @@index([tenantId, offerId, status, startsAt, endsAt], map: "external_resource_reservations_interval_idx")
+  @@map("external_resource_reservations")
 }
 
 model CatalogMaterial {
@@ -5106,6 +5536,124 @@ enum MaterialPurchaseRequestStatus {
   APPROVED
   ORDERED
   RECEIVED
+  CANCELLED
+}
+
+enum AssetResourceType {
+  TOOL
+  EQUIPMENT
+}
+
+enum AssetSerialPolicy {
+  REQUIRED
+  OPTIONAL
+  NONE
+}
+
+enum AssetRecordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AssetOperationalStatus {
+  AVAILABLE
+  ASSIGNED
+  IN_USE
+  MAINTENANCE
+  OUT_OF_SERVICE
+  LOST
+  RETIRED
+}
+
+enum AssetPhysicalCondition {
+  GOOD
+  FAIR
+  DAMAGED
+  UNSAFE
+}
+
+enum AssetCostType {
+  ACQUISITION
+  REPLACEMENT
+  INTERNAL_RATE
+  MAINTENANCE
+}
+
+enum AssetReservationStatus {
+  ACTIVE
+  FULFILLED
+  CANCELLED
+  EXPIRED
+}
+
+enum AssetAssignmentStatus {
+  PLANNED
+  ACTIVE
+  RETURNED
+  CANCELLED
+}
+
+enum AssetInspectionType {
+  PRE_HANDOUT
+  RETURN
+  PERIODIC
+  MAINTENANCE
+}
+
+enum AssetIncidentType {
+  DAMAGE
+  LOSS
+  FAILURE
+  MISUSE
+  ACCIDENT
+  OBSERVATION
+}
+
+enum AssetIncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AssetIncidentStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum AssetMaintenanceTrigger {
+  CALENDAR
+  USAGE_HOURS
+  ODOMETER
+  CYCLES
+}
+
+enum AssetMaintenanceType {
+  PREVENTIVE
+  CORRECTIVE
+  INSPECTION
+  REPAIR
+}
+
+enum AssetMaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ExternalAvailabilityStatus {
+  UNCONFIRMED
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum ExternalResourceReservationStatus {
+  REQUESTED
+  CONFIRMED
+  COMPLETED
   CANCELLED
 }
 

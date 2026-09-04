@@ -15,6 +15,8 @@ export function validateV17AuthUsersTenantFirstSources(sources) {
   const adminDomain = sources.get("api/_lib/adminMembershipDomain.js") || "";
   const adminApi = sources.get("src/admin-tenant/adminApi.ts") || "";
   const app = sources.get("src/App.tsx") || "";
+  const sidebar = sources.get("src/components/layout/Sidebar.tsx") || "";
+  const roleModules = sources.get("src/lib/roleModuleMap.ts") || "";
   const loginUi = sources.get("src/components/auth/LoginScreen.tsx") || "";
   const session = sources.get("src/lib/sessionStore.ts") || "";
   const centralApi = sources.get("src/lib/api.ts") || "";
@@ -33,6 +35,7 @@ export function validateV17AuthUsersTenantFirstSources(sources) {
   invariant(/status\(410\)/.test(users) && /USERS_ADMINISTRATION_MOVED_TO_MEMBERSHIPS/.test(users), "/api/users no está retirado");
   invariant(!/password|hashPassword|prisma\.(?:user|tenantMembership)\.(?:findMany|create)/i.test(users), "/api/users conserva listado global o alta con password");
   invariant(!/\b(?:UserDto|getUsers|createUser)\b|requestJson[^\n]*\(["'`]\/users/.test(centralApi), "cliente central conserva listado global o alta directa de User");
+  invariant(!/UsersModule/.test(app) && !/\{\s*id:\s*['"]users['"]/.test(sidebar) && !/["']users["'],/.test(roleModules), "módulo legacy global de Users volvió a quedar navegable");
   invariant(/tm\."tenant_id"=\$\{actor\.tenantId\}/.test(adminDomain) && /tm\."public_ref"=CAST\(\$\{ref\} AS uuid\)/.test(adminDomain), "Administración no resuelve Membership tenant-first");
   invariant(!/\b(?:id|userId|tenantId|membershipId):/.test(adminApi.split("export type AdminMembership", 2)[1]?.split("export type AdminIdentityInvitation", 1)[0] || ""), "DTO administrativo expone PK");
 
@@ -60,7 +63,7 @@ export function validateV17AuthUsersTenantFirstSources(sources) {
 export function validateV17AuthUsersTenantFirstRepository(root = process.cwd()) {
   const files = [
     "api/_lib/authContext.js", "api/auth/login.js", "api/auth/me.js", "api/users/index.js",
-    "api/_lib/adminMembershipDomain.js", "src/admin-tenant/adminApi.ts", "src/App.tsx",
+    "api/_lib/adminMembershipDomain.js", "src/admin-tenant/adminApi.ts", "src/App.tsx", "src/components/layout/Sidebar.tsx", "src/lib/roleModuleMap.ts",
     "src/components/auth/LoginScreen.tsx", "src/lib/sessionStore.ts", "prisma/schema.prisma",
     "src/lib/api.ts", "src/crm-relational/api.ts", "src/crm-relational/readApi.ts", "src/crm-relational/mutationApi.ts",
   ];

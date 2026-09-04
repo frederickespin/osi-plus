@@ -39,7 +39,7 @@ El cambio de organización no muta autoridad ni datos server-side: es una selecc
 
 - Build y TypeScript: verdes.
 - ESLint focalizado/diferencial: verde, cero warnings.
-- Guardia 01B: 17/17 (16 negativas más baseline); test de dominio 01B: 15/15.
+- Guardia 01B: 18/18 (17 negativas más baseline); test de dominio 01B: 15/15.
 - AuthorizationContext 01A y su guardia: verdes tras exigir selección multi-Membership explícita.
 - Auth privado: 196 assertions; CORS protegido: 17 assertions.
 - Administración HTTP: 21/21; guardia: 13 assertions y 12 negativas.
@@ -59,7 +59,7 @@ No se validó contra PostgreSQL local: el equipo no dispone de `docker`, `psql`,
 
 - La constraint unique de `normalizedEmail` sigue siendo una migración futura potencial; este lote sólo falla cerrado ante ambigüedad.
 - Las preferencias globales no tienen todavía un catálogo explícito. La limpieza conservadora mantiene únicamente token/sesión y elimina el resto del storage al cambiar tenant para impedir fuga visual.
-- Los módulos legacy que no consumen APIs tenant-first siguen siendo compatibilidad visual, no nuevas autoridades.
+- El archivo histórico `UsersModule` permanece como fuente no navegable, pero no tiene import, entrada de Sidebar, asignación de rol ni cliente API; la guardia impide reactivarlo accidentalmente.
 - ICP debe integrarse después sobre este HEAD, consumir el mismo `AuthorizationContext` y transportar `membershipRef` por el cliente central. No debe introducir `tenantId`, User PK, storage empresarial ni otra selección paralela.
 
 ## Límites respetados

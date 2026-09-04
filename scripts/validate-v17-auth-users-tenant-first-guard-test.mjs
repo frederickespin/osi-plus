@@ -5,7 +5,7 @@ import { validateV17AuthUsersTenantFirstRepository, validateV17AuthUsersTenantFi
 const root = process.cwd();
 const files = [
   "api/_lib/authContext.js", "api/auth/login.js", "api/auth/me.js", "api/users/index.js",
-  "api/_lib/adminMembershipDomain.js", "src/admin-tenant/adminApi.ts", "src/App.tsx",
+  "api/_lib/adminMembershipDomain.js", "src/admin-tenant/adminApi.ts", "src/App.tsx", "src/components/layout/Sidebar.tsx", "src/lib/roleModuleMap.ts",
   "src/components/auth/LoginScreen.tsx", "src/lib/sessionStore.ts", "prisma/schema.prisma",
   "src/lib/api.ts", "src/crm-relational/api.ts", "src/crm-relational/readApi.ts", "src/crm-relational/mutationApi.ts",
 ];
@@ -28,6 +28,7 @@ rejected("login vuelve a exponer User id", (m) => m.set("api/auth/login.js", m.g
 rejected("/api/users vuelve a listar global", (m) => m.set("api/users/index.js", `${m.get("api/users/index.js")}\nprisma.user.findMany({});`));
 rejected("/api/users vuelve a aceptar password", (m) => m.set("api/users/index.js", `${m.get("api/users/index.js")}\nconst password = body.password;`));
 rejected("cliente central vuelve a listar User", (m) => m.set("src/lib/api.ts", `${m.get("src/lib/api.ts")}\nexport const getUsers = () => requestJson('/users');`));
+rejected("módulo legacy Users vuelve a ser navegable", (m) => m.set("src/App.tsx", `${m.get("src/App.tsx")}\nconst UsersModule = lazy(() => import('@/components/modules/UsersModule'));`));
 rejected("admin omite tenant", (m) => m.set("api/_lib/adminMembershipDomain.js", m.get("api/_lib/adminMembershipDomain.js").replaceAll('tm."tenant_id"=${actor.tenantId}', 'TRUE')));
 rejected("DTO admin expone userId", (m) => m.set("src/admin-tenant/adminApi.ts", m.get("src/admin-tenant/adminApi.ts").replace("membershipRef: string;", "membershipRef: string;\n  userId: string;")));
 rejected("selector usa tenantId", (m) => m.set("src/components/auth/LoginScreen.tsx", `${m.get("src/components/auth/LoginScreen.tsx")}\nconst tenantId = 'client-authority';`));

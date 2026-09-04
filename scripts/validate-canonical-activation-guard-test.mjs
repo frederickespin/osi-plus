@@ -123,6 +123,20 @@ try {
     ["api/clients/index.js"],
   );
 
+  const canonicalInventory = fixture("scripts/v17-auth-legacy-route-inventory.json", JSON.stringify({
+    migratedActiveFiles: ["api/k/signal.js"],
+  }));
+  const canonicalRoute = fixture("api/k/signal.js", 'import { requireRole } from "../_lib/authContextMiddleware.js";\n');
+  validateMt01bFoundationIsolation({ root, files: [canonicalInventory, canonicalRoute] });
+  check("ruta inventariada puede usar sólo el middleware canónico", true);
+
+  const unlistedCanonicalRoute = fixture("api/health.js", 'import { requireRole } from "./_lib/authContextMiddleware.js";\n');
+  rejection(
+    "middleware canónico fuera del inventario rechazado",
+    () => validateMt01bFoundationIsolation({ root, files: [canonicalInventory, unlistedCanonicalRoute] }),
+    ["api/health.js"],
+  );
+
   const unlistedPilotRoute = fixture("api/health.js", 'import { requirePilotPermission } from "./_lib/authContextPilot.js";\n');
   rejection(
     "adaptador piloto fuera del inventario rechazado",

@@ -146,6 +146,13 @@ function validateTrackedSecrets(root = process.cwd()) {
 
 export function validateMt01bFoundationIsolation({ root = process.cwd(), files = trackedFiles() } = {}) {
   files = files.map((file) => file.replaceAll("\\", "/"));
+  let canonicalContextRoutes = new Set();
+  try {
+    const inventory = JSON.parse(readFileSync(resolve(root, "scripts/v17-auth-legacy-route-inventory.json"), "utf8"));
+    canonicalContextRoutes = new Set((inventory.migratedActiveFiles || []).map((file) => String(file).replaceAll("\\", "/")));
+  } catch {
+    canonicalContextRoutes = new Set();
+  }
   const contextPilotRoutes = new Set([
     "api/clients/index.js",
     "api/k/dashboard.js",
@@ -165,7 +172,11 @@ export function validateMt01bFoundationIsolation({ root = process.cwd(), files =
     try { source = readFileSync(resolve(root, file), "utf8"); } catch { continue; }
     if (!file.startsWith("api/_lib/") && !file.startsWith("api/auth/") && /(?:authContext|authSession|membershipAuthorization)/i.test(source)) {
       const exactPilotImport = /from\s+["']\.\.\/_lib\/authContextPilot\.js["']/.test(source);
-      if (!contextPilotRoutes.has(file) || !exactPilotImport || /from\s+["'][^"']*(?:authContext|authSession|membershipAuthorization)(?!Pilot\.js)[^"']*["']/.test(source)) {
+      const exactCanonicalImport = /from\s+["'][^"']*\/_lib\/authContextMiddleware\.js["']/.test(source);
+      const internalContextImport = /from\s+["'][^"']*(?:authContext|authSession|membershipAuthorization)(?!(?:Pilot|Middleware)\.js)[^"']*["']/.test(source);
+      const allowedPilot = contextPilotRoutes.has(file) && exactPilotImport && !internalContextImport;
+      const allowedCanonical = canonicalContextRoutes.has(file) && exactCanonicalImport && !internalContextImport;
+      if (!allowedPilot && !allowedCanonical) {
         imports.push(file);
       }
     }

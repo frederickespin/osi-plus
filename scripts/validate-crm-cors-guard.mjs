@@ -164,13 +164,14 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
     invariant(!WILDCARD_ORIGIN.test(route.source), `${route.path} declara wildcard`);
     invariant(!route.source.includes("withPublicReadCorsHeaders"), `${route.path} usa CORS público fuera de allowlist`);
     if (route.source.includes("withPrivateApiHeaders")) continue;
+    if (route.path.startsWith("/api/materials/") && route.source.includes("createMaterialsHandler")) continue;
     invariant(/^\/api\/(?:auth|crm|admin)\//u.test(route.path), `${route.path} no usa wrapper privado ni adaptador canónico`);
   }
 
   for (const relativePath of [
     "api/_lib/adminIdentityInvitationHttp.js", "api/_lib/adminMembershipHttp.js", "api/_lib/authHttp.js", "api/_lib/authOrigin.js",
     "api/_lib/crmCaseMutationHttp.js", "api/_lib/crmIcpV2ApiHttp.js", "api/_lib/crmOwnerCatalogHttp.js", "api/_lib/crmPipelineReadHttp.js",
-    "api/_lib/crmServicesHttp.js", "api/_lib/crmSurveyHttp.js", "api/_lib/pipelineCaseMutationHttp.js",
+    "api/_lib/crmServicesHttp.js", "api/_lib/crmSurveyHttp.js", "api/_lib/materialsInventoryHttp.js", "api/_lib/pipelineCaseMutationHttp.js",
   ]) {
     const wrapper = source(root, relativePath, overrides);
     invariant(!WILDCARD_ORIGIN.test(wrapper), `${relativePath} declara wildcard`);

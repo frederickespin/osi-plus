@@ -1,0 +1,26 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { validateMaterialsInventoryGuard } from "./validate-v17-materials-inventory-guard.mjs";
+const paths = ["prisma/schema.prisma", "prisma/migrations/20260906010000_v17_materials_inventory/migration.sql", "api/_lib/materialsInventoryContract.js", "api/_lib/materialsInventoryDomain.js", "api/_lib/materialsInventoryHttp.js", "src/materials-inventory/mode.ts", "src/hub/HubWorkspace.tsx", "src/hub/appCatalog.ts", "src/survey/SurveyApp.tsx"];
+const baseline = new Map(paths.map((path) => [path, readFileSync(path, "utf8")])); let assertions = 0;
+function rejects(path, mutate) { const overrides = new Map(baseline); overrides.set(path, mutate(overrides.get(path))); assert.throws(() => validateMaterialsInventoryGuard({ overrides }), /V17_MATERIALS_INVENTORY_GUARD/); assertions += 1; }
+assert.equal(validateMaterialsInventoryGuard({ overrides: baseline }).ok, true); assertions += 1;
+rejects("prisma/schema.prisma", (text) => text.replace("model MaterialReservation {", "model RemovedReservation {"));
+rejects("prisma/migrations/20260906010000_v17_materials_inventory/migration.sql", (text) => text.replace("material_inventory_movements_append_only", "mutable_movement"));
+rejects("api/_lib/materialsInventoryDomain.js", (text) => `${text}\nconst unsafe = localStorage.getItem('stock');`);
+rejects("api/_lib/materialsInventoryDomain.js", (text) => `${text}\nconst next = MAX(code) + 1;`);
+rejects("api/_lib/materialsInventoryDomain.js", (text) => `${text}\nconst hardCodedCost = 42;`);
+rejects("api/_lib/materialsInventoryDomain.js", (text) => `${text}\nawait prisma.materialCatalogItem.findFirst({ where: { name: 'Caja' } });`);
+rejects("api/_lib/materialsInventoryDomain.js", (text) => `${text}\nawait prisma.materialCatalogItem.deleteMany({});`);
+rejects("api/_lib/materialsInventoryDomain.js", (text) => text.replaceAll("pg_advisory_xact_lock", "unlocked_stock"));
+rejects("api/_lib/materialsInventoryHttp.js", (text) => text.replace("resolveMaterialsApiMode(env, req); assertSameOrigin(req);", "assertSameOrigin(req);"));
+rejects("src/materials-inventory/mode.ts", (text) => text.replace("PREVIEW_REHEARSAL", "PRODUCTION"));
+rejects("src/hub/HubWorkspace.tsx", (text) => text.replace("selected?.appId === \"materials-equipment\" && materialsEnabled", "selected?.appId === \"materials-equipment\""));
+rejects("src/hub/appCatalog.ts", (text) => text.replace('requiresExplicitPermissions: true, baselineRoles: [], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },\n  { appId: "workshop"', 'baselineRoles: ["A"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },\n  { appId: "workshop"'));
+rejects("src/survey/SurveyApp.tsx", (text) => `${text}\nconst materialRef = 'manual';`);
+rejects("prisma/schema.prisma", (text) => text.replace("model MaterialPurchaseRequest {", "model AssetInstance {\n id String @id\n}\nmodel MaterialPurchaseRequest {"));
+rejects("prisma/schema.prisma", (text) => text.replace("model MaterialCatalogItem {", "model MaterialCatalogItem {\n  quantity Decimal"));
+rejects("api/_lib/materialsInventoryDomain.js", (text) => text.replace("export async function assignReservation", "export async function removedAssignReservation"));
+rejects("api/_lib/materialsInventoryDomain.js", (text) => text.replace("export async function createRecipeVersion", "export async function removedCreateRecipeVersion"));
+rejects("api/_lib/materialsInventoryDomain.js", (text) => text.replace("export async function transitionPurchaseRequest", "export async function removedTransitionPurchaseRequest"));
+process.stdout.write(JSON.stringify({ ok: true, assertions }) + "\n");

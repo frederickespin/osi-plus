@@ -15,6 +15,7 @@ const baseline = new Map([
   ["api/_lib/authOrigin.js", read("api/_lib/authOrigin.js")], ["api/_lib/crmCaseMutationHttp.js", read("api/_lib/crmCaseMutationHttp.js")],
   ["api/_lib/crmIcpV2ApiHttp.js", read("api/_lib/crmIcpV2ApiHttp.js")],
   ["api/_lib/crmOwnerCatalogHttp.js", read("api/_lib/crmOwnerCatalogHttp.js")], ["api/_lib/crmPipelineReadHttp.js", read("api/_lib/crmPipelineReadHttp.js")],
+  ["api/_lib/materialsInventoryHttp.js", read("api/_lib/materialsInventoryHttp.js")],
   ["api/_lib/pipelineCaseMutationHttp.js", read("api/_lib/pipelineCaseMutationHttp.js")],
   ["api/clients/index.js", read("api/clients/index.js")], ["api/projects/index.js", read("api/projects/index.js")],
 ]);
@@ -39,8 +40,8 @@ function mutateManifest(mutator) {
 
 const current = validateCrmCorsGuard({ overrides: baseline });
 const inventory = loadProtectedCorsInventory({ overrides: baseline });
-check("inventario completo 70/70", current.ok && current.routes === 70 && current.classifiedRoutes === 70);
-check("43 rutas same-origin", current.protectedSameOrigin === 43);
+check("inventario completo 86/86", current.ok && current.routes === 86 && current.classifiedRoutes === 86);
+check("59 rutas same-origin", current.protectedSameOrigin === 59);
 check("allowlist pública 2/2", current.publicDeliberate === 2 && current.webhookOwnAuth === 0);
 check("25 rutas legacy cerradas", current.legacyPending === 25);
 check("categorías exactas sin solapamientos", current.duplicates === 0 && current.unclassified === 0 && current.overlaps === 0);

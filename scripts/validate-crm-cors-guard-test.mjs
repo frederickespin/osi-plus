@@ -39,8 +39,8 @@ function mutateManifest(mutator) {
 
 const current = validateCrmCorsGuard({ overrides: baseline });
 const inventory = loadProtectedCorsInventory({ overrides: baseline });
-check("inventario completo 58/58", current.ok && current.routes === 58 && current.classifiedRoutes === 58);
-check("31 rutas same-origin", current.protectedSameOrigin === 31);
+check("inventario completo 62/62", current.ok && current.routes === 62 && current.classifiedRoutes === 62);
+check("35 rutas same-origin", current.protectedSameOrigin === 35);
 check("allowlist pública 2/2", current.publicDeliberate === 2 && current.webhookOwnAuth === 0);
 check("25 rutas legacy cerradas", current.legacyPending === 25);
 check("categorías exactas sin solapamientos", current.duplicates === 0 && current.unclassified === 0 && current.overlaps === 0);
@@ -65,8 +65,8 @@ rejected("ruta duplicada en manifiesto", "scripts/protected-cors-route-inventory
 rejected("ruta en dos categorías", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
   categories.publicDeliberate.push("/api/admin/memberships");
 }), /superpuestas/);
-reportRejected("resumen alterado no coincide con manifiesto", { ...current, protectedSameOrigin: 30 }, /protectedSameOrigin/);
-reportRejected("éxito incompleto no engaña al agregador", { ...current, routes: 57, classifiedRoutes: 57 }, /routes/);
+reportRejected("resumen alterado no coincide con manifiesto", { ...current, protectedSameOrigin: 34 }, /protectedSameOrigin/);
+reportRejected("éxito incompleto no engaña al agregador", { ...current, routes: 61, classifiedRoutes: 61 }, /routes/);
 rejected("wildcard Clients", "api/clients/index.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard Projects con casing", "api/projects/index.js", (value) => `${value}\nres.setHeader("aCcEsS-CoNtRoL-AlLoW-OrIgIn", "*");`);
 rejected("wildcard Admin", "api/_lib/adminMembershipHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);

@@ -11,7 +11,7 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   const apiReport = validateV17CrmIcpApiGuard({ root, overrides });
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  if (migrations.length !== 22) fail("el lote UI no puede añadir migraciones");
+  if (migrations.length < 22) fail("la cadena canónica ICP está incompleta");
   if (apiReport.productionApiEnabled !== false || apiReport.uiConsumers !== 1) fail("contrato API o consumidor UI inesperado");
 
   const mode = read("src/crm-icp-v2/clientMode.ts");

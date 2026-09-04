@@ -5,7 +5,7 @@ const read = (path) => readFileSync(path, "utf8");
 const invariant = (condition, message) => { if (!condition) throw new Error(`V17_COMMERCIAL_CRM_GUARD:${message}`); };
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-invariant(migrations.length === 22 && migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation"), `se esperaban 22 migraciones canónicas, existen ${migrations.length}`);
+invariant((migrations.length === 22 || (migrations.length === 23 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first"))) && migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation"), `cadena canónica o extensión Servicios inválida; existen ${migrations.length}`);
 
 const catalog = read("src/hub/appCatalog.ts");
 invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");

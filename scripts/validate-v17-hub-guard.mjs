@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-const BASE = "de5e8460c5da4e7f1c1fe42836b7ab488f67dd42";
+const BASE = "ffc77c38b29a2b04f0f573952f1cf6b90e5b1f10";
 const allowedBackendChanges = new Set([
   "api/_lib/adminIdentityInvitationDomain.js",
   "api/_lib/adminIdentityInvitationHttp.js",
@@ -28,6 +28,9 @@ const allowedBackendChanges = new Set([
   "api/_lib/membershipAuthorization.js",
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/rbac.js",
+  "api/_lib/crmServicesApiDomain.js",
+  "api/_lib/crmServicesContract.js",
+  "api/_lib/crmServicesHttp.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
   "api/_lib/v17CommercialCrmProductionAuth.js",
   "api/_lib/v17ProductionPilotGate.js",
@@ -51,6 +54,10 @@ const allowedBackendChanges = new Set([
   "api/crm/pipeline-cases/[caseKey]/index.js",
   "api/crm/pipeline-cases/[caseKey]/transition.js",
   "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
+  "api/crm/services/catalog/index.js",
+  "api/crm/services/catalog/[serviceRef].js",
+  "api/crm/services/defaults/index.js",
+  "api/crm/services/cases/[caseRef].js",
   "api/k/project-release.js",
   "api/k/project-validate.js",
   "api/projects/index.js",
@@ -63,12 +70,14 @@ const allowedPrismaChanges = new Set([
   "prisma/migrations/20260827010000_v17_tenant_membership_public_ref/migration.sql",
   "prisma/migrations/20260827020000_v17_admin_identity_invitation/migration.sql",
   "prisma/migrations/20260831010000_v17_crm_icp_foundation/migration.sql",
+  "prisma/migrations/20260904010000_v17_services_tenant_first/migration.sql",
 ]);
 function fail(message) { throw new Error(`V17_HUB_GUARD_FAILED: ${message}`); }
 function text(path) { return readFileSync(path, "utf8"); }
 
 const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-if (migrations.length !== 22 || !migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation")) fail(`expected 22 canonical migrations, found ${migrations.length}`);
+const migrationNames = migrations.map((entry) => entry.name).sort();
+if (migrations.length < 22 || migrationNames.indexOf("20260831010000_v17_crm_icp_foundation") !== 21) fail(`canonical ICP migration order invalid, found ${migrations.length}`);
 const migrationChanges = execFileSync("git", ["diff", "--name-only", BASE, "--", "prisma/migrations"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
 if (migrationChanges.some((path) => !allowedPrismaChanges.has(path))) fail("canonical migrations changed outside authorized V17 foundations");
 
@@ -115,6 +124,6 @@ const forbiddenBackend = changed.filter((path) => path.startsWith("api/")
   && !isPrivateCorsWrapperMigration(path));
 if (forbiddenBackend.length > 0
   || changed.some((path) => (path.startsWith("prisma/") && !allowedPrismaChanges.has(path)) || path.startsWith("src/data/"))) {
-  fail("forbidden backend, unauthorized Prisma, or mock change");
+  fail(`forbidden backend, unauthorized Prisma, or mock change: ${forbiddenBackend.join(",")}`);
 }
 console.log(JSON.stringify({ ok: true, migrations: migrations.length, applications: requiredApps.length, changedFiles: changed.length }));

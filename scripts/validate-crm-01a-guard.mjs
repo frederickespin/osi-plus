@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 
 const EXPECTED_MIGRATIONS = 22;
+const SERVICES_MIGRATION = "20260904010000_v17_services_tenant_first";
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
@@ -54,7 +55,7 @@ export function validateCrm01aGuard({
   extraSources = {},
 } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
-  invariant(migrations.length === EXPECTED_MIGRATIONS, `se requieren exactamente ${EXPECTED_MIGRATIONS} migraciones`);
+  invariant(migrations.length === EXPECTED_MIGRATIONS || (migrations.length === 23 && migrations.includes(SERVICES_MIGRATION)), `se requieren ${EXPECTED_MIGRATIONS} migraciones base y sólo la extensión Servicios autorizada`);
   invariant(migrations.includes("20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1 autorizada");
   invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
   invariant(migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");

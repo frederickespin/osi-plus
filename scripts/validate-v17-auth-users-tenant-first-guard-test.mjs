@@ -24,7 +24,7 @@ rejected("selección sin vínculo al User", (m) => m.set("api/_lib/authContext.j
 rejected("default vuelve a seleccionar silenciosamente", (m) => m.set("api/_lib/authContext.js", m.get("api/_lib/authContext.js").replace("activeCandidates.length === 1 ? activeCandidates[0] : null", "activeCandidates[0] || null")));
 rejected("Membership inactiva aceptada", (m) => m.set("api/_lib/authContext.js", m.get("api/_lib/authContext.js").replace("if (!active(selected.membership_status))", "if (false)")));
 rejected("Tenant inactivo aceptado", (m) => m.set("api/_lib/authContext.js", m.get("api/_lib/authContext.js").replace("if (!active(selected.tenant_status))", "if (false)")));
-rejected("login vuelve a exponer User id", (m) => m.set("api/auth/login.js", m.get("api/auth/login.js").replace("user: {\n      name", "user: {\n      id: user.id,\n      name")));
+rejected("login vuelve a exponer User id", (m) => m.set("api/auth/login.js", m.get("api/auth/login.js").replace(/user: \{\r?\n      name/, "user: {\n      id: user.id,\n      name")));
 rejected("/api/users vuelve a listar global", (m) => m.set("api/users/index.js", `${m.get("api/users/index.js")}\nprisma.user.findMany({});`));
 rejected("/api/users vuelve a aceptar password", (m) => m.set("api/users/index.js", `${m.get("api/users/index.js")}\nconst password = body.password;`));
 rejected("cliente central vuelve a listar User", (m) => m.set("src/lib/api.ts", `${m.get("src/lib/api.ts")}\nexport const getUsers = () => requestJson('/users');`));

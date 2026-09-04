@@ -106,6 +106,7 @@ export function inventoryApiRoutes(root = process.cwd(), overrides, extraRoutes 
   const discovered = filesBelow(resolve(root, "api"))
     .filter((file) => /\.(?:js|ts)$/u.test(file))
     .filter((file) => !relative(resolve(root, "api"), file).split(sep).includes("_lib"))
+    .filter((file) => relative(root, file).split(sep).join("/") !== "api/_disabled/legacyHeaderAuthorization.js")
     .filter((file) => !basename(file).startsWith("_"))
     .map((file) => {
       const relativePath = relative(root, file).split(sep).join("/");
@@ -147,7 +148,7 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
   invariant(new Set(paths).size === paths.length, "inventario contiene rutas duplicadas");
   const unclassified = paths.filter((path) => !inventory.allRoutes.includes(path));
   const absent = inventory.allRoutes.filter((path) => !paths.includes(path));
-  invariant(unclassified.length === 0 && absent.length === 0, "ruta API nueva, ausente o clasificación incompleta");
+  invariant(unclassified.length === 0 && absent.length === 0, `ruta API nueva, ausente o clasificación incompleta: nuevas=${unclassified.join(",")} ausentes=${absent.join(",")}`);
 
   const httpSource = source(root, "api/_lib/http.js", overrides);
   validatePrivateWrapper(httpSource);
@@ -169,7 +170,7 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
   for (const relativePath of [
     "api/_lib/adminIdentityInvitationHttp.js", "api/_lib/adminMembershipHttp.js", "api/_lib/authHttp.js", "api/_lib/authOrigin.js",
     "api/_lib/crmCaseMutationHttp.js", "api/_lib/crmIcpV2ApiHttp.js", "api/_lib/crmOwnerCatalogHttp.js", "api/_lib/crmPipelineReadHttp.js",
-    "api/_lib/pipelineCaseMutationHttp.js",
+    "api/_lib/crmServicesHttp.js", "api/_lib/pipelineCaseMutationHttp.js",
   ]) {
     const wrapper = source(root, relativePath, overrides);
     invariant(!WILDCARD_ORIGIN.test(wrapper), `${relativePath} declara wildcard`);

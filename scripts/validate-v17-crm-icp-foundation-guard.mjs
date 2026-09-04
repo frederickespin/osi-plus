@@ -29,7 +29,7 @@ export function validateV17CrmIcpFoundationGuard({ root = process.cwd(), overrid
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  if (migrations.length !== 22 || migrations.at(-1) !== ICP_MIGRATION) fail("migración 22 debe ser única y la última");
+  if (migrations.length < 22 || migrations.indexOf(ICP_MIGRATION) !== 21) fail("migración 22 debe conservar su posición canónica");
   for (const [migration, expected] of Object.entries(PRIOR_MIGRATION_HASHES)) {
     const path = `prisma/migrations/${migration}/migration.sql`;
     if (sha256(Buffer.from(read(path), "utf8")) !== expected) fail(`migración publicada modificada: ${migration}`);

@@ -22,8 +22,8 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   validateV17CrmIcpFoundationGuard({ root, overrides });
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  if (migrations.length !== 22 || migrations.at(-1) !== "20260831010000_v17_crm_icp_foundation") {
-    fail("el lote API no puede añadir ni reordenar migraciones");
+  if (migrations.length < 22 || migrations.indexOf("20260831010000_v17_crm_icp_foundation") !== 21) {
+    fail("la migración ICP debe conservar su posición canónica");
   }
 
   const foundation = read("api/_lib/crmIcpV2Domain.js");

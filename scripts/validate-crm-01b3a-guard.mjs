@@ -29,7 +29,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   const read = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const files = inventory(root);
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 22 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exigen exactamente 22 migraciones canónicas, incluida la fundación ICP");
+  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exige la base canónica y sólo la extensión Servicios autorizada");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
 
   const adapter = read("api/_lib/pipelineCaseMutationHttp.js");

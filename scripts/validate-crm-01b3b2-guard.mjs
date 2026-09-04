@@ -9,7 +9,7 @@ function files(root) {
 }
 
 const migrationNames = readdirSync("prisma/migrations", { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => item.name);
-invariant(migrationNames.length === 22 && migrationNames.includes("20260831010000_v17_crm_icp_foundation"), "se exigen exactamente 22 migraciones canónicas");
+invariant((migrationNames.length === 22 || (migrationNames.length === 23 && migrationNames.includes("20260904010000_v17_services_tenant_first"))) && migrationNames.includes("20260831010000_v17_crm_icp_foundation"), "se exige la base canónica y sólo la extensión Servicios autorizada");
 invariant(migrationNames.includes("20260801020000_v17_pipeline_case_client_authority"), "migración 17 V17-CASE-CLIENT ausente");
 invariant(migrationNames.includes("20260821010000_v17_pipeline_case_public_ref"), "migración 18 V17-CASE-PUBLIC-REF ausente");
 

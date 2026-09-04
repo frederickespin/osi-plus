@@ -44,7 +44,7 @@ export function validateMt01c2b3b({
   migrationNames = migrations(root),
   extraRuntimeSources = {},
 } = {}) {
-  invariant(migrationNames.length === EXPECTED_MIGRATIONS, `se requieren exactamente ${EXPECTED_MIGRATIONS} migraciones`);
+  invariant(migrationNames.length === EXPECTED_MIGRATIONS || (migrationNames.length === 23 && migrationNames.includes("20260904010000_v17_services_tenant_first")), `se requiere la base canónica y sólo la extensión Servicios autorizada`);
   invariant(migrationNames.includes("20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1");
   invariant(migrationNames.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
   invariant(migrationNames.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");

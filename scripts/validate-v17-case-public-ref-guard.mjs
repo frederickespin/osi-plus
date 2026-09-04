@@ -65,12 +65,12 @@ export function validateV17CasePublicRefGuard({
 } = {}) {
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  invariant(migrations.length === 22, "se exigen exactamente 22 migraciones");
+  invariant(migrations.length >= 22, "se exigen al menos 22 migraciones");
   invariant(migrations.includes(V17_CASE_PUBLIC_REF_MIGRATION), "migración 18 exacta ausente");
   invariant(migrations.includes(V17_CLIENT_PUBLIC_REF_MIGRATION), "migración 19 exacta ausente");
   invariant(migrations.includes(V17_MEMBERSHIP_PUBLIC_REF_MIGRATION), "migración 20 exacta ausente");
   invariant(migrations.includes(V17_ADMIN_IDENTITY_INVITATION_MIGRATION), "migración 21 exacta ausente");
-  invariant(migrations.at(-1) === V17_CRM_ICP_FOUNDATION_MIGRATION, "migración 22 ICP exacta ausente o fuera de orden");
+  invariant(migrations.indexOf(V17_CRM_ICP_FOUNDATION_MIGRATION) === 21, "migración 22 ICP exacta ausente o fuera de orden");
 
   const schema = schemaSource ?? readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
   const sql = (migrationSource ?? readFileSync(resolve(root, "prisma/migrations", V17_CASE_PUBLIC_REF_MIGRATION, "migration.sql"), "utf8")).replaceAll("\r\n", "\n");

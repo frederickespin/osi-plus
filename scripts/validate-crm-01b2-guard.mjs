@@ -30,7 +30,7 @@ function files(root) {
 export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 22 && migrations.includes(MIGRATION) && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se requieren exactamente 22 migraciones canónicas");
+  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first"))) && migrations.includes(MIGRATION) && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se requieren 22 migraciones base y sólo la extensión 23 autorizada");
   invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
   invariant(migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migration.sql CRM-01B1 fue modificada");

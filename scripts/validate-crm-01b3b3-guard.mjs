@@ -14,7 +14,7 @@ function filesBelow(directory) {
 export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, extraSources = {}, migrationNames } = {}) {
   const source = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant(migrations.length === 22 && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exigen 22 migraciones canónicas exactas");
+  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exige la base canónica y sólo la extensión Servicios autorizada");
   const crypto = source("api/_lib/crmOwnerRef.js");
   for (const signature of ["aes-256-gcm", "hkdfSync", "randomBytes", "CRM_OWNER_REF_TTL_SECONDS = 300", "CRM_OWNER_REF_CLOCK_SKEW_SECONDS = 30", "osi-plus/crm/pipeline-owner-ref/v1", "setAAD", "setAuthTag"]) {
     invariant(crypto.includes(signature), `ownerRef incompleto: ${signature}`);

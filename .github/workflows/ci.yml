@@ -332,6 +332,7 @@ jobs:
       CRM01B1_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       V17_CASE_CLIENT_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       V17_CASE_PUBLIC_REF_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      V17_SERVICES_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       CRM01B2_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
@@ -407,6 +408,7 @@ jobs:
           npm run test:v17-crm-icp-api
           npm run guard:v17-crm-icp-ui
           npm run guard:v17-icp-consolidation
+          npm run guard:v17-services
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           npm run guard:v17-admin-tenant-memberships
@@ -578,4 +580,7 @@ jobs:
           npm run guard:auth-legacy-private-headers
           npm run guard:v17-crm-icp-ui
           npm run guard:v17-icp-consolidation
+          npm run guard:v17-services
+          npm run test:v17-services
+          npm run test:v17-services:db
           git diff --exit-code

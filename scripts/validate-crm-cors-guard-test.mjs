@@ -16,6 +16,7 @@ const baseline = new Map([
   ["api/_lib/crmIcpV2ApiHttp.js", read("api/_lib/crmIcpV2ApiHttp.js")],
   ["api/_lib/crmOwnerCatalogHttp.js", read("api/_lib/crmOwnerCatalogHttp.js")], ["api/_lib/crmPipelineReadHttp.js", read("api/_lib/crmPipelineReadHttp.js")],
   ["api/_lib/materialsInventoryHttp.js", read("api/_lib/materialsInventoryHttp.js")],
+  ["api/_lib/toolsEquipmentHttp.js", read("api/_lib/toolsEquipmentHttp.js")],
   ["api/_lib/pipelineCaseMutationHttp.js", read("api/_lib/pipelineCaseMutationHttp.js")],
   ["api/clients/index.js", read("api/clients/index.js")], ["api/projects/index.js", read("api/projects/index.js")],
 ]);
@@ -40,8 +41,8 @@ function mutateManifest(mutator) {
 
 const current = validateCrmCorsGuard({ overrides: baseline });
 const inventory = loadProtectedCorsInventory({ overrides: baseline });
-check("inventario completo 86/86", current.ok && current.routes === 86 && current.classifiedRoutes === 86);
-check("59 rutas same-origin", current.protectedSameOrigin === 59);
+check("inventario completo 99/99", current.ok && current.routes === 99 && current.classifiedRoutes === 99);
+check("72 rutas same-origin", current.protectedSameOrigin === 72);
 check("allowlist pública 2/2", current.publicDeliberate === 2 && current.webhookOwnAuth === 0);
 check("25 rutas legacy cerradas", current.legacyPending === 25);
 check("categorías exactas sin solapamientos", current.duplicates === 0 && current.unclassified === 0 && current.overlaps === 0);
@@ -73,6 +74,7 @@ rejected("wildcard Projects con casing", "api/projects/index.js", (value) => `${
 rejected("wildcard Admin", "api/_lib/adminMembershipHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard CRM", "api/_lib/crmPipelineReadHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard wrapper compartido", "api/_lib/http.js", (value) => value.replace("applyHeaders: setPrivateNoStore", "applyHeaders: setPublicReadCors"));
+rejected("wildcard wrapper activos", "api/_lib/toolsEquipmentHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("credentials sin wildcard", "api/_lib/http.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Credentials", "true");`);
 rejected("reflejo de Origin", "api/clients/index.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", req.headers.origin);`);
 rejected("booleano CORS ambiguo", "api/_lib/http.js", (value) => value.replace("{ handleOptions = false }", "{ handleOptions = false, cors = false }"));

@@ -93,6 +93,20 @@ export const PERMS = Object.freeze({
   INVENTORY_RECIPES_VIEW: "inventory:recipes:view",
   INVENTORY_RECIPES_MANAGE: "inventory:recipes:manage",
 
+  // V17 reusable assets. Every permission is an explicit membership grant.
+  ASSETS_MODEL_VIEW: "assets:model:view",
+  ASSETS_MODEL_MANAGE: "assets:model:manage",
+  ASSETS_INSTANCE_VIEW: "assets:instance:view",
+  ASSETS_INSTANCE_MANAGE: "assets:instance:manage",
+  ASSETS_RESERVATION_MANAGE: "assets:reservation:manage",
+  ASSETS_ASSIGNMENT_MANAGE: "assets:assignment:manage",
+  ASSETS_INSPECTION_PERFORM: "assets:inspection:perform",
+  ASSETS_MAINTENANCE_VIEW: "assets:maintenance:view",
+  ASSETS_MAINTENANCE_MANAGE: "assets:maintenance:manage",
+  ASSETS_INCIDENT_MANAGE: "assets:incident:manage",
+  ASSETS_EXTERNAL_VIEW: "assets:external:view",
+  ASSETS_EXTERNAL_MANAGE: "assets:external:manage",
+
   // HR
   HR_VIEW: "hr:view",
   HR_KPI: "hr:kpi",
@@ -154,13 +168,29 @@ const EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS = new Set([
   PERMS.INVENTORY_RECIPES_MANAGE,
 ]);
 
+const EXPLICIT_ASSET_PERMISSIONS = new Set([
+  PERMS.ASSETS_MODEL_VIEW,
+  PERMS.ASSETS_MODEL_MANAGE,
+  PERMS.ASSETS_INSTANCE_VIEW,
+  PERMS.ASSETS_INSTANCE_MANAGE,
+  PERMS.ASSETS_RESERVATION_MANAGE,
+  PERMS.ASSETS_ASSIGNMENT_MANAGE,
+  PERMS.ASSETS_INSPECTION_PERFORM,
+  PERMS.ASSETS_MAINTENANCE_VIEW,
+  PERMS.ASSETS_MAINTENANCE_MANAGE,
+  PERMS.ASSETS_INCIDENT_MANAGE,
+  PERMS.ASSETS_EXTERNAL_VIEW,
+  PERMS.ASSETS_EXTERNAL_MANAGE,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
     && !EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS.has(permission)
     && !EXPLICIT_SERVICE_PERMISSIONS.has(permission)
     && !EXPLICIT_SURVEY_PERMISSIONS.has(permission)
-    && !EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS.has(permission)),
+    && !EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS.has(permission)
+    && !EXPLICIT_ASSET_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

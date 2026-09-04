@@ -11,6 +11,7 @@ import {
   revalidateAdminActor,
 } from "./adminMembershipDomain.js";
 import { PERMS } from "./rbac.js";
+import { isCanonicalLegacyPassword } from "./passwordPolicy.js";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const EMAIL = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,63}$/;
@@ -47,9 +48,7 @@ export function normalizeAdminInvitationEmail(value) {
 }
 
 export function validateEnrollmentPassword(value) {
-  if (typeof value !== "string" || value.length < 14 || value.length > 128 || value !== value.trim()
-    || /[\u0000-\u001f\u007f]/.test(value)
-    || !/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/[0-9]/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
+  if (!isCanonicalLegacyPassword(value)) {
     throw new AdminIdentityInvitationError("ADMIN_IDENTITY_PASSWORD_POLICY_INVALID", 400);
   }
   return value;

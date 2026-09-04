@@ -1,4 +1,4 @@
-import { getToken, loadSession, normalizeRole } from "@/lib/sessionStore";
+import { getToken } from "@/lib/sessionStore";
 import type { PstTemplateContent } from "@/lib/templateSchemas";
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -199,25 +199,10 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     "Content-Type": "application/json",
   };
 
-  // MVP: el frontend trabaja con session en localStorage. Enviamos rol/usuario como headers.
-  // Cuando integremos login real, esto debe migrar a Authorization: Bearer.
-  try {
-    const session = loadSession();
-    if (session) {
-      const normalizedRole = normalizeRole(session.role);
-      if (normalizedRole) headers["x-osi-role"] = normalizedRole;
-
-      // Mantener compatibilidad con sesiones antiguas donde userId solo existe en storage crudo.
-      const raw = JSON.parse(localStorage.getItem("osi-plus.session") || "null") as { userId?: string } | null;
-      const userId = session.userId || raw?.userId;
-      if (userId) headers["x-osi-userid"] = String(userId);
-    }
-  } catch {
-    // El almacenamiento legacy es opcional para solicitudes públicas.
-  }
-
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`;
+  const publicPath = path === "/health" || path === "/info" || path === "/auth/login";
+  const bearerToken = options.token || (!publicPath ? getToken() : null);
+  if (bearerToken) {
+    headers.Authorization = `Bearer ${bearerToken}`;
   }
 
   const response = await fetch(`${API_BASE}${path}`, {

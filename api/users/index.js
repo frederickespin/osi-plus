@@ -3,6 +3,7 @@ import { hashPassword } from "../_lib/auth.js";
 import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "../_lib/http.js";
 import { requirePilotAuth, requirePilotPermission } from "../_lib/authContextPilot.js";
 import { PERMS } from "../_lib/rbac.js";
+import { isCanonicalLegacyPassword } from "../_lib/passwordPolicy.js";
 
 export default withPrivateApiHeaders(async (req, res) => {
   const permission = req.method === "GET" ? PERMS.USERS_VIEW : req.method === "POST" ? PERMS.USERS_CREATE : null;
@@ -14,6 +15,7 @@ export default withPrivateApiHeaders(async (req, res) => {
   if (req.method === "GET") {
     const query = String(req.query?.q || "").toLowerCase().trim();
     const users = await prisma.user.findMany({
+      where: { memberships: { some: { tenantId: auth.tenantId } } },
       orderBy: { createdAt: "desc" },
     });
 
@@ -47,7 +49,10 @@ export default withPrivateApiHeaders(async (req, res) => {
 
   if (req.method === "POST") {
     const body = await readJsonObject(req, { requireNonEmptyObject: true });
-    const password = String(body.password || "ChangeMe123*");
+    if (!Object.hasOwn(body, "password") || !isCanonicalLegacyPassword(body.password)) {
+      return res.status(400).json({ ok: false, error: "USER_PASSWORD_POLICY_INVALID" });
+    }
+    const password = body.password;
     const created = await prisma.user.create({
       data: {
         code: String(body.code || `EMP${Date.now()}`),

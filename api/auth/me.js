@@ -1,5 +1,4 @@
 import { prisma } from "../_lib/db.js";
-import { getBearerToken, verifyAccessToken } from "../_lib/auth.js";
 import { MT01B_AUTH_MODES, resolveMt01bAuthPolicy } from "../_lib/authPolicy.js";
 import { methodNotAllowed, unauthorized, withPrivateApiHeaders } from "../_lib/http.js";
 import { withLegacyAuthHeaders } from "../_lib/authHttp.js";
@@ -65,15 +64,9 @@ const legacyMeHandler = withPrivateApiHeaders(async (req, res) => {
 
   const policy = resolveMt01bAuthPolicy();
   if (policy.mode === MT01B_AUTH_MODES.LEGACY) {
-    const token = getBearerToken(req);
-    if (!token) return unauthorized(res);
-    let payload;
-    try {
-      payload = verifyAccessToken(token);
-    } catch {
-      return unauthorized(res);
-    }
-    const lookup = await findCurrentUser(payload.sub);
+    const canonicalContext = await requireAuthContext(req, res, { prisma });
+    if (!canonicalContext) return;
+    const lookup = await findCurrentUser(canonicalContext.userId);
     if (lookup.unavailable) return databaseUnavailable(res);
     const legacyUser = lookup.user;
     if (!legacyUser || !isGloballyActiveUser(legacyUser.status)) return unauthorized(res);
@@ -93,7 +86,7 @@ const legacyMeHandler = withPrivateApiHeaders(async (req, res) => {
         return sendCommercialTenancyError(res, error);
       }
     }
-    return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser) });
+    return res.status(200).json({ ok: true, user: legacyUserDto(legacyUser, canonicalContext) });
   }
 
   const context = await requireAuthContext(req, res, { prisma });

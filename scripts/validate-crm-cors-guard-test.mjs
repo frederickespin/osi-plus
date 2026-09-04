@@ -39,8 +39,8 @@ function mutateManifest(mutator) {
 
 const current = validateCrmCorsGuard({ overrides: baseline });
 const inventory = loadProtectedCorsInventory({ overrides: baseline });
-check("inventario completo 62/62", current.ok && current.routes === 62 && current.classifiedRoutes === 62);
-check("35 rutas same-origin", current.protectedSameOrigin === 35);
+check("inventario completo 70/70", current.ok && current.routes === 70 && current.classifiedRoutes === 70);
+check("43 rutas same-origin", current.protectedSameOrigin === 43);
 check("allowlist pública 2/2", current.publicDeliberate === 2 && current.webhookOwnAuth === 0);
 check("25 rutas legacy cerradas", current.legacyPending === 25);
 check("categorías exactas sin solapamientos", current.duplicates === 0 && current.unclassified === 0 && current.overlaps === 0);

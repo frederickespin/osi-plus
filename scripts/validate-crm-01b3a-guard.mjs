@@ -13,6 +13,8 @@ const ROUTES = Object.freeze({
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js": "getAllowedPipelineTransitions",
 });
 const POST_ROUTES = Object.freeze(Object.keys(ROUTES).filter((path) => !path.endsWith("allowed-transitions.js")));
+const isIndependentFoundation = (path) =>
+  path.startsWith("api/crm/services/") || path.startsWith("api/crm/survey/");
 const AUTHORIZED_FRONTEND_ADAPTER = "src/crm-relational/api.ts";
 
 function invariant(condition, message) { if (!condition) throw new Error(`CRM01B3A_GUARD: ${message}`); }
@@ -29,7 +31,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   const read = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const files = inventory(root);
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exige la base canónica y sólo la extensión Servicios autorizada");
+  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.includes("20260904010000_v17_services_tenant_first") && migrations.includes("20260905010000_v17_survey_foundation"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exige la base canónica y sólo las extensiones Servicios/Survey autorizadas");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
 
   const adapter = read("api/_lib/pipelineCaseMutationHttp.js");
@@ -84,6 +86,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
     "api/crm/pipeline-cases/[caseKey]/index.js",
   ]);
   invariant(!files.some((path) => /^api\/crm\/.+\.(?:js|ts)$/.test(path)
+    && !isIndependentFoundation(path)
     && !caseMutationRoutes.has(path)
     && /(?:PATCH|PUT|DELETE)/.test(extraSources[path] ?? read(path))), "método mutante alternativo detectado");
 

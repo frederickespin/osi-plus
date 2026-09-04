@@ -21,6 +21,12 @@ const ICP_V2_API_ROUTES = Object.freeze([
   "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
   "api/crm/icp-v2/pipeline-cases/index.js",
 ]);
+const isIndependentFoundation = (path) =>
+  path.startsWith("api/crm/services/") ||
+  path.startsWith("api/crm/survey/") ||
+  path.startsWith("src/crm-services/") ||
+  path.startsWith("src/services/") ||
+  path.startsWith("src/survey/");
 const CONFIG_NAMES = Object.freeze([
   "CRM_PIPELINE_RUNTIME_MODE",
   "CRM_PIPELINE_MUTATION_MODE",
@@ -38,7 +44,7 @@ function filesBelow(directory) {
 export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env, migrationNames } = {}) {
   const read = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exige la base canónica y sólo la extensión Servicios autorizada");
+  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.includes("20260904010000_v17_services_tenant_first") && migrations.includes("20260905010000_v17_survey_foundation"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exigen 22 migraciones base y sólo las extensiones Servicios/Survey autorizadas");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
   invariant(/model PipelineCaseCommand\s*\{/.test(read("prisma/schema.prisma")), "datamodel no contiene autoridad PipelineCaseCommand");
 
@@ -74,7 +80,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
     }
   }
 
-  const actualRoutes = apiFiles.map((path) => relative(root, path).replaceAll("\\", "/")).filter((path) => path.startsWith("api/crm/")).sort();
+  const actualRoutes = apiFiles.map((path) => relative(root, path).replaceAll("\\", "/")).filter((path) => path.startsWith("api/crm/") && !isIndependentFoundation(path)).sort();
   invariant(JSON.stringify(actualRoutes) === JSON.stringify([...CRM_ROUTES, ...ICP_V2_API_ROUTES].sort()), "inventario de rutas CRM cambió");
   for (const path of CRM_ROUTES) {
     const source = read(path);
@@ -107,6 +113,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const absolute of srcFiles) {
     const path = relative(root, absolute).replaceAll("\\", "/");
     const source = read(path);
+    if (isIndependentFoundation(path)) continue;
     if (authorizedFrontendAdapters.has(path)) {
       const endpoint = path === "src/crm-icp-v2/api.ts" ? "/api/crm/icp-v2" : "/api/crm";
       invariant(source.includes(`= "${endpoint}"`) || source.includes(`= '${endpoint}'`), `${path} no contiene el adaptador autorizado`);

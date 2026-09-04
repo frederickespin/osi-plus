@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const EXPECTED_MIGRATIONS = 22;
 const SERVICES_MIGRATION = "20260904010000_v17_services_tenant_first";
+const SURVEY_MIGRATION = "20260905010000_v17_survey_foundation";
 const EXPECTED_MIGRATION_SHA256 = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
 const RUNTIME_SERVICE_ALLOWLIST = Object.freeze(["api/_lib/pipelineCaseDomain.js", "api/_lib/crmCaseMutationDomain.js", "api/_lib/crmIcpV2ApiDomain.js"]);
 const JOURNAL_FIXTURE_ALLOWLIST = Object.freeze([
@@ -44,7 +45,7 @@ export function validateCrm01b1Guard({
   env = process.env,
 } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
-  invariant(migrations.length === EXPECTED_MIGRATIONS || (migrations.length === 23 && migrations.includes(SERVICES_MIGRATION)), `se requieren ${EXPECTED_MIGRATIONS} migraciones base y sólo la extensión Servicios autorizada`);
+  invariant(migrations.length === EXPECTED_MIGRATIONS || (migrations.length === 23 && migrations.includes(SERVICES_MIGRATION)) || (migrations.length === 24 && migrations.includes(SERVICES_MIGRATION) && migrations.includes(SURVEY_MIGRATION)), `se requieren ${EXPECTED_MIGRATIONS} migraciones base y sólo las extensiones Servicios/Survey autorizadas`);
   invariant(migrations.filter((name) => name === MIGRATION).length === 1, "la migración 16 exacta debe existir una sola vez");
   invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
   invariant(migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");

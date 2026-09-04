@@ -16,6 +16,8 @@ const AUTHORIZED_CONSUMERS = Object.freeze([
 ]);
 const MIGRATION = "20260801015000_crm01b_pipeline_mutation_authority";
 const MIGRATION_HASH = "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8";
+const isIndependentFoundation = (path) =>
+  path.startsWith("api/crm/services/") || path.startsWith("api/crm/survey/");
 
 function invariant(condition, message) { if (!condition) throw new Error(`CRM01B2_GUARD: ${message}`); }
 function files(root) {
@@ -30,7 +32,7 @@ function files(root) {
 export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first"))) && migrations.includes(MIGRATION) && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se requieren 22 migraciones base y sólo la extensión 23 autorizada");
+  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.includes("20260904010000_v17_services_tenant_first") && migrations.includes("20260905010000_v17_survey_foundation"))) && migrations.includes(MIGRATION) && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se requieren 22 migraciones base y sólo las extensiones Servicios/Survey autorizadas");
   invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
   invariant(migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migration.sql CRM-01B1 fue modificada");
@@ -106,7 +108,7 @@ export function validateCrm01b2Guard({ root = process.cwd(), overrides = {}, ext
   invariant(JSON.stringify([...new Set(consumers)].sort()) === JSON.stringify([...AUTHORIZED_CONSUMERS]), `consumidores runtime: ${consumers.join(", ")}`);
   invariant(mutations.length === 0, `bypass de mutación: ${mutations.join(", ")}`);
   invariant(journalBypasses.length === 0, `bypass de journal: ${journalBypasses.join(", ")}`);
-  invariant(!allFiles.some((path) => /^api\/crm\/.+(?:create|update|transition|assign|command).+\.js$/i.test(path) && !AUTHORIZED_CONSUMERS.includes(path)), "endpoint de mutación no autorizado");
+  invariant(!allFiles.some((path) => !isIndependentFoundation(path) && /^api\/crm\/.+(?:create|update|transition|assign|command).+\.js$/i.test(path) && !AUTHORIZED_CONSUMERS.includes(path)), "endpoint de mutación no autorizado");
   invariant(env.CRM_PIPELINE_RUNTIME_MODE === undefined || env.CRM_PIPELINE_RUNTIME_MODE === "DISABLED", "CRM debe permanecer DISABLED");
   invariant(String(env.MT01B_AUTH_MODE || "LEGACY").toUpperCase() !== "HYBRID", "HYBRID no autorizado");
   invariant(String(env.MT01B_TENANT_SWITCH_ENABLED || "false").toLowerCase() !== "true", "tenant switch no autorizado");

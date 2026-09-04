@@ -5,6 +5,7 @@ import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 
 const EXPECTED_MIGRATIONS = 22;
 const SERVICES_MIGRATION = "20260904010000_v17_services_tenant_first";
+const SURVEY_MIGRATION = "20260905010000_v17_survey_foundation";
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
@@ -30,6 +31,12 @@ const AUTHORIZED_FRONTEND_CONSUMERS = Object.freeze([
   "src/crm-relational/readApi.ts",
   "src/crm-icp-v2/api.ts",
 ]);
+const isIndependentFoundation = (path) =>
+  path.startsWith("api/crm/services/") ||
+  path.startsWith("api/crm/survey/") ||
+  path.startsWith("src/crm-services/") ||
+  path.startsWith("src/services/") ||
+  path.startsWith("src/survey/");
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`CRM-01A: ${message}`);
@@ -55,7 +62,7 @@ export function validateCrm01aGuard({
   extraSources = {},
 } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
-  invariant(migrations.length === EXPECTED_MIGRATIONS || (migrations.length === 23 && migrations.includes(SERVICES_MIGRATION)), `se requieren ${EXPECTED_MIGRATIONS} migraciones base y sólo la extensión Servicios autorizada`);
+  invariant(migrations.length === EXPECTED_MIGRATIONS || (migrations.length === 23 && migrations.includes(SERVICES_MIGRATION)) || (migrations.length === 24 && migrations.includes(SERVICES_MIGRATION) && migrations.includes(SURVEY_MIGRATION)), `se requieren ${EXPECTED_MIGRATIONS} migraciones base y sólo las extensiones Servicios/Survey autorizadas`);
   invariant(migrations.includes("20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1 autorizada");
   invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
   invariant(migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");
@@ -112,7 +119,8 @@ export function validateCrm01aGuard({
 
   const actualRoutes = filesBelow(resolve(root, "api/crm"))
     .filter((path) => path.endsWith(".js"))
-    .map((path) => relative(root, path).replaceAll("\\", "/")).sort();
+    .map((path) => relative(root, path).replaceAll("\\", "/"))
+    .filter((path) => !isIndependentFoundation(path)).sort();
   invariant(JSON.stringify(actualRoutes) === JSON.stringify([...AUTHORIZED_CRM_ROUTES].sort()), "endpoints CRM fuera del inventario CRM-01A/CRM-01B3A");
   for (const path of CRM_ROUTES) {
     const source = read(path);
@@ -135,6 +143,7 @@ export function validateCrm01aGuard({
     }
   }
   for (const [path, source] of Object.entries(runtimeSources)) {
+    if (isIndependentFoundation(path)) continue;
     if (path.startsWith("src/")) {
       if (AUTHORIZED_FRONTEND_CONSUMERS.includes(path)) {
         const endpoint = path === "src/crm-icp-v2/api.ts" ? "/api/crm/icp-v2" : "/api/crm";

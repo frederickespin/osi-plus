@@ -14,7 +14,7 @@ function filesBelow(directory) {
 export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, extraSources = {}, migrationNames } = {}) {
   const source = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exige la base canónica y sólo la extensión Servicios autorizada");
+  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.includes("20260904010000_v17_services_tenant_first") && migrations.includes("20260905010000_v17_survey_foundation"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exigen 22 migraciones base y sólo las extensiones Servicios/Survey autorizadas");
   const crypto = source("api/_lib/crmOwnerRef.js");
   for (const signature of ["aes-256-gcm", "hkdfSync", "randomBytes", "CRM_OWNER_REF_TTL_SECONDS = 300", "CRM_OWNER_REF_CLOCK_SKEW_SECONDS = 30", "osi-plus/crm/pipeline-owner-ref/v1", "setAAD", "setAuthTag"]) {
     invariant(crypto.includes(signature), `ownerRef incompleto: ${signature}`);
@@ -69,8 +69,9 @@ export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, e
   }
   const discovered = filesBelow(resolve(root, "api/crm"))
     .filter((path) => path.endsWith(".js"))
-    .map((path) => relative(root, path).replaceAll("\\", "/"));
-  const routes = [...new Set([...discovered, ...Object.keys(extraSources).filter((path) => path.startsWith("api/crm/") && path.endsWith(".js"))])].sort();
+    .map((path) => relative(root, path).replaceAll("\\", "/"))
+    .filter((path) => !path.startsWith("api/crm/services/") && !path.startsWith("api/crm/survey/"));
+  const routes = [...new Set([...discovered, ...Object.keys(extraSources).filter((path) => path.startsWith("api/crm/") && !path.startsWith("api/crm/services/") && !path.startsWith("api/crm/survey/") && path.endsWith(".js"))])].sort();
   invariant(routes.length === 12, `inventario recursivo de rutas CRM cambió: ${routes.length}`);
   for (const path of routes) {
     invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp|crmClientOptions|crmIcpV2ApiHttp/.test(source(path)), `${path} omite la compuerta CRM central`);

@@ -11,6 +11,10 @@ const INVENTORIED_ROUTES = new Set([
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js", "api/crm/pipeline-cases/[caseKey]/assign-owner.js",
   "api/crm/pipeline-cases/[caseKey]/transition.js", "api/crm/pipeline-cases/[caseKey]/unassign-owner.js",
   "api/crm/pipeline-owner-options.js",
+  "api/crm/services/cases/[caseRef].js", "api/crm/services/catalog/[serviceRef].js", "api/crm/services/catalog/index.js", "api/crm/services/defaults/index.js",
+  "api/crm/survey/assignments/[assignmentRef].js", "api/crm/survey/assignments/index.js", "api/crm/survey/catalog/index.js",
+  "api/crm/survey/drafts/[surveyRef].js", "api/crm/survey/drafts/[surveyRef]/photos.js", "api/crm/survey/drafts/[surveyRef]/publish.js",
+  "api/crm/survey/publications/[publicationRef].js", "api/crm/survey/publications/[publicationRef]/pdf.js",
   "api/k/dashboard.js", "api/k/pgd/apply.js", "api/k/pgd/item.js", "api/k/project-release.js", "api/k/project-validate.js", "api/k/project.js", "api/k/signal.js",
   "api/osis/[id].js", "api/osis/[id]/handshake.js", "api/osis/[id]/return.js", "api/osis/index.js",
   "api/projects/index.js", "api/pst/[serviceCode].js", "api/pst/active.js",
@@ -32,7 +36,15 @@ const ICP_V2_API_ROUTES = new Set([
   "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
   "api/crm/icp-v2/pipeline-cases/index.js",
 ]);
-const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/admin/memberships/index.js", "api/admin/memberships/[membershipRef]/index.js", "api/admin/identity-invitations/index.js", "api/admin/identity-invitations/[invitationRef]/index.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js", "api/crm/client-options.js", "api/crm/pipeline-cases/[caseKey]/index.js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js", "api/crm/pipeline-owner-options.js", ...CRM_MUTATION_ROUTES, ...ICP_V2_API_ROUTES]);
+const SERVICES_API_ROUTES = new Set([
+  "api/crm/services/cases/[caseRef].js", "api/crm/services/catalog/[serviceRef].js", "api/crm/services/catalog/index.js", "api/crm/services/defaults/index.js",
+]);
+const SURVEY_API_ROUTES = new Set([
+  "api/crm/survey/assignments/[assignmentRef].js", "api/crm/survey/assignments/index.js", "api/crm/survey/catalog/index.js",
+  "api/crm/survey/drafts/[surveyRef].js", "api/crm/survey/drafts/[surveyRef]/photos.js", "api/crm/survey/drafts/[surveyRef]/publish.js",
+  "api/crm/survey/publications/[publicationRef].js", "api/crm/survey/publications/[publicationRef]/pdf.js",
+]);
+const V2_PREPARED_ROUTES = new Set(["api/auth/me.js", "api/admin/memberships/index.js", "api/admin/memberships/[membershipRef]/index.js", "api/admin/identity-invitations/index.js", "api/admin/identity-invitations/[invitationRef]/index.js", "api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js", "api/crm/client-options.js", "api/crm/pipeline-cases/[caseKey]/index.js", "api/crm/pipeline-cases/index.js", "api/crm/pipeline-summary.js", "api/crm/pipeline-owner-options.js", ...CRM_MUTATION_ROUTES, ...ICP_V2_API_ROUTES, ...SERVICES_API_ROUTES, ...SURVEY_API_ROUTES]);
 const LEGACY_JWT_ROUTES = new Set(["api/users/index.js", "api/clients/index.js", "api/projects/index.js", "api/k/dashboard.js"]);
 const ROUTE_HELPERS = new Set(["api/k/_lib.js", "api/osis/_helpers.js", "api/templates/_pst.js"]);
 export const B3B1_ACTIVATION_BLOCKERS = Object.freeze([
@@ -81,6 +93,10 @@ export function validateMt01b3aSources({ routeSources, envExample, authContextSo
         ? /requireAuthContext/.test(source)
         : ICP_V2_API_ROUTES.has(route)
           ? /crmIcpV2ApiHttp\.js/.test(source)
+        : SERVICES_API_ROUTES.has(route)
+          ? /crmServicesHttp\.js/.test(source)
+        : SURVEY_API_ROUTES.has(route)
+          ? /crmSurveyHttp\.js/.test(source)
         : CRM_MUTATION_ROUTES.has(route)
           ? /pipelineCaseMutationHttp\.js/.test(source)
           : route.startsWith("api/admin/")

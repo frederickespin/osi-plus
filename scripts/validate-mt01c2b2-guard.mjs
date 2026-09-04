@@ -22,7 +22,7 @@ function filesBelow(root) {
 export function validateMt01c2b2Guard(root = process.cwd()) {
   const read = (path) => readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first"))) && migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation"), "la base canónica sólo admite la extensión Servicios autorizada");
+  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first") && migrations.some((entry) => entry.name === "20260905010000_v17_survey_foundation"))) && migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation"), "la base canónica sólo admite las extensiones Servicios/Survey autorizadas");
   invariant(migrations.some((entry) => entry.name === "20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1");
   invariant(migrations.some((entry) => entry.name === "20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT");
   invariant(migrations.some((entry) => entry.name === "20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF");

@@ -261,6 +261,9 @@ jobs:
       - name: Validate isolated CRM Preview rehearsal in real browsers (24/24)
         run: npm run test:v17-commercial-crm-preview:browser
 
+      - name: Validate gated Survey foundation in real browsers (12/12)
+        run: npm run test:v17-survey:browser
+
       - name: Validate inactive Production Read pilot in real browsers (18/18)
         run: npm run test:v17-erp-crm-foundation-02c:browser
 
@@ -333,6 +336,7 @@ jobs:
       V17_CASE_CLIENT_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       V17_CASE_PUBLIC_REF_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       V17_SERVICES_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      V17_SURVEY_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       CRM01B2_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
@@ -409,6 +413,8 @@ jobs:
           npm run guard:v17-crm-icp-ui
           npm run guard:v17-icp-consolidation
           npm run guard:v17-services
+          npm run guard:v17-survey
+          npm run test:v17-survey
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           npm run guard:v17-admin-tenant-memberships
@@ -583,4 +589,7 @@ jobs:
           npm run guard:v17-services
           npm run test:v17-services
           npm run test:v17-services:db
+          npm run guard:v17-survey
+          npm run test:v17-survey
+          npm run test:v17-survey:db
           git diff --exit-code

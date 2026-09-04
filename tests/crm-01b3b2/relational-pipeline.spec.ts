@@ -153,7 +153,7 @@ test("App real DISABLED no muestra menú ni descarga el chunk relacional", async
     localStorage.setItem("osi-plus.token", "synthetic.disabled.jwt");
     localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "disabled-user", name: "Actor disabled", role: "A", token: "synthetic.disabled.jwt" }));
   });
-  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { id: "disabled-user", name: "Actor disabled", email: "disabled@example.invalid", role: "A", status: "active" } }) }));
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { name: "Actor disabled", role: "A", status: "active", permissions: [], deniedPermissions: [], membership: { membershipRef: "11111111-1111-4111-8111-111111111111", tenantName: "Tenant sintético", role: "A" }, memberships: [{ membershipRef: "11111111-1111-4111-8111-111111111111", tenantName: "Tenant sintético", role: "A", preferred: true }] } }) }));
   await page.goto("/");
   await expect(page.getByText("Actor disabled")).toBeVisible();
   await expect(page.getByText("Pipeline relacional")).toHaveCount(0);

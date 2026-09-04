@@ -3,6 +3,7 @@ import { navigateWithWebKitInternalRecovery } from "../../scripts/webkit-interna
 
 const SESSION_KEY = "osi-plus.session";
 const TOKEN_KEY = "osi-plus.token";
+const MEMBERSHIP_REF = "11111111-1111-4111-8111-111111111111";
 const V2_PATH = /^\/api\/auth\/(?:refresh|logout|session\/upgrade)$/;
 const RELEVANT_ROLES = [
   "A", "V", "K", "B", "C", "C1", "D", "E", "G", "N", "PA", "PB", "PC", "PD", "PF", "I", "PE", "RB",
@@ -13,17 +14,13 @@ type ApiCalls = { me: number; v2: number; other: number };
 
 function user(role: string) {
   return {
-    id: `user-${role}`,
-    code: `EMP-${role}`,
     name: `Usuario ${role}`,
-    email: `${role.toLowerCase()}@example.invalid`,
-    phone: "",
     role,
     status: "active",
-    department: null,
-    joinDate: "2026-01-01",
-    points: 0,
-    rating: 0,
+    permissions: [],
+    deniedPermissions: [],
+    membership: { membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role },
+    memberships: [{ membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role, preferred: true }],
   };
 }
 
@@ -71,7 +68,7 @@ async function configureApi(context: BrowserContext, options: {
     }
     if (path === "/api/auth/login") {
       const role = options.role?.() ?? "A";
-      await fulfillJson(route, 200, { ok: true, token: `legacy-${role}`, user: user(role) });
+      await fulfillJson(route, 200, { ok: true, token: `legacy-${role}`, user: { name: `Usuario ${role}` }, membershipSelection: { required: false, options: user(role).memberships } });
       return;
     }
     calls.other += 1;
@@ -177,7 +174,7 @@ test("localStorage legacy corrupto se elimina sin consultar role", async ({ page
   expect(calls).toEqual({ me: 0, v2: 0, other: 0 });
 });
 
-test("login y logout LEGACY conservan el contrato sin llamadas V2", async ({ page, context }) => {
+test("login LEGACY revalida la Membership y logout permanece sin llamadas V2", async ({ page, context }) => {
   const role = "A";
   const calls = await configureApi(context, { role: () => role });
   const errors = capturePageErrors(page);
@@ -192,7 +189,7 @@ test("login y logout LEGACY conservan el contrato sin llamadas V2", async ({ pag
     localStorage.getItem(sessionKey), localStorage.getItem(tokenKey),
   ], { sessionKey: SESSION_KEY, tokenKey: TOKEN_KEY })).toEqual([null, null]);
   expect(errors).toEqual([]);
-  expect(calls.me).toBe(0);
+  expect(calls.me).toBe(1);
   expect(calls.v2).toBe(0);
 });
 

@@ -46,12 +46,19 @@ const handlers = new Map([
 let lookupMode = "FOUND";
 let lookupCount = 0;
 const originalFindUnique = prisma.user.findUnique;
+const originalFindMany = prisma.user.findMany;
 const originalQueryRaw = prisma.$queryRaw;
 prisma.user.findUnique = async () => {
   lookupCount += 1;
   if (lookupMode === "FAIL") throw new Error("postgresql://must-not-leak");
   if (lookupMode === "MISSING") return null;
   return user;
+};
+prisma.user.findMany = async () => {
+  lookupCount += 1;
+  if (lookupMode === "FAIL") throw new Error("postgresql://must-not-leak");
+  if (lookupMode === "MISSING") return [];
+  return [user];
 };
 prisma.$queryRaw = async () => {
   lookupCount += 1;
@@ -65,12 +72,14 @@ prisma.$queryRaw = async () => {
     tenant_code: "AUTH-HF1A-TENANT",
     tenant_status: "ACTIVE",
     membership_id: "auth-hf1a-membership",
+    membership_public_ref: "68fa3dc7-b461-4f6f-bb33-5d2e7ed2d21e",
     membership_role: user.role,
     membership_status: "ACTIVE",
     authorization_version: 1,
     granted_permissions: [],
     denied_permissions: [],
     is_default: true,
+    tenant_name: "Tenant sintético Auth",
   }];
 };
 
@@ -143,7 +152,7 @@ try {
     headers: { "Content-Type": "application/json", Origin: "https://external.example.invalid" },
     body: JSON.stringify({ email: user.email, password: "Synthetic-Auth-HF1A-Password" }),
   });
-  check("login LEGACY válido conserva 200", loginOk.status === 200 && loginOk.json?.ok === true && typeof loginOk.json?.token === "string");
+  check("login LEGACY válido conserva 200", loginOk.status === 200 && loginOk.json?.ok === true && typeof loginOk.json?.token === "string" && loginOk.json?.membershipSelection?.options?.length === 1);
   secure("login válido con Origin externo no concedido", loginOk);
 
   const invalid = await call("/api/auth/login", {
@@ -193,8 +202,8 @@ try {
   secure("Authorization duplicado en login", duplicateLogin);
 
   const token = loginOk.json.token;
-  const meOk = await call("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
-  check("auth/me válido conserva 200", meOk.status === 200 && meOk.json?.user?.id === user.id);
+  const meOk = await call("/api/auth/me", { headers: { Authorization: `Bearer ${token}`, "X-OSI-Membership-Ref": "68fa3dc7-b461-4f6f-bb33-5d2e7ed2d21e" } });
+  check("auth/me válido conserva 200", meOk.status === 200 && meOk.json?.user?.membership?.membershipRef === "68fa3dc7-b461-4f6f-bb33-5d2e7ed2d21e" && meOk.json?.user?.id === undefined);
   secure("auth/me válido", meOk);
 
   for (const [name, authorization, expectedCode] of [
@@ -255,6 +264,7 @@ try {
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, routes: handlers.size })}\n`);
 } finally {
   prisma.user.findUnique = originalFindUnique;
+  prisma.user.findMany = originalFindMany;
   prisma.$queryRaw = originalQueryRaw;
   await new Promise((resolve) => server.close(resolve));
   await prisma.$disconnect();

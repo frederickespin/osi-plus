@@ -8,7 +8,7 @@ import type { UserRole } from "../../src/types/osi.types";
 const params = new URLSearchParams(window.location.search);
 const role = (params.get("role") === "V" ? "V" : "A") as UserRole;
 localStorage.setItem("osi-plus.token", "[REDACTED]");
-localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic", name: "Actor", role }));
+localStorage.setItem("osi-plus.session", JSON.stringify({ name: "Actor", role, membershipRef: "11111111-1111-4111-8111-111111111111", memberships: [{ membershipRef: "11111111-1111-4111-8111-111111111111", tenantName: "Tenant sintético", role, preferred: true }] }));
 const forcedDisabled = params.get("disabled") === "1";
 const gateValue = params.get("gate");
 const gateEnvironment = gateValue === null

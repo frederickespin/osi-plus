@@ -42,8 +42,8 @@ rejected("ruta migrada sin contexto", (changed) => changed.set("api/pst/active.j
 rejected("adapter paralelo requireAuth", (changed) => changed.set("api/_lib/authContextPilot.js", `${changed.get("api/_lib/authContextPilot.js")}\nrequireAuth(req, res);`));
 rejected("denies omitidos", (changed) => changed.set("api/_lib/rbac.js", changed.get("api/_lib/rbac.js").replace(".filter((permission) => !denied.has(permission)).sort()", ".sort()")));
 rejected("credencial demo", (changed) => changed.set("src/components/auth/LoginScreen.tsx", `${changed.get("src/components/auth/LoginScreen.tsx")}\nconst TEST_USERS = [];`));
-rejected("password predeterminado", (changed) => changed.set("api/users/index.js", changed.get("api/users/index.js").replace("const password = body.password;", "const password = body.password || 'ChangeMe';")));
-rejected("listado User global", (changed) => changed.set("api/users/index.js", changed.get("api/users/index.js").replace("where: { memberships: { some: { tenantId: auth.tenantId } } },", "")));
+rejected("password administrativo reintroducido", (changed) => changed.set("api/users/index.js", `${changed.get("api/users/index.js")}\nconst password = body.password; await hashPassword(password);`));
+rejected("listado User global", (changed) => changed.set("api/users/index.js", `${changed.get("api/users/index.js")}\nawait prisma.user.findMany({});`));
 rejected("actor desde body", (changed) => changed.set("api/k/signal.js", `${changed.get("api/k/signal.js")}\nconst actor = body.actorUserId;`));
 rejected("inventario reducido falsamente", (changed) => changed.delete("api/_disabled/signal.js"));
 rejected("Draft futuro no puede habilitar API productiva", (changed) => changed.set("api/_lib/crmIcpV2Domain.js", "export const contract = { productionApiEnabled: true };"));

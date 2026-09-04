@@ -13,6 +13,8 @@
     "guard:auth-legacy-private-headers": "node scripts/validate-auth-legacy-private-headers-guard.mjs && node scripts/validate-auth-legacy-private-headers-guard-test.mjs",
     "guard:v17-auth-canonical-context": "node scripts/validate-v17-auth-canonical-context-guard.mjs && node scripts/validate-v17-auth-canonical-context-guard-test.mjs",
     "test:v17-auth-canonical-context": "node scripts/v17-auth-canonical-context-test.mjs",
+    "test:v17-auth-users-tenant-first": "node scripts/v17-auth-users-tenant-first-test.mjs",
+    "guard:v17-auth-users-tenant-first": "node scripts/validate-v17-auth-users-tenant-first-guard.mjs && node scripts/validate-v17-auth-users-tenant-first-guard-test.mjs",
     "test:protected-cors-http": "node scripts/protected-cors-http-test.mjs",
     "test:webkit-internal-recovery": "node scripts/validate-webkit-internal-goto-recovery-test.mjs",
     "test:mt01b2b:browser": "playwright test",

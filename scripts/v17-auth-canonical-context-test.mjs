@@ -13,6 +13,7 @@ const base = Object.freeze({
   tenant_code: "TENANT-CANONICAL",
   tenant_status: "ACTIVE",
   membership_id: "membership-canonical",
+  membership_public_ref: "11111111-1111-4111-8111-111111111111",
   membership_role: "V",
   membership_status: "ACTIVE",
   authorization_version: 7,
@@ -113,11 +114,10 @@ await rejects("authorizationVersion stale invalida la sesión V2", async () => {
   });
 }, "MT01B_AUTHORIZATION_INVALID");
 
-await test("default es preferencia compatible entre múltiples memberships", async () => {
+await rejects("default es sólo preferencia y no selecciona silenciosamente", async () => {
   const other = { ...base, membership_id: "membership-other", tenant_id: "tenant-other", tenant_code: "TENANT-OTHER", is_default: false };
-  const context = await resolveLegacyAuthorizationContext(prismaRows([base, other]), { sub: base.user_id });
-  assert.equal(context.membershipId, base.membership_id);
-});
+  await resolveLegacyAuthorizationContext(prismaRows([base, other]), { sub: base.user_id });
+}, "MULTIPLE_ACTIVE_MEMBERSHIPS_ADMIN_REQUIRED");
 
 await test("membership única sin default puede seleccionarse sin asumir unicidad global", async () => {
   const context = await resolveLegacyAuthorizationContext(prismaRows([{ ...base, is_default: false }]), { sub: base.user_id });
@@ -130,8 +130,8 @@ await rejects("múltiples memberships sin selección fallan cerradas", () => res
 ]), { sub: base.user_id }), "MULTIPLE_ACTIVE_MEMBERSHIPS_ADMIN_REQUIRED");
 
 await rejects("User inactivo", () => resolveLegacyAuthorizationContext(prismaRows([{ ...base, user_status: "SUSPENDED" }]), { sub: base.user_id }), "MT01B_AUTHORIZATION_INVALID");
-await rejects("Membership inactiva", () => resolveLegacyAuthorizationContext(prismaRows([{ ...base, membership_status: "SUSPENDED" }]), { sub: base.user_id }), "MT01B_MEMBERSHIP_INACTIVE");
-await rejects("Tenant inactivo", () => resolveLegacyAuthorizationContext(prismaRows([{ ...base, tenant_status: "SUSPENDED" }]), { sub: base.user_id }), "MT01B_TENANT_INACTIVE");
+await rejects("Membership inactiva", () => resolveLegacyAuthorizationContext(prismaRows([{ ...base, membership_status: "SUSPENDED" }]), { sub: base.user_id }, base.membership_public_ref), "MT01B_MEMBERSHIP_INACTIVE");
+await rejects("Tenant inactivo", () => resolveLegacyAuthorizationContext(prismaRows([{ ...base, tenant_status: "SUSPENDED" }]), { sub: base.user_id }, base.membership_public_ref), "MT01B_TENANT_INACTIVE");
 await rejects("Membership ausente", () => resolveLegacyAuthorizationContext(prismaRows([{
   user_id: base.user_id, user_email: base.user_email, user_status: "ACTIVE",
   membership_id: null, tenant_id: null,

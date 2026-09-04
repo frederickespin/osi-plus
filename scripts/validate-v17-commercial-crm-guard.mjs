@@ -39,7 +39,9 @@ invariant(/method: "GET"/.test(adapter) && !/method: "(?:POST|PATCH|PUT|DELETE)"
 invariant(/AbortController/.test(adapter) && /cache: "no-store"/.test(adapter), "cancelación/no-store ausentes");
 invariant(/cacheControl\.includes\("private"\)[\s\S]*cacheControl\.includes\("no-store"\)[\s\S]*vary\.includes\("authorization"\)[\s\S]*vary\.includes\("origin"\)[\s\S]*vary\.includes\("\*"\)/.test(adapter), "headers privados no se validan");
 invariant(/response\.status !== 200/.test(adapter) && /MAX_RESPONSE_BYTES/.test(adapter) && /credentials: "omit"/.test(adapter), "status/tamaño/cookies no fallan cerrado");
-invariant(!/getToken|sessionStore|localStorage|sessionStorage|indexedDB|Idempotency-Key/.test(adapter), "adaptador obtiene autoridad desde storage o prepara mutación");
+invariant(/membershipRefProvider[\s\S]*getMembershipRef[\s\S]*X-OSI-Membership-Ref/.test(adapter)
+  && /MT01B_MEMBERSHIP_SELECTION_INVALID/.test(adapter), "adaptador no transporta selección pública o no falla cerrado");
+invariant(!/getToken|localStorage|sessionStorage|indexedDB|Idempotency-Key/.test(adapter), "adaptador obtiene token/autoridad desde storage o prepara mutación");
 invariant(!/\bclientName\b|\bcaseNumber\b/.test(adapter) && /"caseRef", "caseCode", "client"/.test(adapter),
   "DTO público debe usar caseRef, caseCode y Client relacional sin aliases legacy");
 

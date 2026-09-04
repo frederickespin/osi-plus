@@ -11,6 +11,7 @@ const statuses = [
 ];
 const caseRefFor = (page: number, index: number) => `22222222-2222-4222-8222-${String(((page - 1) * 25) + index + 1).padStart(12, "0")}`;
 const clientRefFor = (page: number, index: number) => `33333333-3333-4333-8333-${String(((page - 1) * 25) + index + 1).padStart(12, "0")}`;
+const membershipRef = "11111111-1111-4111-8111-111111111111";
 
 async function authenticate(page: Page, actor: Actor) {
   await page.addInitScript(({ role }) => {
@@ -24,9 +25,10 @@ async function authenticate(page: Page, actor: Actor) {
     body: JSON.stringify({
       ok: true,
       user: {
-        id: "synthetic-user", code: "SYNTHETIC", name: "Actor sintético", email: "actor@example.invalid",
-        phone: "", role: actor.role, status: "active", joinDate: "2026-01-01", points: 0, rating: 0,
+        name: "Actor sintético", role: actor.role, status: "active",
         permissions: actor.permissions, deniedPermissions: actor.deniedPermissions,
+        membership: { membershipRef, tenantName: "Tenant Preview", role: actor.role },
+        memberships: [{ membershipRef, tenantName: "Tenant Preview", role: actor.role, preferred: true }],
         commercialCrmPreviewAuthorized: actor.confirmed !== false,
       },
     }),

@@ -3,6 +3,7 @@ import { CrmPipelineReadApi } from "/src/crm-relational/readApi";
 let observedAbort = false;
 const api = new CrmPipelineReadApi({
   tokenProvider: () => "synthetic.abort.token",
+  membershipRefProvider: () => "11111111-1111-4111-8111-111111111111",
   fetchImpl: ((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
     init?.signal?.addEventListener("abort", () => {
       observedAbort = true;

@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Page, type Route } from "@playwright/t
 
 const CASE_REF = "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const CLIENT_REF = "028f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const MEMBERSHIP_REF = "11111111-1111-4111-8111-111111111111";
 const protectedChunk = /HubWorkspace|AdvancedErpShell|CommercialCaseDetail/u;
 
 type Actor = Readonly<{ role: "A" | "V"; denied?: boolean; confirmed?: boolean }>;
@@ -10,18 +11,13 @@ function authBody(actor: Actor) {
   return JSON.stringify({
     ok: true,
     user: {
-      id: "synthetic-production-pilot-user",
-      code: "SYNTHETIC",
       name: `Actor ${actor.role}`,
-      email: "synthetic@example.invalid",
-      phone: "",
       role: actor.role,
       status: "active",
-      joinDate: "2026-01-01",
-      points: 0,
-      rating: 0,
       permissions: ["pipeline:view"],
       deniedPermissions: actor.denied ? ["pipeline:view"] : [],
+      membership: { membershipRef: MEMBERSHIP_REF, tenantName: "Tenant Production Pilot", role: actor.role },
+      memberships: [{ membershipRef: MEMBERSHIP_REF, tenantName: "Tenant Production Pilot", role: actor.role, preferred: true }],
       ...(actor.confirmed === false ? {} : { commercialCrmProductionAuthorized: true }),
     },
   });

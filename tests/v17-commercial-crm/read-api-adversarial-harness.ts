@@ -55,6 +55,7 @@ for (const scenario of scenarios) {
   let requested = "";
   const api = new CrmPipelineReadApi({
     tokenProvider: () => "secret-token-never-in-url",
+    membershipRefProvider: () => "11111111-1111-4111-8111-111111111111",
     fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => { requested = String(input); observed = init; return scenario.response(); }) as typeof fetch,
   });
   try {
@@ -87,6 +88,7 @@ for (const invalidCaseRef of [
   let requested = false;
   const api = new CrmPipelineReadApi({
     tokenProvider: () => "secret-token-never-in-url",
+    membershipRefProvider: () => "11111111-1111-4111-8111-111111111111",
     fetchImpl: (async () => { requested = true; return json({ ok: true, data: detail }); }) as typeof fetch,
   });
   try {

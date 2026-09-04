@@ -58,6 +58,7 @@ const detail = Object.freeze({
 });
 
 test("capturas sanitizadas del núcleo ERP avanzado", async ({ page }, testInfo) => {
+  const membershipRef = "11111111-1111-4111-8111-111111111111";
   mkdirSync(EVIDENCE, { recursive: true });
   const external: string[] = [];
   const writes: string[] = [];
@@ -73,7 +74,7 @@ test("capturas sanitizadas del núcleo ERP avanzado", async ({ page }, testInfo)
   await page.route("**/api/auth/me", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ ok: true, user: { id: "synthetic-user", code: "SYNTHETIC", name: "Frederick Demo", email: "demo@example.invalid", phone: "", role: "A", status: "active", joinDate: "2026-01-01", points: 0, rating: 0, permissions: ["pipeline:view"], deniedPermissions: [] } }),
+    body: JSON.stringify({ ok: true, user: { name: "Frederick Demo", role: "A", status: "active", permissions: ["pipeline:view"], deniedPermissions: [], membership: { membershipRef, tenantName: "Tenant sintético", role: "A" }, memberships: [{ membershipRef, tenantName: "Tenant sintético", role: "A", preferred: true }] } }),
   }));
   await page.route("**/api/crm/**", (route) => {
     const pathname = new URL(route.request().url()).pathname;

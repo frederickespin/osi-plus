@@ -1,34 +1,31 @@
 import { expect, test, type Page } from "@playwright/test";
 
-type Actor = { role: string; permissions?: string[]; deniedPermissions?: string[]; name?: string };
+type Actor = { role: string; permissions?: string[]; deniedPermissions?: string[]; name?: string; membershipRef?: string };
+const MEMBERSHIP_REF = "11111111-1111-4111-8111-111111111111";
 
 function authMeBody(actor: Actor & { id?: string }) {
+  const membershipRef = actor.membershipRef || MEMBERSHIP_REF;
   return JSON.stringify({
     ok: true,
     user: {
-      id: actor.id || "hub-test-user",
-      code: "SYNTHETIC",
       name: actor.name || `Actor ${actor.role}`,
-      email: "synthetic@example.invalid",
-      phone: "",
       role: actor.role,
       status: "active",
-      joinDate: "2026-01-01",
-      points: 0,
-      rating: 0,
       permissions: actor.permissions,
       deniedPermissions: actor.deniedPermissions,
+      membership: { membershipRef, tenantName: "Tenant Hub", role: actor.role },
+      memberships: [{ membershipRef, tenantName: "Tenant Hub", role: actor.role, preferred: true }],
     },
   });
 }
 
 async function authenticate(page: Page, actor: Actor) {
-  await page.addInitScript(({ role }) => {
+  await page.addInitScript(({ role, ref }) => {
     localStorage.setItem("osi-plus.token", "synthetic.hub.test.token");
-    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "hub-test-user", name: "Storage no autoritativo", role }));
+    localStorage.setItem("osi-plus.session", JSON.stringify({ name: "Storage no autoritativo", role, membershipRef: ref, memberships: [{ membershipRef: ref, tenantName: "Tenant Hub", role, preferred: true }] }));
     localStorage.setItem("VITE_OSI_HUB_MODE", "LOCAL_ONLY");
     localStorage.setItem("osi-plus.fake-permissions", "admin:full_access");
-  }, { role: actor.role });
+  }, { role: actor.role, ref: MEMBERSHIP_REF });
   await page.route("**/api/auth/me", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -241,7 +238,7 @@ test("un permiso retirado se revalida antes de una navegación SPA y bloquea el 
   await page.route("**/api/auth/me", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ ok: true, user: { id: "hub-revocation-user", code: "SYNTHETIC", name: "Actor revalidado", email: "synthetic@example.invalid", phone: "", role: "V", status: "active", joinDate: "2026-01-01", points: 0, rating: 0, permissions: ["pipeline:view"], deniedPermissions: denied ? ["pipeline:view"] : [] } }),
+    body: authMeBody({ role: "V", name: "Actor revalidado", permissions: ["pipeline:view"], deniedPermissions: denied ? ["pipeline:view"] : [] }),
   }));
   await page.goto("/hub");
   await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toBeVisible();
@@ -313,13 +310,13 @@ test("cambio de identidad y logout durante revalidación cierran la sesión y an
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: authMeBody({ id: phase === "IDENTITY_CHANGE" ? "different-tenant-user" : "hub-continuity-user", role: "A", permissions: ["pipeline:view", "projects:view"] }),
+      body: authMeBody({ membershipRef: phase === "IDENTITY_CHANGE" ? "99999999-9999-4999-8999-999999999999" : MEMBERSHIP_REF, role: "A", permissions: ["pipeline:view", "projects:view"] }),
     });
   });
 
   await page.goto("/hub");
   await page.waitForLoadState("networkidle");
-  expect(JSON.parse(await page.evaluate(() => localStorage.getItem("osi-plus.session") || "{}"))).toMatchObject({ userId: "hub-continuity-user" });
+  expect(JSON.parse(await page.evaluate(() => localStorage.getItem("osi-plus.session") || "{}"))).toMatchObject({ membershipRef: MEMBERSHIP_REF });
   phase = "IDENTITY_CHANGE";
   await page.locator("main").getByRole("button").filter({ hasText: "Coordinación" }).click();
   await expect.poll(() => observedPhases.filter((value) => value === "IDENTITY_CHANGE").length).toBe(1);

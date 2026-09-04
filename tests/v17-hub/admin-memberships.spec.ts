@@ -10,18 +10,18 @@ const SECOND_MEMBERSHIP_REF = "44444444-4444-4444-8444-444444444444";
 
 function authBody(role: string, permissions: string[], deniedPermissions: string[] = []) {
   return JSON.stringify({ ok: true, user: {
-    id: "synthetic-admin-user", code: "SYNTHETIC", name: "Administradora Sintética",
-    email: "admin@example.invalid", phone: "", role, status: "active", joinDate: "2026-01-01",
-    points: 0, rating: 0, permissions, deniedPermissions,
+    name: "Administradora Sintética", role, status: "active", permissions, deniedPermissions,
+    membership: { membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role },
+    memberships: [{ membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role, preferred: true }],
   } });
 }
 
 async function authenticate(page: Page, role: string, permissions: string[], deniedPermissions: string[] = []) {
-  await page.addInitScript(({ roleValue }) => {
+  await page.addInitScript(({ roleValue, refValue }) => {
     localStorage.setItem("osi-plus.token", "synthetic.admin.test.token");
-    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic-admin-user", name: "Storage sin autoridad", role: roleValue }));
+    localStorage.setItem("osi-plus.session", JSON.stringify({ name: "Storage sin autoridad", role: roleValue, membershipRef: refValue, memberships: [{ membershipRef: refValue, tenantName: "Tenant sintético", role: roleValue, preferred: true }] }));
     localStorage.setItem("membership:view", "forged");
-  }, { roleValue: role });
+  }, { roleValue: role, refValue: MEMBERSHIP_REF });
   await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: authBody(role, permissions, deniedPermissions) }));
 }
 
@@ -131,7 +131,7 @@ test("Production Pilot muestra invitación corporativa sin recibir ni enviar ema
         shownOnce: true,
       }), { status: 201, headers: { "content-type": "application/json" } });
     };
-    const api = new AdminTenantApi(() => "synthetic-admin-token", fetchMock as typeof fetch);
+    const api = new AdminTenantApi(() => "synthetic-admin-token", fetchMock as typeof fetch, () => "22222222-2222-4222-8222-222222222222");
     await api.issueCorporateInvitation();
     return captured;
   });

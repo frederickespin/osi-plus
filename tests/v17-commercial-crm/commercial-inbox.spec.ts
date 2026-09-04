@@ -93,6 +93,7 @@ function summary(total: number, assigned = 0) {
 }
 
 async function authenticate(page: Page, actor: Actor = { role: "A", permissions: ["pipeline:view"] }) {
+  const membershipRef = "11111111-1111-4111-8111-111111111111";
   await page.addInitScript(({ role, token }) => {
     localStorage.setItem("osi-plus.token", token);
     localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic-user", name: "Actor sintético", role }));
@@ -100,7 +101,7 @@ async function authenticate(page: Page, actor: Actor = { role: "A", permissions:
   await page.route("**/api/auth/me", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ ok: true, user: { id: "synthetic-user", code: "SYNTHETIC", name: "Actor sintético", email: "synthetic@example.invalid", phone: "", role: actor.role, status: "active", joinDate: "2026-01-01", points: 0, rating: 0, permissions: actor.permissions, deniedPermissions: actor.deniedPermissions } }),
+    body: JSON.stringify({ ok: true, user: { name: "Actor sintético", role: actor.role, status: "active", permissions: actor.permissions, deniedPermissions: actor.deniedPermissions, membership: { membershipRef, tenantName: "Tenant sintético", role: actor.role }, memberships: [{ membershipRef, tenantName: "Tenant sintético", role: actor.role, preferred: true }] } }),
   }));
 }
 

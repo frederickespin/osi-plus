@@ -73,10 +73,11 @@ export function validateV17AuthCanonicalContextSources({ sources, inventory }) {
   invariant(!LEGACY_MARKER.test(browserApi), "frontend todavía envía identidad o rol por headers");
   invariant(!/TEST_USERS|Credenciales para probar roles|setPassword\(u\.password\)/.test(login),
     "Login conserva credenciales demostrativas");
-  invariant(/isCanonicalLegacyPassword\(body\.password\)/.test(users)
-    && !/ChangeMe|body\.password\s*\|\|/.test(users), "/api/users conserva secreto predeterminado");
-  invariant(/memberships:\s*\{\s*some:\s*\{\s*tenantId:\s*auth\.tenantId/.test(users),
-    "/api/users GET no limita resultados al tenant revalidado");
+  invariant(/status\(410\)/.test(users)
+    && /USERS_ADMINISTRATION_MOVED_TO_MEMBERSHIPS/.test(users)
+    && /ADMIN_IDENTITY_INVITATION/.test(users)
+    && !/password|hashPassword|prisma\.(?:user|tenantMembership)\.(?:findMany|create)/i.test(users),
+  "/api/users no quedó retirado a favor de Memberships e Invitation");
   invariant(/isCanonicalLegacyPassword/.test(invitation) && /length\s*>=\s*14/.test(policy),
     "alta legacy e invitación no comparten política de password");
 

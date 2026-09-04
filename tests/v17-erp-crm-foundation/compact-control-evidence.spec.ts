@@ -25,11 +25,12 @@ function row(index: number) {
 const rows = Array.from({ length: 12 }, (_, index) => row(index));
 
 test("evidencia sanitizada del control comercial compacto", async ({ page }, testInfo) => {
+  const membershipRef = "11111111-1111-4111-8111-111111111111";
   mkdirSync(EVIDENCE, { recursive: true });
   if (testInfo.project.name === "chromium-desktop") await page.setViewportSize({ width: 1920, height: 1080 });
   let actorRole: "A" | "V" = "A";
   await page.addInitScript(() => { localStorage.setItem("osi-plus.token", "synthetic.control.token"); localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic-user", name: "Frederick Demo", role: "A" })); });
-  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { id: "synthetic-user", code: "SYNTHETIC", name: actorRole === "A" ? "Administrador Demo" : "Ventas Demo", email: "demo@example.invalid", phone: "", role: actorRole, status: "active", joinDate: "2026-01-01", points: 0, rating: 0, permissions: ["pipeline:view"], deniedPermissions: [] } }) }));
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { name: actorRole === "A" ? "Administrador Demo" : "Ventas Demo", role: actorRole, status: "active", permissions: ["pipeline:view"], deniedPermissions: [], membership: { membershipRef, tenantName: "Tenant sintético", role: actorRole }, memberships: [{ membershipRef, tenantName: "Tenant sintético", role: actorRole, preferred: true }] } }) }));
   await page.route("**/api/crm/**", (route) => {
     const pathname = new URL(route.request().url()).pathname;
     const visible = actorRole === "A" ? rows : rows.filter((item) => item.owner?.displayName === "Ventas Centro");

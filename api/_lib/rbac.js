@@ -39,6 +39,12 @@ export const PERMS = Object.freeze({
   PIPELINE_UPDATE_OWN: "pipeline:update:own",
   PIPELINE_UPDATE_ANY: "pipeline:update:any",
 
+  // V17 Services. Catalog and case-service permissions are explicit grants only.
+  SERVICES_CATALOG_VIEW: "services:catalog:view",
+  SERVICES_CATALOG_MANAGE: "services:catalog:manage",
+  SERVICES_CASE_VIEW: "services:case:view",
+  SERVICES_CASE_UPDATE: "services:case:update",
+
   // Projects
   PROJECTS_VIEW: "projects:view",
   PROJECTS_CREATE: "projects:create",
@@ -99,10 +105,18 @@ const EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS = new Set([
   PERMS.MEMBERSHIP_UPDATE_STATUS,
 ]);
 
+const EXPLICIT_SERVICE_PERMISSIONS = new Set([
+  PERMS.SERVICES_CATALOG_VIEW,
+  PERMS.SERVICES_CATALOG_MANAGE,
+  PERMS.SERVICES_CASE_VIEW,
+  PERMS.SERVICES_CASE_UPDATE,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
-    && !EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS.has(permission)),
+    && !EXPLICIT_MEMBERSHIP_ADMIN_PERMISSIONS.has(permission)
+    && !EXPLICIT_SERVICE_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

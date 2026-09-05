@@ -12,6 +12,8 @@ import { isMaterialsUiEnabled } from "@/materials-inventory/mode";
 import { isToolsEquipmentUiEnabled } from "@/tools-equipment/mode";
 import { resolveLogisticsUiAccess } from "@/logistics-engine/access";
 import { isLogisticsUiEnabled } from "@/logistics-engine/mode";
+import { resolveCostingUiAccess } from "@/costing/access";
+import { isCostingUiEnabled } from "@/costing/mode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
@@ -119,6 +121,8 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         servicesAccess={resolveCrmServicesUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         logisticsAccess={resolveLogisticsUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         logisticsEnabled={isLogisticsUiEnabled()}
+        costingAccess={resolveCostingUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
+        costingEnabled={isCostingUiEnabled()}
         userName={userName}
         onNavigate={onNavigate}
         onLogout={onLogout}
@@ -133,6 +137,8 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         effectivePermissions={accessContext.effectivePermissions || []}
         deniedPermissions={accessContext.deniedPermissions}
         servicesAccess={resolveCrmServicesUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
+        costingAccess={resolveCostingUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
+        costingEnabled={isCostingUiEnabled()}
         invitationEnabled={adminInvitationsEnabled}
         invitationMode={adminInvitationMode}
         onUnauthorized={onLogout}

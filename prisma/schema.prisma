@@ -141,6 +141,14 @@ model Tenant {
   assetMutationCommands            AssetMutationCommand[]
   externalResourceOffers           ExternalResourceOffer[]
   externalResourceReservations     ExternalResourceReservation[]
+  logisticsRules                   LogisticsRule[]
+  logisticsCalculations            LogisticsCalculation[]
+  logisticsPlans                   LogisticsPlan[]
+  logisticsPlanRevisions           LogisticsPlanRevision[]
+  logisticsPlanItems               LogisticsPlanItem[]
+  logisticsPlanIssues              LogisticsPlanIssue[]
+  logisticsPlanOverrides           LogisticsPlanOverride[]
+  logisticsMutationCommands        LogisticsMutationCommand[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -235,6 +243,12 @@ model TenantMembership {
   assetMaintenanceOrdersAsActor                                                                                                                 AssetMaintenanceOrder[]            @relation("AssetMaintenanceOrderActor")
   assetHistoryEventsAsActor                                                                                                                     AssetHistoryEvent[]                @relation("AssetHistoryEventActor")
   externalResourceReservationsAsActor                                                                                                           ExternalResourceReservation[]      @relation("ExternalResourceReservationActor")
+  logisticsRulesAsActor                                                                                                                         LogisticsRule[]                    @relation("LogisticsRuleActor")
+  logisticsCalculationsAsActor                                                                                                                  LogisticsCalculation[]             @relation("LogisticsCalculationActor")
+  logisticsRevisionsAsActor                                                                                                                     LogisticsPlanRevision[]            @relation("LogisticsRevisionActor")
+  logisticsIssuesResolved                                                                                                                       LogisticsPlanIssue[]               @relation("LogisticsIssueResolver")
+  logisticsOverridesAsActor                                                                                                                     LogisticsPlanOverride[]            @relation("LogisticsOverrideActor")
+  logisticsCommandsAsActor                                                                                                                      LogisticsMutationCommand[]         @relation("LogisticsCommandActor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, publicRef], map: "tenant_memberships_tenant_id_public_ref_key")
@@ -1465,6 +1479,8 @@ model PipelineCase {
   assetReservations             AssetReservation[]
   assetAssignments              AssetAssignment[]
   externalResourceReservations  ExternalResourceReservation[]
+  logisticsCalculations         LogisticsCalculation[]
+  logisticsPlans                LogisticsPlan[]
   projects                      Project[]                     @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -4084,6 +4100,230 @@ model ExternalResourceReservation {
   @@map("external_resource_reservations")
 }
 
+model LogisticsRule {
+  id                String              @id @default(cuid())
+  ruleRef           String              @default(dbgenerated("gen_random_uuid()")) @map("rule_ref") @db.Uuid
+  seriesRef         String              @map("series_ref") @db.Uuid
+  tenantId          String              @map("tenant_id")
+  family            LogisticsRuleFamily
+  code              String              @db.VarChar(80)
+  name              String              @db.VarChar(180)
+  priority          Int                 @default(100)
+  specificity       Int                 @default(0)
+  conditions        Json
+  conditionHash     String              @map("condition_hash") @db.Char(64)
+  result            Json
+  state             LogisticsRuleState  @default(DRAFT)
+  version           Int
+  validFrom         DateTime?           @map("valid_from") @db.Timestamptz(6)
+  validTo           DateTime?           @map("valid_to") @db.Timestamptz(6)
+  replacesRuleId    String?             @map("replaces_rule_id")
+  requestId         String              @map("request_id") @db.VarChar(191)
+  payloadHash       String              @map("payload_hash") @db.Char(64)
+  actorMembershipId String              @map("actor_membership_id")
+  actorUserId       String              @map("actor_user_id")
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_rules_tenant_fkey")
+  actorMembership   TenantMembership    @relation("LogisticsRuleActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "logistics_rules_actor_fkey")
+  replacesRule      LogisticsRule?      @relation("LogisticsRuleReplacement", fields: [tenantId, replacesRuleId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_rules_replaces_fkey")
+  replacement       LogisticsRule?      @relation("LogisticsRuleReplacement")
+
+  @@unique([tenantId, id], map: "logistics_rules_tenant_id_key")
+  @@unique([tenantId, ruleRef], map: "logistics_rules_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "logistics_rules_series_version_key")
+  @@unique([tenantId, replacesRuleId], map: "logistics_rules_replaces_key")
+  @@unique([tenantId, requestId], map: "logistics_rules_request_key")
+  @@index([tenantId, family, state, priority, specificity, validFrom, validTo], map: "logistics_rules_resolve_idx")
+  @@map("logistics_rules")
+}
+
+model LogisticsCalculation {
+  id                     String                     @id @default(cuid())
+  calculationRef         String                     @default(dbgenerated("gen_random_uuid()")) @map("calculation_ref") @db.Uuid
+  tenantId               String                     @map("tenant_id")
+  pipelineCaseId         String                     @map("pipeline_case_id")
+  routeVersion           Int                        @map("route_version")
+  serviceSelectionRef    String                     @map("service_selection_ref") @db.Uuid
+  serviceRevision        Int                        @map("service_revision")
+  surveyPublicationRef   String?                    @map("survey_publication_ref") @db.Uuid
+  surveyLogicalSha256    String?                    @map("survey_logical_sha256") @db.Char(64)
+  materialRequirementRef String?                    @map("material_requirement_ref") @db.Uuid
+  materialLogicalSha256  String?                    @map("material_logical_sha256") @db.Char(64)
+  availabilityObservedAt DateTime                   @map("availability_observed_at") @db.Timestamptz(6)
+  intervalStart          DateTime                   @map("interval_start") @db.Timestamptz(6)
+  intervalEnd            DateTime                   @map("interval_end") @db.Timestamptz(6)
+  inputSnapshot          Json                       @map("input_snapshot")
+  rulesSnapshot          Json                       @map("rules_snapshot")
+  resultSnapshot         Json                       @map("result_snapshot")
+  inputHash              String                     @map("input_hash") @db.Char(64)
+  resultHash             String                     @map("result_hash") @db.Char(64)
+  status                 LogisticsCalculationStatus @default(VALID)
+  requestId              String                     @map("request_id") @db.VarChar(191)
+  payloadHash            String                     @map("payload_hash") @db.Char(64)
+  actorMembershipId      String                     @map("actor_membership_id")
+  actorUserId            String                     @map("actor_user_id")
+  createdAt              DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                 Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_calculations_tenant_fkey")
+  pipelineCase           PipelineCase               @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_calculations_case_fkey")
+  actorMembership        TenantMembership           @relation("LogisticsCalculationActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "logistics_calculations_actor_fkey")
+  publishedRevision      LogisticsPlanRevision?
+
+  @@unique([tenantId, id], map: "logistics_calculations_tenant_id_key")
+  @@unique([tenantId, calculationRef], map: "logistics_calculations_tenant_ref_key")
+  @@unique([tenantId, requestId], map: "logistics_calculations_request_key")
+  @@index([tenantId, pipelineCaseId, createdAt(sort: Desc)], map: "logistics_calculations_case_idx")
+  @@map("logistics_calculations")
+}
+
+model LogisticsPlan {
+  id             String                  @id @default(cuid())
+  planRef        String                  @default(dbgenerated("gen_random_uuid()")) @map("plan_ref") @db.Uuid
+  tenantId       String                  @map("tenant_id")
+  pipelineCaseId String                  @map("pipeline_case_id")
+  status         LogisticsPlanStatus     @default(ACTIVE)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_plans_tenant_fkey")
+  pipelineCase   PipelineCase            @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_plans_case_fkey")
+  revisions      LogisticsPlanRevision[]
+
+  @@unique([tenantId, id], map: "logistics_plans_tenant_id_key")
+  @@unique([tenantId, planRef], map: "logistics_plans_tenant_ref_key")
+  @@unique([tenantId, pipelineCaseId], map: "logistics_plans_case_key")
+  @@map("logistics_plans")
+}
+
+model LogisticsPlanRevision {
+  id                      String                      @id @default(cuid())
+  revisionRef             String                      @default(dbgenerated("gen_random_uuid()")) @map("revision_ref") @db.Uuid
+  tenantId                String                      @map("tenant_id")
+  planId                  String                      @map("plan_id")
+  calculationId           String                      @unique @map("calculation_id")
+  revision                Int
+  status                  LogisticsPlanRevisionStatus @default(PUBLISHED)
+  inputSnapshot           Json                        @map("input_snapshot")
+  rulesSnapshot           Json                        @map("rules_snapshot")
+  resultSnapshot          Json                        @map("result_snapshot")
+  logicalSha256           String                      @map("logical_sha256") @db.Char(64)
+  publishedByMembershipId String                      @map("published_by_membership_id")
+  publishedByUserId       String                      @map("published_by_user_id")
+  publishedAt             DateTime                    @default(now()) @map("published_at") @db.Timestamptz(6)
+  tenant                  Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_revisions_tenant_fkey")
+  plan                    LogisticsPlan               @relation(fields: [tenantId, planId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_revisions_plan_fkey")
+  calculation             LogisticsCalculation        @relation(fields: [tenantId, calculationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_revisions_calculation_fkey")
+  publishedByMembership   TenantMembership            @relation("LogisticsRevisionActor", fields: [tenantId, publishedByMembershipId, publishedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "logistics_revisions_actor_fkey")
+  items                   LogisticsPlanItem[]
+  issues                  LogisticsPlanIssue[]
+  overrides               LogisticsPlanOverride[]
+
+  @@unique([tenantId, id], map: "logistics_revisions_tenant_id_key")
+  @@unique([tenantId, revisionRef], map: "logistics_revisions_tenant_ref_key")
+  @@unique([tenantId, planId, revision], map: "logistics_revisions_plan_revision_key")
+  @@unique([tenantId, calculationId], map: "logistics_revisions_calculation_tenant_key")
+  @@index([tenantId, planId, status, revision(sort: Desc)], map: "logistics_revisions_current_idx")
+  @@map("logistics_plan_revisions")
+}
+
+model LogisticsPlanItem {
+  id                String                       @id @default(cuid())
+  itemRef           String                       @default(dbgenerated("gen_random_uuid()")) @map("item_ref") @db.Uuid
+  tenantId          String                       @map("tenant_id")
+  revisionId        String                       @map("revision_id")
+  family            LogisticsPlanItemFamily
+  kind              String                       @db.VarChar(80)
+  label             String                       @db.VarChar(240)
+  quantity          Decimal?                     @db.Decimal(18, 4)
+  unit              String?                      @db.VarChar(32)
+  estimatedHours    Decimal?                     @map("estimated_hours") @db.Decimal(12, 3)
+  trips             Int?
+  requiredQuantity  Decimal?                     @map("required_quantity") @db.Decimal(18, 4)
+  availableQuantity Decimal?                     @map("available_quantity") @db.Decimal(18, 4)
+  reservedQuantity  Decimal?                     @map("reserved_quantity") @db.Decimal(18, 4)
+  shortageQuantity  Decimal?                     @map("shortage_quantity") @db.Decimal(18, 4)
+  availability      LogisticsAvailabilityStatus?
+  priceStatus       LogisticsPriceStatus?        @map("price_status")
+  source            LogisticsSource
+  sourceRef         String?                      @map("source_ref") @db.Uuid
+  sourceVersion     Int?                         @map("source_version")
+  snapshot          Json
+  position          Int
+  tenant            Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_items_tenant_fkey")
+  revision          LogisticsPlanRevision        @relation(fields: [tenantId, revisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_items_revision_fkey")
+  overrides         LogisticsPlanOverride[]
+
+  @@unique([tenantId, id], map: "logistics_items_tenant_id_key")
+  @@unique([tenantId, itemRef], map: "logistics_items_tenant_ref_key")
+  @@unique([tenantId, revisionId, position], map: "logistics_items_position_key")
+  @@index([tenantId, revisionId, family], map: "logistics_items_family_idx")
+  @@map("logistics_plan_items")
+}
+
+model LogisticsPlanIssue {
+  id                     String                   @id @default(cuid())
+  issueRef               String                   @default(dbgenerated("gen_random_uuid()")) @map("issue_ref") @db.Uuid
+  tenantId               String                   @map("tenant_id")
+  revisionId             String                   @map("revision_id")
+  code                   String                   @db.VarChar(80)
+  severity               LogisticsIssueSeverity
+  family                 LogisticsPlanItemFamily?
+  message                String                   @db.VarChar(500)
+  source                 LogisticsSource
+  sourceSnapshot         Json                     @map("source_snapshot")
+  status                 LogisticsIssueStatus     @default(OPEN)
+  resolvedReason         String?                  @map("resolved_reason") @db.VarChar(1000)
+  resolvedByMembershipId String?                  @map("resolved_by_membership_id")
+  resolvedByUserId       String?                  @map("resolved_by_user_id")
+  resolvedAt             DateTime?                @map("resolved_at") @db.Timestamptz(6)
+  version                Int                      @default(1)
+  tenant                 Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_issues_tenant_fkey")
+  revision               LogisticsPlanRevision    @relation(fields: [tenantId, revisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_issues_revision_fkey")
+  resolvedByMembership   TenantMembership?        @relation("LogisticsIssueResolver", fields: [tenantId, resolvedByMembershipId, resolvedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "logistics_issues_resolver_fkey")
+
+  @@unique([tenantId, issueRef], map: "logistics_issues_tenant_ref_key")
+  @@index([tenantId, revisionId, severity, status], map: "logistics_issues_revision_idx")
+  @@map("logistics_plan_issues")
+}
+
+model LogisticsPlanOverride {
+  id                String                @id @default(cuid())
+  overrideRef       String                @default(dbgenerated("gen_random_uuid()")) @map("override_ref") @db.Uuid
+  tenantId          String                @map("tenant_id")
+  revisionId        String                @map("revision_id")
+  itemId            String                @map("item_id")
+  suggestedValue    Json                  @map("suggested_value")
+  finalValue        Json                  @map("final_value")
+  reason            String                @db.VarChar(1000)
+  actorMembershipId String                @map("actor_membership_id")
+  actorUserId       String                @map("actor_user_id")
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_overrides_tenant_fkey")
+  revision          LogisticsPlanRevision @relation(fields: [tenantId, revisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_overrides_revision_fkey")
+  item              LogisticsPlanItem     @relation(fields: [tenantId, itemId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_overrides_item_fkey")
+  actorMembership   TenantMembership      @relation("LogisticsOverrideActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "logistics_overrides_actor_fkey")
+
+  @@unique([tenantId, overrideRef], map: "logistics_overrides_tenant_ref_key")
+  @@index([tenantId, revisionId, itemId, createdAt(sort: Desc)], map: "logistics_overrides_item_idx")
+  @@map("logistics_plan_overrides")
+}
+
+model LogisticsMutationCommand {
+  id                String           @id @default(cuid())
+  tenantId          String           @map("tenant_id")
+  requestId         String           @map("request_id") @db.VarChar(191)
+  operation         String           @db.VarChar(80)
+  payloadHash       String           @map("payload_hash") @db.Char(64)
+  targetRef         String           @map("target_ref") @db.VarChar(191)
+  resultJson        Json             @map("result_json")
+  actorMembershipId String           @map("actor_membership_id")
+  actorUserId       String           @map("actor_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_commands_tenant_fkey")
+  actorMembership   TenantMembership @relation("LogisticsCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "logistics_commands_actor_fkey")
+
+  @@unique([tenantId, requestId], map: "logistics_commands_tenant_request_key")
+  @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "logistics_commands_target_idx")
+  @@map("logistics_mutation_commands")
+}
+
 model CatalogMaterial {
   id          String   @id @default(cuid())
   code        String   @unique
@@ -5655,6 +5895,94 @@ enum ExternalResourceReservationStatus {
   CONFIRMED
   COMPLETED
   CANCELLED
+}
+
+enum LogisticsRuleFamily {
+  LABOR
+  TIME
+  TRANSPORT
+  MATERIAL
+  ASSET
+  EXTERNAL
+  PER_DIEM
+  LODGING
+  TOLL
+  PARKING
+  PERMIT
+  ZONE
+  CRATING
+}
+
+enum LogisticsRuleState {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  INACTIVE
+}
+
+enum LogisticsCalculationStatus {
+  VALID
+  CONFLICT
+}
+
+enum LogisticsPlanStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum LogisticsPlanRevisionStatus {
+  PUBLISHED
+  SUPERSEDED
+}
+
+enum LogisticsPlanItemFamily {
+  LABOR
+  TIME
+  TRANSPORT
+  MATERIAL
+  ASSET
+  EXTERNAL
+  TRAVEL
+  PERMIT
+  CRATING
+}
+
+enum LogisticsAvailabilityStatus {
+  AVAILABLE
+  PARTIAL
+  UNAVAILABLE
+  PENDING_CONFIRMATION
+  NOT_APPLICABLE
+}
+
+enum LogisticsPriceStatus {
+  CONFIRMED
+  REFERENCED
+  PENDING
+  NOT_APPLICABLE
+}
+
+enum LogisticsSource {
+  SURVEY
+  SERVICE
+  ROUTE
+  ADMIN_RULE
+  INVENTORY
+  ASSET
+  VEHICLE
+  PROVIDER
+  CRATING
+}
+
+enum LogisticsIssueSeverity {
+  INFO
+  WARNING
+  BLOCKER
+}
+
+enum LogisticsIssueStatus {
+  OPEN
+  RESOLVED
 }
 
 enum ZoneRuleKind {

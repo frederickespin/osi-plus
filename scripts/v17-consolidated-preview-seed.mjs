@@ -278,7 +278,16 @@ async function main() {
   const adminMembership = await ensureMembership(tenant, adminIdentity, "A", adminPermissions);
   const evaluatorMembership = await ensureMembership(tenant, evaluatorIdentity, "E", evaluatorPermissions);
   const denyMembership = await ensureMembership(tenant, denyIdentity, "V", [], ["pipeline:view"]);
-  await ensureMembership(crossTenant, adminIdentity, "A", ["pipeline:view"], [], false);
+  // Auth LEGACY mantiene el cambio de tenant desactivado en esta Preview. El
+  // segundo tenant existe únicamente para negativas cross-tenant y no puede
+  // introducir un contexto ambiguo para el administrador sintético.
+  await prisma.tenantMembership.deleteMany({
+    where: {
+      tenantId: crossTenant.id,
+      userId: adminIdentity.user.id,
+      provisioningBatchId: EXPECTED_BATCH,
+    },
+  });
   adminIdentity.membership = adminMembership; evaluatorIdentity.membership = evaluatorMembership; denyIdentity.membership = denyMembership;
   await writeCredentials([{ ...adminIdentity, key: "V17_PREVIEW_ADMIN" }, { ...evaluatorIdentity, key: "V17_PREVIEW_EVALUATOR" }, { ...denyIdentity, key: "V17_PREVIEW_DENY" }]);
 
@@ -312,7 +321,7 @@ async function main() {
   const scenarioDQuotes = await ensureScenarioDQuotes(context, scenarios[3], plans.get("PV10B-D-QUOTES").costing);
 
   const counts = { tenants: await prisma.tenant.count({ where: { code: { in: [TENANT_CODE, SECOND_TENANT_CODE] } } }), users: await prisma.user.count({ where: { email: { in: [adminIdentity.user.email, evaluatorIdentity.user.email, denyIdentity.user.email] } } }), memberships: await prisma.tenantMembership.count({ where: { provisioningBatchId: EXPECTED_BATCH } }), cases: await prisma.pipelineCase.count({ where: { tenantId: tenant.id } }), clients: await prisma.client.count({ where: { tenantId: tenant.id } }), services: await prisma.serviceCatalogItem.count({ where: { tenantId: tenant.id } }), surveys: await prisma.surveyPublication.count({ where: { tenantId: tenant.id } }), materials: await prisma.materialCatalogItem.count({ where: { tenantId: tenant.id } }), assets: await prisma.assetInstance.count({ where: { tenantId: tenant.id } }), plans: await prisma.logisticsPlanRevision.count({ where: { tenantId: tenant.id, status: "PUBLISHED" } }), costings: await prisma.costingRevision.count({ where: { tenantId: tenant.id, status: "PUBLISHED" } }), proposals: await prisma.quoteProposal.count({ where: { tenantId: tenant.id, pipelineCaseId: scenarios[3].id } }), accepted: await prisma.quoteProposal.count({ where: { tenantId: tenant.id, pipelineCaseId: scenarios[3].id, state: "ACCEPTED" } }) };
-  assert.deepEqual({ tenants: counts.tenants, users: counts.users, memberships: counts.memberships, cases: counts.cases, clients: counts.clients }, { tenants: 2, users: 3, memberships: 4, cases: 4, clients: 4 });
+  assert.deepEqual({ tenants: counts.tenants, users: counts.users, memberships: counts.memberships, cases: counts.cases, clients: counts.clients }, { tenants: 2, users: 3, memberships: 3, cases: 4, clients: 4 });
   assert.equal(counts.proposals, 3); assert.equal(counts.accepted, 1);
   const pendingPlan = plans.get("PV10B-C-PENDING").plan;
   assert.ok(pendingPlan.issues.some((item) => item.code === "EXTERNAL_PRICE_PENDING" && item.severity === "BLOCKER"));

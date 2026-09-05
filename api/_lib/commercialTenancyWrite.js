@@ -122,10 +122,12 @@ async function resolveLegacyCommercialContext(prisma, token) {
   let rows;
   try {
     rows = await prisma.$queryRaw(Prisma.sql`
-      SELECT tm."tenant_id", tm."id" AS "membership_id", u."id" AS "user_id", u."email" AS "user_email",
+      SELECT tm."tenant_id", tm."id" AS "membership_id", tm."public_ref" AS "membership_public_ref",
+             u."id" AS "user_id", u."email" AS "user_email",
              tm."role"::text AS "membership_role", tm."status"::text AS "membership_status",
              tm."granted_permissions", tm."denied_permissions", tm."authorization_version",
-             t."status"::text AS "tenant_status", t."code" AS "tenant_code", u."status" AS "user_status"
+             t."status"::text AS "tenant_status", t."code" AS "tenant_code", t."name" AS "tenant_name",
+             u."status" AS "user_status"
       FROM "osi"."osi_users" u
       LEFT JOIN "osi"."tenant_memberships" tm
         ON tm."user_id" = u."id" AND tm."is_default" = true
@@ -163,13 +165,14 @@ async function resolveLegacyCommercialContext(prisma, token) {
     user: { id: row.user_id, email: row.user_email, status: row.user_status },
     membership: {
       id: row.membership_id,
+      publicRef: row.membership_public_ref,
       role: row.membership_role,
       status: row.membership_status,
       grantedPermissions: row.granted_permissions,
       deniedPermissions: row.denied_permissions,
       authorizationVersion: row.authorization_version,
     },
-    tenant: { id: row.tenant_id, code: row.tenant_code, status: row.tenant_status },
+    tenant: { id: row.tenant_id, code: row.tenant_code, name: row.tenant_name, status: row.tenant_status },
   });
 }
 

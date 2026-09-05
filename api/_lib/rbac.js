@@ -117,6 +117,17 @@ export const PERMS = Object.freeze({
   LOGISTICS_RULES_VIEW: "logistics:rules:view",
   LOGISTICS_RULES_MANAGE: "logistics:rules:manage",
 
+  // V17 Costing. Economic scope and actions are explicit grants; roles do not imply them.
+  COSTING_VIEW: "costing:view",
+  COSTING_CALCULATE: "costing:calculate",
+  COSTING_PUBLISH: "costing:publish",
+  COSTING_TENANT: "costing:tenant",
+  COSTING_OVERRIDE: "costing:override",
+  COSTING_AUTHORIZE_MARGIN: "costing:authorize-margin",
+  COSTING_RESOLVE: "costing:resolve",
+  COSTING_RULES_VIEW: "costing:rules:view",
+  COSTING_RULES_MANAGE: "costing:rules:manage",
+
   // HR
   HR_VIEW: "hr:view",
   HR_KPI: "hr:kpi",
@@ -204,6 +215,18 @@ const EXPLICIT_LOGISTICS_PERMISSIONS = new Set([
   PERMS.LOGISTICS_RULES_MANAGE,
 ]);
 
+const EXPLICIT_COSTING_PERMISSIONS = new Set([
+  PERMS.COSTING_VIEW,
+  PERMS.COSTING_CALCULATE,
+  PERMS.COSTING_PUBLISH,
+  PERMS.COSTING_TENANT,
+  PERMS.COSTING_OVERRIDE,
+  PERMS.COSTING_AUTHORIZE_MARGIN,
+  PERMS.COSTING_RESOLVE,
+  PERMS.COSTING_RULES_VIEW,
+  PERMS.COSTING_RULES_MANAGE,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
@@ -212,7 +235,8 @@ const ROLE_PERMS = {
     && !EXPLICIT_SURVEY_PERMISSIONS.has(permission)
     && !EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS.has(permission)
     && !EXPLICIT_ASSET_PERMISSIONS.has(permission)
-    && !EXPLICIT_LOGISTICS_PERMISSIONS.has(permission)),
+    && !EXPLICIT_LOGISTICS_PERMISSIONS.has(permission)
+    && !EXPLICIT_COSTING_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

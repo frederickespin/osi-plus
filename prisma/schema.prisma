@@ -149,6 +149,15 @@ model Tenant {
   logisticsPlanIssues              LogisticsPlanIssue[]
   logisticsPlanOverrides           LogisticsPlanOverride[]
   logisticsMutationCommands        LogisticsMutationCommand[]
+  costingRules                     CostingRule[]
+  costingExchangeRates             CostingExchangeRate[]
+  costingCalculations              CostingCalculation[]
+  costingRevisions                 CostingRevision[]
+  costingLines                     CostingLine[]
+  costingIssues                    CostingIssue[]
+  costingOverrides                 CostingOverride[]
+  costingMarginAuthorizations      CostingMarginAuthorization[]
+  costingMutationCommands          CostingMutationCommand[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -249,6 +258,14 @@ model TenantMembership {
   logisticsIssuesResolved                                                                                                                       LogisticsPlanIssue[]               @relation("LogisticsIssueResolver")
   logisticsOverridesAsActor                                                                                                                     LogisticsPlanOverride[]            @relation("LogisticsOverrideActor")
   logisticsCommandsAsActor                                                                                                                      LogisticsMutationCommand[]         @relation("LogisticsCommandActor")
+  costingRulesAsActor                                                                                                                           CostingRule[]                      @relation("CostingRuleActor")
+  costingExchangeRatesAsActor                                                                                                                   CostingExchangeRate[]              @relation("CostingExchangeRateActor")
+  costingCalculationsAsActor                                                                                                                    CostingCalculation[]               @relation("CostingCalculationActor")
+  costingRevisionsAsActor                                                                                                                       CostingRevision[]                  @relation("CostingRevisionActor")
+  costingIssuesResolved                                                                                                                         CostingIssue[]                     @relation("CostingIssueResolver")
+  costingOverridesAsActor                                                                                                                       CostingOverride[]                  @relation("CostingOverrideActor")
+  costingMarginAuthorizationsAsActor                                                                                                            CostingMarginAuthorization[]       @relation("CostingMarginAuthorizationActor")
+  costingCommandsAsActor                                                                                                                        CostingMutationCommand[]           @relation("CostingCommandActor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, publicRef], map: "tenant_memberships_tenant_id_public_ref_key")
@@ -1481,6 +1498,8 @@ model PipelineCase {
   externalResourceReservations  ExternalResourceReservation[]
   logisticsCalculations         LogisticsCalculation[]
   logisticsPlans                LogisticsPlan[]
+  costingCalculations           CostingCalculation[]
+  costingRevisions              CostingRevision[]
   projects                      Project[]                     @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -4214,6 +4233,8 @@ model LogisticsPlanRevision {
   items                   LogisticsPlanItem[]
   issues                  LogisticsPlanIssue[]
   overrides               LogisticsPlanOverride[]
+  costingCalculations     CostingCalculation[]
+  costingRevisions        CostingRevision[]
 
   @@unique([tenantId, id], map: "logistics_revisions_tenant_id_key")
   @@unique([tenantId, revisionRef], map: "logistics_revisions_tenant_ref_key")
@@ -4322,6 +4343,281 @@ model LogisticsMutationCommand {
   @@unique([tenantId, requestId], map: "logistics_commands_tenant_request_key")
   @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "logistics_commands_target_idx")
   @@map("logistics_mutation_commands")
+}
+
+model CostingRule {
+  id                   String               @id @default(cuid())
+  ruleRef              String               @default(dbgenerated("gen_random_uuid()")) @map("rule_ref") @db.Uuid
+  seriesRef            String               @map("series_ref") @db.Uuid
+  tenantId             String               @map("tenant_id")
+  family               CostingFamily
+  code                 String               @db.VarChar(80)
+  name                 String               @db.VarChar(180)
+  classification       CostingEconomicClass
+  source               CostingSource
+  priority             Int                  @default(100)
+  specificity          Int                  @default(0)
+  conditions           Json
+  conditionHash        String               @map("condition_hash") @db.Char(64)
+  unitCost             Decimal?             @map("unit_cost") @db.Decimal(18, 6)
+  currency             String               @db.Char(3)
+  minimumMarginBps     Int?                 @map("minimum_margin_bps")
+  recommendedMarginBps Int?                 @map("recommended_margin_bps")
+  result               Json
+  state                CostingRuleState     @default(DRAFT)
+  version              Int
+  validFrom            DateTime?            @map("valid_from") @db.Timestamptz(6)
+  validTo              DateTime?            @map("valid_to") @db.Timestamptz(6)
+  replacesRuleId       String?              @map("replaces_rule_id")
+  requestId            String               @map("request_id") @db.VarChar(191)
+  payloadHash          String               @map("payload_hash") @db.Char(64)
+  actorMembershipId    String               @map("actor_membership_id")
+  actorUserId          String               @map("actor_user_id")
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_rules_tenant_fkey")
+  actorMembership      TenantMembership     @relation("CostingRuleActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "costing_rules_actor_fkey")
+  replacesRule         CostingRule?         @relation("CostingRuleReplacement", fields: [tenantId, replacesRuleId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_rules_replaces_fkey")
+  replacement          CostingRule?         @relation("CostingRuleReplacement")
+
+  @@unique([tenantId, id], map: "costing_rules_tenant_id_key")
+  @@unique([tenantId, ruleRef], map: "costing_rules_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "costing_rules_series_version_key")
+  @@unique([tenantId, replacesRuleId], map: "costing_rules_replaces_key")
+  @@unique([tenantId, requestId], map: "costing_rules_request_key")
+  @@index([tenantId, family, state, priority, specificity, validFrom, validTo], map: "costing_rules_resolve_idx")
+  @@map("costing_rules")
+}
+
+model CostingExchangeRate {
+  id                String               @id @default(cuid())
+  rateRef           String               @default(dbgenerated("gen_random_uuid()")) @map("rate_ref") @db.Uuid
+  seriesRef         String               @map("series_ref") @db.Uuid
+  tenantId          String               @map("tenant_id")
+  baseCurrency      String               @map("base_currency") @db.Char(3)
+  quoteCurrency     String               @map("quote_currency") @db.Char(3)
+  rate              Decimal              @db.Decimal(24, 10)
+  source            String               @db.VarChar(120)
+  state             CostingRuleState     @default(DRAFT)
+  version           Int
+  effectiveAt       DateTime             @map("effective_at") @db.Timestamptz(6)
+  validTo           DateTime?            @map("valid_to") @db.Timestamptz(6)
+  replacesRateId    String?              @map("replaces_rate_id")
+  logicalSha256     String               @map("logical_sha256") @db.Char(64)
+  requestId         String               @map("request_id") @db.VarChar(191)
+  payloadHash       String               @map("payload_hash") @db.Char(64)
+  actorMembershipId String               @map("actor_membership_id")
+  actorUserId       String               @map("actor_user_id")
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_exchange_rates_tenant_fkey")
+  actorMembership   TenantMembership     @relation("CostingExchangeRateActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "costing_exchange_rates_actor_fkey")
+  replacesRate      CostingExchangeRate? @relation("CostingExchangeRateReplacement", fields: [tenantId, replacesRateId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_exchange_rates_replaces_fkey")
+  replacement       CostingExchangeRate? @relation("CostingExchangeRateReplacement")
+
+  @@unique([tenantId, id], map: "costing_exchange_rates_tenant_id_key")
+  @@unique([tenantId, rateRef], map: "costing_exchange_rates_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "costing_exchange_rates_series_version_key")
+  @@unique([tenantId, replacesRateId], map: "costing_exchange_rates_replaces_key")
+  @@unique([tenantId, requestId], map: "costing_exchange_rates_request_key")
+  @@index([tenantId, baseCurrency, quoteCurrency, state, effectiveAt(sort: Desc)], map: "costing_exchange_rates_resolve_idx")
+  @@map("costing_exchange_rates")
+}
+
+model CostingCalculation {
+  id                  String                   @id @default(cuid())
+  calculationRef      String                   @default(dbgenerated("gen_random_uuid()")) @map("calculation_ref") @db.Uuid
+  tenantId            String                   @map("tenant_id")
+  pipelineCaseId      String                   @map("pipeline_case_id")
+  logisticsRevisionId String                   @map("logistics_revision_id")
+  baseCurrency        String                   @map("base_currency") @db.Char(3)
+  inputSnapshot       Json                     @map("input_snapshot")
+  rulesSnapshot       Json                     @map("rules_snapshot")
+  ratesSnapshot       Json                     @map("rates_snapshot")
+  resultSnapshot      Json                     @map("result_snapshot")
+  inputHash           String                   @map("input_hash") @db.Char(64)
+  resultHash          String                   @map("result_hash") @db.Char(64)
+  status              CostingCalculationStatus @default(VALID)
+  requestId           String                   @map("request_id") @db.VarChar(191)
+  payloadHash         String                   @map("payload_hash") @db.Char(64)
+  actorMembershipId   String                   @map("actor_membership_id")
+  actorUserId         String                   @map("actor_user_id")
+  createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_calculations_tenant_fkey")
+  pipelineCase        PipelineCase             @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_calculations_case_fkey")
+  logisticsRevision   LogisticsPlanRevision    @relation(fields: [tenantId, logisticsRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_calculations_logistics_revision_fkey")
+  actorMembership     TenantMembership         @relation("CostingCalculationActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "costing_calculations_actor_fkey")
+  publishedRevision   CostingRevision?
+
+  @@unique([tenantId, id], map: "costing_calculations_tenant_id_key")
+  @@unique([tenantId, calculationRef], map: "costing_calculations_tenant_ref_key")
+  @@unique([tenantId, requestId], map: "costing_calculations_request_key")
+  @@index([tenantId, pipelineCaseId, createdAt(sort: Desc)], map: "costing_calculations_case_idx")
+  @@index([tenantId, logisticsRevisionId], map: "costing_calculations_logistics_idx")
+  @@map("costing_calculations")
+}
+
+model CostingRevision {
+  id                      String                @id @default(cuid())
+  revisionRef             String                @default(dbgenerated("gen_random_uuid()")) @map("revision_ref") @db.Uuid
+  tenantId                String                @map("tenant_id")
+  pipelineCaseId          String                @map("pipeline_case_id")
+  logisticsRevisionId     String                @map("logistics_revision_id")
+  calculationId           String                @unique @map("calculation_id")
+  revision                Int
+  status                  CostingRevisionStatus @default(PUBLISHED)
+  baseCurrency            String                @map("base_currency") @db.Char(3)
+  inputSnapshot           Json                  @map("input_snapshot")
+  rulesSnapshot           Json                  @map("rules_snapshot")
+  ratesSnapshot           Json                  @map("rates_snapshot")
+  totalsSnapshot          Json                  @map("totals_snapshot")
+  logicalSha256           String                @map("logical_sha256") @db.Char(64)
+  publishedByMembershipId String                @map("published_by_membership_id")
+  publishedByUserId       String                @map("published_by_user_id")
+  publishedAt             DateTime              @default(now()) @map("published_at") @db.Timestamptz(6)
+  tenant                  Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_revisions_tenant_fkey")
+  pipelineCase            PipelineCase          @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_revisions_case_fkey")
+  logisticsRevision       LogisticsPlanRevision @relation(fields: [tenantId, logisticsRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_revisions_logistics_revision_fkey")
+  calculation             CostingCalculation    @relation(fields: [tenantId, calculationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_revisions_calculation_fkey")
+  publishedByMembership   TenantMembership      @relation("CostingRevisionActor", fields: [tenantId, publishedByMembershipId, publishedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "costing_revisions_actor_fkey")
+  lines                   CostingLine[]
+  issues                  CostingIssue[]
+  overrides               CostingOverride[]
+
+  @@unique([tenantId, id], map: "costing_revisions_tenant_id_key")
+  @@unique([tenantId, revisionRef], map: "costing_revisions_tenant_ref_key")
+  @@unique([tenantId, pipelineCaseId, revision], map: "costing_revisions_case_revision_key")
+  @@unique([tenantId, calculationId], map: "costing_revisions_calculation_tenant_key")
+  @@index([tenantId, pipelineCaseId, status, revision(sort: Desc)], map: "costing_revisions_current_idx")
+  @@map("costing_revisions")
+}
+
+model CostingLine {
+  id                   String               @id @default(cuid())
+  lineRef              String               @default(dbgenerated("gen_random_uuid()")) @map("line_ref") @db.Uuid
+  tenantId             String               @map("tenant_id")
+  revisionId           String               @map("revision_id")
+  logisticsItemRef     String?              @map("logistics_item_ref") @db.Uuid
+  family               CostingFamily
+  concept              String               @db.VarChar(240)
+  classification       CostingEconomicClass
+  source               CostingSource
+  sourceRef            String?              @map("source_ref") @db.Uuid
+  sourceVersion        Int?                 @map("source_version")
+  quantity             Decimal              @db.Decimal(18, 4)
+  unit                 String               @db.VarChar(32)
+  originalCurrency     String               @map("original_currency") @db.Char(3)
+  originalUnitCost     Decimal              @map("original_unit_cost") @db.Decimal(18, 6)
+  exchangeRateRef      String?              @map("exchange_rate_ref") @db.Uuid
+  exchangeRateVersion  Int?                 @map("exchange_rate_version")
+  exchangeRate         Decimal              @map("exchange_rate") @db.Decimal(24, 10)
+  baseCurrency         String               @map("base_currency") @db.Char(3)
+  baseUnitCost         Decimal              @map("base_unit_cost") @db.Decimal(18, 6)
+  totalCost            Decimal              @map("total_cost") @db.Decimal(18, 6)
+  minimumMarginBps     Int?                 @map("minimum_margin_bps")
+  recommendedMarginBps Int?                 @map("recommended_margin_bps")
+  suggestedPrice       Decimal?             @map("suggested_price") @db.Decimal(18, 6)
+  priceStatus          CostingPriceStatus   @default(NO_MARGIN)
+  snapshot             Json
+  position             Int
+  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_lines_tenant_fkey")
+  revision             CostingRevision      @relation(fields: [tenantId, revisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_lines_revision_fkey")
+  overrides            CostingOverride[]
+
+  @@unique([tenantId, id], map: "costing_lines_tenant_id_key")
+  @@unique([tenantId, lineRef], map: "costing_lines_tenant_ref_key")
+  @@unique([tenantId, revisionId, position], map: "costing_lines_position_key")
+  @@index([tenantId, revisionId, family, classification], map: "costing_lines_family_idx")
+  @@map("costing_lines")
+}
+
+model CostingIssue {
+  id                     String               @id @default(cuid())
+  issueRef               String               @default(dbgenerated("gen_random_uuid()")) @map("issue_ref") @db.Uuid
+  tenantId               String               @map("tenant_id")
+  revisionId             String               @map("revision_id")
+  code                   String               @db.VarChar(80)
+  severity               CostingIssueSeverity
+  family                 CostingFamily?
+  message                String               @db.VarChar(500)
+  source                 CostingSource
+  sourceSnapshot         Json                 @map("source_snapshot")
+  status                 CostingIssueStatus   @default(OPEN)
+  resolvedReason         String?              @map("resolved_reason") @db.VarChar(1000)
+  resolvedByMembershipId String?              @map("resolved_by_membership_id")
+  resolvedByUserId       String?              @map("resolved_by_user_id")
+  resolvedAt             DateTime?            @map("resolved_at") @db.Timestamptz(6)
+  version                Int                  @default(1)
+  tenant                 Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_issues_tenant_fkey")
+  revision               CostingRevision      @relation(fields: [tenantId, revisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_issues_revision_fkey")
+  resolvedByMembership   TenantMembership?    @relation("CostingIssueResolver", fields: [tenantId, resolvedByMembershipId, resolvedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "costing_issues_resolver_fkey")
+
+  @@unique([tenantId, issueRef], map: "costing_issues_tenant_ref_key")
+  @@index([tenantId, revisionId, severity, status], map: "costing_issues_revision_idx")
+  @@map("costing_issues")
+}
+
+model CostingOverride {
+  id                String                       @id @default(cuid())
+  overrideRef       String                       @default(dbgenerated("gen_random_uuid()")) @map("override_ref") @db.Uuid
+  tenantId          String                       @map("tenant_id")
+  revisionId        String                       @map("revision_id")
+  lineId            String?                      @map("line_id")
+  kind              CostingOverrideKind
+  suggestedValue    Json                         @map("suggested_value")
+  finalValue        Json                         @map("final_value")
+  reason            String                       @db.VarChar(1000)
+  status            CostingOverrideStatus        @default(APPLIED)
+  actorMembershipId String                       @map("actor_membership_id")
+  actorUserId       String                       @map("actor_user_id")
+  createdAt         DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_overrides_tenant_fkey")
+  revision          CostingRevision              @relation(fields: [tenantId, revisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_overrides_revision_fkey")
+  line              CostingLine?                 @relation(fields: [tenantId, lineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_overrides_line_fkey")
+  actorMembership   TenantMembership             @relation("CostingOverrideActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "costing_overrides_actor_fkey")
+  authorizations    CostingMarginAuthorization[]
+
+  @@unique([tenantId, id], map: "costing_overrides_tenant_id_key")
+  @@unique([tenantId, overrideRef], map: "costing_overrides_tenant_ref_key")
+  @@index([tenantId, revisionId, lineId, createdAt(sort: Desc)], map: "costing_overrides_line_idx")
+  @@map("costing_overrides")
+}
+
+model CostingMarginAuthorization {
+  id                String                       @id @default(cuid())
+  authorizationRef  String                       @default(dbgenerated("gen_random_uuid()")) @map("authorization_ref") @db.Uuid
+  tenantId          String                       @map("tenant_id")
+  overrideId        String                       @map("override_id")
+  decision          CostingAuthorizationDecision
+  reason            String                       @db.VarChar(1000)
+  actorMembershipId String                       @map("actor_membership_id")
+  actorUserId       String                       @map("actor_user_id")
+  createdAt         DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_margin_authorizations_tenant_fkey")
+  override          CostingOverride              @relation(fields: [tenantId, overrideId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_margin_authorizations_override_fkey")
+  actorMembership   TenantMembership             @relation("CostingMarginAuthorizationActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "costing_margin_authorizations_actor_fkey")
+
+  @@unique([tenantId, authorizationRef], map: "costing_margin_authorizations_tenant_ref_key")
+  @@unique([tenantId, overrideId], map: "costing_margin_authorizations_override_key")
+  @@index([tenantId, createdAt(sort: Desc)], map: "costing_margin_authorizations_created_idx")
+  @@map("costing_margin_authorizations")
+}
+
+model CostingMutationCommand {
+  id                String           @id @default(cuid())
+  tenantId          String           @map("tenant_id")
+  requestId         String           @map("request_id") @db.VarChar(191)
+  operation         String           @db.VarChar(80)
+  payloadHash       String           @map("payload_hash") @db.Char(64)
+  targetRef         String           @map("target_ref") @db.VarChar(191)
+  resultJson        Json             @map("result_json")
+  actorMembershipId String           @map("actor_membership_id")
+  actorUserId       String           @map("actor_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_commands_tenant_fkey")
+  actorMembership   TenantMembership @relation("CostingCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "costing_commands_actor_fkey")
+
+  @@unique([tenantId, requestId], map: "costing_commands_tenant_request_key")
+  @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "costing_commands_target_idx")
+  @@map("costing_mutation_commands")
 }
 
 model CatalogMaterial {
@@ -5983,6 +6279,97 @@ enum LogisticsIssueSeverity {
 enum LogisticsIssueStatus {
   OPEN
   RESOLVED
+}
+
+enum CostingFamily {
+  LABOR
+  TRANSPORT
+  MATERIAL
+  CRATING
+  ASSET
+  TRAVEL
+  THIRD_PARTY
+  FREIGHT
+  CUSTOMS
+  PERMIT
+  ADDITIONAL
+  RISK
+  CURRENCY_COMPENSATION
+}
+
+enum CostingSource {
+  SURVEY
+  SERVICE
+  COMBO
+  ADMIN
+  MOTOR
+  PROVIDER
+  MATERIAL_COST
+  ASSET_COST
+  VEHICLE_COST
+  EXCHANGE_RATE
+}
+
+enum CostingEconomicClass {
+  PR
+  EX
+  DE
+}
+
+enum CostingRuleState {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  INACTIVE
+}
+
+enum CostingCalculationStatus {
+  VALID
+  CONFLICT
+}
+
+enum CostingRevisionStatus {
+  PUBLISHED
+  SUPERSEDED
+}
+
+enum CostingIssueSeverity {
+  INFO
+  WARNING
+  BLOCKER
+}
+
+enum CostingIssueStatus {
+  OPEN
+  RESOLVED
+}
+
+enum CostingPriceStatus {
+  RECOMMENDED
+  BELOW_RECOMMENDED
+  BELOW_MINIMUM
+  ABOVE_RECOMMENDED
+  NO_MARGIN
+}
+
+enum CostingOverrideKind {
+  COST
+  EXCHANGE_RATE
+  MARGIN
+  SUGGESTED_PRICE
+  CLASSIFICATION
+}
+
+enum CostingOverrideStatus {
+  APPLIED
+  AUTHORIZATION_REQUIRED
+  AUTHORIZED
+  REJECTED
+}
+
+enum CostingAuthorizationDecision {
+  AUTHORIZED
+  REJECTED
 }
 
 enum ZoneRuleKind {

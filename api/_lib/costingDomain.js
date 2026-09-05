@@ -39,6 +39,17 @@ function audit(context, action, entity, entityId, requestId, after) {
   return { tenant_id: context.tenantId, actor_user_id: context.userId, actor_membership_id: context.membershipId, role_snapshot: context.role, action, entity, entityId: String(entityId), after_json: after, source: "V17_COSTING", request_id: requestId, correlation_id: requestId, critical: true };
 }
 
+async function serializable(prisma, work, timeout = 5_000) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return await prisma.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout });
+    } catch (error) {
+      if (error?.code !== "P2034" || attempt === 3) throw error;
+    }
+  }
+  costingFail("COSTING_CONCURRENCY_CONFLICT", 409);
+}
+
 function caseScope(context) {
   const tenantWide = context.effectivePermissions?.includes(COSTING_PERMISSIONS.TENANT) && !context.deniedPermissions?.includes(COSTING_PERMISSIONS.TENANT);
   return tenantWide ? {} : { ownerMembershipId: context.membershipId, ownerUserId: context.userId };
@@ -182,6 +193,7 @@ async function loadCalculationInput(tx, context, caseRef, logisticsRevisionRef, 
 }
 
 async function replay(tx, context, input) {
+  await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${input.requestId}:costing-command`}, 0))`);
   const row = await tx.costingMutationCommand.findUnique({ where: { tenantId_requestId: { tenantId: context.tenantId, requestId: input.requestId } } });
   if (!row) return null;
   if (row.operation !== input.operation || row.payloadHash !== input.payloadHash) costingFail("COSTING_IDEMPOTENCY_CONFLICT", 409);
@@ -197,14 +209,14 @@ async function persist(tx, context, input, targetRef, result, action, entity) {
 export async function calculateCosting(prisma, context, raw) {
   requirePermission(context, COSTING_PERMISSIONS.CALCULATE);
   const input = normalizeCostingCalculate(raw);
-  return prisma.$transaction(async (tx) => {
+  return serializable(prisma, async (tx) => {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
     const loaded = await loadCalculationInput(tx, context, input.caseRef, input.logisticsPlanRevisionRef, input.baseCurrency);
     const row = await tx.costingCalculation.create({ data: { tenantId: context.tenantId, pipelineCaseId: loaded.pipelineCase.id, logisticsRevisionId: loaded.logisticsRevision.id, baseCurrency: input.baseCurrency, inputSnapshot: loaded.snapshots.input, rulesSnapshot: loaded.snapshots.rules, ratesSnapshot: loaded.snapshots.rates, resultSnapshot: loaded.result, inputHash: loaded.inputHash, resultHash: costingHash(loaded.result), requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
     const result = { calculationRef: row.calculationRef, status: row.status, baseCurrency: row.baseCurrency, inputHash: row.inputHash, resultHash: row.resultHash, result: loaded.result };
     return persist(tx, context, input, row.calculationRef, result, "COSTING_CALCULATE", "CostingCalculation");
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+  }, 30_000);
 }
 
 function lineCreate(line) {
@@ -218,7 +230,7 @@ function issueCreate(row) {
 export async function publishCosting(prisma, context, raw) {
   requirePermission(context, COSTING_PERMISSIONS.PUBLISH);
   const input = normalizeCostingPublish(raw);
-  return prisma.$transaction(async (tx) => {
+  return serializable(prisma, async (tx) => {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${input.calculationRef}:costing-publish`}, 0))`);
@@ -237,7 +249,7 @@ export async function publishCosting(prisma, context, raw) {
     const row = await tx.costingRevision.create({ data: { tenantId: context.tenantId, pipelineCaseId: calculation.pipelineCaseId, logisticsRevisionId: calculation.logisticsRevisionId, calculationId: calculation.id, revision, baseCurrency: calculation.baseCurrency, inputSnapshot: calculation.inputSnapshot, rulesSnapshot: calculation.rulesSnapshot, ratesSnapshot: calculation.ratesSnapshot, totalsSnapshot: calculation.resultSnapshot.totals, logicalSha256: costingHash({ input: calculation.inputSnapshot, rules: calculation.rulesSnapshot, rates: calculation.ratesSnapshot, result: calculation.resultSnapshot }), publishedByMembershipId: context.membershipId, publishedByUserId: context.userId, lines: { create: calculation.resultSnapshot.lines.map(lineCreate) }, issues: { create: calculation.resultSnapshot.issues.map(issueCreate) } }, include: { lines: { orderBy: { position: "asc" } }, issues: true, overrides: { include: { authorizations: true } } } });
     const result = mapRevision(row);
     return persist(tx, context, input, row.revisionRef, result, revision === 1 ? "COSTING_PUBLISH" : "COSTING_RECALCULATE_PUBLISH", "CostingRevision");
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30_000 });
+  }, 30_000);
 }
 
 function mapRevision(row) {
@@ -271,7 +283,7 @@ export async function listCostingRules(prisma, context, query = {}) {
 export async function versionCostingRule(prisma, context, raw) {
   requirePermission(context, COSTING_PERMISSIONS.RULES_MANAGE);
   const input = normalizeCostingRule(raw);
-  return prisma.$transaction(async (tx) => {
+  return serializable(prisma, async (tx) => {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
     const seriesRef = input.seriesRef || randomUUID();
@@ -281,7 +293,7 @@ export async function versionCostingRule(prisma, context, raw) {
     const row = await tx.costingRule.create({ data: { tenantId: context.tenantId, seriesRef, family: input.family, code: input.code, name: input.name, classification: input.classification, source: input.source, priority: input.priority, specificity: input.specificity, conditions: input.conditions, conditionHash: costingHash(input.conditions), unitCost: input.unitCost, currency: input.currency, minimumMarginBps: input.minimumMarginBps, recommendedMarginBps: input.recommendedMarginBps, result: input.result, state: input.state, version: (current?.version || 0) + 1, validFrom: input.validFrom ? new Date(input.validFrom) : null, validTo: input.validTo ? new Date(input.validTo) : null, replacesRuleId: current?.id, requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
     const result = { ruleRef: row.ruleRef, seriesRef: row.seriesRef, family: row.family, classification: row.classification, state: row.state, version: row.version, conditionHash: row.conditionHash };
     return persist(tx, context, input, row.ruleRef, result, current ? "COSTING_RULE_VERSION" : "COSTING_RULE_CREATE", "CostingRule");
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export async function listCostingExchangeRates(prisma, context) {
@@ -293,7 +305,7 @@ export async function listCostingExchangeRates(prisma, context) {
 export async function versionCostingExchangeRate(prisma, context, raw) {
   requirePermission(context, COSTING_PERMISSIONS.RULES_MANAGE);
   const input = normalizeCostingExchangeRate(raw);
-  return prisma.$transaction(async (tx) => {
+  return serializable(prisma, async (tx) => {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
     const seriesRef = input.seriesRef || randomUUID();
@@ -304,13 +316,13 @@ export async function versionCostingExchangeRate(prisma, context, raw) {
     const row = await tx.costingExchangeRate.create({ data: { tenantId: context.tenantId, seriesRef, baseCurrency: input.baseCurrency, quoteCurrency: input.quoteCurrency, rate: input.rate, source: input.source, state: input.state, version: (current?.version || 0) + 1, effectiveAt: new Date(input.effectiveAt), validTo: input.validTo ? new Date(input.validTo) : null, replacesRateId: current?.id, logicalSha256, requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
     const result = { rateRef: row.rateRef, seriesRef: row.seriesRef, baseCurrency: row.baseCurrency, quoteCurrency: row.quoteCurrency, rate: String(row.rate), source: row.source, state: row.state, version: row.version, effectiveAt: row.effectiveAt.toISOString(), logicalSha256 };
     return persist(tx, context, input, row.rateRef, result, current ? "COSTING_EXCHANGE_RATE_VERSION" : "COSTING_EXCHANGE_RATE_CREATE", "CostingExchangeRate");
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export async function createCostingOverride(prisma, context, raw) {
   requirePermission(context, COSTING_PERMISSIONS.OVERRIDE);
   const input = normalizeCostingOverride(raw);
-  return prisma.$transaction(async (tx) => {
+  return serializable(prisma, async (tx) => {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
     const revision = await tx.costingRevision.findFirst({ where: { tenantId: context.tenantId, revisionRef: input.revisionRef }, include: { pipelineCase: { select: { publicRef: true } }, lines: input.lineRef ? { where: { lineRef: input.lineRef } } : true } });
@@ -330,13 +342,13 @@ export async function createCostingOverride(prisma, context, raw) {
     const row = await tx.costingOverride.create({ data: { tenantId: context.tenantId, revisionId: revision.id, lineId: line?.id || null, kind: input.kind, suggestedValue: suggested, finalValue: input.finalValue, reason: input.reason, status, ...actor(context) } });
     const result = { overrideRef: row.overrideRef, revisionRef: revision.revisionRef, lineRef: line?.lineRef || null, kind: row.kind, suggestedValue: row.suggestedValue, finalValue: row.finalValue, reason: row.reason, status: row.status };
     return persist(tx, context, input, row.overrideRef, result, status === "AUTHORIZATION_REQUIRED" ? "COSTING_MARGIN_AUTHORIZATION_REQUIRED" : "COSTING_OVERRIDE", "CostingOverride");
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export async function authorizeCostingMargin(prisma, context, raw) {
   requirePermission(context, COSTING_PERMISSIONS.AUTHORIZE_MARGIN);
   const input = normalizeCostingAuthorization(raw);
-  return prisma.$transaction(async (tx) => {
+  return serializable(prisma, async (tx) => {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${input.overrideRef}:costing-authorization`}, 0))`);
@@ -348,13 +360,13 @@ export async function authorizeCostingMargin(prisma, context, raw) {
     const status = input.decision === "AUTHORIZED" ? "AUTHORIZED" : "REJECTED";
     const result = { authorizationRef: row.authorizationRef, overrideRef: override.overrideRef, decision: row.decision, reason: row.reason, status };
     return persist(tx, context, input, row.authorizationRef, result, "COSTING_MARGIN_AUTHORIZATION", "CostingMarginAuthorization");
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export async function resolveCostingIssue(prisma, context, raw) {
   requirePermission(context, COSTING_PERMISSIONS.RESOLVE);
   const input = normalizeCostingIssueResolution(raw);
-  return prisma.$transaction(async (tx) => {
+  return serializable(prisma, async (tx) => {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
     const revision = await tx.costingRevision.findFirst({ where: { tenantId: context.tenantId, revisionRef: input.revisionRef }, include: { pipelineCase: { select: { publicRef: true } } } });
@@ -365,7 +377,7 @@ export async function resolveCostingIssue(prisma, context, raw) {
     const row = await tx.costingIssue.findFirst({ where: { tenantId: context.tenantId, issueRef: input.issueRef } });
     const result = { issueRef: row.issueRef, status: row.status, version: row.version, resolvedAt: row.resolvedAt.toISOString() };
     return persist(tx, context, input, row.issueRef, result, "COSTING_ISSUE_RESOLVE", "CostingIssue");
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export function mapCostingDatabaseError(error) {

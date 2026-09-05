@@ -50,9 +50,9 @@ La evidencia local del cierre es:
 - HTTP: gate antes de auth/body/Prisma, CORS privado y valores alterados;
 - PostgreSQL 18: 28/28 desde vacío, 27→28, segundo deploy sin pendientes, drift vacío y rollback/replay 28→27→28;
 - migración 28: SHA-256 `d1484bb4380f7f8f8984cfd977503637f4c318357d05978599dc3374071b543a`, LF, sin BOM;
-- base: 9 modelos, 13 familias, 29 FK tenant-first y 37 aserciones, incluidos versionado concurrente de reglas 1/2, una única tasa ganadora y paridad comando/auditoría;
+- base: 9 modelos, 13 familias, 29 FK tenant-first y 45 aserciones; versionado concurrente de reglas 1/2, una única tasa ganadora, replay concurrente de publicación/override/autorización, stale publish rechazado y paridad comando/auditoría;
 - browser: 18/18, Chromium, Firefox y WebKit en desktop/móvil, cubriendo Costing, administración y deny sin chunk/API;
-- HTTP: 31 aserciones; guardia focal: 13 negativas;
+- HTTP: 31 aserciones; guardia focal: 14 negativas;
 - CORS: inventario 113/113, 86 rutas protegidas y 28 negativas;
 - build, TypeScript focal, ESLint focal, `git diff --check`, preflight canónico de 28 migraciones y escaneo de secretos: verdes;
 - guardias negativas contra recálculo logístico, Cotización, PK/tenant de cliente, proveedores inventados, margen hard-coded, tasa histórica mutable y Production.

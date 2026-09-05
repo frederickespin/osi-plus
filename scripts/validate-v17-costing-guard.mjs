@@ -22,6 +22,8 @@ export function validateCostingGuard(overrides = {}) {
   assert.match(domain, /status: "PUBLISHED"[\s\S]*logisticsPlanRevision/);
   assert.match(domain, /COSTING_INPUT_STALE/);
   assert.match(domain, /pg_advisory_xact_lock/);
+  assert.match(domain, /input\.requestId}:costing-command/);
+  assert.match(domain, /error\?\.code !== "P2034"/);
   assert.match(domain, /MaterialCostVersion|costVersionRef/);
   assert.match(domain, /AssetCostVersion|costVersions/);
   assert.match(domain, /contractualReference/);

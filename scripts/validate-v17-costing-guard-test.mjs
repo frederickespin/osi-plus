@@ -9,6 +9,7 @@ rejects("api/_lib/costingDomain.js", (v) => v.replace("tenantId: context.tenantI
 rejects("api/_lib/costingDomain.js", (v) => v.replace("ownerMembershipId: context.membershipId", "ownerMembershipId: undefined"));
 rejects("api/_lib/costingDomain.js", (v) => v.replace("ownerUserId: context.userId", "ownerUserId: undefined"));
 rejects("api/_lib/costingDomain.js", (v) => v.replace("COSTING_INPUT_STALE", "STALE_DISABLED"));
+rejects("api/_lib/costingDomain.js", (v) => v.replace("input.requestId}:costing-command", "input.requestId}:unlocked-command"));
 rejects("api/_lib/costingDomain.js", (v) => `${v}\nconst quotedPrice = 100;`);
 rejects("api/_lib/costingDomain.js", (v) => v.replaceAll("contractualReference", "providerGuess"));
 rejects("prisma/migrations/20260909010000_v17_costing/migration.sql", (v) => v.replace("costing_revisions_append_only", "costing_revisions_mutable"));
@@ -16,5 +17,5 @@ rejects("prisma/migrations/20260909010000_v17_costing/migration.sql", (v) => v.r
 rejects("api/_lib/rbac.js", (v) => v.replaceAll("EXPLICIT_COSTING_PERMISSIONS", "BASELINE_COSTING_PERMISSIONS"));
 rejects("src/commercial-crm/CommercialCaseDetail.tsx", (v) => v.replace("const CostingPanel = lazy", "const CostingPanel = eager"));
 rejects("scripts/protected-cors-route-inventory.json", (v) => v.replace('      "/api/costing/rules",\r\n', "").replace('      "/api/costing/rules",\n', ""));
-assert.equal(passed, 13);
+assert.equal(passed, 14);
 process.stdout.write(JSON.stringify({ ok: true, negatives: passed }) + "\n");

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { costingHash } from "../api/_lib/costingContract.js";
-import { listCostingRules, versionCostingExchangeRate, versionCostingRule } from "../api/_lib/costingDomain.js";
+import { authorizeCostingMargin, calculateCosting, createCostingOverride, listCostingRules, publishCosting, versionCostingExchangeRate, versionCostingRule } from "../api/_lib/costingDomain.js";
+import { canonicalHash as logisticsHash } from "../api/_lib/logisticsEngineContract.js";
+import { calculateLogistics, publishLogistics, versionLogisticsRule } from "../api/_lib/logisticsEngineDomain.js";
 
 const raw = process.env.V17_COSTING_TEST_DATABASE_URL || process.env.DATABASE_URL;
 assert.ok(raw, "V17_COSTING_TEST_DATABASE_URL requerida");
@@ -40,7 +42,7 @@ try {
   assert.equal(publicTables[0].count, 0); assertions += 1;
 
   const suffix = randomUUID().slice(0, 8).toUpperCase();
-  const permissions = ["costing:rules:view", "costing:rules:manage"];
+  const permissions = ["costing:view", "costing:calculate", "costing:publish", "costing:tenant", "costing:override", "costing:authorize-margin", "costing:resolve", "costing:rules:view", "costing:rules:manage", "logistics:plan:view", "logistics:plan:calculate", "logistics:plan:publish", "logistics:plan:tenant", "logistics:plan:override", "logistics:plan:resolve", "logistics:rules:view", "logistics:rules:manage"];
   const tenant = await prisma.tenant.create({ data: { code: `COST-${suffix}`, name: "Costing isolated test", countryCode: "DO" } });
   const user = await prisma.user.create({ data: { code: `COST-U-${suffix}`, name: "Synthetic costing actor", email: `cost-${suffix}@example.invalid`, phone: "0000000000", role: "A", status: "ACTIVE", joinDate: "2026-09-09", passwordHash: "synthetic-not-authenticatable" } });
   const membership = await prisma.tenantMembership.create({ data: { tenantId: tenant.id, userId: user.id, role: "A", grantedPermissions: permissions, deniedPermissions: [] } });
@@ -66,10 +68,59 @@ try {
   assert.equal(concurrentRates.filter((row) => row.status === "rejected").length, 1); assertions += 1;
 
   await assert.rejects(listCostingRules(prisma, { ...context, deniedPermissions: ["costing:rules:view"] }), /COSTING_FORBIDDEN/); assertions += 1;
+
+  const service = await prisma.serviceCatalogItem.create({ data: { tenantId: tenant.id, code: "MOVING_LOCAL", name: "Mudanza local", usage: "PRIMARY", compatibleModes: ["LOCAL"] } });
+  let pipelineCase = await prisma.pipelineCase.create({ data: { tenantId: tenant.id, caseCode: `COST-${suffix}`, mode: "LOCAL", serviceType: "Mudanza local", customerType: "L4_PERSONAL", ownerName: user.name, ownerMembershipId: membership.id, ownerUserId: user.id, estimatedCbm: 20, originLocation: "snapshot", destinationLocation: "snapshot" } });
+  await prisma.pipelineCaseRouteSnapshot.createMany({ data: [{ tenantId: tenant.id, pipelineCaseId: pipelineCase.id, routeVersion: 1, role: "ORIGIN", stopOrder: 0, countryCode: "DO", provinceState: "Distrito Nacional", cityMunicipality: "Santo Domingo", streetAndNumber: "Synthetic origin" }, { tenantId: tenant.id, pipelineCaseId: pipelineCase.id, routeVersion: 1, role: "DESTINATION", stopOrder: 0, countryCode: "DO", provinceState: "Distrito Nacional", cityMunicipality: "Santo Domingo", streetAndNumber: "Synthetic destination" }] });
+  pipelineCase = await prisma.pipelineCase.update({ where: { id: pipelineCase.id }, data: { routeContractVersion: 2, routeRevision: 1, destinationStatus: "CONFIRMED" } });
+  await prisma.pipelineCaseServiceRevision.create({ data: { tenantId: tenant.id, pipelineCaseId: pipelineCase.id, revision: 1, modeSnapshot: "LOCAL", source: "MANUAL", createdByMembershipId: membership.id, createdByUserId: user.id, items: { create: [{ serviceId: service.id, kind: "PRIMARY", source: "MANUAL", position: 0, serviceRefSnapshot: service.serviceRef, codeSnapshot: service.code, nameSnapshot: service.name, catalogVersionSnapshot: service.version }] } } });
+  const logisticsRuleRequest = randomUUID();
+  const logisticsRulePayload = { seriesRef: null, family: "LABOR", code: "CREW_LOCAL", name: "Equipo por volumen", priority: 100, specificity: 10, conditions: { modes: ["LOCAL"] }, result: { kind: "PACKER", label: "Empacadores", quantity: { basis: "VOLUME_M3", divisor: 10, minimum: 2 }, hours: 6, unit: "persona" }, state: "ACTIVE", validFrom: null, validTo: null };
+  await versionLogisticsRule(prisma, context, { requestId: logisticsRuleRequest, payloadHash: logisticsHash({ operation: "LOGISTICS_RULE_VERSION", requestId: logisticsRuleRequest, ...logisticsRulePayload }), ...logisticsRulePayload });
+  const logisticsRequest = randomUUID();
+  const logisticsPayload = { caseRef: pipelineCase.publicRef, intervalStart: new Date(Date.now() + 3_600_000).toISOString(), intervalEnd: new Date(Date.now() + 9 * 3_600_000).toISOString() };
+  const logisticsCalculation = await calculateLogistics(prisma, context, { requestId: logisticsRequest, payloadHash: logisticsHash({ operation: "LOGISTICS_CALCULATE", requestId: logisticsRequest, ...logisticsPayload }), ...logisticsPayload });
+  const logisticsPublishRequest = randomUUID();
+  const logisticsPublishPayload = { calculationRef: logisticsCalculation.calculationRef };
+  const logisticsRevision = await publishLogistics(prisma, context, { requestId: logisticsPublishRequest, payloadHash: logisticsHash({ operation: "LOGISTICS_PUBLISH", requestId: logisticsPublishRequest, ...logisticsPublishPayload }), ...logisticsPublishPayload });
+
+  const costingRequest = randomUUID();
+  const costingPayload = { caseRef: pipelineCase.publicRef, logisticsPlanRevisionRef: logisticsRevision.revisionRef, baseCurrency: "DOP" };
+  const costingCalculation = await calculateCosting(prisma, context, { requestId: costingRequest, payloadHash: costingHash({ operation: "COSTING_CALCULATE", requestId: costingRequest, ...costingPayload }), ...costingPayload });
+  assert.equal(costingCalculation.result.lines.length, 1); assertions += 1;
+  const publishRequest = randomUUID();
+  const publishPayload = { calculationRef: costingCalculation.calculationRef };
+  const publishCommand = { requestId: publishRequest, payloadHash: costingHash({ operation: "COSTING_PUBLISH", requestId: publishRequest, ...publishPayload }), ...publishPayload };
+  const concurrentPublications = await Promise.all([publishCosting(prisma, context, publishCommand), publishCosting(prisma, context, publishCommand)]);
+  assert.equal(new Set(concurrentPublications.map((row) => row.revisionRef)).size, 1); assertions += 1;
+  assert.equal(await prisma.costingRevision.count({ where: { tenantId: tenant.id, calculationId: (await prisma.costingCalculation.findFirst({ where: { calculationRef: costingCalculation.calculationRef } })).id } }), 1); assertions += 1;
+
+  const revision = concurrentPublications[0];
+  const line = revision.lines[0];
+  const overrideRequest = randomUUID();
+  const overridePayload = { revisionRef: revision.revisionRef, lineRef: line.lineRef, kind: "SUGGESTED_PRICE", expectedSuggested: { totalCost: line.totalCost, suggestedPrice: line.suggestedPrice, classification: line.classification, minimumMarginBps: line.minimumMarginBps, recommendedMarginBps: line.recommendedMarginBps }, finalValue: { amount: line.totalCost }, reason: "Synthetic below-margin authorization test" };
+  const overrideCommand = { requestId: overrideRequest, payloadHash: costingHash({ operation: "COSTING_OVERRIDE", requestId: overrideRequest, ...overridePayload }), ...overridePayload };
+  const concurrentOverrides = await Promise.all([createCostingOverride(prisma, context, overrideCommand), createCostingOverride(prisma, context, overrideCommand)]);
+  assert.equal(new Set(concurrentOverrides.map((row) => row.overrideRef)).size, 1); assertions += 1;
+  assert.equal(concurrentOverrides[0].status, "AUTHORIZATION_REQUIRED"); assertions += 1;
+  const authorizationRequest = randomUUID();
+  const authorizationPayload = { overrideRef: concurrentOverrides[0].overrideRef, decision: "AUTHORIZED", reason: "Synthetic economic authority" };
+  const authorizationCommand = { requestId: authorizationRequest, payloadHash: costingHash({ operation: "COSTING_MARGIN_AUTHORIZE", requestId: authorizationRequest, ...authorizationPayload }), ...authorizationPayload };
+  const concurrentAuthorizations = await Promise.all([authorizeCostingMargin(prisma, context, authorizationCommand), authorizeCostingMargin(prisma, context, authorizationCommand)]);
+  assert.equal(new Set(concurrentAuthorizations.map((row) => row.authorizationRef)).size, 1); assertions += 1;
+
+  const staleRequest = randomUUID();
+  const staleCalculation = await calculateCosting(prisma, context, { requestId: staleRequest, payloadHash: costingHash({ operation: "COSTING_CALCULATE", requestId: staleRequest, ...costingPayload }), ...costingPayload });
+  await createRule();
+  const stalePublishRequest = randomUUID();
+  const stalePublishPayload = { calculationRef: staleCalculation.calculationRef };
+  await assert.rejects(publishCosting(prisma, context, { requestId: stalePublishRequest, payloadHash: costingHash({ operation: "COSTING_PUBLISH", requestId: stalePublishRequest, ...stalePublishPayload }), ...stalePublishPayload }), /COSTING_INPUT_STALE/); assertions += 1;
+  await assert.rejects(prisma.costingRevision.update({ where: { id: (await prisma.costingRevision.findFirst({ where: { revisionRef: revision.revisionRef } })).id }, data: { logicalSha256: "0".repeat(64) } }), /COSTING_APPEND_ONLY/); assertions += 1;
+
   const commandCount = await prisma.costingMutationCommand.count({ where: { tenantId: tenant.id } });
   const auditCount = await prisma.commercialAuditLog.count({ where: { tenant_id: tenant.id, source: "V17_COSTING" } });
   assert.equal(commandCount, auditCount); assertions += 1;
-  assert.equal(commandCount, 3); assertions += 1;
+  assert.equal(commandCount, 9); assertions += 1;
 
-  process.stdout.write(JSON.stringify({ ok: true, assertions, migrations: "28/28", models: tables.length, families: 13, tenantFirstForeignKeys: tenantFks, immutableSnapshots: true, concurrentRuleVersions: "1/2", concurrentRateWinners: 1, auditCommandParity: true }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, assertions, migrations: "28/28", models: tables.length, families: 13, tenantFirstForeignKeys: tenantFks, immutableSnapshots: true, concurrentRuleVersions: "1/2", concurrentRateWinners: 1, concurrentPublicationReplay: true, concurrentOverrideReplay: true, concurrentAuthorizationReplay: true, stalePublishRejected: true, auditCommandParity: true }) + "\n");
 } finally { await prisma.$disconnect(); }

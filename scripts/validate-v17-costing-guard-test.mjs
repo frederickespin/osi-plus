@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { validateCostingGuard } from "./validate-v17-costing-guard.mjs";
+const read = (path) => readFileSync(path, "utf8"); let passed = 0;
+function rejects(path, mutate) { assert.throws(() => validateCostingGuard({ [path]: mutate(read(path)) })); passed += 1; }
+rejects("api/_lib/costingHttp.js", (v) => v.replace('DISABLED: "DISABLED",', 'DISABLED: "DISABLED", PRODUCTION_PILOT: "PRODUCTION_PILOT",'));
+rejects("api/_lib/costingHttp.js", (v) => v.replace("if (!prepareCostingRequest(req, res, env)) return;", "if (false) return;"));
+rejects("api/_lib/costingDomain.js", (v) => v.replace("tenantId: context.tenantId, publicRef: caseRef", "publicRef: caseRef"));
+rejects("api/_lib/costingDomain.js", (v) => v.replace("ownerMembershipId: context.membershipId", "ownerMembershipId: undefined"));
+rejects("api/_lib/costingDomain.js", (v) => v.replace("ownerUserId: context.userId", "ownerUserId: undefined"));
+rejects("api/_lib/costingDomain.js", (v) => v.replace("COSTING_INPUT_STALE", "STALE_DISABLED"));
+rejects("api/_lib/costingDomain.js", (v) => `${v}\nconst quotedPrice = 100;`);
+rejects("api/_lib/costingDomain.js", (v) => v.replaceAll("contractualReference", "providerGuess"));
+rejects("prisma/migrations/20260909010000_v17_costing/migration.sql", (v) => v.replace("costing_revisions_append_only", "costing_revisions_mutable"));
+rejects("prisma/migrations/20260909010000_v17_costing/migration.sql", (v) => v.replace("costing_rules_no_equal_conflict", "costing_rules_conflict_removed"));
+rejects("api/_lib/rbac.js", (v) => v.replaceAll("EXPLICIT_COSTING_PERMISSIONS", "BASELINE_COSTING_PERMISSIONS"));
+rejects("src/commercial-crm/CommercialCaseDetail.tsx", (v) => v.replace("const CostingPanel = lazy", "const CostingPanel = eager"));
+rejects("scripts/protected-cors-route-inventory.json", (v) => v.replace('      "/api/costing/rules",\r\n', "").replace('      "/api/costing/rules",\n', ""));
+assert.equal(passed, 13);
+process.stdout.write(JSON.stringify({ ok: true, negatives: passed }) + "\n");

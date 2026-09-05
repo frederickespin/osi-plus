@@ -60,17 +60,22 @@ const raw = guardEnvironment();
 const prisma = new PrismaClient({ datasources: { db: { url: raw } } });
 
 const adminPermissions = [
-  "pipeline:view", "pipeline:create", "pipeline:update:any", "pipeline:destination-pending:create",
-  "membership:view", "membership:invite", "membership:role:assign", "membership:status:manage",
-  "services:catalog:view", "services:catalog:manage", "services:case:view", "services:case:manage",
-  "survey:view", "survey:assign", "survey:perform", "survey:publish", "survey:tenant",
-  "materials:view", "materials:manage", "inventory:view", "inventory:manage",
-  "assets:view", "assets:manage",
+  "pipeline:view", "pipeline:create", "pipeline:update:any", "pipeline:create:pending-destination",
+  "membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status",
+  "services:catalog:view", "services:catalog:manage", "services:case:view", "services:case:update",
+  "survey:assignment:view", "survey:assignment:manage", "survey:perform", "survey:publish", "survey:read",
+  "inventory:catalog:view", "inventory:catalog:manage", "inventory:stock:view", "inventory:stock:receive",
+  "inventory:stock:transfer", "inventory:stock:issue", "inventory:stock:adjust", "inventory:reservation:manage",
+  "inventory:purchase:request", "inventory:purchase:approve", "inventory:recipes:view", "inventory:recipes:manage",
+  "assets:model:view", "assets:model:manage", "assets:instance:view", "assets:instance:manage",
+  "assets:reservation:manage", "assets:assignment:manage", "assets:inspection:perform",
+  "assets:maintenance:view", "assets:maintenance:manage", "assets:incident:manage",
+  "assets:external:view", "assets:external:manage",
   "logistics:plan:view", "logistics:plan:calculate", "logistics:plan:publish", "logistics:plan:tenant", "logistics:plan:override", "logistics:plan:resolve", "logistics:rules:view", "logistics:rules:manage",
   "costing:view", "costing:calculate", "costing:publish", "costing:tenant", "costing:override", "costing:authorize-margin", "costing:resolve", "costing:rules:view", "costing:rules:manage",
   "quote:view", "quote:create", "quote:update", "quote:publish", "quote:send", "quote:record-client-decision", "quote:override-price", "quote:internal-cost:view", "quote:tenant",
 ];
-const evaluatorPermissions = ["pipeline:view", "services:case:view", "survey:view", "survey:perform", "survey:publish"];
+const evaluatorPermissions = ["pipeline:view", "services:case:view", "survey:assignment:view", "survey:perform", "survey:publish", "survey:read"];
 
 async function ensureIdentity(email, code, name, role, permissions, deniedPermissions = []) {
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -91,7 +96,26 @@ async function ensureIdentity(email, code, name, role, permissions, deniedPermis
 
 async function ensureMembership(tenant, identity, role, permissions, deniedPermissions = [], isDefault = true) {
   const existing = await prisma.tenantMembership.findFirst({ where: { tenantId: tenant.id, userId: identity.user.id } });
-  if (existing) return existing;
+  if (existing) {
+    if (existing.provisioningBatchId !== EXPECTED_BATCH) fail("MEMBERSHIP_BATCH_MISMATCH");
+    const same = existing.role === role
+      && existing.status === "ACTIVE"
+      && existing.isDefault === isDefault
+      && JSON.stringify([...existing.grantedPermissions].sort()) === JSON.stringify([...permissions].sort())
+      && JSON.stringify([...existing.deniedPermissions].sort()) === JSON.stringify([...deniedPermissions].sort());
+    if (same) return existing;
+    return prisma.tenantMembership.update({
+      where: { id: existing.id },
+      data: {
+        role,
+        status: "ACTIVE",
+        isDefault,
+        grantedPermissions: permissions,
+        deniedPermissions,
+        authorizationVersion: { increment: 1 },
+      },
+    });
+  }
   return prisma.tenantMembership.create({ data: { tenantId: tenant.id, userId: identity.user.id, role, status: "ACTIVE", isDefault, grantedPermissions: permissions, deniedPermissions, provisioningSource: "MANUAL", provisioningBatchId: EXPECTED_BATCH } });
 }
 
@@ -132,6 +156,38 @@ async function ensureCase({ tenant, client, owner, code, mode, service, cbm, req
   let revision = await prisma.pipelineCaseServiceRevision.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: row.id, revision: 1 }, include: { items: true } });
   if (!revision) revision = await prisma.pipelineCaseServiceRevision.create({ data: { tenantId: tenant.id, pipelineCaseId: row.id, revision: 1, modeSnapshot: mode, source: "MANUAL", createdByMembershipId: owner.membership.id, createdByUserId: owner.user.id, items: { create: [{ serviceId: service.id, kind: "PRIMARY", source: "MANUAL", position: 0, serviceRefSnapshot: service.serviceRef, codeSnapshot: service.code, nameSnapshot: service.name, categorySnapshot: service.category, catalogVersionSnapshot: service.version }] } }, include: { items: true } });
   return { ...row, serviceRevision: revision };
+}
+
+async function ensureCrossTenantSentinel(tenant) {
+  const caseCode = "PV10B-X-TENANT-SENTINEL";
+  const existing = await prisma.pipelineCase.findFirst({ where: { tenantId: tenant.id, caseCode } });
+  if (existing) return existing;
+  return prisma.pipelineCase.create({
+    data: {
+      tenantId: tenant.id,
+      caseCode,
+      clientName: "SECURITY_SENTINEL_NOT_AUTHORITY",
+      mode: "LOCAL",
+      serviceType: "SECURITY_SENTINEL",
+      customerType: "L4_PERSONAL",
+      status: "NEW_INBOX",
+      ownerName: "Sin asignar",
+      estimatedCbm: 0,
+      requiresSurvey: false,
+      surveyMethod: "NO_APLICA",
+      flags: ["PREVIEW_CROSS_TENANT_SENTINEL"],
+      originLocation: "SECURITY_SENTINEL",
+      destinationLocation: "SECURITY_SENTINEL",
+      destinationContracted: true,
+      caseContactName: "Contacto sintético",
+      caseContactPhone: "+12025550177",
+      caseContactPhoneNormalized: "+12025550177",
+      caseContactEmail: "cross-tenant-sentinel@example.invalid",
+      caseContactEmailNormalized: "cross-tenant-sentinel@example.invalid",
+      intakeChannel: "WEB",
+      clientProfileType: "INDIVIDUAL",
+    },
+  });
 }
 
 async function ensureSurveyFixture(tenant, actor, evaluator, scenario, material) {
@@ -312,6 +368,7 @@ async function main() {
     await ensureCase({ tenant, client: clients[2], owner, code: "PV10B-C-PENDING", mode: "LOCAL", service: services[2], cbm: 8, requiresSurvey: false, destinationStatus: "CONFIRMED", ...addresses[2] }),
     await ensureCase({ tenant, client: clients[3], owner, code: "PV10B-D-QUOTES", mode: "LOCAL", service: services[3], cbm: 18, requiresSurvey: false, destinationStatus: "CONFIRMED", ...addresses[3] }),
   ];
+  const crossTenantSentinel = await ensureCrossTenantSentinel(crossTenant);
   const resources = await ensureResources(tenant, owner);
   await ensureSurveyFixture(tenant, owner, { user: evaluatorIdentity.user, membership: evaluatorMembership }, scenarios[1], resources.material);
   if (!await prisma.externalResourceOffer.findFirst({ where: { tenantId: tenant.id, providerReference: "PREVIEW-PENDING-PROVIDER" } })) await prisma.externalResourceOffer.create({ data: { tenantId: tenant.id, providerReference: "PREVIEW-PENDING-PROVIDER", providerNameSnapshot: "Proveedor sintético pendiente", resourceDescription: "Servicio externo sintético", capacity: { quantity: 1 }, rateAmount: null, currency: null, temporalUnit: "SERVICE", availabilityStatus: "UNCONFIRMED", termsSnapshot: { synthetic: true }, contractualReference: null } });
@@ -320,12 +377,13 @@ async function main() {
   const plans = await ensurePlans(context, scenarios);
   const scenarioDQuotes = await ensureScenarioDQuotes(context, scenarios[3], plans.get("PV10B-D-QUOTES").costing);
 
-  const counts = { tenants: await prisma.tenant.count({ where: { code: { in: [TENANT_CODE, SECOND_TENANT_CODE] } } }), users: await prisma.user.count({ where: { email: { in: [adminIdentity.user.email, evaluatorIdentity.user.email, denyIdentity.user.email] } } }), memberships: await prisma.tenantMembership.count({ where: { provisioningBatchId: EXPECTED_BATCH } }), cases: await prisma.pipelineCase.count({ where: { tenantId: tenant.id } }), clients: await prisma.client.count({ where: { tenantId: tenant.id } }), services: await prisma.serviceCatalogItem.count({ where: { tenantId: tenant.id } }), surveys: await prisma.surveyPublication.count({ where: { tenantId: tenant.id } }), materials: await prisma.materialCatalogItem.count({ where: { tenantId: tenant.id } }), assets: await prisma.assetInstance.count({ where: { tenantId: tenant.id } }), plans: await prisma.logisticsPlanRevision.count({ where: { tenantId: tenant.id, status: "PUBLISHED" } }), costings: await prisma.costingRevision.count({ where: { tenantId: tenant.id, status: "PUBLISHED" } }), proposals: await prisma.quoteProposal.count({ where: { tenantId: tenant.id, pipelineCaseId: scenarios[3].id } }), accepted: await prisma.quoteProposal.count({ where: { tenantId: tenant.id, pipelineCaseId: scenarios[3].id, state: "ACCEPTED" } }) };
+  const counts = { tenants: await prisma.tenant.count({ where: { code: { in: [TENANT_CODE, SECOND_TENANT_CODE] } } }), users: await prisma.user.count({ where: { email: { in: [adminIdentity.user.email, evaluatorIdentity.user.email, denyIdentity.user.email] } } }), memberships: await prisma.tenantMembership.count({ where: { provisioningBatchId: EXPECTED_BATCH } }), cases: await prisma.pipelineCase.count({ where: { id: { in: scenarios.map((item) => item.id) } } }), clients: await prisma.client.count({ where: { id: { in: clients.map((item) => item.id) } } }), services: await prisma.serviceCatalogItem.count({ where: { tenantId: tenant.id } }), surveys: await prisma.surveyPublication.count({ where: { tenantId: tenant.id } }), materials: await prisma.materialCatalogItem.count({ where: { tenantId: tenant.id } }), assets: await prisma.assetInstance.count({ where: { tenantId: tenant.id } }), plans: await prisma.logisticsPlanRevision.count({ where: { tenantId: tenant.id, status: "PUBLISHED" } }), costings: await prisma.costingRevision.count({ where: { tenantId: tenant.id, status: "PUBLISHED" } }), proposals: await prisma.quoteProposal.count({ where: { tenantId: tenant.id, pipelineCaseId: scenarios[3].id } }), accepted: await prisma.quoteProposal.count({ where: { tenantId: tenant.id, pipelineCaseId: scenarios[3].id, state: "ACCEPTED" } }) };
   assert.deepEqual({ tenants: counts.tenants, users: counts.users, memberships: counts.memberships, cases: counts.cases, clients: counts.clients }, { tenants: 2, users: 3, memberships: 3, cases: 4, clients: 4 });
   assert.equal(counts.proposals, 3); assert.equal(counts.accepted, 1);
+  assert.equal(await prisma.pipelineCase.count({ where: { tenantId: crossTenant.id, id: crossTenantSentinel.id, flags: { has: "PREVIEW_CROSS_TENANT_SENTINEL" } } }), 1);
   const pendingPlan = plans.get("PV10B-C-PENDING").plan;
   assert.ok(pendingPlan.issues.some((item) => item.code === "EXTERNAL_PRICE_PENDING" && item.severity === "BLOCKER"));
-  console.log(JSON.stringify({ ok: true, batch: EXPECTED_BATCH, migrations: "29/29", scenarios: 4, syntheticOnly: true, idempotent: true, counts, scenarioCBlocker: true, scenarioDAccepted: scenarioDQuotes.accepted.state === "ACCEPTED", productionApiEnabled: false }));
+  console.log(JSON.stringify({ ok: true, batch: EXPECTED_BATCH, migrations: "29/29", scenarios: 4, securitySentinels: 1, syntheticOnly: true, idempotent: true, counts, scenarioCBlocker: true, scenarioDAccepted: scenarioDQuotes.accepted.state === "ACCEPTED", productionApiEnabled: false }));
 }
 
 try { await main(); } finally { await prisma.$disconnect(); }

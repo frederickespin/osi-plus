@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import { createQuoteProposal, getQuoteCase, getQuoteClientProjection, publishQuoteProposal, recordQuoteDecision, sendQuoteProposal } from "../api/_lib/quoteDomain.js";
+import { createQuoteProposal, getQuoteCase, getQuoteClientProjection, publishQuoteProposal, recordQuoteDecision, reviseQuoteProposal, sendQuoteProposal } from "../api/_lib/quoteDomain.js";
 import { quoteHash } from "../api/_lib/quoteContract.js";
 
 const prisma = new PrismaClient();
@@ -51,6 +51,20 @@ try {
   const results = await Promise.allSettled([recordQuoteDecision(prisma, contexts[1], signed("QUOTE_CLIENT_DECISION", { proposalRef: a.proposalRef, expectedRevision: as.revision, decision: "ACCEPTED", method: "SIGNED", decidedBy: { kind: "CLIENT_REPRESENTATIVE", displayName: null, reference: null, present: true }, evidenceRef: "DOC-A", reason: null })), recordQuoteDecision(prisma, contexts[1], signed("QUOTE_CLIENT_DECISION", { proposalRef: b.proposalRef, expectedRevision: bs.revision, decision: "ACCEPTED", method: "SIGNED", decidedBy: { kind: "CLIENT_REPRESENTATIVE", displayName: null, reference: null, present: true }, evidenceRef: "DOC-B", reason: null }))]);
   assert.equal(results.filter((row) => row.status === "fulfilled").length, 1); assert.equal(results.filter((row) => row.status === "rejected").length, 1); assertions += 2;
   const acceptedCount = await prisma.quoteProposal.count({ where: { tenantId: contexts[1].tenantId, pipelineCaseId: costings[1].pipelineCaseId, state: "ACCEPTED" } }); assert.equal(acceptedCount, 1); assertions += 1;
+  const blocked = await createQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_CREATE", draft(costings[1], 3)));
+  const manualPending = draft(costings[1], 3, { lines: [{ sourceKind: "MANUAL", costingLineRef: null, concept: "Proveedor pendiente", quantity: "1", unit: "SERVICE", economicClass: "EX", quotedPrice: null, currency: costings[1].baseCurrency, reason: "Oferta externa pendiente", manualAuthority: { kind: "PROVIDER_OFFER", reference: "PROVIDER-OFFER-PENDING", version: 1, status: "PENDING", capturedCost: null, suggestedPrice: null } }] });
+  const pendingRevision = await reviseQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_REVISE", { ...manualPending, proposalRef: blocked.proposalRef, expectedRevision: blocked.revision }));
+  await assert.rejects(publishQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_PUBLISH", { proposalRef: blocked.proposalRef, expectedRevision: pendingRevision.revision })), /QUOTE_BLOCKERS_PRESENT/); assertions += 1;
+  const expiredPayload = draft(costings[1], 3, { issueDate: "2020-01-01", validUntil: "2020-01-02" });
+  const expiredRevision = await reviseQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_REVISE", { ...expiredPayload, proposalRef: blocked.proposalRef, expectedRevision: pendingRevision.revision }));
+  await assert.rejects(publishQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_PUBLISH", { proposalRef: blocked.proposalRef, expectedRevision: expiredRevision.revision })), /QUOTE_EXPIRED/); assertions += 1;
+  const sourceLine = costings[1].lines.find((row) => row.suggestedPrice != null);
+  const belowPayload = draft(costings[1], 3, { lines: [{ sourceKind: "COSTING", costingLineRef: sourceLine.lineRef, concept: sourceLine.concept, quantity: String(sourceLine.quantity), unit: sourceLine.unit, economicClass: sourceLine.classification, quotedPrice: (Number(sourceLine.suggestedPrice) / 2).toFixed(6), currency: costings[1].baseCurrency, reason: null, manualAuthority: null }] });
+  const belowRevision = await reviseQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_REVISE", { ...belowPayload, proposalRef: blocked.proposalRef, expectedRevision: expiredRevision.revision }));
+  await assert.rejects(publishQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_PUBLISH", { proposalRef: blocked.proposalRef, expectedRevision: belowRevision.revision })), /QUOTE_BLOCKERS_PRESENT/); assertions += 1;
+  const restoredRevision = await reviseQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_REVISE", { ...draft(costings[1], 3), proposalRef: blocked.proposalRef, expectedRevision: belowRevision.revision }));
+  await prisma.costingIssue.create({ data: { tenantId: costings[1].tenantId, revisionId: costings[1].id, code: "QUOTE_TEST_COSTING_BLOCKER", severity: "BLOCKER", family: null, message: "Bloqueo sintético", source: "ADMIN", sourceSnapshot: { synthetic: true } } });
+  await assert.rejects(publishQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_PUBLISH", { proposalRef: blocked.proposalRef, expectedRevision: restoredRevision.revision })), /QUOTE_COSTING_BLOCKERS_PRESENT/); assertions += 1;
   const line = await prisma.quoteLine.findFirst({ where: { tenantId: contexts[0].tenantId } }); await assert.rejects(prisma.quoteLine.update({ where: { id: line.id }, data: { concept: "Mutable" } }), /QUOTE_APPEND_ONLY/); assertions += 1;
   const commands = await prisma.quoteMutationCommand.count({ where: { tenantId: contexts[0].tenantId, requestId: input.requestId } }); assert.equal(commands, 1); assertions += 1;
   console.log(`V17-QUOTE-09A database: ${assertions}/${assertions}`);

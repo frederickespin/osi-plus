@@ -10,6 +10,8 @@ import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resol
 import { isSurveyUiEnabled } from "@/survey/mode";
 import { isMaterialsUiEnabled } from "@/materials-inventory/mode";
 import { isToolsEquipmentUiEnabled } from "@/tools-equipment/mode";
+import { resolveLogisticsUiAccess } from "@/logistics-engine/access";
+import { isLogisticsUiEnabled } from "@/logistics-engine/mode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
@@ -115,6 +117,8 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         role={accessContext.role}
         mutationAccess={resolveCrmCaseMutationUiAccess(accessContext)}
         servicesAccess={resolveCrmServicesUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
+        logisticsAccess={resolveLogisticsUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
+        logisticsEnabled={isLogisticsUiEnabled()}
         userName={userName}
         onNavigate={onNavigate}
         onLogout={onLogout}

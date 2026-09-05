@@ -21,6 +21,7 @@ import type { CrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 import type { CrmServicesUiAccess } from "@/crm-services/access";
 import type { LogisticsUiAccess } from "@/logistics-engine/access";
 import type { CostingUiAccess } from "@/costing/access";
+import type { QuoteUiAccess } from "@/quote/access";
 
 type Props = Readonly<{
   authorization?: string;
@@ -32,6 +33,8 @@ type Props = Readonly<{
   logisticsEnabled: boolean;
   costingAccess: CostingUiAccess;
   costingEnabled: boolean;
+  quoteAccess: QuoteUiAccess;
+  quoteEnabled: boolean;
   userName?: string;
   onNavigate(pathname: string): void;
   onLogout(): void;
@@ -113,7 +116,7 @@ function Sidebar({ collapsed, userName, role, onCollapse, onCommercial, onHub, o
   </aside>;
 }
 
-export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, userName, onNavigate, onLogout, onUnauthorized }: Props) {
+export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, userName, onNavigate, onLogout, onUnauthorized }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const goCommercial = () => {
@@ -146,6 +149,8 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
           logisticsEnabled={logisticsEnabled}
           costingAccess={costingAccess}
           costingEnabled={costingEnabled}
+          quoteAccess={quoteAccess}
+          quoteEnabled={quoteEnabled}
           role={role}
           caseRef={caseRef}
           onOpenNavigation={() => setMobileOpen(true)}

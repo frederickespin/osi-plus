@@ -25,6 +25,7 @@ import { isCrmIcpV2UiEnabled } from "@/crm-icp-v2/clientMode";
 import type { CrmServicesUiAccess } from "@/crm-services/access";
 import type { LogisticsUiAccess } from "@/logistics-engine/access";
 import type { CostingUiAccess } from "@/costing/access";
+import type { QuoteUiAccess } from "@/quote/access";
 
 const CommercialCaseDetail = lazy(() => import("./CommercialCaseDetail"));
 const PAGE_SIZE = 25;
@@ -38,6 +39,8 @@ type Props = Readonly<{
   logisticsEnabled: boolean;
   costingAccess: CostingUiAccess;
   costingEnabled: boolean;
+  quoteAccess: QuoteUiAccess;
+  quoteEnabled: boolean;
   role: string;
   caseRef?: string | null;
   onOpenNavigation(): void;
@@ -156,7 +159,7 @@ function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, o
   </section>;
 }
 
-export default function CommercialInboxModule({ authorization, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, role, caseRef, onOpenNavigation, onBack, onOpenCase, onReturnToInbox, onUnauthorized, api: suppliedApi }: Props) {
+export default function CommercialInboxModule({ authorization, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, role, caseRef, onOpenNavigation, onBack, onOpenCase, onReturnToInbox, onUnauthorized, api: suppliedApi }: Props) {
   const api = useMemo(() => suppliedApi ?? new CrmPipelineReadApi({ tokenProvider: () => authorization ?? null }), [authorization, suppliedApi]);
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState<CrmPipelineFilters>({ page: 1, pageSize: PAGE_SIZE });
@@ -230,7 +233,7 @@ export default function CommercialInboxModule({ authorization, mutationAccess, s
     {icpReceipt && !fullCaseWorkspace && <Alert className="m-4 mb-0 border-emerald-200 bg-emerald-50 text-emerald-950" data-testid="crm-icp-v2-success"><CheckCircle2 /><AlertTitle>ICP creado correctamente</AlertTitle><AlertDescription>El caso quedó registrado y está listo para continuar en su Ficha. <span className="font-mono text-xs">{icpReceipt.caseRef}</span><Button type="button" size="sm" variant="ghost" className="ml-2" onClick={() => setIcpReceipt(null)}>Cerrar</Button></AlertDescription></Alert>}
     {summaryError && <Alert variant="destructive" className="m-3"><AlertCircle /><AlertTitle>{summaryError.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(summaryError)}</AlertDescription></Alert>}
     {fullCaseWorkspace
-      ? <main className="min-h-0 flex-1 bg-white" data-testid="commercial-full-case-workspace"><Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm font-semibold text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} authorization={authorization} servicesAccess={servicesAccess} logisticsAccess={logisticsAccess} logisticsEnabled={logisticsEnabled} costingAccess={costingAccess} costingEnabled={costingEnabled} onUnauthorized={onUnauthorized} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onOpenNavigation={onOpenNavigation} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense></main>
+      ? <main className="min-h-0 flex-1 bg-white" data-testid="commercial-full-case-workspace"><Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm font-semibold text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} authorization={authorization} servicesAccess={servicesAccess} logisticsAccess={logisticsAccess} logisticsEnabled={logisticsEnabled} costingAccess={costingAccess} costingEnabled={costingEnabled} quoteAccess={quoteAccess} quoteEnabled={quoteEnabled} onUnauthorized={onUnauthorized} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onOpenNavigation={onOpenNavigation} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense></main>
       : <div data-testid="commercial-master-detail-layout" className="min-h-0 flex-1 xl:grid" style={{ gridTemplateColumns: "clamp(560px, 40%, 720px) minmax(0, 1fr)" }}><div className={selectedCaseRef ? "hidden xl:block" : "block"}>{queue}</div><main className={selectedCaseRef ? "block min-w-0 bg-white" : "hidden min-w-0 bg-white xl:block"}>{selectedCaseRef ? <CaseSummaryPanel state={detail} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} onClear={() => setSelectedCaseRef(null)} onOpen={openFullCase} onReload={() => setDetailRefresh((value) => value + 1)} /> : <SupervisionPanel summary={summary} role={role} />}</main></div>}
   </section>;
 }

@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.v17-quote.tsbuildinfo"
+  },
+  "include": [
+    "src/v17-preview-env.d.ts",
+    "src/quote/**/*.ts",
+    "src/quote/**/*.tsx",
+    "src/costing/api.ts",
+    "src/commercial-crm/CommercialCaseDetail.tsx",
+    "src/commercial-crm/CommercialInboxModule.tsx",
+    "src/commercial-crm/AdvancedErpShell.tsx",
+    "src/hub/HubWorkspace.tsx"
+  ]
+}

@@ -14,6 +14,8 @@ import { resolveLogisticsUiAccess } from "@/logistics-engine/access";
 import { isLogisticsUiEnabled } from "@/logistics-engine/mode";
 import { resolveCostingUiAccess } from "@/costing/access";
 import { isCostingUiEnabled } from "@/costing/mode";
+import { resolveQuoteUiAccess } from "@/quote/access";
+import { isQuoteUiEnabled } from "@/quote/mode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
@@ -123,6 +125,8 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         logisticsEnabled={isLogisticsUiEnabled()}
         costingAccess={resolveCostingUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         costingEnabled={isCostingUiEnabled()}
+        quoteAccess={resolveQuoteUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
+        quoteEnabled={isQuoteUiEnabled()}
         userName={userName}
         onNavigate={onNavigate}
         onLogout={onLogout}

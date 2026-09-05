@@ -267,6 +267,9 @@ jobs:
       - name: Validate gated Costing in real browsers (18/18)
         run: npm run test:v17-costing:browser
 
+      - name: Validate gated Quote in real browsers (24/24)
+        run: npm run test:v17-quote:browser
+
       - name: Validate inactive Production Read pilot in real browsers (18/18)
         run: npm run test:v17-erp-crm-foundation-02c:browser
 
@@ -420,6 +423,8 @@ jobs:
           npm run test:v17-survey
           npm run guard:v17-costing
           npm run test:v17-costing
+          npm run guard:v17-quote
+          npm run test:v17-quote
           node scripts/validate-v17-hub-guard.mjs
           node scripts/validate-v17-hub-auth-lazy-boundary-guard.mjs
           npm run guard:v17-admin-tenant-memberships
@@ -517,6 +522,11 @@ jobs:
           V17_COSTING_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: npm run test:v17-costing:db
 
+      - name: Validate V17 Quote against PostgreSQL 18
+        env:
+          V17_QUOTE_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-quote:db
+
       - name: Verify canonical history and safe modes
         run: node scripts/validate-canonical-ci.mjs
 
@@ -541,6 +551,8 @@ jobs:
           npm run test:v17-production-pilot-gates
           npm run guard:v17-costing
           npm run test:v17-costing
+          npm run guard:v17-quote
+          npm run test:v17-quote
 
       - name: Publish sanitized MT-01B1 refresh-race evidence
         if: steps.canonical_domain_suites.outcome == 'failure'
@@ -607,4 +619,7 @@ jobs:
           npm run guard:v17-costing
           npm run test:v17-costing
           npm run test:v17-costing:db
+          npm run guard:v17-quote
+          npm run test:v17-quote
+          npm run test:v17-quote:db
           git diff --exit-code

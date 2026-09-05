@@ -87,7 +87,15 @@
       "/api/materials/reservations/release",
       "/api/materials/units",
       "/api/materials/warehouses",
-      "/api/projects"
+      "/api/projects",
+      "/api/quote/cases/[caseRef]",
+      "/api/quote/proposals/[proposalRef]/client",
+      "/api/quote/proposals/cancel",
+      "/api/quote/proposals/create",
+      "/api/quote/proposals/decision",
+      "/api/quote/proposals/publish",
+      "/api/quote/proposals/revise",
+      "/api/quote/proposals/send"
     ],
     "publicDeliberate": [
       "/api/health",

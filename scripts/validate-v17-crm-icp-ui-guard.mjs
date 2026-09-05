@@ -62,7 +62,7 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
   const access = read("src/crm-relational/mutationAccess.ts");
   requireText(access, 'pipeline:create:pending-destination', "permiso explícito de destino pendiente ausente");
   const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");
-  for (const value of ["isCrmIcpV2UiEnabled", "<IcpIntakeForm", "Nuevo ICP", "listo para continuar en su Ficha", "onUnauthorized={onUnauthorized}"]) {
+  for (const value of ["isCrmIcpV2UiEnabled", "<IcpIntakeForm", "Nuevo caso", "openFullCase(receipt.caseRef)", "onUnauthorized={onUnauthorized}"]) {
     requireText(inbox, value, `integración Inbox incompleta: ${value}`);
   }
   const crm01aGuard = read("scripts/validate-crm-01a-guard.mjs");

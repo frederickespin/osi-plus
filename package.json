@@ -92,6 +92,8 @@
     "test:v17-quote:db": "node scripts/v17-quote-db-test.mjs",
     "guard:v17-quote": "node scripts/validate-v17-quote-guard.mjs && node scripts/validate-v17-quote-guard-test.mjs",
     "test:v17-quote:browser": "playwright test -c playwright.v17-quote.config.ts",
+    "guard:v17-consolidated-preview": "node scripts/validate-v17-consolidated-preview-guard.mjs && node scripts/validate-v17-consolidated-preview-guard-test.mjs",
+    "test:v17-consolidated-preview:browser": "playwright test -c playwright.v17-consolidated-preview.config.ts",
     "typecheck:v17-quote": "tsc -p tsconfig.v17-quote.json --pretty false",
     "rollback:v17-quote:local": "node scripts/v17-quote-rollback.mjs",
     "test:v17-admin-tenant-memberships:http": "node scripts/v17-admin-tenant-memberships-http-test.mjs",

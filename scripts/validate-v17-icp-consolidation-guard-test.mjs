@@ -24,7 +24,7 @@ function rejected(name, path, transform) {
 }
 
 assert.equal(validateV17IcpConsolidationGuard().ok, true); assertions += 1;
-rejected("membershipRef omitida", "src/crm-icp-v2/api.ts", (text) => text.replace('"X-OSI-Membership-Ref": membershipRef', '"X-Removed-Ref": membershipRef'));
+rejected("membershipRef omitida", "src/crm-icp-v2/api.ts", (text) => text.replaceAll('"X-OSI-Membership-Ref": membershipRef', '"X-Removed-Ref": membershipRef'));
 rejected("AuthorizationContext omitido", "api/_lib/crmIcpV2ApiHttp.js", (text) => text.replaceAll("resolveCrmPipelineContext", "resolveUntrustedContext"));
 rejected("revalidación User omitida", "api/_lib/crmIcpV2ApiDomain.js", (text) => text.replace('AND m."user_id"=${userId}', ""));
 rejected("modo acepta autoridad cliente", "api/_lib/crmIcpV2Domain.js", (text) => text.replace("if (command.mode !== derivedMode) fail", "if (false) fail"));

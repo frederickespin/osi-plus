@@ -19,5 +19,5 @@ rejects("UI antes de autorización", "src/commercial-crm/CommercialCaseDetail.ts
 rejects("storage empresarial", "src/quote/QuotePanel.tsx", (value) => `${value}\nlocalStorage.setItem('quote','mock')`);
 rejects("costo cliente", "api/_lib/quoteDomain.js", (value) => value.replace("totals: { grossQuotedPrice", "totals: { capturedCost: internal.totals.capturedCost, grossQuotedPrice"));
 rejects("Production", "api/_lib/quoteHttp.js", (value) => value.replace("PREVIEW_REHEARSAL: \"PREVIEW_REHEARSAL\"", "PREVIEW_REHEARSAL: \"PREVIEW_REHEARSAL\", PRODUCTION: \"PRODUCTION\""));
-rejects("ruta sin CORS", "scripts/protected-cors-route-inventory.json", (value) => value.replace(',\n      "/api/quote/proposals/send"', ""));
+rejects("ruta sin CORS", "scripts/protected-cors-route-inventory.json", (value) => value.replace('"/api/quote/proposals/send"', '"/api/quote/proposals/send-missing"'));
 console.log(`V17-QUOTE-09A guard negatives: ${cases.length}/${cases.length}`);

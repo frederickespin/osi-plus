@@ -112,7 +112,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const surveyEnabled = isSurveyUiEnabled();
   const materialsEnabled = isMaterialsUiEnabled();
   const toolsEnabled = isToolsEquipmentUiEnabled();
+  const surveyAuthorized = visible.some((application) => application.appId === "osi-survey");
+  const materialsAuthorized = visible.some((application) => application.appId === "materials-equipment");
   const toolsAuthorized = visible.some((application) => application.appId === "tools-equipment");
+  const materialsAvailable = materialsEnabled && materialsAuthorized;
+  const toolsAvailable = toolsEnabled && Boolean(toolsAuthorized);
   if (selected?.appId === "commercial-crm" && crmReadEnabled) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando ERP Comercial…</div>}>
       <AdvancedErpShell
@@ -127,6 +131,9 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         costingEnabled={isCostingUiEnabled()}
         quoteAccess={resolveQuoteUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         quoteEnabled={isQuoteUiEnabled()}
+        surveyEnabled={surveyEnabled && surveyAuthorized}
+        materialsEnabled={materialsAvailable}
+        toolsEnabled={toolsAvailable}
         userName={userName}
         onNavigate={onNavigate}
         onLogout={onLogout}
@@ -149,15 +156,15 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       />
     </Suspense>;
   }
-  if (selected?.appId === "osi-survey" && surveyEnabled) {
+  if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
       <SurveyApp authorization={authorization} onUnauthorized={onLogout} />
     </Suspense>;
   }
   if (selected?.appId === "materials-equipment" && materialsEnabled) {
-    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando Materiales e Inventario…</div>}>
-      <MaterialsInventoryApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={onNavigate} onUnauthorized={onLogout} />
-    </Suspense>;
+    if (materialsAuthorized) return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando Materiales e Inventario…</div>}>
+        <MaterialsInventoryApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={onNavigate} onUnauthorized={onLogout} />
+      </Suspense>;
   }
   if (selected?.appId === "tools-equipment" && toolsEnabled && toolsAuthorized) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando Herramientas y Equipos…</div>}>

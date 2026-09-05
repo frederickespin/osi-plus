@@ -4,6 +4,7 @@ import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { CostingError } from "./costingContract.js";
 import { mapCostingDatabaseError } from "./costingDomain.js";
+import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
 
 export const COSTING_API_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" });
 export const COSTING_PREVIEW_BRANCH = "feature/v17-costing";
@@ -27,7 +28,7 @@ export function resolveCostingApiMode(env = process.env, req = undefined) {
   }
   const valid = env.VERCEL === "1"
     && env.VERCEL_ENV === "preview"
-    && env.VERCEL_GIT_COMMIT_REF === COSTING_PREVIEW_BRANCH
+    && (env.VERCEL_GIT_COMMIT_REF === COSTING_PREVIEW_BRANCH || isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF))
     && env.COSTING_ENGINE_API_BATCH === COSTING_PREVIEW_BATCH
     && env.MT01B_AUTH_MODE === "LEGACY"
     && env.MT01B_TENANT_SWITCH_ENABLED === "false"

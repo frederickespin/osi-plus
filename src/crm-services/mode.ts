@@ -1,3 +1,5 @@
+import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
+
 export const CRM_SERVICES_UI_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" } as const);
 export type CrmServicesUiMode = typeof CRM_SERVICES_UI_MODES[keyof typeof CRM_SERVICES_UI_MODES];
 
@@ -11,7 +13,7 @@ export function resolveCrmServicesUiMode(environment: Readonly<Record<string, un
   const preview = value === CRM_SERVICES_UI_MODES.PREVIEW_REHEARSAL
     && environment.VITE_CRM_SERVICES_UI_BATCH === "V17-SERVICES-TENANT-FIRST-03A-PREVIEW"
     && environment.VITE_VERCEL_ENV === "preview"
-    && environment.VITE_VERCEL_GIT_COMMIT_REF === "feature/v17-services-tenant-first";
+    && (environment.VITE_VERCEL_GIT_COMMIT_REF === "feature/v17-services-tenant-first" || isV17ConsolidatedPreviewBranch(environment.VITE_VERCEL_GIT_COMMIT_REF));
   return preview ? value : CRM_SERVICES_UI_MODES.DISABLED;
 }
 export function isCrmServicesUiEnabled(environment?: Readonly<Record<string, unknown>>, hostname?: string) {

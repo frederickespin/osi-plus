@@ -44,6 +44,40 @@ export type IcpClientSearchResult = Readonly<{
 }>;
 
 export type IcpCreateReceipt = Readonly<{ caseRef: string; clientRef: string; version: number; routeRevision: number; replayed: boolean }>;
+export type IcpCaseAddress = Readonly<{
+  countryCode: string;
+  provinceState: string | null;
+  cityMunicipality: string;
+  sector: string | null;
+  streetAndNumber: string | null;
+  buildingResidential: string | null;
+  floorUnit: string | null;
+  arrivalReference: string | null;
+  locationContactName: string | null;
+  locationContactPhone: string | null;
+}>;
+export type IcpCaseDetail = Readonly<{
+  caseRef: string;
+  caseCode: string;
+  status: string;
+  version: number;
+  mode: "LOCAL" | "EXPORT" | "IMPORT";
+  serviceType: string;
+  volume: Readonly<{ status: string; estimatedCbm: number | null; source: string | null }>;
+  requiresSurvey: boolean;
+  surveyMethod: string;
+  intakeChannel: string;
+  clientProfileType: string;
+  requirementNotes: string | null;
+  serviceDefinitionStatus: "PENDING" | "DEFINED";
+  surveyDecisionStatus: "PENDING" | "DEFINED";
+  ownerName: string | null;
+  caseContact: Readonly<{ displayName: string; phone: string; email: string | null }>;
+  client: Readonly<{ clientRef: string; displayName: string; type: string; status: string }> | null;
+  route: Readonly<{ contractVersion: number; revision: number; destinationStatus: IcpDestinationStatus; origin: IcpCaseAddress; destination: IcpCaseAddress | null; additionalStops: readonly IcpCaseAddress[] }>;
+  createdAt: string;
+  updatedAt: string;
+}>;
 
 export class CrmIcpV2ClientError extends Error {
   readonly status: number;
@@ -69,6 +103,29 @@ function exactKeys(value: Record<string, unknown>, allowed: readonly string[]) {
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
     throw new CrmIcpV2ClientError(502, "CRM_ICP_RESPONSE_INVALID");
   }
+}
+
+function text(value: unknown, nullable = false) {
+  if (nullable && value === null) return null;
+  if (typeof value !== "string" || value.length > 2_000) throw new CrmIcpV2ClientError(502, "CRM_ICP_RESPONSE_INVALID");
+  return value;
+}
+
+function address(value: unknown): IcpCaseAddress {
+  const row = object(value);
+  exactKeys(row, ["countryCode", "provinceState", "cityMunicipality", "sector", "streetAndNumber", "buildingResidential", "floorUnit", "arrivalReference", "locationContactName", "locationContactPhone"]);
+  return Object.freeze({
+    countryCode: text(row.countryCode) as string,
+    provinceState: text(row.provinceState, true),
+    cityMunicipality: text(row.cityMunicipality) as string,
+    sector: text(row.sector, true),
+    streetAndNumber: text(row.streetAndNumber, true),
+    buildingResidential: text(row.buildingResidential, true),
+    floorUnit: text(row.floorUnit, true),
+    arrivalReference: text(row.arrivalReference, true),
+    locationContactName: text(row.locationContactName, true),
+    locationContactPhone: text(row.locationContactPhone, true),
+  });
 }
 
 function normalizePhone(value: string) {
@@ -256,6 +313,57 @@ export class CrmIcpV2Api {
       throw new CrmIcpV2ClientError(response.status, code, typeof data.matchFingerprint === "string" && /^[0-9a-f]{64}$/.test(data.matchFingerprint) ? data.matchFingerprint : null);
     }
     return payload;
+  }
+
+  private async get(path: string, signal?: AbortSignal) {
+    const token = this.tokenProvider();
+    if (!token) throw new CrmIcpV2ClientError(401, "COMMERCIAL_AUTH_REQUIRED");
+    const membershipRef = this.membershipRefProvider();
+    if (!membershipRef || !UUID_V4.test(membershipRef)) throw new CrmIcpV2ClientError(400, "MT01B_MEMBERSHIP_SELECTION_INVALID");
+    const response = await this.fetchImpl(`${API_ROOT}${path}`, {
+      method: "GET",
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "X-OSI-Membership-Ref": membershipRef },
+      credentials: "same-origin",
+      cache: "no-store",
+      referrerPolicy: "no-referrer",
+      signal,
+    });
+    assertPrivateJson(response);
+    const payload = await readJson(response);
+    if (!response.ok) {
+      const row = object(payload);
+      throw new CrmIcpV2ClientError(response.status, typeof row.error === "string" ? row.error : "CRM_ICP_REQUEST_FAILED");
+    }
+    return payload;
+  }
+
+  async case(caseRef: string, signal?: AbortSignal): Promise<IcpCaseDetail> {
+    if (!UUID_V4.test(caseRef)) throw new CrmIcpV2ClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+    const root = object(await this.get(`/pipeline-cases/${encodeURIComponent(caseRef)}`, signal));
+    exactKeys(root, ["ok", "data"]);
+    const data = object(root.data);
+    const required = ["caseRef", "caseCode", "status", "version", "mode", "serviceType", "volume", "requiresSurvey", "surveyMethod", "intakeChannel", "clientProfileType", "requirementNotes", "serviceDefinitionStatus", "surveyDecisionStatus", "ownerName", "caseContact", "client", "route", "createdAt", "updatedAt"];
+    exactKeys(data, required);
+    if (root.ok !== true || typeof data.caseRef !== "string" || !UUID_V4.test(data.caseRef) || typeof data.caseCode !== "string" || typeof data.status !== "string" || !Number.isSafeInteger(data.version) || !["LOCAL", "EXPORT", "IMPORT"].includes(String(data.mode)) || typeof data.serviceType !== "string" || typeof data.requiresSurvey !== "boolean" || !["PENDING", "DEFINED"].includes(String(data.serviceDefinitionStatus)) || !["PENDING", "DEFINED"].includes(String(data.surveyDecisionStatus))) throw new CrmIcpV2ClientError(502, "CRM_ICP_RESPONSE_INVALID");
+    const volume = object(data.volume); exactKeys(volume, ["status", "estimatedCbm", "source"]);
+    const contact = object(data.caseContact); exactKeys(contact, ["displayName", "phone", "email"]);
+    const route = object(data.route); exactKeys(route, ["contractVersion", "revision", "destinationStatus", "origin", "destination", "additionalStops"]);
+    if (!Number.isSafeInteger(route.contractVersion) || !Number.isSafeInteger(route.revision) || !["CONFIRMED", "APPROXIMATE", "PENDING"].includes(String(route.destinationStatus)) || !Array.isArray(route.additionalStops) || (volume.estimatedCbm !== null && typeof volume.estimatedCbm !== "number")) throw new CrmIcpV2ClientError(502, "CRM_ICP_RESPONSE_INVALID");
+    let client: IcpCaseDetail["client"] = null;
+    if (data.client !== null) {
+      const row = object(data.client); exactKeys(row, ["clientRef", "displayName", "type", "status"]);
+      if (typeof row.clientRef !== "string" || !UUID_V4.test(row.clientRef)) throw new CrmIcpV2ClientError(502, "CRM_ICP_RESPONSE_INVALID");
+      client = Object.freeze({ clientRef: row.clientRef, displayName: text(row.displayName) as string, type: text(row.type) as string, status: text(row.status) as string });
+    }
+    return Object.freeze({
+      caseRef: data.caseRef, caseCode: text(data.caseCode) as string, status: text(data.status) as string, version: Number(data.version), mode: data.mode as IcpCaseDetail["mode"], serviceType: text(data.serviceType) as string,
+      volume: Object.freeze({ status: text(volume.status) as string, estimatedCbm: volume.estimatedCbm as number | null, source: text(volume.source, true) }),
+      requiresSurvey: data.requiresSurvey, surveyMethod: text(data.surveyMethod) as string, intakeChannel: text(data.intakeChannel) as string, clientProfileType: text(data.clientProfileType) as string,
+      requirementNotes: text(data.requirementNotes, true), serviceDefinitionStatus: data.serviceDefinitionStatus as IcpCaseDetail["serviceDefinitionStatus"], surveyDecisionStatus: data.surveyDecisionStatus as IcpCaseDetail["surveyDecisionStatus"], ownerName: text(data.ownerName, true),
+      caseContact: Object.freeze({ displayName: text(contact.displayName) as string, phone: text(contact.phone) as string, email: text(contact.email, true) }), client,
+      route: Object.freeze({ contractVersion: Number(route.contractVersion), revision: Number(route.revision), destinationStatus: route.destinationStatus as IcpDestinationStatus, origin: address(route.origin), destination: route.destination === null ? null : address(route.destination), additionalStops: Object.freeze(route.additionalStops.map(address)) }),
+      createdAt: text(data.createdAt) as string, updatedAt: text(data.updatedAt) as string,
+    });
   }
 
   async searchClients(query: string, signal?: AbortSignal) {

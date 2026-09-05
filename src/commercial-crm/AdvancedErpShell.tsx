@@ -35,6 +35,9 @@ type Props = Readonly<{
   costingEnabled: boolean;
   quoteAccess: QuoteUiAccess;
   quoteEnabled: boolean;
+  surveyEnabled: boolean;
+  materialsEnabled: boolean;
+  toolsEnabled: boolean;
   userName?: string;
   onNavigate(pathname: string): void;
   onLogout(): void;
@@ -58,7 +61,7 @@ const NAVIGATION: readonly NavigationItem[] = Object.freeze([
   { label: "Recursos Humanos", icon: Users, functional: false },
 ]);
 
-function Navigation({ collapsed, onCommercial, onHub }: { collapsed: boolean; onCommercial(): void; onHub(): void }) {
+function Navigation({ collapsed, materialsEnabled, toolsEnabled, onCommercial, onHub, onMaterials, onTools }: { collapsed: boolean; materialsEnabled: boolean; toolsEnabled: boolean; onCommercial(): void; onHub(): void; onMaterials(): void; onTools(): void }) {
   return <nav aria-label="Módulos del ERP" className="flex-1 overflow-y-auto px-3 py-4">
     <button
       type="button"
@@ -86,17 +89,22 @@ function Navigation({ collapsed, onCommercial, onHub }: { collapsed: boolean; on
           {!collapsed && <><span className="flex-1">{label}</span><span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] uppercase text-blue-100/65">En integración</span></>}
         </div>
       ))}
+      {(materialsEnabled || toolsEnabled) && <div className="mt-3 border-t border-white/15 pt-3"><p className={`px-3 pb-2 text-[10px] font-bold uppercase tracking-[.18em] text-blue-200/65 ${collapsed ? "sr-only" : ""}`}>Recursos</p>{materialsEnabled && <button type="button" onClick={onMaterials} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-blue-50 hover:bg-white/10"><Warehouse className="h-4 w-4 shrink-0" />{!collapsed && <span>Materiales e Inventario</span>}</button>}{toolsEnabled && <button type="button" onClick={onTools} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-blue-50 hover:bg-white/10"><Wrench className="h-4 w-4 shrink-0" />{!collapsed && <span>Herramientas y Equipos</span>}</button>}</div>}
     </div>
   </nav>;
 }
 
-function Sidebar({ collapsed, userName, role, onCollapse, onCommercial, onHub, onLogout }: {
+function Sidebar({ collapsed, userName, role, materialsEnabled, toolsEnabled, onCollapse, onCommercial, onHub, onMaterials, onTools, onLogout }: {
   collapsed: boolean;
   userName?: string;
   role: string;
+  materialsEnabled: boolean;
+  toolsEnabled: boolean;
   onCollapse(): void;
   onCommercial(): void;
   onHub(): void;
+  onMaterials(): void;
+  onTools(): void;
   onLogout(): void;
 }) {
   return <aside className={`flex h-full flex-col bg-[#003366] text-white shadow-xl transition-[width] ${collapsed ? "w-[76px]" : "w-[286px]"}`}>
@@ -104,7 +112,7 @@ function Sidebar({ collapsed, userName, role, onCollapse, onCommercial, onHub, o
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-lg font-black text-[#003366]">OS</span>
       {!collapsed && <div className="min-w-0"><p className="truncate text-lg font-black tracking-tight">OSi Plus ERP</p><p className="text-[10px] uppercase tracking-[.18em] text-blue-200">Gestión integrada</p></div>}
     </div>
-    <Navigation collapsed={collapsed} onCommercial={onCommercial} onHub={onHub} />
+    <Navigation collapsed={collapsed} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} onCommercial={onCommercial} onHub={onHub} onMaterials={onMaterials} onTools={onTools} />
     <div className="border-t border-white/15 p-3">
       <div className={`mb-2 flex items-center gap-3 rounded-lg bg-white/5 p-2.5 ${collapsed ? "justify-center" : ""}`}>
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-400 font-black text-[#003366]"><UserRound className="h-4 w-4" /></span>
@@ -116,7 +124,7 @@ function Sidebar({ collapsed, userName, role, onCollapse, onCommercial, onHub, o
   </aside>;
 }
 
-export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, userName, onNavigate, onLogout, onUnauthorized }: Props) {
+export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, materialsEnabled, toolsEnabled, userName, onNavigate, onLogout, onUnauthorized }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const goCommercial = () => {
@@ -127,7 +135,8 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
     setMobileOpen(false);
     onNavigate("/hub");
   };
-  const sidebar = <Sidebar collapsed={collapsed} userName={userName} role={role} onCollapse={() => setCollapsed((value) => !value)} onCommercial={goCommercial} onHub={goHub} onLogout={onLogout} />;
+  const goResource = (pathname: string) => { setMobileOpen(false); onNavigate(pathname); };
+  const sidebar = <Sidebar collapsed={collapsed} userName={userName} role={role} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} onCollapse={() => setCollapsed((value) => !value)} onCommercial={goCommercial} onHub={goHub} onMaterials={() => goResource("/materials")} onTools={() => goResource("/assets")} onLogout={onLogout} />;
 
   return <div className="flex min-h-screen bg-[#f4f7fb]" data-testid="advanced-erp-shell">
     <div className="sticky top-0 hidden h-screen lg:block">{sidebar}</div>
@@ -151,11 +160,13 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
           costingEnabled={costingEnabled}
           quoteAccess={quoteAccess}
           quoteEnabled={quoteEnabled}
+          surveyEnabled={surveyEnabled}
           role={role}
           caseRef={caseRef}
           onOpenNavigation={() => setMobileOpen(true)}
           onBack={goHub}
           onOpenCase={(nextCaseRef) => onNavigate(`/commercial/cases/${nextCaseRef}`)}
+          onNavigate={onNavigate}
           onReturnToInbox={goCommercial}
           onUnauthorized={onUnauthorized}
         />

@@ -6,6 +6,7 @@ import { CrmIcpV2Error } from "./crmIcpV2Domain.js";
 import { CrmIcpV2ApiError } from "./crmIcpV2ApiDomain.js";
 import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { isExactV17CommercialCrmPreviewServerEnvironment } from "../../shared/v17CommercialCrmPreview.js";
+import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
 
 export const CRM_ICP_V2_API_MODES = Object.freeze({
   DISABLED: "DISABLED",
@@ -49,9 +50,9 @@ export function resolveCrmIcpV2ApiMode(env = process.env, req = undefined) {
   }
   const apiOnlyPreview = env.VERCEL === "1"
     && env.VERCEL_ENV === "preview"
-    && env.VERCEL_GIT_COMMIT_REF === CRM_ICP_V2_API_PREVIEW_BRANCH
+    && (env.VERCEL_GIT_COMMIT_REF === CRM_ICP_V2_API_PREVIEW_BRANCH || isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF))
     && env.CRM_ICP_V2_API_BATCH === CRM_ICP_V2_API_PREVIEW_BATCH
-    && historicalCrmDisabled
+    && (isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF) || historicalCrmDisabled)
     && env.COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED"
     && env.MT01B_TENANT_SWITCH_ENABLED === "false"
     && env.VITE_MT01B2_CLIENT_ENABLED === "false"

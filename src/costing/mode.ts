@@ -1,3 +1,5 @@
+import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
+
 export const COSTING_UI_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" } as const);
 export type CostingUiMode = typeof COSTING_UI_MODES[keyof typeof COSTING_UI_MODES];
 
@@ -11,7 +13,7 @@ export function resolveCostingUiMode(environment: Readonly<Record<string, unknow
   return value === "PREVIEW_REHEARSAL"
     && environment.VITE_COSTING_UI_BATCH === "V17-COSTING-08A-PREVIEW"
     && environment.VITE_VERCEL_ENV === "preview"
-    && environment.VITE_VERCEL_GIT_COMMIT_REF === "feature/v17-costing"
+    && (environment.VITE_VERCEL_GIT_COMMIT_REF === "feature/v17-costing" || isV17ConsolidatedPreviewBranch(environment.VITE_VERCEL_GIT_COMMIT_REF))
     ? value
     : "DISABLED";
 }

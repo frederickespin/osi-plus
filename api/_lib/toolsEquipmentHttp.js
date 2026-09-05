@@ -4,6 +4,7 @@ import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { ToolsEquipmentError } from "./toolsEquipmentContract.js";
 import { mapToolsEquipmentDatabaseError } from "./toolsEquipmentDomain.js";
+import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
 
 export const TOOLS_EQUIPMENT_API_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" });
 export const TOOLS_EQUIPMENT_PREVIEW_BRANCH = "feature/v17-tools-equipment";
@@ -16,7 +17,7 @@ export function resolveToolsEquipmentApiMode(env = process.env, req = undefined)
   if (!Object.values(TOOLS_EQUIPMENT_API_MODES).includes(mode)) fail("ASSET_CONFIGURATION_INVALID", 503);
   if (mode === "DISABLED") fail("ASSET_API_DISABLED", 409);
   if (mode === "LOCAL_ONLY") { if (hasVercel(env) || !isRealLoopbackRequest(req)) fail("ASSET_CONFIGURATION_INVALID", 503); return mode; }
-  const valid = env.VERCEL === "1" && env.VERCEL_ENV === "preview" && env.VERCEL_GIT_COMMIT_REF === TOOLS_EQUIPMENT_PREVIEW_BRANCH
+  const valid = env.VERCEL === "1" && env.VERCEL_ENV === "preview" && (env.VERCEL_GIT_COMMIT_REF === TOOLS_EQUIPMENT_PREVIEW_BRANCH || isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF))
     && env.TOOLS_EQUIPMENT_API_BATCH === TOOLS_EQUIPMENT_PREVIEW_BATCH && env.MT01B_AUTH_MODE === "LEGACY"
     && env.MT01B_TENANT_SWITCH_ENABLED === "false" && env.VITE_MT01B2_CLIENT_ENABLED === "false";
   if (!valid) fail("ASSET_CONFIGURATION_INVALID", 503);

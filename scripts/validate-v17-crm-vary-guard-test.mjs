@@ -9,6 +9,8 @@ const paths = [
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/crmOwnerCatalogHttp.js",
   "api/_lib/crmIcpV2ApiHttp.js",
+  "api/_lib/crmServicesHttp.js",
+  "api/_lib/crmSurveyHttp.js",
   ".github/workflows/ci.yml",
 ];
 const baseline = Object.fromEntries(paths.map((path) => [path, readFileSync(resolve(path), "utf8")]));
@@ -25,6 +27,18 @@ const canonicalRoutes = [
   "api/crm/icp-v2/clients/search.js",
   "api/crm/icp-v2/pipeline-cases/index.js",
   "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
+  "api/crm/services/cases/[caseRef].js",
+  "api/crm/services/catalog/index.js",
+  "api/crm/services/catalog/[serviceRef].js",
+  "api/crm/services/defaults/index.js",
+  "api/crm/survey/assignments/index.js",
+  "api/crm/survey/assignments/[assignmentRef].js",
+  "api/crm/survey/catalog/index.js",
+  "api/crm/survey/drafts/[surveyRef].js",
+  "api/crm/survey/drafts/[surveyRef]/photos.js",
+  "api/crm/survey/drafts/[surveyRef]/publish.js",
+  "api/crm/survey/publications/[publicationRef].js",
+  "api/crm/survey/publications/[publicationRef]/pdf.js",
 ].sort();
 
 let assertions = 0;

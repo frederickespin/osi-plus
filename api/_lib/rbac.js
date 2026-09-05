@@ -107,6 +107,16 @@ export const PERMS = Object.freeze({
   ASSETS_EXTERNAL_VIEW: "assets:external:view",
   ASSETS_EXTERNAL_MANAGE: "assets:external:manage",
 
+  // V17 Logistics Engine. Scope and actions are explicit grants; roles do not imply them.
+  LOGISTICS_PLAN_VIEW: "logistics:plan:view",
+  LOGISTICS_PLAN_CALCULATE: "logistics:plan:calculate",
+  LOGISTICS_PLAN_PUBLISH: "logistics:plan:publish",
+  LOGISTICS_PLAN_TENANT: "logistics:plan:tenant",
+  LOGISTICS_PLAN_OVERRIDE: "logistics:plan:override",
+  LOGISTICS_PLAN_RESOLVE: "logistics:plan:resolve",
+  LOGISTICS_RULES_VIEW: "logistics:rules:view",
+  LOGISTICS_RULES_MANAGE: "logistics:rules:manage",
+
   // HR
   HR_VIEW: "hr:view",
   HR_KPI: "hr:kpi",
@@ -183,6 +193,17 @@ const EXPLICIT_ASSET_PERMISSIONS = new Set([
   PERMS.ASSETS_EXTERNAL_MANAGE,
 ]);
 
+const EXPLICIT_LOGISTICS_PERMISSIONS = new Set([
+  PERMS.LOGISTICS_PLAN_VIEW,
+  PERMS.LOGISTICS_PLAN_CALCULATE,
+  PERMS.LOGISTICS_PLAN_PUBLISH,
+  PERMS.LOGISTICS_PLAN_TENANT,
+  PERMS.LOGISTICS_PLAN_OVERRIDE,
+  PERMS.LOGISTICS_PLAN_RESOLVE,
+  PERMS.LOGISTICS_RULES_VIEW,
+  PERMS.LOGISTICS_RULES_MANAGE,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
@@ -190,7 +211,8 @@ const ROLE_PERMS = {
     && !EXPLICIT_SERVICE_PERMISSIONS.has(permission)
     && !EXPLICIT_SURVEY_PERMISSIONS.has(permission)
     && !EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS.has(permission)
-    && !EXPLICIT_ASSET_PERMISSIONS.has(permission)),
+    && !EXPLICIT_ASSET_PERMISSIONS.has(permission)
+    && !EXPLICIT_LOGISTICS_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

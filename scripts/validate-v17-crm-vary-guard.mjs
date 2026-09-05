@@ -15,6 +15,18 @@ const EXPECTED_ROUTES = Object.freeze({
   "api/crm/icp-v2/clients/search.js": "createCrmIcpClientSearchHandler",
   "api/crm/icp-v2/pipeline-cases/index.js": "createCrmIcpV2CreateHandler",
   "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js": "createCrmIcpV2DetailHandler",
+  "api/crm/services/cases/[caseRef].js": "createCrmServicesHandler",
+  "api/crm/services/catalog/index.js": "createCrmServicesHandler",
+  "api/crm/services/catalog/[serviceRef].js": "createCrmServicesHandler",
+  "api/crm/services/defaults/index.js": "createCrmServicesHandler",
+  "api/crm/survey/assignments/index.js": "createCrmSurveyHandler",
+  "api/crm/survey/assignments/[assignmentRef].js": "createCrmSurveyHandler",
+  "api/crm/survey/catalog/index.js": "createCrmSurveyHandler",
+  "api/crm/survey/drafts/[surveyRef].js": "createCrmSurveyHandler",
+  "api/crm/survey/drafts/[surveyRef]/photos.js": "prepareCrmSurveyRequest",
+  "api/crm/survey/drafts/[surveyRef]/publish.js": "createCrmSurveyHandler",
+  "api/crm/survey/publications/[publicationRef].js": "createCrmSurveyHandler",
+  "api/crm/survey/publications/[publicationRef]/pdf.js": "prepareCrmSurveyRequest",
 });
 
 function invariant(condition, message) {
@@ -35,6 +47,8 @@ function readSources(root) {
     "api/_lib/pipelineCaseMutationHttp.js",
     "api/_lib/crmOwnerCatalogHttp.js",
     "api/_lib/crmIcpV2ApiHttp.js",
+    "api/_lib/crmServicesHttp.js",
+    "api/_lib/crmSurveyHttp.js",
     ".github/workflows/ci.yml",
   ];
   return Object.fromEntries(paths.map((path) => [path, readFileSync(resolve(root, path), "utf8")]));
@@ -64,6 +78,8 @@ export function validateV17CrmVaryGuard({
   const mutationHttp = sources["api/_lib/pipelineCaseMutationHttp.js"];
   const ownerHttp = sources["api/_lib/crmOwnerCatalogHttp.js"];
   const icpApiHttp = sources["api/_lib/crmIcpV2ApiHttp.js"];
+  const servicesHttp = sources["api/_lib/crmServicesHttp.js"];
+  const surveyHttp = sources["api/_lib/crmSurveyHttp.js"];
   const workflow = sources[".github/workflows/ci.yml"];
 
   invariant(/CRM_REQUIRED_VARY_TOKENS\s*=\s*Object\.freeze\(\["Authorization", "Origin"\]\)/.test(helper), "tokens requeridos alterados");
@@ -77,6 +93,8 @@ export function validateV17CrmVaryGuard({
   before(mutationHttp, "setCrmPrivateHeaders(res);", "requireCrmPipelineMutationsLocal(env);", "mutaciones");
   before(ownerHttp, "setCrmPrivateHeaders(res);", "requireCrmPipelineMutationsLocal(env);", "owner catalog");
   before(icpApiHttp, "setCrmPrivateHeaders(res);", "resolveCrmIcpV2ApiMode(env, req);", "API ICP v2");
+  before(servicesHttp, "setCrmPrivateHeaders(res);", "resolveCrmServicesApiMode(env, req);", "servicios");
+  before(surveyHttp, "setCrmPrivateHeaders(res);", "resolveCrmSurveyApiMode(env, req);", "Survey");
   invariant(!/function appendVary\(/.test(mutationHttp), "mutaciones conservan combinador Vary paralelo");
 
   const expected = Object.keys(EXPECTED_ROUTES).sort();
@@ -96,7 +114,7 @@ export function validateV17CrmVaryGuard({
     invariant(workflow.includes(command), `CI no exige ${command}`);
   }
 
-  return Object.freeze({ ok: true, routes: routes.length, wrappers: 4, requiredVary: ["Authorization", "Origin"] });
+  return Object.freeze({ ok: true, routes: routes.length, wrappers: 6, requiredVary: ["Authorization", "Origin"] });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

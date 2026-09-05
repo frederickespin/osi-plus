@@ -30,8 +30,15 @@ try {
   const first = await createQuoteProposal(prisma, contexts[0], input); assert.equal(first.position, 1); assert.match(first.reference, /^Q-\d{4}-\d{6}-A$/); assertions += 2;
   const replay = await createQuoteProposal(prisma, contexts[0], input); assert.equal(replay.proposalRef, first.proposalRef); assertions += 1;
   await assert.rejects(createQuoteProposal(prisma, contexts[0], { ...input, payloadHash: "0".repeat(64), proposalName: "Manipulada" }), /QUOTE_PAYLOAD_HASH_MISMATCH|QUOTE_IDEMPOTENCY_CONFLICT/); assertions += 1;
-  const second = await createQuoteProposal(prisma, contexts[0], signed("QUOTE_PROPOSAL_CREATE", draft(costings[0], 2))); const third = await createQuoteProposal(prisma, contexts[0], signed("QUOTE_PROPOSAL_CREATE", draft(costings[0], 3))); assert.notEqual(second.reference, third.reference); assertions += 1;
-  await assert.rejects(createQuoteProposal(prisma, contexts[0], signed("QUOTE_PROPOSAL_CREATE", draft(costings[0], 1))), /QUOTE_PROPOSAL_LIMIT_REACHED/); assertions += 1;
+  const second = await createQuoteProposal(prisma, contexts[0], signed("QUOTE_PROPOSAL_CREATE", draft(costings[0], 2)));
+  const competingThird = await Promise.allSettled([
+    createQuoteProposal(prisma, contexts[0], signed("QUOTE_PROPOSAL_CREATE", draft(costings[0], 3))),
+    createQuoteProposal(prisma, contexts[0], signed("QUOTE_PROPOSAL_CREATE", draft(costings[0], 3))),
+  ]);
+  assert.equal(competingThird.filter((row) => row.status === "fulfilled").length, 1);
+  assert.equal(competingThird.filter((row) => row.status === "rejected").length, 1);
+  const third = competingThird.find((row) => row.status === "fulfilled").value;
+  assert.notEqual(second.reference, third.reference); assertions += 3;
   const ready = await publishQuoteProposal(prisma, contexts[0], signed("QUOTE_PROPOSAL_PUBLISH", { proposalRef: first.proposalRef, expectedRevision: first.revision }));
   const sent = await sendQuoteProposal(prisma, contexts[0], signed("QUOTE_PROPOSAL_SEND", { proposalRef: first.proposalRef, expectedRevision: ready.revision, channel: "MANUAL", recipient: { kind: "RECIPIENT_ON_FILE", displayName: null, reference: null, present: true }, evidenceRef: null }));
   const accepted = await recordQuoteDecision(prisma, contexts[0], signed("QUOTE_CLIENT_DECISION", { proposalRef: first.proposalRef, expectedRevision: sent.revision, decision: "ACCEPTED", method: "SIGNED_DOCUMENT", decidedBy: { kind: "CLIENT_REPRESENTATIVE", displayName: null, reference: null, present: true }, evidenceRef: "DOC-TEST", reason: null })); assert.equal(accepted.state, "ACCEPTED"); assert.equal(accepted.operationalHandoff.caseRef, costings[0].pipelineCase.publicRef); assertions += 2;

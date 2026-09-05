@@ -46,7 +46,7 @@ Validaciones PostgreSQL 18 realizadas localmente:
 |---|---:|
 | Contrato Quote | 9/9 |
 | HTTP/gates | 13/13 |
-| Dominio PostgreSQL | 17/17 |
+| Dominio PostgreSQL | 18/18 |
 | Guardia Quote y negativas | 13/13 |
 | Inventario CORS | 121/121; 94 protegidas |
 | Negativas CORS | 29/29 |

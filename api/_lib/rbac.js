@@ -128,6 +128,17 @@ export const PERMS = Object.freeze({
   COSTING_RULES_VIEW: "costing:rules:view",
   COSTING_RULES_MANAGE: "costing:rules:manage",
 
+  // V17 Quote. Commercial quote scope and actions are explicit grants; roles do not imply them.
+  QUOTE_VIEW: "quote:view",
+  QUOTE_CREATE: "quote:create",
+  QUOTE_UPDATE: "quote:update",
+  QUOTE_PUBLISH: "quote:publish",
+  QUOTE_SEND: "quote:send",
+  QUOTE_RECORD_CLIENT_DECISION: "quote:record-client-decision",
+  QUOTE_OVERRIDE_PRICE: "quote:override-price",
+  QUOTE_INTERNAL_COST_VIEW: "quote:internal-cost:view",
+  QUOTE_TENANT: "quote:tenant",
+
   // HR
   HR_VIEW: "hr:view",
   HR_KPI: "hr:kpi",
@@ -227,6 +238,18 @@ const EXPLICIT_COSTING_PERMISSIONS = new Set([
   PERMS.COSTING_RULES_MANAGE,
 ]);
 
+const EXPLICIT_QUOTE_PERMISSIONS = new Set([
+  PERMS.QUOTE_VIEW,
+  PERMS.QUOTE_CREATE,
+  PERMS.QUOTE_UPDATE,
+  PERMS.QUOTE_PUBLISH,
+  PERMS.QUOTE_SEND,
+  PERMS.QUOTE_RECORD_CLIENT_DECISION,
+  PERMS.QUOTE_OVERRIDE_PRICE,
+  PERMS.QUOTE_INTERNAL_COST_VIEW,
+  PERMS.QUOTE_TENANT,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
@@ -236,7 +259,8 @@ const ROLE_PERMS = {
     && !EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS.has(permission)
     && !EXPLICIT_ASSET_PERMISSIONS.has(permission)
     && !EXPLICIT_LOGISTICS_PERMISSIONS.has(permission)
-    && !EXPLICIT_COSTING_PERMISSIONS.has(permission)),
+    && !EXPLICIT_COSTING_PERMISSIONS.has(permission)
+    && !EXPLICIT_QUOTE_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

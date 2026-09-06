@@ -13,5 +13,11 @@ rejects("historial append-only", "prisma/migrations/20260912010000_v17_commercia
 rejects("asociación no hard-coded", "api/_lib/commercialRelationshipsDomain.js", (v) => `${v}\nconst association = 'FIDI';`);
 rejects("producción apagada", "api/_lib/commercialRelationshipsHttp.js", (v) => v.replace("productionApiEnabled = false", "productionApiEnabled = true"));
 rejects("Quote consume snapshot", "api/_lib/quoteDomain.js", (v) => v.replaceAll("resolveCommercialQuoteAuthority", "ignoreCommercialQuoteAuthority"));
-rejects("CORS inventariado", "scripts/protected-cors-route-inventory.json", (v) => v.replace('      "/api/commercial-relationships/entities",\n', ""));
+rejects("CORS inventariado", "scripts/protected-cors-route-inventory.json", (v) => {
+  const inventory = JSON.parse(v);
+  inventory.categories.protectedSameOrigin = inventory.categories.protectedSameOrigin.filter(
+    (route) => route !== "/api/commercial-relationships/entities",
+  );
+  return JSON.stringify(inventory);
+});
 console.log(JSON.stringify({ ok: true, negativeCases: passed }));

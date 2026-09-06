@@ -109,6 +109,8 @@
     "rollback:v17-commercial-relationships": "node scripts/v17-commercial-relationships-rollback.mjs",
     "test:v17-commercial-relationships:browser": "playwright test -c playwright.v17-commercial-relationships.config.ts",
     "guard:v17-commercial-relationships": "node scripts/validate-v17-commercial-relationships-guard.mjs && node scripts/validate-v17-commercial-relationships-guard-test.mjs",
+    "seed:v17-commercial-relationships-preview": "node scripts/v17-commercial-relationships-preview-seed.mjs",
+    "verify:v17-commercial-relationships-preview": "node scripts/v17-commercial-relationships-preview-verify.mjs",
     "test:v17-admin-tenant-memberships:http": "node scripts/v17-admin-tenant-memberships-http-test.mjs",
     "test:v17-admin-tenant-memberships": "node scripts/v17-admin-tenant-memberships-test.mjs",
     "test:v17-admin-membership-bootstrap": "node scripts/v17-admin-membership-bootstrap-test.mjs",

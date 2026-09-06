@@ -76,8 +76,11 @@ const adminPermissions = [
   "logistics:plan:view", "logistics:plan:calculate", "logistics:plan:publish", "logistics:plan:tenant", "logistics:plan:override", "logistics:plan:resolve", "logistics:rules:view", "logistics:rules:manage",
   "costing:view", "costing:calculate", "costing:publish", "costing:tenant", "costing:override", "costing:authorize-margin", "costing:resolve", "costing:rules:view", "costing:rules:manage",
   "quote:view", "quote:create", "quote:update", "quote:publish", "quote:send", "quote:record-client-decision", "quote:override-price", "quote:internal-cost:view", "quote:tenant",
+  "commercial:relationships:view", "commercial:relationships:manage", "commercial:tariffs:view", "commercial:tariffs:manage",
+  "commercial:referrals:view", "commercial:referrals:manage", "commercial:commissions:view", "commercial:commissions:manage",
+  "commercial:associations:view", "commercial:associations:manage",
 ];
-const evaluatorPermissions = ["pipeline:view", "services:case:view", "survey:assignment:view", "survey:perform", "survey:publish", "survey:read", "survey:schedule:view"];
+const evaluatorPermissions = ["pipeline:view", "services:case:view", "survey:assignment:view", "survey:perform", "survey:publish", "survey:read", "survey:schedule:view", "commercial:relationships:view"];
 
 async function ensureSchedulingPolicy(tenant, actor, evaluator) {
   const configuration = {
@@ -349,7 +352,7 @@ async function main() {
   exact(identity[0]?.database, EXPECTED_DATABASE, "DATABASE_RUNTIME");
   exact(identity[0]?.branch, EXPECTED_BRANCH, "BRANCH_RUNTIME");
   const migrations = await prisma.$queryRawUnsafe(`SELECT migration_name, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name`);
-  if (migrations.length !== 30 || migrations.some((row) => !row.finished_at || row.rolled_back_at || row.applied_steps_count !== 1)) fail("MIGRATIONS_NOT_30_COMPLETE");
+  if (migrations.length !== 31 || migrations.some((row) => !row.finished_at || row.rolled_back_at || row.applied_steps_count !== 1)) fail("MIGRATIONS_NOT_31_COMPLETE");
 
   const tenant = await prisma.tenant.upsert({ where: { code: TENANT_CODE }, update: {}, create: { code: TENANT_CODE, name: "International Packers — Preview sintético", countryCode: "DO", defaultCurrency: "DOP", provisioningSource: "MANUAL", provisioningBatchId: EXPECTED_BATCH } });
   const crossTenant = await prisma.tenant.upsert({ where: { code: SECOND_TENANT_CODE }, update: {}, create: { code: SECOND_TENANT_CODE, name: "Tenant B — Preview sintético", countryCode: "US", defaultCurrency: "USD", provisioningSource: "MANUAL", provisioningBatchId: EXPECTED_BATCH } });
@@ -409,7 +412,7 @@ async function main() {
   assert.equal(await prisma.pipelineCase.count({ where: { tenantId: crossTenant.id, id: crossTenantSentinel.id, flags: { has: "PREVIEW_CROSS_TENANT_SENTINEL" } } }), 1);
   const pendingPlan = plans.get("PV10B-C-PENDING").plan;
   assert.ok(pendingPlan.issues.some((item) => item.code === "EXTERNAL_PRICE_PENDING" && item.severity === "BLOCKER"));
-  console.log(JSON.stringify({ ok: true, batch: EXPECTED_BATCH, migrations: "30/30", scenarios: 4, securitySentinels: 1, syntheticOnly: true, idempotent: true, counts, scenarioCBlocker: true, scenarioDAccepted: scenarioDQuotes.accepted.state === "ACCEPTED", schedulingPolicy: "ACTIVE", productionApiEnabled: false }));
+  console.log(JSON.stringify({ ok: true, batch: EXPECTED_BATCH, migrations: "31/31", scenarios: 4, securitySentinels: 1, syntheticOnly: true, idempotent: true, counts, scenarioCBlocker: true, scenarioDAccepted: scenarioDQuotes.accepted.state === "ACCEPTED", schedulingPolicy: "ACTIVE", productionApiEnabled: false }));
 }
 
 try { await main(); } finally { await prisma.$disconnect(); }

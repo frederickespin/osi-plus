@@ -8,7 +8,7 @@ export function resolveCommercialRelationshipsUiMode(env: Record<string, unknown
   if (raw === "PREVIEW_REHEARSAL"
     && env.VITE_COMMERCIAL_RELATIONSHIPS_BATCH === "V17-COMMERCIAL-RELATIONSHIPS-12A-PREVIEW"
     && env.VITE_VERCEL_ENV === "preview"
-    && env.VITE_VERCEL_GIT_COMMIT_REF === "feature/v17-commercial-relationships"
+    && env.VITE_VERCEL_GIT_COMMIT_REF === "feature/v17-consolidated-preview"
     && env.VITE_MT01B2_CLIENT_ENABLED === "false") return raw;
   return "DISABLED";
 }

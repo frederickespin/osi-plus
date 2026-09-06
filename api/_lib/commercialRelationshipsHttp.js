@@ -6,7 +6,7 @@ import { CommercialRelationshipsError } from "./commercialRelationshipsContract.
 import { mapCommercialRelationshipsDatabaseError } from "./commercialRelationshipsDomain.js";
 
 export const COMMERCIAL_RELATIONSHIPS_API_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" });
-export const COMMERCIAL_RELATIONSHIPS_PREVIEW_BRANCH = "feature/v17-commercial-relationships";
+export const COMMERCIAL_RELATIONSHIPS_PREVIEW_BRANCH = "feature/v17-consolidated-preview";
 export const COMMERCIAL_RELATIONSHIPS_PREVIEW_BATCH = "V17-COMMERCIAL-RELATIONSHIPS-12A-PREVIEW";
 export const productionApiEnabled = false;
 

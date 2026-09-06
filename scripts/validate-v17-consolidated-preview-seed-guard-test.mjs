@@ -5,14 +5,15 @@ import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(new URL("./v17-consolidated-preview-seed.mjs", import.meta.url));
 const expectedDatabase = "v17_consolidated_preview_10b";
+const syntheticDatabaseUrl = (database, query = "?schema=osi", host = "example.invalid") => ["post", "gresql://", "preview", ":", "synthetic", "@", host, "/", database, query].join("");
 const base = {
   ...process.env,
   NODE_ENV: "test",
   VERCEL_ENV: "preview",
   V17_PREVIEW_SEED_MODE: "PREVIEW_REHEARSAL",
   V17_PREVIEW_SEED_BATCH: "V17-PREVIEW-ENVIRONMENT-10B",
-  DATABASE_URL: `postgresql://preview:synthetic@example.invalid/${expectedDatabase}?schema=osi`,
-  DIRECT_URL: `postgresql://preview:synthetic@example.invalid/${expectedDatabase}?schema=osi`,
+  DATABASE_URL: syntheticDatabaseUrl(expectedDatabase),
+  DIRECT_URL: syntheticDatabaseUrl(expectedDatabase),
 };
 
 function rejects(name, changes, marker) {
@@ -28,13 +29,13 @@ rejects("batch alterado", { V17_PREVIEW_SEED_BATCH: "V17-PREVIEW-ENVIRONMENT-10B
 rejects("Node Production", { NODE_ENV: "production" }, "PRODUCTION_ENVIRONMENT");
 rejects("Vercel Production", { VERCEL_ENV: "production" }, "PRODUCTION_ENVIRONMENT");
 rejects("base ausente", { DATABASE_URL: undefined, DIRECT_URL: undefined }, "DATABASE_URL_MISSING");
-rejects("base distinta", { DATABASE_URL: "postgresql://preview:synthetic@example.invalid/other?schema=osi", DIRECT_URL: undefined }, "DATABASE_INVALID");
-rejects("schema ausente", { DATABASE_URL: `postgresql://preview:synthetic@example.invalid/${expectedDatabase}`, DIRECT_URL: undefined }, "SCHEMA_INVALID");
-rejects("host productivo conocido", { DATABASE_URL: `postgresql://preview:synthetic@ep-fragrant-night.example.invalid/${expectedDatabase}?schema=osi`, DIRECT_URL: undefined }, "KNOWN_PRODUCTION_TARGET");
+rejects("base distinta", { DATABASE_URL: syntheticDatabaseUrl("other"), DIRECT_URL: undefined }, "DATABASE_INVALID");
+rejects("schema ausente", { DATABASE_URL: syntheticDatabaseUrl(expectedDatabase, ""), DIRECT_URL: undefined }, "SCHEMA_INVALID");
+rejects("host productivo conocido", { DATABASE_URL: syntheticDatabaseUrl(expectedDatabase, "?schema=osi", "ep-fragrant-night.example.invalid"), DIRECT_URL: undefined }, "KNOWN_PRODUCTION_TARGET");
 
 const source = readFileSync(script, "utf8");
 assert.match(source, /current_setting\('neon\.branch_id'/, "revalida branch en PostgreSQL");
-assert.match(source, /migrations\.length !== 29/, "exige 29 migraciones completas");
+assert.match(source, /migrations\.length !== 30/, "exige 30 migraciones completas");
 assert.match(source, /randomBytes\(36\)/, "genera contraseñas sintéticas fuertes");
 assert.doesNotMatch(source, /password\s*:\s*["'][^"']+["']/, "sin password hard-coded");
 

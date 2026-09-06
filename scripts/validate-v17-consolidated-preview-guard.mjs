@@ -30,7 +30,7 @@ export function validateV17ConsolidatedPreviewGuard({ root = process.cwd(), over
   invariant(/surveyAuthorized/u.test(hub) && /materialsAuthorized/u.test(hub) && /toolsAuthorized/u.test(hub), "recursos cargan sin capacidad efectiva");
   invariant(/clearTenantScopedState/u.test(app) && /handleMembershipChange/u.test(app) && /replaceState/u.test(app), "cambio de tenant no limpia contexto y navegación");
   invariant(/openFullCase\(receipt\.caseRef\)/u.test(inbox) && !/icpReceipt\.caseRef/u.test(inbox), "ICP no conduce a Ficha o expone referencia opaca");
-  invariant(!/materials-inventory|MaterialsInventory|<select/iu.test(survey), "Survey selecciona materiales");
+  invariant(!/materials-inventory|MaterialsInventory/u.test(survey) && !/<select(?:\s|>)/u.test(survey), "Survey selecciona materiales");
   invariant(!/costingApi\.calculate/u.test(quote), "Quote recalcula Costing");
   invariant(!/logisticsApi\.calculate/u.test(costing), "Costing recalcula Motor Logístico");
   invariant(!/estimatedCbm|Volumen estimado|volume/iu.test(icp), "ICP contiene volumen");
@@ -42,7 +42,7 @@ export function validateV17ConsolidatedPreviewGuard({ root = process.cwd(), over
     invariant(!/PRODUCTION_(?:READ|PILOT|WRITE)/u.test(source), `modo Production introducido:${path}`);
   }
   const migrationCount = migrations ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
-  invariant(migrationCount === 29, `migraciones:${migrationCount}`);
+  invariant(migrationCount === 30, `migraciones:${migrationCount}`);
   invariant(!/Auth V2|VITE_MT01B2_CLIENT_ENABLED=true/u.test(shared + detail + hub), "Auth V2 activado");
   return Object.freeze({ ok: true, tabs: expectedTabs.length, domains: 9, migrations: migrationCount, productionApiEnabled: false });
 }

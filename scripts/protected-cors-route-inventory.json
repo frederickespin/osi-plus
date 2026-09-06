@@ -52,6 +52,7 @@
       "/api/crm/services/defaults",
       "/api/crm/survey/assignments",
       "/api/crm/survey/assignments/[assignmentRef]",
+      "/api/crm/survey/scheduling",
       "/api/crm/survey/catalog",
       "/api/crm/survey/drafts/[surveyRef]",
       "/api/crm/survey/drafts/[surveyRef]/photos",

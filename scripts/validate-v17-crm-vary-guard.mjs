@@ -21,6 +21,7 @@ const EXPECTED_ROUTES = Object.freeze({
   "api/crm/services/defaults/index.js": "createCrmServicesHandler",
   "api/crm/survey/assignments/index.js": "createCrmSurveyHandler",
   "api/crm/survey/assignments/[assignmentRef].js": "createCrmSurveyHandler",
+  "api/crm/survey/scheduling/index.js": "createCrmSurveyHandler",
   "api/crm/survey/catalog/index.js": "createCrmSurveyHandler",
   "api/crm/survey/drafts/[surveyRef].js": "createCrmSurveyHandler",
   "api/crm/survey/drafts/[surveyRef]/photos.js": "prepareCrmSurveyRequest",

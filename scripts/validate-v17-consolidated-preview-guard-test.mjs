@@ -19,9 +19,10 @@ rejects("ERP eager", files[2], (value) => value.replace("const AdvancedErpShell 
 rejects("recurso sin permiso", files[2], (value) => value.replaceAll("materialsAuthorized", "true"));
 rejects("ICP no navega", files[1], (value) => value.replaceAll("openFullCase(receipt.caseRef)", "setCreateOpen(false)"));
 rejects("Survey selecciona material", files[4], (value) => `${value}\nconst MaterialsInventory = {};`);
+rejects("Survey añade selector nativo de material", files[4], (value) => `${value}\nconst legacy = <select name="material" />;`);
 rejects("Quote recalcula Costing", files[6], (value) => `${value}\ncostingApi.calculate({});`);
 rejects("Costing recalcula Motor", files[7], (value) => `${value}\nlogisticsApi.calculate({});`);
 rejects("ICP añade volumen", files[5], (value) => `${value}\nconst estimatedCbm = 10;`);
 rejects("Production mode", "api/_lib/quoteHttp.js", (value) => `${value}\nconst PRODUCTION_PILOT = true;`);
-rejects("migración 30", files[0], (value) => value, { migrations: 30 });
+rejects("migración 31", files[0], (value) => value, { migrations: 31 });
 console.log(`V17-CONSOLIDATED-PREVIEW-10A guard negatives: ${cases.length}/${cases.length}`);

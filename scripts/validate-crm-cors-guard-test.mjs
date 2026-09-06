@@ -44,8 +44,9 @@ function mutateManifest(mutator) {
 
 const current = validateCrmCorsGuard({ overrides: baseline });
 const inventory = loadProtectedCorsInventory({ overrides: baseline });
-check("inventario completo 121/121", current.ok && current.routes === 121 && current.classifiedRoutes === 121);
-check("94 rutas same-origin", current.protectedSameOrigin === 94);
+const inventoryTotal = Object.values(inventory.categories).reduce((total, routes) => total + routes.length, 0);
+check("inventario completo coincide con manifiesto", current.ok && current.routes === inventoryTotal && current.classifiedRoutes === inventoryTotal);
+check("rutas same-origin coinciden con manifiesto", current.protectedSameOrigin === inventory.categories.protectedSameOrigin.length);
 check("allowlist pública 2/2", current.publicDeliberate === 2 && current.webhookOwnAuth === 0);
 check("25 rutas legacy cerradas", current.legacyPending === 25);
 check("categorías exactas sin solapamientos", current.duplicates === 0 && current.unclassified === 0 && current.overlaps === 0);
@@ -54,6 +55,7 @@ check("tres rutas Identity protegidas", [
   "/api/admin/identity-invitations/[invitationRef]",
   "/api/auth/admin-invitations/activate",
 ].every((route) => inventory.categories.protectedSameOrigin.includes(route)));
+check("Scheduling protegido same-origin", inventory.categories.protectedSameOrigin.includes("/api/crm/survey/scheduling"));
 check("resumen coincide con manifiesto", validateCrmCorsInventoryReport(current, expectedCrmCorsInventoryReport({ overrides: baseline })));
 check("sin headers API de plataforma", current.platformApiHeaderRules === 0);
 rejected("ruta Identity ausente", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {

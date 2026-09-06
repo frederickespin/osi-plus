@@ -9,6 +9,7 @@ import { calculateCosting, publishCosting, versionCostingRule } from "../api/_li
 import { costingHash } from "../api/_lib/costingContract.js";
 import { createQuoteProposal, publishQuoteProposal, recordQuoteDecision, sendQuoteProposal } from "../api/_lib/quoteDomain.js";
 import { quoteHash } from "../api/_lib/quoteContract.js";
+import { HISTORICAL_POLICY_TEMPLATE, schedulingHash } from "../api/_lib/surveySchedulingContract.js";
 
 const EXPECTED_DATABASE = "v17_consolidated_preview_10b";
 const EXPECTED_BRANCH = "br-mute-credit-ahxnvfx0";
@@ -64,6 +65,7 @@ const adminPermissions = [
   "membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status",
   "services:catalog:view", "services:catalog:manage", "services:case:view", "services:case:update",
   "survey:assignment:view", "survey:assignment:manage", "survey:perform", "survey:publish", "survey:read",
+  "survey:schedule:view", "survey:schedule:manage", "survey:schedule:assign", "survey:schedule:reschedule", "survey:visit-fee:view", "survey:visit-fee:approve",
   "inventory:catalog:view", "inventory:catalog:manage", "inventory:stock:view", "inventory:stock:receive",
   "inventory:stock:transfer", "inventory:stock:issue", "inventory:stock:adjust", "inventory:reservation:manage",
   "inventory:purchase:request", "inventory:purchase:approve", "inventory:recipes:view", "inventory:recipes:manage",
@@ -75,7 +77,23 @@ const adminPermissions = [
   "costing:view", "costing:calculate", "costing:publish", "costing:tenant", "costing:override", "costing:authorize-margin", "costing:resolve", "costing:rules:view", "costing:rules:manage",
   "quote:view", "quote:create", "quote:update", "quote:publish", "quote:send", "quote:record-client-decision", "quote:override-price", "quote:internal-cost:view", "quote:tenant",
 ];
-const evaluatorPermissions = ["pipeline:view", "services:case:view", "survey:assignment:view", "survey:perform", "survey:publish", "survey:read"];
+const evaluatorPermissions = ["pipeline:view", "services:case:view", "survey:assignment:view", "survey:perform", "survey:publish", "survey:read", "survey:schedule:view"];
+
+async function ensureSchedulingPolicy(tenant, actor, evaluator) {
+  const configuration = {
+    ...HISTORICAL_POLICY_TEMPLATE,
+    evaluatorCapabilities: [
+      { membershipRef: actor.membership.publicRef, capabilities: ["CAN_PERFORM_IN_PERSON_SURVEY", "CAN_PERFORM_VIRTUAL_SURVEY", "CAN_PERFORM_OUT_OF_AREA_VISIT", "CAN_APPROVE_VISIT_FEE", "CAN_PUBLISH_SURVEY"] },
+      { membershipRef: evaluator.membership.publicRef, capabilities: ["CAN_PERFORM_IN_PERSON_SURVEY", "CAN_PERFORM_VIRTUAL_SURVEY", "CAN_PERFORM_OUT_OF_AREA_VISIT", "CAN_PUBLISH_SURVEY"] },
+    ],
+  };
+  const existing = await prisma.surveySchedulePolicyVersion.findFirst({ where: { tenantId: tenant.id, state: "ACTIVE" } });
+  if (existing) {
+    if (existing.configurationHash !== schedulingHash(configuration)) fail("SCHEDULING_POLICY_MISMATCH");
+    return existing;
+  }
+  return prisma.surveySchedulePolicyVersion.create({ data: { tenantId: tenant.id, version: 1, state: "ACTIVE", timezone: "America/Santo_Domingo", configuration, configurationHash: schedulingHash(configuration), validFrom: new Date("2026-09-01T00:00:00.000Z"), createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
+}
 
 async function ensureIdentity(email, code, name, role, permissions, deniedPermissions = []) {
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -190,7 +208,7 @@ async function ensureCrossTenantSentinel(tenant) {
   });
 }
 
-async function ensureSurveyFixture(tenant, actor, evaluator, scenario, material) {
+async function ensureSurveyFixture(tenant, actor, evaluator, scenario, material, schedulingPolicy) {
   let catalog = await prisma.surveyCatalogVersion.findFirst({ where: { tenantId: tenant.id, version: 1 } });
   if (!catalog) catalog = await prisma.surveyCatalogVersion.create({ data: { tenantId: tenant.id, version: 1, status: "ACTIVE", activatedAt: new Date(), createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
   let area = await prisma.surveyAreaCatalogItem.findFirst({ where: { tenantId: tenant.id, catalogVersionId: catalog.id, code: "LIVING" } });
@@ -199,6 +217,10 @@ async function ensureSurveyFixture(tenant, actor, evaluator, scenario, material)
   if (!article) article = await prisma.surveyArticleCatalogItem.create({ data: { tenantId: tenant.id, catalogVersionId: catalog.id, articleRef: stableUuid("survey-article-fragile"), code: "FRAGILE-BOX", name: "Artículo frágil sintético", aliases: ["preview"], frequentAreaRefs: [area.areaRef], defaultVolumeM3: "1.25", defaultWeightKg: "25", weightSource: "CATALOG", sortOrder: 1 } });
   let assignment = await prisma.surveyAssignment.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id } });
   if (!assignment) assignment = await prisma.surveyAssignment.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, routeVersion: 1, evaluatorMembershipId: evaluator.membership.id, evaluatorUserId: evaluator.user.id, scheduledStart: new Date("2026-09-12T13:00:00Z"), scheduledEnd: new Date("2026-09-12T15:00:00Z"), status: "COMPLETED", arrivalAt: new Date("2026-09-12T12:58:00Z"), punctualityConfirmedAt: new Date("2026-09-12T12:58:00Z"), contextSnapshot: { synthetic: true, caseCode: scenario.caseCode }, instructionSnapshot: "Evidencia sintética Preview", createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
+  let decision = await prisma.surveyEvaluationDecision.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id }, orderBy: { version: "desc" } });
+  if (!decision) decision = await prisma.surveyEvaluationDecision.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, routeVersion: 1, version: 1, method: "IN_PERSON", commercialState: "COMPLETED", informationSource: "EVALUATOR", rationaleCode: "PREVIEW_SYNTHETIC", createdByMembershipId: evaluator.membership.id, createdByUserId: evaluator.user.id } });
+  if (!assignment.evaluationDecisionId) assignment = await prisma.surveyAssignment.update({ where: { id: assignment.id }, data: { evaluationDecisionId: decision.id, schedulePolicyId: schedulingPolicy.id, scheduleProfile: "INTERIOR_SHORT", zoneCode: "PREVIEW_INTERIOR_15KM", slotKey: "AFTERNOON" } });
+  if (!await prisma.surveyAssignmentEvent.findFirst({ where: { tenantId: tenant.id, assignmentId: assignment.id, eventType: "SCHEDULED" } })) await prisma.surveyAssignmentEvent.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, evaluationDecisionId: decision.id, assignmentId: assignment.id, eventType: "SCHEDULED", notificationRequired: true, afterSnapshot: { synthetic: true, profile: "INTERIOR_SHORT", slotKey: "AFTERNOON" }, actorMembershipId: actor.membership.id, actorUserId: actor.user.id } });
   let draft = await prisma.surveyDraft.findFirst({ where: { tenantId: tenant.id, assignmentId: assignment.id, revision: 1 } });
   if (!draft) draft = await prisma.surveyDraft.create({ data: { tenantId: tenant.id, assignmentId: assignment.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, catalogVersionId: catalog.id, routeVersion: 1, revision: 1, status: "PUBLISHED", notes: "Survey sintético publicado" } });
   if (!await prisma.surveyDraftItem.findFirst({ where: { tenantId: tenant.id, draftId: draft.id, sortOrder: 1 } })) {
@@ -246,6 +268,8 @@ async function ensureResources(tenant, actor) {
 
 async function ensureRules(context) {
   const logistics = [
+    { label: "log-rule-zone-metro", family: "ZONE", code: "PREVIEW_METRO_ZONE", name: "Zona visita METRO sintética", conditions: { distanceStatus: "KNOWN", maxDistanceKm: 30 }, result: { kind: "VISIT_ZONE", label: "Zona METRO", quantity: 1, unit: "visita", zoneType: "METRO", zoneCode: "METRO_PREVIEW", exclusiveKey: "VISIT_ZONE" } },
+    { label: "log-rule-zone-interior", family: "ZONE", code: "PREVIEW_INTERIOR_ZONE", name: "Zona visita INTERIOR sintética", conditions: { distanceStatus: "KNOWN", minDistanceKm: 30.000001 }, result: { kind: "VISIT_ZONE", label: "Zona INTERIOR", quantity: 1, unit: "visita", zoneType: "INTERIOR", zoneCode: "INTERIOR_PREVIEW", exclusiveKey: "VISIT_ZONE" } },
     { label: "log-rule-labor", family: "LABOR", code: "PREVIEW_CREW", name: "Cuadrilla sintética", conditions: {}, result: { kind: "PACKER", label: "Empacadores", quantity: { basis: "VOLUME_M3", divisor: 10, minimum: 2 }, hours: 6, unit: "persona" } },
     { label: "log-rule-crating", family: "CRATING", code: "PREVIEW_CRATING", name: "Crating sintético", conditions: { serviceCodes: ["EXPORT_CRATING"] }, result: { kind: "CRATING_CREW", label: "Preparación Crating", quantity: 1, hours: 4, unit: "servicio" } },
     { label: "log-rule-provider", family: "EXTERNAL", code: "PREVIEW_PROVIDER", name: "Proveedor pendiente sintético", conditions: { serviceCodes: ["OUTSOURCE_PENDING"] }, result: { kind: "EXTERNAL_RESOURCE", label: "Proveedor especializado pendiente", quantity: 1, unit: "servicio", availabilitySource: "PROVIDER", sourceCode: "EXTERNAL_RESOURCE", shortageSeverity: "BLOCKER" } },
@@ -256,6 +280,7 @@ async function ensureRules(context) {
     await versionLogisticsRule(prisma, context, signed(logisticsHash, "LOGISTICS_RULE_VERSION", payload, item.label));
   }
   const costingRules = [
+    { label: "cost-rule-visit-zone", family: "TRANSPORT", code: "PREVIEW_VISIT_ZONE_COST", conditions: { logisticsFamilies: ["TRANSPORT"] }, unitCost: "0", result: { unit: "VISIT" } },
     { label: "cost-rule-labor", family: "LABOR", code: "PREVIEW_LABOR_COST", conditions: { logisticsFamilies: ["LABOR"] }, unitCost: "450", result: { unit: "HOUR" } },
     { label: "cost-rule-crating", family: "CRATING", code: "PREVIEW_CRATING_COST", conditions: { logisticsFamilies: ["CRATING"] }, unitCost: "2500", result: { unit: "SERVICE" } },
     { label: "cost-rule-material", family: "MATERIAL", code: "PREVIEW_MATERIAL_MARGIN", conditions: { logisticsFamilies: ["MATERIAL"] }, unitCost: "1", result: { unit: "UNIT" } },
@@ -324,7 +349,7 @@ async function main() {
   exact(identity[0]?.database, EXPECTED_DATABASE, "DATABASE_RUNTIME");
   exact(identity[0]?.branch, EXPECTED_BRANCH, "BRANCH_RUNTIME");
   const migrations = await prisma.$queryRawUnsafe(`SELECT migration_name, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name`);
-  if (migrations.length !== 29 || migrations.some((row) => !row.finished_at || row.rolled_back_at || row.applied_steps_count !== 1)) fail("MIGRATIONS_NOT_29_COMPLETE");
+  if (migrations.length !== 30 || migrations.some((row) => !row.finished_at || row.rolled_back_at || row.applied_steps_count !== 1)) fail("MIGRATIONS_NOT_30_COMPLETE");
 
   const tenant = await prisma.tenant.upsert({ where: { code: TENANT_CODE }, update: {}, create: { code: TENANT_CODE, name: "International Packers — Preview sintético", countryCode: "DO", defaultCurrency: "DOP", provisioningSource: "MANUAL", provisioningBatchId: EXPECTED_BATCH } });
   const crossTenant = await prisma.tenant.upsert({ where: { code: SECOND_TENANT_CODE }, update: {}, create: { code: SECOND_TENANT_CODE, name: "Tenant B — Preview sintético", countryCode: "US", defaultCurrency: "USD", provisioningSource: "MANUAL", provisioningBatchId: EXPECTED_BATCH } });
@@ -345,6 +370,7 @@ async function main() {
     },
   });
   adminIdentity.membership = adminMembership; evaluatorIdentity.membership = evaluatorMembership; denyIdentity.membership = denyMembership;
+  const schedulingPolicy = await ensureSchedulingPolicy(tenant, adminIdentity, evaluatorIdentity);
   await writeCredentials([{ ...adminIdentity, key: "V17_PREVIEW_ADMIN" }, { ...evaluatorIdentity, key: "V17_PREVIEW_EVALUATOR" }, { ...denyIdentity, key: "V17_PREVIEW_DENY" }]);
 
   const clients = await Promise.all([
@@ -370,7 +396,7 @@ async function main() {
   ];
   const crossTenantSentinel = await ensureCrossTenantSentinel(crossTenant);
   const resources = await ensureResources(tenant, owner);
-  await ensureSurveyFixture(tenant, owner, { user: evaluatorIdentity.user, membership: evaluatorMembership }, scenarios[1], resources.material);
+  await ensureSurveyFixture(tenant, owner, { user: evaluatorIdentity.user, membership: evaluatorMembership }, scenarios[1], resources.material, schedulingPolicy);
   if (!await prisma.externalResourceOffer.findFirst({ where: { tenantId: tenant.id, providerReference: "PREVIEW-PENDING-PROVIDER" } })) await prisma.externalResourceOffer.create({ data: { tenantId: tenant.id, providerReference: "PREVIEW-PENDING-PROVIDER", providerNameSnapshot: "Proveedor sintético pendiente", resourceDescription: "Servicio externo sintético", capacity: { quantity: 1 }, rateAmount: null, currency: null, temporalUnit: "SERVICE", availabilityStatus: "UNCONFIRMED", termsSnapshot: { synthetic: true }, contractualReference: null } });
   const context = { tenantId: tenant.id, membershipId: adminMembership.id, userId: adminIdentity.user.id, role: "A", effectivePermissions: adminPermissions, deniedPermissions: [] };
   await ensureRules(context);
@@ -383,7 +409,7 @@ async function main() {
   assert.equal(await prisma.pipelineCase.count({ where: { tenantId: crossTenant.id, id: crossTenantSentinel.id, flags: { has: "PREVIEW_CROSS_TENANT_SENTINEL" } } }), 1);
   const pendingPlan = plans.get("PV10B-C-PENDING").plan;
   assert.ok(pendingPlan.issues.some((item) => item.code === "EXTERNAL_PRICE_PENDING" && item.severity === "BLOCKER"));
-  console.log(JSON.stringify({ ok: true, batch: EXPECTED_BATCH, migrations: "29/29", scenarios: 4, securitySentinels: 1, syntheticOnly: true, idempotent: true, counts, scenarioCBlocker: true, scenarioDAccepted: scenarioDQuotes.accepted.state === "ACCEPTED", productionApiEnabled: false }));
+  console.log(JSON.stringify({ ok: true, batch: EXPECTED_BATCH, migrations: "30/30", scenarios: 4, securitySentinels: 1, syntheticOnly: true, idempotent: true, counts, scenarioCBlocker: true, scenarioDAccepted: scenarioDQuotes.accepted.state === "ACCEPTED", schedulingPolicy: "ACTIVE", productionApiEnabled: false }));
 }
 
 try { await main(); } finally { await prisma.$disconnect(); }

@@ -29,9 +29,12 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
 
   const api = read("src/crm-icp-v2/api.ts");
   requireText(api, 'const API_ROOT = "/api/crm/icp-v2"', "cliente no usa prefijo same-origin fijo");
+  const protectedRequests = api.split("await this.fetchImpl").length - 1;
+  if (protectedRequests !== 2) fail("cliente ICP no conserva exactamente sus dos solicitudes privadas");
   for (const value of ['credentials: "same-origin"', 'cache: "no-store"', 'referrerPolicy: "no-referrer"', 'Authorization: `Bearer ${token}`', '"X-OSI-Membership-Ref": membershipRef', 'assertPrivateJson(response)']) {
-    requireText(api, value, `protección cliente ausente: ${value}`);
+    if (api.split(value).length - 1 !== protectedRequests) fail(`protección cliente ausente: ${value}`);
   }
+  forbid(api, /credentials\s*:\s*["'](?:omit|include)["']/i, "protección cliente permite credenciales fuera de same-origin");
   forbid(api, /https?:\/\/|localStorage|sessionStorage|tenantId|membershipId|userId|x-tenant|x-user/i, "cliente contiene origen remoto, storage o autoridad interna");
   const unsigned = api.slice(api.indexOf("const unsigned ="), api.indexOf("const normalized ="));
   forbid(unsigned, /estimatedCbm|volume|cbm/i, "payload enviado volvió a incluir volumen");

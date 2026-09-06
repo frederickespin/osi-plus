@@ -33,6 +33,7 @@ const canonicalRoutes = [
   "api/crm/services/defaults/index.js",
   "api/crm/survey/assignments/index.js",
   "api/crm/survey/assignments/[assignmentRef].js",
+  "api/crm/survey/scheduling/index.js",
   "api/crm/survey/catalog/index.js",
   "api/crm/survey/drafts/[surveyRef].js",
   "api/crm/survey/drafts/[surveyRef]/photos.js",

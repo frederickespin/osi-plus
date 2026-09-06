@@ -145,6 +145,18 @@ export const PERMS = Object.freeze({
   QUOTE_INTERNAL_COST_VIEW: "quote:internal-cost:view",
   QUOTE_TENANT: "quote:tenant",
 
+  // V17 Commercial Relationships. Catalog and agreement authority is explicit-grant only.
+  COMMERCIAL_RELATIONSHIPS_VIEW: "commercial:relationships:view",
+  COMMERCIAL_RELATIONSHIPS_MANAGE: "commercial:relationships:manage",
+  COMMERCIAL_TARIFFS_VIEW: "commercial:tariffs:view",
+  COMMERCIAL_TARIFFS_MANAGE: "commercial:tariffs:manage",
+  COMMERCIAL_REFERRALS_VIEW: "commercial:referrals:view",
+  COMMERCIAL_REFERRALS_MANAGE: "commercial:referrals:manage",
+  COMMERCIAL_COMMISSIONS_VIEW: "commercial:commissions:view",
+  COMMERCIAL_COMMISSIONS_MANAGE: "commercial:commissions:manage",
+  COMMERCIAL_ASSOCIATIONS_VIEW: "commercial:associations:view",
+  COMMERCIAL_ASSOCIATIONS_MANAGE: "commercial:associations:manage",
+
   // HR
   HR_VIEW: "hr:view",
   HR_KPI: "hr:kpi",
@@ -262,6 +274,19 @@ const EXPLICIT_QUOTE_PERMISSIONS = new Set([
   PERMS.QUOTE_TENANT,
 ]);
 
+const EXPLICIT_COMMERCIAL_RELATIONSHIP_PERMISSIONS = new Set([
+  PERMS.COMMERCIAL_RELATIONSHIPS_VIEW,
+  PERMS.COMMERCIAL_RELATIONSHIPS_MANAGE,
+  PERMS.COMMERCIAL_TARIFFS_VIEW,
+  PERMS.COMMERCIAL_TARIFFS_MANAGE,
+  PERMS.COMMERCIAL_REFERRALS_VIEW,
+  PERMS.COMMERCIAL_REFERRALS_MANAGE,
+  PERMS.COMMERCIAL_COMMISSIONS_VIEW,
+  PERMS.COMMERCIAL_COMMISSIONS_MANAGE,
+  PERMS.COMMERCIAL_ASSOCIATIONS_VIEW,
+  PERMS.COMMERCIAL_ASSOCIATIONS_MANAGE,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
@@ -272,7 +297,8 @@ const ROLE_PERMS = {
     && !EXPLICIT_ASSET_PERMISSIONS.has(permission)
     && !EXPLICIT_LOGISTICS_PERMISSIONS.has(permission)
     && !EXPLICIT_COSTING_PERMISSIONS.has(permission)
-    && !EXPLICIT_QUOTE_PERMISSIONS.has(permission)),
+    && !EXPLICIT_QUOTE_PERMISSIONS.has(permission)
+    && !EXPLICIT_COMMERCIAL_RELATIONSHIP_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

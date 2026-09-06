@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { resolveCommercialQuoteAuthority } from "./commercialRelationshipsDomain.js";
 import {
   QuoteError,
   calculateQuoteTotals,
@@ -347,6 +348,14 @@ export async function createQuoteProposal(prisma, context, raw) {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
     const pipelineCase = await resolveCase(tx, context, input.caseRef);
+    let commercialAuthority;
+    try {
+      commercialAuthority = await resolveCommercialQuoteAuthority(tx, context, pipelineCase.id);
+    } catch (error) {
+      if (error?.code === "COMMERCIAL_PAYER_REQUIRED") quoteFail("QUOTE_PAYER_REQUIRED", 409);
+      throw error;
+    }
+    const revisionInput = commercialAuthority ? { ...input, commercialContext: commercialAuthority.commercialContext, payer: commercialAuthority.payer } : input;
     const costing = await resolvePublishedCosting(tx, context, pipelineCase.id, input.costingRevisionRef);
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${pipelineCase.id}:quote-cycle`}, 0))`);
     let quote = await tx.pipelineCaseQuote.findFirst({ where: { tenantId: context.tenantId, caseId: pipelineCase.id, contractVersion: 2, costingRevisionId: costing.id }, orderBy: { cycleNumber: "desc" } });
@@ -358,7 +367,7 @@ export async function createQuoteProposal(prisma, context, raw) {
     if (count >= 3) quoteFail("QUOTE_PROPOSAL_LIMIT_REACHED", 409);
     const reference = await nextReference(tx, context.tenantId, input.position);
     const proposal = await tx.quoteProposal.create({ data: { tenantId: context.tenantId, quoteId: quote.id, pipelineCaseId: pipelineCase.id, position: input.position, reference } });
-    const revision = await createRevision(tx, context, proposal, input, costing, pipelineCase, "DRAFT");
+    const revision = await createRevision(tx, context, proposal, revisionInput, costing, pipelineCase, "DRAFT");
     const result = mapRevision(revision, context, { ...proposal, state: "DRAFT" });
     return persist(tx, context, input, quote.id, proposal.proposalRef, result, "QUOTE_PROPOSAL_CREATE");
   });
@@ -374,9 +383,17 @@ export async function reviseQuoteProposal(prisma, context, raw) {
     if (proposal.currentRevision !== input.expectedRevision || current.revision !== input.expectedRevision) quoteFail("QUOTE_VERSION_CONFLICT", 409);
     if (["ACCEPTED", "REJECTED", "CANCELLED", "EXPIRED"].includes(proposal.state)) quoteFail("QUOTE_STATE_CONFLICT", 409);
     if (input.caseRef !== proposal.pipelineCase.publicRef || input.position !== proposal.position) quoteFail("QUOTE_IDENTITY_IMMUTABLE", 409);
+    let commercialAuthority;
+    try {
+      commercialAuthority = await resolveCommercialQuoteAuthority(tx, context, proposal.pipelineCaseId);
+    } catch (error) {
+      if (error?.code === "COMMERCIAL_PAYER_REQUIRED") quoteFail("QUOTE_PAYER_REQUIRED", 409);
+      throw error;
+    }
+    const revisionInput = commercialAuthority ? { ...input, commercialContext: commercialAuthority.commercialContext, payer: commercialAuthority.payer } : input;
     const costing = await resolvePublishedCosting(tx, context, proposal.pipelineCaseId, input.costingRevisionRef);
     if (costing.id !== proposal.quote.costingRevisionId) quoteFail("QUOTE_COSTING_SELECTION_IMMUTABLE", 409);
-    const revision = await createRevision(tx, context, proposal, input, costing, proposal.pipelineCase, "DRAFT", current);
+    const revision = await createRevision(tx, context, proposal, revisionInput, costing, proposal.pipelineCase, "DRAFT", current);
     const result = mapRevision(revision, context, { ...proposal, state: "DRAFT" });
     return persist(tx, context, input, proposal.quoteId, proposal.proposalRef, result, "QUOTE_PROPOSAL_REVISE");
   });

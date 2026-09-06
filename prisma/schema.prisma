@@ -46,18 +46,18 @@ model User {
 }
 
 model Tenant {
-  id                               String                             @id @default(cuid())
-  code                             String                             @unique @db.VarChar(64)
-  name                             String                             @db.VarChar(160)
-  legalName                        String?                            @map("legal_name") @db.VarChar(200)
-  countryCode                      String?                            @map("country_code") @db.Char(2)
-  timezone                         String                             @default("America/Santo_Domingo") @db.VarChar(64)
-  defaultCurrency                  String                             @default("DOP") @map("default_currency") @db.Char(3)
-  status                           TenantStatus                       @default(ACTIVE)
-  provisioningSource               TenantProvisioningSource           @default(MANUAL) @map("provisioning_source")
-  provisioningBatchId              String?                            @map("provisioning_batch_id")
-  createdAt                        DateTime                           @default(now()) @map("created_at")
-  updatedAt                        DateTime                           @updatedAt @map("updated_at")
+  id                               String                                 @id @default(cuid())
+  code                             String                                 @unique @db.VarChar(64)
+  name                             String                                 @db.VarChar(160)
+  legalName                        String?                                @map("legal_name") @db.VarChar(200)
+  countryCode                      String?                                @map("country_code") @db.Char(2)
+  timezone                         String                                 @default("America/Santo_Domingo") @db.VarChar(64)
+  defaultCurrency                  String                                 @default("DOP") @map("default_currency") @db.Char(3)
+  status                           TenantStatus                           @default(ACTIVE)
+  provisioningSource               TenantProvisioningSource               @default(MANUAL) @map("provisioning_source")
+  provisioningBatchId              String?                                @map("provisioning_batch_id")
+  createdAt                        DateTime                               @default(now()) @map("created_at")
+  updatedAt                        DateTime                               @updatedAt @map("updated_at")
   approval_requests                ApprovalRequest[]
   commercial_audit_logs            CommercialAuditLog[]
   crate_calculation_snapshots      crate_calculation_snapshots[]
@@ -168,6 +168,18 @@ model Tenant {
   quoteClientDecisions             QuoteClientDecision[]
   quoteMutationCommands            QuoteMutationCommand[]
   quoteReferenceCounters           QuoteReferenceCounter[]
+  commercialEntities               CommercialEntity[]
+  commercialRelationships          CommercialRelationship[]
+  commercialTariffVersions         CommercialTariffVersion[]
+  commercialPricingAgreements      CommercialPricingAgreementVersion[]
+  commercialReferralAgreements     CommercialReferralAgreementVersion[]
+  commercialCommissionAgreements   CommercialCommissionAgreementVersion[]
+  commercialAssociationMemberships CommercialAssociationMembership[]
+  commercialCertifications         CommercialCertification[]
+  commercialInstructions           CommercialInstructionVersion[]
+  commercialCaseContexts           PipelineCaseCommercialContextVersion[]
+  commercialMutationCommands       CommercialRelationshipCommand[]
+  commercialHistoryEvents          CommercialRelationshipEvent[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -519,17 +531,17 @@ model AuthRefreshToken {
 }
 
 model Client {
-  id                        String          @id @default(cuid())
-  publicRef                 String          @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
-  tenantId                  String?         @map("tenant_id")
-  code                      String          @unique
+  id                        String             @id @default(cuid())
+  publicRef                 String             @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
+  tenantId                  String?            @map("tenant_id")
+  code                      String             @unique
   name                      String
   email                     String
   phone                     String
   address                   String
   type                      String
   status                    String
-  totalServices             Int             @default(0)
+  totalServices             Int                @default(0)
   lastService               String?
   createdAt                 String
   fiscalName                String?
@@ -542,23 +554,24 @@ model Client {
   accountsPayableEmail      String?
   accountsPayablePhone      String?
   complianceNotes           String?
-  kycCompleted              Boolean         @default(false)
+  kycCompleted              Boolean            @default(false)
   normalizedPhone           String?
-  normalizedEmail           String?         @map("normalized_email") @db.VarChar(320)
-  taxIdNormalized           String?         @map("tax_id_normalized") @db.VarChar(32)
+  normalizedEmail           String?            @map("normalized_email") @db.VarChar(320)
+  taxIdNormalized           String?            @map("tax_id_normalized") @db.VarChar(32)
   billingTaxId              String?
   serviceOriginAddress      String?
   serviceDestinationAddress String?
-  updatedAt                 DateTime        @default(now()) @updatedAt
+  updatedAt                 DateTime           @default(now()) @updatedAt
   kycDocuments              KycDocument[]
   leads                     Lead[]
   projects                  Project[]
-  tenant                    Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
-  tenantLeads               Lead[]          @relation("LeadTenantCustomer")
-  tenantProjects            Project[]       @relation("ProjectTenantClient")
-  pipelineCases             PipelineCase[]  @relation("PipelineCaseServiceClient")
+  tenant                    Tenant?            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
+  tenantLeads               Lead[]             @relation("LeadTenantCustomer")
+  tenantProjects            Project[]          @relation("ProjectTenantClient")
+  pipelineCases             PipelineCase[]     @relation("PipelineCaseServiceClient")
   addresses                 ClientAddress[]
   surveys                   Survey[]
+  commercialEntities        CommercialEntity[]
 
   @@unique([tenantId, id], map: "osi_clients_tenant_id_id_key")
   @@unique([tenantId, publicRef], map: "osi_clients_tenant_id_public_ref_key")
@@ -1456,52 +1469,52 @@ model TemplateVersion {
 }
 
 model PipelineCase {
-  id                            String                        @id @default(cuid())
-  publicRef                     String                        @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
-  tenantId                      String?                       @map("tenant_id")
-  clientId                      String?                       @map("client_id")
+  id                            String                                 @id @default(cuid())
+  publicRef                     String                                 @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
+  tenantId                      String?                                @map("tenant_id")
+  clientId                      String?                                @map("client_id")
   caseCode                      String
   clientName                    String?
   mode                          PipelineMode
   serviceType                   String
   customerType                  PipelineCustomerType
-  status                        PipelineCaseStatus            @default(NEW_INBOX)
-  version                       Int                           @default(1)
-  statusChangedAt               DateTime?                     @map("status_changed_at") @db.Timestamptz(6)
-  lossReasonCode                String?                       @map("loss_reason_code") @db.VarChar(64)
+  status                        PipelineCaseStatus                     @default(NEW_INBOX)
+  version                       Int                                    @default(1)
+  statusChangedAt               DateTime?                              @map("status_changed_at") @db.Timestamptz(6)
+  lossReasonCode                String?                                @map("loss_reason_code") @db.VarChar(64)
   ownerId                       String?
-  ownerMembershipId             String?                       @map("owner_membership_id")
-  ownerUserId                   String?                       @map("owner_user_id")
+  ownerMembershipId             String?                                @map("owner_membership_id")
+  ownerUserId                   String?                                @map("owner_user_id")
   ownerName                     String
-  estimatedCbm                  Float                         @default(0)
-  requiresSurvey                Boolean                       @default(false)
-  surveyMethod                  PipelineSurveyMethod          @default(NO_APLICA)
-  flags                         String[]                      @default([])
+  estimatedCbm                  Float                                  @default(0)
+  requiresSurvey                Boolean                                @default(false)
+  surveyMethod                  PipelineSurveyMethod                   @default(NO_APLICA)
+  flags                         String[]                               @default([])
   milestonesJson                Json?
   originLocation                String
   destinationLocation           String
-  destinationContracted         Boolean                       @default(true)
-  caseContactName               String?                       @map("case_contact_name") @db.VarChar(160)
-  caseContactPhone              String?                       @map("case_contact_phone") @db.VarChar(40)
-  caseContactPhoneNormalized    String?                       @map("case_contact_phone_normalized") @db.VarChar(32)
-  caseContactEmail              String?                       @map("case_contact_email") @db.VarChar(320)
-  caseContactEmailNormalized    String?                       @map("case_contact_email_normalized") @db.VarChar(320)
-  intakeChannel                 PipelineIntakeChannel?        @map("intake_channel")
-  clientProfileType             PipelineClientProfileType?    @map("client_profile_type")
-  routeContractVersion          Int                           @default(1) @map("route_contract_version")
-  routeRevision                 Int                           @default(0) @map("route_revision")
-  destinationStatus             PipelineDestinationStatus?    @map("destination_status")
+  destinationContracted         Boolean                                @default(true)
+  caseContactName               String?                                @map("case_contact_name") @db.VarChar(160)
+  caseContactPhone              String?                                @map("case_contact_phone") @db.VarChar(40)
+  caseContactPhoneNormalized    String?                                @map("case_contact_phone_normalized") @db.VarChar(32)
+  caseContactEmail              String?                                @map("case_contact_email") @db.VarChar(320)
+  caseContactEmailNormalized    String?                                @map("case_contact_email_normalized") @db.VarChar(320)
+  intakeChannel                 PipelineIntakeChannel?                 @map("intake_channel")
+  clientProfileType             PipelineClientProfileType?             @map("client_profile_type")
+  routeContractVersion          Int                                    @default(1) @map("route_contract_version")
+  routeRevision                 Int                                    @default(0) @map("route_revision")
+  destinationStatus             PipelineDestinationStatus?             @map("destination_status")
   destinationOverrideType       String?
-  destinationAcceptanceUploaded Boolean                       @default(false)
+  destinationAcceptanceUploaded Boolean                                @default(false)
   noDestinationCaseType         String?
-  assetsCount                   Int                           @default(0)
-  createdAt                     DateTime                      @default(now())
-  updatedAt                     DateTime                      @default(now()) @updatedAt
+  assetsCount                   Int                                    @default(0)
+  createdAt                     DateTime                               @default(now())
+  updatedAt                     DateTime                               @default(now()) @updatedAt
   quotes                        PipelineCaseQuote[]
-  owner                         User?                         @relation(fields: [ownerId], references: [id])
-  tenant                        Tenant?                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_pipeline_cases_tenant_id_fkey")
-  client                        Client?                       @relation("PipelineCaseServiceClient", fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict, map: "osi_pipeline_cases_tenant_id_client_id_fkey")
-  enterpriseOwner               TenantMembership?             @relation("PipelineCaseEnterpriseOwner", fields: [tenantId, ownerMembershipId, ownerUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "osi_pipeline_cases_enterprise_owner_fkey")
+  owner                         User?                                  @relation(fields: [ownerId], references: [id])
+  tenant                        Tenant?                                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_pipeline_cases_tenant_id_fkey")
+  client                        Client?                                @relation("PipelineCaseServiceClient", fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict, map: "osi_pipeline_cases_tenant_id_client_id_fkey")
+  enterpriseOwner               TenantMembership?                      @relation("PipelineCaseEnterpriseOwner", fields: [tenantId, ownerMembershipId, ownerUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "osi_pipeline_cases_enterprise_owner_fkey")
   crating                       PipelineCratingRequest?
   events                        PipelineEvent[]
   quote_change_order_subjects   quote_change_order_subjects[]
@@ -1525,7 +1538,8 @@ model PipelineCase {
   costingCalculations           CostingCalculation[]
   costingRevisions              CostingRevision[]
   quoteProposals                QuoteProposal[]
-  projects                      Project[]                     @relation("PipelineCaseProjects")
+  commercialContexts            PipelineCaseCommercialContextVersion[]
+  projects                      Project[]                              @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
   @@unique([tenantId, id, clientId], map: "osi_pipeline_cases_tenant_id_id_client_id_key")
@@ -6924,4 +6938,463 @@ enum ZoneRuleKind {
   DISTANCE_REVIEW
   DISTANCE_BLOCK
   ROUTE_SURCHARGE
+}
+
+model CommercialEntity {
+  id                     String                                 @id @default(cuid())
+  entityRef              String                                 @default(dbgenerated("gen_random_uuid()")) @map("entity_ref") @db.Uuid
+  tenantId               String                                 @map("tenant_id")
+  clientId               String?                                @map("client_id")
+  code                   String                                 @db.VarChar(64)
+  displayName            String                                 @map("display_name") @db.VarChar(200)
+  legalName              String?                                @map("legal_name") @db.VarChar(240)
+  kind                   CommercialEntityKind
+  countryCode            String?                                @map("country_code") @db.Char(2)
+  taxReferenceNormalized String?                                @map("tax_reference_normalized") @db.VarChar(64)
+  status                 CommercialRecordStatus                 @default(ACTIVE)
+  validFrom              DateTime?                              @map("valid_from") @db.Timestamptz(6)
+  validTo                DateTime?                              @map("valid_to") @db.Timestamptz(6)
+  version                Int                                    @default(1)
+  createdAt              DateTime                               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                 Tenant                                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_entities_tenant_fkey")
+  client                 Client?                                @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_entities_client_fkey")
+  contacts               CommercialEntityContact[]
+  outgoingRelationships  CommercialRelationship[]               @relation("CommercialRelationshipSource")
+  incomingRelationships  CommercialRelationship[]               @relation("CommercialRelationshipTarget")
+  pricingAgreements      CommercialPricingAgreementVersion[]
+  referralAgreements     CommercialReferralAgreementVersion[]
+  commissionAgreements   CommercialCommissionAgreementVersion[]
+  associationMemberships CommercialAssociationMembership[]      @relation("CommercialAssociationMember")
+  representedAssociation CommercialAssociationMembership[]      @relation("CommercialAssociationAuthority")
+  certifications         CommercialCertification[]
+  instructions           CommercialInstructionVersion[]
+  caseParties            PipelineCaseCommercialParty[]
+
+  @@unique([tenantId, id], map: "commercial_entities_tenant_id_key")
+  @@unique([tenantId, entityRef], map: "commercial_entities_tenant_ref_key")
+  @@unique([tenantId, code], map: "commercial_entities_tenant_code_key")
+  @@unique([tenantId, clientId], map: "commercial_entities_tenant_client_key")
+  @@index([tenantId, kind, status, displayName], map: "commercial_entities_catalog_idx")
+  @@map("commercial_entities")
+}
+
+model CommercialEntityContact {
+  id               String                 @id @default(cuid())
+  contactRef       String                 @default(dbgenerated("gen_random_uuid()")) @map("contact_ref") @db.Uuid
+  tenantId         String                 @map("tenant_id")
+  entityId         String                 @map("entity_id")
+  displayName      String                 @map("display_name") @db.VarChar(160)
+  position         String?                @db.VarChar(120)
+  emailNormalized  String?                @map("email_normalized") @db.VarChar(320)
+  phoneNormalized  String?                @map("phone_normalized") @db.VarChar(32)
+  preferredChannel String?                @map("preferred_channel") @db.VarChar(32)
+  status           CommercialRecordStatus @default(ACTIVE)
+  validFrom        DateTime?              @map("valid_from") @db.Timestamptz(6)
+  validTo          DateTime?              @map("valid_to") @db.Timestamptz(6)
+  version          Int                    @default(1)
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  entity           CommercialEntity       @relation(fields: [tenantId, entityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_entity_contacts_entity_fkey")
+
+  @@unique([tenantId, id], map: "commercial_entity_contacts_tenant_id_key")
+  @@unique([tenantId, contactRef], map: "commercial_entity_contacts_tenant_ref_key")
+  @@index([tenantId, entityId, status], map: "commercial_entity_contacts_entity_idx")
+  @@map("commercial_entity_contacts")
+}
+
+model CommercialRelationship {
+  id                String                              @id @default(cuid())
+  relationshipRef   String                              @default(dbgenerated("gen_random_uuid()")) @map("relationship_ref") @db.Uuid
+  tenantId          String                              @map("tenant_id")
+  sourceEntityId    String                              @map("source_entity_id")
+  targetEntityId    String                              @map("target_entity_id")
+  type              CommercialRelationshipType
+  reference         String?                             @db.VarChar(120)
+  conditions        Json                                @default("{}")
+  metadata          Json                                @default("{}")
+  status            CommercialRecordStatus              @default(ACTIVE)
+  validFrom         DateTime?                           @map("valid_from") @db.Timestamptz(6)
+  validTo           DateTime?                           @map("valid_to") @db.Timestamptz(6)
+  version           Int                                 @default(1)
+  createdAt         DateTime                            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_relationships_tenant_fkey")
+  sourceEntity      CommercialEntity                    @relation("CommercialRelationshipSource", fields: [tenantId, sourceEntityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_relationships_source_fkey")
+  targetEntity      CommercialEntity                    @relation("CommercialRelationshipTarget", fields: [tenantId, targetEntityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_relationships_target_fkey")
+  pricingAgreements CommercialPricingAgreementVersion[]
+  instructions      CommercialInstructionVersion[]
+  caseParties       PipelineCaseCommercialParty[]
+
+  @@unique([tenantId, id], map: "commercial_relationships_tenant_id_key")
+  @@unique([tenantId, relationshipRef], map: "commercial_relationships_tenant_ref_key")
+  @@index([tenantId, sourceEntityId, type, status], map: "commercial_relationships_source_idx")
+  @@index([tenantId, targetEntityId, type, status], map: "commercial_relationships_target_idx")
+  @@map("commercial_relationships")
+}
+
+model CommercialTariffVersion {
+  id                String                              @id @default(cuid())
+  tariffRef         String                              @default(dbgenerated("gen_random_uuid()")) @map("tariff_ref") @db.Uuid
+  seriesRef         String                              @map("series_ref") @db.Uuid
+  tenantId          String                              @map("tenant_id")
+  code              String                              @db.VarChar(64)
+  name              String                              @db.VarChar(160)
+  version           Int
+  state             CommercialVersionState              @default(DRAFT)
+  currency          String                              @db.Char(3)
+  scope             Json
+  rateDefinition    Json                                @map("rate_definition")
+  logicalSha256     String                              @map("logical_sha256") @db.Char(64)
+  validFrom         DateTime?                           @map("valid_from") @db.Timestamptz(6)
+  validTo           DateTime?                           @map("valid_to") @db.Timestamptz(6)
+  createdAt         DateTime                            @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt       DateTime?                           @map("published_at") @db.Timestamptz(6)
+  tenant            Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_tariff_versions_tenant_fkey")
+  pricingAgreements CommercialPricingAgreementVersion[]
+
+  @@unique([tenantId, id], map: "commercial_tariff_versions_tenant_id_key")
+  @@unique([tenantId, tariffRef], map: "commercial_tariff_versions_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "commercial_tariff_versions_series_version_key")
+  @@index([tenantId, state, validFrom, validTo], map: "commercial_tariff_versions_active_idx")
+  @@map("commercial_tariff_versions")
+}
+
+model CommercialPricingAgreementVersion {
+  id                  String                                 @id @default(cuid())
+  agreementRef        String                                 @default(dbgenerated("gen_random_uuid()")) @map("agreement_ref") @db.Uuid
+  seriesRef           String                                 @map("series_ref") @db.Uuid
+  tenantId            String                                 @map("tenant_id")
+  entityId            String?                                @map("entity_id")
+  relationshipId      String?                                @map("relationship_id")
+  tariffVersionId     String                                 @map("tariff_version_id")
+  version             Int
+  state               CommercialVersionState                 @default(DRAFT)
+  serviceScope        Json                                   @map("service_scope")
+  modeScope           String[]                               @default([]) @map("mode_scope")
+  conditions          Json                                   @default("{}")
+  administrativeTerms Json                                   @default("{}") @map("administrative_terms")
+  logicalSha256       String                                 @map("logical_sha256") @db.Char(64)
+  validFrom           DateTime?                              @map("valid_from") @db.Timestamptz(6)
+  validTo             DateTime?                              @map("valid_to") @db.Timestamptz(6)
+  createdAt           DateTime                               @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt         DateTime?                              @map("published_at") @db.Timestamptz(6)
+  tenant              Tenant                                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_pricing_agreements_tenant_fkey")
+  entity              CommercialEntity?                      @relation(fields: [tenantId, entityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_pricing_agreements_entity_fkey")
+  relationship        CommercialRelationship?                @relation(fields: [tenantId, relationshipId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_pricing_agreements_relationship_fkey")
+  tariffVersion       CommercialTariffVersion                @relation(fields: [tenantId, tariffVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_pricing_agreements_tariff_fkey")
+  adjustments         CommercialPriceAdjustment[]
+  caseContexts        PipelineCaseCommercialContextVersion[]
+
+  @@unique([tenantId, id], map: "commercial_pricing_agreements_tenant_id_key")
+  @@unique([tenantId, agreementRef], map: "commercial_pricing_agreements_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "commercial_pricing_agreements_series_version_key")
+  @@index([tenantId, entityId, state, validFrom, validTo], map: "commercial_pricing_agreements_entity_idx")
+  @@index([tenantId, relationshipId, state, validFrom, validTo], map: "commercial_pricing_agreements_relationship_idx")
+  @@map("commercial_pricing_agreement_versions")
+}
+
+model CommercialPriceAdjustment {
+  id                 String                            @id @default(cuid())
+  adjustmentRef      String                            @default(dbgenerated("gen_random_uuid()")) @map("adjustment_ref") @db.Uuid
+  tenantId           String                            @map("tenant_id")
+  pricingAgreementId String                            @map("pricing_agreement_id")
+  kind               CommercialPriceAdjustmentKind
+  calculationType    CommercialCalculationType         @map("calculation_type")
+  value              Decimal                           @db.Decimal(18, 4)
+  base               String                            @db.VarChar(80)
+  reasonCode         String                            @map("reason_code") @db.VarChar(80)
+  approvalRef        String?                           @map("approval_ref") @db.Uuid
+  validFrom          DateTime?                         @map("valid_from") @db.Timestamptz(6)
+  validTo            DateTime?                         @map("valid_to") @db.Timestamptz(6)
+  createdAt          DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  pricingAgreement   CommercialPricingAgreementVersion @relation(fields: [tenantId, pricingAgreementId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_price_adjustments_agreement_fkey")
+
+  @@unique([tenantId, adjustmentRef], map: "commercial_price_adjustments_tenant_ref_key")
+  @@index([tenantId, pricingAgreementId, kind], map: "commercial_price_adjustments_agreement_idx")
+  @@map("commercial_price_adjustments")
+}
+
+model CommercialReferralAgreementVersion {
+  id                   String                                 @id @default(cuid())
+  referralAgreementRef String                                 @default(dbgenerated("gen_random_uuid()")) @map("referral_agreement_ref") @db.Uuid
+  seriesRef            String                                 @map("series_ref") @db.Uuid
+  tenantId             String                                 @map("tenant_id")
+  referrerEntityId     String                                 @map("referrer_entity_id")
+  version              Int
+  state                CommercialVersionState                 @default(DRAFT)
+  calculationType      CommercialCalculationType              @map("calculation_type")
+  value                Decimal                                @db.Decimal(18, 4)
+  currency             String?                                @db.Char(3)
+  basisPolicy          Json                                   @map("basis_policy")
+  serviceScope         Json                                   @map("service_scope")
+  authorizationRef     String?                                @map("authorization_ref") @db.Uuid
+  reference            String                                 @db.VarChar(120)
+  logicalSha256        String                                 @map("logical_sha256") @db.Char(64)
+  validFrom            DateTime?                              @map("valid_from") @db.Timestamptz(6)
+  validTo              DateTime?                              @map("valid_to") @db.Timestamptz(6)
+  createdAt            DateTime                               @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt          DateTime?                              @map("published_at") @db.Timestamptz(6)
+  tenant               Tenant                                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_referral_agreements_tenant_fkey")
+  referrerEntity       CommercialEntity                       @relation(fields: [tenantId, referrerEntityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_referral_agreements_referrer_fkey")
+  commissionAgreements CommercialCommissionAgreementVersion[]
+  caseContexts         PipelineCaseCommercialContextVersion[]
+
+  @@unique([tenantId, id], map: "commercial_referral_agreements_tenant_id_key")
+  @@unique([tenantId, referralAgreementRef], map: "commercial_referral_agreements_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "commercial_referral_agreements_series_version_key")
+  @@index([tenantId, referrerEntityId, state, validFrom, validTo], map: "commercial_referral_agreements_referrer_idx")
+  @@map("commercial_referral_agreement_versions")
+}
+
+model CommercialCommissionAgreementVersion {
+  id                     String                              @id @default(cuid())
+  commissionAgreementRef String                              @default(dbgenerated("gen_random_uuid()")) @map("commission_agreement_ref") @db.Uuid
+  seriesRef              String                              @map("series_ref") @db.Uuid
+  tenantId               String                              @map("tenant_id")
+  beneficiaryEntityId    String                              @map("beneficiary_entity_id")
+  referralAgreementId    String?                             @map("referral_agreement_id")
+  version                Int
+  state                  CommercialVersionState              @default(DRAFT)
+  kind                   CommercialCommissionKind
+  calculationType        CommercialCalculationType           @map("calculation_type")
+  value                  Decimal                             @db.Decimal(18, 4)
+  currency               String?                             @db.Char(3)
+  basisPolicy            Json                                @map("basis_policy")
+  serviceScope           Json                                @map("service_scope")
+  logicalSha256          String                              @map("logical_sha256") @db.Char(64)
+  validFrom              DateTime?                           @map("valid_from") @db.Timestamptz(6)
+  validTo                DateTime?                           @map("valid_to") @db.Timestamptz(6)
+  createdAt              DateTime                            @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt            DateTime?                           @map("published_at") @db.Timestamptz(6)
+  tenant                 Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_commission_agreements_tenant_fkey")
+  beneficiaryEntity      CommercialEntity                    @relation(fields: [tenantId, beneficiaryEntityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_commission_agreements_beneficiary_fkey")
+  referralAgreement      CommercialReferralAgreementVersion? @relation(fields: [tenantId, referralAgreementId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_commission_agreements_referral_fkey")
+
+  @@unique([tenantId, id], map: "commercial_commission_agreements_tenant_id_key")
+  @@unique([tenantId, commissionAgreementRef], map: "commercial_commission_agreements_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "commercial_commission_agreements_series_version_key")
+  @@index([tenantId, beneficiaryEntityId, kind, state], map: "commercial_commission_agreements_beneficiary_idx")
+  @@map("commercial_commission_agreement_versions")
+}
+
+model CommercialAssociationMembership {
+  id                  String                 @id @default(cuid())
+  membershipRef       String                 @default(dbgenerated("gen_random_uuid()")) @map("membership_ref") @db.Uuid
+  tenantId            String                 @map("tenant_id")
+  memberEntityId      String                 @map("member_entity_id")
+  associationEntityId String                 @map("association_entity_id")
+  membershipNumber    String?                @map("membership_number") @db.VarChar(120)
+  status              CommercialRecordStatus @default(ACTIVE)
+  validFrom           DateTime?              @map("valid_from") @db.Timestamptz(6)
+  validTo             DateTime?              @map("valid_to") @db.Timestamptz(6)
+  version             Int                    @default(1)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant              Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_association_memberships_tenant_fkey")
+  memberEntity        CommercialEntity       @relation("CommercialAssociationMember", fields: [tenantId, memberEntityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_association_memberships_member_fkey")
+  associationEntity   CommercialEntity       @relation("CommercialAssociationAuthority", fields: [tenantId, associationEntityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_association_memberships_association_fkey")
+
+  @@unique([tenantId, membershipRef], map: "commercial_association_memberships_tenant_ref_key")
+  @@index([tenantId, memberEntityId, status], map: "commercial_association_memberships_member_idx")
+  @@map("commercial_association_memberships")
+}
+
+model CommercialCertification {
+  id               String                 @id @default(cuid())
+  certificationRef String                 @default(dbgenerated("gen_random_uuid()")) @map("certification_ref") @db.Uuid
+  tenantId         String                 @map("tenant_id")
+  entityId         String                 @map("entity_id")
+  type             String                 @db.VarChar(120)
+  issuer           String                 @db.VarChar(200)
+  documentRef      String?                @map("document_ref") @db.Uuid
+  issuedAt         DateTime?              @map("issued_at") @db.Date
+  expiresAt        DateTime?              @map("expires_at") @db.Date
+  status           CommercialRecordStatus @default(ACTIVE)
+  version          Int                    @default(1)
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_certifications_tenant_fkey")
+  entity           CommercialEntity       @relation(fields: [tenantId, entityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_certifications_entity_fkey")
+
+  @@unique([tenantId, certificationRef], map: "commercial_certifications_tenant_ref_key")
+  @@index([tenantId, entityId, status, expiresAt], map: "commercial_certifications_entity_idx")
+  @@map("commercial_certifications")
+}
+
+model CommercialInstructionVersion {
+  id             String                  @id @default(cuid())
+  instructionRef String                  @default(dbgenerated("gen_random_uuid()")) @map("instruction_ref") @db.Uuid
+  seriesRef      String                  @map("series_ref") @db.Uuid
+  tenantId       String                  @map("tenant_id")
+  entityId       String?                 @map("entity_id")
+  relationshipId String?                 @map("relationship_id")
+  version        Int
+  state          CommercialVersionState  @default(DRAFT)
+  category       String                  @db.VarChar(80)
+  serviceScope   Json                    @map("service_scope")
+  content        Json
+  logicalSha256  String                  @map("logical_sha256") @db.Char(64)
+  validFrom      DateTime?               @map("valid_from") @db.Timestamptz(6)
+  validTo        DateTime?               @map("valid_to") @db.Timestamptz(6)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt    DateTime?               @map("published_at") @db.Timestamptz(6)
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_instructions_tenant_fkey")
+  entity         CommercialEntity?       @relation(fields: [tenantId, entityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_instructions_entity_fkey")
+  relationship   CommercialRelationship? @relation(fields: [tenantId, relationshipId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_instructions_relationship_fkey")
+
+  @@unique([tenantId, instructionRef], map: "commercial_instructions_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "commercial_instructions_series_version_key")
+  @@index([tenantId, entityId, state, validFrom, validTo], map: "commercial_instructions_entity_idx")
+  @@map("commercial_instruction_versions")
+}
+
+model PipelineCaseCommercialContextVersion {
+  id                    String                              @id @default(cuid())
+  contextRef            String                              @default(dbgenerated("gen_random_uuid()")) @map("context_ref") @db.Uuid
+  seriesRef             String                              @map("series_ref") @db.Uuid
+  tenantId              String                              @map("tenant_id")
+  pipelineCaseId        String                              @map("pipeline_case_id")
+  pricingAgreementId    String?                             @map("pricing_agreement_id")
+  referralAgreementId   String?                             @map("referral_agreement_id")
+  version               Int
+  state                 CommercialVersionState              @default(DRAFT)
+  associationsSnapshot  Json                                @default("[]") @map("associations_snapshot")
+  instructionsSnapshot  Json                                @default("[]") @map("instructions_snapshot")
+  logicalSha256         String                              @map("logical_sha256") @db.Char(64)
+  createdByMembershipId String                              @map("created_by_membership_id")
+  createdByUserId       String                              @map("created_by_user_id")
+  createdAt             DateTime                            @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt           DateTime?                           @map("published_at") @db.Timestamptz(6)
+  tenant                Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commercial_contexts_tenant_fkey")
+  pipelineCase          PipelineCase                        @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commercial_contexts_case_fkey")
+  pricingAgreement      CommercialPricingAgreementVersion?  @relation(fields: [tenantId, pricingAgreementId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commercial_contexts_pricing_fkey")
+  referralAgreement     CommercialReferralAgreementVersion? @relation(fields: [tenantId, referralAgreementId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commercial_contexts_referral_fkey")
+  parties               PipelineCaseCommercialParty[]
+
+  @@unique([tenantId, id], map: "pipeline_case_commercial_contexts_tenant_id_key")
+  @@unique([tenantId, contextRef], map: "pipeline_case_commercial_contexts_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "pipeline_case_commercial_contexts_series_version_key")
+  @@index([tenantId, pipelineCaseId, state, version(sort: Desc)], map: "pipeline_case_commercial_contexts_case_idx")
+  @@map("pipeline_case_commercial_context_versions")
+}
+
+model PipelineCaseCommercialParty {
+  id             String                               @id @default(cuid())
+  partyRef       String                               @default(dbgenerated("gen_random_uuid()")) @map("party_ref") @db.Uuid
+  tenantId       String                               @map("tenant_id")
+  contextId      String                               @map("context_id")
+  entityId       String                               @map("entity_id")
+  relationshipId String?                              @map("relationship_id")
+  role           CommercialCasePartyRole
+  createdAt      DateTime                             @default(now()) @map("created_at") @db.Timestamptz(6)
+  context        PipelineCaseCommercialContextVersion @relation(fields: [tenantId, contextId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commercial_parties_context_fkey")
+  entity         CommercialEntity                     @relation(fields: [tenantId, entityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commercial_parties_entity_fkey")
+  relationship   CommercialRelationship?              @relation(fields: [tenantId, relationshipId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_commercial_parties_relationship_fkey")
+
+  @@unique([tenantId, partyRef], map: "pipeline_case_commercial_parties_tenant_ref_key")
+  @@unique([tenantId, contextId, role], map: "pipeline_case_commercial_parties_role_key")
+  @@index([tenantId, entityId, role], map: "pipeline_case_commercial_parties_entity_idx")
+  @@map("pipeline_case_commercial_parties")
+}
+
+model CommercialRelationshipCommand {
+  id                String   @id @default(cuid())
+  tenantId          String   @map("tenant_id")
+  requestId         String   @map("request_id") @db.VarChar(191)
+  operation         String   @db.VarChar(80)
+  payloadHash       String   @map("payload_hash") @db.Char(64)
+  targetRef         String?  @map("target_ref") @db.Uuid
+  resultJson        Json     @map("result_json")
+  actorMembershipId String   @map("actor_membership_id")
+  actorUserId       String   @map("actor_user_id")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_relationship_commands_tenant_fkey")
+
+  @@unique([tenantId, requestId], map: "commercial_relationship_commands_request_key")
+  @@index([tenantId, targetRef, createdAt], map: "commercial_relationship_commands_target_idx")
+  @@map("commercial_relationship_commands")
+}
+
+model CommercialRelationshipEvent {
+  id                String   @id @default(cuid())
+  eventRef          String   @default(dbgenerated("gen_random_uuid()")) @map("event_ref") @db.Uuid
+  tenantId          String   @map("tenant_id")
+  aggregateType     String   @map("aggregate_type") @db.VarChar(80)
+  aggregateRef      String   @map("aggregate_ref") @db.Uuid
+  eventType         String   @map("event_type") @db.VarChar(80)
+  beforeSnapshot    Json?    @map("before_snapshot")
+  afterSnapshot     Json?    @map("after_snapshot")
+  actorMembershipId String   @map("actor_membership_id")
+  actorUserId       String   @map("actor_user_id")
+  requestId         String   @map("request_id") @db.VarChar(191)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_relationship_events_tenant_fkey")
+
+  @@unique([tenantId, eventRef], map: "commercial_relationship_events_tenant_ref_key")
+  @@index([tenantId, aggregateRef, createdAt(sort: Desc)], map: "commercial_relationship_events_aggregate_idx")
+  @@map("commercial_relationship_events")
+}
+
+enum CommercialEntityKind {
+  PERSON
+  COMPANY
+  ORGANIZATION
+  AGENT
+  LEAD_ACCOUNT
+  SUPPLIER
+  REFERRER
+  THIRD_PARTY
+  ASSOCIATION
+}
+
+enum CommercialRecordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CommercialRelationshipType {
+  EMPLOYED_BY
+  LEAD_ACCOUNT
+  BOOKER
+  PAYER
+  APPROVER
+  REFERRER
+  AGENT
+  SUPPLIER
+  ASSOCIATED_WITH
+}
+
+enum CommercialVersionState {
+  DRAFT
+  PUBLISHED
+  SUPERSEDED
+  INACTIVE
+}
+
+enum CommercialPriceAdjustmentKind {
+  DISCOUNT
+  ADMINISTRATIVE_CHARGE
+}
+
+enum CommercialCalculationType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  POLICY
+}
+
+enum CommercialCommissionKind {
+  INTERNAL
+  EXTERNAL_REFERRAL
+}
+
+enum CommercialCasePartyRole {
+  COMPANY
+  LEAD_ACCOUNT
+  BOOKER
+  PAYER
+  APPROVER
+  REFERRER
+  AGENT
+  SUPPLIER
 }

@@ -10,7 +10,7 @@ export type CommercialCaseSnapshot = Readonly<{
   logicalSha256: string;
 }>;
 
-async function request<T>(authorization: string | undefined, url: string, init: RequestInit = {}): Promise<T> { const response = await fetch(url, { ...init, headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(authorization ? { Authorization: authorization } : {}) } }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(String(payload.error || "COMMERCIAL_RELATIONSHIPS_REQUEST_FAILED")); return payload.data as T; }
+async function request<T>(authorization: string | undefined, url: string, init: RequestInit = {}): Promise<T> { const response = await fetch(url, { ...init, credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}) } }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw new Error(String(payload.error || "COMMERCIAL_RELATIONSHIPS_REQUEST_FAILED")); return payload.data as T; }
 export class CommercialRelationshipsApi {
   private readonly authorization?: string;
   constructor(authorization?: string) { this.authorization = authorization; }

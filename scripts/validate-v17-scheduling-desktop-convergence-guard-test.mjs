@@ -15,6 +15,9 @@ const cases = [
   ["historial", "prisma/migrations/20260911010000_v17_scheduling_desktop_convergence/migration.sql", (value) => value.replace("survey_assignment_events_append_only", "removed_event_guard")],
   ["PIC", "src/survey/SurveyCasePanel.tsx", (value) => value.replace("PREPARED no envía mensajes externos", "Mensaje enviado")],
   ["CORS", "scripts/protected-cors-route-inventory.json", (value) => value.replace('      "/api/crm/survey/scheduling",\n', "")],
+  ["contexto Evaluador", "api/_lib/surveySchedulingDomain.js", (value) => value.replace("contextSnapshot: evaluatorContext(pipelineCase, serviceRevision, nextDecision, policy, zone)", "contextSnapshot: { services: [] }")],
+  ["método en App", "src/survey/SurveyApp.tsx", (value) => value.replace("Método · {label[row.evaluationMethod] || row.evaluationMethod}", "Método sin autoridad")],
+  ["Preview como autoridad", "src/survey/SurveyApp.tsx", (value) => `${value}\n// SurveyVisualPreview`],
 ];
 let checks = 0;
 for (const [name, file, mutate] of cases) {

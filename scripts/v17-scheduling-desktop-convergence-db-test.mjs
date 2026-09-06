@@ -10,6 +10,7 @@ import {
   getSurveySchedulingWorkspace,
   mutateSurveyScheduling,
 } from "../api/_lib/surveySchedulingDomain.js";
+import { listSurveyAgenda } from "../api/_lib/crmSurveyDomain.js";
 
 const raw = process.env.V17_SCHEDULING_TEST_DATABASE_URL;
 assert.ok(raw, "V17_SCHEDULING_TEST_DATABASE_URL requerida");
@@ -124,7 +125,7 @@ try {
   const schedulingPermissions = ["survey:schedule:view", "survey:schedule:manage", "survey:schedule:assign", "survey:schedule:reschedule", "survey:visit-fee:view", "survey:visit-fee:approve"];
   const adminMembership = await prisma.tenantMembership.create({ data: { tenantId: tenant.id, userId: admin.id, role: "A", grantedPermissions: [...schedulingPermissions, "survey:perform"], deniedPermissions: [] } });
   const crossTenantMembership = await prisma.tenantMembership.create({ data: { tenantId: otherTenant.id, userId: admin.id, role: "A", grantedPermissions: schedulingPermissions, deniedPermissions: [] } });
-  const evaluatorMembership = await prisma.tenantMembership.create({ data: { tenantId: tenant.id, userId: evaluator.id, role: "V", grantedPermissions: ["survey:schedule:view", "survey:perform"], deniedPermissions: [] } });
+  const evaluatorMembership = await prisma.tenantMembership.create({ data: { tenantId: tenant.id, userId: evaluator.id, role: "V", grantedPermissions: ["survey:schedule:view", "survey:assignment:view", "survey:perform"], deniedPermissions: [] } });
   const alternateEvaluatorMembership = await prisma.tenantMembership.create({ data: { tenantId: tenant.id, userId: alternateEvaluator.id, role: "V", grantedPermissions: ["survey:schedule:view", "survey:perform"], deniedPermissions: [] } });
   const deniedMembership = await prisma.tenantMembership.create({ data: { tenantId: tenant.id, userId: deniedUser.id, role: "V", grantedPermissions: [], deniedPermissions: ["survey:schedule:view"] } });
   const service = await prisma.serviceCatalogItem.create({ data: { tenantId: tenant.id, code: `MOVING_${run}`, name: "Mudanza local", usage: "PRIMARY", compatibleModes: ["LOCAL"] } });
@@ -170,6 +171,13 @@ try {
   const winner = concurrent.find((row) => row.status === "fulfilled").value;
   const loser = concurrent.find((row) => row.status === "rejected").reason;
   check(loser?.status === 409, "la colisión devuelve conflicto estable");
+  const evaluatorAgenda = await listSurveyAgenda({ tenantId: tenant.id, membershipId: evaluatorMembership.id, userId: evaluator.id }, prisma);
+  assert.equal(evaluatorAgenda.length, 1); assertions += 1;
+  assert.equal(evaluatorAgenda[0].evaluationMethod, "IN_PERSON"); assertions += 1;
+  assert.equal(evaluatorAgenda[0].serviceSelectionRef != null, true); assertions += 1;
+  assert.deepEqual(evaluatorAgenda[0].context.services.map((item) => item.name), ["Mudanza local"]); assertions += 1;
+  assert.match(evaluatorAgenda[0].context.origin, /Synthetic origin/); assertions += 1;
+  assert.match(evaluatorAgenda[0].context.destination, /Synthetic destination/); assertions += 1;
 
   const replayRequest = randomUUID();
   const replayCommand = command("RESCHEDULE", { assignmentRef: winner.assignmentRef, expectedVersion: 1, scheduledStart: "2026-09-14T18:00:00.000Z", scheduledEnd: "2026-09-14T20:30:00.000Z", slotKey: "AFTERNOON", reasonCode: "CLIENT_CONFIRMED", notificationRequired: true, saturdayApprovalReason: null }, replayRequest);

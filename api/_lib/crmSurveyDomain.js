@@ -194,6 +194,15 @@ function publicAssignment(row) {
     caseCode: row.pipelineCase.caseCode,
     clientDisplayName: row.pipelineCase.client?.displayName || null,
     evaluator: { displayName: row.evaluatorMembership.user.name },
+    evaluationMethod:
+      row.evaluationDecision?.method ||
+      row.contextSnapshot?.evaluationMethod ||
+      null,
+    serviceSelectionRef:
+      row.serviceRevision?.selectionRef ||
+      row.contextSnapshot?.serviceSelectionRef ||
+      null,
+    routeVersion: row.routeVersion,
     scheduledStart: row.scheduledStart,
     scheduledEnd: row.scheduledEnd,
     status: row.status,
@@ -330,6 +339,10 @@ function publicDraft(row) {
     version: row.version,
     routeVersion: row.routeVersion,
     serviceSelectionRef: row.serviceRevision.selectionRef,
+    evaluationMethod:
+      row.assignment.evaluationDecision?.method ||
+      row.assignment.contextSnapshot?.evaluationMethod ||
+      null,
     catalog: publicCatalog(row.catalogVersion),
     items: Object.freeze(activeItems.map(publicItem)),
     access: Object.freeze(row.accessObservations.map(publicAccess)),
@@ -339,7 +352,7 @@ function publicDraft(row) {
   });
 }
 const draftInclude = Object.freeze({
-  assignment: true,
+  assignment: { include: { evaluationDecision: true } },
   pipelineCase: { include: { client: true } },
   serviceRevision: true,
   catalogVersion: {
@@ -379,6 +392,8 @@ async function scopedAssignment(
     include: {
       pipelineCase: { include: { client: true } },
       evaluatorMembership: { include: { user: true } },
+      evaluationDecision: true,
+      serviceRevision: true,
       drafts: { orderBy: { revision: "desc" }, take: 1 },
     },
   });
@@ -572,6 +587,8 @@ export async function listSurveyAgenda(context, database = prisma) {
         include: {
           pipelineCase: { include: { client: true } },
           evaluatorMembership: { include: { user: true } },
+          evaluationDecision: true,
+          serviceRevision: true,
           drafts: { orderBy: { revision: "desc" }, take: 1 },
         },
       });

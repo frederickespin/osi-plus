@@ -60,6 +60,13 @@ const label: Record<string, string> = {
   PRE_EXISTING_DAMAGE: "Daño preexistente",
   ORIGIN: "Origen",
   DESTINATION: "Destino",
+  IN_PERSON: "Visita presencial",
+  VIRTUAL: "Evaluación virtual",
+  CLIENT_PHOTOS_DOCUMENTS: "Fotografías/documentos",
+  WRITTEN_REPORT: "Reporte escrito",
+  VOXME: "Voxme",
+  MINI: "Precarga Mini",
+  NONE: "No requiere evaluación",
 };
 
 function Button({
@@ -151,6 +158,11 @@ function Agenda({
                   <p className="text-sm font-semibold text-[#00447c]">
                     {row.caseCode} · {label[row.status] || row.status}
                   </p>
+                  {row.evaluationMethod && (
+                    <p className="mt-1 text-xs text-slate-600">
+                      Método · {label[row.evaluationMethod] || row.evaluationMethod}
+                    </p>
+                  )}
                 </div>
                 {distant && (
                   <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900">
@@ -1000,6 +1012,11 @@ export default function SurveyApp({
             <p className="text-xs text-slate-500">
               {draft.caseCode} · v{draft.version}
             </p>
+            {draft.evaluationMethod && (
+              <p className="text-[10px] text-slate-500">
+                {label[draft.evaluationMethod] || draft.evaluationMethod}
+              </p>
+            )}
           </div>
           <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
             Guardado

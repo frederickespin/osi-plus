@@ -11,6 +11,8 @@ export function validateSchedulingConvergence(overrides = {}) {
   const contract = read("api/_lib/surveySchedulingContract.js", overrides);
   const api = read("api/crm/survey/scheduling/index.js", overrides);
   const panel = read("src/survey/SurveyCasePanel.tsx", overrides);
+  const surveyApp = read("src/survey/SurveyApp.tsx", overrides);
+  const surveyDomain = read("api/_lib/crmSurveyDomain.js", overrides);
   const client = read("src/survey/schedulingApi.ts", overrides);
   const access = read("src/survey/schedulingAccess.ts", overrides);
   const rbac = read("api/_lib/rbac.js", overrides);
@@ -25,6 +27,12 @@ export function validateSchedulingConvergence(overrides = {}) {
   assert.match(domain, /pg_try_advisory_xact_lock/, "concurrencia sin advisory lock");
   assert.match(domain, /logisticsPlanRevision[\s\S]*costingRevision[\s\S]*costingLine/, "Visit Fee no encadena Motor y Costing");
   assert.match(motor, /rule\.family === "ZONE"[\s\S]*zoneType: r\.zoneType, zoneCode: r\.zoneCode/, "Motor dejó de publicar la zona versionada para Scheduling");
+  assert.match(domain, /contextSnapshot: evaluatorContext\(pipelineCase, serviceRevision, nextDecision, policy, zone\)/, "Assignment no recibe el contexto autoritativo de Scheduling");
+  assert.match(domain, /serviceSelectionRef: serviceRevision\.selectionRef[\s\S]*services: serviceRevision\.items\.map[\s\S]*evaluationMethod: decision\.method/, "ServicesRevision o método no llegan a la App del Evaluador");
+  assert.match(domain, /routeVersion === pipelineCase\.routeRevision[\s\S]*role === "ORIGIN"[\s\S]*role === "DESTINATION"/, "RouteSnapshot no llega a la App del Evaluador");
+  assert.match(surveyDomain, /evaluationMethod:[\s\S]*row\.evaluationDecision\?\.method[\s\S]*serviceSelectionRef:[\s\S]*row\.serviceRevision\?\.selectionRef/, "DTO de Assignment no publica método y ServicesRevision");
+  assert.match(surveyApp, /Método · \{label\[row\.evaluationMethod\]/, "App del Evaluador no representa el método asignado");
+  assert.doesNotMatch(surveyApp, /crm-survey-preview|SurveyVisualPreview|visitCalendarStore|schedulingBridge/, "App reciente fue sustituida por Preview o histórico");
   assert.doesNotMatch(domain + contract + panel + client, /visitCalendarStore|schedulingBridge|localStorage|sessionStorage|salesStore/, "autoridad legacy/local reintroducida");
   assert.doesNotMatch(domain, /evaluatorName|ownerName/, "evaluador resuelto por nombre");
   assert.match(contract, /CAN_PERFORM_IN_PERSON_SURVEY[\s\S]*CAN_PERFORM_OUT_OF_AREA_VISIT[\s\S]*CAN_APPROVE_VISIT_FEE/, "capacidades operacionales ausentes");
@@ -37,6 +45,6 @@ export function validateSchedulingConvergence(overrides = {}) {
   assert.match(client, /credentials: "same-origin"[\s\S]*cache: "no-store"[\s\S]*referrerPolicy: "no-referrer"/, "cliente Scheduling no conserva contrato privado");
   assert.ok(inventory.categories.protectedSameOrigin.includes("/api/crm/survey/scheduling"), "ruta Scheduling fuera del inventario CORS");
   assert.match(api, /createCrmSurveyHandler/, "API no reutiliza AuthorizationContext/guardia 04A");
-  return 26;
+  return 32;
 }
-if (import.meta.url === `file:///${process.argv[1]?.replaceAll("\\", "/")}`) process.stdout.write(`Scheduling 11B guard: ${validateSchedulingConvergence()}/26\n`);
+if (import.meta.url === `file:///${process.argv[1]?.replaceAll("\\", "/")}`) process.stdout.write(`Scheduling 11B guard: ${validateSchedulingConvergence()}/32\n`);

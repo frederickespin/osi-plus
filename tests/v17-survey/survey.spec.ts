@@ -18,6 +18,9 @@ const assignment = {
   caseCode: "SUR-2026-0001",
   clientDisplayName: "Cliente relacional",
   evaluator: { displayName: "Evaluador sintético" },
+  evaluationMethod: "IN_PERSON",
+  serviceSelectionRef: SERVICE_REF,
+  routeVersion: 1,
   scheduledStart: "2026-09-06T13:00:00.000Z",
   scheduledEnd: "2026-09-06T15:00:00.000Z",
   status: "ASSIGNED",
@@ -67,6 +70,7 @@ let draft = {
   version: 1,
   routeVersion: 1,
   serviceSelectionRef: SERVICE_REF,
+  evaluationMethod: "IN_PERSON",
   catalog,
   items: [] as Record<string, unknown>[],
   access: [] as Record<string, unknown>[],
@@ -357,12 +361,14 @@ test("agenda, inventario, accesos, revisión y firma conservan el flujo móvil a
     page.getByRole("heading", { name: "Agenda de visitas" }),
   ).toBeVisible();
   await expect(page.getByText("Origen estructurado")).toBeVisible();
+  await expect(page.getByText("Método · Visita presencial")).toBeVisible();
   await page.getByRole("button", { name: "Llegué", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Llegué a la hora acordada" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Llegué a la hora acordada" }).click();
   await page.getByRole("button", { name: "Iniciar Survey" }).click();
+  await expect(page.getByText("Visita presencial", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Buscar artículo")).toBeFocused();
   await page.getByLabel("Buscar artículo").fill("sofá");
   await page.getByRole("button", { name: /Sofá tres plazas/ }).click();

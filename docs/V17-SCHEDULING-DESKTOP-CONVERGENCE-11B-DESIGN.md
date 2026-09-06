@@ -1,5 +1,11 @@
 # V17 Scheduling Desktop Convergence 11B — decisión de modelo
 
+## Autoridad de la App del Evaluador
+
+La autoridad visual y funcional de ejecución es la experiencia reciente publicada en `/experience-preview/survey?v=476574e`, cuyo origen versionado es `476574e` y cuya adaptación tenant-first vigente vive en `src/survey/SurveyApp.tsx`. El snapshot moderno histórico sólo se usa para detectar capacidades de Scheduling que esa experiencia no posea; nunca para reconstruir Survey App.
+
+11B conserva la App 04A y limita su adaptación a enlazar datos publicados por `SurveyAssignment`: Case, evaluador, método, revisión de Servicios, snapshot de ruta, instrucciones, borrador server-side y publicación inmutable.
+
 ## Autoridades conservadas
 
 - `SurveyAssignment` continúa siendo la única autoridad de una cita y de la entrada a Survey App.
@@ -53,4 +59,5 @@ La clasificación real de zona/distancia y la gratuidad deben proceder del Motor
 
 - Production continúa apagado y no recibe la migración.
 - No se porta `visitCalendarStore`, `schedulingBridge`, `salesStore` ni fórmulas monetarias históricas.
+- No se copia `SurveyVisualPreview`; sólo se conserva su experiencia reciente mediante el adaptador tenant-first de 04A.
 - No se implementan envío externo, Relaciones Comerciales, Operaciones ni Auth V2.

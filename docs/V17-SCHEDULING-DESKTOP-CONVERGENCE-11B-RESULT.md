@@ -12,7 +12,7 @@ Se recuperó la experiencia de Evaluación y Scheduling como una extensión tena
 
 ## C. Código histórico recuperado
 
-Se revisaron `LegacyLeadIntakeWorkspace.tsx`, `VisitSchedulingModal.tsx`, `visitSchedulingRules.ts`, `SurveyPicCommunicationPanel.tsx`, `SalesQuoteWorkspace.tsx`, `visitCalendarStore` y `schedulingBridge` del snapshot `modern-baseline-20260814@61a3e8a4525efedfc99120fb5e4845ba45234ba1`. Se recuperaron los métodos de evaluación, perfiles METRO/INTERIOR, slots, capacidad diaria, cierre dominical, validación sabatina, reprogramación, Visit Fee por fases y composición PIC para cliente/evaluador.
+La autoridad de ejecución es la experiencia reciente `/experience-preview/survey?v=476574e`, no el snapshot histórico. Se verificó su agenda, contexto de visita, inventario, accesos, revisión, detalle técnico, firma y publicación. Del snapshot `modern-baseline-20260814@61a3e8a4525efedfc99120fb5e4845ba45234ba1` sólo se recuperaron capacidades faltantes de Scheduling: métodos, perfiles METRO/INTERIOR, slots, capacidad, sábados, reprogramación, Visit Fee y PIC.
 
 ## D. Qué se descartó del histórico
 
@@ -94,7 +94,7 @@ La pestaña Survey de la Ficha incorpora decisión, método, agenda, slots/ocupa
 
 ## V. Survey App integration
 
-Survey App 04A no se reescribió. Se abre desde la asignación publicada y comparte las mismas referencias y autoridad. El flujo mobile-first existente permanece separado del workspace comercial desktop.
+Survey App 04A no se reconstruyó desde el snapshot ni se copió `SurveyVisualPreview`. Su adaptador ahora recibe de `SurveyAssignment` el Case, evaluador, método, `ServicesRevision`, `RouteSnapshot`, instrucciones y referencias públicas. Borrador y publicación permanecen server-side e inmutables; el flujo mobile-first continúa separado del workspace comercial desktop.
 
 ## W. Resultado para Comercial
 
@@ -115,9 +115,10 @@ Se auditan decisión de método, publicación de política, agenda, reprogramaci
 ## AA. Tests
 
 - Contrato histórico/funcional: 19/19.
-- Base de datos: 26 aserciones.
-- Guardia Scheduling: 26/26; negativas 11/11.
+- Base de datos: 32 aserciones.
+- Guardia Scheduling: 32/32; negativas 14/14.
 - Matriz visual focal: 18/18.
+- Regresión de la App del Evaluador 04A: 12/12.
 - Guards 01A–10B afectados: todos verdes.
 - TypeScript, ESLint focalizado, build y `git diff --check`: verdes.
 

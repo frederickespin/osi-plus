@@ -74,6 +74,28 @@ function motorZone(revision, routeVersion) {
   if (typeof zoneType !== "string" || typeof zoneCode !== "string") schedulingFail("CRM_SURVEY_ZONE_UNRESOLVED", 409);
   return { zoneType, zoneCode, distanceKm: route.distanceKm == null ? null : Number(route.distanceKm) };
 }
+function routeSummary(route) {
+  if (!route) return null;
+  return [route.streetAndNumber, route.sector, route.cityMunicipality, route.provinceState, route.countryCode].filter(Boolean).join(", ") || null;
+}
+function evaluatorContext(pipelineCase, serviceRevision, decision, policy, zone) {
+  const routes = pipelineCase.routeSnapshots.filter((route) => route.routeVersion === pipelineCase.routeRevision);
+  return Object.freeze({
+    caseCode: pipelineCase.caseCode,
+    clientDisplayName: pipelineCase.client?.displayName || null,
+    company: null,
+    leadAccount: null,
+    booker: null,
+    origin: routeSummary(routes.find((route) => route.role === "ORIGIN")),
+    destination: routeSummary(routes.find((route) => route.role === "DESTINATION")),
+    routeVersion: pipelineCase.routeRevision,
+    serviceSelectionRef: serviceRevision.selectionRef,
+    services: serviceRevision.items.map((item) => ({ kind: item.kind, code: item.codeSnapshot, name: item.nameSnapshot })),
+    evaluationMethod: decision.method,
+    schedulingPolicyRef: policy.policyRef,
+    zone: { type: zone.zoneType, code: zone.zoneCode, distanceKm: zone.distanceKm },
+  });
+}
 async function latestMotor(tx, tenantId, pipelineCaseId) {
   return tx.logisticsPlanRevision.findFirst({ where: { tenantId, plan: { pipelineCaseId }, status: "PUBLISHED" }, orderBy: { revision: "desc" } });
 }
@@ -197,6 +219,8 @@ async function schedule(tx, who, command) {
   const latest = await tx.surveyEvaluationDecision.findFirst({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id }, orderBy: { version: "desc" } });
   if (!latest || latest.id !== decision.id || decision.version !== command.expectedDecisionVersion || decision.method !== "IN_PERSON" || decision.commercialState !== "READY_TO_SCHEDULE") schedulingFail("CRM_SURVEY_VERSION_CONFLICT", 409);
   if (!decision.serviceRevisionId) schedulingFail("CRM_SURVEY_SERVICE_REVISION_REQUIRED", 409);
+  const serviceRevision = await tx.pipelineCaseServiceRevision.findFirst({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, id: decision.serviceRevisionId }, include: { items: { orderBy: { position: "asc" } } } });
+  if (!serviceRevision) schedulingFail("CRM_SURVEY_RESOURCE_NOT_FOUND", 404);
   const policy = await activePolicy(tx, who.tenantId);
   const motor = await latestMotor(tx, who.tenantId, pipelineCase.id);
   const zone = motorZone(motor, pipelineCase.routeRevision);
@@ -207,7 +231,7 @@ async function schedule(tx, who, command) {
   await scheduleCapacity(tx, who, policy, profileConfig.code, zone.zoneCode, command.slotKey, start, end, null, saturdayApproved);
   await assertEvaluatorInterval(tx, who, evaluatorRow, start, end);
   const nextDecision = await tx.surveyEvaluationDecision.create({ data: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, serviceRevisionId: decision.serviceRevisionId, routeVersion: pipelineCase.routeRevision, version: decision.version + 1, method: decision.method, commercialState: "SCHEDULED", informationSource: decision.informationSource, rationaleCode: decision.rationaleCode, seriesRef: decision.seriesRef, replacesDecisionId: decision.id, createdByMembershipId: who.membershipId, createdByUserId: who.userId } });
-  const assignment = await tx.surveyAssignment.create({ data: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, serviceRevisionId: decision.serviceRevisionId, routeVersion: pipelineCase.routeRevision, evaluatorMembershipId: evaluatorRow.id, evaluatorUserId: evaluatorRow.userId, scheduledStart: start, scheduledEnd: end, contextSnapshot: { routeVersion: pipelineCase.routeRevision, clientDisplayName: pipelineCase.client?.displayName || null, services: [], schedulingPolicyRef: policy.policyRef }, instructionSnapshot: command.instruction, evaluationDecisionId: nextDecision.id, schedulePolicyId: policy.id, scheduleProfile: profileConfig.code, zoneCode: zone.zoneCode, slotKey: command.slotKey, createdByMembershipId: who.membershipId, createdByUserId: who.userId }, include: { evaluatorMembership: true } });
+  const assignment = await tx.surveyAssignment.create({ data: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, serviceRevisionId: serviceRevision.id, routeVersion: pipelineCase.routeRevision, evaluatorMembershipId: evaluatorRow.id, evaluatorUserId: evaluatorRow.userId, scheduledStart: start, scheduledEnd: end, contextSnapshot: evaluatorContext(pipelineCase, serviceRevision, nextDecision, policy, zone), instructionSnapshot: command.instruction, evaluationDecisionId: nextDecision.id, schedulePolicyId: policy.id, scheduleProfile: profileConfig.code, zoneCode: zone.zoneCode, slotKey: command.slotKey, createdByMembershipId: who.membershipId, createdByUserId: who.userId }, include: { evaluatorMembership: true } });
   await event(tx, who, nextDecision, pipelineCase.id, assignment.id, "SCHEDULED", null, snapshotAssignment({ ...assignment, evaluatorMembership: evaluatorRow }), command.saturdayApprovalReason ? "SATURDAY_APPROVED" : null, true);
   return persist(tx, who, command, assignment.assignmentRef, assignment.version, { assignmentRef: assignment.assignmentRef, decisionRef: nextDecision.decisionRef, status: assignment.status, version: assignment.version, replayed: false }, "SURVEY_ASSIGNMENT_SCHEDULED");
 }

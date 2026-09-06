@@ -63,7 +63,12 @@ function audit(context, action, entity, entityId, requestId, after) {
 async function serializable(prisma, work, timeout = 30_000) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
-      return await prisma.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout });
+      return await prisma.$transaction(async (tx) => {
+        // Quote migration guards use unqualified tenant tables; pin the canonical schemas
+        // for every mutation transaction instead of depending on a connection default.
+        await tx.$executeRaw(Prisma.sql`SET LOCAL search_path = osi, public`);
+        return work(tx);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout });
     } catch (error) {
       if (error?.code !== "P2034" || attempt === 3) throw error;
     }

@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createSurveySchedulingApi } from "./schedulingApi";
 import type { SurveySchedulingUiAccess } from "./schedulingAccess";
 import type { EvaluationMethod, SchedulingWorkspace } from "./schedulingTypes";
+import { CommercialRelationshipsApi, type CommercialCaseSnapshot } from "@/commercial-relationships/api";
+import { isCommercialRelationshipsUiEnabled } from "@/commercial-relationships/mode";
 
 type Props = Readonly<{ caseRef: string; authorization?: string; access: SurveySchedulingUiAccess; onNavigate(pathname: string): void; onUnauthorized(): void }>;
 
@@ -29,7 +31,9 @@ function appointmentCopy(workspace: SchedulingWorkspace) {
 
 export default function SurveyCasePanel({ caseRef, authorization, access, onNavigate, onUnauthorized }: Props) {
   const api = useMemo(() => createSurveySchedulingApi(authorization), [authorization]);
+  const commercialApi = useMemo(() => new CommercialRelationshipsApi(authorization), [authorization]);
   const [workspace, setWorkspace] = useState<SchedulingWorkspace | null>(null);
+  const [commercialContext, setCommercialContext] = useState<CommercialCaseSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,10 +48,10 @@ export default function SurveyCasePanel({ caseRef, authorization, access, onNavi
 
   const load = useCallback(async (availabilityDate?: string) => {
     setLoading(true); setError(null);
-    try { setWorkspace(await api.workspace(caseRef, availabilityDate)); }
+    try { const [nextWorkspace, nextCommercial] = await Promise.all([api.workspace(caseRef, availabilityDate), isCommercialRelationshipsUiEnabled() ? commercialApi.caseContext(caseRef) : Promise.resolve(null)]); setWorkspace(nextWorkspace); setCommercialContext(nextCommercial); }
     catch (cause) { const code = cause instanceof Error ? cause.message : "CRM_SURVEY_REQUEST_FAILED"; if (/UNAUTHORIZED|AUTH_REQUIRED/.test(code)) onUnauthorized(); else setError(code); }
     finally { setLoading(false); }
-  }, [api, caseRef, onUnauthorized]);
+  }, [api, caseRef, commercialApi, onUnauthorized]);
   useEffect(() => { void load(); }, [load]);
 
   const slots = useMemo(() => workspace?.policy?.slots.filter((slot) => slot.profile === workspace.schedulingContext?.profile) || [], [workspace]);
@@ -89,6 +93,7 @@ export default function SurveyCasePanel({ caseRef, authorization, access, onNavi
     {error && <p role="alert" className="m-4 border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">{error}</p>}
     {!loading && workspace && <div className="grid min-w-0 gap-0 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]">
       <div className="min-w-0 divide-y">
+        {commercialContext && <section className="bg-sky-50/50 p-4" data-testid="scheduling-commercial-context"><h3 className="text-xs font-black uppercase tracking-wide text-[#003366]">Contexto comercial para Scheduling</h3><dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2"><div><dt className="font-bold text-slate-500">Booker</dt><dd className="font-semibold">{commercialContext.parties.find((item) => item.role === "BOOKER")?.displayName || "No definido"}</dd></div><div><dt className="font-bold text-slate-500">Lead Account</dt><dd className="font-semibold">{commercialContext.parties.find((item) => item.role === "LEAD_ACCOUNT")?.displayName || "No definido"}</dd></div><div><dt className="font-bold text-slate-500">Contactos relevantes</dt><dd className="font-semibold">{commercialContext.parties.filter((item) => ["BOOKER", "LEAD_ACCOUNT"].includes(item.role)).flatMap((item) => item.contacts).map((item) => item.displayName).join(" · ") || "No definido"}</dd></div><div><dt className="font-bold text-slate-500">Instrucciones especiales</dt><dd className="font-semibold">{commercialContext.instructions.length ? `${commercialContext.instructions.length} publicada(s)` : "No definido"}</dd></div></dl></section>}
         <section className="p-4" aria-labelledby="evaluation-decision-title"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 id="evaluation-decision-title" className="text-xs font-black uppercase tracking-wide text-slate-500">Decisión y método</h3><p className="mt-1 text-lg font-black text-[#003366]">{workspace.decision ? METHOD_LABELS[workspace.decision.method] : "Pendiente de seleccionar método"}</p><p className="text-sm text-slate-600">{STATE_LABELS[workspace.decision?.state || "PENDING_METHOD"]}</p></div>{workspace.decision && <Badge variant="outline">v{workspace.decision.version}</Badge>}</div>
           {access.canManage && (!workspace.assignment || workspace.assignment.status === "CANCELLED") && <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><Label htmlFor="survey-method">Método de evaluación</Label><Select value={method} onValueChange={(value) => setMethod(value as EvaluationMethod)}><SelectTrigger id="survey-method"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(METHOD_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div><Button disabled={saving} onClick={() => void saveDecision()}>{saving ? "Guardando…" : "Guardar decisión"}</Button></div>}
         </section>

@@ -48,7 +48,7 @@ const deniedIndex = hubAccess.indexOf("application.requiredPermissions.some((per
 const roleIndex = hubAccess.indexOf("application.baselineRoles.includes(context.role)");
 if (deniedIndex < 0 || roleIndex < 0 || deniedIndex > roleIndex) fail("deniedPermissions no prevalece sobre roles baseline");
 if (!/appId: "commercial-crm"[^\n]+requiresExplicitPermissions: true/.test(catalog)) fail("roles baseline conceden pipeline:view");
-requireText(catalog, 'route: "/commercial", routeAliases: ["/crm", "/sales/pipeline"]', "las rutas comerciales no comparten descriptor");
+requireText(catalog, 'route: "/commercial", routeAliases: ["/crm", "/sales/pipeline", "/commercial/relationships"]', "las rutas comerciales no comparten descriptor");
 
 if (/evaluateHubAccess\s*\(\s*selected|function\s+AccessDenied|<AccessDenied|addEventListener\(["']popstate|history\.pushState/.test(workspace)) fail("la autorización o el routing regresó al chunk lazy");
 for (const signature of ["pathname: string", "onNavigate: (pathname: string) => void"]) requireText(workspace, signature, `HubWorkspace dejó de ser controlado: ${signature}`);
@@ -63,4 +63,4 @@ for (const signature of ["headingRef.current?.focus()", "tabIndex={-1}", "Volver
   requireText(errorBoundary, signature, `el error accesible perdió: ${signature}`);
 }
 
-console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, protectedLazyImports: 3, migrationsExpected: 20 }));
+console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, protectedLazyImports: 4, migrationsExpected: 31 }));

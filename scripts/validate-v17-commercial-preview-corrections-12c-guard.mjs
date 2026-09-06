@@ -10,6 +10,8 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   const survey = source("src/survey/SurveyCasePanel.tsx");
   const summary = source("src/logistics-engine/LogisticsVisitSummary.tsx");
   const admin = source("src/admin-tenant/AdminTenantMembershipModule.tsx");
+  const hub = source("src/hub/HubWorkspace.tsx");
+  const catalog = source("src/hub/appCatalog.ts");
   const rules = source("src/logistics-engine/LogisticsRulesAdmin.tsx");
   const costing = source("src/costing/CostingPanel.tsx");
   const http = source("api/_lib/logisticsEngineHttp.js");
@@ -27,12 +29,17 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.match(admin, /const LogisticsRulesAdmin = lazy/);
   assert.match(admin, /const logisticsAdminEnabled = isLogisticsUiEnabled\(\) && logisticsRulesAccess\.canRulesView/);
   assert.match(admin, /logisticsAdminEnabled && <Suspense/);
+  assert.match(hub, /const LogisticsRulesAdmin = lazy/);
+  assert.match(hub, /const logisticsAdminAvailable = isLogisticsUiEnabled\(\) && logisticsAccess\.canRulesView/);
+  assert.match(hub, /selected\?\.appId === "administration" && logisticsAdminAvailable/);
+  assert.match(hub, /adminMembershipAvailable \|\| logisticsAdminAvailable/);
+  assert.match(catalog, /appId: "administration"[\s\S]*requiredPermissions: \["membership:view", "logistics:rules:view"\][\s\S]*permissionMode: "ANY"/);
   assert.match(rules, /id="admin-logistics-engine"/);
   assert.match(rules, /Administración · Motor Logístico/);
   assert.doesNotMatch(http, /PRODUCTION_(?:READ|WRITE|PILOT)/, "12C no activa Production");
   const migrationCount = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
   assert.equal(migrationCount, 31, "12C no puede crear migraciones");
-  return Object.freeze({ ok: true, commercialMotorTabs: 0, adminLazyBoundary: true, publishedResultOnly: true, productionApiEnabled: false, migrations: migrationCount });
+  return Object.freeze({ ok: true, commercialMotorTabs: 0, adminLazyBoundary: true, independentAdminSurfaces: true, publishedResultOnly: true, productionApiEnabled: false, migrations: migrationCount });
 }
 
 if (import.meta.url === `file:///${process.argv[1]?.replaceAll("\\", "/")}`) process.stdout.write(`${JSON.stringify(validateCommercialPreviewCorrections12cGuard())}\n`);

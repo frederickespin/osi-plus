@@ -6,7 +6,7 @@
 - El flujo visible conserva `Resumen`, `Servicios`, `Evaluación`, `Costos` y `Cotización`; `Relaciones` permanece como contexto transversal ya aprobado en 12A/12B.
 - `Evaluación` consulta la última revisión publicada del Motor y presenta zona, distancia, perfil de agenda, Visit Fee, necesidades publicadas y advertencias, sin fórmulas ni acciones de cálculo/publicación.
 - Los blockers publicados muestran descripción, causa sanitizada y el área de autoridad donde deben resolverse.
-- Administración reutiliza `LogisticsRulesAdmin` de 07A bajo `Administración → Motor Logístico`, detrás de `isLogisticsUiEnabled()` y `logistics:rules:view` antes del límite lazy.
+- Administración reutiliza `LogisticsRulesAdmin` de 07A bajo `Administración → Motor Logístico`, detrás de `isLogisticsUiEnabled()` y `logistics:rules:view` antes del límite lazy. Esta superficie es independiente de la compuerta de Memberships: si esa compuerta está desactivada no carga `AdminTenantMembershipModule` ni consulta `/api/admin/memberships`.
 - Costing continúa recibiendo la revisión publicada del Motor; no calcula logística.
 
 ## Autoridades preservadas

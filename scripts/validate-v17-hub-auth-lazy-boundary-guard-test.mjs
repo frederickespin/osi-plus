@@ -77,7 +77,7 @@ const negatives = [
   negative("ruta concede acceso", "src/hub/hubRouteAccess.ts", (s) => s.replace("evaluateHubAccess(application, context)", "({ allowed: true })"), /no comparten decisión pura/),
   negative("deny tardío", "src/hub/hubAccess.ts", (s) => s.replace("const denied = new Set(context.deniedPermissions);", "const denied = new Set(context.deniedPermissions);\n  const baseline = application.baselineRoles.includes(context.role);"), /deniedPermissions no prevalece/),
   negative("rol concede permiso", "src/hub/appCatalog.ts", (s) => s.replace("requiresExplicitPermissions: true", "requiresExplicitPermissions: false"), /roles baseline conceden/),
-  negative("alias sin catálogo", "src/hub/appCatalog.ts", (s) => s.replace('routeAliases: ["/crm", "/sales/pipeline"]', 'routeAliases: ["/crm"]'), /rutas comerciales no comparten/),
+  negative("alias sin catálogo", "src/hub/appCatalog.ts", (s) => s.replace('routeAliases: ["/crm", "/sales/pipeline", "/commercial/relationships"]', 'routeAliases: ["/crm", "/sales/pipeline"]'), /rutas comerciales no comparten/),
   negative("storage como autoridad", "src/hub/hubRouteAccess.ts", (s) => `${s}\nlocalStorage.getItem("pipeline:view");\n`, /autoridad del navegador/),
   negative("prefetch protegido", "src/App.tsx", (s) => `${s}\nconst unsafe = '<link rel="prefetch">';\n`, /prefetch o preload/),
   negative("403 sin foco", "src/components/auth/CanonicalAccessDenied.tsx", (s) => s.replace("headingRef.current?.focus()", "void headingRef.current"), /403 accesible perdió/),

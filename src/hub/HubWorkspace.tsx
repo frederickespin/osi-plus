@@ -24,6 +24,7 @@ import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
 const AdminTenantMembershipModule = lazy(() => import("@/admin-tenant/AdminTenantMembershipModule"));
+const LogisticsRulesAdmin = lazy(() => import("@/logistics-engine/LogisticsRulesAdmin"));
 const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
@@ -111,6 +112,9 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const selected = findHubApplicationByRoute(pathname);
   const commercialCaseRef = commercialCaseRefFromRoute(pathname);
   const adminEnabled = isAdminTenantMembershipEnabled();
+  const effectivePermissions = new Set(accessContext.effectivePermissions || []);
+  const deniedPermissions = new Set(accessContext.deniedPermissions);
+  const adminMembershipAvailable = adminEnabled && effectivePermissions.has("membership:view") && !deniedPermissions.has("membership:view");
   const adminInvitationsEnabled = isAdminIdentityInvitationEnabled();
   const adminInvitationMode = resolveAdminIdentityInvitationMode();
   const surveyEnabled = isSurveyUiEnabled();
@@ -121,6 +125,9 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const toolsAuthorized = visible.some((application) => application.appId === "tools-equipment");
   const materialsAvailable = materialsEnabled && materialsAuthorized;
   const toolsAvailable = toolsEnabled && Boolean(toolsAuthorized);
+  const logisticsAccess = resolveLogisticsUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
+  const logisticsAdminAvailable = isLogisticsUiEnabled() && logisticsAccess.canRulesView;
+  const administrationAvailable = adminMembershipAvailable || logisticsAdminAvailable;
   const commercialRelationshipsEnabled = isCommercialRelationshipsUiEnabled();
   const commercialRelationshipsAccess = resolveCommercialRelationshipsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   if (pathname === "/commercial/relationships" && (!commercialRelationshipsEnabled || !commercialRelationshipsAccess.canView)) {
@@ -134,7 +141,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         role={accessContext.role}
         mutationAccess={resolveCrmCaseMutationUiAccess(accessContext)}
         servicesAccess={resolveCrmServicesUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
-        logisticsAccess={resolveLogisticsUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
+        logisticsAccess={logisticsAccess}
         logisticsEnabled={isLogisticsUiEnabled()}
         costingAccess={resolveCostingUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         costingEnabled={isCostingUiEnabled()}
@@ -154,7 +161,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       />
     </Suspense>;
   }
-  if (selected?.appId === "administration" && adminEnabled) {
+  if (selected?.appId === "administration" && adminMembershipAvailable) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Administración…</div>}>
       <AdminTenantMembershipModule
         authorization={authorization}
@@ -167,6 +174,19 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         invitationMode={adminInvitationMode}
         onUnauthorized={onLogout}
       />
+    </Suspense>;
+  }
+  if (selected?.appId === "administration" && logisticsAdminAvailable) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Motor Logístico…</div>}>
+      <main className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
+        <header className="mx-auto max-w-7xl border-b border-slate-200 pb-4">
+          <p className="text-[10px] font-bold uppercase tracking-[.2em] text-indigo-600">Administración</p>
+          <h1 className="mt-1 text-2xl font-black text-slate-950">Autoridades transversales</h1>
+          <p className="mt-1 text-sm text-slate-600">Configuración operativa autorizada para el tenant activo.</p>
+          <nav aria-label="Áreas de Administración" className="mt-3 flex flex-wrap gap-2 text-xs font-bold"><a href="#admin-logistics-engine" className="rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-indigo-900">Motor Logístico</a></nav>
+        </header>
+        <div className="mx-auto max-w-7xl"><LogisticsRulesAdmin authorization={authorization} access={logisticsAccess} onUnauthorized={onLogout} /></div>
+      </main>
     </Suspense>;
   }
   if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {
@@ -192,7 +212,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     </aside>
   );
   const content = pathname === "/hub"
-    ? <HubHome applications={visible} crmReadEnabled={crmReadEnabled} adminEnabled={adminEnabled} surveyEnabled={surveyEnabled} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} userName={userName} onNavigate={onNavigate} />
+    ? <HubHome applications={visible} crmReadEnabled={crmReadEnabled} adminEnabled={administrationAvailable} surveyEnabled={surveyEnabled} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} userName={userName} onNavigate={onNavigate} />
     : selected
       ? selected.appId === "osi-survey"
             ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>

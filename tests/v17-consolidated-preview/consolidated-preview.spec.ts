@@ -14,6 +14,7 @@ const permissions = [
   "survey:schedule:view", "survey:schedule:manage", "survey:schedule:assign", "survey:schedule:reschedule", "survey:visit-fee:view", "survey:visit-fee:approve",
   "inventory:catalog:view", "inventory:stock:view", "assets:instance:view",
   "logistics:plan:view", "logistics:plan:calculate", "logistics:plan:publish", "costing:view", "costing:calculate", "costing:publish",
+  "logistics:rules:view", "logistics:rules:manage",
   "quote:view", "quote:create", "quote:update", "quote:publish", "quote:send", "quote:record-client-decision", "quote:internal-cost:view",
   "commercial:relationships:view", "commercial:relationships:manage", "commercial:tariffs:view", "commercial:tariffs:manage",
   "commercial:referrals:view", "commercial:referrals:manage", "commercial:commissions:view", "commercial:commissions:manage",
@@ -58,6 +59,25 @@ async function mockDomains(page: Page) {
   await page.route("**/api/commercial-relationships/workspace", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { tariffs: [{ tariffRef: commercialContext.agreement.tariff.tariffRef, code: "CORP-USD", name: "Tarifario corporativo", version: 1, currency: "USD", validFrom: null, validTo: null }], pricingAgreements: [{ pricingAgreementRef: commercialContext.pricingAgreementRef, tariffCode: "CORP-USD", version: 1, validFrom: null, validTo: null }], referrals: [{ referralAgreementRef: commercialContext.referralAgreementRef, reference: "Referido Preview", version: 1, validFrom: null, validTo: null }], commissions: [{ commissionAgreementRef: "798f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", kind: "INTERNAL", version: 1 }], associations: [{ membershipRef: "778f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", association: { displayName: "Asociación Preview" }, version: 1 }], certifications: [{ certificationRef: "7a8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", type: "CERTIFICACIÓN PREVIEW", status: "ACTIVE", expiresAt: null }] } }) }));
   await page.route(`**/api/commercial-relationships/cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: commercialContext }) }));
 }
+
+test("expone el Motor bajo Administración sin habilitar Memberships", async ({ page }) => {
+  await authorize(page);
+  let membershipRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/admin/memberships")) membershipRequests += 1;
+  });
+  await page.route("**/api/logistics/rules", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: [] }) }));
+  await page.goto("/hub");
+  const administration = page.getByRole("button").filter({ hasText: "Abrir Administración" });
+  await expect(administration).toContainText("Abrir Administración");
+  await administration.click();
+  await expect(page).toHaveURL(/\/administration$/);
+  await expect(page.getByRole("link", { name: "Motor Logístico" })).toBeVisible();
+  await expect(page.getByTestId("logistics-rules-admin")).toBeVisible();
+  expect(membershipRequests).toBe(0);
+  const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name));
+  expect(chunks.some((name) => name.includes("AdminTenantMembershipModule"))).toBe(false);
+});
 
 test("recorre el caso desde ICP hasta Cotización en una sola Ficha", async ({ page }, testInfo) => {
   await authorize(page); await mockDomains(page); await page.goto(`/commercial/cases/${CASE_REF}`);

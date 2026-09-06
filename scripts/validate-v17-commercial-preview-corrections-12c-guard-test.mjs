@@ -18,5 +18,8 @@ rejects("src/logistics-engine/LogisticsVisitSummary.tsx", (value) => `${value}\n
 rejects("src/costing/CostingPanel.tsx", (value) => `${value}\nlogisticsApi.publish({});`);
 rejects("src/admin-tenant/AdminTenantMembershipModule.tsx", (value) => value.replace("isLogisticsUiEnabled() && logisticsRulesAccess.canRulesView", "isLogisticsUiEnabled()"));
 rejects("src/admin-tenant/AdminTenantMembershipModule.tsx", (value) => value.replace("logisticsAdminEnabled && <Suspense", "true && <Suspense"));
+rejects("src/hub/HubWorkspace.tsx", (value) => value.replace("adminMembershipAvailable || logisticsAdminAvailable", "adminMembershipAvailable"));
+rejects("src/hub/HubWorkspace.tsx", (value) => value.replace('selected?.appId === "administration" && logisticsAdminAvailable', 'selected?.appId === "administration"'));
+rejects("src/hub/appCatalog.ts", (value) => value.replace('["membership:view", "logistics:rules:view"]', '["membership:view"]'));
 rejects("api/_lib/logisticsEngineHttp.js", (value) => `${value}\nconst PRODUCTION_PILOT = true;`);
 process.stdout.write(`${JSON.stringify({ ok: true, negatives })}\n`);

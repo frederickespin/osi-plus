@@ -1,4 +1,4 @@
-import { useState, type ElementType } from "react";
+import { Suspense, lazy, useState, type ElementType } from "react";
 import {
   Boxes,
   BriefcaseBusiness,
@@ -23,6 +23,9 @@ import type { LogisticsUiAccess } from "@/logistics-engine/access";
 import type { CostingUiAccess } from "@/costing/access";
 import type { QuoteUiAccess } from "@/quote/access";
 import type { SurveySchedulingUiAccess } from "@/survey/schedulingAccess";
+import type { CommercialRelationshipsAccess } from "@/commercial-relationships/access";
+
+const CommercialRelationshipsAdmin = lazy(() => import("@/commercial-relationships/CommercialRelationshipsAdmin"));
 
 type Props = Readonly<{
   authorization?: string;
@@ -40,6 +43,9 @@ type Props = Readonly<{
   surveySchedulingAccess: SurveySchedulingUiAccess;
   materialsEnabled: boolean;
   toolsEnabled: boolean;
+  commercialRelationshipsEnabled: boolean;
+  commercialRelationshipsAdmin: boolean;
+  commercialRelationshipsAccess: CommercialRelationshipsAccess;
   userName?: string;
   onNavigate(pathname: string): void;
   onLogout(): void;
@@ -63,7 +69,7 @@ const NAVIGATION: readonly NavigationItem[] = Object.freeze([
   { label: "Recursos Humanos", icon: Users, functional: false },
 ]);
 
-function Navigation({ collapsed, materialsEnabled, toolsEnabled, onCommercial, onHub, onMaterials, onTools }: { collapsed: boolean; materialsEnabled: boolean; toolsEnabled: boolean; onCommercial(): void; onHub(): void; onMaterials(): void; onTools(): void }) {
+function Navigation({ collapsed, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, onCommercial, onCommercialRelationships, onHub, onMaterials, onTools }: { collapsed: boolean; materialsEnabled: boolean; toolsEnabled: boolean; commercialRelationshipsEnabled: boolean; onCommercial(): void; onCommercialRelationships(): void; onHub(): void; onMaterials(): void; onTools(): void }) {
   return <nav aria-label="Módulos del ERP" className="flex-1 overflow-y-auto px-3 py-4">
     <button
       type="button"
@@ -78,7 +84,7 @@ function Navigation({ collapsed, materialsEnabled, toolsEnabled, onCommercial, o
       {NAVIGATION.map(({ label, icon: Icon, functional }) => functional ? (
         <div key={label}>
           <button type="button" onClick={onCommercial} aria-current="page" className="flex w-full items-center gap-3 rounded-lg bg-sky-500 px-3 py-2.5 text-left text-sm font-semibold text-white shadow-sm"><Icon className="h-4 w-4 shrink-0" />{!collapsed && <><span className="flex-1">{label}</span><span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] uppercase">Activo</span></>}</button>
-          {!collapsed && <div className="ml-7 mt-1 space-y-0.5 border-l border-blue-300/30 pl-3"><button type="button" onClick={onCommercial} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Pipeline</button><div className="rounded px-2 py-1.5 text-xs text-blue-100/65">Clientes · En integración</div><div className="rounded px-2 py-1.5 text-xs text-blue-100/65">Seguimiento · En integración</div></div>}
+          {!collapsed && <div className="ml-7 mt-1 space-y-0.5 border-l border-blue-300/30 pl-3"><button type="button" onClick={onCommercial} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Pipeline</button>{commercialRelationshipsEnabled ? <button type="button" onClick={onCommercialRelationships} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Relaciones Comerciales</button> : <div className="rounded px-2 py-1.5 text-xs text-blue-100/65">Relaciones · En integración</div>}<div className="rounded px-2 py-1.5 text-xs text-blue-100/65">Seguimiento · En integración</div></div>}
         </div>
       ) : (
         <div
@@ -96,14 +102,16 @@ function Navigation({ collapsed, materialsEnabled, toolsEnabled, onCommercial, o
   </nav>;
 }
 
-function Sidebar({ collapsed, userName, role, materialsEnabled, toolsEnabled, onCollapse, onCommercial, onHub, onMaterials, onTools, onLogout }: {
+function Sidebar({ collapsed, userName, role, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, onCollapse, onCommercial, onCommercialRelationships, onHub, onMaterials, onTools, onLogout }: {
   collapsed: boolean;
   userName?: string;
   role: string;
   materialsEnabled: boolean;
   toolsEnabled: boolean;
+  commercialRelationshipsEnabled: boolean;
   onCollapse(): void;
   onCommercial(): void;
+  onCommercialRelationships(): void;
   onHub(): void;
   onMaterials(): void;
   onTools(): void;
@@ -114,7 +122,7 @@ function Sidebar({ collapsed, userName, role, materialsEnabled, toolsEnabled, on
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-lg font-black text-[#003366]">OS</span>
       {!collapsed && <div className="min-w-0"><p className="truncate text-lg font-black tracking-tight">OSi Plus ERP</p><p className="text-[10px] uppercase tracking-[.18em] text-blue-200">Gestión integrada</p></div>}
     </div>
-    <Navigation collapsed={collapsed} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} onCommercial={onCommercial} onHub={onHub} onMaterials={onMaterials} onTools={onTools} />
+    <Navigation collapsed={collapsed} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} commercialRelationshipsEnabled={commercialRelationshipsEnabled} onCommercial={onCommercial} onCommercialRelationships={onCommercialRelationships} onHub={onHub} onMaterials={onMaterials} onTools={onTools} />
     <div className="border-t border-white/15 p-3">
       <div className={`mb-2 flex items-center gap-3 rounded-lg bg-white/5 p-2.5 ${collapsed ? "justify-center" : ""}`}>
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-400 font-black text-[#003366]"><UserRound className="h-4 w-4" /></span>
@@ -126,7 +134,7 @@ function Sidebar({ collapsed, userName, role, materialsEnabled, toolsEnabled, on
   </aside>;
 }
 
-export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, materialsEnabled, toolsEnabled, userName, onNavigate, onLogout, onUnauthorized }: Props) {
+export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialRelationshipsAccess, userName, onNavigate, onLogout, onUnauthorized }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const goCommercial = () => {
@@ -138,13 +146,13 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
     onNavigate("/hub");
   };
   const goResource = (pathname: string) => { setMobileOpen(false); onNavigate(pathname); };
-  const sidebar = <Sidebar collapsed={collapsed} userName={userName} role={role} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} onCollapse={() => setCollapsed((value) => !value)} onCommercial={goCommercial} onHub={goHub} onMaterials={() => goResource("/materials")} onTools={() => goResource("/assets")} onLogout={onLogout} />;
+  const sidebar = <Sidebar collapsed={collapsed} userName={userName} role={role} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} commercialRelationshipsEnabled={commercialRelationshipsEnabled && commercialRelationshipsAccess.canView} onCollapse={() => setCollapsed((value) => !value)} onCommercial={goCommercial} onCommercialRelationships={() => goResource("/commercial/relationships")} onHub={goHub} onMaterials={() => goResource("/materials")} onTools={() => goResource("/assets")} onLogout={onLogout} />;
 
   return <div className="flex min-h-screen bg-[#f4f7fb]" data-testid="advanced-erp-shell">
     <div className="sticky top-0 hidden h-screen lg:block">{sidebar}</div>
     {mobileOpen && <div className="fixed inset-0 z-50 flex lg:hidden"><div className="h-full">{sidebar}</div><button type="button" aria-label="Cerrar navegación ERP" className="flex-1 bg-slate-950/55" onClick={() => setMobileOpen(false)} /></div>}
     <div className="min-w-0 flex-1">
-      {!caseRef && <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6">
+      {!caseRef && !commercialRelationshipsAdmin && <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6">
         <div className="flex items-center gap-3">
           <button type="button" aria-label="Abrir navegación ERP" className="rounded-lg border border-slate-200 p-2 text-[#003366] lg:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></button>
           <div><p className="text-sm font-black text-[#003366]">Comercial y CRM</p><p className="text-[10px] uppercase tracking-[.16em] text-slate-500">Control comercial relacional</p></div>
@@ -152,7 +160,7 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
         <div className="flex items-center gap-2"><span className="hidden rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[#003366] sm:inline">ERP avanzado</span><button type="button" aria-label="Cerrar navegación ERP" className="hidden"><X /></button></div>
       </header>}
       <main className={caseRef ? "min-h-screen" : undefined}>
-        <CommercialInboxModule
+        {commercialRelationshipsAdmin && commercialRelationshipsEnabled && commercialRelationshipsAccess.canView ? <Suspense fallback={<div className="grid min-h-[60vh] place-items-center text-sm text-slate-500">Cargando Relaciones Comerciales…</div>}><CommercialRelationshipsAdmin authorization={authorization} access={commercialRelationshipsAccess} onBack={goCommercial} onUnauthorized={onUnauthorized} /></Suspense> : <CommercialInboxModule
           authorization={authorization}
           mutationAccess={mutationAccess}
           servicesAccess={servicesAccess}
@@ -164,6 +172,8 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
           quoteEnabled={quoteEnabled}
           surveyEnabled={surveyEnabled}
           surveySchedulingAccess={surveySchedulingAccess}
+          commercialRelationshipsEnabled={commercialRelationshipsEnabled}
+          commercialRelationshipsAccess={commercialRelationshipsAccess}
           role={role}
           caseRef={caseRef}
           onOpenNavigation={() => setMobileOpen(true)}
@@ -172,7 +182,7 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
           onNavigate={onNavigate}
           onReturnToInbox={goCommercial}
           onUnauthorized={onUnauthorized}
-        />
+        />}
       </main>
     </div>
   </div>;

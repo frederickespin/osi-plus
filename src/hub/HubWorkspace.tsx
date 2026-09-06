@@ -17,6 +17,9 @@ import { resolveCostingUiAccess } from "@/costing/access";
 import { isCostingUiEnabled } from "@/costing/mode";
 import { resolveQuoteUiAccess } from "@/quote/access";
 import { isQuoteUiEnabled } from "@/quote/mode";
+import { isCommercialRelationshipsUiEnabled } from "@/commercial-relationships/mode";
+import { resolveCommercialRelationshipsAccess } from "@/commercial-relationships/access";
+import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
@@ -118,6 +121,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const toolsAuthorized = visible.some((application) => application.appId === "tools-equipment");
   const materialsAvailable = materialsEnabled && materialsAuthorized;
   const toolsAvailable = toolsEnabled && Boolean(toolsAuthorized);
+  const commercialRelationshipsEnabled = isCommercialRelationshipsUiEnabled();
+  const commercialRelationshipsAccess = resolveCommercialRelationshipsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
+  if (pathname === "/commercial/relationships" && (!commercialRelationshipsEnabled || !commercialRelationshipsAccess.canView)) {
+    return <CanonicalAccessDenied onReturnToSafeRoute={() => onNavigate("/hub")} />;
+  }
   if (selected?.appId === "commercial-crm" && crmReadEnabled) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando ERP Comercial…</div>}>
       <AdvancedErpShell
@@ -136,6 +144,9 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         surveySchedulingAccess={resolveSurveySchedulingUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         materialsEnabled={materialsAvailable}
         toolsEnabled={toolsAvailable}
+        commercialRelationshipsEnabled={commercialRelationshipsEnabled}
+        commercialRelationshipsAdmin={pathname === "/commercial/relationships"}
+        commercialRelationshipsAccess={commercialRelationshipsAccess}
         userName={userName}
         onNavigate={onNavigate}
         onLogout={onLogout}

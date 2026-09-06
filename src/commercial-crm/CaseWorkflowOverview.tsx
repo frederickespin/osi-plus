@@ -92,7 +92,7 @@ export default function CaseWorkflowOverview({ item, authorization, servicesEnab
   const accepted = useMemo(() => snapshot?.quote?.proposals.find((proposal) => proposal.state === "ACCEPTED") || null, [snapshot]);
   const currentQuote = accepted || snapshot?.quote?.proposals[0] || null;
   const servicesReady = Boolean(snapshot?.services?.selection.primary);
-  const surveyPublished = surveyState(snapshot?.survey) === "Publicado";
+  const surveyPublished = surveyState(snapshot?.survey ?? null) === "Publicado";
   const logisticsReady = Boolean(snapshot?.logistics && snapshot.logistics.status === "PUBLISHED");
   const costingReady = Boolean(snapshot?.costing && snapshot.costing.status === "PUBLISHED");
   const quoteReady = Boolean(currentQuote);

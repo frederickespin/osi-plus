@@ -1,0 +1,57 @@
+import { expect, test, type Page } from "@playwright/test";
+
+const CASE_REF = "038f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const MEMBERSHIP_REF = "048f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const REFS = { company: "138f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", lead: "238f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", booker: "338f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", payer: "438f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", approver: "538f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", referral: "638f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", association: "738f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", relationship: "838f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", tariff: "938f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", agreement: "a38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", context: "b38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", series: "c38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012" };
+const relationshipPermissions = ["commercial:relationships:view", "commercial:relationships:manage", "commercial:tariffs:view", "commercial:tariffs:manage", "commercial:referrals:view", "commercial:referrals:manage", "commercial:commissions:view", "commercial:commissions:manage", "commercial:associations:view", "commercial:associations:manage"];
+const entities = [
+  [REFS.company, "COMPANY-001", "Empresa explícita", "COMPANY"], [REFS.lead, "LEAD-001", "Lead Account explícito", "LEAD_ACCOUNT"], [REFS.booker, "BOOKER-001", "Booker explícito", "PERSON"], [REFS.payer, "PAYER-001", "Pagador explícito", "ORGANIZATION"], [REFS.approver, "APPROVER-001", "Aprobador distinto", "PERSON"], [REFS.referral, "REF-001", "Referidor externo", "REFERRER"], [REFS.association, "ASSOC-001", "Asociación configurada", "ASSOCIATION"],
+].map(([entityRef, code, displayName, kind]) => ({ entityRef, code, displayName, legalName: null, kind, countryCode: "DO", status: "ACTIVE", validFrom: null, validTo: null, version: 1, client: null }));
+const headers = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
+
+async function session(page: Page, deny = false) {
+  const deniedPermissions = deny ? ["commercial:relationships:view", "commercial:relationships:manage"] : [];
+  const permissions = ["pipeline:view", ...relationshipPermissions];
+  await page.addInitScript(({ ref }) => { localStorage.setItem("osi-plus.token", "synthetic.relationships.token"); localStorage.setItem("osi-plus.session", JSON.stringify({ name: "Administrador sintético", role: "A", membershipRef: ref, memberships: [{ membershipRef: ref, tenantName: "Tenant sintético", role: "A", preferred: true }] })); }, { ref: MEMBERSHIP_REF });
+  await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, user: { name: "Administrador sintético", role: "A", status: "ACTIVE", permissions, deniedPermissions, membership: { membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role: "A" }, memberships: [{ membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role: "A", preferred: true }] } }) }));
+}
+async function crm(page: Page) {
+  const byStatus = Object.fromEntries(["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"].map((status) => [status, 0]));
+  await page.route(/\/api\/crm\/pipeline-cases(?:\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [], total: 0, page: 1, pageSize: 25 }) }));
+  await page.route("**/api/crm/pipeline-summary", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { total: 0, assigned: 0, unassigned: 0, byStatus, sla: { overdue: null, basis: "UNAVAILABLE" } } }) }));
+  await page.route("**/api/crm/icp-v2/pipeline-cases/**", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: null }) }));
+  await page.route("**/api/crm/pipeline-cases/**", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, caseCode: "CS-2026-1201", version: 1, status: "PRICING_IN_PROGRESS", mode: "LOCAL", serviceType: "MOVING_LOCAL", customerType: "L4_PERSONAL", estimatedCbm: 20, requiresSurvey: true, surveyMethod: "PRESENCIAL", originLocation: "Origen estructurado", destinationLocation: "Destino estructurado", destinationContracted: true, assetsCount: 0, quoteCount: 0, eventCount: 2, client: { clientRef: "d38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", displayName: "Client relacional", type: "INDIVIDUAL", status: "ACTIVE" }, owner: { displayName: "Administrador sintético", isCurrentActor: true }, createdAt: "2026-09-12T12:00:00.000Z", updatedAt: "2026-09-12T12:00:00.000Z" } }) }));
+}
+function snapshot() { return { commercialContextRef: REFS.context, seriesRef: REFS.series, version: 1, commercialRelationshipRef: REFS.relationship, payerRef: REFS.payer, pricingAgreementRef: REFS.agreement, referralAgreementRef: REFS.referral, parties: [{ role: "COMPANY", entityRef: REFS.company, relationshipRef: null, displayName: "Empresa explícita", kind: "COMPANY" }, { role: "LEAD_ACCOUNT", entityRef: REFS.lead, relationshipRef: null, displayName: "Lead Account explícito", kind: "LEAD_ACCOUNT" }, { role: "BOOKER", entityRef: REFS.booker, relationshipRef: null, displayName: "Booker explícito", kind: "PERSON" }, { role: "PAYER", entityRef: REFS.payer, relationshipRef: REFS.relationship, displayName: "Pagador explícito", kind: "ORGANIZATION" }, { role: "APPROVER", entityRef: REFS.approver, relationshipRef: null, displayName: "Aprobador distinto", kind: "PERSON" }], associations: [{ membershipRef: REFS.association }], instructions: [{ instructionRef: REFS.referral }], logicalSha256: "a".repeat(64) }; }
+async function relationships(page: Page) {
+  await page.route("**/api/commercial-relationships/entities?*", async (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { page: 1, pageSize: 20, total: entities.length, items: entities } }) }));
+  await page.route("**/api/commercial-relationships/relationships", async (route) => route.fulfill({ status: route.request().method() === "POST" ? 201 : 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: route.request().method() === "POST" ? { relationshipRef: REFS.relationship, source: { entityRef: REFS.company, displayName: "Empresa explícita", kind: "COMPANY" }, target: { entityRef: REFS.payer, displayName: "Pagador explícito", kind: "ORGANIZATION" }, type: "PAYER", reference: null, status: "ACTIVE", validFrom: null, validTo: null, version: 1 } : [{ relationshipRef: REFS.relationship, source: { entityRef: REFS.company, displayName: "Empresa explícita", kind: "COMPANY" }, target: { entityRef: REFS.payer, displayName: "Pagador explícito", kind: "ORGANIZATION" }, type: "PAYER", reference: "PAY-EXPLICIT", status: "ACTIVE", validFrom: null, validTo: null, version: 1 }] }) }));
+  await page.route("**/api/commercial-relationships/workspace", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { tariffs: [{ tariffRef: REFS.tariff, name: "Tarifa maestra", version: 1 }], pricingAgreements: [{ pricingAgreementRef: REFS.agreement, version: 1 }], referrals: [{ referralAgreementRef: REFS.referral, reference: "Referido explícito", version: 1 }], commissions: [{ commissionAgreementRef: REFS.context, kind: "INTERNAL", version: 1 }], associations: [{ membershipRef: REFS.association, association: { displayName: "Asociación configurada" } }], certifications: [] } }) }));
+  await page.route(`**/api/commercial-relationships/cases/${CASE_REF}`, async (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: snapshot() }) }));
+}
+
+test("administra entidades, relaciones y catálogos explícitos", async ({ page }) => {
+  await session(page); await crm(page); await relationships(page); await page.goto("/commercial/relationships");
+  await expect(page.getByRole("heading", { name: "Relaciones Comerciales" })).toBeVisible(); await expect(page.getByText("Empresa explícita")).toBeVisible();
+  await page.getByRole("tab", { name: "Relaciones" }).click(); await expect(page.getByText("Empresa explícita → Pagador explícito")).toBeVisible();
+  await page.getByRole("tab", { name: "Tarifarios" }).click(); await expect(page.getByText("Tarifa maestra")).toBeVisible();
+  await page.getByRole("tab", { name: "Referidos" }).click(); await expect(page.getByText("Referido explícito")).toBeVisible();
+  await page.getByRole("tab", { name: "Asociaciones" }).click(); await expect(page.getByText("Asociación configurada")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test("caso selecciona empresa, Lead Account, Booker, pagador y aprobador sin inferencia", async ({ page }) => {
+  await session(page); await crm(page); await relationships(page); let published: Record<string, unknown> | null = null;
+  await page.unroute(`**/api/commercial-relationships/cases/${CASE_REF}`);
+  await page.route(`**/api/commercial-relationships/cases/${CASE_REF}`, async (route) => { if (route.request().method() === "POST") published = await route.request().postDataJSON(); return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: snapshot() }) }); });
+  await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Relaciones" }).click();
+  for (const name of ["Empresa explícita", "Lead Account explícito", "Booker explícito", "Pagador explícito", "Aprobador distinto"]) await expect(page.getByText(name)).toBeVisible();
+  await page.getByRole("button", { name: "Crear nueva versión" }).click(); await page.getByRole("button", { name: "Publicar versión" }).click(); await expect.poll(() => published).not.toBeNull();
+  expect(JSON.stringify(published)).not.toMatch(/tenantId|membershipId|userId|clientId|publicRef/); expect(published?.expectedVersion).toBe(1);
+});
+
+test("deny se resuelve en shell y no descarga módulos ni llama APIs comerciales", async ({ page }) => {
+  await session(page, true); await crm(page); let requests = 0; page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/commercial-relationships")) requests += 1; });
+  await page.goto("/commercial/relationships"); await expect(page.getByRole("heading", { name: "No puedes abrir esta aplicación" })).toBeVisible(); await expect(page.getByText("403 · Acceso no autorizado")).toBeVisible(); expect(requests).toBe(0);
+  const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => /CommercialRelationshipsAdmin|CaseCommercialContextPanel/.test(name))); expect(chunks).toHaveLength(0);
+});

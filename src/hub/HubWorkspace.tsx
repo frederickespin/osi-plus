@@ -8,6 +8,7 @@ import { resolveCrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess"
 import { resolveCrmServicesUiAccess } from "@/crm-services/access";
 import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resolveAdminIdentityInvitationMode } from "@/admin-tenant/adminMode";
 import { isSurveyUiEnabled } from "@/survey/mode";
+import { resolveSurveySchedulingUiAccess } from "@/survey/schedulingAccess";
 import { isMaterialsUiEnabled } from "@/materials-inventory/mode";
 import { isToolsEquipmentUiEnabled } from "@/tools-equipment/mode";
 import { resolveLogisticsUiAccess } from "@/logistics-engine/access";
@@ -132,6 +133,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         quoteAccess={resolveQuoteUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         quoteEnabled={isQuoteUiEnabled()}
         surveyEnabled={surveyEnabled && surveyAuthorized}
+        surveySchedulingAccess={resolveSurveySchedulingUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         materialsEnabled={materialsAvailable}
         toolsEnabled={toolsAvailable}
         userName={userName}

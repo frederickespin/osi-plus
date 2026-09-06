@@ -32,6 +32,7 @@ export function ruleMatches(rule, facts) {
   if (c.minWeightKg != null && facts.survey.weightKg < c.minWeightKg) return false;
   if (c.distanceStatus && c.distanceStatus !== facts.route.distanceStatus) return false;
   if (c.minDistanceKm != null && (facts.route.distanceKm == null || facts.route.distanceKm < c.minDistanceKm)) return false;
+  if (c.maxDistanceKm != null && (facts.route.distanceKm == null || facts.route.distanceKm > c.maxDistanceKm)) return false;
   if (c.destinationStatuses && !c.destinationStatuses.includes(facts.route.destinationStatus)) return false;
   return true;
 }
@@ -48,13 +49,14 @@ export function calculateLogisticsPlan(facts, rules) {
   const issues = [];
   for (const rule of selected) {
     const r = rule.result; const family = itemFamily(rule, r); const required = formula(r.quantity, facts);
+    if (rule.family === "ZONE" && (!new Set(["METRO", "INTERIOR"]).has(r.zoneType) || typeof r.zoneCode !== "string" || !/^[A-Z][A-Z0-9_]{1,63}$/.test(r.zoneCode))) logisticsFail("LOGISTICS_RULE_RESULT_INVALID", 409);
     const asset = r.availabilitySource === "ASSET" ? facts.assets.find((row) => row.modelRef === r.sourceRef) : null;
     const vehicle = r.availabilitySource === "VEHICLE" ? facts.vehicles.find((row) => row.vehicleType === r.sourceCode) : null;
     const provider = r.availabilitySource === "PROVIDER" ? facts.externalOffers.find((row) => row.offerRef === r.sourceRef || row.kind === r.sourceCode) : null;
     const available = asset?.available ?? vehicle?.available ?? provider?.availableQuantity;
     const reserved = provider?.reservedQuantity || 0; const observed = required == null ? { status: "PENDING_CONFIRMATION", shortage: null } : availability(required, available, reserved);
     const source = r.availabilitySource === "ASSET" ? "ASSET" : r.availabilitySource === "VEHICLE" ? "VEHICLE" : r.availabilitySource === "PROVIDER" ? "PROVIDER" : "ADMIN_RULE";
-    items.push({ family, kind: r.kind, label: r.label, quantity: required, unit: r.unit || null, estimatedHours: formula(r.hours, facts), trips: formula(r.trips, facts), requiredQuantity: required, availableQuantity: available, reservedQuantity: reserved, shortageQuantity: observed.shortage, availability: r.availabilitySource ? observed.status : "NOT_APPLICABLE", priceStatus: provider?.priceStatus || r.priceStatus || "NOT_APPLICABLE", source, sourceRef: provider?.offerRef || (source === "ADMIN_RULE" ? rule.ruleRef : r.sourceRef || null), sourceVersion: provider?.version || asset?.version || vehicle?.sourceVersion || rule.version, snapshot: { ruleCode: rule.code, ruleHash: rule.conditionHash, providerName: provider?.providerName || null, observedAt: r.availabilitySource ? facts.availabilityObservedAt : null } });
+    items.push({ family, kind: r.kind, label: r.label, quantity: required, unit: r.unit || null, estimatedHours: formula(r.hours, facts), trips: formula(r.trips, facts), requiredQuantity: required, availableQuantity: available, reservedQuantity: reserved, shortageQuantity: observed.shortage, availability: r.availabilitySource ? observed.status : "NOT_APPLICABLE", priceStatus: provider?.priceStatus || r.priceStatus || "NOT_APPLICABLE", source, sourceRef: provider?.offerRef || (source === "ADMIN_RULE" ? rule.ruleRef : r.sourceRef || null), sourceVersion: provider?.version || asset?.version || vehicle?.sourceVersion || rule.version, snapshot: { ruleCode: rule.code, ruleHash: rule.conditionHash, providerName: provider?.providerName || null, observedAt: r.availabilitySource ? facts.availabilityObservedAt : null, ...(rule.family === "ZONE" ? { zoneType: r.zoneType, zoneCode: r.zoneCode } : {}) } });
     if (observed.shortage > 0) issues.push({ code: source === "ASSET" ? "RESOURCE_UNAVAILABLE" : source === "VEHICLE" ? "VEHICLE_UNAVAILABLE" : source === "PROVIDER" ? "RESOURCE_UNAVAILABLE" : "RESOURCE_UNAVAILABLE", severity: r.shortageSeverity || "WARNING", family, message: "La disponibilidad observada no cubre la necesidad calculada.", source, sourceSnapshot: { observedAt: facts.availabilityObservedAt } });
     if (source === "PROVIDER" && (provider?.priceStatus || "PENDING") === "PENDING") issues.push({ code: "EXTERNAL_PRICE_PENDING", severity: "BLOCKER", family: "EXTERNAL", message: "El precio del recurso externo requiere confirmación.", source: "PROVIDER", sourceSnapshot: { offerRef: provider?.offerRef || null } });
   }

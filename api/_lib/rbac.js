@@ -51,6 +51,12 @@ export const PERMS = Object.freeze({
   SURVEY_PERFORM: "survey:perform",
   SURVEY_PUBLISH: "survey:publish",
   SURVEY_READ: "survey:read",
+  SURVEY_SCHEDULE_VIEW: "survey:schedule:view",
+  SURVEY_SCHEDULE_MANAGE: "survey:schedule:manage",
+  SURVEY_SCHEDULE_ASSIGN: "survey:schedule:assign",
+  SURVEY_SCHEDULE_RESCHEDULE: "survey:schedule:reschedule",
+  SURVEY_VISIT_FEE_VIEW: "survey:visit-fee:view",
+  SURVEY_VISIT_FEE_APPROVE: "survey:visit-fee:approve",
 
   // Projects
   PROJECTS_VIEW: "projects:view",
@@ -183,6 +189,12 @@ const EXPLICIT_SURVEY_PERMISSIONS = new Set([
   PERMS.SURVEY_PERFORM,
   PERMS.SURVEY_PUBLISH,
   PERMS.SURVEY_READ,
+  PERMS.SURVEY_SCHEDULE_VIEW,
+  PERMS.SURVEY_SCHEDULE_MANAGE,
+  PERMS.SURVEY_SCHEDULE_ASSIGN,
+  PERMS.SURVEY_SCHEDULE_RESCHEDULE,
+  PERMS.SURVEY_VISIT_FEE_VIEW,
+  PERMS.SURVEY_VISIT_FEE_APPROVE,
 ]);
 
 const EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS = new Set([

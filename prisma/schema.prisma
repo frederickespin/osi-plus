@@ -100,6 +100,8 @@ model Tenant {
   surveyAreaCatalogItems           SurveyAreaCatalogItem[]
   surveyConditionCatalogItems      SurveyConditionCatalogItem[]
   surveyAssignments                SurveyAssignment[]
+  surveyEvaluationDecisions        SurveyEvaluationDecision[]
+  surveySchedulePolicyVersions     SurveySchedulePolicyVersion[]
   surveyDrafts                     SurveyDraft[]
   surveyDraftItems                 SurveyDraftItem[]
   surveyAccessObservations         SurveyAccessObservation[]
@@ -242,6 +244,11 @@ model TenantMembership {
   surveyCatalogVersionsCreated                                                                                                                  SurveyCatalogVersion[]             @relation("SurveyCatalogVersionActor")
   surveyAssignmentsCreated                                                                                                                      SurveyAssignment[]                 @relation("SurveyAssignmentCreator")
   surveyAssignmentsEvaluated                                                                                                                    SurveyAssignment[]                 @relation("SurveyAssignmentEvaluator")
+  surveyEvaluationDecisionsCreated                                                                                                              SurveyEvaluationDecision[]         @relation("SurveyEvaluationDecisionActor")
+  surveySchedulePoliciesCreated                                                                                                                 SurveySchedulePolicyVersion[]      @relation("SurveySchedulePolicyActor")
+  surveyAssignmentEventsCreated                                                                                                                 SurveyAssignmentEvent[]            @relation("SurveyAssignmentEventActor")
+  surveyVisitFeesAuthorized                                                                                                                     SurveyVisitFee[]                   @relation("SurveyVisitFeeAuthorizer")
+  surveyCommunicationsPrepared                                                                                                                  SurveyCommunicationRecord[]        @relation("SurveyCommunicationActor")
   surveyPublicationsCreated                                                                                                                     SurveyPublication[]                @relation("SurveyPublicationActor")
   surveyMutationCommandsAsActor                                                                                                                 SurveyMutationCommand[]            @relation("SurveyMutationCommandActor")
   materialInventoryCommandsAsActor                                                                                                              MaterialInventoryCommand[]         @relation("MaterialInventoryCommandActor")
@@ -1502,6 +1509,10 @@ model PipelineCase {
   routeSnapshots                PipelineCaseRouteSnapshot[]
   serviceRevisions              PipelineCaseServiceRevision[]
   surveyAssignments             SurveyAssignment[]
+  surveyEvaluationDecisions     SurveyEvaluationDecision[]
+  surveyAssignmentEvents        SurveyAssignmentEvent[]
+  surveyVisitFees               SurveyVisitFee[]
+  surveyCommunicationRecords    SurveyCommunicationRecord[]
   surveyDrafts                  SurveyDraft[]
   surveyPublications            SurveyPublication[]
   materialReservations          MaterialReservation[]
@@ -1675,24 +1686,25 @@ model ServiceDefaultCombinationItem {
 }
 
 model PipelineCaseServiceRevision {
-  id                    String                     @id @default(cuid())
-  selectionRef          String                     @default(dbgenerated("gen_random_uuid()")) @map("selection_ref") @db.Uuid
-  tenantId              String                     @map("tenant_id")
-  pipelineCaseId        String                     @map("pipeline_case_id")
-  revision              Int
-  modeSnapshot          PipelineMode               @map("mode_snapshot")
-  source                CaseServiceSelectionSource
-  defaultCombinationRef String?                    @map("default_combination_ref") @db.Uuid
-  createdByMembershipId String                     @map("created_by_membership_id")
-  createdByUserId       String                     @map("created_by_user_id")
-  createdAt             DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant                Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_tenant_fkey")
-  pipelineCase          PipelineCase               @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_case_fkey")
-  createdByMembership   TenantMembership           @relation("PipelineCaseServiceRevisionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_actor_fkey")
-  items                 PipelineCaseServiceItem[]
-  surveyAssignments     SurveyAssignment[]
-  surveyDrafts          SurveyDraft[]
-  surveyPublications    SurveyPublication[]
+  id                        String                     @id @default(cuid())
+  selectionRef              String                     @default(dbgenerated("gen_random_uuid()")) @map("selection_ref") @db.Uuid
+  tenantId                  String                     @map("tenant_id")
+  pipelineCaseId            String                     @map("pipeline_case_id")
+  revision                  Int
+  modeSnapshot              PipelineMode               @map("mode_snapshot")
+  source                    CaseServiceSelectionSource
+  defaultCombinationRef     String?                    @map("default_combination_ref") @db.Uuid
+  createdByMembershipId     String                     @map("created_by_membership_id")
+  createdByUserId           String                     @map("created_by_user_id")
+  createdAt                 DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                    Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_tenant_fkey")
+  pipelineCase              PipelineCase               @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_case_fkey")
+  createdByMembership       TenantMembership           @relation("PipelineCaseServiceRevisionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_actor_fkey")
+  items                     PipelineCaseServiceItem[]
+  surveyAssignments         SurveyAssignment[]
+  surveyEvaluationDecisions SurveyEvaluationDecision[]
+  surveyDrafts              SurveyDraft[]
+  surveyPublications        SurveyPublication[]
 
   @@unique([tenantId, id], map: "pipeline_case_service_revisions_tenant_id_id_key")
   @@unique([tenantId, selectionRef], map: "pipeline_case_service_revisions_tenant_ref_key")
@@ -1840,31 +1852,42 @@ model SurveyConditionCatalogItem {
 }
 
 model SurveyAssignment {
-  id                     String                      @id @default(cuid())
-  assignmentRef          String                      @default(dbgenerated("gen_random_uuid()")) @map("assignment_ref") @db.Uuid
-  tenantId               String                      @map("tenant_id")
-  pipelineCaseId         String                      @map("pipeline_case_id")
-  serviceRevisionId      String                      @map("service_revision_id")
-  routeVersion           Int                         @map("route_version")
-  evaluatorMembershipId  String                      @map("evaluator_membership_id")
-  evaluatorUserId        String                      @map("evaluator_user_id")
-  scheduledStart         DateTime                    @map("scheduled_start") @db.Timestamptz(6)
-  scheduledEnd           DateTime?                   @map("scheduled_end") @db.Timestamptz(6)
-  status                 SurveyAssignmentStatus      @default(ASSIGNED)
-  arrivalAt              DateTime?                   @map("arrival_at") @db.Timestamptz(6)
-  punctualityConfirmedAt DateTime?                   @map("punctuality_confirmed_at") @db.Timestamptz(6)
-  contextSnapshot        Json                        @map("context_snapshot")
-  instructionSnapshot    String?                     @map("instruction_snapshot") @db.VarChar(1000)
-  version                Int                         @default(1)
-  createdByMembershipId  String                      @map("created_by_membership_id")
-  createdByUserId        String                      @map("created_by_user_id")
-  createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant                 Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_tenant_fkey")
-  pipelineCase           PipelineCase                @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_case_fkey")
-  serviceRevision        PipelineCaseServiceRevision @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_service_revision_fkey")
-  evaluatorMembership    TenantMembership            @relation("SurveyAssignmentEvaluator", fields: [tenantId, evaluatorMembershipId, evaluatorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_evaluator_fkey")
-  createdByMembership    TenantMembership            @relation("SurveyAssignmentCreator", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_creator_fkey")
+  id                     String                       @id @default(cuid())
+  assignmentRef          String                       @default(dbgenerated("gen_random_uuid()")) @map("assignment_ref") @db.Uuid
+  tenantId               String                       @map("tenant_id")
+  pipelineCaseId         String                       @map("pipeline_case_id")
+  serviceRevisionId      String                       @map("service_revision_id")
+  routeVersion           Int                          @map("route_version")
+  evaluatorMembershipId  String                       @map("evaluator_membership_id")
+  evaluatorUserId        String                       @map("evaluator_user_id")
+  scheduledStart         DateTime                     @map("scheduled_start") @db.Timestamptz(6)
+  scheduledEnd           DateTime?                    @map("scheduled_end") @db.Timestamptz(6)
+  status                 SurveyAssignmentStatus       @default(ASSIGNED)
+  arrivalAt              DateTime?                    @map("arrival_at") @db.Timestamptz(6)
+  punctualityConfirmedAt DateTime?                    @map("punctuality_confirmed_at") @db.Timestamptz(6)
+  contextSnapshot        Json                         @map("context_snapshot")
+  instructionSnapshot    String?                      @map("instruction_snapshot") @db.VarChar(1000)
+  evaluationDecisionId   String?                      @map("evaluation_decision_id")
+  schedulePolicyId       String?                      @map("schedule_policy_id")
+  scheduleProfile        SurveyScheduleProfile?       @map("schedule_profile")
+  zoneCode               String?                      @map("zone_code") @db.VarChar(64)
+  slotKey                String?                      @map("slot_key") @db.VarChar(64)
+  routeInvalidatedAt     DateTime?                    @map("route_invalidated_at") @db.Timestamptz(6)
+  version                Int                          @default(1)
+  createdByMembershipId  String                       @map("created_by_membership_id")
+  createdByUserId        String                       @map("created_by_user_id")
+  createdAt              DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                 Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_tenant_fkey")
+  pipelineCase           PipelineCase                 @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_case_fkey")
+  serviceRevision        PipelineCaseServiceRevision  @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_service_revision_fkey")
+  evaluatorMembership    TenantMembership             @relation("SurveyAssignmentEvaluator", fields: [tenantId, evaluatorMembershipId, evaluatorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_evaluator_fkey")
+  createdByMembership    TenantMembership             @relation("SurveyAssignmentCreator", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_creator_fkey")
+  evaluationDecision     SurveyEvaluationDecision?    @relation(fields: [tenantId, evaluationDecisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_decision_fkey")
+  schedulePolicy         SurveySchedulePolicyVersion? @relation(fields: [tenantId, schedulePolicyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_policy_fkey")
+  schedulingEvents       SurveyAssignmentEvent[]
+  visitFees              SurveyVisitFee[]
+  communicationRecords   SurveyCommunicationRecord[]
   drafts                 SurveyDraft[]
 
   @@unique([tenantId, id], map: "survey_assignments_tenant_id_key")
@@ -1872,6 +1895,163 @@ model SurveyAssignment {
   @@index([tenantId, evaluatorMembershipId, evaluatorUserId, scheduledStart], map: "survey_assignments_evaluator_agenda_idx")
   @@index([tenantId, pipelineCaseId, scheduledStart], map: "survey_assignments_case_idx")
   @@map("survey_assignments")
+}
+
+model SurveyEvaluationDecision {
+  id                    String                       @id @default(cuid())
+  decisionRef           String                       @default(dbgenerated("gen_random_uuid()")) @map("decision_ref") @db.Uuid
+  seriesRef             String                       @default(dbgenerated("gen_random_uuid()")) @map("series_ref") @db.Uuid
+  tenantId              String                       @map("tenant_id")
+  pipelineCaseId        String                       @map("pipeline_case_id")
+  serviceRevisionId     String?                      @map("service_revision_id")
+  routeVersion          Int                          @map("route_version")
+  version               Int
+  method                SurveyEvaluationMethod
+  commercialState       SurveyEvaluationState        @map("commercial_state")
+  informationSource     SurveyInformationSource?     @map("information_source")
+  rationaleCode         String?                      @map("rationale_code") @db.VarChar(80)
+  replacesDecisionId    String?                      @map("replaces_decision_id")
+  createdByMembershipId String                       @map("created_by_membership_id")
+  createdByUserId       String                       @map("created_by_user_id")
+  createdAt             DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_evaluation_decisions_tenant_fkey")
+  pipelineCase          PipelineCase                 @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_evaluation_decisions_case_fkey")
+  serviceRevision       PipelineCaseServiceRevision? @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_evaluation_decisions_service_fkey")
+  createdByMembership   TenantMembership             @relation("SurveyEvaluationDecisionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_evaluation_decisions_actor_fkey")
+  replacesDecision      SurveyEvaluationDecision?    @relation("SurveyEvaluationDecisionReplacement", fields: [tenantId, replacesDecisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_evaluation_decisions_replaces_fkey")
+  replacementDecision   SurveyEvaluationDecision?    @relation("SurveyEvaluationDecisionReplacement")
+  assignments           SurveyAssignment[]
+  events                SurveyAssignmentEvent[]
+  visitFee              SurveyVisitFee?
+  communications        SurveyCommunicationRecord[]
+
+  @@unique([tenantId, id], map: "survey_evaluation_decisions_tenant_id_key")
+  @@unique([tenantId, decisionRef], map: "survey_evaluation_decisions_tenant_ref_key")
+  @@unique([tenantId, pipelineCaseId, version], map: "survey_evaluation_decisions_case_version_key")
+  @@unique([tenantId, replacesDecisionId], map: "survey_evaluation_decisions_replaces_key")
+  @@index([tenantId, pipelineCaseId, version(sort: Desc)], map: "survey_evaluation_decisions_current_idx")
+  @@map("survey_evaluation_decisions")
+}
+
+model SurveySchedulePolicyVersion {
+  id                    String                       @id @default(cuid())
+  policyRef             String                       @default(dbgenerated("gen_random_uuid()")) @map("policy_ref") @db.Uuid
+  seriesRef             String                       @default(dbgenerated("gen_random_uuid()")) @map("series_ref") @db.Uuid
+  tenantId              String                       @map("tenant_id")
+  version               Int
+  state                 SurveySchedulePolicyState    @default(DRAFT)
+  timezone              String                       @db.VarChar(64)
+  configuration         Json
+  configurationHash     String                       @map("configuration_hash") @db.Char(64)
+  validFrom             DateTime?                    @map("valid_from") @db.Timestamptz(6)
+  validTo               DateTime?                    @map("valid_to") @db.Timestamptz(6)
+  replacesPolicyId      String?                      @map("replaces_policy_id")
+  createdByMembershipId String                       @map("created_by_membership_id")
+  createdByUserId       String                       @map("created_by_user_id")
+  createdAt             DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_schedule_policies_tenant_fkey")
+  createdByMembership   TenantMembership             @relation("SurveySchedulePolicyActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_schedule_policies_actor_fkey")
+  replacesPolicy        SurveySchedulePolicyVersion? @relation("SurveySchedulePolicyReplacement", fields: [tenantId, replacesPolicyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_schedule_policies_replaces_fkey")
+  replacementPolicy     SurveySchedulePolicyVersion? @relation("SurveySchedulePolicyReplacement")
+  assignments           SurveyAssignment[]
+
+  @@unique([tenantId, id], map: "survey_schedule_policies_tenant_id_key")
+  @@unique([tenantId, policyRef], map: "survey_schedule_policies_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "survey_schedule_policies_series_version_key")
+  @@unique([tenantId, replacesPolicyId], map: "survey_schedule_policies_replaces_key")
+  @@index([tenantId, state, validFrom, validTo], map: "survey_schedule_policies_active_idx")
+  @@map("survey_schedule_policy_versions")
+}
+
+model SurveyAssignmentEvent {
+  id                   String                    @id @default(cuid())
+  eventRef             String                    @default(dbgenerated("gen_random_uuid()")) @map("event_ref") @db.Uuid
+  tenantId             String                    @map("tenant_id")
+  pipelineCaseId       String                    @map("pipeline_case_id")
+  evaluationDecisionId String                    @map("evaluation_decision_id")
+  assignmentId         String?                   @map("assignment_id")
+  eventType            SurveySchedulingEventType @map("event_type")
+  reasonCode           String?                   @map("reason_code") @db.VarChar(80)
+  notificationRequired Boolean                   @default(false) @map("notification_required")
+  beforeSnapshot       Json?                     @map("before_snapshot")
+  afterSnapshot        Json?                     @map("after_snapshot")
+  actorMembershipId    String                    @map("actor_membership_id")
+  actorUserId          String                    @map("actor_user_id")
+  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  pipelineCase         PipelineCase              @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignment_events_case_fkey")
+  evaluationDecision   SurveyEvaluationDecision  @relation(fields: [tenantId, evaluationDecisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignment_events_decision_fkey")
+  assignment           SurveyAssignment?         @relation(fields: [tenantId, assignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignment_events_assignment_fkey")
+  actorMembership      TenantMembership          @relation("SurveyAssignmentEventActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignment_events_actor_fkey")
+
+  @@unique([tenantId, eventRef], map: "survey_assignment_events_tenant_ref_key")
+  @@index([tenantId, pipelineCaseId, createdAt(sort: Desc)], map: "survey_assignment_events_case_idx")
+  @@index([tenantId, assignmentId, createdAt(sort: Desc)], map: "survey_assignment_events_assignment_idx")
+  @@map("survey_assignment_events")
+}
+
+model SurveyVisitFee {
+  id                       String                       @id @default(cuid())
+  feeRef                   String                       @default(dbgenerated("gen_random_uuid()")) @map("fee_ref") @db.Uuid
+  tenantId                 String                       @map("tenant_id")
+  pipelineCaseId           String                       @map("pipeline_case_id")
+  evaluationDecisionId     String                       @map("evaluation_decision_id")
+  assignmentId             String?                      @map("assignment_id")
+  logisticsRevisionId      String?                      @map("logistics_revision_id")
+  costingRevisionId        String?                      @map("costing_revision_id")
+  costingLineId            String?                      @map("costing_line_id")
+  disposition              SurveyVisitFeeDisposition
+  suggestedAmount          Decimal?                     @map("suggested_amount") @db.Decimal(18, 4)
+  currency                 String?                      @db.Char(3)
+  communicationStatus      SurveyFeeCommunicationStatus @default(NOT_COMMUNICATED) @map("communication_status")
+  approvalStatus           SurveyFeeApprovalStatus      @default(NOT_REQUIRED) @map("approval_status")
+  paymentStatus            SurveyFeePaymentStatus       @default(NOT_REQUIRED) @map("payment_status")
+  authorizedByMembershipId String?                      @map("authorized_by_membership_id")
+  authorizedByUserId       String?                      @map("authorized_by_user_id")
+  authorizedAt             DateTime?                    @map("authorized_at") @db.Timestamptz(6)
+  waiverReason             String?                      @map("waiver_reason") @db.VarChar(500)
+  version                  Int                          @default(1)
+  createdAt                DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  pipelineCase             PipelineCase                 @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_visit_fees_case_fkey")
+  evaluationDecision       SurveyEvaluationDecision     @relation(fields: [tenantId, evaluationDecisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_visit_fees_decision_fkey")
+  assignment               SurveyAssignment?            @relation(fields: [tenantId, assignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_visit_fees_assignment_fkey")
+  logisticsRevision        LogisticsPlanRevision?       @relation(fields: [tenantId, logisticsRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_visit_fees_logistics_fkey")
+  costingRevision          CostingRevision?             @relation(fields: [tenantId, costingRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_visit_fees_costing_fkey")
+  costingLine              CostingLine?                 @relation(fields: [tenantId, costingLineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_visit_fees_costing_line_fkey")
+  authorizedByMembership   TenantMembership?            @relation("SurveyVisitFeeAuthorizer", fields: [tenantId, authorizedByMembershipId, authorizedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_visit_fees_authorizer_fkey")
+
+  @@unique([tenantId, feeRef], map: "survey_visit_fees_tenant_ref_key")
+  @@unique([tenantId, evaluationDecisionId], map: "survey_visit_fees_decision_key")
+  @@index([tenantId, pipelineCaseId], map: "survey_visit_fees_case_idx")
+  @@map("survey_visit_fees")
+}
+
+model SurveyCommunicationRecord {
+  id                     String                      @id @default(cuid())
+  communicationRef       String                      @default(dbgenerated("gen_random_uuid()")) @map("communication_ref") @db.Uuid
+  tenantId               String                      @map("tenant_id")
+  pipelineCaseId         String                      @map("pipeline_case_id")
+  evaluationDecisionId   String                      @map("evaluation_decision_id")
+  assignmentId           String?                     @map("assignment_id")
+  templateCode           String                      @map("template_code") @db.VarChar(80)
+  templateVersion        Int                         @map("template_version")
+  audience               SurveyCommunicationAudience
+  channel                SurveyCommunicationChannel
+  status                 SurveyCommunicationStatus   @default(PREPARED)
+  recipientRef           String?                     @map("recipient_ref") @db.Uuid
+  contentHash            String                      @map("content_hash") @db.Char(64)
+  preparedByMembershipId String                      @map("prepared_by_membership_id")
+  preparedByUserId       String                      @map("prepared_by_user_id")
+  preparedAt             DateTime                    @default(now()) @map("prepared_at") @db.Timestamptz(6)
+  recordedAt             DateTime?                   @map("recorded_at") @db.Timestamptz(6)
+  pipelineCase           PipelineCase                @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_communications_case_fkey")
+  evaluationDecision     SurveyEvaluationDecision    @relation(fields: [tenantId, evaluationDecisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_communications_decision_fkey")
+  assignment             SurveyAssignment?           @relation(fields: [tenantId, assignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_communications_assignment_fkey")
+  preparedByMembership   TenantMembership            @relation("SurveyCommunicationActor", fields: [tenantId, preparedByMembershipId, preparedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_communications_actor_fkey")
+
+  @@unique([tenantId, communicationRef], map: "survey_communications_tenant_ref_key")
+  @@index([tenantId, pipelineCaseId, preparedAt(sort: Desc)], map: "survey_communications_case_idx")
+  @@map("survey_communication_records")
 }
 
 model SurveyDraft {
@@ -4261,6 +4441,7 @@ model LogisticsPlanRevision {
   overrides               LogisticsPlanOverride[]
   costingCalculations     CostingCalculation[]
   costingRevisions        CostingRevision[]
+  surveyVisitFees         SurveyVisitFee[]
 
   @@unique([tenantId, id], map: "logistics_revisions_tenant_id_key")
   @@unique([tenantId, revisionRef], map: "logistics_revisions_tenant_ref_key")
@@ -4509,6 +4690,7 @@ model CostingRevision {
   overrides               CostingOverride[]
   quoteCycles             PipelineCaseQuote[]
   quoteProposalRevisions  QuoteProposalRevision[]
+  surveyVisitFees         SurveyVisitFee[]
 
   @@unique([tenantId, id], map: "costing_revisions_tenant_id_key")
   @@unique([tenantId, revisionRef], map: "costing_revisions_tenant_ref_key")
@@ -4549,6 +4731,7 @@ model CostingLine {
   tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "costing_lines_tenant_fkey")
   revision             CostingRevision      @relation(fields: [tenantId, revisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "costing_lines_revision_fkey")
   overrides            CostingOverride[]
+  surveyVisitFees      SurveyVisitFee[]
 
   @@unique([tenantId, id], map: "costing_lines_tenant_id_key")
   @@unique([tenantId, lineRef], map: "costing_lines_tenant_ref_key")
@@ -5644,6 +5827,111 @@ enum SurveyAssignmentStatus {
   ARRIVED
   IN_PROGRESS
   COMPLETED
+  CANCELLED
+}
+
+enum SurveyEvaluationMethod {
+  IN_PERSON
+  VIRTUAL
+  CLIENT_PHOTOS_DOCUMENTS
+  WRITTEN_REPORT
+  VOXME
+  MINI
+  NONE
+}
+
+enum SurveyEvaluationState {
+  NOT_REQUIRED
+  PENDING_METHOD
+  WAITING_CLIENT_INFO
+  READY_TO_SCHEDULE
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SurveyInformationSource {
+  CLIENT
+  EVALUATOR
+  COMMERCIAL
+  VOXME
+  MINI
+}
+
+enum SurveyScheduleProfile {
+  METRO
+  INTERIOR_SHORT
+  INTERIOR_LONG
+  CUSTOM
+}
+
+enum SurveySchedulePolicyState {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum SurveySchedulingEventType {
+  METHOD_DECIDED
+  SCHEDULED
+  RESCHEDULED
+  CANCELLED
+  EVALUATOR_CHANGED
+  ROUTE_INVALIDATED
+  VISIT_FEE_CHANGED
+  COMMUNICATION_PREPARED
+  COMMUNICATION_RECORDED
+  SURVEY_PUBLISHED
+}
+
+enum SurveyVisitFeeDisposition {
+  FREE
+  CHARGEABLE
+  PENDING_CALCULATION
+  WAIVED
+}
+
+enum SurveyFeeCommunicationStatus {
+  NOT_COMMUNICATED
+  PREPARED
+  COMMUNICATED
+}
+
+enum SurveyFeeApprovalStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SurveyFeePaymentStatus {
+  NOT_REQUIRED
+  PENDING
+  PAID
+  REJECTED
+}
+
+enum SurveyCommunicationAudience {
+  CLIENT
+  EVALUATOR
+  BOOKER
+  AGENT
+  LEAD_ACCOUNT
+  CORPORATE_CONTACT
+}
+
+enum SurveyCommunicationChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+  PHONE
+  OTHER
+}
+
+enum SurveyCommunicationStatus {
+  PREPARED
+  RECORDED
   CANCELLED
 }
 

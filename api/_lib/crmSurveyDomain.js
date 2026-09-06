@@ -82,6 +82,12 @@ async function actor(tx, context, required, { any = false } = {}) {
   });
 }
 
+// Scheduling 11B shares the exact 04A AuthorizationContext revalidation. The
+// wrapper intentionally does not expose database identities to API consumers.
+export async function resolveSurveyAuthorization(tx, context, required, options) {
+  return actor(tx, context, required, options);
+}
+
 async function mutationLimits(tx) {
   await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '300ms'");
   await tx.$executeRawUnsafe("SET LOCAL statement_timeout = '10s'");
@@ -1412,6 +1418,59 @@ export async function publishSurvey(
         where: { id: draft.assignmentId },
         data: { status: "COMPLETED", version: { increment: 1 } },
       });
+      if (draft.assignment.evaluationDecisionId) {
+        const currentDecision = await tx.surveyEvaluationDecision.findFirst({
+          where: {
+            tenantId: who.tenantId,
+            id: draft.assignment.evaluationDecisionId,
+            pipelineCaseId: draft.pipelineCaseId,
+          },
+        });
+        if (!currentDecision)
+          surveyFail("CRM_SURVEY_STATE_INVALID", 409);
+        const completedDecision = await tx.surveyEvaluationDecision.create({
+          data: {
+            tenantId: who.tenantId,
+            pipelineCaseId: draft.pipelineCaseId,
+            serviceRevisionId: currentDecision.serviceRevisionId,
+            routeVersion: draft.routeVersion,
+            version: currentDecision.version + 1,
+            method: currentDecision.method,
+            commercialState: "COMPLETED",
+            informationSource: currentDecision.informationSource,
+            rationaleCode: currentDecision.rationaleCode,
+            seriesRef: currentDecision.seriesRef,
+            replacesDecisionId: currentDecision.id,
+            createdByMembershipId: who.membershipId,
+            createdByUserId: who.userId,
+          },
+        });
+        await tx.surveyAssignment.update({
+          where: { id: draft.assignmentId },
+          data: { evaluationDecisionId: completedDecision.id },
+        });
+        await tx.surveyAssignmentEvent.create({
+          data: {
+            tenantId: who.tenantId,
+            pipelineCaseId: draft.pipelineCaseId,
+            evaluationDecisionId: completedDecision.id,
+            assignmentId: draft.assignmentId,
+            eventType: "SURVEY_PUBLISHED",
+            beforeSnapshot: {
+              decisionVersion: currentDecision.version,
+              state: currentDecision.commercialState,
+            },
+            afterSnapshot: {
+              decisionVersion: completedDecision.version,
+              state: completedDecision.commercialState,
+              publicationRef,
+              publicationRevision: publication.revision,
+            },
+            actorMembershipId: who.membershipId,
+            actorUserId: who.userId,
+          },
+        });
+      }
       const result = {
         publicationRef,
         surveyRef,

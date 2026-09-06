@@ -9,7 +9,7 @@ import type { LogisticsRevision } from "@/logistics-engine/api";
 import type { CostingRevision } from "@/costing/api";
 import type { QuoteCase } from "@/quote/api";
 
-export type ConsolidatedCaseTab = "SUMMARY" | "SERVICES" | "SURVEY" | "LOGISTICS" | "COSTING" | "QUOTE";
+export type ConsolidatedCaseTab = "SUMMARY" | "SERVICES" | "SURVEY" | "COSTING" | "QUOTE";
 
 type Props = Readonly<{
   item: CrmPipelineCaseDetail;
@@ -93,7 +93,6 @@ export default function CaseWorkflowOverview({ item, authorization, servicesEnab
   const currentQuote = accepted || snapshot?.quote?.proposals[0] || null;
   const servicesReady = Boolean(snapshot?.services?.selection.primary);
   const surveyPublished = surveyState(snapshot?.survey ?? null) === "Publicado";
-  const logisticsReady = Boolean(snapshot?.logistics && snapshot.logistics.status === "PUBLISHED");
   const costingReady = Boolean(snapshot?.costing && snapshot.costing.status === "PUBLISHED");
   const quoteReady = Boolean(currentQuote);
 
@@ -101,9 +100,8 @@ export default function CaseWorkflowOverview({ item, authorization, servicesEnab
     <div className="flex items-center gap-2 overflow-x-auto border border-slate-200 bg-slate-50 p-2" aria-label="Progreso real del caso" data-testid="case-workflow-progress">
       <WorkflowStep label="ICP" ready onClick={() => onSelectTab("SUMMARY")} />
       <WorkflowStep label="Servicios" ready={servicesReady} onClick={() => onSelectTab("SERVICES")} />
-      <WorkflowStep label="Survey" ready={surveyPublished} onClick={() => onSelectTab("SURVEY")} />
-      <WorkflowStep label="Motor" ready={logisticsReady} onClick={() => onSelectTab("LOGISTICS")} />
-      <WorkflowStep label="Costing" ready={costingReady} onClick={() => onSelectTab("COSTING")} />
+      <WorkflowStep label="Evaluación" ready={surveyPublished} onClick={() => onSelectTab("SURVEY")} />
+      <WorkflowStep label="Costos" ready={costingReady} onClick={() => onSelectTab("COSTING")} />
       <WorkflowStep label="Cotización" ready={Boolean(accepted)} active={quoteReady && !accepted} onClick={() => onSelectTab("QUOTE")} />
     </div>
     {loading && <div className="flex min-h-44 items-center justify-center gap-2 border border-slate-200 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Reuniendo el estado publicado del caso…</div>}

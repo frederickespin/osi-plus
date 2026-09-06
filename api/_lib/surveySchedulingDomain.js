@@ -148,7 +148,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       try {
         const zone = motorZone(motor, pipelineCase.routeRevision);
         const profile = resolveScheduleProfile(policy.configuration, zone.zoneType, zone.distanceKm);
-        schedulingContext = { profile: profile.code, zoneCode: zone.zoneCode, distanceStatus: zone.distanceKm == null ? "PENDING" : "KNOWN" };
+        schedulingContext = { profile: profile.code, zoneCode: zone.zoneCode, distanceStatus: zone.distanceKm == null ? "PENDING" : "KNOWN", distanceKm: zone.distanceKm };
         resolved = { zone, profile };
       } catch { schedulingContext = null; }
       if (resolved) {

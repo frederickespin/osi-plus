@@ -11,8 +11,10 @@ import type { SurveySchedulingUiAccess } from "./schedulingAccess";
 import type { EvaluationMethod, SchedulingWorkspace } from "./schedulingTypes";
 import { CommercialRelationshipsApi, type CommercialCaseSnapshot } from "@/commercial-relationships/api";
 import { isCommercialRelationshipsUiEnabled } from "@/commercial-relationships/mode";
+import LogisticsVisitSummary from "@/logistics-engine/LogisticsVisitSummary";
+import type { LogisticsRevision } from "@/logistics-engine/api";
 
-type Props = Readonly<{ caseRef: string; authorization?: string; access: SurveySchedulingUiAccess; onNavigate(pathname: string): void; onUnauthorized(): void }>;
+type Props = Readonly<{ caseRef: string; authorization?: string; access: SurveySchedulingUiAccess; logisticsSummaryEnabled?: boolean; onNavigate(pathname: string): void; onUnauthorized(): void }>;
 
 const METHOD_LABELS: Readonly<Record<EvaluationMethod, string>> = Object.freeze({ IN_PERSON: "Visita presencial", VIRTUAL: "Evaluación virtual", CLIENT_PHOTOS_DOCUMENTS: "Fotografías/documentos", WRITTEN_REPORT: "Reporte o listado escrito", VOXME: "Voxme", MINI: "Precarga Mini", NONE: "No requiere evaluación" });
 const STATE_LABELS: Readonly<Record<string, string>> = Object.freeze({ NOT_REQUIRED: "No se requiere evaluación", PENDING_METHOD: "Pendiente de seleccionar método", WAITING_CLIENT_INFO: "Esperando información del cliente", READY_TO_SCHEDULE: "Evaluación pendiente de programación", SCHEDULED: "Programada", IN_PROGRESS: "En progreso", COMPLETED: "Completada", CANCELLED: "Cancelada" });
@@ -29,11 +31,12 @@ function appointmentCopy(workspace: SchedulingWorkspace) {
   return new Intl.DateTimeFormat("es-DO", { dateStyle: "medium", timeStyle: "short" }).format(new Date(workspace.assignment.scheduledStart));
 }
 
-export default function SurveyCasePanel({ caseRef, authorization, access, onNavigate, onUnauthorized }: Props) {
+export default function SurveyCasePanel({ caseRef, authorization, access, logisticsSummaryEnabled = false, onNavigate, onUnauthorized }: Props) {
   const api = useMemo(() => createSurveySchedulingApi(authorization), [authorization]);
   const commercialApi = useMemo(() => new CommercialRelationshipsApi(authorization), [authorization]);
   const [workspace, setWorkspace] = useState<SchedulingWorkspace | null>(null);
   const [commercialContext, setCommercialContext] = useState<CommercialCaseSnapshot | null>(null);
+  const [logisticsRevision, setLogisticsRevision] = useState<LogisticsRevision | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,10 +51,10 @@ export default function SurveyCasePanel({ caseRef, authorization, access, onNavi
 
   const load = useCallback(async (availabilityDate?: string) => {
     setLoading(true); setError(null);
-    try { const [nextWorkspace, nextCommercial] = await Promise.all([api.workspace(caseRef, availabilityDate), isCommercialRelationshipsUiEnabled() ? commercialApi.caseContext(caseRef) : Promise.resolve(null)]); setWorkspace(nextWorkspace); setCommercialContext(nextCommercial); }
+    try { const [nextWorkspace, nextCommercial, nextLogistics] = await Promise.all([api.workspace(caseRef, availabilityDate), isCommercialRelationshipsUiEnabled() ? commercialApi.caseContext(caseRef) : Promise.resolve(null), logisticsSummaryEnabled ? import("@/logistics-engine/api").then(({ logisticsApi }) => logisticsApi.plan(authorization, caseRef)) : Promise.resolve(null)]); setWorkspace(nextWorkspace); setCommercialContext(nextCommercial); setLogisticsRevision(nextLogistics); }
     catch (cause) { const code = cause instanceof Error ? cause.message : "CRM_SURVEY_REQUEST_FAILED"; if (/UNAUTHORIZED|AUTH_REQUIRED/.test(code)) onUnauthorized(); else setError(code); }
     finally { setLoading(false); }
-  }, [api, caseRef, commercialApi, onUnauthorized]);
+  }, [api, authorization, caseRef, commercialApi, logisticsSummaryEnabled, onUnauthorized]);
   useEffect(() => { void load(); }, [load]);
 
   const slots = useMemo(() => workspace?.policy?.slots.filter((slot) => slot.profile === workspace.schedulingContext?.profile) || [], [workspace]);
@@ -104,6 +107,8 @@ export default function SurveyCasePanel({ caseRef, authorization, access, onNavi
           {editingEvaluator && workspace.assignment && <div className="mt-4 grid gap-3 rounded border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"><div><Label>Nuevo evaluador</Label><Select value={evaluatorRef} onValueChange={setEvaluatorRef}><SelectTrigger><SelectValue placeholder="Seleccione" /></SelectTrigger><SelectContent>{workspace.evaluatorCandidates.map((candidate) => <SelectItem key={candidate.membershipRef} value={candidate.membershipRef}>{candidate.displayName}</SelectItem>)}</SelectContent></Select></div><div><Label htmlFor="evaluator-change-reason">Motivo</Label><Input id="evaluator-change-reason" value={reason} onChange={(event) => setReason(event.target.value)} /></div><div className="sm:col-span-2"><Button disabled={saving || !evaluatorRef || !reason} onClick={changeEvaluator}>Confirmar cambio</Button></div></div>}
           {cancelling && workspace.assignment && <div className="mt-4 flex flex-col gap-3 rounded border border-red-200 bg-red-50 p-3 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><Label htmlFor="cancel-appointment-reason">Motivo de cancelación</Label><Input id="cancel-appointment-reason" value={reason} onChange={(event) => setReason(event.target.value)} /></div><Button variant="destructive" disabled={saving || !reason} onClick={cancelAppointment}>Confirmar cancelación</Button></div>}
         </section>
+
+        {workspace.decision?.method === "IN_PERSON" && logisticsSummaryEnabled && <LogisticsVisitSummary revision={logisticsRevision} schedulingContext={workspace.schedulingContext} visitFee={workspace.visitFee} commercialContext={commercialContext} />}
 
         <section className="grid gap-4 p-4 sm:grid-cols-2"><div><h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500"><MapPin className="h-4 w-4" />Visit Fee</h3>{!access.canViewFee ? <p className="mt-2 text-sm text-slate-500">Sin permiso de consulta.</p> : workspace.visitFee ? <div className="mt-2 space-y-1 text-sm"><p className="font-bold text-slate-900">{workspace.visitFee.disposition === "FREE" ? "Sin costo" : workspace.visitFee.disposition === "WAIVED" ? "Exonerada" : workspace.visitFee.suggestedAmount == null ? "Pendiente de cálculo" : `${workspace.visitFee.currency} ${workspace.visitFee.suggestedAmount.toLocaleString("es-DO")}`}</p><p className="text-xs text-slate-500">Comunicación: {workspace.visitFee.communicationStatus} · aprobación: {workspace.visitFee.approvalStatus} · pago: {workspace.visitFee.paymentStatus}</p></div> : <p className="mt-2 text-sm text-slate-500">Pendiente de cálculo por Motor Logístico y Costing. Scheduling no estima importes.</p>}</div><div><h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500"><MessageSquareText className="h-4 w-4" />Comunicación PIC</h3><p className="mt-2 text-sm text-slate-600">{workspace.communications.length ? `${workspace.communications.length} comunicación(es) preparada(s)` : "Sin comunicación preparada"}</p>{access.canManage && workspace.assignment && <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => preparePic("CLIENT")}>PIC cliente</Button><Button size="sm" variant="outline" onClick={() => preparePic("EVALUATOR")}>PIC evaluador</Button></div>}<p className="mt-2 text-[11px] text-slate-500">PREPARED no envía mensajes externos.</p></div></section>
 

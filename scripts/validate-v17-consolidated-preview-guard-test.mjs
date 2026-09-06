@@ -12,7 +12,8 @@ const baseline = new Map(files.map((file) => [file, readFileSync(file, "utf8")])
 const cases = [];
 function rejects(name, path, mutate, options = {}) { const overrides = new Map(baseline); overrides.set(path, mutate(overrides.get(path))); assert.throws(() => validateV17ConsolidatedPreviewGuard({ overrides, ...options }), /V17_CONSOLIDATED_PREVIEW_GUARD/); cases.push(name); }
 assert.equal(validateV17ConsolidatedPreviewGuard({ overrides: baseline }).productionApiEnabled, false);
-rejects("orden tabs", files[0], (value) => value.replace('["SURVEY", "Survey"', '["QUOTE", "Survey"'));
+rejects("orden tabs", files[0], (value) => value.replace('["SURVEY", "Evaluación"', '["QUOTE", "Evaluación"'));
+rejects("Motor como tab comercial", files[0], (value) => value.replace('["COSTING", "Costos", Calculator]', '["LOGISTICS", "Motor Logístico", Calculator],\n  ["COSTING", "Costos", Calculator]'));
 rejects("tab paralelo", files[0], (value) => value.replace('] as const', ', ["ACTIVITY", "Actividad", FileText]] as const'));
 rejects("Survey sin gate", files[0], (value) => value.replaceAll("surveyEnabled", "true"));
 rejects("ERP eager", files[2], (value) => value.replace("const AdvancedErpShell = lazy", "const AdvancedErpShell = eager"));

@@ -37,7 +37,7 @@ function workspace(communications = 0) {
     decision: { decisionRef: DECISION_REF, method: "IN_PERSON", state: "SCHEDULED", informationSource: "COMMERCIAL", rationaleCode: null, routeVersion: 1, version: 2, createdAt: "2026-09-11T12:00:00.000Z" },
     assignment: { assignmentRef: ASSIGNMENT_REF, scheduledStart: "2026-09-14T13:00:00.000Z", scheduledEnd: "2026-09-14T16:00:00.000Z", evaluator: { displayName: "Evaluadora sintética" }, slotKey: "MORNING", profile: "METRO", zoneCode: "METRO_SANTO_DOMINGO", status: "ASSIGNED", version: 1, instruction: "Confirmar acceso", routeStale: false, surveyRef: null },
     policy: { policyRef: "638f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", version: 1, timezone: "America/Santo_Domingo", profiles: [{ code: "METRO", dailyCapacity: 2 }], slots: [{ profile: "METRO", key: "MORNING", label: "Mañana", startTime: "09:00", endTime: "12:00", capacity: 1 }, { profile: "METRO", key: "AFTERNOON", label: "Tarde", startTime: "14:00", endTime: "16:30", capacity: 1 }], closedWeekdays: [0], closedDates: [], saturdayRequiresApproval: true },
-    schedulingContext: { profile: "METRO", zoneCode: "METRO_SANTO_DOMINGO", distanceStatus: "KNOWN" },
+    schedulingContext: { profile: "METRO", zoneCode: "METRO_SANTO_DOMINGO", distanceStatus: "KNOWN", distanceKm: 15 },
     availability: { date: "2026-09-14", profile: "METRO", dayOccupied: 1, dayCapacity: 2, closed: false, saturdayApprovalRequired: false, slots: [{ key: "MORNING", occupied: 1, capacity: 1, available: false }, { key: "AFTERNOON", occupied: 0, capacity: 1, available: true }] },
     evaluatorCandidates: [{ membershipRef: MEMBERSHIP_REF, displayName: "Evaluadora sintética", capabilities: ["CAN_PERFORM_IN_PERSON_SURVEY"] }],
     visitFee: null,
@@ -66,7 +66,7 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   await session(page); await crm(page); const mutations = await schedulingApi(page);
   const pageErrors: string[] = []; page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`/commercial/cases/${CASE_REF}`);
-  await page.getByRole("tab", { name: "Survey" }).click();
+  await page.getByRole("tab", { name: "Evaluación" }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Evaluación" })).toBeVisible();
   await expect(page.getByText("Evaluadora sintética · METRO · METRO_SANTO_DOMINGO · MORNING")).toBeVisible();
@@ -86,7 +86,7 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
 
 test("viewer consulta agenda sin controles de gestión", async ({ page }) => {
   await session(page, "viewer"); await crm(page); await schedulingApi(page);
-  await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Survey" }).click();
+  await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Evaluación" }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
   await expect(page.getByRole("button", { name: "Reprogramar" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "PIC cliente" })).toHaveCount(0);
@@ -96,7 +96,7 @@ test("deny prevalece y evita chunk y request de Scheduling", async ({ page }) =>
   await session(page, "deny"); await crm(page); let schedulingRequests = 0;
   page.on("request", (request) => { if (new URL(request.url()).pathname === "/api/crm/survey/scheduling") schedulingRequests += 1; });
   await page.goto(`/commercial/cases/${CASE_REF}`);
-  await expect(page.getByRole("tab", { name: "Survey" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Evaluación" })).toHaveCount(0);
   expect(schedulingRequests).toBe(0);
   const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => name.includes("SurveyCasePanel")));
   expect(chunks).toHaveLength(0);

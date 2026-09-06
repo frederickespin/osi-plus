@@ -13,6 +13,8 @@ rejects("prisma/migrations/20260908010000_v17_logistics_engine/migration.sql", (
 rejects("prisma/migrations/20260908010000_v17_logistics_engine/migration.sql", (v) => v.replace("logistics_rules_no_equal_conflict", "rule_conflict_removed"));
 rejects("api/_lib/logisticsEngineContract.js", (v) => v.replace("LOGISTICS_COMMERCIAL_VALUE_FORBIDDEN", "COMMERCIAL_ALLOWED"));
 rejects("api/_lib/rbac.js", (v) => v.replace("EXPLICIT_LOGISTICS_PERMISSIONS", "ROLE_LOGISTICS_PERMISSIONS"));
-rejects("src/commercial-crm/CommercialCaseDetail.tsx", (v) => v.replace("const LogisticsPlanPanel = lazy", "const LogisticsPlanPanel = eager"));
+rejects("src/commercial-crm/CommercialCaseDetail.tsx", (v) => `${v}\nconst LogisticsPlanPanel = lazy(() => import(\"@/logistics-engine/LogisticsPlanPanel\"));`);
+rejects("src/survey/SurveyCasePanel.tsx", (v) => `${v}\nlogisticsApi.calculate({});`);
+rejects("src/admin-tenant/AdminTenantMembershipModule.tsx", (v) => v.replace("isLogisticsUiEnabled() && logisticsRulesAccess.canRulesView", "isLogisticsUiEnabled()"));
 rejects("scripts/protected-cors-route-inventory.json", (v) => v.replace('      "/api/logistics/rules",\r\n', "").replace('      "/api/logistics/rules",\n', ""));
 process.stdout.write(JSON.stringify({ ok: true, negatives: passed }) + "\n");

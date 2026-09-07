@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { PrismaClient } from "@prisma/client";
+import { communicationHash } from "../api/_lib/communicationsContract.js";
+import { createCommunicationDraftVersion, createCommunicationTemplate, listCommunicationTemplates, publishCommunicationTemplate } from "../api/_lib/communicationsDomain.js";
+
+const raw = process.env.V17_COMMUNICATIONS_TEST_DATABASE_URL;
+if (!raw) throw new Error("V17_COMMUNICATIONS_TEST_DATABASE_URL_REQUIRED");
+const target = new URL(raw);
+if (!["127.0.0.1", "localhost"].includes(target.hostname) || target.port !== "55432" || target.pathname !== "/v17_communications_13a" || target.searchParams.get("schema") !== "osi") throw new Error("V17_COMMUNICATIONS_LOCAL_DATABASE_REQUIRED");
+const prisma = new PrismaClient({ datasourceUrl: raw });
+const signed = (operation, requestId, payload) => ({ requestId, payloadHash: communicationHash({ operation, requestId, ...payload }), ...payload });
+const permissions = ["communications:templates:view", "communications:templates:manage", "communications:view", "communications:prepare", "communications:send", "communications:tenant"];
+let checks = 0;
+try {
+  const suffix = randomUUID().slice(0, 8); const upper = suffix.toUpperCase();
+  const tenant = await prisma.tenant.create({ data: { code: `COMM-${upper}`, name: "Tenant sintético de comunicaciones" } });
+  const user = await prisma.user.create({ data: { code: `COMM-${upper}`, name: "Actor sintético", email: [`actor-${suffix}`, "example.invalid"].join("@"), phone: "0000000000", role: "A", status: "ACTIVE", joinDate: "2026-09-13", passwordHash: ["not", "an", "auth", "credential"].join("-") } });
+  const membership = await prisma.tenantMembership.create({ data: { tenantId: tenant.id, userId: user.id, role: "A", grantedPermissions: permissions } });
+  const context = { tenantId: tenant.id, membershipId: membership.id, userId: user.id, role: "A", effectivePermissions: permissions, deniedPermissions: [] };
+  const body = { code: `PIC.${suffix.toUpperCase()}`, name: "Confirmación PIC", category: "SURVEY_PIC", audiences: ["CLIENT", "EVALUATOR"], channels: ["EMAIL"], subject: "Caso {{case.reference}}", bodyText: "Hola {{client.name}}", bodyHtml: null, variables: ["case.reference", "client.name"], validFrom: null, validTo: null };
+  const requestId = `create-${suffix}`; const create = signed("TEMPLATE_CREATE", requestId, body);
+  const concurrent = await Promise.all([createCommunicationTemplate(prisma, context, create), createCommunicationTemplate(prisma, context, create)]);
+  assert.equal(concurrent[0].templateRef, concurrent[1].templateRef); checks += 1;
+  assert.equal(await prisma.communicationTemplate.count({ where: { tenantId: tenant.id } }), 1); checks += 1;
+  assert.equal(await prisma.communicationCommand.count({ where: { tenantId: tenant.id, requestId } }), 1); checks += 1;
+  assert.equal(await prisma.communicationAuditEvent.count({ where: { tenantId: tenant.id, requestId } }), 1); checks += 1;
+  await assert.rejects(createCommunicationTemplate(prisma, context, signed("TEMPLATE_CREATE", requestId, { ...body, name: "Payload distinto" })), /COMMUNICATION_(PAYLOAD_HASH_MISMATCH|IDEMPOTENCY_CONFLICT)/); checks += 1;
+  const publishBody = { version: 1, expectedState: "DRAFT" }; const publishSigned = signed("TEMPLATE_PUBLISH", `publish-${suffix}`, { templateRef: concurrent[0].templateRef, ...publishBody }); delete publishSigned.templateRef;
+  const published = await publishCommunicationTemplate(prisma, context, concurrent[0].templateRef, publishSigned);
+  assert.equal(published.state, "PUBLISHED"); checks += 1;
+  const competing = await Promise.allSettled([1, 2].map((n) => { const versionBody = { expectedVersion: 1, name: `Confirmación PIC ${n}`, category: "SURVEY_PIC", audiences: ["CLIENT"], channels: ["EMAIL"], subject: null, bodyText: "Hola {{client.name}}", bodyHtml: null, variables: ["client.name"], validFrom: null, validTo: null }; const value = signed("TEMPLATE_VERSION", `version-${suffix}-${n}`, { templateRef: concurrent[0].templateRef, ...versionBody }); delete value.templateRef; return createCommunicationDraftVersion(prisma, context, concurrent[0].templateRef, value); }));
+  assert.equal(competing.filter((row) => row.status === "fulfilled").length, 1); checks += 1;
+  assert.equal(await prisma.communicationTemplateVersion.count({ where: { tenantId: tenant.id } }), 2); checks += 1;
+  const publishedRow = await prisma.communicationTemplateVersion.findFirstOrThrow({ where: { tenantId: tenant.id, version: 1 } });
+  await assert.rejects(prisma.communicationTemplateVersion.update({ where: { id: publishedRow.id }, data: { bodyTextTemplate: "Mutado" } }), /COMMUNICATION_TEMPLATE_VERSION_IMMUTABLE/); checks += 1;
+  await assert.rejects(prisma.communicationAuditEvent.deleteMany({ where: { tenantId: tenant.id } }), /COMMUNICATION_APPEND_ONLY/); checks += 1;
+  const other = await prisma.tenant.create({ data: { code: `OTHER-${upper}`, name: "Otro tenant sintético" } });
+  assert.deepEqual(await listCommunicationTemplates(prisma, { ...context, tenantId: other.id }), []); checks += 1;
+  console.log(`V17-COMMUNICATIONS-DB ${checks}/${checks}`);
+} finally { await prisma.$disconnect(); }

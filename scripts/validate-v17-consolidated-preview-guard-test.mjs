@@ -25,5 +25,5 @@ rejects("Quote recalcula Costing", files[6], (value) => `${value}\ncostingApi.ca
 rejects("Costing recalcula Motor", files[7], (value) => `${value}\nlogisticsApi.calculate({});`);
 rejects("ICP añade volumen", files[5], (value) => `${value}\nconst estimatedCbm = 10;`);
 rejects("Production mode", "api/_lib/quoteHttp.js", (value) => `${value}\nconst PRODUCTION_PILOT = true;`);
-rejects("migración 32", files[0], (value) => value, { migrations: 32 });
+rejects("migración inesperada", files[0], (value) => value, { migrations: 33 });
 console.log(`V17-CONSOLIDATED-PREVIEW-10A guard negatives: ${cases.length}/${cases.length}`);

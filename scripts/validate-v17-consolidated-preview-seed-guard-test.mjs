@@ -35,7 +35,7 @@ rejects("host productivo conocido", { DATABASE_URL: syntheticDatabaseUrl(expecte
 
 const source = readFileSync(script, "utf8");
 assert.match(source, /current_setting\('neon\.branch_id'/, "revalida branch en PostgreSQL");
-assert.match(source, /migrations\.length !== 31/, "exige 31 migraciones completas");
+assert.match(source, /migrations\.length !== 32/, "exige 32 migraciones completas");
 assert.match(source, /randomBytes\(36\)/, "genera contraseñas sintéticas fuertes");
 assert.doesNotMatch(source, /password\s*:\s*["'][^"']+["']/, "sin password hard-coded");
 

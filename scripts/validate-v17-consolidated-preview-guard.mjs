@@ -44,7 +44,7 @@ export function validateV17ConsolidatedPreviewGuard({ root = process.cwd(), over
     invariant(!/PRODUCTION_(?:READ|PILOT|WRITE)/u.test(source), `modo Production introducido:${path}`);
   }
   const migrationCount = migrations ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
-  invariant(migrationCount === 31, `migraciones:${migrationCount}`);
+  invariant(migrationCount === 32, `migraciones:${migrationCount}`);
   invariant(!/Auth V2|VITE_MT01B2_CLIENT_ENABLED=true/u.test(shared + detail + hub), "Auth V2 activado");
   return Object.freeze({ ok: true, tabs: expectedTabs.length, domains: 9, migrations: migrationCount, productionApiEnabled: false });
 }

@@ -24,18 +24,32 @@ export function resolveCommunicationsApiMode(env = process.env, req) {
   if (mode === "DISABLED") fail("COMMUNICATIONS_DISABLED", 409);
   if (mode === "LOCAL_ONLY") { if (hasVercel(env) || !isRealLoopbackRequest(req)) fail("COMMUNICATIONS_CONFIGURATION_INVALID", 503); return mode; }
   const manifest = communicationsPreviewManifest();
-  const valid = productionApiEnabled === false
-    && env.VERCEL === "1" && env.VERCEL_ENV === "preview" && isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF)
-    && env.COMMUNICATIONS_PREVIEW_BATCH === COMMUNICATIONS_PREVIEW_BATCH
-    && env.COMMUNICATIONS_PREVIEW_MANIFEST === manifest.raw && env.COMMUNICATIONS_PREVIEW_MANIFEST_SHA256 === manifest.sha256
-    && env.COMMUNICATIONS_PREVIEW_NEON_BRANCH_ID === COMMUNICATIONS_PREVIEW_NEON_BRANCH
-    && previewUrlAuthorized(env.DATABASE_URL) && previewUrlAuthorized(env.DIRECT_URL)
-    && env.MT01B_AUTH_MODE === "LEGACY" && env.MT01B_TENANT_SWITCH_ENABLED === "false" && env.VITE_MT01B2_CLIENT_ENABLED === "false"
-    && env.CRM_PIPELINE_RUNTIME_MODE === "PREVIEW_REHEARSAL" && env.VITE_OSI_HUB_MODE === "PREVIEW_REHEARSAL"
-    && env.VITE_CRM_PIPELINE_CLIENT_MODE === "PREVIEW_REHEARSAL" && env.VITE_CRM_PIPELINE_READ_MODE === "PREVIEW_REHEARSAL"
-    && env.COMMUNICATIONS_EXTERNAL_TRANSPORT_MODE === "DISABLED" && env.COMMUNICATIONS_EXTERNAL_WEBHOOK_MODE === "DISABLED"
-    && Object.values(COMMUNICATION_TRANSPORT_CAPABILITIES).every((enabled) => enabled === false);
-  if (!valid) fail("COMMUNICATIONS_CONFIGURATION_INVALID", 503);
+  const checks = Object.freeze({
+    PRODUCTION_API_DISABLED: productionApiEnabled === false,
+    VERCEL_PREVIEW: env.VERCEL === "1" && env.VERCEL_ENV === "preview",
+    PREVIEW_BRANCH: isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF),
+    PREVIEW_BATCH: env.COMMUNICATIONS_PREVIEW_BATCH === COMMUNICATIONS_PREVIEW_BATCH,
+    PREVIEW_MANIFEST: env.COMMUNICATIONS_PREVIEW_MANIFEST === manifest.raw,
+    PREVIEW_MANIFEST_SHA256: env.COMMUNICATIONS_PREVIEW_MANIFEST_SHA256 === manifest.sha256,
+    PREVIEW_NEON_BRANCH: env.COMMUNICATIONS_PREVIEW_NEON_BRANCH_ID === COMMUNICATIONS_PREVIEW_NEON_BRANCH,
+    DATABASE_URL: previewUrlAuthorized(env.DATABASE_URL),
+    DIRECT_URL: previewUrlAuthorized(env.DIRECT_URL),
+    AUTH_LEGACY: env.MT01B_AUTH_MODE === "LEGACY",
+    TENANT_SWITCH_DISABLED: env.MT01B_TENANT_SWITCH_ENABLED === "false",
+    AUTH_V2_DISABLED: env.VITE_MT01B2_CLIENT_ENABLED === "false",
+    CRM_RUNTIME_PREVIEW: env.CRM_PIPELINE_RUNTIME_MODE === "PREVIEW_REHEARSAL",
+    HUB_PREVIEW: env.VITE_OSI_HUB_MODE === "PREVIEW_REHEARSAL",
+    CRM_CLIENT_PREVIEW: env.VITE_CRM_PIPELINE_CLIENT_MODE === "PREVIEW_REHEARSAL",
+    CRM_READ_PREVIEW: env.VITE_CRM_PIPELINE_READ_MODE === "PREVIEW_REHEARSAL",
+    EXTERNAL_TRANSPORT_DISABLED: env.COMMUNICATIONS_EXTERNAL_TRANSPORT_MODE === "DISABLED",
+    EXTERNAL_WEBHOOK_DISABLED: env.COMMUNICATIONS_EXTERNAL_WEBHOOK_MODE === "DISABLED",
+    TRANSPORT_CAPABILITIES_DISABLED: Object.values(COMMUNICATION_TRANSPORT_CAPABILITIES).every((enabled) => enabled === false),
+  });
+  const failures = Object.entries(checks).filter(([, valid]) => !valid).map(([name]) => name);
+  if (failures.length) {
+    if (env.VERCEL === "1") console.error("COMMUNICATIONS_PREVIEW_CONFIGURATION_REJECTED", { failures });
+    fail("COMMUNICATIONS_CONFIGURATION_INVALID", 503);
+  }
   return mode;
 }
 export async function assertCommunicationsPreviewDatabase(prisma, mode) { if (mode !== COMMUNICATIONS_API_MODES.PREVIEW_REHEARSAL) return; const [identity] = await prisma.$queryRawUnsafe("SELECT current_database() AS database, current_setting('neon.branch_id', true) AS branch"); if (identity?.database !== COMMUNICATIONS_PREVIEW_DATABASE || identity?.branch !== COMMUNICATIONS_PREVIEW_NEON_BRANCH) fail("COMMUNICATIONS_CONFIGURATION_INVALID", 503); }

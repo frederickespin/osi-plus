@@ -18,7 +18,7 @@ async function authorize(page: Page, deny = false) {
 
 test("catálogo compacto edita draft y genera preview sintético", async ({ page }) => {
   await authorize(page); let previewCalls = 0;
-  await page.route("**/api/communications/templates", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [template] }) }));
+  await page.route("**/api/communications/templates", (route) => { expect(route.request().headers().authorization).toBe("Bearer synthetic.communications.token"); return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [template] }) }); });
   await page.route("**/api/communications/variables", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { catalogVersion: 1, variables } }) }));
   await page.route("**/api/communications/preview", async (route) => { previewCalls += 1; const body = await route.request().postDataJSON(); expect(body).not.toHaveProperty("tenantId"); return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { context: "SYNTHETIC", rendered: { subject: "Caso DEMO-001", bodyText: "Hola Cliente de demostración", bodyHtml: null } } }) }); });
   await page.goto("/administration");

@@ -5,6 +5,7 @@ import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { CommunicationsError } from "./communicationsContract.js";
 import { COMMUNICATION_TRANSPORT_CAPABILITIES } from "./communicationsTransport.js";
+import { CommercialTenancyError } from "./commercialTenancyWrite.js";
 import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
 
 export const productionApiEnabled = false;
@@ -55,7 +56,7 @@ export function resolveCommunicationsApiMode(env = process.env, req) {
 export async function assertCommunicationsPreviewDatabase(prisma, mode) { if (mode !== COMMUNICATIONS_API_MODES.PREVIEW_REHEARSAL) return; const [identity] = await prisma.$queryRawUnsafe("SELECT current_database() AS database, current_setting('neon.branch_id', true) AS branch"); if (identity?.database !== COMMUNICATIONS_PREVIEW_DATABASE || identity?.branch !== COMMUNICATIONS_PREVIEW_NEON_BRANCH) fail("COMMUNICATIONS_CONFIGURATION_INVALID", 503); }
 function header(req, name) { const value = req?.headers?.[name] ?? req?.headers?.[name.replace(/(^|-)([a-z])/g, (_m, dash, letter) => `${dash}${letter.toUpperCase()}`)]; return Array.isArray(value) ? null : value; }
 function assertSameOrigin(req) { const origin = header(req, "origin"); if (origin === undefined) return; const host = header(req, "host"); const protocol = header(req, "x-forwarded-proto") ?? (req?.socket?.encrypted ? "https" : "http"); let parsed; try { parsed = new URL(origin); } catch { fail("COMMUNICATIONS_ORIGIN_FORBIDDEN", 403); } if (typeof host !== "string" || origin !== origin.trim() || host !== host.trim() || parsed.origin !== origin || origin !== `${protocol}://${host}`) fail("COMMUNICATIONS_ORIGIN_FORBIDDEN", 403); }
-export function sendCommunicationsError(res, cause, head = false) { const known = cause instanceof CommunicationsError; const status = known ? cause.status : cause?.code === "P2002" || cause?.code === "P2034" ? 409 : 503; const error = known ? cause.code : status === 409 ? "COMMUNICATION_CONFLICT" : "COMMUNICATION_DATABASE_UNAVAILABLE"; return head ? res.status(status).end() : res.status(status).json({ ok: false, error }); }
+export function sendCommunicationsError(res, cause, head = false) { const known = cause instanceof CommunicationsError || cause instanceof CommercialTenancyError; const status = known ? cause.status : cause?.code === "P2002" || cause?.code === "P2034" ? 409 : 503; const error = known ? cause.code : status === 409 ? "COMMUNICATION_CONFLICT" : "COMMUNICATION_DATABASE_UNAVAILABLE"; return head ? res.status(status).end() : res.status(status).json({ ok: false, error }); }
 export function prepareCommunicationsRequest(req, res, env = process.env) { setCrmPrivateHeaders(res); try { const mode = resolveCommunicationsApiMode(env, req); assertSameOrigin(req); return mode; } catch (error) { sendCommunicationsError(res, error, req.method === "HEAD"); return false; } }
 export function createCommunicationsHandler({ env = process.env, prismaClient, methods, permission, execute, status = 200, resolveContext = resolveCrmPipelineContext } = {}) {
   return withPrivateApiHeaders(async (req, res) => {

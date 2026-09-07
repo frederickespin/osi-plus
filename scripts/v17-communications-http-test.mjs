@@ -3,6 +3,7 @@ import {
   COMMUNICATIONS_PREVIEW_BATCH, COMMUNICATIONS_PREVIEW_DATABASE, COMMUNICATIONS_PREVIEW_NEON_BRANCH,
   communicationsPreviewManifest, createCommunicationsHandler, createTransportDisabledHandler, resolveCommunicationsApiMode,
 } from "../api/_lib/communicationsHttp.js";
+import { CommercialTenancyError } from "../api/_lib/commercialTenancyWrite.js";
 
 function response() {
   return { statusCode: 200, headers: {}, body: null, setHeader(name, value) { this.headers[name] = value; }, status(code) { this.statusCode = code; return this; }, json(value) { this.body = value; return this; }, end() { return this; } };
@@ -29,6 +30,9 @@ pass(cors.statusCode === 403 && !Object.keys(cors.headers).some((key) => key.toL
 const denyPermission = createCommunicationsHandler({ env: localEnv, prismaClient: {}, methods: ["GET"], permission: "communications:view", resolveContext: async () => ({ effectivePermissions: ["communications:view"], deniedPermissions: ["communications:view"] }), execute: async () => ({}) });
 const forbidden = response(); await denyPermission(request(), forbidden);
 pass(forbidden.statusCode === 403, "deny prevalece");
+const unauthenticated = createCommunicationsHandler({ env: localEnv, prismaClient: {}, methods: ["GET"], permission: "communications:view", resolveContext: async () => { throw new CommercialTenancyError("COMMERCIAL_AUTH_REQUIRED", 401); }, execute: async () => ({}) });
+const unauthorized = response(); await unauthenticated(request(), unauthorized);
+pass(unauthorized.statusCode === 401 && unauthorized.body.error === "COMMERCIAL_AUTH_REQUIRED", "error canónico de sesión conserva status y código");
 const transport = response(); await createTransportDisabledHandler()(request("POST"), transport);
 pass(transport.statusCode === 409 && transport.body.error === "COMMUNICATION_TRANSPORT_DISABLED", "transporte siempre desactivado");
 pass(!("Access-Control-Allow-Origin" in transport.headers), "transporte sin CORS permisivo");

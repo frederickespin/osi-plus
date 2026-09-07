@@ -115,6 +115,8 @@
     "guard:v17-communications": "node scripts/validate-v17-communications-guard.mjs && node scripts/validate-v17-communications-guard-test.mjs",
     "test:v17-communications:browser": "playwright test -c playwright.v17-communications.config.ts",
     "rollback:v17-communications:local": "node scripts/v17-communications-rollback.mjs",
+    "seed:v17-communications-preview": "node scripts/v17-communications-preview-seed.mjs",
+    "verify:v17-communications-preview": "node scripts/v17-communications-preview-verify.mjs",
     "seed:v17-commercial-relationships-preview": "node scripts/v17-commercial-relationships-preview-seed.mjs",
     "verify:v17-commercial-relationships-preview": "node scripts/v17-commercial-relationships-preview-verify.mjs",
     "test:v17-admin-tenant-memberships:http": "node scripts/v17-admin-tenant-memberships-http-test.mjs",

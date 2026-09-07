@@ -6,11 +6,12 @@ const CASE_REF = "138f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const MEMBERSHIP_REF = "238f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const ASSIGNMENT_REF = "338f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const DECISION_REF = "438f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const TEMPLATE_REF = "538f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 const schedulingPermissions = ["survey:schedule:view", "survey:schedule:manage", "survey:schedule:assign", "survey:schedule:reschedule", "survey:visit-fee:view", "survey:visit-fee:approve"];
 
 async function session(page: Page, access: "manager" | "viewer" | "deny" = "manager") {
-  const permissions = ["pipeline:view", "survey:assignment:view", "survey:read", ...(access === "deny" ? [] : access === "manager" ? schedulingPermissions : ["survey:schedule:view"] )];
+  const permissions = ["pipeline:view", "survey:assignment:view", "survey:read", ...(access === "deny" ? [] : access === "manager" ? [...schedulingPermissions, "communications:view", "communications:prepare"] : ["survey:schedule:view", "communications:view"] )];
   const deniedPermissions = access === "deny" ? ["survey:schedule:view"] : [];
   await page.addInitScript(({ membershipRef }) => {
     localStorage.setItem("osi-plus.token", "synthetic.scheduling.token");
@@ -62,8 +63,20 @@ async function schedulingApi(page: Page) {
   return () => mutations;
 }
 
+async function communicationsApi(page: Page) {
+  let prepared = false;
+  let mutations = 0;
+  const template = { templateRef: TEMPLATE_REF, code: "PIC_CLIENT_VISIT", name: "PIC cliente · visita presencial", category: "SURVEY_PIC", state: "PUBLISHED", currentVersion: 1, current: { versionRef: "638f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", version: 1, state: "PUBLISHED", audiences: ["CLIENT"], channels: ["EMAIL"], subject: "Visita confirmada", bodyText: "Mensaje preparado sin transporte externo.", bodyHtml: null, variables: { catalogVersion: 1, names: [] }, contentSha256: "a".repeat(64), validFrom: null, validTo: null, createdAt: "2026-09-11T12:00:00.000Z", publishedAt: "2026-09-11T12:00:00.000Z" }, versions: [], updatedAt: "2026-09-11T12:00:00.000Z" };
+  const record = { communicationRef: "738f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", templateRef: TEMPLATE_REF, templateCode: "PIC_CLIENT_VISIT", templateVersion: 1, milestone: "SURVEY_PIC_CLIENT", channel: "EMAIL", recipientType: "CLIENT", recipient: { displayName: "Contacto sintético", destination: "c***@example.invalid" }, subject: "Visita confirmada", bodyText: "Mensaje preparado sin transporte externo.", bodyHtml: null, status: "PREPARED", preparedAt: "2026-09-11T12:30:00.000Z", sentAt: null, deliveredAt: null, failedAt: null };
+  await page.route("**/api/communications/templates", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: [template] }) }));
+  await page.route("**/api/communications/records?*", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: prepared ? [record] : [] }) }));
+  await page.route("**/api/communications/recipients", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: [{ recipientType: "CLIENT", recipientRef: "contact:case", displayName: "Contacto sintético", email: "c***@example.invalid", phone: null, availableChannels: ["EMAIL"] }] }) }));
+  await page.route("**/api/communications/prepare", (route) => { prepared = true; mutations += 1; return route.fulfill({ status: 201, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: record }) }); });
+  return () => mutations;
+}
+
 test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Survey App", async ({ page }, testInfo) => {
-  await session(page); await crm(page); const mutations = await schedulingApi(page);
+  await session(page); await crm(page); const schedulingMutations = await schedulingApi(page); const communicationMutations = await communicationsApi(page);
   const pageErrors: string[] = []; page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Evaluación" }).click();
@@ -72,10 +85,18 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   await expect(page.getByText("Evaluadora sintética · METRO · METRO_SANTO_DOMINGO · MORNING")).toBeVisible();
   await expect(page.getByText("Pendiente de cálculo por Motor Logístico y Costing. Scheduling no estima importes.")).toBeVisible();
   await expect(page.getByText("Visita programada")).toBeVisible();
-  await page.getByRole("button", { name: "PIC cliente" }).click();
-  await expect(page.getByText("1 comunicación(es) preparada(s)")).toBeVisible();
-  expect(mutations()).toBe(1);
-  await expect(page.getByText("PREPARED no envía mensajes externos.")).toBeVisible();
+  const communications = page.getByTestId("communications-scheduling");
+  await expect(communications.getByText("Transporte externo desactivado en Preview")).toBeVisible();
+  await communications.getByRole("button", { name: "Preparar" }).click();
+  await communications.getByLabel("Plantilla").selectOption(TEMPLATE_REF);
+  await communications.getByLabel("Destinatario").selectOption("contact:case");
+  await communications.getByLabel("Hito").selectOption("SURVEY_PIC_CLIENT");
+  await communications.getByRole("button", { name: "Guardar como PREPARED" }).click();
+  const preparedRecord = communications.locator("article:visible, tbody tr:visible").filter({ hasText: "SURVEY_PIC_CLIENT" });
+  await expect(preparedRecord).toBeVisible();
+  expect(schedulingMutations()).toBe(0);
+  expect(communicationMutations()).toBe(1);
+  await expect(preparedRecord.getByText("PREPARED")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   expect(pageErrors).toEqual([]);
   if (["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) {
@@ -84,12 +105,14 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   }
 });
 
-test("viewer consulta agenda sin controles de gestión", async ({ page }) => {
-  await session(page, "viewer"); await crm(page); await schedulingApi(page);
+test("viewer consulta agenda y comunicaciones sin controles de gestión", async ({ page }) => {
+  await session(page, "viewer"); await crm(page); await schedulingApi(page); await communicationsApi(page);
   await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Evaluación" }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
   await expect(page.getByRole("button", { name: "Reprogramar" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "PIC cliente" })).toHaveCount(0);
+  await expect(page.getByTestId("communications-scheduling")).toBeVisible();
+  await expect(page.getByTestId("communications-scheduling").getByRole("button", { name: "Preparar" })).toHaveCount(0);
+  await expect(page.getByTestId("communications-scheduling").locator("p:visible, td:visible").filter({ hasText: "Sin comunicaciones canónicas registradas." })).toBeVisible();
 });
 
 test("deny prevalece y evita chunk y request de Scheduling", async ({ page }) => {

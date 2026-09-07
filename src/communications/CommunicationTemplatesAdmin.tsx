@@ -25,7 +25,7 @@ const VARIABLE_LABELS: Readonly<Record<string, string>> = Object.freeze({
   "visit.instructions": "Instrucciones de visita",
 });
 const EMPTY: Draft = { code: "", name: "", category: "VISIT_CONFIRMATION", audiences: ["CLIENT"], channels: ["EMAIL"], subject: "", bodyText: "", bodyHtml: null, variables: [], validFrom: null, validTo: null };
-function names(value: CommunicationTemplate["current"]): string[] { if (!value) return []; return Array.isArray(value.variables) ? [...value.variables] : [...value.variables.names]; }
+function names(value: CommunicationTemplate["current"]): string[] { if (!value) return []; return "names" in value.variables ? [...value.variables.names] : [...value.variables]; }
 function fromTemplate(row: CommunicationTemplate): Draft { const value = row.current; return { code: row.code, name: row.name, category: row.category, audiences: [...(value?.audiences || ["CLIENT"])], channels: [...(value?.channels || ["EMAIL"])], subject: value?.subject || "", bodyText: value?.bodyText || "", bodyHtml: value?.bodyHtml || null, variables: names(value), validFrom: null, validTo: null, expectedVersion: row.currentVersion }; }
 function toggle(values: string[], value: string) { return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]; }
 function copy(error: unknown) { if (!(error instanceof Error)) return "No fue posible completar la acción."; if (error.message === "COMMUNICATION_CONTEXT_INCOMPLETE") return "Faltan datos del contexto para renderizar esta plantilla de forma segura."; if (error.message === "COMMUNICATION_HTML_UNSAFE") return "El contenido HTML contiene elementos no permitidos."; return error.message.replaceAll("_", " "); }

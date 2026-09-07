@@ -23,6 +23,7 @@ rejects("api/_lib/communicationsHttp.js", (v) => v.replace("COMMUNICATION_TRANSP
 rejects("api/_lib/communicationsContract.js", (v) => v.replace("COMMUNICATION_VARIABLE_NOT_ALLOWED", "VARIABLE_ALLOWED"), /whitelist/);
 rejects("api/_lib/communicationsContract.js", (v) => v.replace("assertCommunicationVariablesForContext", "allowEveryCommunicationVariable"), /whitelist/);
 rejects("api/_lib/communicationsDomain.js", (v) => v.replaceAll("tenantId: context.tenantId", "tenantId: undefined"), /tenant-first/);
+rejects("api/_lib/communicationsDomain.js", (v) => v.replace("assertCommunicationVariablesForContext(input.variables, input.context);", ""), /preview debe validar/);
 rejects("api/_lib/communicationsDomain.js", (v) => v.replace("row.caseContactEmailNormalized", "row.client?.email"), /contacto explícito/);
 rejects("api/_lib/communicationsDomain.js", (v) => v.replaceAll("TransactionIsolationLevel.Serializable", "TransactionIsolationLevel.ReadCommitted"), /idempotencia/);
 rejects("src/communications/access.ts", (v) => v.replace("&& !blocked.has(permission)", ""), /deny/);

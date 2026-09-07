@@ -27,6 +27,7 @@ export function validateCommunicationsGuard(overrides = {}) {
   assert.ok(contract.includes("COMMUNICATION_VARIABLES") && contract.includes("COMMUNICATION_VARIABLE_NOT_ALLOWED") && contract.includes("assertCommunicationVariablesForContext"), "whitelist tipada/contextual ausente");
   assert.ok(contract.includes("COMMUNICATION_PAYLOAD_HASH_MISMATCH") && domain.includes("TransactionIsolationLevel.Serializable"), "idempotencia/concurrencia ausente");
   assert.ok(domain.includes("tenantId: context.tenantId") && domain.includes("recipientSnapshot") && domain.includes('status: "PREPARED"'), "autoridad tenant-first o snapshot ausente");
+  assert.ok(/previewCommunication[\s\S]*assertCommunicationVariablesForContext\(input\.variables, input\.context\)/.test(domain), "preview debe validar variables contra su contexto");
   assert.ok(domain.includes("row.caseContactName") && domain.includes("row.caseContactEmailNormalized") && !domain.includes("row.client?.email") && !domain.includes("row.client?.phone"), "Client debe usar el contacto explícito del caso");
   assert.ok(http.includes("productionApiEnabled = false") && http.includes("COMMUNICATION_TRANSPORT_DISABLED"), "Production/transporte no cerrados");
   assert.ok(transport.includes("readonly = true") && /EMAIL:\s*false/.test(transport) && /WHATSAPP:\s*false/.test(transport) && transport.includes("COMMUNICATION_TRANSPORT_DISABLED"), "adaptador de transporte debe permanecer inactivo");

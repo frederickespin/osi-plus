@@ -32,4 +32,14 @@ rejects("prisma/migrations/20260913010000_v17_communications_templates/migration
 rejects("scripts/protected-cors-route-inventory.json", (v) => v.replace(/\s*"\/api\/communications\/send",?/, ""), /CORS/);
 rejects("api/_lib/communicationsDomain.js", (v) => `${v}\n// sendgrid transport`, /transporte externo/);
 rejects("api/_lib/communicationsTransport.js", (v) => v.replace("EMAIL: false", "EMAIL: true"), /adaptador de transporte/);
+rejects("api/_lib/communicationsHttp.js", (v) => v.replace('env.VERCEL_ENV === "preview"', 'env.VERCEL_ENV !== "production"'), /predicado Preview backend/);
+rejects("api/_lib/communicationsHttp.js", (v) => v.replace("isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF)", "Boolean(env.VERCEL_GIT_COMMIT_REF)"), /predicado Preview backend/);
+rejects("api/_lib/communicationsHttp.js", (v) => v.replace("COMMUNICATIONS_PREVIEW_MANIFEST_SHA256", "COMMUNICATIONS_PREVIEW_OPTIONAL_SHA256"), /predicado Preview backend/);
+rejects("api/_lib/communicationsHttp.js", (v) => v.replace("previewUrlAuthorized(env.DATABASE_URL)", "Boolean(env.DATABASE_URL)"), /predicado Preview backend/);
+rejects("api/_lib/communicationsHttp.js", (v) => v.replace("MT01B_AUTH_MODE === \"LEGACY\"", "MT01B_AUTH_MODE !== \"V2\""), /predicado Preview backend/);
+rejects("api/_lib/communicationsHttp.js", (v) => v.replace("COMMUNICATIONS_EXTERNAL_TRANSPORT_MODE === \"DISABLED\"", "Boolean(env.COMMUNICATIONS_EXTERNAL_TRANSPORT_MODE)"), /predicado Preview backend/);
+rejects("api/_lib/communicationsHttp.js", (v) => v.replace("COMMUNICATIONS_EXTERNAL_WEBHOOK_MODE === \"DISABLED\"", "Boolean(env.COMMUNICATIONS_EXTERNAL_WEBHOOK_MODE)"), /predicado Preview backend/);
+rejects("api/_lib/communicationsHttp.js", (v) => v.replace("current_setting('neon.branch_id', true)", "NULL"), /identidad real de DB/);
+rejects("src/communications/mode.ts", (v) => v.replace("VITE_COMMUNICATIONS_PREVIEW_BATCH", "VITE_OPTIONAL_BATCH"), /modo frontend/);
+rejects("src/communications/mode.ts", (v) => v.replace("VITE_CRM_PIPELINE_READ_MODE", "VITE_UNUSED_READ_MODE"), /modo frontend/);
 console.log(`V17-COMMUNICATIONS-GUARD-NEGATIVE ${checks}/${checks}`);

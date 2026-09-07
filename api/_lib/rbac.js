@@ -157,6 +157,14 @@ export const PERMS = Object.freeze({
   COMMERCIAL_ASSOCIATIONS_VIEW: "commercial:associations:view",
   COMMERCIAL_ASSOCIATIONS_MANAGE: "commercial:associations:manage",
 
+  // V17 Communications. Catalog, preparation, transport and tenant scope are explicit grants.
+  COMMUNICATIONS_TEMPLATES_VIEW: "communications:templates:view",
+  COMMUNICATIONS_TEMPLATES_MANAGE: "communications:templates:manage",
+  COMMUNICATIONS_PREPARE: "communications:prepare",
+  COMMUNICATIONS_SEND: "communications:send",
+  COMMUNICATIONS_VIEW: "communications:view",
+  COMMUNICATIONS_TENANT: "communications:tenant",
+
   // HR
   HR_VIEW: "hr:view",
   HR_KPI: "hr:kpi",
@@ -287,6 +295,15 @@ const EXPLICIT_COMMERCIAL_RELATIONSHIP_PERMISSIONS = new Set([
   PERMS.COMMERCIAL_ASSOCIATIONS_MANAGE,
 ]);
 
+const EXPLICIT_COMMUNICATION_PERMISSIONS = new Set([
+  PERMS.COMMUNICATIONS_TEMPLATES_VIEW,
+  PERMS.COMMUNICATIONS_TEMPLATES_MANAGE,
+  PERMS.COMMUNICATIONS_PREPARE,
+  PERMS.COMMUNICATIONS_SEND,
+  PERMS.COMMUNICATIONS_VIEW,
+  PERMS.COMMUNICATIONS_TENANT,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
@@ -298,7 +315,8 @@ const ROLE_PERMS = {
     && !EXPLICIT_LOGISTICS_PERMISSIONS.has(permission)
     && !EXPLICIT_COSTING_PERMISSIONS.has(permission)
     && !EXPLICIT_QUOTE_PERMISSIONS.has(permission)
-    && !EXPLICIT_COMMERCIAL_RELATIONSHIP_PERMISSIONS.has(permission)),
+    && !EXPLICIT_COMMERCIAL_RELATIONSHIP_PERMISSIONS.has(permission)
+    && !EXPLICIT_COMMUNICATION_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

@@ -24,6 +24,7 @@ import type { CostingUiAccess } from "@/costing/access";
 import type { QuoteUiAccess } from "@/quote/access";
 import type { SurveySchedulingUiAccess } from "@/survey/schedulingAccess";
 import type { CommercialRelationshipsAccess } from "@/commercial-relationships/access";
+import type { CommunicationsAccess } from "@/communications/access";
 
 const CommercialRelationshipsAdmin = lazy(() => import("@/commercial-relationships/CommercialRelationshipsAdmin"));
 
@@ -46,6 +47,8 @@ type Props = Readonly<{
   commercialRelationshipsEnabled: boolean;
   commercialRelationshipsAdmin: boolean;
   commercialRelationshipsAccess: CommercialRelationshipsAccess;
+  communicationsEnabled: boolean;
+  communicationsAccess: CommunicationsAccess;
   userName?: string;
   onNavigate(pathname: string): void;
   onLogout(): void;
@@ -134,7 +137,7 @@ function Sidebar({ collapsed, userName, role, materialsEnabled, toolsEnabled, co
   </aside>;
 }
 
-export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialRelationshipsAccess, userName, onNavigate, onLogout, onUnauthorized }: Props) {
+export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, userName, onNavigate, onLogout, onUnauthorized }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const goCommercial = () => {
@@ -174,6 +177,8 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
           surveySchedulingAccess={surveySchedulingAccess}
           commercialRelationshipsEnabled={commercialRelationshipsEnabled}
           commercialRelationshipsAccess={commercialRelationshipsAccess}
+          communicationsEnabled={communicationsEnabled}
+          communicationsAccess={communicationsAccess}
           role={role}
           caseRef={caseRef}
           onOpenNavigation={() => setMobileOpen(true)}

@@ -8,10 +8,12 @@ import { isCrmServicesUiEnabled } from "@/crm-services/mode";
 import { resolveLogisticsUiAccess } from "@/logistics-engine/access";
 import { isLogisticsUiEnabled } from "@/logistics-engine/mode";
 import type { CostingUiAccess } from "@/costing/access";
+import type { CommunicationsAccess } from "@/communications/access";
 
 const ServiceCatalogAdmin = lazy(() => import("@/crm-services/ServiceCatalogAdmin"));
 const LogisticsRulesAdmin = lazy(() => import("@/logistics-engine/LogisticsRulesAdmin"));
 const CostingRulesAdmin = lazy(() => import("@/costing/CostingRulesAdmin"));
+const CommunicationTemplatesAdmin = lazy(() => import("@/communications/CommunicationTemplatesAdmin"));
 
 const ADMIN_PERMISSIONS = Object.freeze([
   "membership:view",
@@ -29,6 +31,8 @@ type Props = Readonly<{
   invitationMode?: AdminTenantMembershipMode;
   costingAccess?: CostingUiAccess;
   costingEnabled?: boolean;
+  communicationsEnabled?: boolean;
+  communicationsAccess?: CommunicationsAccess;
   onUnauthorized(): void;
   api?: AdminTenantApi;
 }>;
@@ -52,7 +56,7 @@ function errorText(error: unknown) {
   } as Record<string, string>)[code] || "No fue posible completar la operación.";
 }
 
-export default function AdminTenantMembershipModule({ authorization, effectivePermissions, deniedPermissions, servicesAccess = NO_CRM_SERVICES_ACCESS, invitationEnabled = false, invitationMode = ADMIN_IDENTITY_INVITATION_MODES.DISABLED, costingAccess, costingEnabled = false, onUnauthorized, api: suppliedApi }: Props) {
+export default function AdminTenantMembershipModule({ authorization, effectivePermissions, deniedPermissions, servicesAccess = NO_CRM_SERVICES_ACCESS, invitationEnabled = false, invitationMode = ADMIN_IDENTITY_INVITATION_MODES.DISABLED, costingAccess, costingEnabled = false, communicationsEnabled = false, communicationsAccess, onUnauthorized, api: suppliedApi }: Props) {
   const api = useMemo(() => suppliedApi || new AdminTenantApi(() => authorization || null), [authorization, suppliedApi]);
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("");
@@ -152,7 +156,7 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
         <div><p className="text-xs font-bold uppercase tracking-[.18em] text-indigo-600">Administración tenant-first</p><h1 className="mt-1 text-2xl font-black text-slate-950">Acceso y membresías</h1><p className="mt-1 text-sm text-slate-600">Roles A/V, permisos explícitos y estado. No incluye RRHH.</p></div>
         <div className="flex items-center gap-2">{canInvite && <button type="button" onClick={() => { setInviteOpen(true); setInviteEmail(""); setActivationPath(null); }} className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white"><UserPlus className="mr-2 inline h-4 w-4" />Invitar administrador</button>}<div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800"><ShieldCheck className="mr-2 inline h-4 w-4" />Auditoría obligatoria</div></div>
       </div>
-      <nav aria-label="Áreas de Administración" className="mt-3 flex flex-wrap gap-2 text-xs font-bold"><a href="#admin-memberships" className="rounded border bg-white px-3 py-1.5 text-slate-700">Acceso y membresías</a>{logisticsAdminEnabled && <a href="#admin-logistics-engine" className="rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-indigo-900">Motor Logístico</a>}{costingEnabled && costingAccess?.canRulesView && <a href="#admin-costing" className="rounded border bg-white px-3 py-1.5 text-slate-700">Costos</a>}</nav>
+      <nav aria-label="Áreas de Administración" className="mt-3 flex flex-wrap gap-2 text-xs font-bold"><a href="#admin-memberships" className="rounded border bg-white px-3 py-1.5 text-slate-700">Acceso y membresías</a>{communicationsEnabled && communicationsAccess?.canTemplatesView && <a href="#admin-communications" className="rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-indigo-900">Plantillas y Comunicaciones</a>}{logisticsAdminEnabled && <a href="#admin-logistics-engine" className="rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-indigo-900">Motor Logístico</a>}{costingEnabled && costingAccess?.canRulesView && <a href="#admin-costing" className="rounded border bg-white px-3 py-1.5 text-slate-700">Costos</a>}</nav>
       <div className="mt-5 grid gap-3 rounded-xl border bg-white p-3 shadow-sm sm:grid-cols-[1fr_150px_170px]">
         <label className="relative"><span className="sr-only">Buscar por nombre o correo</span><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Buscar nombre o correo" className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm" /></label>
         <select aria-label="Filtrar rol" value={role} onChange={(event) => { setRole(event.target.value); setPage(1); }} className="h-9 rounded-lg border border-slate-200 px-3 text-sm"><option value="">Todos los roles</option><option value="A">Administrador</option><option value="V">Ventas</option></select>
@@ -176,6 +180,7 @@ export default function AdminTenantMembershipModule({ authorization, effectivePe
       {isCrmServicesUiEnabled() && servicesAccess.canCatalogView && <Suspense fallback={<p className="mt-7 p-6 text-center text-sm text-slate-500">Cargando catálogo de Servicios…</p>}><ServiceCatalogAdmin authorization={authorization} canManage={servicesAccess.canCatalogManage} onUnauthorized={onUnauthorized} /></Suspense>}
       {logisticsAdminEnabled && <Suspense fallback={<p className="mt-7 p-6 text-center text-sm text-slate-500">Cargando reglas logísticas…</p>}><LogisticsRulesAdmin authorization={authorization} access={logisticsRulesAccess} onUnauthorized={onUnauthorized} /></Suspense>}
       {costingEnabled && costingAccess?.canRulesView && <section id="admin-costing"><Suspense fallback={<p className="mt-7 p-6 text-center text-sm text-slate-500">Cargando reglas de Costing…</p>}><CostingRulesAdmin authorization={authorization} access={costingAccess} onUnauthorized={onUnauthorized} /></Suspense></section>}
+      {communicationsEnabled && communicationsAccess?.canTemplatesView && <Suspense fallback={<p className="mt-7 p-6 text-center text-sm text-slate-500">Cargando Plantillas y Comunicaciones…</p>}><CommunicationTemplatesAdmin authorization={authorization} access={communicationsAccess} onUnauthorized={onUnauthorized} /></Suspense>}
     </div>
     <Dialog open={Boolean(draft)} onOpenChange={(openValue) => { if (!openValue) { setSelected(null); setDraft(null); setError(null); } }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">

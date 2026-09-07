@@ -19,12 +19,15 @@ import { resolveQuoteUiAccess } from "@/quote/access";
 import { isQuoteUiEnabled } from "@/quote/mode";
 import { isCommercialRelationshipsUiEnabled } from "@/commercial-relationships/mode";
 import { resolveCommercialRelationshipsAccess } from "@/commercial-relationships/access";
+import { resolveCommunicationsAccess } from "@/communications/access";
+import { isCommunicationsUiEnabled } from "@/communications/mode";
 import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
 const AdminTenantMembershipModule = lazy(() => import("@/admin-tenant/AdminTenantMembershipModule"));
 const LogisticsRulesAdmin = lazy(() => import("@/logistics-engine/LogisticsRulesAdmin"));
+const CommunicationTemplatesAdmin = lazy(() => import("@/communications/CommunicationTemplatesAdmin"));
 const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
@@ -127,7 +130,10 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const toolsAvailable = toolsEnabled && Boolean(toolsAuthorized);
   const logisticsAccess = resolveLogisticsUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   const logisticsAdminAvailable = isLogisticsUiEnabled() && logisticsAccess.canRulesView;
-  const administrationAvailable = adminMembershipAvailable || logisticsAdminAvailable;
+  const communicationsAccess = resolveCommunicationsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
+  const communicationsEnabled = isCommunicationsUiEnabled();
+  const communicationsAdminAvailable = communicationsEnabled && communicationsAccess.canTemplatesView;
+  const administrationAvailable = adminMembershipAvailable || logisticsAdminAvailable || communicationsAdminAvailable;
   const commercialRelationshipsEnabled = isCommercialRelationshipsUiEnabled();
   const commercialRelationshipsAccess = resolveCommercialRelationshipsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   if (pathname === "/commercial/relationships" && (!commercialRelationshipsEnabled || !commercialRelationshipsAccess.canView)) {
@@ -154,6 +160,8 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         commercialRelationshipsEnabled={commercialRelationshipsEnabled}
         commercialRelationshipsAdmin={pathname === "/commercial/relationships"}
         commercialRelationshipsAccess={commercialRelationshipsAccess}
+        communicationsEnabled={communicationsEnabled}
+        communicationsAccess={communicationsAccess}
         userName={userName}
         onNavigate={onNavigate}
         onLogout={onLogout}
@@ -172,9 +180,14 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         costingEnabled={isCostingUiEnabled()}
         invitationEnabled={adminInvitationsEnabled}
         invitationMode={adminInvitationMode}
+        communicationsEnabled={communicationsEnabled}
+        communicationsAccess={communicationsAccess}
         onUnauthorized={onLogout}
       />
     </Suspense>;
+  }
+  if (selected?.appId === "administration" && communicationsAdminAvailable) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Plantillas y Comunicaciones…</div>}><main className="min-h-screen bg-slate-50 p-4 sm:p-7"><div className="mx-auto max-w-7xl"><CommunicationTemplatesAdmin authorization={authorization} access={communicationsAccess} onUnauthorized={onLogout} /></div></main></Suspense>;
   }
   if (selected?.appId === "administration" && logisticsAdminAvailable) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Motor Logístico…</div>}>

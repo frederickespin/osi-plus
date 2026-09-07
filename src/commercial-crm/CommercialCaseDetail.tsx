@@ -15,6 +15,7 @@ import type { CostingUiAccess } from "@/costing/access";
 import type { QuoteUiAccess } from "@/quote/access";
 import type { SurveySchedulingUiAccess } from "@/survey/schedulingAccess";
 import type { CommercialRelationshipsAccess } from "@/commercial-relationships/access";
+import type { CommunicationsAccess } from "@/communications/access";
 
 const ServiceCasePanel = lazy(() => import("@/crm-services/ServiceCasePanel"));
 const CostingPanel = lazy(() => import("@/costing/CostingPanel"));
@@ -22,6 +23,7 @@ const QuotePanel = lazy(() => import("@/quote/QuotePanel"));
 const SurveyCasePanel = lazy(() => import("@/survey/SurveyCasePanel"));
 const CaseWorkflowOverview = lazy(() => import("./CaseWorkflowOverview"));
 const CaseCommercialContextPanel = lazy(() => import("@/commercial-relationships/CaseCommercialContextPanel"));
+const CommunicationPanel = lazy(() => import("@/communications/CommunicationPanel"));
 
 type Props = Readonly<{
   state: Readonly<{ loading: boolean; value: CrmPipelineCaseDetail | null; error: CrmPipelineReadError | null }>;
@@ -43,6 +45,8 @@ type Props = Readonly<{
   surveySchedulingAccess: SurveySchedulingUiAccess;
   commercialRelationshipsEnabled: boolean;
   commercialRelationshipsAccess: CommercialRelationshipsAccess;
+  communicationsEnabled: boolean;
+  communicationsAccess: CommunicationsAccess;
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
@@ -57,7 +61,7 @@ const TABS = Object.freeze([
   ["QUOTE", "Cotización", BriefcaseBusiness],
 ] as const);
 
-export default function CommercialCaseDetail({ state, authorization, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, commercialRelationshipsEnabled, commercialRelationshipsAccess, onNavigate, onUnauthorized, onBack, onOpenNavigation, onReload, mutationEnvironmentEnabled, mutationAccess, mutationApi }: Props) {
+export default function CommercialCaseDetail({ state, authorization, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, commercialRelationshipsEnabled, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, onNavigate, onUnauthorized, onBack, onOpenNavigation, onReload, mutationEnvironmentEnabled, mutationAccess, mutationApi }: Props) {
   const [tab, setTab] = useState<WorkspaceTab>("SUMMARY");
   const [editOpen, setEditOpen] = useState(false);
   const item = state.value;
@@ -72,12 +76,12 @@ export default function CommercialCaseDetail({ state, authorization, servicesAcc
     {state.error && <Alert variant="destructive" role="alert" className="m-4"><AlertCircle /><AlertTitle>No pudimos cargar la Ficha</AlertTitle><AlertDescription>{commercialReadErrorCopy(state.error)}<Button className="mt-3" size="sm" variant="outline" onClick={onReload}>Reintentar lectura</Button></AlertDescription></Alert>}
     {item && <>
       <div role="tablist" aria-label="Áreas del Caso Comercial" className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-[#e7e5e4] p-1">{tabs.map(([value, label, Icon]) => <button id={`${value.toLowerCase()}-tab`} key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`flex shrink-0 items-center gap-1.5 rounded px-3 py-2 text-xs font-bold ${tab === value ? "bg-[#df8750] text-white shadow-sm" : "text-slate-700 hover:bg-white/60"}`}><Icon className="h-3.5 w-3.5" />{label}</button>)}</div>
-      <div className="p-4">{tab === "SUMMARY" && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando resumen integrado…</div>}><CaseWorkflowOverview item={item} authorization={authorization} servicesEnabled={servicesEnabled} surveyEnabled={surveyEnabled} logisticsEnabled={logisticsEnabled && logisticsAccess.canView} costingEnabled={costingEnabled && costingAccess.canView} quoteEnabled={quoteEnabled && quoteAccess.canView} onSelectTab={setTab} onUnauthorized={onUnauthorized} /></Suspense>}
+      <div className="p-4">{tab === "SUMMARY" && <><Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando resumen integrado…</div>}><CaseWorkflowOverview item={item} authorization={authorization} servicesEnabled={servicesEnabled} surveyEnabled={surveyEnabled} logisticsEnabled={logisticsEnabled && logisticsAccess.canView} costingEnabled={costingEnabled && costingAccess.canView} quoteEnabled={quoteEnabled && quoteAccess.canView} onSelectTab={setTab} onUnauthorized={onUnauthorized} /></Suspense>{communicationsEnabled && (communicationsAccess.canView || communicationsAccess.canPrepare) && <Suspense fallback={<p className="p-4 text-xs text-slate-500">Cargando comunicaciones…</p>}><CommunicationPanel caseRef={item.caseRef} authorization={authorization} access={communicationsAccess} context="CASE" onUnauthorized={onUnauthorized} /></Suspense>}</>}
         {tab === "RELATIONSHIPS" && commercialRelationshipsEnabled && commercialRelationshipsAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando contexto comercial…</div>}><CaseCommercialContextPanel caseRef={item.caseRef} authorization={authorization} access={commercialRelationshipsAccess} onUnauthorized={onUnauthorized} /></Suspense>}
         {tab === "SERVICES" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando selección de Servicios…</div>}><ServiceCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} onUnauthorized={onUnauthorized} /></Suspense>}
-        {tab === "SURVEY" && surveyEnabled && surveySchedulingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Evaluación…</div>}><SurveyCasePanel caseRef={item.caseRef} authorization={authorization} access={surveySchedulingAccess} logisticsSummaryEnabled={logisticsEnabled && logisticsAccess.canView} onNavigate={onNavigate} onUnauthorized={onUnauthorized} /></Suspense>}
+        {tab === "SURVEY" && surveyEnabled && surveySchedulingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Evaluación…</div>}><SurveyCasePanel caseRef={item.caseRef} authorization={authorization} access={surveySchedulingAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} logisticsSummaryEnabled={logisticsEnabled && logisticsAccess.canView} onNavigate={onNavigate} onUnauthorized={onUnauthorized} /></Suspense>}
         {tab === "COSTING" && costingEnabled && costingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Costos…</div>}><CostingPanel caseRef={item.caseRef} authorization={authorization} access={costingAccess} onUnauthorized={onUnauthorized} /></Suspense>}
-        {tab === "QUOTE" && quoteEnabled && quoteAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Cotización…</div>}><QuotePanel caseRef={item.caseRef} authorization={authorization} access={quoteAccess} onUnauthorized={onUnauthorized} /></Suspense>}
+        {tab === "QUOTE" && quoteEnabled && quoteAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Cotización…</div>}><QuotePanel caseRef={item.caseRef} authorization={authorization} access={quoteAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} onUnauthorized={onUnauthorized} /></Suspense>}
       </div>
       {item.status === "APPROVED" && <Alert className="m-4"><AlertTitle>Legacy congelado</AlertTitle><AlertDescription>APPROVED permanece visible, pero no admite acciones en esta fase.</AlertDescription></Alert>}{item.status === "OPS_HANDOFF" && <Alert className="m-4"><AlertTitle>Estado terminal</AlertTitle><AlertDescription>La oportunidad ya fue entregada a Operaciones.</AlertDescription></Alert>}{!mutationEnabled && <div className="m-4 border border-dashed border-slate-300 p-4"><p className="text-sm font-semibold text-slate-800">Edición y acciones empresariales</p><p className="mt-1 text-sm text-slate-500">Disponible en una fase posterior. Esta Ficha no inventa autoridades ausentes.</p></div>}{mutationEnabled && initial && <CommercialCaseForm open={editOpen} mode="UPDATE" api={mutationApi} caseRef={item.caseRef} expectedVersion={item.version} initial={initial} initialClient={item.client ? { clientRef: item.client.clientRef, displayName: item.client.displayName, type: item.client.type, status: item.client.status } : undefined} onOpenChange={setEditOpen} onCommitted={() => onReload()} />}</>}
   </section>;

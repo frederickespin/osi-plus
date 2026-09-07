@@ -63,17 +63,23 @@ export function createCommunicationsHandler({ env = process.env, prismaClient, m
     if (req.method === "OPTIONS") return res.status(204).end();
     const allowed = methods.includes("GET") ? [...new Set([...methods, "HEAD"])] : methods;
     if (!allowed.includes(req.method)) return methodNotAllowed(res, allowed);
+    let stage = "SESSION";
     try {
       const context = await resolveContext(req, { env, prisma: prismaClient });
       const required = typeof permission === "function" ? permission(req.method === "HEAD" ? "GET" : req.method) : permission;
       if (!context.effectivePermissions?.includes(required) || context.deniedPermissions?.includes(required)) fail("COMMUNICATION_FORBIDDEN", 403);
+      stage = "DATABASE_IDENTITY";
       await assertCommunicationsPreviewDatabase(prismaClient, mode);
+      stage = "EXECUTE";
       const method = req.method === "HEAD" ? "GET" : req.method;
       const input = method === "GET" ? undefined : await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 96 * 1024 });
       const data = await execute({ req, context, input, prisma: prismaClient, method });
       if (req.method === "HEAD") return res.status(200).end();
       return res.status(typeof status === "function" ? status(method) : status).json({ ok: true, data });
-    } catch (error) { return sendCommunicationsError(res, error, req.method === "HEAD"); }
+    } catch (error) {
+      if (!(error instanceof CommunicationsError) && env.VERCEL === "1") console.error("COMMUNICATIONS_PREVIEW_REQUEST_REJECTED", { stage, name: error?.name || "Error", code: /^P\d{4}$/u.test(error?.code || "") ? error.code : null });
+      return sendCommunicationsError(res, error, req.method === "HEAD");
+    }
   }, { handleOptions: false });
 }
 export function createTransportDisabledHandler() { return withPrivateApiHeaders((req, res) => { setCrmPrivateHeaders(res); return res.status(409).json({ ok: false, error: "COMMUNICATION_TRANSPORT_DISABLED" }); }, { handleOptions: false }); }

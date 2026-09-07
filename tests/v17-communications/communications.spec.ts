@@ -23,6 +23,7 @@ test("catálogo compacto edita draft y genera preview sintético", async ({ page
   await page.route("**/api/communications/preview", async (route) => { previewCalls += 1; const body = await route.request().postDataJSON(); expect(body).not.toHaveProperty("tenantId"); return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { context: "SYNTHETIC", rendered: { subject: "Caso DEMO-001", bodyText: "Hola Cliente de demostración", bodyHtml: null } } }) }); });
   await page.goto("/administration");
   await expect(page.getByRole("heading", { name: "Plantillas y Comunicaciones" })).toBeVisible();
+  await expect(page.getByText("Transporte externo desactivado en Preview").first()).toBeVisible();
   await expect(page.getByText("SURVEY.PIC")).toBeVisible();
   await page.getByRole("button", { name: "Editar" }).click();
   const variablesCatalog = page.getByRole("group", { name: "Variables disponibles · catálogo v1" });
@@ -38,8 +39,9 @@ test("catálogo compacto edita draft y genera preview sintético", async ({ page
 
 test("deny ocurre en shell antes del lazy y de cualquier API de comunicaciones", async ({ page }) => {
   await authorize(page, true); let requests = 0;
+  await page.addInitScript(() => { localStorage.setItem("communicationsMode", "PREVIEW_REHEARSAL"); sessionStorage.setItem("communicationsAuthorized", "true"); });
   page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/communications")) requests += 1; });
-  await page.goto("/administration");
+  await page.goto("/administration?communications=PREVIEW_REHEARSAL#communications=enabled");
   await expect(page.getByRole("heading", { name: "No puedes abrir esta aplicación" })).toBeVisible();
   expect(requests).toBe(0);
   const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => /CommunicationTemplatesAdmin|CommunicationPanel/.test(name)));
@@ -64,7 +66,7 @@ test("Scheduling y Quote montan comunicación ligada a assignment y revisión ex
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Evaluación" }).click();
   await expect(page.getByTestId("communications-scheduling")).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "Destinatario" })).toBeVisible();
+  await expect(page.getByTestId("communications-scheduling").locator("th:visible, dt:visible").filter({ hasText: /^Destinatario$/ })).toBeVisible();
   const detailButton = page.getByRole("button", { name: "Ver detalle de SURVEY.PIC para Contacto sintético" });
   await detailButton.focus();
   await detailButton.press("Enter");

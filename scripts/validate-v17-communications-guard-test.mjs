@@ -32,6 +32,10 @@ rejects("prisma/migrations/20260913010000_v17_communications_templates/migration
 rejects("scripts/protected-cors-route-inventory.json", (v) => v.replace(/\s*"\/api\/communications\/send",?/, ""), /CORS/);
 rejects("api/_lib/communicationsDomain.js", (v) => `${v}\n// sendgrid transport`, /transporte externo/);
 rejects("api/_lib/communicationsTransport.js", (v) => v.replace("EMAIL: false", "EMAIL: true"), /adaptador de transporte/);
+rejects("api/_lib/communicationsTransport.js", (v) => v.replace("WHATSAPP: false", "WHATSAPP: true"), /adaptador de transporte/);
+rejects("api/_lib/communicationsTransport.js", (v) => v.replace("SMS: false", "SMS: true"), /adaptador de transporte/);
+rejects("api/_lib/communicationsTransport.js", (v) => v.replace("PORTAL: false", "PORTAL: true"), /adaptador de transporte/);
+rejects("api/_lib/communicationsTransport.js", (v) => v.replace("INTERNAL: false", "INTERNAL: true"), /adaptador de transporte/);
 rejects("api/_lib/communicationsHttp.js", (v) => v.replace('env.VERCEL_ENV === "preview"', 'env.VERCEL_ENV !== "production"'), /predicado Preview backend/);
 rejects("api/_lib/communicationsHttp.js", (v) => v.replace("isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF)", "Boolean(env.VERCEL_GIT_COMMIT_REF)"), /predicado Preview backend/);
 rejects("api/_lib/communicationsHttp.js", (v) => v.replace("COMMUNICATIONS_PREVIEW_MANIFEST_SHA256", "COMMUNICATIONS_PREVIEW_OPTIONAL_SHA256"), /predicado Preview backend/);

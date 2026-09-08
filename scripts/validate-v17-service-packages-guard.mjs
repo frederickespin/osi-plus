@@ -16,6 +16,7 @@ export function validateServicePackages(overrides = {}) {
   need(domain, /CASE_OVERRIDE[\s\S]*COMMERCIAL_AGREEMENT[\s\S]*SERVICE_PACKAGE[\s\S]*SERVICE_MODE_DEFAULT[\s\S]*MANUAL_RESOLUTION/, "precedencia no es determinista");
   need(domain, /surveyPublication\.findFirst[\s\S]*pipelineCaseId/, "Survey no se resuelve tenant/case-first");
   need(domain, /pipelineCaseCommercialContextVersion\.findFirst[\s\S]*pricingAgreement/, "acuerdo comercial no se resuelve contra el caso");
+  need(domain, /serviceCatalogMode\.createMany[\s\S]*compatibleModes: modes\.map/, "compatibilidad avanzada no mantiene el espejo legacy transaccional");
   need(domain, /serviceConfigurationCommand\.create[\s\S]*serviceConfigurationAuditEvent\.create/, "mutación crítica sin comando y auditoría");
   need(domain, /resolveServiceConfigurationConflict[\s\S]*state: "RESOLVED"[\s\S]*CONFIGURATION_CONFLICT_RESOLVED/, "resolución de conflicto no es transaccional/auditada");
   need(contract, /exact\(input,[\s\S]*payloadHash/, "payloads no son cerrados"); need(contract, /SERVICE_PACKAGES_PAYLOAD_HASH_INVALID/, "servidor no recalcula payloadHash");

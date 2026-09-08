@@ -11,6 +11,7 @@ rejects("prisma/migrations/20260915010000_v17_service_packages_resources/migrati
 rejects("prisma/migrations/20260915010000_v17_service_packages_resources/migration.sql", (value) => value.replace('CREATE OR REPLACE FUNCTION "osi"."service_configuration_append_only"', 'CREATE OR REPLACE FUNCTION "osi"."mutable_history"'));
 rejects("api/_lib/servicePackagesDomain.js", (value) => value.replace('JOIN "osi"."osi_users"', 'JOIN "osi"."removed_users"'));
 rejects("api/_lib/servicePackagesDomain.js", (value) => value.replace("denied.has(permission)", "false"));
+rejects("api/_lib/servicePackagesDomain.js", (value) => value.replace("compatibleModes: modes.map", "compatibleModes: [].map"));
 rejects("api/_lib/servicePackagesDomain.js", (value) => value.replace("serviceConfigurationAuditEvent.create", "removedAudit.create"));
 rejects("api/_lib/servicePackagesDomain.js", (value) => value.replace('state: "RESOLVED"', 'state: "OPEN"'));
 rejects("api/_lib/servicePackagesContract.js", (value) => value.replace("SERVICE_PACKAGES_PAYLOAD_HASH_INVALID", "HASH_ACCEPTED"));

@@ -70,7 +70,7 @@ test("evidencia sanitizada del control comercial compacto", async ({ page }, tes
   await expect(firstRow).toHaveAttribute("data-selected", "true");
   await page.screenshot({ path: resolve(EVIDENCE, mobile ? "06b-flujo-movil-resumen.png" : "02-caso-seleccionado-resumen.png"), fullPage: true });
   if (!mobile) await firstRow.getByRole("button", { name: /Ficha del caso/ }).screenshot({ path: resolve(EVIDENCE, "03-accion-ficha-del-caso.png") });
-  await page.getByTestId("commercial-case-summary").getByRole("button", { name: /Ficha del caso/ }).click();
+  await firstRow.getByRole("button", { name: /Ficha del caso/ }).click();
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await expect(page.getByTestId("commercial-master-detail-layout")).toHaveCount(0);
   await page.screenshot({ path: resolve(EVIDENCE, mobile ? "06c-flujo-movil-ficha.png" : "04-ficha-espacio-completo.png"), fullPage: true });

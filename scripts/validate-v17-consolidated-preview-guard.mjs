@@ -20,13 +20,13 @@ export function validateV17ConsolidatedPreviewGuard({ root = process.cwd(), over
   const quote = read(root, "src/quote/QuotePanel.tsx", overrides);
   const costing = read(root, "src/costing/CostingPanel.tsx", overrides);
   const shared = read(root, "shared/v17ConsolidatedPreview.js", overrides);
-  const expectedTabs = ["SUMMARY", "RELATIONSHIPS", "SERVICES", "SURVEY", "COSTING", "QUOTE"];
+  const expectedTabs = ["SUMMARY", "SURVEY", "SERVICES", "COSTING", "QUOTE"];
   const tabBlock = detail.slice(detail.indexOf("const TABS"), detail.indexOf("] as const") + 10);
   const positions = expectedTabs.map((tab) => tabBlock.indexOf(`\"${tab}\"`));
   invariant(positions.every((position) => position >= 0) && positions.every((position, index) => index === 0 || position > positions[index - 1]), "orden de tabs canónico ausente");
   invariant(!/ACTIVITY|TASKS|NOTES|FILES|COMMUNICATION/u.test(tabBlock), "tabs paralelos reaparecieron");
   invariant(!/LOGISTICS|Motor Logístico/u.test(tabBlock) && !/LogisticsPlanPanel/u.test(detail), "Motor Logístico reapareció como workspace comercial");
-  invariant(/\["SURVEY", "Evaluación"/u.test(tabBlock) && /\["COSTING", "Costos"/u.test(tabBlock), "nombres del flujo comercial no están consolidados");
+  invariant(/\["SURVEY", "Survey"/u.test(tabBlock) && /\["COSTING", "Costos"/u.test(tabBlock), "nombres del flujo comercial no están consolidados");
   for (const gate of ["servicesEnabled", "surveyEnabled", "logisticsEnabled", "costingEnabled", "quoteEnabled"]) invariant(detail.includes(gate), `feature gate ausente:${gate}`);
   invariant(/const AdvancedErpShell = lazy/u.test(hub) && /selected\?\.appId === "commercial-crm" && crmReadEnabled/u.test(hub), "ERP carga antes del gate comercial");
   invariant(/surveyAuthorized/u.test(hub) && /materialsAuthorized/u.test(hub) && /toolsAuthorized/u.test(hub), "recursos cargan sin capacidad efectiva");

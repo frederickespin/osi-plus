@@ -559,9 +559,9 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`/commercial/cases/${CASE_REF}`);
-  await page.getByRole("tab", { name: "Evaluación" }).click();
+  await page.getByRole("tab", { name: "Survey" }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Evaluación" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Survey" })).toBeVisible();
   await expect(
     page.getByText(
       "Evaluadora sintética · METRO · METRO_SANTO_DOMINGO · MORNING",
@@ -651,7 +651,7 @@ test("fuera de horario ofrece solicitud excepcional tenant-first", async ({
     });
   });
   await page.goto(`/commercial/cases/${CASE_REF}`);
-  await page.getByRole("tab", { name: "Evaluación" }).click();
+  await page.getByRole("tab", { name: "Survey" }).click();
   await page.getByLabel("Fecha").fill("2030-09-16");
   await page.getByLabel("Slot").click();
   await page.getByRole("option", { name: /Tarde/ }).click();
@@ -689,7 +689,7 @@ test("viewer consulta agenda y comunicaciones sin controles de gestión", async 
   await schedulingApi(page);
   await communicationsApi(page);
   await page.goto(`/commercial/cases/${CASE_REF}`);
-  await page.getByRole("tab", { name: "Evaluación" }).click();
+  await page.getByRole("tab", { name: "Survey" }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
   await expect(page.getByRole("button", { name: "Reprogramar" })).toHaveCount(
     0,
@@ -720,7 +720,7 @@ test("deny prevalece y evita chunk y request de Scheduling", async ({
       schedulingRequests += 1;
   });
   await page.goto(`/commercial/cases/${CASE_REF}`);
-  await expect(page.getByRole("tab", { name: "Evaluación" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Survey" })).toHaveCount(0);
   expect(schedulingRequests).toBe(0);
   const chunks = await page.evaluate(() =>
     performance

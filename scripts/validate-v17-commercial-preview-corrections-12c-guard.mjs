@@ -20,7 +20,7 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.doesNotMatch(tabs, /LOGISTICS|Motor Logístico/, "Motor no puede ser tab de Comercial");
   assert.doesNotMatch(detail, /LogisticsPlanPanel/, "Comercial no puede importar el workspace operativo del Motor");
   assert.doesNotMatch(overview, /onSelectTab\(["']LOGISTICS["']\)|Motor Logístico[^\n]*button/, "el resumen no puede abrir Motor manualmente");
-  assert.match(tabs, /\["SUMMARY", "Resumen"[\s\S]*\["SERVICES", "Servicios"[\s\S]*\["SURVEY", "Evaluación"[\s\S]*\["COSTING", "Costos"[\s\S]*\["QUOTE", "Cotización"/, "flujo comercial consolidado ausente");
+  assert.match(tabs, /\["SUMMARY", "Resumen"[\s\S]*\["SURVEY", "Survey"[\s\S]*\["SERVICES", "Servicios"[\s\S]*\["COSTING", "Costos"[\s\S]*\["QUOTE", "Cotización"/, "flujo comercial consolidado ausente");
   assert.match(survey, /<LogisticsVisitSummary/);
   assert.match(survey, /logisticsApi\.plan\(authorization, caseRef\)/, "Evaluación debe leer la revisión publicada");
   assert.doesNotMatch(survey + summary, /logisticsApi\.(?:calculate|publish|versionRule)|calculateLogisticsPlan|ruleMatches/, "Evaluación no puede calcular ni administrar el Motor");
@@ -40,7 +40,7 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.match(rules, /Administración · Motor Logístico/);
   assert.doesNotMatch(http, /PRODUCTION_(?:READ|WRITE|PILOT)/, "12C no activa Production");
   const migrationCount = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
-  assert.equal(migrationCount, 33, "linaje consolidado debe conservar exactamente 33 migraciones");
+  assert.equal(migrationCount, 34, "linaje consolidado debe conservar exactamente 34 migraciones");
   return Object.freeze({ ok: true, commercialMotorTabs: 0, adminLazyBoundary: true, independentAdminSurfaces: true, publishedResultOnly: true, productionApiEnabled: false, migrations: migrationCount });
 }
 

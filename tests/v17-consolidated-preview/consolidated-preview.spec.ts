@@ -13,6 +13,7 @@ const permissions = [
   "services:case:view", "services:case:update", "survey:assignment:view", "survey:perform", "survey:publish", "survey:read",
   "survey:schedule:view", "survey:schedule:manage", "survey:schedule:assign", "survey:schedule:reschedule", "survey:visit-fee:view", "survey:visit-fee:approve",
   "inventory:catalog:view", "inventory:stock:view", "assets:instance:view",
+  "services:packages:view", "services:packages:manage", "services:materials:view", "services:materials:manage", "services:case-config:view", "services:case-config:update",
   "logistics:plan:view", "logistics:plan:calculate", "logistics:plan:publish", "costing:view", "costing:calculate", "costing:publish",
   "logistics:rules:view", "logistics:rules:manage",
   "quote:view", "quote:create", "quote:update", "quote:publish", "quote:send", "quote:record-client-decision", "quote:internal-cost:view",
@@ -21,15 +22,33 @@ const permissions = [
   "commercial:associations:view", "commercial:associations:manage",
 ];
 
-const crmDetail = { caseRef: CASE_REF, caseCode: "CS-2026-1004", version: 4, status: "QUOTE_SENT", mode: "EXPORT", serviceType: "INTERNATIONAL_MOVE", customerType: "CORPORATE", estimatedCbm: 18.4, requiresSurvey: true, surveyMethod: "PRESENCIAL", originLocation: "Santo Domingo", destinationLocation: "Madrid", destinationContracted: true, assetsCount: 0, quoteCount: 3, eventCount: 8, client: { clientRef: CLIENT_REF, displayName: "Cliente Preview Exportación", type: "ORGANIZATION", status: "ACTIVE" }, owner: { displayName: "Ventas Preview", isCurrentActor: true }, createdAt: "2026-09-05T12:00:00.000Z", updatedAt: "2026-09-05T13:00:00.000Z" };
+const crmDetail = { caseRef: CASE_REF, caseCode: "CS-2026-1004", version: 4, status: "QUOTE_SENT", mode: "EXPORT", serviceType: "INTERNATIONAL_MOVE", customerType: "CORPORATE", estimatedCbm: 18.4, requiresSurvey: true, surveyMethod: "PRESENCIAL", originLocation: "Santo Domingo", destinationLocation: "Madrid", destinationContracted: true, assetsCount: 0, quoteCount: 3, eventCount: 8, route: { revision: 2, origin: { compactAddress: "Piantini · Santo Domingo · DO", area: "UNAVAILABLE", areaSource: "UNAVAILABLE" }, destination: { compactAddress: "Madrid · Madrid · ES", area: "UNAVAILABLE", areaSource: "UNAVAILABLE" } }, client: { clientRef: CLIENT_REF, displayName: "Cliente Preview Exportación", type: "ORGANIZATION", status: "ACTIVE" }, owner: { displayName: "Ventas Preview", isCurrentActor: true }, createdAt: "2026-09-05T12:00:00.000Z", updatedAt: "2026-09-05T13:00:00.000Z" };
 const syntheticCases = [
-  { ...crmDetail, caseRef: "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", caseCode: "CS-2026-1001", mode: "LOCAL", serviceType: "LOCAL_MOVE", requiresSurvey: false, quoteCount: 0, client: { ...crmDetail.client, displayName: "Cliente Preview Local" } },
+  { ...crmDetail, caseRef: "018f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", caseCode: "CS-2026-1001", mode: "LOCAL", serviceType: "LOCAL_MOVE", requiresSurvey: false, quoteCount: 0, route: { revision: 1, origin: { compactAddress: "Naco · Santo Domingo · DO", area: "METRO", areaSource: "PUBLISHED_LOGISTICS" }, destination: { compactAddress: "Jarabacoa · La Vega · DO", area: "INTERIOR", areaSource: "PUBLISHED_LOGISTICS" } }, client: { ...crmDetail.client, displayName: "Cliente Preview Local" } },
   { ...crmDetail, caseRef: "028f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", caseCode: "CS-2026-1002", status: "SURVEY_COMPLETED", quoteCount: 0, client: { ...crmDetail.client, displayName: "Cliente Preview Survey y Crating" } },
   { ...crmDetail, caseRef: "048f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", caseCode: "CS-2026-1003", status: "PRICING_IN_PROGRESS", mode: "IMPORT", quoteCount: 0, client: { ...crmDetail.client, displayName: "Cliente Preview Proveedor pendiente" } },
   crmDetail,
-];
+].map(({ version, ...item }) => {
+  void version;
+  return { ...item, owner: { displayName: "Ventas Preview", role: "A", membershipStatus: "ACTIVE" } };
+});
 const icpDetail = { caseRef: CASE_REF, caseCode: "CS-2026-1004", status: "QUOTE_SENT", version: 4, mode: "EXPORT", serviceType: "INTERNATIONAL_MOVE", volume: { status: "PUBLISHED_SURVEY", estimatedCbm: 18.4, source: "SURVEY" }, requiresSurvey: true, surveyMethod: "PRESENCIAL", intakeChannel: "REFERRED", clientProfileType: "CORPORATE", requirementNotes: "Exportación sintética con Crating", serviceDefinitionStatus: "DEFINED", surveyDecisionStatus: "DEFINED", ownerName: "Ventas Preview", caseContact: { displayName: "Contacto Preview", phone: "+18095550100", email: "contacto@example.invalid" }, client: { clientRef: CLIENT_REF, displayName: "Cliente Preview Exportación", type: "ORGANIZATION", status: "ACTIVE" }, route: { contractVersion: 2, revision: 1, destinationStatus: "CONFIRMED", origin: { countryCode: "DO", provinceState: "Distrito Nacional", cityMunicipality: "Santo Domingo", sector: "Piantini", streetAndNumber: "Origen sintético", buildingResidential: null, floorUnit: null, arrivalReference: null, locationContactName: null, locationContactPhone: null }, destination: { countryCode: "ES", provinceState: "Madrid", cityMunicipality: "Madrid", sector: null, streetAndNumber: "Destino sintético", buildingResidential: null, floorUnit: null, arrivalReference: null, locationContactName: null, locationContactPhone: null }, additionalStops: [] }, createdAt: "2026-09-05T12:00:00.000Z", updatedAt: "2026-09-05T13:00:00.000Z" };
 const serviceWorkspace = { caseRef: CASE_REF, mode: "EXPORT", selection: { selectionRef: "138f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", revision: 2, mode: "EXPORT", source: "MANUAL", defaultCombinationRef: null, primary: { serviceRef: PRIMARY_REF, code: "EXPORT_MOVE", name: "Mudanza internacional", category: "Mudanzas", catalogVersion: 1, source: "CATALOG" }, complementaries: [{ serviceRef: "168f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", code: "CRATING", name: "Crating", category: "Empaque", catalogVersion: 1, source: "CATALOG" }], otherServices: [], historyCount: 2 }, primaries: [], allowedComplementaries: [], defaults: [] };
+const packageVersionRef = "178f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const materialPolicyVersionRef = "188f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const serviceConfiguration = {
+  caseRef: CASE_REF,
+  mode: "EXPORT",
+  current: { configurationRef: "198f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", revision: 1, mode: "EXPORT", serviceSelectionRef: serviceWorkspace.selection.selectionRef, serviceSelectionRevision: 2, packageRef: "1a8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", packageVersion: 1, materialPolicyRef: "1b8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", materialPolicyVersion: 1, surveyPublicationRef: null, commercialAgreementRef: null, preference: {}, duration: { hours: 16 }, precedence: {}, source: "PACKAGE", createdAt: "2026-09-05T13:30:00.000Z", items: [
+    { itemRef: "1c8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", kind: "PERSONNEL", source: "PACKAGE", authorityRef: null, code: "PACKER", name: "Empacadores", quantity: 4, unitCode: "PERSON", hours: 16, days: 2, disposition: null, chargeType: "INCLUDED", proportion: null, details: {} },
+    { itemRef: "1d8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", kind: "MATERIAL", source: "MATERIAL_POLICY", authorityRef: null, code: "NEW_CARDBOARD", name: "Cartón nuevo", quantity: 70, unitCode: "PERCENT", hours: null, days: null, disposition: "CONSUMED", chargeType: "SALE", proportion: 0.7, details: {} },
+    { itemRef: "1e8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", kind: "ASSET", source: "MATERIAL_POLICY", authorityRef: null, code: "REUSABLE_CONTAINER", name: "Caja plástica reutilizable", quantity: 30, unitCode: "PERCENT", hours: null, days: 7, disposition: "RETURNABLE", chargeType: "RENTAL", proportion: 0.3, details: {} },
+    { itemRef: "1f8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", kind: "CRATING", source: "PACKAGE", authorityRef: null, code: "CRATING", name: "Crating técnico", quantity: 1, unitCode: "EA", hours: null, days: null, disposition: null, chargeType: "INCLUDED", proportion: null, details: {} },
+  ], conflicts: [] },
+  packages: [{ packageRef: "1a8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", versionRef: packageVersionRef, code: "EXP-CRATING", name: "Exportación con Crating", description: "Paquete sintético publicado", category: "MUDANZA", tags: ["EXPORT"], state: "PUBLISHED", version: 1, validFrom: null, validTo: null, modes: [{ modeRef: "208f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", code: "EXPORT", name: "Exportación" }], primary: { serviceRef: PRIMARY_REF, code: "EXPORT_MOVE", name: "Mudanza internacional" }, complementaries: [], requirements: [] }],
+  materialPolicies: [{ policyRef: "1b8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", versionRef: materialPolicyVersionRef, code: "EXP-70-30", name: "Material nuevo y reutilizable", version: 1, state: "PUBLISHED", packageVersionRef, serviceRef: null, modeRef: "208f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", preferenceCode: "REUSABLE_ALLOWED", standardCode: "STANDARD", validFrom: null, validTo: null, lines: [] }],
+  precedence: ["CASE_OVERRIDE", "COMMERCIAL_AGREEMENT", "PACKAGE", "MODE_SERVICE", "MANUAL_RESOLUTION"],
+};
 const surveyAssignment = { assignmentRef: "238f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", caseRef: CASE_REF, caseCode: "CS-2026-1004", clientDisplayName: "Cliente Preview Exportación", evaluator: { displayName: "Evaluador Preview" }, scheduledStart: "2026-09-05T12:00:00.000Z", scheduledEnd: null, status: "COMPLETED", arrivalAt: "2026-09-05T12:00:00.000Z", punctualityConfirmedAt: "2026-09-05T12:01:00.000Z", context: { origin: "Santo Domingo", destination: "Madrid", services: [{ name: "Mudanza internacional" }] }, instruction: null, version: 5, surveyRef: "248f6d8f-8d11-4f39-8a2d-1b6c7e8f9012" };
 const schedulingWorkspace = { caseRef: CASE_REF, caseCode: "CS-2026-1004", routeVersion: 2, decision: { decisionRef: "218f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", method: "IN_PERSON", state: "COMPLETED", informationSource: "EVALUATOR", rationaleCode: "PREVIEW_SYNTHETIC", routeVersion: 2, version: 1, createdAt: "2026-09-05T11:00:00.000Z" }, assignment: { assignmentRef: surveyAssignment.assignmentRef, scheduledStart: surveyAssignment.scheduledStart, scheduledEnd: null, evaluator: surveyAssignment.evaluator, slotKey: "AFTERNOON", profile: "INTERIOR_SHORT", zoneCode: "PREVIEW", status: "COMPLETED", version: 5, instruction: null, routeStale: false, surveyRef: surveyAssignment.surveyRef }, policy: null, schedulingContext: { profile: "INTERIOR_SHORT", zoneCode: "PREVIEW", distanceStatus: "KNOWN", distanceKm: 18.5 }, availability: null, evaluatorCandidates: [], visitFee: null, communications: [], history: [], publication: { publicationRef: "228f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", publishedAt: "2026-09-05T13:00:00.000Z", evaluatorDisplayName: "Evaluador Preview", totals: { totalVolumeM3: 18.4 }, needs: { flaggedItems: 1 }, access: [] } };
 const logistics = { planRef: "338f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", revisionRef: "348f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", revision: 2, status: "PUBLISHED", logicalSha256: "a".repeat(64), publishedAt: "2026-09-05T14:00:00.000Z", items: [{ itemRef: "358f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", family: "ZONE", kind: "VISIT_ZONE", label: "Zona de visita", quantity: null, unit: null, estimatedHours: null, trips: null, requiredQuantity: null, availableQuantity: null, reservedQuantity: null, shortageQuantity: null, availability: null, priceStatus: null, source: "ADMIN_RULE", sourceVersion: 1, snapshot: { zoneType: "INTERIOR_SHORT", zoneCode: "PREVIEW" } }, { itemRef: "368f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", family: "MATERIAL", kind: "PACKING", label: "Material de empaque derivado", quantity: 12, unit: "unidad", estimatedHours: null, trips: null, requiredQuantity: 12, availableQuantity: 8, reservedQuantity: 0, shortageQuantity: 4, availability: "PARTIAL", priceStatus: "CONFIRMED", source: "RECIPE", sourceVersion: 1 }], issues: [], overrides: [] };
@@ -46,9 +65,15 @@ async function mockDomains(page: Page) {
   const byStatus = Object.fromEntries(["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"].map((status) => [status, status === "QUOTE_SENT" ? 4 : 0]));
   await page.route("**/api/crm/pipeline-summary", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { total: 4, assigned: 4, unassigned: 0, byStatus, sla: { overdue: null, basis: "UNAVAILABLE" } } }) }));
   await page.route(/\/api\/crm\/pipeline-cases(?:\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: syntheticCases, total: 4, page: 1, pageSize: 25 }) }));
-  await page.route(`**/api/crm/pipeline-cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: crmDetail }) }));
+  await page.route(/\/api\/crm\/pipeline-cases\/[0-9a-f-]+$/, (route) => {
+    const caseRef = new URL(route.request().url()).pathname.split("/").at(-1);
+    const listed = syntheticCases.find((item) => item.caseRef === caseRef);
+    const data = caseRef === CASE_REF ? crmDetail : listed ? { ...listed, version: 4, owner: { displayName: "Ventas Preview", isCurrentActor: true } } : null;
+    return route.fulfill({ status: data ? 200 : 404, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(data ? { ok: true, data } : { ok: false, error: "CRM_PIPELINE_CASE_NOT_FOUND" }) });
+  });
   await page.route(`**/api/crm/icp-v2/pipeline-cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: icpDetail }) }));
   await page.route(`**/api/crm/services/cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: serviceWorkspace }) }));
+  await page.route(`**/api/crm/services/configurations/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: serviceConfiguration }) }));
   await page.route("**/api/crm/survey/assignments", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: [surveyAssignment] }) }));
   await page.route("**/api/crm/survey/scheduling?*", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: schedulingWorkspace }) }));
   await page.route(`**/api/logistics/plans/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: logistics }) }));
@@ -81,18 +106,41 @@ test("expone el Motor bajo Administración sin habilitar Memberships", async ({ 
 
 test("recorre el caso desde ICP hasta Cotización en una sola Ficha", async ({ page }, testInfo) => {
   await authorize(page); await mockDomains(page); await page.goto(`/commercial/cases/${CASE_REF}`);
-  const tabs = page.getByRole("tab"); await expect(tabs).toHaveCount(6); expect(await tabs.allTextContents()).toEqual(["Resumen", "Relaciones", "Servicios", "Evaluación", "Costos", "Cotización"]);
+  const tabs = page.getByRole("tab"); await expect(tabs).toHaveCount(5); expect(await tabs.allTextContents()).toEqual(["Resumen", "Survey", "Servicios", "Costos", "Cotización"]);
   await expect(page.getByTestId("case-workflow-progress")).toContainText("ICP"); await expect(page.getByTestId("ready-for-operations")).toBeVisible();
   const evidence = resolve(process.cwd(), ".artifacts", "v17-consolidated-preview-10a");
   if (testInfo.project.name === "chromium-desktop" || testInfo.project.name === "chromium-mobile") { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: resolve(evidence, `summary-${testInfo.project.name}.png`), fullPage: true }); }
-  await page.getByRole("tab", { name: "Relaciones" }).click(); await expect(page.getByText("Responsable del pago")).toBeVisible(); await expect(page.getByText("Pagador Preview")).toBeVisible();
-  await page.getByRole("tab", { name: "Servicios" }).click(); await expect(page.getByTestId("case-services-panel")).toBeVisible();
-  await page.getByRole("tab", { name: "Evaluación" }).click(); await expect(page.getByTestId("survey-scheduling-workspace")).toContainText("Publicado"); await expect(page.getByTestId("scheduling-commercial-context")).toContainText("Booker Preview"); await expect(page.getByTestId("logistics-visit-summary")).toContainText("18.5 km"); await expect(page.getByTestId("logistics-visit-summary")).toContainText("Lead Account Preview");
+  await expect(page.getByText("Responsable del pago")).toBeVisible(); await expect(page.getByText("Pagador Preview")).toBeVisible();
+  await page.getByRole("tab", { name: "Servicios" }).click(); await expect(page.getByTestId("case-services-panel")).toBeVisible(); await expect(page.getByTestId("case-service-configuration")).toContainText("Después de Survey · antes de Costing"); await expect(page.getByTestId("case-service-configuration")).toContainText("Cartón nuevo"); await expect(page.getByTestId("case-service-configuration")).toContainText("Caja plástica reutilizable");
+  if (testInfo.project.name === "chromium-desktop" || testInfo.project.name === "chromium-mobile") await page.screenshot({ path: resolve(evidence, `services-${testInfo.project.name}.png`), fullPage: true });
+  await page.getByRole("tab", { name: "Survey" }).click(); await expect(page.getByTestId("survey-scheduling-workspace")).toContainText("Publicado"); await expect(page.getByTestId("scheduling-commercial-context")).toContainText("Booker Preview"); await expect(page.getByTestId("logistics-visit-summary")).toContainText("18.5 km"); await expect(page.getByTestId("logistics-visit-summary")).toContainText("Lead Account Preview");
+  if (testInfo.project.name === "chromium-desktop" || testInfo.project.name === "chromium-mobile") await page.screenshot({ path: resolve(evidence, `survey-${testInfo.project.name}.png`), fullPage: true });
   await expect(page.getByRole("tab", { name: "Motor Logístico" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Costos" }).click(); await expect(page.getByTestId("costing-panel")).toBeVisible();
   await page.getByRole("tab", { name: "Cotización" }).click(); await expect(page.getByTestId("quote-ready-for-operations")).toBeVisible(); await expect(page.getByTestId("quote-commercial-snapshot")).toContainText("Pagador histórico"); await expect(page.getByTestId("quote-commercial-snapshot")).not.toContainText("Aprobador actual distinto"); await expect(page.getByRole("button", { name: "Registrar aceptación" })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   if (testInfo.project.name === "chromium-desktop" || testInfo.project.name === "chromium-mobile") await page.screenshot({ path: resolve(evidence, `quote-${testInfo.project.name}.png`), fullPage: true });
+});
+
+test("Inbox publica direcciones estructuradas y alerta LOCAL fuera de METRO", async ({ page }, testInfo) => {
+  await authorize(page); await mockDomains(page); await page.goto("/commercial");
+  const rows = page.getByTestId("commercial-queue-item");
+  await expect(rows).toHaveCount(4);
+  const local = rows.filter({ hasText: "CS-2026-1001" });
+  await expect(local).toContainText("Dir. origen:");
+  await expect(local).toContainText("Naco · Santo Domingo · DO");
+  await expect(local).toContainText("Dir. destino:");
+  await expect(local).toContainText("Jarabacoa · La Vega · DO");
+  await expect(local.getByText("Fuera de área METRO.")).toHaveCount(1);
+  await expect(local.getByRole("button", { name: /Ficha del caso/ })).toHaveCount(1);
+  if (testInfo.project.name === "chromium-desktop" || testInfo.project.name === "chromium-mobile") { const evidence = resolve(process.cwd(), ".artifacts", "v17-consolidated-preview-10a"); mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: resolve(evidence, `inbox-route-${testInfo.project.name}.png`), fullPage: true }); }
+  await local.getByRole("button", { name: /Seleccionar caso/ }).click();
+  await expect(page.getByTestId("commercial-case-summary").getByRole("button", { name: /Ficha del caso/ })).toHaveCount(0);
+  await expect(page.getByTestId("commercial-case-summary").getByRole("button", { name: "Editar" })).toHaveCount(1);
+  if (testInfo.project.name.endsWith("mobile")) await page.getByTestId("commercial-case-summary").getByRole("button", { name: "Volver al Inbox" }).click();
+  await local.getByRole("button", { name: /Ficha del caso/ }).click();
+  await expect(page).toHaveURL(/\/commercial\/cases\//);
+  await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(0);
 });
 
 test("deny detiene el flujo antes de chunks y APIs protegidas", async ({ page }) => {

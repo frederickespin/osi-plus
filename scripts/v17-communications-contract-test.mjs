@@ -16,7 +16,7 @@ const pass = (condition, message) => { assert.ok(condition, message); checks += 
 const rejected = (fn, code) => { assert.throws(fn, (error) => error?.code === code); checks += 1; };
 const command = (operation, requestId, payload) => ({ requestId, payloadHash: communicationHash({ operation, requestId, ...payload }), ...payload });
 
-pass(COMMUNICATION_VARIABLES.length === 14, "catálogo tipado y versionado");
+pass(COMMUNICATION_VARIABLES.length === 18, "catálogo tipado y versionado incluye variables operativas de visita");
 pass(assertCommunicationVariablesForContext(["case.reference", "client.name"], "CASE") === true, "variables disponibles en contexto Case");
 rejected(() => assertCommunicationVariablesForContext(["survey.date"], "CASE"), "COMMUNICATION_CONTEXT_INCOMPLETE");
 pass(canonicalCommunicationJson({ b: 2, a: 1 }) === '{"a":1,"b":2}', "JSON canónico");

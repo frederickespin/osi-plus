@@ -64,7 +64,7 @@ test("Scheduling y Quote montan comunicación ligada a assignment y revisión ex
   await page.route("**/api/communications/records?*", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [record] }) }));
   await page.route("**/api/communications/templates", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [{ ...template, state: "PUBLISHED", current: { ...template.current, state: "PUBLISHED" } }] }) }));
   await page.goto(`/commercial/cases/${CASE_REF}`);
-  await page.getByRole("tab", { name: "Evaluación" }).click();
+  await page.getByRole("tab", { name: "Survey" }).click();
   await expect(page.getByTestId("communications-scheduling")).toBeVisible();
   await expect(page.getByTestId("communications-scheduling").locator("th:visible, dt:visible").filter({ hasText: /^Destinatario$/ })).toBeVisible();
   const detailButton = page.getByRole("button", { name: "Ver detalle de SURVEY.PIC para Contacto sintético" });

@@ -10,6 +10,8 @@ import { costingHash } from "../api/_lib/costingContract.js";
 import { createQuoteProposal, publishQuoteProposal, recordQuoteDecision, sendQuoteProposal } from "../api/_lib/quoteDomain.js";
 import { quoteHash } from "../api/_lib/quoteContract.js";
 import { HISTORICAL_POLICY_TEMPLATE, schedulingHash } from "../api/_lib/surveySchedulingContract.js";
+import { saveCaseServiceConfiguration, saveMaterialPolicy, saveServiceCatalogModes, saveServiceMode, saveServicePackage } from "../api/_lib/servicePackagesDomain.js";
+import { serviceConfigurationPayloadHash } from "../api/_lib/servicePackagesContract.js";
 
 const EXPECTED_DATABASE = "v17_consolidated_preview_10b";
 const EXPECTED_BRANCH = "br-mute-credit-ahxnvfx0";
@@ -64,6 +66,7 @@ const adminPermissions = [
   "pipeline:view", "pipeline:create", "pipeline:update:any", "pipeline:create:pending-destination",
   "membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status",
   "services:catalog:view", "services:catalog:manage", "services:case:view", "services:case:update",
+  "services:packages:view", "services:packages:manage", "services:materials:view", "services:materials:manage", "services:case-config:view", "services:case-config:update",
   "survey:assignment:view", "survey:assignment:manage", "survey:perform", "survey:publish", "survey:read",
   "survey:schedule:view", "survey:schedule:manage", "survey:schedule:assign", "survey:schedule:reschedule", "survey:visit-fee:view", "survey:visit-fee:approve",
   "inventory:catalog:view", "inventory:catalog:manage", "inventory:stock:view", "inventory:stock:receive",
@@ -83,7 +86,7 @@ const adminPermissions = [
   "personnel:profiles:view", "personnel:profiles:manage", "personnel:capabilities:view", "personnel:capabilities:manage",
   "scheduling:policies:view", "scheduling:policies:manage", "scheduling:exceptions:request", "scheduling:exceptions:respond", "scheduling:exceptions:approve",
 ];
-const evaluatorPermissions = ["pipeline:view", "services:case:view", "survey:assignment:view", "survey:perform", "survey:publish", "survey:read", "survey:schedule:view", "scheduling:exceptions:respond", "commercial:relationships:view", "communications:view"];
+const evaluatorPermissions = ["pipeline:view", "services:case:view", "services:case-config:view", "survey:assignment:view", "survey:perform", "survey:publish", "survey:read", "survey:schedule:view", "scheduling:exceptions:respond", "commercial:relationships:view", "communications:view"];
 
 async function ensureSchedulingPolicy(tenant, actor, evaluator) {
   const configuration = {
@@ -176,7 +179,7 @@ async function ensureCase({ tenant, client, owner, code, mode, service, cbm, req
     await prisma.pipelineCaseRouteSnapshot.create({ data: { tenantId: tenant.id, pipelineCaseId: row.id, routeVersion: 1, role: "ORIGIN", stopOrder: 0, sourceAddressRef: origin.addressRef, countryCode: origin.countryCode, provinceState: origin.provinceState, cityMunicipality: origin.cityMunicipality, sector: origin.sector, streetAndNumber: origin.streetAndNumber, buildingResidential: origin.buildingResidential, floorUnit: origin.floorUnit, arrivalReference: origin.arrivalReference, locationContactName: origin.locationContactName, locationContactPhone: origin.locationContactPhone } });
     if (destinationStatus !== "PENDING") await prisma.pipelineCaseRouteSnapshot.create({ data: { tenantId: tenant.id, pipelineCaseId: row.id, routeVersion: 1, role: "DESTINATION", stopOrder: 0, sourceAddressRef: destination.addressRef, countryCode: destination.countryCode, provinceState: destination.provinceState, cityMunicipality: destination.cityMunicipality, sector: destination.sector, streetAndNumber: destination.streetAndNumber, buildingResidential: destination.buildingResidential, floorUnit: destination.floorUnit, arrivalReference: destination.arrivalReference, locationContactName: destination.locationContactName, locationContactPhone: destination.locationContactPhone } });
   }
-  if (row.routeRevision !== 1 || row.routeContractVersion !== 2 || row.destinationStatus !== destinationStatus) row = await prisma.pipelineCase.update({ where: { id: row.id }, data: { routeContractVersion: 2, routeRevision: 1, destinationStatus } });
+  if (row.routeRevision !== 1 || row.routeContractVersion !== 2 || row.destinationStatus !== destinationStatus || row.requiresSurvey !== requiresSurvey) row = await prisma.pipelineCase.update({ where: { id: row.id }, data: { routeContractVersion: 2, routeRevision: 1, destinationStatus, requiresSurvey, surveyMethod: requiresSurvey ? "PRESENCIAL" : "NO_APLICA" } });
   let revision = await prisma.pipelineCaseServiceRevision.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: row.id, revision: 1 }, include: { items: true } });
   if (!revision) revision = await prisma.pipelineCaseServiceRevision.create({ data: { tenantId: tenant.id, pipelineCaseId: row.id, revision: 1, modeSnapshot: mode, source: "MANUAL", createdByMembershipId: owner.membership.id, createdByUserId: owner.user.id, items: { create: [{ serviceId: service.id, kind: "PRIMARY", source: "MANUAL", position: 0, serviceRefSnapshot: service.serviceRef, codeSnapshot: service.code, nameSnapshot: service.name, categorySnapshot: service.category, catalogVersionSnapshot: service.version }] } }, include: { items: true } });
   return { ...row, serviceRevision: revision };
@@ -214,7 +217,7 @@ async function ensureCrossTenantSentinel(tenant) {
   });
 }
 
-async function ensureSurveyFixture(tenant, actor, evaluator, scenario, material, schedulingPolicy) {
+async function ensureSurveyFixture(tenant, actor, evaluator, scenario, material, schedulingPolicy, distanceKm = 15) {
   let catalog = await prisma.surveyCatalogVersion.findFirst({ where: { tenantId: tenant.id, version: 1 } });
   if (!catalog) catalog = await prisma.surveyCatalogVersion.create({ data: { tenantId: tenant.id, version: 1, status: "ACTIVE", activatedAt: new Date(), createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
   let area = await prisma.surveyAreaCatalogItem.findFirst({ where: { tenantId: tenant.id, catalogVersionId: catalog.id, code: "LIVING" } });
@@ -235,7 +238,7 @@ async function ensureSurveyFixture(tenant, actor, evaluator, scenario, material,
   let publication = await prisma.surveyPublication.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id, status: "CURRENT" } });
   if (!publication) {
     const pdf = await prisma.surveyBlobObject.create({ data: { tenantId: tenant.id, provider: "PREVIEW_LOCAL_GATED", storageKey: `preview/${scenario.caseCode}/survey.pdf`, mimeType: "application/pdf", sizeBytes: 128, sha256: sha(`synthetic-pdf-${scenario.caseCode}`) } });
-    publication = await prisma.surveyPublication.create({ data: { tenantId: tenant.id, draftId: draft.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, revision: 1, routeVersion: 1, catalogVersion: 1, serviceSelectionRef: scenario.serviceRevision.selectionRef, contextSnapshot: { synthetic: true, distanceKm: 15 }, totalsSnapshot: { totalVolumeM3: 1.12, totalWeightKg: 50, itemCount: 2, cratingCandidates: 1 }, logicalSha256: sha(`survey-${scenario.caseCode}`), pdfBlobObjectId: pdf.id, pdfSha256: pdf.sha256, publishedByMembershipId: evaluator.membership.id, publishedByUserId: evaluator.user.id } });
+    publication = await prisma.surveyPublication.create({ data: { tenantId: tenant.id, draftId: draft.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, revision: 1, routeVersion: 1, catalogVersion: 1, serviceSelectionRef: scenario.serviceRevision.selectionRef, contextSnapshot: { synthetic: true, distanceKm }, totalsSnapshot: { totalVolumeM3: 1.12, totalWeightKg: 50, itemCount: 2, cratingCandidates: 1 }, logicalSha256: sha(`survey-${scenario.caseCode}`), pdfBlobObjectId: pdf.id, pdfSha256: pdf.sha256, publishedByMembershipId: evaluator.membership.id, publishedByUserId: evaluator.user.id } });
     await prisma.surveyPublicationItem.create({ data: { tenantId: tenant.id, publicationId: publication.id, position: 1, articleRef: article.articleRef, articleCode: article.code, articleName: article.name, areaRef: area.areaRef, areaCode: area.code, areaName: area.name, shipmentMode: "SEA", quantity: 2, condition: "GOOD", flags: ["CRATING_CANDIDATE", "FRAGILE"], measurements: { lengthCm: 100, widthCm: 80, heightCm: 70 }, unitVolumeM3: "0.56", unitWeightKg: "25", metricSources: { volume: "MEASURED", weight: "CATALOG" }, note: "Fixture sintético" } });
     await prisma.surveyPublicationAccess.createMany({ data: [{ tenantId: tenant.id, publicationId: publication.id, side: "ORIGIN", factsSnapshot: { stairs: true, narrowAccess: false } }, { tenantId: tenant.id, publicationId: publication.id, side: "DESTINATION", factsSnapshot: { elevator: true } }] });
   }
@@ -252,6 +255,107 @@ async function ensureSurveyFixture(tenant, actor, evaluator, scenario, material,
     await prisma.materialRequirementLine.create({ data: { tenantId: tenant.id, requirementSnapshotId: requirement.id, position: 1, materialId: material.id, unitId: material.baseUnitId, requiredQuantity: "4", formulaSnapshot: { formulaType: "FIXED", fixedQuantity: 4 }, sourceSnapshot: { recipeVersion: 1, synthetic: true } } });
   }
   return { catalog, publication, requirement };
+}
+
+async function ensureMiniSurveyFixture(tenant, actor, evaluator, scenario, schedulingPolicy) {
+  const catalog = await prisma.surveyCatalogVersion.findFirstOrThrow({ where: { tenantId: tenant.id, status: "ACTIVE" }, orderBy: { version: "desc" } });
+  let area = await prisma.surveyAreaCatalogItem.findFirst({ where: { tenantId: tenant.id, catalogVersionId: catalog.id, code: "LIVING" } });
+  if (!area) area = await prisma.surveyAreaCatalogItem.create({ data: { tenantId: tenant.id, catalogVersionId: catalog.id, areaRef: stableUuid("survey-area-living"), code: "LIVING", name: "Sala sintética", sortOrder: 1 } });
+  const articleDefinitions = [
+    ["MINI-SOFA", "Sofá sintético", "1.65", "72"],
+    ["MINI-TV", "Televisor sintético", "0.18", "16"],
+    ["MINI-CHAIR", "Silla sintética", "0.22", "7"],
+    ["MINI-BED", "Cama sintética", "1.15", "64"],
+    ["MINI-DESK", "Escritorio sintético", "0.75", "38"],
+  ];
+  const articles = [];
+  for (let index = 0; index < articleDefinitions.length; index += 1) {
+    const [code, name, volume, weight] = articleDefinitions[index];
+    let article = await prisma.surveyArticleCatalogItem.findFirst({ where: { tenantId: tenant.id, catalogVersionId: catalog.id, code } });
+    if (!article) article = await prisma.surveyArticleCatalogItem.create({ data: { tenantId: tenant.id, catalogVersionId: catalog.id, articleRef: stableUuid(`survey-${code}`), code, name, aliases: ["mini"], frequentAreaRefs: [area.areaRef], defaultVolumeM3: volume, defaultWeightKg: weight, weightSource: "CATALOG", sortOrder: index + 10 } });
+    articles.push(article);
+  }
+  let decision = await prisma.surveyEvaluationDecision.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id }, orderBy: { version: "desc" } });
+  if (!decision) decision = await prisma.surveyEvaluationDecision.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, routeVersion: 1, version: 1, method: "MINI", commercialState: "COMPLETED", informationSource: "MINI", rationaleCode: "PREVIEW_MINI_CLIENT_SUPPLIED", createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
+  let assignment = await prisma.surveyAssignment.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id } });
+  if (!assignment) assignment = await prisma.surveyAssignment.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, routeVersion: 1, evaluatorMembershipId: evaluator.membership.id, evaluatorUserId: evaluator.user.id, scheduledStart: new Date("2026-09-15T14:00:00Z"), scheduledEnd: new Date("2026-09-15T14:30:00Z"), status: "COMPLETED", contextSnapshot: { synthetic: true, method: "MINI", travelRequired: false, informationSource: "CLIENT_SUPPLIED" }, instructionSnapshot: "Captura rápida sintética provista por el cliente", evaluationDecisionId: decision.id, schedulePolicyId: schedulingPolicy.id, scheduleProfile: "METRO", zoneCode: "REMOTE_MINI", slotKey: "REMOTE", travelBufferMinutes: 0, createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
+  let draft = await prisma.surveyDraft.findFirst({ where: { tenantId: tenant.id, assignmentId: assignment.id, revision: 1 } });
+  if (!draft) draft = await prisma.surveyDraft.create({ data: { tenantId: tenant.id, assignmentId: assignment.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, catalogVersionId: catalog.id, routeVersion: 1, revision: 1, status: "PUBLISHED", notes: "Mini-visita · Estimado / Aproximado · fuente MINI_SURVEY" } });
+  const quantities = [1, 2, 6, 1, 1];
+  for (let index = 0; index < articles.length; index += 1) {
+    const article = articles[index];
+    if (await prisma.surveyDraftItem.findFirst({ where: { tenantId: tenant.id, draftId: draft.id, sortOrder: index + 1 } })) continue;
+    await prisma.surveyDraftItem.create({ data: { tenantId: tenant.id, draftId: draft.id, catalogVersionId: catalog.id, catalogItemId: article.id, areaCatalogItemId: area.id, articleRefSnapshot: article.articleRef, articleCodeSnapshot: article.code, articleNameSnapshot: article.name, areaRefSnapshot: area.areaRef, areaCodeSnapshot: area.code, areaNameSnapshot: area.name, shipmentMode: "ROAD", quantity: quantities[index], condition: "GOOD", flags: [], unitVolumeM3: article.defaultVolumeM3, unitWeightKg: article.defaultWeightKg, volumeSource: "CATALOG", weightSource: "CATALOG", note: "CLIENT_SUPPLIED", sortOrder: index + 1 } });
+  }
+  let publication = await prisma.surveyPublication.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id, status: "CURRENT" } });
+  if (!publication) {
+    const itemRows = await prisma.surveyDraftItem.findMany({ where: { tenantId: tenant.id, draftId: draft.id, deletedAt: null }, orderBy: { sortOrder: "asc" } });
+    const totalVolumeM3 = itemRows.reduce((sum, item) => sum + Number(item.unitVolumeM3 || 0) * item.quantity, 0);
+    const totalWeightKg = itemRows.reduce((sum, item) => sum + Number(item.unitWeightKg || 0) * item.quantity, 0);
+    const pdf = await prisma.surveyBlobObject.create({ data: { tenantId: tenant.id, provider: "PREVIEW_LOCAL_GATED", storageKey: `preview/${scenario.caseCode}/mini-survey.pdf`, mimeType: "application/pdf", sizeBytes: 128, sha256: sha(`synthetic-mini-pdf-${scenario.caseCode}`) } });
+    publication = await prisma.surveyPublication.create({ data: { tenantId: tenant.id, draftId: draft.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, revision: 1, routeVersion: 1, catalogVersion: catalog.version, serviceSelectionRef: scenario.serviceRevision.selectionRef, contextSnapshot: { synthetic: true, method: "MINI", informationSource: "MINI_SURVEY", estimateNature: "APPROXIMATE", travelRequired: false, distanceKm: 8 }, totalsSnapshot: { totalVolumeM3, totalWeightKg, itemCount: itemRows.reduce((sum, item) => sum + item.quantity, 0), distinctLineCount: itemRows.length, estimateNature: "APPROXIMATE", source: "MINI_SURVEY" }, logicalSha256: sha(`mini-survey-${scenario.caseCode}`), pdfBlobObjectId: pdf.id, pdfSha256: pdf.sha256, publishedByMembershipId: evaluator.membership.id, publishedByUserId: evaluator.user.id } });
+    await prisma.surveyPublicationItem.createMany({ data: itemRows.map((item, index) => ({ tenantId: tenant.id, publicationId: publication.id, position: index + 1, articleRef: item.articleRefSnapshot, articleCode: item.articleCodeSnapshot, articleName: item.articleNameSnapshot, areaRef: item.areaRefSnapshot, areaCode: item.areaCodeSnapshot, areaName: item.areaNameSnapshot, shipmentMode: item.shipmentMode, quantity: item.quantity, condition: item.condition, flags: item.flags, measurements: {}, unitVolumeM3: item.unitVolumeM3, unitWeightKg: item.unitWeightKg, metricSources: { volume: "CATALOG", weight: "CATALOG", source: "MINI_SURVEY" }, note: "Estimado / Aproximado" })) });
+  }
+  return { catalog, publication, distinctLines: articles.length };
+}
+
+async function ensureServicePackageFixtures(tenant, actor, scenarios, resources, surveyByCode) {
+  const context = { tenantId: tenant.id, membershipId: actor.membership.id, userId: actor.user.id };
+  const sign = (operation, payload, label) => signed(serviceConfigurationPayloadHash, operation, payload, `service-15b-${label}`);
+  const ensureMode = async (code, name, sortOrder) => {
+    const existing = await prisma.serviceModeDefinition.findFirst({ where: { tenantId: tenant.id, code } });
+    if (existing) return existing;
+    const result = await saveServiceMode(context, sign("MODE_SAVE", { modeRef: null, expectedVersion: null, code, name, description: null, state: "PUBLISHED", sortOrder }, `mode-${code}`), prisma);
+    return prisma.serviceModeDefinition.findFirstOrThrow({ where: { tenantId: tenant.id, modeRef: result.mode.modeRef } });
+  };
+  const localMode = await ensureMode("LOCAL", "Local / Nacional", 10);
+  const exportMode = await ensureMode("EXPORT", "Exportación", 20);
+  for (const scenario of scenarios) {
+    const mode = scenario.mode === "EXPORT" ? exportMode : localMode;
+    const current = await prisma.serviceCatalogMode.findFirst({ where: { tenantId: tenant.id, serviceId: scenario.serviceRevision.items[0].serviceId, modeId: mode.id } });
+    if (!current) await saveServiceCatalogModes(context, sign("CATALOG_MODES_SAVE", { serviceRef: scenario.serviceRevision.items[0].serviceRefSnapshot, modeRefs: [mode.modeRef] }, `catalog-mode-${scenario.caseCode}`), prisma);
+  }
+  let reusableModel = await prisma.assetModel.findFirst({ where: { tenantId: tenant.id, code: "REUSABLE-PACKING-BIN" } });
+  if (!reusableModel) reusableModel = await prisma.assetModel.create({ data: { tenantId: tenant.id, code: "REUSABLE-PACKING-BIN", name: "Caja plástica reutilizable", family: "PACKING", resourceType: "EQUIPMENT", serialPolicy: "OPTIONAL", capacity: { volumeM3: 0.12 } } });
+  let capability = await prisma.operationalCapability.findFirst({ where: { tenantId: tenant.id, code: "PACKING_CREW" } });
+  if (!capability) capability = await prisma.operationalCapability.create({ data: { tenantId: tenant.id, code: "PACKING_CREW", name: "Cuadrilla de empaque", actorMembershipId: actor.membership.id, actorUserId: actor.user.id, requestId: `preview-15b-capability-${stableUuid("packing-crew")}`, payloadHash: sha("preview-15b-packing-crew") } });
+  const ensurePackage = async (scenario, code, name, mode, includeCrating = false) => {
+    const existing = await prisma.servicePackageVersion.findFirst({ where: { tenantId: tenant.id, package: { code }, state: "PUBLISHED" }, include: { package: true }, orderBy: { version: "desc" } });
+    if (existing) return existing;
+    const requirements = [
+      { kind: "PERSONNEL", code: "PACKER", name: "Personal de empaque", quantity: 3, unitCode: "PERSON", hours: 8, days: 1, phaseCode: "PACKING", materialRef: null, assetModelRef: null, capabilityRef: capability.capabilityRef, disposition: null, chargeType: "INCLUDED", configuration: {} },
+      { kind: "MATERIAL", code: "PACKING_CONSUMABLE", name: "Material consumible nuevo", quantity: 20, unitCode: "EA", hours: null, days: null, phaseCode: "PACKING", materialRef: resources.material.materialRef, assetModelRef: null, capabilityRef: null, disposition: "CONSUMED", chargeType: "SALE", configuration: {} },
+      { kind: "ASSET", code: "REUSABLE_CONTAINER", name: "Caja reutilizable", quantity: 10, unitCode: "EA", hours: null, days: 3, phaseCode: "PACKING", materialRef: null, assetModelRef: reusableModel.modelRef, capabilityRef: null, disposition: "RETURNABLE", chargeType: "RENTAL", configuration: { returnRequired: true } },
+      { kind: "DURATION", code: "SERVICE_DURATION", name: "Duración prevista", quantity: null, unitCode: null, hours: 8, days: 1, phaseCode: "SERVICE", materialRef: null, assetModelRef: null, capabilityRef: null, disposition: null, chargeType: "INCLUDED", configuration: {} },
+      ...(includeCrating ? [{ kind: "CRATING", code: "CRATING_REQUIRED", name: "Crating requerido", quantity: 1, unitCode: "EA", hours: null, days: null, phaseCode: "ENGINEERING_FUTURE", materialRef: null, assetModelRef: null, capabilityRef: null, disposition: null, chargeType: "INCLUDED", configuration: { engineeringStatus: "FUTURE" } }] : []),
+    ];
+    const tags = [scenario.mode, includeCrating ? "CRATING" : "STANDARD"].sort();
+    const result = await saveServicePackage(context, sign("PACKAGE_SAVE", { packageRef: null, expectedVersion: null, code, name, description: "Fixture sintético Preview 15B", category: "MUDANZA", tags, modeRefs: [mode.modeRef], primaryServiceRef: scenario.serviceRevision.items[0].serviceRefSnapshot, complementaryRefs: [], requirements, state: "PUBLISHED", validFrom: null, validTo: null }, `package-${code}`), prisma);
+    return prisma.servicePackageVersion.findFirstOrThrow({ where: { tenantId: tenant.id, versionRef: result.package.versionRef }, include: { package: true } });
+  };
+  const packageByCode = new Map();
+  for (const scenario of scenarios) {
+    const packageCode = scenario.mode === "EXPORT" ? "EXP-MOVE-CRATING" : scenario.caseCode === "PV10B-D-QUOTES" ? "LOC-MOVE-PREMIUM" : "LOC-MOVE-STD";
+    if (!packageByCode.has(packageCode)) packageByCode.set(packageCode, await ensurePackage(scenario, packageCode, packageCode === "EXP-MOVE-CRATING" ? "Exportación con Crating" : packageCode === "LOC-MOVE-PREMIUM" ? "Mudanza Local Premium" : "Mudanza Local Estándar", scenario.mode === "EXPORT" ? exportMode : localMode, scenario.mode === "EXPORT"));
+  }
+  const ensurePolicy = async (code, name, packageVersion, mode, newProportion, reusableProportion) => {
+    const existing = await prisma.serviceMaterialPolicyVersion.findFirst({ where: { tenantId: tenant.id, policy: { code }, state: "PUBLISHED" }, include: { policy: true }, orderBy: { version: "desc" } });
+    if (existing) return existing;
+    const result = await saveMaterialPolicy(context, sign("MATERIAL_POLICY_SAVE", { policyRef: null, expectedVersion: null, code, name, packageVersionRef: packageVersion.versionRef, serviceRef: null, modeRef: mode.modeRef, preferenceCode: "REUSABLE_ALLOWED", standardCode: "STANDARD", state: "PUBLISHED", validFrom: null, validTo: null, lines: [{ materialRef: resources.material.materialRef, assetModelRef: null, materialClass: "NEW_PACKING_MATERIAL", disposition: "CONSUMED", proportion: newProportion, chargeType: "SALE", preparationRule: {}, maintenanceRule: {}, deteriorationRule: {}, replacementRule: {}, conditions: {} }, { materialRef: null, assetModelRef: reusableModel.modelRef, materialClass: "REUSABLE_CONTAINER", disposition: "RETURNABLE", proportion: reusableProportion, chargeType: "USAGE", preparationRule: { applicable: true }, maintenanceRule: { applicable: true }, deteriorationRule: { chargeable: true }, replacementRule: { chargeable: true }, conditions: {} }] }, `policy-${code}`), prisma);
+    return prisma.serviceMaterialPolicyVersion.findFirstOrThrow({ where: { tenantId: tenant.id, versionRef: result.policy.versionRef }, include: { policy: true } });
+  };
+  const localPolicy = await ensurePolicy("LOC-MIX-50-50", "Material nuevo y reutilizable", packageByCode.get("LOC-MOVE-STD"), localMode, 0.5, 0.5);
+  const premiumPolicy = await ensurePolicy("LOC-PREMIUM-STANDARD", "Mezcla estándar Premium", packageByCode.get("LOC-MOVE-PREMIUM"), localMode, 0.5, 0.5);
+  const exportPolicy = await ensurePolicy("EXP-MIX-70-30", "Mezcla configurable Export 70/30", packageByCode.get("EXP-MOVE-CRATING"), exportMode, 0.7, 0.3);
+  for (const scenario of scenarios) {
+    if (await prisma.caseServiceConfigurationRevision.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id } })) continue;
+    const packageCode = scenario.mode === "EXPORT" ? "EXP-MOVE-CRATING" : scenario.caseCode === "PV10B-D-QUOTES" ? "LOC-MOVE-PREMIUM" : "LOC-MOVE-STD";
+    const packageVersion = packageByCode.get(packageCode);
+    const policy = scenario.mode === "EXPORT" ? exportPolicy : scenario.caseCode === "PV10B-D-QUOTES" ? premiumPolicy : localPolicy;
+    const overrides = scenario.caseCode === "PV10B-D-QUOTES" ? [{ kind: "MATERIAL", source: "CASE_OVERRIDE", authorityRef: null, code: "CLIENT_100_NEW", name: "Cliente solicita 100% material nuevo", quantity: null, unitCode: null, hours: null, days: null, disposition: "CONSUMED", chargeType: "SALE", proportion: 1, details: { requestedMix: "100_NEW", changesMasterPackage: false } }] : [];
+    await saveCaseServiceConfiguration(context, scenario.publicRef, sign("CASE_CONFIGURATION_SAVE", { expectedRevision: 0, serviceSelectionRef: scenario.serviceRevision.selectionRef, serviceSelectionRevision: scenario.serviceRevision.revision, packageVersionRef: packageVersion.versionRef, materialPolicyVersionRef: policy.versionRef, surveyPublicationRef: surveyByCode.get(scenario.caseCode)?.publicationRef || null, commercialAgreementRef: null, preference: scenario.caseCode === "PV10B-D-QUOTES" ? { materialPreference: "100_PERCENT_NEW" } : { materialPreference: "STANDARD" }, duration: { hours: scenario.mode === "EXPORT" ? 16 : 8, days: scenario.mode === "EXPORT" ? 2 : 1 }, source: "PACKAGE", overrides }, `configuration-${scenario.caseCode}`), prisma);
+  }
+  return { packages: packageByCode.size, policies: 3, reusableModel };
 }
 
 async function ensureResources(tenant, actor) {
@@ -274,16 +378,21 @@ async function ensureResources(tenant, actor) {
 
 async function ensureRules(context) {
   const logistics = [
-    { label: "log-rule-zone-metro", family: "ZONE", code: "PREVIEW_METRO_ZONE", name: "Zona visita METRO sintética", conditions: { distanceStatus: "KNOWN", maxDistanceKm: 30 }, result: { kind: "VISIT_ZONE", label: "Zona METRO", quantity: 1, unit: "visita", zoneType: "METRO", zoneCode: "METRO_PREVIEW", exclusiveKey: "VISIT_ZONE" } },
-    { label: "log-rule-zone-interior", family: "ZONE", code: "PREVIEW_INTERIOR_ZONE", name: "Zona visita INTERIOR sintética", conditions: { distanceStatus: "KNOWN", minDistanceKm: 30.000001 }, result: { kind: "VISIT_ZONE", label: "Zona INTERIOR", quantity: 1, unit: "visita", zoneType: "INTERIOR", zoneCode: "INTERIOR_PREVIEW", exclusiveKey: "VISIT_ZONE" } },
+    { label: "log-rule-zone-metro", family: "ZONE", code: "PREVIEW_METRO_ZONE", name: "Zona visita METRO sintética", conditions: { distanceStatus: "KNOWN", maxDistanceKm: 30 }, result: { kind: "VISIT_ZONE", label: "Zona METRO", quantity: 1, unit: "visita", zoneType: "METRO", originZoneType: "METRO", destinationZoneType: "METRO", zoneCode: "METRO_PREVIEW", exclusiveKey: "VISIT_ZONE" } },
+    { label: "log-rule-zone-interior", family: "ZONE", code: "PREVIEW_INTERIOR_ZONE", name: "Zona visita INTERIOR sintética", conditions: { distanceStatus: "KNOWN", minDistanceKm: 30.000001 }, result: { kind: "VISIT_ZONE", label: "Zona INTERIOR", quantity: 1, unit: "visita", zoneType: "INTERIOR", originZoneType: "METRO", destinationZoneType: "INTERIOR", zoneCode: "INTERIOR_PREVIEW", exclusiveKey: "VISIT_ZONE" } },
     { label: "log-rule-labor", family: "LABOR", code: "PREVIEW_CREW", name: "Cuadrilla sintética", conditions: {}, result: { kind: "PACKER", label: "Empacadores", quantity: { basis: "VOLUME_M3", divisor: 10, minimum: 2 }, hours: 6, unit: "persona" } },
     { label: "log-rule-crating", family: "CRATING", code: "PREVIEW_CRATING", name: "Crating sintético", conditions: { serviceCodes: ["EXPORT_CRATING"] }, result: { kind: "CRATING_CREW", label: "Preparación Crating", quantity: 1, hours: 4, unit: "servicio" } },
     { label: "log-rule-provider", family: "EXTERNAL", code: "PREVIEW_PROVIDER", name: "Proveedor pendiente sintético", conditions: { serviceCodes: ["OUTSOURCE_PENDING"] }, result: { kind: "EXTERNAL_RESOURCE", label: "Proveedor especializado pendiente", quantity: 1, unit: "servicio", availabilitySource: "PROVIDER", sourceCode: "EXTERNAL_RESOURCE", shortageSeverity: "BLOCKER" } },
   ];
   for (const item of logistics) {
-    if (await prisma.logisticsRule.findFirst({ where: { tenantId: context.tenantId, code: item.code, state: "ACTIVE" } })) continue;
-    const payload = { seriesRef: stableUuid(`${item.label}-series`), family: item.family, code: item.code, name: item.name, priority: 100, specificity: item.code === "PREVIEW_CREW" ? 1 : 50, conditions: item.conditions, result: item.result, state: "ACTIVE", validFrom: null, validTo: null };
-    await versionLogisticsRule(prisma, context, signed(logisticsHash, "LOGISTICS_RULE_VERSION", payload, item.label));
+    const active = await prisma.logisticsRule.findFirst({ where: { tenantId: context.tenantId, code: item.code, state: "ACTIVE" } });
+    const routeAreasCurrent = item.family !== "ZONE"
+      || (active?.result?.originZoneType === item.result.originZoneType
+        && active?.result?.destinationZoneType === item.result.destinationZoneType);
+    if (active && routeAreasCurrent) continue;
+    const payload = { seriesRef: active?.seriesRef || stableUuid(`${item.label}-series`), family: item.family, code: item.code, name: item.name, priority: 100, specificity: item.code === "PREVIEW_CREW" ? 1 : 50, conditions: item.conditions, result: item.result, state: "ACTIVE", validFrom: null, validTo: null };
+    const requestLabel = active ? `${item.label}-route-areas-v2` : item.label;
+    await versionLogisticsRule(prisma, context, signed(logisticsHash, "LOGISTICS_RULE_VERSION", payload, requestLabel));
   }
   const costingRules = [
     { label: "cost-rule-visit-zone", family: "TRANSPORT", code: "PREVIEW_VISIT_ZONE_COST", conditions: { logisticsFamilies: ["TRANSPORT"] }, unitCost: "0", result: { unit: "VISIT" } },
@@ -304,10 +413,10 @@ async function ensurePlans(context, scenarios) {
     const start = "2026-10-01T13:00:00.000Z";
     const end = "2026-10-01T21:00:00.000Z";
     const calcPayload = { caseRef: scenario.publicRef, intervalStart: start, intervalEnd: end };
-    const calc = await calculateLogistics(prisma, context, signed(logisticsHash, "LOGISTICS_CALCULATE", calcPayload, `log-calc-${scenario.caseCode}`));
-    const plan = await publishLogistics(prisma, context, signed(logisticsHash, "LOGISTICS_PUBLISH", { calculationRef: calc.calculationRef }, `log-publish-${scenario.caseCode}`));
+    const calc = await calculateLogistics(prisma, context, signed(logisticsHash, "LOGISTICS_CALCULATE", calcPayload, `log-calc-v15b2-${scenario.caseCode}`));
+    const plan = await publishLogistics(prisma, context, signed(logisticsHash, "LOGISTICS_PUBLISH", { calculationRef: calc.calculationRef }, `log-publish-v15b2-${scenario.caseCode}`));
     const costCalcPayload = { caseRef: scenario.publicRef, logisticsPlanRevisionRef: plan.revisionRef, baseCurrency: "DOP" };
-    const costCalc = await calculateCosting(prisma, context, signed(costingHash, "COSTING_CALCULATE", costCalcPayload, `cost-calc-v2-${scenario.caseCode}`));
+    const costCalc = await calculateCosting(prisma, context, signed(costingHash, "COSTING_CALCULATE", costCalcPayload, `cost-calc-v15b2-${scenario.caseCode}`));
     if (scenario.caseCode === "PV10B-C-PENDING") {
       assert.ok(costCalc.result.issues.some((item) => item.severity === "BLOCKER"), "Escenario C requiere blocker de Costing");
       results.set(scenario.caseCode, { plan, costing: costCalc });
@@ -315,7 +424,7 @@ async function ensurePlans(context, scenarios) {
     }
     const unexpectedBlockers = costCalc.result.issues.filter((item) => item.severity === "BLOCKER").map((item) => `${item.code}-${item.family || "NONE"}`);
     if (unexpectedBlockers.length) fail(`UNEXPECTED_COSTING_BLOCKER_${scenario.caseCode}_${unexpectedBlockers.join("_")}`);
-    const costing = await publishCosting(prisma, context, signed(costingHash, "COSTING_PUBLISH", { calculationRef: costCalc.calculationRef }, `cost-publish-v2-${scenario.caseCode}`));
+    const costing = await publishCosting(prisma, context, signed(costingHash, "COSTING_PUBLISH", { calculationRef: costCalc.calculationRef }, `cost-publish-v15b2-${scenario.caseCode}`));
     results.set(scenario.caseCode, { plan, costing });
   }
   return results;
@@ -331,6 +440,14 @@ async function ensureScenarioDQuotes(context, scenario, costing) {
   const names = ["Esencial", "Recomendada", "Integral"];
   const proposals = [];
   for (let i = 0; i < 3; i += 1) {
+    const existing = await prisma.quoteProposal.findFirst({
+      where: { tenantId: context.tenantId, pipelineCaseId: scenario.id, position: i + 1 },
+      select: { proposalRef: true, state: true, currentRevision: true },
+    });
+    if (existing) {
+      proposals.push({ proposalRef: existing.proposalRef, state: existing.state, revision: existing.currentRevision });
+      continue;
+    }
     const payload = quoteDraft(costing, scenario.publicRef, i + 1, names[i]);
     proposals.push(await createQuoteProposal(prisma, context, signed(quoteHash, "QUOTE_PROPOSAL_CREATE", payload, `quote-create-${i + 1}`)));
   }
@@ -355,7 +472,7 @@ async function main() {
   exact(identity[0]?.database, EXPECTED_DATABASE, "DATABASE_RUNTIME");
   exact(identity[0]?.branch, EXPECTED_BRANCH, "BRANCH_RUNTIME");
   const migrations = await prisma.$queryRawUnsafe(`SELECT migration_name, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name`);
-  if (migrations.length !== 33 || migrations.some((row) => !row.finished_at || row.rolled_back_at || row.applied_steps_count !== 1)) fail("MIGRATIONS_NOT_33_COMPLETE");
+  if (migrations.length !== 34 || migrations.some((row) => !row.finished_at || row.rolled_back_at || row.applied_steps_count !== 1)) fail("MIGRATIONS_NOT_34_COMPLETE");
 
   const tenant = await prisma.tenant.upsert({ where: { code: TENANT_CODE }, update: {}, create: { code: TENANT_CODE, name: "International Packers — Preview sintético", countryCode: "DO", defaultCurrency: "DOP", provisioningSource: "MANUAL", provisioningBatchId: EXPECTED_BATCH } });
   const crossTenant = await prisma.tenant.upsert({ where: { code: SECOND_TENANT_CODE }, update: {}, create: { code: SECOND_TENANT_CODE, name: "Tenant B — Preview sintético", countryCode: "US", defaultCurrency: "USD", provisioningSource: "MANUAL", provisioningBatchId: EXPECTED_BATCH } });
@@ -384,6 +501,8 @@ async function main() {
     ensureClient(tenant.id, 2, "Exportadora Aurora — Sintético"),
     ensureClient(tenant.id, 3, "Proyecto Tercero — Sintético"),
     ensureClient(tenant.id, 4, "Corporación Tres Opciones — Sintético"),
+    ensureClient(tenant.id, 5, "Familia Interior — Sintético"),
+    ensureClient(tenant.id, 6, "Cliente Mini — Sintético"),
   ]);
   const addresses = [];
   for (let i = 0; i < clients.length; i += 1) addresses.push({ origin: await ensureAddress(tenant.id, clients[i].id, "ORIGEN", "Santo Domingo", "DO"), destination: await ensureAddress(tenant.id, clients[i].id, "DESTINO", i === 1 ? "Miami" : "Santiago", i === 1 ? "US" : "DO") });
@@ -395,27 +514,34 @@ async function main() {
   ]);
   const owner = { user: adminIdentity.user, membership: adminMembership };
   const scenarios = [
-    await ensureCase({ tenant, client: clients[0], owner, code: "PV10B-A-LOCAL", mode: "LOCAL", service: services[0], cbm: 12, requiresSurvey: false, destinationStatus: "CONFIRMED", ...addresses[0] }),
+    await ensureCase({ tenant, client: clients[0], owner, code: "PV10B-A-LOCAL", mode: "LOCAL", service: services[0], cbm: 12, requiresSurvey: true, destinationStatus: "CONFIRMED", ...addresses[0] }),
+    await ensureCase({ tenant, client: clients[4], owner, code: "PV15B-B-INTERIOR", mode: "LOCAL", service: services[0], cbm: 14, requiresSurvey: true, destinationStatus: "CONFIRMED", ...addresses[4] }),
     await ensureCase({ tenant, client: clients[1], owner, code: "PV10B-B-EXPORT", mode: "EXPORT", service: services[1], cbm: 20, requiresSurvey: true, destinationStatus: "CONFIRMED", ...addresses[1] }),
-    await ensureCase({ tenant, client: clients[2], owner, code: "PV10B-C-PENDING", mode: "LOCAL", service: services[2], cbm: 8, requiresSurvey: false, destinationStatus: "CONFIRMED", ...addresses[2] }),
     await ensureCase({ tenant, client: clients[3], owner, code: "PV10B-D-QUOTES", mode: "LOCAL", service: services[3], cbm: 18, requiresSurvey: false, destinationStatus: "CONFIRMED", ...addresses[3] }),
+    await ensureCase({ tenant, client: clients[5], owner, code: "PV15B-E-MINI", mode: "LOCAL", service: services[0], cbm: 0, requiresSurvey: true, destinationStatus: "CONFIRMED", ...addresses[5] }),
+    await ensureCase({ tenant, client: clients[2], owner, code: "PV10B-C-PENDING", mode: "LOCAL", service: services[2], cbm: 8, requiresSurvey: false, destinationStatus: "CONFIRMED", ...addresses[2] }),
   ];
   const crossTenantSentinel = await ensureCrossTenantSentinel(crossTenant);
   const resources = await ensureResources(tenant, owner);
-  await ensureSurveyFixture(tenant, owner, { user: evaluatorIdentity.user, membership: evaluatorMembership }, scenarios[1], resources.material, schedulingPolicy);
+  const surveyByCode = new Map();
+  surveyByCode.set(scenarios[0].caseCode, await ensureSurveyFixture(tenant, owner, { user: evaluatorIdentity.user, membership: evaluatorMembership }, scenarios[0], resources.material, schedulingPolicy, 8));
+  surveyByCode.set(scenarios[1].caseCode, await ensureSurveyFixture(tenant, owner, { user: evaluatorIdentity.user, membership: evaluatorMembership }, scenarios[1], resources.material, schedulingPolicy, 145));
+  surveyByCode.set(scenarios[2].caseCode, await ensureSurveyFixture(tenant, owner, { user: evaluatorIdentity.user, membership: evaluatorMembership }, scenarios[2], resources.material, schedulingPolicy, 15));
+  surveyByCode.set(scenarios[4].caseCode, await ensureMiniSurveyFixture(tenant, owner, { user: evaluatorIdentity.user, membership: evaluatorMembership }, scenarios[4], schedulingPolicy));
   if (!await prisma.externalResourceOffer.findFirst({ where: { tenantId: tenant.id, providerReference: "PREVIEW-PENDING-PROVIDER" } })) await prisma.externalResourceOffer.create({ data: { tenantId: tenant.id, providerReference: "PREVIEW-PENDING-PROVIDER", providerNameSnapshot: "Proveedor sintético pendiente", resourceDescription: "Servicio externo sintético", capacity: { quantity: 1 }, rateAmount: null, currency: null, temporalUnit: "SERVICE", availabilityStatus: "UNCONFIRMED", termsSnapshot: { synthetic: true }, contractualReference: null } });
   const context = { tenantId: tenant.id, membershipId: adminMembership.id, userId: adminIdentity.user.id, role: "A", effectivePermissions: adminPermissions, deniedPermissions: [] };
   await ensureRules(context);
   const plans = await ensurePlans(context, scenarios);
   const scenarioDQuotes = await ensureScenarioDQuotes(context, scenarios[3], plans.get("PV10B-D-QUOTES").costing);
+  const packageFixtures = await ensureServicePackageFixtures(tenant, owner, scenarios.filter((item) => item.caseCode !== "PV10B-C-PENDING"), resources, new Map([...surveyByCode].map(([code, value]) => [code, value.publication])));
 
   const counts = { tenants: await prisma.tenant.count({ where: { code: { in: [TENANT_CODE, SECOND_TENANT_CODE] } } }), users: await prisma.user.count({ where: { email: { in: [adminIdentity.user.email, evaluatorIdentity.user.email, denyIdentity.user.email] } } }), memberships: await prisma.tenantMembership.count({ where: { provisioningBatchId: EXPECTED_BATCH } }), cases: await prisma.pipelineCase.count({ where: { id: { in: scenarios.map((item) => item.id) } } }), clients: await prisma.client.count({ where: { id: { in: clients.map((item) => item.id) } } }), services: await prisma.serviceCatalogItem.count({ where: { tenantId: tenant.id } }), surveys: await prisma.surveyPublication.count({ where: { tenantId: tenant.id } }), materials: await prisma.materialCatalogItem.count({ where: { tenantId: tenant.id } }), assets: await prisma.assetInstance.count({ where: { tenantId: tenant.id } }), plans: await prisma.logisticsPlanRevision.count({ where: { tenantId: tenant.id, status: "PUBLISHED" } }), costings: await prisma.costingRevision.count({ where: { tenantId: tenant.id, status: "PUBLISHED" } }), proposals: await prisma.quoteProposal.count({ where: { tenantId: tenant.id, pipelineCaseId: scenarios[3].id } }), accepted: await prisma.quoteProposal.count({ where: { tenantId: tenant.id, pipelineCaseId: scenarios[3].id, state: "ACCEPTED" } }) };
-  assert.deepEqual({ tenants: counts.tenants, users: counts.users, memberships: counts.memberships, cases: counts.cases, clients: counts.clients }, { tenants: 2, users: 3, memberships: 3, cases: 4, clients: 4 });
+  assert.deepEqual({ tenants: counts.tenants, users: counts.users, memberships: counts.memberships, cases: counts.cases, clients: counts.clients }, { tenants: 2, users: 3, memberships: 3, cases: 6, clients: 6 });
   assert.equal(counts.proposals, 3); assert.equal(counts.accepted, 1);
   assert.equal(await prisma.pipelineCase.count({ where: { tenantId: crossTenant.id, id: crossTenantSentinel.id, flags: { has: "PREVIEW_CROSS_TENANT_SENTINEL" } } }), 1);
   const pendingPlan = plans.get("PV10B-C-PENDING").plan;
   assert.ok(pendingPlan.issues.some((item) => item.code === "EXTERNAL_PRICE_PENDING" && item.severity === "BLOCKER"));
-  console.log(JSON.stringify({ ok: true, batch: EXPECTED_BATCH, migrations: "33/33", scenarios: 4, securitySentinels: 1, syntheticOnly: true, idempotent: true, counts, scenarioCBlocker: true, scenarioDAccepted: scenarioDQuotes.accepted.state === "ACCEPTED", schedulingPolicy: "ACTIVE", productionApiEnabled: false }));
+  console.log(JSON.stringify({ ok: true, batch: EXPECTED_BATCH, migrations: "34/34", scenarios: 6, acceptanceScenarios: ["A_LOCAL_REUSABLE", "B_LOCAL_INTERIOR", "C_EXPORT_70_30_CRATING", "D_CLIENT_100_NEW_OVERRIDE", "E_MINI_SURVEY", "F_PROVIDER_PENDING"], servicePackages: packageFixtures.packages, materialPolicies: packageFixtures.policies, miniDistinctLines: 5, securitySentinels: 1, syntheticOnly: true, idempotent: true, counts, scenarioCBlocker: true, scenarioDAccepted: scenarioDQuotes.accepted.state === "ACCEPTED", schedulingPolicy: "ACTIVE", productionApiEnabled: false }));
 }
 
 try { await main(); } finally { await prisma.$disconnect(); }

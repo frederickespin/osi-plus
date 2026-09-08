@@ -44,7 +44,7 @@ test("caso selecciona empresa, Lead Account, Booker, pagador y aprobador sin inf
   await session(page); await crm(page); await relationships(page); let published: Record<string, unknown> | null = null;
   await page.unroute(`**/api/commercial-relationships/cases/${CASE_REF}`);
   await page.route(`**/api/commercial-relationships/cases/${CASE_REF}`, async (route) => { if (route.request().method() === "POST") published = await route.request().postDataJSON(); return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: snapshot() }) }); });
-  await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Relaciones" }).click();
+  await page.goto(`/commercial/cases/${CASE_REF}`);
   for (const name of ["Empresa explícita", "Lead Account explícito", "Booker explícito", "Pagador explícito", "Aprobador distinto"]) await expect(page.getByText(name)).toBeVisible();
   await page.getByRole("button", { name: "Crear nueva versión" }).click(); await page.getByRole("button", { name: "Publicar versión" }).click(); await expect.poll(() => published).not.toBeNull();
   expect(JSON.stringify(published)).not.toMatch(/tenantId|membershipId|userId|clientId|publicRef/); expect(published?.expectedVersion).toBe(1);

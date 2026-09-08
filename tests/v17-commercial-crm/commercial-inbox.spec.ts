@@ -79,6 +79,43 @@ function pipelineCaseDetail(item = pipelineCase(), overrides: Record<string, unk
   };
 }
 
+function pipelineIcpDetail(item = pipelineCase()) {
+  const address = {
+    countryCode: "DO",
+    provinceState: "Distrito Nacional",
+    cityMunicipality: "Santo Domingo",
+    sector: "Sector sintético",
+    streetAndNumber: "Calle sintética 1",
+    buildingResidential: null,
+    floorUnit: null,
+    arrivalReference: null,
+    locationContactName: null,
+    locationContactPhone: null,
+  };
+  return {
+    caseRef: item.caseRef,
+    caseCode: item.caseCode,
+    status: item.status,
+    version: 1,
+    mode: item.mode,
+    serviceType: item.serviceType,
+    volume: { status: "ESTIMATED", estimatedCbm: item.estimatedCbm, source: "CASE" },
+    requiresSurvey: item.requiresSurvey,
+    surveyMethod: item.surveyMethod,
+    intakeChannel: "WEB",
+    clientProfileType: "INDIVIDUAL",
+    requirementNotes: null,
+    serviceDefinitionStatus: "DEFINED",
+    surveyDecisionStatus: item.requiresSurvey ? "PENDING" : "DEFINED",
+    ownerName: item.owner?.displayName || null,
+    caseContact: { displayName: "Contacto sintético", phone: "+12025550123", email: null },
+    client: item.client,
+    route: { contractVersion: 2, revision: 1, destinationStatus: "CONFIRMED", origin: address, destination: { ...address, cityMunicipality: "Santiago" }, additionalStops: [] },
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
 function summary(total: number, assigned = 0) {
   return {
     ok: true,
@@ -122,6 +159,11 @@ async function mockCrm(page: Page, options: { total?: number; cases?: ReturnType
       const expectedRows = Math.min(pageSize, Math.max(0, total - ((pageNumber - 1) * pageSize)));
       const generated = Array.from({ length: expectedRows }, (_, index) => rows[index] ?? pipelineCase({ caseRef: syntheticCaseRef((pageNumber - 1) * pageSize + index + 1), caseCode: `CRM-${String((pageNumber - 1) * pageSize + index + 1).padStart(5, "0")}` }));
       return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total, page: pageNumber, pageSize, data: generated }) });
+    }
+    if (url.pathname.startsWith("/api/crm/icp-v2/pipeline-cases/")) {
+      const icpCaseRef = decodeURIComponent(url.pathname.split("/").at(-1) || "");
+      const icpItem = rows.find((candidate) => candidate.caseRef === icpCaseRef);
+      return route.fulfill({ status: icpItem ? 200 : 404, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(icpItem ? { ok: true, data: pipelineIcpDetail(icpItem) } : { ok: false, error: "CRM_PIPELINE_RESOURCE_NOT_FOUND" }) });
     }
     const caseRef = decodeURIComponent(url.pathname.split("/").at(-1) || "");
     const item = rows.find((candidate) => candidate.caseRef === caseRef);
@@ -170,14 +212,12 @@ test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo
   await expect(page.getByTestId("commercial-summary-strip")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Nuevo Caso" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Regresar al Hub" })).toHaveCount(0);
-  await expect(page.getByText("Origen sintético", { exact: true })).toBeVisible();
-  await expect(page.getByText("Destino sintético", { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: /Survey/ }).click();
-  await expect(page.getByRole("heading", { name: "Survey en integración" })).toBeVisible();
-  await page.getByRole("tab", { name: /Cotización/ }).click();
-  await expect(page.getByRole("heading", { name: "Cotización en integración" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Resumen" })).toBeVisible();
+  await expect(page.getByRole("tab")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Survey" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cotización" })).toBeVisible();
   expect(audit.every(({ method }) => method === "GET")).toBe(true);
-  expect(audit.filter(({ pathname }) => pathname.startsWith("/api/crm/"))).toHaveLength(3);
+  expect(audit.some(({ pathname }) => pathname.startsWith("/api/crm/icp-v2/pipeline-cases/"))).toBe(true);
 });
 
 test("seleccionar una fila abre el resumen y Ficha del caso usa el workspace completo", async ({ page }, testInfo) => {
@@ -256,21 +296,23 @@ test("seleccionar una fila abre el resumen y Ficha del caso usa el workspace com
   await expect(rowSelector).toHaveAttribute("aria-pressed", "true");
 });
 
-test("A crea un caso y edita su Ficha sólo después de confirmación del servidor", async ({ page }, testInfo) => {
+test("A crea un caso y lo edita desde Inbox sólo después de confirmación del servidor", async ({ page }, testInfo) => {
   if (CAPTURE_MUTATION_EVIDENCE) mkdirSync(MUTATION_EVIDENCE, { recursive: true });
   await authenticate(page, { role: "A", permissions: ["pipeline:view", "pipeline:create", "pipeline:update:any"] });
   let detail = pipelineCase({ caseRef: CREATED_CASE_REF, caseCode: "CS-2026-SERVER", originLocation: "Origen inicial" });
   let version = 1;
+  let created = false;
   const writes: Array<{ method: string; body: Record<string, unknown> }> = [];
   await page.route("**/api/crm/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/api/crm/pipeline-summary") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify(summary(0)) });
     if (url.pathname === "/api/crm/client-options") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 20, data: [{ clientRef: DEFAULT_CLIENT_REF, displayName: "Receptor Sintético", type: "PERSON", status: "active" }] }) });
-    if (url.pathname === "/api/crm/pipeline-cases" && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 0, page: 1, pageSize: 25, data: [] }) });
+    if (url.pathname === "/api/crm/pipeline-cases" && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: created ? 1 : 0, page: 1, pageSize: 25, data: created ? [detail] : [] }) });
     if (url.pathname === "/api/crm/pipeline-cases" && request.method() === "POST") {
       const body = request.postDataJSON() as Record<string, unknown>;
       writes.push({ method: "POST", body });
+      created = true;
       return route.fulfill({ status: 201, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CREATED_CASE_REF, version: 1 }, replayed: false }) });
     }
     if (url.pathname === `/api/crm/pipeline-cases/${CREATED_CASE_REF}` && request.method() === "PATCH") {
@@ -293,12 +335,16 @@ test("A crea un caso y edita su Ficha sólo después de confirmación del servid
   await page.getByRole("button", { name: "Guardar" }).click();
   await expect(page).toHaveURL(new RegExp(`/commercial/cases/${CREATED_CASE_REF}$`));
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
-  await page.getByRole("button", { name: "Editar" }).click();
+  await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Volver al Inbox" }).click();
+  await page.getByRole("button", { name: /Seleccionar caso CS-2026-SERVER/ }).click();
+  await page.getByTestId("commercial-case-summary").getByRole("button", { name: "Editar" }).click();
   await expect(page.getByRole("heading", { name: "Editar Ficha del Caso" })).toBeVisible();
   if (CAPTURE_MUTATION_EVIDENCE && ["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) await page.screenshot({ path: resolve(MUTATION_EVIDENCE, `editar-ficha-${testInfo.project.name}.png`), fullPage: true });
   await page.getByLabel("Origen").fill("Origen editado por servidor");
   await page.getByRole("button", { name: "Guardar" }).click();
-  await expect(page.getByText("Origen editado por servidor", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Editar Ficha del Caso" })).toHaveCount(0);
+  await expect(page.getByTestId("commercial-case-summary")).toBeVisible();
   expect(writes).toHaveLength(2);
   expect(writes[0].method).toBe("POST");
   expect(writes[1].method).toBe("PATCH");
@@ -360,8 +406,10 @@ test("los permisos explícitos y el owner efectivo gobiernan los controles local
     });
     await page.goto("/commercial");
     await expect(page.getByRole("button", { name: "Nuevo Caso" })).toHaveCount(scenario.create ? 1 : 0);
+    await page.getByRole("button", { name: /Seleccionar caso/ }).click();
+    await expect(page.getByTestId("commercial-case-summary").getByRole("button", { name: "Editar" })).toHaveCount(scenario.edit ? 1 : 0);
     await page.getByRole("button", { name: /Ficha del caso/ }).click();
-    await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(scenario.edit ? 1 : 0);
+    await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(0);
     await context.close();
   }
 });
@@ -408,6 +456,12 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
     }
     if (url.pathname === "/api/crm/pipeline-cases") {
       return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 25, data: [item] }) });
+    }
+    if (url.pathname === `/api/crm/icp-v2/pipeline-cases/${DEFAULT_CASE_REF}`) {
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: pipelineIcpDetail(item) }) });
+    }
+    if (url.pathname !== detailPath) {
+      return route.fulfill({ status: 404, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: false, error: "CRM_RESOURCE_NOT_AVAILABLE_IN_HARNESS" }) });
     }
     const lifecycle = detailBarrier.begin(url.pathname);
     lifecycle.fulfillStarted();
@@ -464,7 +518,7 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
   const invalidDetail = detailBarrier.prepare("invalid-contract-detail", detailPath);
   await page.goto(`/commercial/cases/${DEFAULT_CASE_REF}`);
   await invalidDetail.completion;
-  await expect(page.getByRole("alert")).toContainText("CRM_PIPELINE_RESPONSE_INVALID");
+  await expect(page.getByRole("alert")).toContainText("La respuesta del servicio no pudo validarse de forma segura.");
   await expect(page.getByRole("button", { name: "Reintentar lectura" })).toBeVisible();
   detailBarrier.markUiStable(invalidDetail, "invalid-contract-error-rendered");
 
@@ -497,7 +551,6 @@ test("APPROVED permanece legacy congelado y OPS_HANDOFF terminal sin controles d
   );
   await page.getByRole("button", { name: /Ficha del caso/ }).first().click();
   await expect(page.getByText("Legacy congelado", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Disponible en una fase posterior\./)).toBeVisible();
   for (const label of ["Asignar", "Desasignar", "Transicionar", "Editar", "Crear caso"]) await expect(page.getByRole("button", { name: label })).toHaveCount(0);
   expect(audit.some(({ method }) => method !== "GET")).toBe(false);
 });

@@ -129,7 +129,7 @@ test("Evaluador consulta agenda tenant-first con presencial, virtual y reagendam
     page.getByRole("heading", { name: "Agenda de visitas" }),
   ).toBeVisible();
   await expect(page.getByText("Método · Visita presencial").first()).toBeVisible();
-  await expect(page.getByText("Método · Evaluación virtual").first()).toBeVisible();
+  await expect(page.getByText("Método · Visita virtual").first()).toBeVisible();
   await expect(page.getByText(/PV10B-D-QUOTES/u).first()).toBeVisible();
   if (testInfo.project.name === "chromium-desktop") {
     await capture(page, "08-agenda-evaluador");

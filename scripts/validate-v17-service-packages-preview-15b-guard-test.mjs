@@ -23,6 +23,7 @@ rejects(files[4], (value) => `${value}\nconst CommunicationPanel = () => null;`)
 rejects(files[0], (value) => value.replace('id="case-communications"', 'id="case-events-copy"'));
 rejects(files[1], (value) => value.replaceAll("Dir. origen", "Ruta"));
 rejects(files[2], (value) => value.replaceAll("PUBLISHED_LOGISTICS", "FRONTEND_GUESS"));
+rejects(files[2], (value) => value.replace('where: { family: "TRANSPORT", kind: "VISIT_ZONE" }', 'where: { family: "ZONE" }'));
 rejects(files[1], (value) => `${value}\nconst metroCities = ["Santo Domingo"];`);
 rejects(files[1], (value) => value.replace("<Pencil />Editar", "Editar no disponible"));
 rejects(files[0], (value) => `${value}\nconst Pencil = CommercialCaseForm;`);

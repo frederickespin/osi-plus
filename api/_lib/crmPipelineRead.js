@@ -75,7 +75,7 @@ const LOGISTICS_ZONE_SELECT = Object.freeze({
     take: 1,
     select: {
       items: {
-        where: { family: "ZONE" },
+        where: { family: "TRANSPORT", kind: "VISIT_ZONE" },
         orderBy: { position: "asc" },
         take: 1,
         select: { snapshot: true },

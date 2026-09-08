@@ -28,7 +28,7 @@ export function validateV17ServicePackagesPreview15BGuard({ root = process.cwd()
   invariant((source.detail.match(/<CommunicationPanel\b/gu) || []).length === 1 && /id="case-communications"/u.test(source.detail), "autoridad única de Comunicaciones ausente");
   invariant(/Dir\. origen/u.test(source.inbox) && /Dir\. destino/u.test(source.inbox) && !/label="Ruta"/u.test(source.inbox), "Inbox no usa origen y destino separados");
   invariant(/item\.route\?\.origin/u.test(source.inbox) && /item\.route\?\.destination/u.test(source.inbox) && !/originLocation \|\| "Origen pendiente"/u.test(source.inbox), "Inbox reconstruye ruta legacy");
-  invariant(/PUBLISHED_LOGISTICS/u.test(source.read) && /originZoneType/u.test(source.logistics) && /destinationZoneType/u.test(source.logistics), "clasificación publicada por lado ausente");
+  invariant(/PUBLISHED_LOGISTICS/u.test(source.read) && /where: \{ family: "TRANSPORT", kind: "VISIT_ZONE" \}/u.test(source.read) && /originZoneType/u.test(source.logistics) && /destinationZoneType/u.test(source.logistics), "clasificación publicada por lado ausente");
   invariant(/Fuera de área METRO/u.test(source.inbox) && /TriangleAlert/u.test(source.inbox) && /sr-only/u.test(source.inbox), "advertencia accesible fuera METRO ausente");
   invariant(!/Santo Domingo|Distrito Nacional|latitude|longitude/iu.test(source.inbox), "geografía METRO hard-coded en frontend");
   invariant((source.inbox.match(/>Ficha del caso<\/Button>/gu) || []).length === 1, "acción Ficha duplicada");

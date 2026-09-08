@@ -95,6 +95,21 @@ model Tenant {
   pipelineCaseServiceRevisions     PipelineCaseServiceRevision[]
   pipelineCaseServiceItems         PipelineCaseServiceItem[]
   serviceMutationCommands          ServiceMutationCommand[]
+  serviceModeDefinitions           ServiceModeDefinition[]
+  serviceCatalogModes              ServiceCatalogMode[]
+  servicePackages                  ServicePackage[]
+  servicePackageVersions           ServicePackageVersion[]
+  servicePackageVersionModes       ServicePackageVersionMode[]
+  servicePackageVersionServices    ServicePackageVersionService[]
+  servicePackageRequirements       ServicePackageRequirement[]
+  serviceMaterialPolicies          ServiceMaterialPolicy[]
+  serviceMaterialPolicyVersions    ServiceMaterialPolicyVersion[]
+  serviceMaterialPolicyLines       ServiceMaterialPolicyLine[]
+  caseServiceConfigurations        CaseServiceConfigurationRevision[]
+  caseServiceConfigurationItems    CaseServiceConfigurationItem[]
+  serviceConfigurationCommands     ServiceConfigurationCommand[]
+  serviceConfigurationAuditEvents  ServiceConfigurationAuditEvent[]
+  serviceConfigurationConflicts    ServiceConfigurationConflict[]
   surveyCatalogVersions            SurveyCatalogVersion[]
   surveyArticleCatalogItems        SurveyArticleCatalogItem[]
   surveyAreaCatalogItems           SurveyAreaCatalogItem[]
@@ -268,6 +283,12 @@ model TenantMembership {
   pipelineCaseCommandsAsResultingOwner                                                                                                          PipelineCaseCommand[]              @relation("PipelineCaseCommandResultingOwner")
   serviceMutationCommandsAsActor                                                                                                                ServiceMutationCommand[]           @relation("ServiceMutationCommandActor")
   serviceRevisionsCreated                                                                                                                       PipelineCaseServiceRevision[]      @relation("PipelineCaseServiceRevisionActor")
+  servicePackageVersionsCreated                                                                                                                 ServicePackageVersion[]            @relation("ServicePackageVersionActor")
+  serviceMaterialPolicyVersionsCreated                                                                                                          ServiceMaterialPolicyVersion[]     @relation("ServiceMaterialPolicyVersionActor")
+  caseServiceConfigurationsCreated                                                                                                              CaseServiceConfigurationRevision[] @relation("CaseServiceConfigurationActor")
+  serviceConfigurationCommandsCreated                                                                                                           ServiceConfigurationCommand[]      @relation("ServiceConfigurationCommandActor")
+  serviceConfigurationAuditEventsCreated                                                                                                        ServiceConfigurationAuditEvent[]   @relation("ServiceConfigurationAuditActor")
+  serviceConfigurationConflictsResolved                                                                                                         ServiceConfigurationConflict[]     @relation("ServiceConfigurationConflictResolver")
   surveyCatalogVersionsCreated                                                                                                                  SurveyCatalogVersion[]             @relation("SurveyCatalogVersionActor")
   surveyAssignmentsCreated                                                                                                                      SurveyAssignment[]                 @relation("SurveyAssignmentCreator")
   surveyAssignmentsEvaluated                                                                                                                    SurveyAssignment[]                 @relation("SurveyAssignmentEvaluator")
@@ -1561,6 +1582,7 @@ model PipelineCase {
   commands                      PipelineCaseCommand[]
   routeSnapshots                PipelineCaseRouteSnapshot[]
   serviceRevisions              PipelineCaseServiceRevision[]
+  serviceConfigurations         CaseServiceConfigurationRevision[]
   surveyAssignments             SurveyAssignment[]
   surveyEvaluationDecisions     SurveyEvaluationDecision[]
   surveyAssignmentEvents        SurveyAssignmentEvent[]
@@ -1680,6 +1702,9 @@ model ServiceCatalogItem {
   defaultCombinations     ServiceDefaultCombination[]     @relation("ServiceDefaultPrimary")
   defaultCombinationItems ServiceDefaultCombinationItem[]
   caseServiceItems        PipelineCaseServiceItem[]
+  catalogModes            ServiceCatalogMode[]
+  packageVersionServices  ServicePackageVersionService[]
+  materialPolicyVersions  ServiceMaterialPolicyVersion[]
 
   @@unique([tenantId, id], map: "service_catalog_items_tenant_id_id_key")
   @@unique([tenantId, serviceRef], map: "service_catalog_items_tenant_service_ref_key")
@@ -1810,6 +1835,370 @@ model ServiceMutationCommand {
   @@unique([tenantId, requestId], map: "service_mutation_commands_tenant_request_key")
   @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "service_mutation_commands_target_idx")
   @@map("service_mutation_commands")
+}
+
+model ServiceModeDefinition {
+  id               String                         @id @default(cuid())
+  modeRef          String                         @default(dbgenerated("gen_random_uuid()")) @map("mode_ref") @db.Uuid
+  tenantId         String                         @map("tenant_id")
+  code             String                         @db.VarChar(64)
+  name             String                         @db.VarChar(160)
+  description      String?                        @db.VarChar(500)
+  state            ServiceConfigurationState      @default(DRAFT)
+  sortOrder        Int                            @default(0) @map("sort_order")
+  version          Int                            @default(1)
+  createdAt        DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant           Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_mode_definitions_tenant_fkey")
+  catalogModes     ServiceCatalogMode[]
+  packageModes     ServicePackageVersionMode[]
+  materialPolicies ServiceMaterialPolicyVersion[]
+
+  @@unique([tenantId, id], map: "service_mode_definitions_tenant_id_key")
+  @@unique([tenantId, modeRef], map: "service_mode_definitions_tenant_ref_key")
+  @@unique([tenantId, code], map: "service_mode_definitions_tenant_code_key")
+  @@index([tenantId, state, sortOrder], map: "service_mode_definitions_catalog_idx")
+  @@map("service_mode_definitions")
+}
+
+model ServiceCatalogMode {
+  id        String                @id @default(cuid())
+  tenantId  String                @map("tenant_id")
+  serviceId String                @map("service_id")
+  modeId    String                @map("mode_id")
+  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_catalog_modes_tenant_fkey")
+  service   ServiceCatalogItem    @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_catalog_modes_service_fkey")
+  mode      ServiceModeDefinition @relation(fields: [tenantId, modeId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_catalog_modes_mode_fkey")
+
+  @@unique([tenantId, serviceId, modeId], map: "service_catalog_modes_scope_key")
+  @@index([tenantId, modeId, serviceId], map: "service_catalog_modes_mode_idx")
+  @@map("service_catalog_modes")
+}
+
+model ServicePackage {
+  id         String                  @id @default(cuid())
+  packageRef String                  @default(dbgenerated("gen_random_uuid()")) @map("package_ref") @db.Uuid
+  tenantId   String                  @map("tenant_id")
+  code       String                  @db.VarChar(64)
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_packages_tenant_fkey")
+  versions   ServicePackageVersion[]
+
+  @@unique([tenantId, id], map: "service_packages_tenant_id_key")
+  @@unique([tenantId, packageRef], map: "service_packages_tenant_ref_key")
+  @@unique([tenantId, code], map: "service_packages_tenant_code_key")
+  @@map("service_packages")
+}
+
+model ServicePackageVersion {
+  id                    String                             @id @default(cuid())
+  versionRef            String                             @default(dbgenerated("gen_random_uuid()")) @map("version_ref") @db.Uuid
+  tenantId              String                             @map("tenant_id")
+  packageId             String                             @map("package_id")
+  version               Int
+  state                 ServiceConfigurationState          @default(DRAFT)
+  name                  String                             @db.VarChar(160)
+  description           String?                            @db.VarChar(1000)
+  category              String?                            @db.VarChar(80)
+  tags                  String[]                           @default([])
+  sortOrder             Int                                @default(0) @map("sort_order")
+  validFrom             DateTime?                          @map("valid_from") @db.Timestamptz(6)
+  validTo               DateTime?                          @map("valid_to") @db.Timestamptz(6)
+  replacesVersionId     String?                            @map("replaces_version_id")
+  createdByMembershipId String                             @map("created_by_membership_id")
+  createdByUserId       String                             @map("created_by_user_id")
+  createdAt             DateTime                           @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt           DateTime?                          @map("published_at") @db.Timestamptz(6)
+  tenant                Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_versions_tenant_fkey")
+  package               ServicePackage                     @relation(fields: [tenantId, packageId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_versions_package_fkey")
+  replacesVersion       ServicePackageVersion?             @relation("ServicePackageVersionReplacement", fields: [tenantId, replacesVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_versions_replaces_fkey")
+  replacementVersion    ServicePackageVersion?             @relation("ServicePackageVersionReplacement")
+  createdByMembership   TenantMembership                   @relation("ServicePackageVersionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "service_package_versions_actor_fkey")
+  modes                 ServicePackageVersionMode[]
+  services              ServicePackageVersionService[]
+  requirements          ServicePackageRequirement[]
+  materialPolicies      ServiceMaterialPolicyVersion[]
+  caseConfigurations    CaseServiceConfigurationRevision[]
+
+  @@unique([tenantId, id], map: "service_package_versions_tenant_id_key")
+  @@unique([tenantId, versionRef], map: "service_package_versions_tenant_ref_key")
+  @@unique([tenantId, packageId, version], map: "service_package_versions_package_version_key")
+  @@unique([tenantId, replacesVersionId], map: "service_package_versions_replaces_key")
+  @@index([tenantId, state, validFrom, validTo], map: "service_package_versions_active_idx")
+  @@map("service_package_versions")
+}
+
+model ServicePackageVersionMode {
+  id               String                @id @default(cuid())
+  tenantId         String                @map("tenant_id")
+  packageVersionId String                @map("package_version_id")
+  modeId           String                @map("mode_id")
+  tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_version_modes_tenant_fkey")
+  packageVersion   ServicePackageVersion @relation(fields: [tenantId, packageVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_version_modes_version_fkey")
+  mode             ServiceModeDefinition @relation(fields: [tenantId, modeId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_version_modes_mode_fkey")
+
+  @@unique([tenantId, packageVersionId, modeId], map: "service_package_version_modes_scope_key")
+  @@map("service_package_version_modes")
+}
+
+model ServicePackageVersionService {
+  id               String                    @id @default(cuid())
+  tenantId         String                    @map("tenant_id")
+  packageVersionId String                    @map("package_version_id")
+  serviceId        String                    @map("service_id")
+  kind             ServicePackageServiceKind
+  position         Int
+  tenant           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_version_services_tenant_fkey")
+  packageVersion   ServicePackageVersion     @relation(fields: [tenantId, packageVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_version_services_version_fkey")
+  service          ServiceCatalogItem        @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_version_services_service_fkey")
+
+  @@unique([tenantId, packageVersionId, serviceId], map: "service_package_version_services_service_key")
+  @@unique([tenantId, packageVersionId, position], map: "service_package_version_services_position_key")
+  @@index([tenantId, serviceId, kind], map: "service_package_version_services_catalog_idx")
+  @@map("service_package_version_services")
+}
+
+model ServicePackageRequirement {
+  id               String                      @id @default(cuid())
+  requirementRef   String                      @default(dbgenerated("gen_random_uuid()")) @map("requirement_ref") @db.Uuid
+  tenantId         String                      @map("tenant_id")
+  packageVersionId String                      @map("package_version_id")
+  kind             ServiceRequirementKind
+  code             String                      @db.VarChar(80)
+  name             String                      @db.VarChar(160)
+  quantity         Decimal?                    @db.Decimal(18, 6)
+  unitCode         String?                     @map("unit_code") @db.VarChar(32)
+  hours            Decimal?                    @db.Decimal(10, 2)
+  days             Decimal?                    @db.Decimal(10, 2)
+  phaseCode        String?                     @map("phase_code") @db.VarChar(64)
+  materialId       String?                     @map("material_id")
+  assetModelId     String?                     @map("asset_model_id")
+  capabilityId     String?                     @map("capability_id")
+  disposition      ServiceMaterialDisposition?
+  chargeType       ServiceResourceChargeType?  @map("charge_type")
+  configuration    Json                        @default("{}")
+  position         Int
+  tenant           Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_requirements_tenant_fkey")
+  packageVersion   ServicePackageVersion       @relation(fields: [tenantId, packageVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_requirements_version_fkey")
+  material         MaterialCatalogItem?        @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_requirements_material_fkey")
+  assetModel       AssetModel?                 @relation(fields: [tenantId, assetModelId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_requirements_asset_fkey")
+  capability       OperationalCapability?      @relation(fields: [tenantId, capabilityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_package_requirements_capability_fkey")
+
+  @@unique([tenantId, requirementRef], map: "service_package_requirements_tenant_ref_key")
+  @@unique([tenantId, packageVersionId, position], map: "service_package_requirements_position_key")
+  @@index([tenantId, packageVersionId, kind], map: "service_package_requirements_kind_idx")
+  @@map("service_package_requirements")
+}
+
+model ServiceMaterialPolicy {
+  id        String                         @id @default(cuid())
+  policyRef String                         @default(dbgenerated("gen_random_uuid()")) @map("policy_ref") @db.Uuid
+  tenantId  String                         @map("tenant_id")
+  code      String                         @db.VarChar(64)
+  createdAt DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant    Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policies_tenant_fkey")
+  versions  ServiceMaterialPolicyVersion[]
+
+  @@unique([tenantId, id], map: "service_material_policies_tenant_id_key")
+  @@unique([tenantId, policyRef], map: "service_material_policies_tenant_ref_key")
+  @@unique([tenantId, code], map: "service_material_policies_tenant_code_key")
+  @@map("service_material_policies")
+}
+
+model ServiceMaterialPolicyVersion {
+  id                    String                             @id @default(cuid())
+  versionRef            String                             @default(dbgenerated("gen_random_uuid()")) @map("version_ref") @db.Uuid
+  tenantId              String                             @map("tenant_id")
+  policyId              String                             @map("policy_id")
+  packageVersionId      String?                            @map("package_version_id")
+  serviceId             String?                            @map("service_id")
+  modeId                String?                            @map("mode_id")
+  version               Int
+  state                 ServiceConfigurationState          @default(DRAFT)
+  name                  String                             @db.VarChar(160)
+  preferenceCode        String?                            @map("preference_code") @db.VarChar(80)
+  standardCode          String                             @map("standard_code") @db.VarChar(80)
+  validFrom             DateTime?                          @map("valid_from") @db.Timestamptz(6)
+  validTo               DateTime?                          @map("valid_to") @db.Timestamptz(6)
+  replacesVersionId     String?                            @map("replaces_version_id")
+  createdByMembershipId String                             @map("created_by_membership_id")
+  createdByUserId       String                             @map("created_by_user_id")
+  createdAt             DateTime                           @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt           DateTime?                          @map("published_at") @db.Timestamptz(6)
+  tenant                Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_versions_tenant_fkey")
+  policy                ServiceMaterialPolicy              @relation(fields: [tenantId, policyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_versions_policy_fkey")
+  packageVersion        ServicePackageVersion?             @relation(fields: [tenantId, packageVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_versions_package_fkey")
+  service               ServiceCatalogItem?                @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_versions_service_fkey")
+  mode                  ServiceModeDefinition?             @relation(fields: [tenantId, modeId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_versions_mode_fkey")
+  replacesVersion       ServiceMaterialPolicyVersion?      @relation("ServiceMaterialPolicyReplacement", fields: [tenantId, replacesVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_versions_replaces_fkey")
+  replacementVersion    ServiceMaterialPolicyVersion?      @relation("ServiceMaterialPolicyReplacement")
+  createdByMembership   TenantMembership                   @relation("ServiceMaterialPolicyVersionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_versions_actor_fkey")
+  lines                 ServiceMaterialPolicyLine[]
+  caseConfigurations    CaseServiceConfigurationRevision[]
+
+  @@unique([tenantId, id], map: "service_material_policy_versions_tenant_id_key")
+  @@unique([tenantId, versionRef], map: "service_material_policy_versions_tenant_ref_key")
+  @@unique([tenantId, policyId, version], map: "service_material_policy_versions_policy_version_key")
+  @@unique([tenantId, replacesVersionId], map: "service_material_policy_versions_replaces_key")
+  @@index([tenantId, state, modeId, serviceId, packageVersionId, validFrom, validTo], map: "service_material_policy_versions_resolve_idx")
+  @@map("service_material_policy_versions")
+}
+
+model ServiceMaterialPolicyLine {
+  id                String                       @id @default(cuid())
+  lineRef           String                       @default(dbgenerated("gen_random_uuid()")) @map("line_ref") @db.Uuid
+  tenantId          String                       @map("tenant_id")
+  policyVersionId   String                       @map("policy_version_id")
+  materialId        String?                      @map("material_id")
+  assetModelId      String?                      @map("asset_model_id")
+  materialClass     String                       @map("material_class") @db.VarChar(80)
+  disposition       ServiceMaterialDisposition
+  proportion        Decimal?                     @db.Decimal(7, 4)
+  chargeType        ServiceResourceChargeType    @map("charge_type")
+  preparationRule   Json                         @default("{}") @map("preparation_rule")
+  maintenanceRule   Json                         @default("{}") @map("maintenance_rule")
+  deteriorationRule Json                         @default("{}") @map("deterioration_rule")
+  replacementRule   Json                         @default("{}") @map("replacement_rule")
+  conditions        Json                         @default("{}")
+  position          Int
+  tenant            Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_lines_tenant_fkey")
+  policyVersion     ServiceMaterialPolicyVersion @relation(fields: [tenantId, policyVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_lines_version_fkey")
+  material          MaterialCatalogItem?         @relation(fields: [tenantId, materialId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_lines_material_fkey")
+  assetModel        AssetModel?                  @relation(fields: [tenantId, assetModelId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_material_policy_lines_asset_fkey")
+
+  @@unique([tenantId, lineRef], map: "service_material_policy_lines_tenant_ref_key")
+  @@unique([tenantId, policyVersionId, position], map: "service_material_policy_lines_position_key")
+  @@map("service_material_policy_lines")
+}
+
+model CaseServiceConfigurationRevision {
+  id                            String                         @id @default(cuid())
+  configurationRef              String                         @default(dbgenerated("gen_random_uuid()")) @map("configuration_ref") @db.Uuid
+  tenantId                      String                         @map("tenant_id")
+  pipelineCaseId                String                         @map("pipeline_case_id")
+  revision                      Int
+  modeCodeSnapshot              String                         @map("mode_code_snapshot") @db.VarChar(64)
+  serviceSelectionRef           String                         @map("service_selection_ref") @db.Uuid
+  serviceSelectionRevision      Int                            @map("service_selection_revision")
+  packageVersionId              String?                        @map("package_version_id")
+  packageRefSnapshot            String?                        @map("package_ref_snapshot") @db.Uuid
+  packageVersionSnapshot        Int?                           @map("package_version_snapshot")
+  materialPolicyVersionId       String?                        @map("material_policy_version_id")
+  materialPolicyRefSnapshot     String?                        @map("material_policy_ref_snapshot") @db.Uuid
+  materialPolicyVersionSnapshot Int?                           @map("material_policy_version_snapshot")
+  surveyPublicationRef          String?                        @map("survey_publication_ref") @db.Uuid
+  commercialAgreementRef        String?                        @map("commercial_agreement_ref") @db.Uuid
+  preferenceSnapshot            Json                           @default("{}") @map("preference_snapshot")
+  durationSnapshot              Json                           @default("{}") @map("duration_snapshot")
+  precedenceSnapshot            Json                           @default("{}") @map("precedence_snapshot")
+  logicalSha256                 String                         @map("logical_sha256") @db.Char(64)
+  source                        CaseServiceConfigurationSource
+  createdByMembershipId         String                         @map("created_by_membership_id")
+  createdByUserId               String                         @map("created_by_user_id")
+  createdAt                     DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "case_service_configurations_tenant_fkey")
+  pipelineCase                  PipelineCase                   @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "case_service_configurations_case_fkey")
+  packageVersion                ServicePackageVersion?         @relation(fields: [tenantId, packageVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "case_service_configurations_package_fkey")
+  materialPolicyVersion         ServiceMaterialPolicyVersion?  @relation(fields: [tenantId, materialPolicyVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "case_service_configurations_policy_fkey")
+  createdByMembership           TenantMembership               @relation("CaseServiceConfigurationActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "case_service_configurations_actor_fkey")
+  items                         CaseServiceConfigurationItem[]
+  conflicts                     ServiceConfigurationConflict[]
+
+  @@unique([tenantId, id], map: "case_service_configurations_tenant_id_key")
+  @@unique([tenantId, configurationRef], map: "case_service_configurations_tenant_ref_key")
+  @@unique([tenantId, pipelineCaseId, revision], map: "case_service_configurations_case_revision_key")
+  @@index([tenantId, pipelineCaseId, createdAt(sort: Desc)], map: "case_service_configurations_case_idx")
+  @@map("case_service_configuration_revisions")
+}
+
+model CaseServiceConfigurationItem {
+  id              String                           @id @default(cuid())
+  itemRef         String                           @default(dbgenerated("gen_random_uuid()")) @map("item_ref") @db.Uuid
+  tenantId        String                           @map("tenant_id")
+  configurationId String                           @map("configuration_id")
+  kind            CaseServiceConfigurationItemKind
+  source          ServiceRequirementSource
+  authorityRef    String?                          @map("authority_ref") @db.Uuid
+  codeSnapshot    String                           @map("code_snapshot") @db.VarChar(80)
+  nameSnapshot    String                           @map("name_snapshot") @db.VarChar(160)
+  quantity        Decimal?                         @db.Decimal(18, 6)
+  unitCode        String?                          @map("unit_code") @db.VarChar(32)
+  hours           Decimal?                         @db.Decimal(10, 2)
+  days            Decimal?                         @db.Decimal(10, 2)
+  disposition     ServiceMaterialDisposition?
+  chargeType      ServiceResourceChargeType?       @map("charge_type")
+  proportion      Decimal?                         @db.Decimal(7, 4)
+  details         Json                             @default("{}")
+  position        Int
+  tenant          Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "case_service_configuration_items_tenant_fkey")
+  configuration   CaseServiceConfigurationRevision @relation(fields: [tenantId, configurationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "case_service_configuration_items_revision_fkey")
+
+  @@unique([tenantId, itemRef], map: "case_service_configuration_items_tenant_ref_key")
+  @@unique([tenantId, configurationId, position], map: "case_service_configuration_items_position_key")
+  @@index([tenantId, configurationId, kind], map: "case_service_configuration_items_kind_idx")
+  @@map("case_service_configuration_items")
+}
+
+model ServiceConfigurationCommand {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String           @map("tenant_id")
+  requestId         String           @map("request_id") @db.VarChar(191)
+  operation         String           @db.VarChar(80)
+  payloadHash       String           @map("payload_hash") @db.Char(64)
+  targetRef         String           @map("target_ref") @db.VarChar(191)
+  resultingVersion  Int              @map("resulting_version")
+  actorMembershipId String           @map("actor_membership_id")
+  actorUserId       String           @map("actor_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_configuration_commands_tenant_fkey")
+  actorMembership   TenantMembership @relation("ServiceConfigurationCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "service_configuration_commands_actor_fkey")
+
+  @@unique([tenantId, requestId], map: "service_configuration_commands_tenant_request_key")
+  @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "service_configuration_commands_target_idx")
+  @@map("service_configuration_commands")
+}
+
+model ServiceConfigurationAuditEvent {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventRef          String           @default(dbgenerated("gen_random_uuid()")) @map("event_ref") @db.Uuid
+  tenantId          String           @map("tenant_id")
+  aggregateRef      String           @map("aggregate_ref") @db.VarChar(191)
+  aggregateType     String           @map("aggregate_type") @db.VarChar(80)
+  action            String           @db.VarChar(80)
+  version           Int
+  snapshotSha256    String           @map("snapshot_sha256") @db.Char(64)
+  metadata          Json             @default("{}")
+  actorMembershipId String           @map("actor_membership_id")
+  actorUserId       String           @map("actor_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_configuration_audit_events_tenant_fkey")
+  actorMembership   TenantMembership @relation("ServiceConfigurationAuditActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "service_configuration_audit_events_actor_fkey")
+
+  @@unique([tenantId, eventRef], map: "service_configuration_audit_events_tenant_ref_key")
+  @@index([tenantId, aggregateRef, createdAt(sort: Desc)], map: "service_configuration_audit_events_aggregate_idx")
+  @@map("service_configuration_audit_events")
+}
+
+model ServiceConfigurationConflict {
+  id                     String                            @id @default(cuid())
+  conflictRef            String                            @default(dbgenerated("gen_random_uuid()")) @map("conflict_ref") @db.Uuid
+  tenantId               String                            @map("tenant_id")
+  configurationId        String                            @map("configuration_id")
+  kind                   String                            @db.VarChar(80)
+  competingAuthorityRefs String[]                          @map("competing_authority_refs") @db.Uuid
+  state                  ServiceConfigurationConflictState @default(OPEN)
+  resolution             Json?
+  resolvedByMembershipId String?                           @map("resolved_by_membership_id")
+  resolvedByUserId       String?                           @map("resolved_by_user_id")
+  createdAt              DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt             DateTime?                         @map("resolved_at") @db.Timestamptz(6)
+  tenant                 Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_configuration_conflicts_tenant_fkey")
+  configuration          CaseServiceConfigurationRevision  @relation(fields: [tenantId, configurationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "service_configuration_conflicts_revision_fkey")
+  resolvedByMembership   TenantMembership?                 @relation("ServiceConfigurationConflictResolver", fields: [tenantId, resolvedByMembershipId, resolvedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "service_configuration_conflicts_resolver_fkey")
+
+  @@unique([tenantId, conflictRef], map: "service_configuration_conflicts_tenant_ref_key")
+  @@index([tenantId, state, createdAt], map: "service_configuration_conflicts_state_idx")
+  @@map("service_configuration_conflicts")
 }
 
 model SurveyCatalogVersion {
@@ -3579,40 +3968,42 @@ model MaterialUnit {
 }
 
 model MaterialCatalogItem {
-  id                 String                      @id @default(cuid())
-  materialRef        String                      @default(dbgenerated("gen_random_uuid()")) @map("material_ref") @db.Uuid
-  tenantId           String                      @map("tenant_id")
-  code               String                      @db.VarChar(64)
-  name               String                      @db.VarChar(160)
-  description        String?                     @db.VarChar(1000)
-  family             String                      @db.VarChar(80)
-  subfamily          String?                     @db.VarChar(80)
-  baseUnitId         String                      @map("base_unit_id")
-  purchaseUnitId     String                      @map("purchase_unit_id")
-  consumptionUnitId  String                      @map("consumption_unit_id")
-  technicalFlags     String[]                    @default([]) @map("technical_flags")
-  dimensionPolicy    Json                        @default("{}") @map("dimension_policy")
-  lotTrackingEnabled Boolean                     @default(false) @map("lot_tracking_enabled")
-  minimumStock       Decimal?                    @map("minimum_stock") @db.Decimal(18, 6)
-  maximumStock       Decimal?                    @map("maximum_stock") @db.Decimal(18, 6)
-  reorderPoint       Decimal?                    @map("reorder_point") @db.Decimal(18, 6)
-  sortOrder          Int                         @default(0) @map("sort_order")
-  status             MaterialRecordStatus        @default(ACTIVE)
-  version            Int                         @default(1)
-  createdAt          DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant             Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_tenant_fkey")
-  baseUnit           MaterialUnit                @relation("MaterialBaseUnit", fields: [tenantId, baseUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_base_unit_fkey")
-  purchaseUnit       MaterialUnit                @relation("MaterialPurchaseUnit", fields: [tenantId, purchaseUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_purchase_unit_fkey")
-  consumptionUnit    MaterialUnit                @relation("MaterialConsumptionUnit", fields: [tenantId, consumptionUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_consumption_unit_fkey")
-  conversions        MaterialUnitConversion[]
-  costs              MaterialCostVersion[]
-  suppliers          MaterialSupplierReference[]
-  movements          MaterialInventoryMovement[]
-  reservations       MaterialReservation[]
-  recipeLines        PackingRecipeLine[]
-  requirementLines   MaterialRequirementLine[]
-  purchaseRequests   MaterialPurchaseRequest[]
+  id                         String                      @id @default(cuid())
+  materialRef                String                      @default(dbgenerated("gen_random_uuid()")) @map("material_ref") @db.Uuid
+  tenantId                   String                      @map("tenant_id")
+  code                       String                      @db.VarChar(64)
+  name                       String                      @db.VarChar(160)
+  description                String?                     @db.VarChar(1000)
+  family                     String                      @db.VarChar(80)
+  subfamily                  String?                     @db.VarChar(80)
+  baseUnitId                 String                      @map("base_unit_id")
+  purchaseUnitId             String                      @map("purchase_unit_id")
+  consumptionUnitId          String                      @map("consumption_unit_id")
+  technicalFlags             String[]                    @default([]) @map("technical_flags")
+  dimensionPolicy            Json                        @default("{}") @map("dimension_policy")
+  lotTrackingEnabled         Boolean                     @default(false) @map("lot_tracking_enabled")
+  minimumStock               Decimal?                    @map("minimum_stock") @db.Decimal(18, 6)
+  maximumStock               Decimal?                    @map("maximum_stock") @db.Decimal(18, 6)
+  reorderPoint               Decimal?                    @map("reorder_point") @db.Decimal(18, 6)
+  sortOrder                  Int                         @default(0) @map("sort_order")
+  status                     MaterialRecordStatus        @default(ACTIVE)
+  version                    Int                         @default(1)
+  createdAt                  DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                     Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_tenant_fkey")
+  baseUnit                   MaterialUnit                @relation("MaterialBaseUnit", fields: [tenantId, baseUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_base_unit_fkey")
+  purchaseUnit               MaterialUnit                @relation("MaterialPurchaseUnit", fields: [tenantId, purchaseUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_purchase_unit_fkey")
+  consumptionUnit            MaterialUnit                @relation("MaterialConsumptionUnit", fields: [tenantId, consumptionUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_catalog_items_consumption_unit_fkey")
+  conversions                MaterialUnitConversion[]
+  costs                      MaterialCostVersion[]
+  suppliers                  MaterialSupplierReference[]
+  movements                  MaterialInventoryMovement[]
+  reservations               MaterialReservation[]
+  recipeLines                PackingRecipeLine[]
+  requirementLines           MaterialRequirementLine[]
+  purchaseRequests           MaterialPurchaseRequest[]
+  servicePackageRequirements ServicePackageRequirement[]
+  serviceMaterialPolicyLines ServiceMaterialPolicyLine[]
 
   @@unique([tenantId, id], map: "material_catalog_items_tenant_id_key")
   @@unique([tenantId, materialRef], map: "material_catalog_items_tenant_ref_key")
@@ -3999,26 +4390,28 @@ model MaterialPurchaseRequest {
 }
 
 model AssetModel {
-  id                   String                  @id @default(cuid())
-  modelRef             String                  @default(dbgenerated("gen_random_uuid()")) @map("model_ref") @db.Uuid
-  tenantId             String                  @map("tenant_id")
-  code                 String                  @db.VarChar(64)
-  name                 String                  @db.VarChar(160)
-  description          String?                 @db.VarChar(1000)
-  family               String                  @db.VarChar(80)
-  resourceType         AssetResourceType       @map("resource_type")
-  serialPolicy         AssetSerialPolicy       @default(OPTIONAL) @map("serial_policy")
-  identificationPolicy Json                    @default("{}") @map("identification_policy")
-  capacity             Json                    @default("{}")
-  status               AssetRecordStatus       @default(ACTIVE)
-  version              Int                     @default(1)
-  createdAt            DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt            DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant               Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_models_tenant_fkey")
-  instances            AssetInstance[]
-  costVersions         AssetCostVersion[]
-  maintenanceRules     AssetMaintenanceRule[]
-  externalOffers       ExternalResourceOffer[]
+  id                         String                      @id @default(cuid())
+  modelRef                   String                      @default(dbgenerated("gen_random_uuid()")) @map("model_ref") @db.Uuid
+  tenantId                   String                      @map("tenant_id")
+  code                       String                      @db.VarChar(64)
+  name                       String                      @db.VarChar(160)
+  description                String?                     @db.VarChar(1000)
+  family                     String                      @db.VarChar(80)
+  resourceType               AssetResourceType           @map("resource_type")
+  serialPolicy               AssetSerialPolicy           @default(OPTIONAL) @map("serial_policy")
+  identificationPolicy       Json                        @default("{}") @map("identification_policy")
+  capacity                   Json                        @default("{}")
+  status                     AssetRecordStatus           @default(ACTIVE)
+  version                    Int                         @default(1)
+  createdAt                  DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                     Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "asset_models_tenant_fkey")
+  instances                  AssetInstance[]
+  costVersions               AssetCostVersion[]
+  maintenanceRules           AssetMaintenanceRule[]
+  externalOffers             ExternalResourceOffer[]
+  servicePackageRequirements ServicePackageRequirement[]
+  serviceMaterialPolicyLines ServiceMaterialPolicyLine[]
 
   @@unique([tenantId, id], map: "asset_models_tenant_id_key")
   @@unique([tenantId, modelRef], map: "asset_models_tenant_ref_key")
@@ -5894,6 +6287,78 @@ enum ServiceClassificationStatus {
   PENDING
 }
 
+enum ServiceConfigurationState {
+  DRAFT
+  PUBLISHED
+  INACTIVE
+}
+
+enum ServicePackageServiceKind {
+  PRIMARY
+  COMPLEMENTARY
+}
+
+enum ServiceRequirementKind {
+  PERSONNEL
+  MATERIAL
+  ASSET
+  VEHICLE
+  TRANSPORT
+  DURATION
+  CRATING
+}
+
+enum ServiceMaterialDisposition {
+  CONSUMED
+  RENTED
+  RETURNABLE
+  USAGE_CHARGE
+}
+
+enum ServiceResourceChargeType {
+  INCLUDED
+  SALE
+  RENTAL
+  USAGE
+  PREPARATION
+  MAINTENANCE
+  DETERIORATION
+  REPLACEMENT
+}
+
+enum CaseServiceConfigurationSource {
+  PACKAGE
+  COMMERCIAL_AGREEMENT
+  CASE_OVERRIDE
+  MANUAL_RESOLUTION
+}
+
+enum CaseServiceConfigurationItemKind {
+  PRIMARY_SERVICE
+  COMPLEMENTARY_SERVICE
+  PERSONNEL
+  MATERIAL
+  ASSET
+  VEHICLE
+  TRANSPORT
+  DURATION
+  CRATING
+}
+
+enum ServiceRequirementSource {
+  SERVICE_DEFAULT
+  PACKAGE
+  MATERIAL_POLICY
+  COMMERCIAL_AGREEMENT
+  SURVEY
+  CASE_OVERRIDE
+}
+
+enum ServiceConfigurationConflictState {
+  OPEN
+  RESOLVED
+}
+
 enum SurveyCatalogVersionStatus {
   DRAFT
   ACTIVE
@@ -7544,23 +8009,24 @@ model CommercialRelationshipEvent {
 }
 
 model OperationalCapability {
-  id                String                            @id @default(cuid())
-  capabilityRef     String                            @default(dbgenerated("gen_random_uuid()")) @map("capability_ref") @db.Uuid
-  tenantId          String                            @map("tenant_id")
-  code              String                            @db.VarChar(80)
-  name              String                            @db.VarChar(160)
-  description       String?                           @db.VarChar(500)
-  status            OperationalRecordStatus           @default(ACTIVE)
-  version           Int                               @default(1)
-  actorMembershipId String                            @map("actor_membership_id")
-  actorUserId       String                            @map("actor_user_id")
-  requestId         String                            @map("request_id") @db.VarChar(191)
-  payloadHash       String                            @map("payload_hash") @db.Char(64)
-  createdAt         DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime                          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant            Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "operational_capabilities_tenant_fkey")
-  actorMembership   TenantMembership                  @relation("OperationalCapabilityActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "operational_capabilities_actor_fkey")
-  assignments       OperationalCapabilityAssignment[]
+  id                         String                            @id @default(cuid())
+  capabilityRef              String                            @default(dbgenerated("gen_random_uuid()")) @map("capability_ref") @db.Uuid
+  tenantId                   String                            @map("tenant_id")
+  code                       String                            @db.VarChar(80)
+  name                       String                            @db.VarChar(160)
+  description                String?                           @db.VarChar(500)
+  status                     OperationalRecordStatus           @default(ACTIVE)
+  version                    Int                               @default(1)
+  actorMembershipId          String                            @map("actor_membership_id")
+  actorUserId                String                            @map("actor_user_id")
+  requestId                  String                            @map("request_id") @db.VarChar(191)
+  payloadHash                String                            @map("payload_hash") @db.Char(64)
+  createdAt                  DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime                          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                     Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "operational_capabilities_tenant_fkey")
+  actorMembership            TenantMembership                  @relation("OperationalCapabilityActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "operational_capabilities_actor_fkey")
+  assignments                OperationalCapabilityAssignment[]
+  servicePackageRequirements ServicePackageRequirement[]
 
   @@unique([tenantId, id], map: "operational_capabilities_tenant_id_key")
   @@unique([tenantId, capabilityRef], map: "operational_capabilities_tenant_ref_key")

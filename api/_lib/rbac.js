@@ -165,6 +165,17 @@ export const PERMS = Object.freeze({
   COMMUNICATIONS_VIEW: "communications:view",
   COMMUNICATIONS_TENANT: "communications:tenant",
 
+  // V17 operational personnel and visit policy authority. Explicit grants only.
+  PERSONNEL_PROFILES_VIEW: "personnel:profiles:view",
+  PERSONNEL_PROFILES_MANAGE: "personnel:profiles:manage",
+  PERSONNEL_CAPABILITIES_VIEW: "personnel:capabilities:view",
+  PERSONNEL_CAPABILITIES_MANAGE: "personnel:capabilities:manage",
+  SCHEDULING_POLICIES_VIEW: "scheduling:policies:view",
+  SCHEDULING_POLICIES_MANAGE: "scheduling:policies:manage",
+  SCHEDULING_EXCEPTIONS_REQUEST: "scheduling:exceptions:request",
+  SCHEDULING_EXCEPTIONS_APPROVE: "scheduling:exceptions:approve",
+  SCHEDULING_EXCEPTIONS_RESPOND: "scheduling:exceptions:respond",
+
   // HR
   HR_VIEW: "hr:view",
   HR_KPI: "hr:kpi",
@@ -304,6 +315,18 @@ const EXPLICIT_COMMUNICATION_PERMISSIONS = new Set([
   PERMS.COMMUNICATIONS_TENANT,
 ]);
 
+const EXPLICIT_PERSONNEL_POLICY_PERMISSIONS = new Set([
+  PERMS.PERSONNEL_PROFILES_VIEW,
+  PERMS.PERSONNEL_PROFILES_MANAGE,
+  PERMS.PERSONNEL_CAPABILITIES_VIEW,
+  PERMS.PERSONNEL_CAPABILITIES_MANAGE,
+  PERMS.SCHEDULING_POLICIES_VIEW,
+  PERMS.SCHEDULING_POLICIES_MANAGE,
+  PERMS.SCHEDULING_EXCEPTIONS_REQUEST,
+  PERMS.SCHEDULING_EXCEPTIONS_APPROVE,
+  PERMS.SCHEDULING_EXCEPTIONS_RESPOND,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
@@ -316,7 +339,8 @@ const ROLE_PERMS = {
     && !EXPLICIT_COSTING_PERMISSIONS.has(permission)
     && !EXPLICIT_QUOTE_PERMISSIONS.has(permission)
     && !EXPLICIT_COMMERCIAL_RELATIONSHIP_PERMISSIONS.has(permission)
-    && !EXPLICIT_COMMUNICATION_PERMISSIONS.has(permission)),
+    && !EXPLICIT_COMMUNICATION_PERMISSIONS.has(permission)
+    && !EXPLICIT_PERSONNEL_POLICY_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

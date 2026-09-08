@@ -6,7 +6,7 @@ const CODE = /^[A-Z][A-Z0-9_.-]{2,79}$/;
 const CATEGORIES = new Set(["VISIT_CONFIRMATION", "EVALUATOR_ASSIGNMENT", "SURVEY_PIC", "CLIENT_INFORMATION_REQUEST", "DOCUMENT_REQUEST", "QUOTE_SENT", "QUOTE_FOLLOW_UP", "QUOTE_ACCEPTED", "QUOTE_REJECTED", "BOOKER_NOTIFICATION", "AGENT_NOTIFICATION", "LEAD_ACCOUNT_NOTIFICATION"]);
 const AUDIENCES = new Set(["CLIENT", "BOOKER", "LEAD_ACCOUNT", "AGENT", "EVALUATOR", "SALES", "COORDINATOR", "PAYER", "APPROVER", "REFERRAL", "INTERNAL_TEAM"]);
 const CHANNELS = new Set(["EMAIL", "WHATSAPP", "PORTAL", "INTERNAL", "SMS"]);
-const MILESTONES = new Set(["VISIT_CONFIRMATION", "EVALUATOR_ASSIGNMENT", "SURVEY_PIC_CLIENT", "SURVEY_PIC_EVALUATOR", "VISIT_RESCHEDULED", "VISIT_CANCELLED", "QUOTE_SENT", "FOLLOW_UP_1", "FOLLOW_UP_2", "EXPIRY_REMINDER", "QUOTE_ACCEPTED", "QUOTE_REJECTED", "CLIENT_INFORMATION_REQUEST", "DOCUMENT_REQUEST", "BOOKER_NOTIFICATION", "AGENT_NOTIFICATION", "LEAD_ACCOUNT_NOTIFICATION"]);
+const MILESTONES = new Set(["VISIT_CONFIRMATION", "EVALUATOR_ASSIGNMENT", "SURVEY_PIC_CLIENT", "SURVEY_PIC_EVALUATOR", "VISIT_RESCHEDULED", "VISIT_CANCELLED", "AFTER_HOURS_APPROVED", "AFTER_HOURS_REJECTED", "QUOTE_SENT", "FOLLOW_UP_1", "FOLLOW_UP_2", "EXPIRY_REMINDER", "QUOTE_ACCEPTED", "QUOTE_REJECTED", "CLIENT_INFORMATION_REQUEST", "DOCUMENT_REQUEST", "BOOKER_NOTIFICATION", "AGENT_NOTIFICATION", "LEAD_ACCOUNT_NOTIFICATION"]);
 
 export const COMMUNICATION_VARIABLE_CATALOG_VERSION = 1;
 export const COMMUNICATION_VARIABLES = Object.freeze([
@@ -24,6 +24,10 @@ export const COMMUNICATION_VARIABLES = Object.freeze([
   { name: "quote.validUntil", source: "QuoteProposalRevision.validUntil", type: "DATE", pii: false, contexts: ["QUOTE"], fallback: "Vigencia por confirmar" },
   { name: "visit.fee", source: "SurveyAssignment.visitFeeSnapshot", type: "MONEY", pii: false, contexts: ["SCHEDULING"], fallback: "Tarifa por confirmar" },
   { name: "visit.instructions", source: "SurveyAssignment.instructionsSnapshot", type: "TEXT", pii: true, contexts: ["SCHEDULING"], fallback: "Sin instrucciones adicionales" },
+  { name: "visit.reason", source: "SurveyAssignment.VisitReason.name", type: "TEXT", pii: false, contexts: ["SCHEDULING"], fallback: "Visita programada" },
+  { name: "visit.method", source: "SurveyEvaluationDecision.method", type: "TEXT", pii: false, contexts: ["SCHEDULING"], fallback: "Método por confirmar" },
+  { name: "visit.travelMinutes", source: "SurveyAssignment.travelBufferMinutes", type: "TEXT", pii: false, contexts: ["SCHEDULING"], fallback: "No aplica" },
+  { name: "visit.resources", source: "SurveyAssignment.resourcesSnapshot", type: "TEXT", pii: false, contexts: ["SCHEDULING"], fallback: "Sin recursos adicionales" },
 ]);
 const VARIABLE_NAMES = new Set(COMMUNICATION_VARIABLES.map((item) => item.name));
 const VARIABLE_CATALOG = new Map(COMMUNICATION_VARIABLES.map((item) => [item.name, item]));

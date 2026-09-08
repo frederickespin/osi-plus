@@ -185,6 +185,16 @@ model Tenant {
   communicationRecords             CommunicationRecord[]
   communicationCommands            CommunicationCommand[]
   communicationAuditEvents         CommunicationAuditEvent[]
+  operationalCapabilities          OperationalCapability[]
+  operationalCapabilityAssignments OperationalCapabilityAssignment[]
+  operationalZoneAssignments       OperationalZoneAssignment[]
+  visitPolicyVersions              VisitPolicyVersion[]
+  visitPolicyWindows               VisitPolicyWindow[]
+  visitReasons                     VisitReason[]
+  operationalScheduleOverrides     OperationalScheduleOverride[]
+  afterHoursVisitRequests          AfterHoursVisitRequest[]
+  visitPolicyEvents                VisitPolicyEvent[]
+  personnelPolicyCommands          PersonnelPolicyCommand[]
   memberships                      TenantMembership[]
   vehicle_import_batches           vehicle_import_batches[]
   vehicle_import_items             vehicle_import_items[]
@@ -308,6 +318,16 @@ model TenantMembership {
   quoteDispatchesAsActor                                                                                                                        QuoteDispatch[]                    @relation("QuoteDispatchActor")
   quoteClientDecisionsAsActor                                                                                                                   QuoteClientDecision[]              @relation("QuoteClientDecisionActor")
   quoteMutationCommandsAsActor                                                                                                                  QuoteMutationCommand[]             @relation("QuoteMutationCommandActor")
+  operationalCapabilitiesCreated                                                                                                                OperationalCapability[]            @relation("OperationalCapabilityActor")
+  operationalCapabilityAssignmentsCreated                                                                                                       OperationalCapabilityAssignment[]  @relation("OperationalCapabilityAssignmentActor")
+  operationalZoneAssignmentsCreated                                                                                                             OperationalZoneAssignment[]        @relation("OperationalZoneAssignmentActor")
+  visitPoliciesCreated                                                                                                                          VisitPolicyVersion[]               @relation("VisitPolicyActor")
+  operationalScheduleOverridesCreated                                                                                                           OperationalScheduleOverride[]      @relation("OperationalScheduleOverrideActor")
+  afterHoursVisitRequestsCreated                                                                                                                AfterHoursVisitRequest[]           @relation("AfterHoursVisitRequester")
+  afterHoursVisitRequestsEvaluated                                                                                                              AfterHoursVisitRequest[]           @relation("AfterHoursVisitEvaluator")
+  afterHoursVisitRequestsDecided                                                                                                                AfterHoursVisitRequest[]           @relation("AfterHoursVisitAdmin")
+  visitPolicyEventsCreated                                                                                                                      VisitPolicyEvent[]                 @relation("VisitPolicyEventActor")
+  personnelPolicyCommandsCreated                                                                                                                PersonnelPolicyCommand[]           @relation("PersonnelPolicyCommandActor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, publicRef], map: "tenant_memberships_tenant_id_public_ref_key")
@@ -320,32 +340,42 @@ model TenantMembership {
 }
 
 model EmployeeProfile {
-  id                     String                     @id @default(cuid())
-  tenantId               String                     @map("tenant_id")
-  membershipId           String                     @map("membership_id")
-  userId                 String                     @map("user_id")
-  employeeCode           String                     @map("employee_code") @db.VarChar(64)
-  normalizedEmployeeCode String                     @map("normalized_employee_code") @db.VarChar(64)
-  jobTitle               String?                    @map("job_title") @db.VarChar(120)
-  departmentCode         String?                    @map("department_code") @db.VarChar(64)
-  employmentStatus       EmployeeEmploymentStatus   @map("employment_status")
-  contractType           EmployeeContractType?      @map("contract_type")
-  availabilityStatus     EmployeeAvailabilityStatus @map("availability_status")
-  supervisorMembershipId String?                    @map("supervisor_membership_id")
-  supervisorUserId       String?                    @map("supervisor_user_id")
-  hiredAt                DateTime?                  @map("hired_at") @db.Date
-  contractStartsAt       DateTime?                  @map("contract_starts_at") @db.Date
-  contractEndsAt         DateTime?                  @map("contract_ends_at") @db.Date
-  terminatedAt           DateTime?                  @map("terminated_at") @db.Date
-  provisioningSource     TenantProvisioningSource   @default(MANUAL) @map("provisioning_source")
-  provisioningBatchId    String?                    @map("provisioning_batch_id") @db.VarChar(128)
-  createdAt              DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant                 Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  membership             TenantMembership           @relation("EmployeeProfileMembership", fields: [tenantId, membershipId, userId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade)
-  supervisorMembership   TenantMembership?          @relation("EmployeeProfileSupervisor", fields: [tenantId, supervisorMembershipId, supervisorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade)
+  id                      String                            @id @default(cuid())
+  profileRef              String                            @default(dbgenerated("gen_random_uuid()")) @map("profile_ref") @db.Uuid
+  tenantId                String                            @map("tenant_id")
+  membershipId            String                            @map("membership_id")
+  userId                  String                            @map("user_id")
+  employeeCode            String                            @map("employee_code") @db.VarChar(64)
+  normalizedEmployeeCode  String                            @map("normalized_employee_code") @db.VarChar(64)
+  jobTitle                String?                           @map("job_title") @db.VarChar(120)
+  departmentCode          String?                           @map("department_code") @db.VarChar(64)
+  employmentStatus        EmployeeEmploymentStatus          @map("employment_status")
+  contractType            EmployeeContractType?             @map("contract_type")
+  availabilityStatus      EmployeeAvailabilityStatus        @map("availability_status")
+  operationalRestrictions Json                              @default("{}") @map("operational_restrictions")
+  operationalNotes        String?                           @map("operational_notes") @db.VarChar(1000)
+  operationalValidFrom    DateTime?                         @map("operational_valid_from") @db.Timestamptz(6)
+  operationalValidTo      DateTime?                         @map("operational_valid_to") @db.Timestamptz(6)
+  supervisorMembershipId  String?                           @map("supervisor_membership_id")
+  supervisorUserId        String?                           @map("supervisor_user_id")
+  hiredAt                 DateTime?                         @map("hired_at") @db.Date
+  contractStartsAt        DateTime?                         @map("contract_starts_at") @db.Date
+  contractEndsAt          DateTime?                         @map("contract_ends_at") @db.Date
+  terminatedAt            DateTime?                         @map("terminated_at") @db.Date
+  provisioningSource      TenantProvisioningSource          @default(MANUAL) @map("provisioning_source")
+  provisioningBatchId     String?                           @map("provisioning_batch_id") @db.VarChar(128)
+  createdAt               DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                  Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  membership              TenantMembership                  @relation("EmployeeProfileMembership", fields: [tenantId, membershipId, userId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade)
+  supervisorMembership    TenantMembership?                 @relation("EmployeeProfileSupervisor", fields: [tenantId, supervisorMembershipId, supervisorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade)
+  capabilityAssignments   OperationalCapabilityAssignment[]
+  zoneAssignments         OperationalZoneAssignment[]
+  scheduleOverrides       OperationalScheduleOverride[]
+  afterHoursRequests      AfterHoursVisitRequest[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, profileRef], map: "employee_profiles_tenant_profile_ref_key")
   @@unique([tenantId, membershipId])
   @@unique([tenantId, membershipId, userId])
   @@unique([tenantId, normalizedEmployeeCode])
@@ -1534,6 +1564,7 @@ model PipelineCase {
   surveyAssignments             SurveyAssignment[]
   surveyEvaluationDecisions     SurveyEvaluationDecision[]
   surveyAssignmentEvents        SurveyAssignmentEvent[]
+  afterHoursVisitRequests       AfterHoursVisitRequest[]
   surveyVisitFees               SurveyVisitFee[]
   surveyCommunicationRecords    SurveyCommunicationRecord[]
   communicationRecords          CommunicationRecord[]
@@ -1894,9 +1925,17 @@ model SurveyAssignment {
   instructionSnapshot     String?                      @map("instruction_snapshot") @db.VarChar(1000)
   evaluationDecisionId    String?                      @map("evaluation_decision_id")
   schedulePolicyId        String?                      @map("schedule_policy_id")
+  operationalPolicyId     String?                      @map("operational_policy_id")
+  visitReasonId           String?                      @map("visit_reason_id")
+  logisticsRevisionId     String?                      @map("logistics_revision_id")
   scheduleProfile         SurveyScheduleProfile?       @map("schedule_profile")
   zoneCode                String?                      @map("zone_code") @db.VarChar(64)
   slotKey                 String?                      @map("slot_key") @db.VarChar(64)
+  travelBufferMinutes     Int                          @default(0) @map("travel_buffer_minutes")
+  clientConfirmation      VisitClientConfirmation      @default(NOT_CONFIRMED) @map("client_confirmation")
+  evaluatorConfirmation   VisitEvaluatorConfirmation   @default(PENDING) @map("evaluator_confirmation")
+  resourcesSnapshot       Json                         @default("[]") @map("resources_snapshot")
+  replacesAssignmentId    String?                      @map("replaces_assignment_id")
   routeInvalidatedAt      DateTime?                    @map("route_invalidated_at") @db.Timestamptz(6)
   version                 Int                          @default(1)
   createdByMembershipId   String                       @map("created_by_membership_id")
@@ -1910,6 +1949,12 @@ model SurveyAssignment {
   createdByMembership     TenantMembership             @relation("SurveyAssignmentCreator", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_creator_fkey")
   evaluationDecision      SurveyEvaluationDecision?    @relation(fields: [tenantId, evaluationDecisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_decision_fkey")
   schedulePolicy          SurveySchedulePolicyVersion? @relation(fields: [tenantId, schedulePolicyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_policy_fkey")
+  operationalPolicy       VisitPolicyVersion?          @relation(fields: [tenantId, operationalPolicyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_operational_policy_fkey")
+  visitReason             VisitReason?                 @relation(fields: [tenantId, visitReasonId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_visit_reason_fkey")
+  logisticsRevision       LogisticsPlanRevision?       @relation("SurveyAssignmentLogisticsRevision", fields: [tenantId, logisticsRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_logistics_revision_fkey")
+  replacesAssignment      SurveyAssignment?            @relation("SurveyAssignmentReplacement", fields: [tenantId, replacesAssignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_replaces_fkey")
+  replacementAssignment   SurveyAssignment?            @relation("SurveyAssignmentReplacement")
+  afterHoursRequests      AfterHoursVisitRequest[]
   schedulingEvents        SurveyAssignmentEvent[]
   visitFees               SurveyVisitFee[]
   communicationRecords    SurveyCommunicationRecord[]
@@ -1918,6 +1963,7 @@ model SurveyAssignment {
 
   @@unique([tenantId, id], map: "survey_assignments_tenant_id_key")
   @@unique([tenantId, assignmentRef], map: "survey_assignments_tenant_ref_key")
+  @@unique([tenantId, replacesAssignmentId], map: "survey_assignments_replaces_key")
   @@index([tenantId, evaluatorMembershipId, evaluatorUserId, scheduledStart], map: "survey_assignments_evaluator_agenda_idx")
   @@index([tenantId, pipelineCaseId, scheduledStart], map: "survey_assignments_case_idx")
   @@map("survey_assignments")
@@ -4352,32 +4398,35 @@ model ExternalResourceReservation {
 }
 
 model LogisticsRule {
-  id                String              @id @default(cuid())
-  ruleRef           String              @default(dbgenerated("gen_random_uuid()")) @map("rule_ref") @db.Uuid
-  seriesRef         String              @map("series_ref") @db.Uuid
-  tenantId          String              @map("tenant_id")
-  family            LogisticsRuleFamily
-  code              String              @db.VarChar(80)
-  name              String              @db.VarChar(180)
-  priority          Int                 @default(100)
-  specificity       Int                 @default(0)
-  conditions        Json
-  conditionHash     String              @map("condition_hash") @db.Char(64)
-  result            Json
-  state             LogisticsRuleState  @default(DRAFT)
-  version           Int
-  validFrom         DateTime?           @map("valid_from") @db.Timestamptz(6)
-  validTo           DateTime?           @map("valid_to") @db.Timestamptz(6)
-  replacesRuleId    String?             @map("replaces_rule_id")
-  requestId         String              @map("request_id") @db.VarChar(191)
-  payloadHash       String              @map("payload_hash") @db.Char(64)
-  actorMembershipId String              @map("actor_membership_id")
-  actorUserId       String              @map("actor_user_id")
-  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_rules_tenant_fkey")
-  actorMembership   TenantMembership    @relation("LogisticsRuleActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "logistics_rules_actor_fkey")
-  replacesRule      LogisticsRule?      @relation("LogisticsRuleReplacement", fields: [tenantId, replacesRuleId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_rules_replaces_fkey")
-  replacement       LogisticsRule?      @relation("LogisticsRuleReplacement")
+  id                           String                        @id @default(cuid())
+  ruleRef                      String                        @default(dbgenerated("gen_random_uuid()")) @map("rule_ref") @db.Uuid
+  seriesRef                    String                        @map("series_ref") @db.Uuid
+  tenantId                     String                        @map("tenant_id")
+  family                       LogisticsRuleFamily
+  code                         String                        @db.VarChar(80)
+  name                         String                        @db.VarChar(180)
+  priority                     Int                           @default(100)
+  specificity                  Int                           @default(0)
+  conditions                   Json
+  conditionHash                String                        @map("condition_hash") @db.Char(64)
+  result                       Json
+  state                        LogisticsRuleState            @default(DRAFT)
+  version                      Int
+  validFrom                    DateTime?                     @map("valid_from") @db.Timestamptz(6)
+  validTo                      DateTime?                     @map("valid_to") @db.Timestamptz(6)
+  replacesRuleId               String?                       @map("replaces_rule_id")
+  requestId                    String                        @map("request_id") @db.VarChar(191)
+  payloadHash                  String                        @map("payload_hash") @db.Char(64)
+  actorMembershipId            String                        @map("actor_membership_id")
+  actorUserId                  String                        @map("actor_user_id")
+  createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                       Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_rules_tenant_fkey")
+  actorMembership              TenantMembership              @relation("LogisticsRuleActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "logistics_rules_actor_fkey")
+  replacesRule                 LogisticsRule?                @relation("LogisticsRuleReplacement", fields: [tenantId, replacesRuleId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "logistics_rules_replaces_fkey")
+  replacement                  LogisticsRule?                @relation("LogisticsRuleReplacement")
+  operationalZoneAssignments   OperationalZoneAssignment[]
+  visitPolicyWindows           VisitPolicyWindow[]
+  operationalScheduleOverrides OperationalScheduleOverride[]
 
   @@unique([tenantId, id], map: "logistics_rules_tenant_id_key")
   @@unique([tenantId, ruleRef], map: "logistics_rules_tenant_ref_key")
@@ -4468,6 +4517,8 @@ model LogisticsPlanRevision {
   costingCalculations     CostingCalculation[]
   costingRevisions        CostingRevision[]
   surveyVisitFees         SurveyVisitFee[]
+  surveyAssignments       SurveyAssignment[]          @relation("SurveyAssignmentLogisticsRevision")
+  afterHoursVisitRequests AfterHoursVisitRequest[]
 
   @@unique([tenantId, id], map: "logistics_revisions_tenant_id_key")
   @@unique([tenantId, revisionRef], map: "logistics_revisions_tenant_ref_key")
@@ -5855,6 +5906,7 @@ enum SurveyAssignmentStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+  SUPERSEDED
 }
 
 enum SurveyEvaluationMethod {
@@ -5910,6 +5962,10 @@ enum SurveySchedulingEventType {
   COMMUNICATION_PREPARED
   COMMUNICATION_RECORDED
   SURVEY_PUBLISHED
+  EXCEPTION_REQUESTED
+  EVALUATOR_RESPONDED
+  AFTER_HOURS_APPROVED
+  AFTER_HOURS_REJECTED
 }
 
 enum SurveyVisitFeeDisposition {
@@ -7487,6 +7543,395 @@ model CommercialRelationshipEvent {
   @@map("commercial_relationship_events")
 }
 
+model OperationalCapability {
+  id                String                            @id @default(cuid())
+  capabilityRef     String                            @default(dbgenerated("gen_random_uuid()")) @map("capability_ref") @db.Uuid
+  tenantId          String                            @map("tenant_id")
+  code              String                            @db.VarChar(80)
+  name              String                            @db.VarChar(160)
+  description       String?                           @db.VarChar(500)
+  status            OperationalRecordStatus           @default(ACTIVE)
+  version           Int                               @default(1)
+  actorMembershipId String                            @map("actor_membership_id")
+  actorUserId       String                            @map("actor_user_id")
+  requestId         String                            @map("request_id") @db.VarChar(191)
+  payloadHash       String                            @map("payload_hash") @db.Char(64)
+  createdAt         DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "operational_capabilities_tenant_fkey")
+  actorMembership   TenantMembership                  @relation("OperationalCapabilityActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "operational_capabilities_actor_fkey")
+  assignments       OperationalCapabilityAssignment[]
+
+  @@unique([tenantId, id], map: "operational_capabilities_tenant_id_key")
+  @@unique([tenantId, capabilityRef], map: "operational_capabilities_tenant_ref_key")
+  @@unique([tenantId, code], map: "operational_capabilities_tenant_code_key")
+  @@unique([tenantId, requestId], map: "operational_capabilities_request_key")
+  @@index([tenantId, status, name], map: "operational_capabilities_catalog_idx")
+  @@map("operational_capabilities")
+}
+
+model OperationalCapabilityAssignment {
+  id                String                                @id @default(cuid())
+  assignmentRef     String                                @default(dbgenerated("gen_random_uuid()")) @map("assignment_ref") @db.Uuid
+  tenantId          String                                @map("tenant_id")
+  employeeProfileId String                                @map("employee_profile_id")
+  capabilityId      String                                @map("capability_id")
+  status            OperationalCapabilityAssignmentStatus @default(ACTIVE)
+  restrictions      Json                                  @default("{}")
+  validFrom         DateTime?                             @map("valid_from") @db.Timestamptz(6)
+  validTo           DateTime?                             @map("valid_to") @db.Timestamptz(6)
+  actorMembershipId String                                @map("actor_membership_id")
+  actorUserId       String                                @map("actor_user_id")
+  requestId         String                                @map("request_id") @db.VarChar(191)
+  payloadHash       String                                @map("payload_hash") @db.Char(64)
+  createdAt         DateTime                              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "operational_capability_assignments_tenant_fkey")
+  employeeProfile   EmployeeProfile                       @relation(fields: [tenantId, employeeProfileId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "operational_capability_assignments_profile_fkey")
+  capability        OperationalCapability                 @relation(fields: [tenantId, capabilityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "operational_capability_assignments_capability_fkey")
+  actorMembership   TenantMembership                      @relation("OperationalCapabilityAssignmentActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "operational_capability_assignments_actor_fkey")
+
+  @@unique([tenantId, assignmentRef], map: "operational_capability_assignments_tenant_ref_key")
+  @@unique([tenantId, requestId], map: "operational_capability_assignments_request_key")
+  @@index([tenantId, employeeProfileId, status, validFrom, validTo], map: "operational_capability_assignments_profile_idx")
+  @@index([tenantId, capabilityId, status], map: "operational_capability_assignments_capability_idx")
+  @@map("operational_capability_assignments")
+}
+
+model OperationalZoneAssignment {
+  id                String                  @id @default(cuid())
+  assignmentRef     String                  @default(dbgenerated("gen_random_uuid()")) @map("assignment_ref") @db.Uuid
+  tenantId          String                  @map("tenant_id")
+  employeeProfileId String                  @map("employee_profile_id")
+  logisticsRuleId   String                  @map("logistics_rule_id")
+  status            OperationalRecordStatus @default(ACTIVE)
+  validFrom         DateTime?               @map("valid_from") @db.Timestamptz(6)
+  validTo           DateTime?               @map("valid_to") @db.Timestamptz(6)
+  actorMembershipId String                  @map("actor_membership_id")
+  actorUserId       String                  @map("actor_user_id")
+  requestId         String                  @map("request_id") @db.VarChar(191)
+  payloadHash       String                  @map("payload_hash") @db.Char(64)
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "operational_zone_assignments_tenant_fkey")
+  employeeProfile   EmployeeProfile         @relation(fields: [tenantId, employeeProfileId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "operational_zone_assignments_profile_fkey")
+  logisticsRule     LogisticsRule           @relation(fields: [tenantId, logisticsRuleId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "operational_zone_assignments_rule_fkey")
+  actorMembership   TenantMembership        @relation("OperationalZoneAssignmentActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "operational_zone_assignments_actor_fkey")
+
+  @@unique([tenantId, assignmentRef], map: "operational_zone_assignments_tenant_ref_key")
+  @@unique([tenantId, requestId], map: "operational_zone_assignments_request_key")
+  @@index([tenantId, employeeProfileId, status], map: "operational_zone_assignments_profile_idx")
+  @@map("operational_zone_assignments")
+}
+
+model VisitPolicyVersion {
+  id                         String              @id @default(cuid())
+  policyRef                  String              @default(dbgenerated("gen_random_uuid()")) @map("policy_ref") @db.Uuid
+  seriesRef                  String              @default(dbgenerated("gen_random_uuid()")) @map("series_ref") @db.Uuid
+  tenantId                   String              @map("tenant_id")
+  version                    Int
+  state                      VisitPolicyState    @default(DRAFT)
+  timezone                   String              @db.VarChar(64)
+  defaultVisitMinutes        Int                 @map("default_visit_minutes")
+  minimumTravelBufferMinutes Int                 @map("minimum_travel_buffer_minutes")
+  virtualPreparationMinutes  Int                 @map("virtual_preparation_minutes")
+  validFrom                  DateTime?           @map("valid_from") @db.Timestamptz(6)
+  validTo                    DateTime?           @map("valid_to") @db.Timestamptz(6)
+  replacesPolicyId           String?             @map("replaces_policy_id")
+  actorMembershipId          String              @map("actor_membership_id")
+  actorUserId                String              @map("actor_user_id")
+  requestId                  String              @map("request_id") @db.VarChar(191)
+  payloadHash                String              @map("payload_hash") @db.Char(64)
+  createdAt                  DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "visit_policy_versions_tenant_fkey")
+  actorMembership            TenantMembership    @relation("VisitPolicyActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "visit_policy_versions_actor_fkey")
+  replacesPolicy             VisitPolicyVersion? @relation("VisitPolicyReplacement", fields: [tenantId, replacesPolicyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "visit_policy_versions_replaces_fkey")
+  replacementPolicy          VisitPolicyVersion? @relation("VisitPolicyReplacement")
+  windows                    VisitPolicyWindow[]
+  assignments                SurveyAssignment[]
+
+  @@unique([tenantId, id], map: "visit_policy_versions_tenant_id_key")
+  @@unique([tenantId, policyRef], map: "visit_policy_versions_tenant_ref_key")
+  @@unique([tenantId, seriesRef, version], map: "visit_policy_versions_series_version_key")
+  @@unique([tenantId, replacesPolicyId], map: "visit_policy_versions_replaces_key")
+  @@unique([tenantId, requestId], map: "visit_policy_versions_request_key")
+  @@index([tenantId, state, validFrom, validTo], map: "visit_policy_versions_active_idx")
+  @@map("visit_policy_versions")
+}
+
+model VisitPolicyWindow {
+  id               String                 @id @default(cuid())
+  windowRef        String                 @default(dbgenerated("gen_random_uuid()")) @map("window_ref") @db.Uuid
+  tenantId         String                 @map("tenant_id")
+  policyId         String                 @map("policy_id")
+  weekday          Int
+  startMinute      Int                    @map("start_minute")
+  endMinute        Int                    @map("end_minute")
+  capacity         Int                    @default(1)
+  method           SurveyEvaluationMethod
+  logisticsRuleId  String?                @map("logistics_rule_id")
+  requiresApproval Boolean                @default(false) @map("requires_approval")
+  kind             VisitPolicyWindowKind  @default(REGULAR)
+  calendarDate     DateTime?              @map("calendar_date") @db.Date
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "visit_policy_windows_tenant_fkey")
+  policy           VisitPolicyVersion     @relation(fields: [tenantId, policyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "visit_policy_windows_policy_fkey")
+  logisticsRule    LogisticsRule?         @relation(fields: [tenantId, logisticsRuleId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "visit_policy_windows_rule_fkey")
+
+  @@unique([tenantId, windowRef], map: "visit_policy_windows_tenant_ref_key")
+  @@unique([tenantId, policyId, weekday, startMinute, endMinute, method, logisticsRuleId, calendarDate], map: "visit_policy_windows_scope_key")
+  @@index([tenantId, policyId, weekday, method], map: "visit_policy_windows_lookup_idx")
+  @@map("visit_policy_windows")
+}
+
+model VisitReason {
+  id                 String                   @id @default(cuid())
+  reasonRef          String                   @default(dbgenerated("gen_random_uuid()")) @map("reason_ref") @db.Uuid
+  tenantId           String                   @map("tenant_id")
+  code               String                   @db.VarChar(80)
+  name               String                   @db.VarChar(160)
+  kind               VisitReasonKind
+  requesterOrigin    VisitRequestOrigin?      @map("requester_origin")
+  visibleToClient    Boolean                  @default(true) @map("visible_to_client")
+  visibleToEvaluator Boolean                  @default(true) @map("visible_to_evaluator")
+  status             OperationalRecordStatus  @default(ACTIVE)
+  sortOrder          Int                      @default(0) @map("sort_order")
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant             Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "visit_reasons_tenant_fkey")
+  assignments        SurveyAssignment[]
+  afterHoursRequests AfterHoursVisitRequest[]
+
+  @@unique([tenantId, id], map: "visit_reasons_tenant_id_key")
+  @@unique([tenantId, reasonRef], map: "visit_reasons_tenant_ref_key")
+  @@unique([tenantId, code], map: "visit_reasons_tenant_code_key")
+  @@index([tenantId, kind, status, sortOrder], map: "visit_reasons_catalog_idx")
+  @@map("visit_reasons")
+}
+
+model OperationalScheduleOverride {
+  id                  String                          @id @default(cuid())
+  overrideRef         String                          @default(dbgenerated("gen_random_uuid()")) @map("override_ref") @db.Uuid
+  tenantId            String                          @map("tenant_id")
+  employeeProfileId   String                          @map("employee_profile_id")
+  kind                OperationalScheduleOverrideKind
+  startsAt            DateTime                        @map("starts_at") @db.Timestamptz(6)
+  endsAt              DateTime                        @map("ends_at") @db.Timestamptz(6)
+  method              SurveyEvaluationMethod?
+  logisticsRuleId     String?                         @map("logistics_rule_id")
+  travelBufferMinutes Int?                            @map("travel_buffer_minutes")
+  reason              String                          @db.VarChar(500)
+  status              OperationalRecordStatus         @default(ACTIVE)
+  version             Int                             @default(1)
+  actorMembershipId   String                          @map("actor_membership_id")
+  actorUserId         String                          @map("actor_user_id")
+  requestId           String                          @map("request_id") @db.VarChar(191)
+  payloadHash         String                          @map("payload_hash") @db.Char(64)
+  createdAt           DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant              Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "operational_schedule_overrides_tenant_fkey")
+  employeeProfile     EmployeeProfile                 @relation(fields: [tenantId, employeeProfileId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "operational_schedule_overrides_profile_fkey")
+  logisticsRule       LogisticsRule?                  @relation(fields: [tenantId, logisticsRuleId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "operational_schedule_overrides_rule_fkey")
+  actorMembership     TenantMembership                @relation("OperationalScheduleOverrideActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "operational_schedule_overrides_actor_fkey")
+
+  @@unique([tenantId, overrideRef], map: "operational_schedule_overrides_tenant_ref_key")
+  @@unique([tenantId, requestId], map: "operational_schedule_overrides_request_key")
+  @@index([tenantId, employeeProfileId, startsAt, endsAt, status], map: "operational_schedule_overrides_interval_idx")
+  @@map("operational_schedule_overrides")
+}
+
+model AfterHoursVisitRequest {
+  id                        String                       @id @default(cuid())
+  requestRef                String                       @default(dbgenerated("gen_random_uuid()")) @map("request_ref") @db.Uuid
+  tenantId                  String                       @map("tenant_id")
+  pipelineCaseId            String                       @map("pipeline_case_id")
+  assignmentId              String?                      @map("assignment_id")
+  evaluatorProfileId        String                       @map("evaluator_profile_id")
+  evaluatorMembershipId     String                       @map("evaluator_membership_id")
+  evaluatorUserId           String                       @map("evaluator_user_id")
+  visitReasonId             String                       @map("visit_reason_id")
+  logisticsRevisionId       String?                      @map("logistics_revision_id")
+  method                    SurveyEvaluationMethod
+  requestedStart            DateTime                     @map("requested_start") @db.Timestamptz(6)
+  requestedEnd              DateTime                     @map("requested_end") @db.Timestamptz(6)
+  requesterOrigin           VisitRequestOrigin           @map("requester_origin")
+  reasonDescription         String                       @map("reason_description") @db.VarChar(1000)
+  requiredResourcesSnapshot Json                         @default("[]") @map("required_resources_snapshot")
+  impactSnapshot            Json                         @default("{}") @map("impact_snapshot")
+  violatedRulesSnapshot     Json                         @default("[]") @map("violated_rules_snapshot")
+  status                    AfterHoursVisitRequestStatus @default(PENDING)
+  evaluatorResponse         VisitEvaluatorResponse       @default(PENDING) @map("evaluator_response")
+  adminDecision             VisitAdminDecision           @default(PENDING) @map("admin_decision")
+  proposedAlternativeStart  DateTime?                    @map("proposed_alternative_start") @db.Timestamptz(6)
+  proposedAlternativeEnd    DateTime?                    @map("proposed_alternative_end") @db.Timestamptz(6)
+  responseReason            String?                      @map("response_reason") @db.VarChar(1000)
+  decisionReason            String?                      @map("decision_reason") @db.VarChar(1000)
+  version                   Int                          @default(1)
+  requestedByMembershipId   String                       @map("requested_by_membership_id")
+  requestedByUserId         String                       @map("requested_by_user_id")
+  decidedByMembershipId     String?                      @map("decided_by_membership_id")
+  decidedByUserId           String?                      @map("decided_by_user_id")
+  decidedAt                 DateTime?                    @map("decided_at") @db.Timestamptz(6)
+  expiresAt                 DateTime?                    @map("expires_at") @db.Timestamptz(6)
+  createdAt                 DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                    Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "after_hours_visit_requests_tenant_fkey")
+  pipelineCase              PipelineCase                 @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "after_hours_visit_requests_case_fkey")
+  assignment                SurveyAssignment?            @relation(fields: [tenantId, assignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "after_hours_visit_requests_assignment_fkey")
+  evaluatorProfile          EmployeeProfile              @relation(fields: [tenantId, evaluatorProfileId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "after_hours_visit_requests_profile_fkey")
+  evaluatorMembership       TenantMembership             @relation("AfterHoursVisitEvaluator", fields: [tenantId, evaluatorMembershipId, evaluatorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "after_hours_visit_requests_evaluator_fkey")
+  visitReason               VisitReason                  @relation(fields: [tenantId, visitReasonId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "after_hours_visit_requests_reason_fkey")
+  logisticsRevision         LogisticsPlanRevision?       @relation(fields: [tenantId, logisticsRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "after_hours_visit_requests_logistics_fkey")
+  requestedByMembership     TenantMembership             @relation("AfterHoursVisitRequester", fields: [tenantId, requestedByMembershipId, requestedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "after_hours_visit_requests_requester_fkey")
+  decidedByMembership       TenantMembership?            @relation("AfterHoursVisitAdmin", fields: [tenantId, decidedByMembershipId, decidedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "after_hours_visit_requests_admin_fkey")
+
+  @@unique([tenantId, id], map: "after_hours_visit_requests_tenant_id_key")
+  @@unique([tenantId, requestRef], map: "after_hours_visit_requests_tenant_ref_key")
+  @@index([tenantId, status, requestedStart], map: "after_hours_visit_requests_status_idx")
+  @@index([tenantId, evaluatorMembershipId, evaluatorUserId, status], map: "after_hours_visit_requests_evaluator_idx")
+  @@map("after_hours_visit_requests")
+}
+
+model VisitPolicyEvent {
+  id                String               @id @default(cuid())
+  eventRef          String               @default(dbgenerated("gen_random_uuid()")) @map("event_ref") @db.Uuid
+  tenantId          String               @map("tenant_id")
+  aggregateType     String               @map("aggregate_type") @db.VarChar(80)
+  aggregateRef      String               @map("aggregate_ref") @db.Uuid
+  eventType         VisitPolicyEventType @map("event_type")
+  beforeSnapshot    Json?                @map("before_snapshot")
+  afterSnapshot     Json                 @map("after_snapshot")
+  actorMembershipId String               @map("actor_membership_id")
+  actorUserId       String               @map("actor_user_id")
+  requestId         String               @map("request_id") @db.VarChar(191)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "visit_policy_events_tenant_fkey")
+  actorMembership   TenantMembership     @relation("VisitPolicyEventActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "visit_policy_events_actor_fkey")
+
+  @@unique([tenantId, eventRef], map: "visit_policy_events_tenant_ref_key")
+  @@index([tenantId, aggregateRef, createdAt(sort: Desc)], map: "visit_policy_events_aggregate_idx")
+  @@index([tenantId, requestId], map: "visit_policy_events_request_idx")
+  @@map("visit_policy_events")
+}
+
+model PersonnelPolicyCommand {
+  id                String           @id @default(cuid())
+  tenantId          String           @map("tenant_id")
+  requestId         String           @map("request_id") @db.VarChar(191)
+  operation         String           @db.VarChar(80)
+  payloadHash       String           @map("payload_hash") @db.Char(64)
+  targetRef         String?          @map("target_ref") @db.Uuid
+  resultJson        Json             @map("result_json")
+  actorMembershipId String           @map("actor_membership_id")
+  actorUserId       String           @map("actor_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "personnel_policy_commands_tenant_fkey")
+  actorMembership   TenantMembership @relation("PersonnelPolicyCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "personnel_policy_commands_actor_fkey")
+
+  @@unique([tenantId, requestId], map: "personnel_policy_commands_request_key")
+  @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "personnel_policy_commands_target_idx")
+  @@map("personnel_policy_commands")
+}
+
+enum OperationalRecordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum OperationalCapabilityAssignmentStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum VisitPolicyState {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum VisitPolicyWindowKind {
+  REGULAR
+  SPECIAL_CLOSURE
+  SPECIAL_OPENING
+}
+
+enum OperationalScheduleOverrideKind {
+  AVAILABLE
+  UNAVAILABLE
+  TRAVEL_BUFFER
+}
+
+enum VisitReasonKind {
+  VISIT
+  RESCHEDULE
+  CANCELLATION
+}
+
+enum VisitRequestOrigin {
+  CLIENT
+  EVALUATOR
+  SALES
+  ADMIN
+  RESOURCE_CONFLICT
+  OTHER
+}
+
+enum AfterHoursVisitRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum VisitEvaluatorResponse {
+  PENDING
+  ACCEPTED
+  REJECTED
+  UNAVAILABLE
+  ALTERNATIVE_PROPOSED
+}
+
+enum VisitAdminDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VisitClientConfirmation {
+  NOT_CONFIRMED
+  CONFIRMED
+  CHANGE_REQUESTED
+  CANCELLED_BY_CLIENT
+}
+
+enum VisitEvaluatorConfirmation {
+  PENDING
+  CONFIRMED
+  DECLINED
+  UNAVAILABLE
+}
+
+enum VisitPolicyEventType {
+  PROFILE_UPDATED
+  CAPABILITY_CREATED
+  CAPABILITY_ASSIGNED
+  CAPABILITY_REVOKED
+  ZONE_ASSIGNED
+  SCHEDULE_OVERRIDE_CREATED
+  POLICY_PUBLISHED
+  EXCEPTION_REQUESTED
+  EVALUATOR_RESPONDED
+  ADMIN_APPROVED
+  ADMIN_REJECTED
+  VISIT_SCHEDULED
+  VISIT_RESCHEDULED
+  VISIT_CANCELLED
+  AFTER_HOURS_APPROVED
+  AFTER_HOURS_REJECTED
+  VISIT_REASON_CREATED
+  CLIENT_CONFIRMATION_RECORDED
+  COMMUNICATION_PREPARED
+}
+
 enum CommunicationTemplateCategory {
   VISIT_CONFIRMATION
   EVALUATOR_ASSIGNMENT
@@ -7543,6 +7988,8 @@ enum CommunicationMilestone {
   SURVEY_PIC_EVALUATOR
   VISIT_RESCHEDULED
   VISIT_CANCELLED
+  AFTER_HOURS_APPROVED
+  AFTER_HOURS_REJECTED
   QUOTE_SENT
   FOLLOW_UP_1
   FOLLOW_UP_2

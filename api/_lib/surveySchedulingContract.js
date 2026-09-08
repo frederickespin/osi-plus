@@ -109,7 +109,7 @@ function command(value, operation, payload) {
 function validateMethodState(method, state) {
   if (["NOT_REQUIRED", "PENDING_METHOD"].includes(state) && method !== "NONE") schedulingFail("CRM_SURVEY_METHOD_STATE_INVALID", 409);
   if (method === "NONE" && !["NOT_REQUIRED", "PENDING_METHOD", "CANCELLED"].includes(state)) schedulingFail("CRM_SURVEY_METHOD_STATE_INVALID", 409);
-  if (method !== "IN_PERSON" && state === "READY_TO_SCHEDULE") schedulingFail("CRM_SURVEY_METHOD_STATE_INVALID", 409);
+  if (method === "NONE" && state === "READY_TO_SCHEDULE") schedulingFail("CRM_SURVEY_METHOD_STATE_INVALID", 409);
 }
 
 function normalizePolicyConfiguration(raw) {
@@ -206,9 +206,11 @@ export function normalizeSchedulingMutation(input) {
     return command(value, operation, { seriesRef: uuid(value.seriesRef, true), expectedVersion: integer(value.expectedVersion, 0), timezone: text(value.timezone, 64), configuration: normalizePolicyConfiguration(value.configuration), validFrom: timestamp(value.validFrom) });
   }
   if (operation === "SCHEDULE") {
-    exact(value, ["requestId", "payloadHash", "operation", "decisionRef", "expectedDecisionVersion", "evaluatorMembershipRef", "scheduledStart", "scheduledEnd", "slotKey", "instruction", "saturdayApprovalReason"]);
+    const keys = ["requestId", "payloadHash", "operation", "decisionRef", "expectedDecisionVersion", "evaluatorMembershipRef", "scheduledStart", "scheduledEnd", "slotKey", "instruction", "saturdayApprovalReason"];
+    if ("visitReasonRef" in value) keys.push("visitReasonRef");
+    exact(value, keys);
     const scheduledStart = timestamp(value.scheduledStart); const scheduledEnd = timestamp(value.scheduledEnd); if (scheduledEnd <= scheduledStart) schedulingFail("CRM_SURVEY_SCHEDULING_INPUT_INVALID");
-    return command(value, operation, { decisionRef: uuid(value.decisionRef), expectedDecisionVersion: integer(value.expectedDecisionVersion, 1), evaluatorMembershipRef: uuid(value.evaluatorMembershipRef), scheduledStart, scheduledEnd, slotKey: text(value.slotKey, 64), instruction: text(value.instruction, 1000, true), saturdayApprovalReason: text(value.saturdayApprovalReason, 500, true) });
+    return command(value, operation, { decisionRef: uuid(value.decisionRef), expectedDecisionVersion: integer(value.expectedDecisionVersion, 1), evaluatorMembershipRef: uuid(value.evaluatorMembershipRef), scheduledStart, scheduledEnd, slotKey: text(value.slotKey, 64), instruction: text(value.instruction, 1000, true), saturdayApprovalReason: text(value.saturdayApprovalReason, 500, true), ...("visitReasonRef" in value ? { visitReasonRef: value.visitReasonRef == null ? null : uuid(value.visitReasonRef) } : {}) });
   }
   if (["RESCHEDULE", "CHANGE_EVALUATOR", "CANCEL"].includes(operation)) {
     const keys = operation === "RESCHEDULE" ? ["requestId", "payloadHash", "operation", "assignmentRef", "expectedVersion", "scheduledStart", "scheduledEnd", "slotKey", "reasonCode", "notificationRequired", "saturdayApprovalReason"] : operation === "CHANGE_EVALUATOR" ? ["requestId", "payloadHash", "operation", "assignmentRef", "expectedVersion", "evaluatorMembershipRef", "reasonCode", "notificationRequired"] : ["requestId", "payloadHash", "operation", "assignmentRef", "expectedVersion", "reasonCode", "notificationRequired"];

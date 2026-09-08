@@ -76,6 +76,11 @@ export function validatePersonnelPoliciesGuard(overrides = {}) {
     "buffer logístico duplicado en frontend",
   );
   assert.ok(
+    domain.includes("logisticsRuleId: entry.zoneRuleRef") &&
+      domain.includes("ruleByRef.get(entry.zoneRuleRef)"),
+    "ventana zonificada no usa la FK tenant-first resuelta",
+  );
+  assert.ok(
     domain.includes('status: "SUPERSEDED"') &&
       domain.includes("replacesAssignmentId") &&
       (domain.includes("SurveyAssignmentEvent") ||
@@ -92,19 +97,41 @@ export function validatePersonnelPoliciesGuard(overrides = {}) {
       schedulingUi.includes('personnelApi.mutate("EXCEPTION_REQUEST"'),
     "Scheduling rechaza fuera de horario sin alternativa",
   );
-  const gate = "if (!preparePersonnelPoliciesRequest(req, res, env)) return;";
+  const gate = "const mode = preparePersonnelPoliciesRequest(req, res, env);";
   assert.ok(
     http.includes("productionApiEnabled = false") &&
       http.includes(gate) &&
-      http.indexOf(gate) < http.indexOf("resolveContext(req"),
+      http.includes("assertPersonnelPoliciesPreviewDatabase") &&
+      http.indexOf(gate) < http.indexOf("resolveContext(req") &&
+      http.indexOf(
+        "assertPersonnelPoliciesPreviewDatabase(prismaClient, mode)",
+      ) < http.indexOf("resolveContext(req"),
     "gate no precede auth",
   );
   assert.ok(
     mode.includes("productionApiEnabled = false") &&
       mode.includes("LOCAL_ONLY") &&
+      mode.includes("PREVIEW_REHEARSAL") &&
+      mode.includes("V17-PERSONNEL-POLICIES-PREVIEW-14B") &&
+      mode.includes("VITE_COMMUNICATIONS_TRANSPORT_MODE") &&
+      mode.includes("VITE_VERCEL_GIT_COMMIT_REF") &&
       mode.includes("VERCEL"),
     "frontend no falla cerrado",
   );
+  for (const predicate of [
+    'VERCEL_ENV === "preview"',
+    "PREVIEW_BRANCH: isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF)",
+    "PERSONNEL_POLICIES_PREVIEW_MANIFEST_SHA256",
+    "previewUrlAuthorized(env.DATABASE_URL)",
+    'MT01B_AUTH_MODE === "LEGACY"',
+    'VITE_MT01B2_CLIENT_ENABLED === "false"',
+    'COMMUNICATIONS_EXTERNAL_TRANSPORT_MODE === "DISABLED"',
+    'COMMUNICATIONS_EXTERNAL_WEBHOOK_MODE === "DISABLED"',
+  ])
+    assert.ok(
+      http.includes(predicate),
+      `predicado Preview ausente: ${predicate}`,
+    );
   assert.ok(
     access.includes("blocked.has(permission)") &&
       hub.indexOf("personnelPoliciesAvailable") <

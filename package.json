@@ -120,6 +120,8 @@
     "guard:v17-personnel-policies": "node scripts/validate-v17-personnel-policies-guard.mjs && node scripts/validate-v17-personnel-policies-guard-test.mjs",
     "rollback:v17-personnel-policies:local": "node scripts/v17-personnel-policies-rollback.mjs",
     "test:v17-personnel-policies:browser": "playwright test -c playwright.v17-personnel-policies.config.ts",
+    "seed:v17-personnel-policies-preview": "node scripts/v17-personnel-policies-preview-seed.mjs",
+    "verify:v17-personnel-policies-preview": "node scripts/v17-personnel-policies-preview-verify.mjs",
     "seed:v17-communications-preview": "node scripts/v17-communications-preview-seed.mjs",
     "verify:v17-communications-preview": "node scripts/v17-communications-preview-verify.mjs",
     "seed:v17-commercial-relationships-preview": "node scripts/v17-commercial-relationships-preview-seed.mjs",

@@ -1174,18 +1174,9 @@ async function execute(tx, who, command) {
             calendarDate: entry.calendarDate
               ? new Date(`${entry.calendarDate}T00:00:00.000Z`)
               : null,
-            ...(entry.zoneRuleRef
-              ? {
-                  logisticsRule: {
-                    connect: {
-                      tenantId_id: {
-                        tenantId: who.tenantId,
-                        id: ruleByRef.get(entry.zoneRuleRef),
-                      },
-                    },
-                  },
-                }
-              : {}),
+            logisticsRuleId: entry.zoneRuleRef
+              ? ruleByRef.get(entry.zoneRuleRef)
+              : null,
             requiresApproval: entry.requiresApproval,
             kind: entry.kind,
           })),

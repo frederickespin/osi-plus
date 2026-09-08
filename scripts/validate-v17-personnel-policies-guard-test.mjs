@@ -49,9 +49,27 @@ negative("env Production", "api/_lib/personnelPoliciesHttp.js", (text) =>
 );
 negative("gate tardío", "api/_lib/personnelPoliciesHttp.js", (text) =>
   text.replace(
-    "if (!preparePersonnelPoliciesRequest(req, res, env)) return;",
+    "const mode = preparePersonnelPoliciesRequest(req, res, env);",
     "const lateGate = true;",
   ),
+);
+negative("Preview sin branch", "api/_lib/personnelPoliciesHttp.js", (text) =>
+  text.replace(
+    "PREVIEW_BRANCH: isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF)",
+    "PREVIEW_BRANCH: true",
+  ),
+);
+negative("Preview sin DB", "api/_lib/personnelPoliciesHttp.js", (text) =>
+  text.replace("previewUrlAuthorized(env.DATABASE_URL)", "true"),
+);
+negative(
+  "Preview con transporte",
+  "api/_lib/personnelPoliciesHttp.js",
+  (text) =>
+    text.replace(
+      'COMMUNICATIONS_EXTERNAL_TRANSPORT_MODE === "DISABLED"',
+      'COMMUNICATIONS_EXTERNAL_TRANSPORT_MODE === "ENABLED"',
+    ),
 );
 negative(
   "transporte enviado",
@@ -62,6 +80,15 @@ negative(
   "sin alternativa fuera de horario",
   "src/survey/SurveyCasePanel.tsx",
   (text) => text.replace("Solicitar excepción", "Horario rechazado"),
+);
+negative(
+  "ventana zonificada sin FK",
+  "api/_lib/personnelPoliciesDomain.js",
+  (text) =>
+    text.replace(
+      "logisticsRuleId: entry.zoneRuleRef",
+      "legacyZone: entry.zoneRuleRef",
+    ),
 );
 negative(
   "ruta CORS ausente",

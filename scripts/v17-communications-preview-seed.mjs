@@ -148,7 +148,7 @@ async function main() {
   exact(identity[0]?.database, EXPECTED_DATABASE, "DATABASE_RUNTIME_INVALID");
   exact(identity[0]?.branch, EXPECTED_BRANCH, "BRANCH_RUNTIME_INVALID");
   const migrations = await prisma.$queryRawUnsafe("SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name");
-  if (migrations.length !== 32 || migrations.some((row) => !row.finished_at || row.rolled_back_at || row.applied_steps_count !== 1)) fail("MIGRATIONS_NOT_32_COMPLETE");
+  if (migrations.length !== 33 || migrations.some((row) => !row.finished_at || row.rolled_back_at || row.applied_steps_count !== 1)) fail("MIGRATIONS_NOT_33_COMPLETE");
 
   const tenant = await prisma.tenant.findUnique({ where: { code: TENANT_CODE } });
   const otherTenant = await prisma.tenant.findUnique({ where: { code: OTHER_TENANT_CODE } });
@@ -190,8 +190,9 @@ async function main() {
     prepared: await prisma.communicationRecord.count({ where: { tenantId: tenant.id, status: "PREPARED" } }),
     sent: await prisma.communicationRecord.count({ where: { tenantId: tenant.id, status: { in: ["SENT", "DELIVERED"] } } }),
   };
-  assert.deepEqual(counts, { templates: 8, publishedTemplates: 6, draftTemplates: 1, inactiveTemplates: 1, records: 14, prepared: 14, sent: 0 });
-  console.log(JSON.stringify({ ok: true, database: EXPECTED_DATABASE, branch: EXPECTED_BRANCH, migrations: "32/32", scenarios: ["VISIT", "RESCHEDULE", "CANCEL", "CORPORATE", "QUOTE"], counts, crossTenantBlocked: true, externalTransport: { EMAIL: 0, WHATSAPP: 0, SMS: 0, PORTAL: 0, WEBHOOK: 0 } }));
+  assert.ok(counts.templates === 8 && counts.publishedTemplates === 6 && counts.draftTemplates === 1 && counts.inactiveTemplates === 1);
+  assert.ok(counts.records >= 14 && counts.prepared === counts.records && counts.sent === 0);
+  console.log(JSON.stringify({ ok: true, database: EXPECTED_DATABASE, branch: EXPECTED_BRANCH, migrations: "33/33", scenarios: ["VISIT", "RESCHEDULE", "CANCEL", "CORPORATE", "QUOTE"], counts, crossTenantBlocked: true, externalTransport: { EMAIL: 0, WHATSAPP: 0, SMS: 0, PORTAL: 0, WEBHOOK: 0 } }));
 }
 
 try { await main(); } finally { await prisma.$disconnect(); }

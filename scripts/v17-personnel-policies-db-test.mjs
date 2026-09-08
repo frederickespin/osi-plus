@@ -161,6 +161,24 @@ try {
     membershipId: evaluatorMembership.id,
     userId: evaluator.id,
   };
+  const zoneRule = await prisma.logisticsRule.create({
+    data: {
+      tenantId: tenant.id,
+      seriesRef: randomUUID(),
+      family: "ZONE",
+      code: `METRO_${run}`,
+      name: "Zona metropolitana sintética",
+      conditions: { countryCode: "DO" },
+      conditionHash: "1".repeat(64),
+      result: { travelMinutes: 45 },
+      state: "ACTIVE",
+      version: 1,
+      requestId: `zone-${run}`,
+      payloadHash: "2".repeat(64),
+      actorMembershipId: adminMembership.id,
+      actorUserId: admin.id,
+    },
+  });
   const capabilityRequest = `cap-${run}`;
   const capabilityCommand = signed(
     "CAPABILITY_CREATE",
@@ -231,6 +249,17 @@ try {
     }),
     prisma,
   );
+  const zoneAssignment = await mutatePersonnelPolicies(
+    context,
+    signed("ZONE_ASSIGN", {
+      profileRef: profile.profileRef,
+      ruleRef: zoneRule.ruleRef,
+      validFrom: null,
+      validTo: null,
+    }),
+    prisma,
+  );
+  pass(zoneAssignment.status === "ACTIVE", "zona tenant-first asignada");
   const visitReason = await mutatePersonnelPolicies(
     context,
     signed("VISIT_REASON_CREATE", {
@@ -249,7 +278,7 @@ try {
     endMinute: 1020,
     capacity: 4,
     method: "IN_PERSON",
-    zoneRuleRef: null,
+    zoneRuleRef: weekday === 1 ? zoneRule.ruleRef : null,
     calendarDate: null,
     requiresApproval: false,
     kind: "REGULAR",

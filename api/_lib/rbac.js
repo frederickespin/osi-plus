@@ -44,6 +44,12 @@ export const PERMS = Object.freeze({
   SERVICES_CATALOG_MANAGE: "services:catalog:manage",
   SERVICES_CASE_VIEW: "services:case:view",
   SERVICES_CASE_UPDATE: "services:case:update",
+  SERVICES_PACKAGES_VIEW: "services:packages:view",
+  SERVICES_PACKAGES_MANAGE: "services:packages:manage",
+  SERVICES_MATERIALS_VIEW: "services:materials:view",
+  SERVICES_MATERIALS_MANAGE: "services:materials:manage",
+  SERVICES_CASE_CONFIG_VIEW: "services:case-config:view",
+  SERVICES_CASE_CONFIG_UPDATE: "services:case-config:update",
 
   // V17 Survey. Assignment, execution and publication are explicit grants only.
   SURVEY_ASSIGNMENT_VIEW: "survey:assignment:view",

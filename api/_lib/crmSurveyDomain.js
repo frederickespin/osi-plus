@@ -343,6 +343,8 @@ function publicDraft(row) {
       row.assignment.evaluationDecision?.method ||
       row.assignment.contextSnapshot?.evaluationMethod ||
       null,
+    informationSource:
+      row.assignment.evaluationDecision?.informationSource || null,
     catalog: publicCatalog(row.catalogVersion),
     items: Object.freeze(activeItems.map(publicItem)),
     access: Object.freeze(row.accessObservations.map(publicAccess)),
@@ -350,6 +352,10 @@ function publicDraft(row) {
     notes: row.notes,
     updatedAt: row.updatedAt,
   });
+}
+export function assertSurveyItemTypeLimit(evaluationMethod, activeItemTypes, creatingNew = true) {
+  if (evaluationMethod === "MINI" && creatingNew && activeItemTypes >= 10)
+    surveyFail("CRM_SURVEY_MINI_ITEM_TYPE_LIMIT", 409);
 }
 const draftInclude = Object.freeze({
   assignment: { include: { evaluationDecision: true } },
@@ -963,6 +969,12 @@ export async function mutateSurveyDraft(
           });
           itemRef = updated.itemRef;
         } else {
+          const evaluationMethod =
+            draft.assignment.evaluationDecision?.method ||
+            draft.assignment.contextSnapshot?.evaluationMethod ||
+            null;
+          const activeItemTypes = draft.items.filter((entry) => !entry.deletedAt).length;
+          assertSurveyItemTypeLimit(evaluationMethod, activeItemTypes);
           const next =
             (
               await tx.surveyDraftItem.aggregate({

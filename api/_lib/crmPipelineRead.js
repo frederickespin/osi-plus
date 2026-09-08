@@ -57,6 +57,33 @@ const CLIENT_SELECT = Object.freeze({
   status: true,
 });
 
+const ROUTE_SELECT = Object.freeze({
+  routeVersion: true,
+  role: true,
+  stopOrder: true,
+  countryCode: true,
+  provinceState: true,
+  cityMunicipality: true,
+  sector: true,
+  streetAndNumber: true,
+});
+
+const LOGISTICS_ZONE_SELECT = Object.freeze({
+  revisions: {
+    where: { status: "PUBLISHED" },
+    orderBy: { revision: "desc" },
+    take: 1,
+    select: {
+      items: {
+        where: { family: "ZONE" },
+        orderBy: { position: "asc" },
+        take: 1,
+        select: { snapshot: true },
+      },
+    },
+  },
+});
+
 const CASE_SELECT = Object.freeze({
   publicRef: true,
   caseCode: true,
@@ -73,6 +100,9 @@ const CASE_SELECT = Object.freeze({
   assetsCount: true,
   createdAt: true,
   updatedAt: true,
+  routeRevision: true,
+  routeSnapshots: { where: { role: { in: ["ORIGIN", "DESTINATION"] } }, select: ROUTE_SELECT, orderBy: [{ routeVersion: "desc" }, { role: "asc" }, { stopOrder: "asc" }], take: 2 },
+  logisticsPlans: { select: LOGISTICS_ZONE_SELECT, take: 1 },
   client: { select: CLIENT_SELECT },
   enterpriseOwner: { select: OWNER_SELECT },
   _count: { select: { quotes: true, events: true } },
@@ -96,6 +126,9 @@ const CASE_DETAIL_SELECT = Object.freeze({
   assetsCount: true,
   createdAt: true,
   updatedAt: true,
+  routeRevision: true,
+  routeSnapshots: { where: { role: { in: ["ORIGIN", "DESTINATION"] } }, select: ROUTE_SELECT, orderBy: [{ routeVersion: "desc" }, { role: "asc" }, { stopOrder: "asc" }], take: 2 },
+  logisticsPlans: { select: LOGISTICS_ZONE_SELECT, take: 1 },
   client: { select: CLIENT_SELECT },
   enterpriseOwner: {
     select: {
@@ -250,6 +283,32 @@ function safeClient(client) {
   });
 }
 
+function compactRouteAddress(row) {
+  if (!row) return null;
+  return [row.streetAndNumber, row.sector, row.cityMunicipality, row.provinceState, row.countryCode]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function publishedRoute(row) {
+  const revision = Number(row.routeRevision || 0);
+  if (revision < 1 || !Array.isArray(row.routeSnapshots)) return null;
+  const current = row.routeSnapshots.filter((entry) => Number(entry.routeVersion) === revision);
+  const origin = current.find((entry) => entry.role === "ORIGIN" && Number(entry.stopOrder) === 0) || null;
+  const destination = current.find((entry) => entry.role === "DESTINATION" && Number(entry.stopOrder) === 0) || null;
+  const zoneSnapshot = row.logisticsPlans?.[0]?.revisions?.[0]?.items?.[0]?.snapshot;
+  const areaFor = (side) => {
+    const candidate = side === "origin" ? zoneSnapshot?.originZoneType : zoneSnapshot?.destinationZoneType;
+    return candidate === "METRO" || candidate === "INTERIOR" ? candidate : "UNAVAILABLE";
+  };
+  const endpoint = (value, side) => value ? Object.freeze({
+    compactAddress: compactRouteAddress(value),
+    area: areaFor(side),
+    areaSource: areaFor(side) === "UNAVAILABLE" ? "UNAVAILABLE" : "PUBLISHED_LOGISTICS",
+  }) : null;
+  return Object.freeze({ revision, origin: endpoint(origin, "origin"), destination: endpoint(destination, "destination") });
+}
+
 function safeCase(row) {
   return Object.freeze({
     caseRef: row.publicRef,
@@ -264,6 +323,7 @@ function safeCase(row) {
     surveyMethod: row.surveyMethod,
     originLocation: row.originLocation,
     destinationLocation: row.destinationLocation,
+    route: publishedRoute(row),
     destinationContracted: row.destinationContracted,
     assetsCount: row.assetsCount,
     owner: safeOwner(row.enterpriseOwner),
@@ -288,6 +348,7 @@ function safeCaseDetail(row, membershipId) {
     surveyMethod: row.surveyMethod,
     originLocation: row.originLocation,
     destinationLocation: row.destinationLocation,
+    route: publishedRoute(row),
     destinationContracted: row.destinationContracted,
     assetsCount: row.assetsCount,
     quoteCount: Number(row._count?.quotes || 0),

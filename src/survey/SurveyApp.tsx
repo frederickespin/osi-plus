@@ -61,12 +61,12 @@ const label: Record<string, string> = {
   ORIGIN: "Origen",
   DESTINATION: "Destino",
   IN_PERSON: "Visita presencial",
-  VIRTUAL: "Evaluación virtual",
-  CLIENT_PHOTOS_DOCUMENTS: "Fotografías/documentos",
+  VIRTUAL: "Visita virtual",
+  CLIENT_PHOTOS_DOCUMENTS: "Listado + fotografías",
   WRITTEN_REPORT: "Reporte escrito",
   VOXME: "Voxme",
-  MINI: "Precarga Mini",
-  NONE: "No requiere evaluación",
+  MINI: "Mini-visita",
+  NONE: "No requiere Survey",
 };
 
 function Button({
@@ -279,6 +279,8 @@ function ItemEditor({
   const items = draft.items.filter(
     (item) => item.area.areaRef === selectedArea,
   );
+  const miniVisit = draft.evaluationMethod === "MINI";
+  const miniLimitReached = miniVisit && draft.items.length >= 10 && !editing;
   const reset = () => {
     setArticleRef("");
     setQuery("");
@@ -333,6 +335,8 @@ function ItemEditor({
     reset();
   };
   return (
+    <div>
+      {miniVisit && <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3" data-testid="mini-visit-estimate"><p className="text-sm font-black text-emerald-900">Mini-visita · Estimado / Aproximado</p><p className="mt-1 text-xs text-emerald-800">Fuente {draft.informationSource === "MINI" ? "MINI_SURVEY" : draft.informationSource || "MINI_SURVEY"}. Peso y volumen se derivan del catálogo versionado v{draft.catalog.version}. {draft.items.length}/10 tipos registrados; la cantidad por tipo puede ser mayor.</p>{miniLimitReached && <p role="alert" className="mt-2 text-xs font-bold text-red-700">Límite de 10 tipos alcanzado. Para 11 o más use Survey presencial, visita virtual o Listado + fotografías.</p>}</div>}
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <section className="rounded-2xl border bg-white p-4">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -512,7 +516,7 @@ function ItemEditor({
           </Button>
           <Button
             type="button"
-            disabled={busy || !articleRef || !selectedArea}
+            disabled={busy || !articleRef || !selectedArea || miniLimitReached}
             onClick={submit}
           >
             {editing ? "Guardar cambios" : "Próximo"}
@@ -586,7 +590,7 @@ function ItemEditor({
           )}
         </div>
       </aside>
-    </div>
+    </div></div>
   );
 }
 
@@ -806,6 +810,7 @@ function Review({
           {draft.clientDisplayName || "Sin Client"} · Catálogo v
           {draft.catalog.version} · Ruta v{draft.routeVersion}
         </p>
+        {draft.evaluationMethod === "MINI" && <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">Estimado / Aproximado · Fuente {draft.informationSource === "MINI" ? "MINI_SURVEY" : draft.informationSource || "MINI_SURVEY"} · {draft.items.length}/10 tipos</p>}
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl bg-slate-50 p-3">
             <strong className="block text-xl">{draft.totals.quantity}</strong>
@@ -911,7 +916,9 @@ export default function SurveyApp({
         onUnauthorized();
       else
         setError(
-          error instanceof Error ? error.message : "CRM_SURVEY_REQUEST_FAILED",
+          error instanceof Error && error.message === "CRM_SURVEY_MINI_ITEM_TYPE_LIMIT"
+            ? "Mini-visita admite hasta 10 tipos. Continúe con Survey presencial, visita virtual o Listado + fotografías."
+            : error instanceof Error ? error.message : "CRM_SURVEY_REQUEST_FAILED",
         );
     },
     [onUnauthorized],

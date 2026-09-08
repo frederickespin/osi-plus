@@ -99,8 +99,8 @@ export default function CaseWorkflowOverview({ item, authorization, servicesEnab
   return <section role="tabpanel" aria-label="Resumen consolidado del caso" className="space-y-3" data-testid="case-workflow-overview">
     <div className="flex items-center gap-2 overflow-x-auto border border-slate-200 bg-slate-50 p-2" aria-label="Progreso real del caso" data-testid="case-workflow-progress">
       <WorkflowStep label="ICP" ready onClick={() => onSelectTab("SUMMARY")} />
+      <WorkflowStep label="Survey" ready={surveyPublished} onClick={() => onSelectTab("SURVEY")} />
       <WorkflowStep label="Servicios" ready={servicesReady} onClick={() => onSelectTab("SERVICES")} />
-      <WorkflowStep label="Evaluación" ready={surveyPublished} onClick={() => onSelectTab("SURVEY")} />
       <WorkflowStep label="Costos" ready={costingReady} onClick={() => onSelectTab("COSTING")} />
       <WorkflowStep label="Cotización" ready={Boolean(accepted)} active={quoteReady && !accepted} onClick={() => onSelectTab("QUOTE")} />
     </div>

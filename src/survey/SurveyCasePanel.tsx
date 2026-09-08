@@ -35,7 +35,6 @@ import { isCommercialRelationshipsUiEnabled } from "@/commercial-relationships/m
 import LogisticsVisitSummary from "@/logistics-engine/LogisticsVisitSummary";
 import type { LogisticsRevision } from "@/logistics-engine/api";
 import type { CommunicationsAccess } from "@/communications/access";
-import CommunicationPanel from "@/communications/CommunicationPanel";
 import { createPersonnelPoliciesApi } from "@/personnel-policies/api";
 
 type Props = Readonly<{
@@ -45,6 +44,7 @@ type Props = Readonly<{
   communicationsEnabled?: boolean;
   communicationsAccess?: CommunicationsAccess;
   logisticsSummaryEnabled?: boolean;
+  onOpenCommunications?(): void;
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
@@ -52,12 +52,12 @@ type Props = Readonly<{
 const METHOD_LABELS: Readonly<Record<EvaluationMethod, string>> = Object.freeze(
   {
     IN_PERSON: "Visita presencial",
-    VIRTUAL: "Evaluación virtual",
-    CLIENT_PHOTOS_DOCUMENTS: "Fotografías/documentos",
+    VIRTUAL: "Visita virtual",
+    CLIENT_PHOTOS_DOCUMENTS: "Listado + fotografías",
     WRITTEN_REPORT: "Reporte o listado escrito",
     VOXME: "Voxme",
-    MINI: "Precarga Mini",
-    NONE: "No requiere evaluación",
+    MINI: "Mini-visita",
+    NONE: "No requiere Survey",
   },
 );
 const STATE_LABELS: Readonly<Record<string, string>> = Object.freeze({
@@ -85,6 +85,7 @@ const HISTORY_LABELS: Readonly<Record<string, string>> = Object.freeze({
 
 function stateFor(method: EvaluationMethod) {
   if (method === "NONE") return "NOT_REQUIRED";
+  if (["CLIENT_PHOTOS_DOCUMENTS", "WRITTEN_REPORT", "VOXME"].includes(method)) return "WAITING_CLIENT_INFO";
   return "READY_TO_SCHEDULE";
 }
 function localDateTime(date: string, time: string) {
@@ -105,6 +106,7 @@ export default function SurveyCasePanel({
   communicationsEnabled = false,
   communicationsAccess,
   logisticsSummaryEnabled = false,
+  onOpenCommunications,
   onNavigate,
   onUnauthorized,
 }: Props) {
@@ -218,7 +220,9 @@ export default function SurveyCasePanel({
             ? "VOXME"
             : method === "MINI"
               ? "MINI"
-              : "COMMERCIAL",
+              : ["CLIENT_PHOTOS_DOCUMENTS", "WRITTEN_REPORT"].includes(method)
+                ? "CLIENT"
+                : "COMMERCIAL",
         rationaleCode: method === "NONE" ? "COMMERCIAL_DECISION" : null,
       }),
     );
@@ -350,9 +354,9 @@ export default function SurveyCasePanel({
   if (!access.canView)
     return (
       <section role="status" className="border border-slate-200 bg-white p-6">
-        <h2 className="font-black text-[#003366]">Evaluación</h2>
+        <h2 className="font-black text-[#003366]">Survey</h2>
         <p className="mt-2 text-sm text-slate-600">
-          No dispone de acceso a la gestión de evaluaciones.
+          No dispone de acceso a la gestión de Survey.
         </p>
       </section>
     );
@@ -365,9 +369,9 @@ export default function SurveyCasePanel({
       <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-slate-50 px-4 py-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[.18em] text-indigo-600">
-            Comercial · Scheduling / Evaluation
+            Comercial · Survey / Scheduling
           </p>
-          <h2 className="text-lg font-black text-[#003366]">Evaluación</h2>
+          <h2 className="text-lg font-black text-[#003366]">Survey</h2>
         </div>
         <Button size="sm" variant="outline" onClick={() => void load()}>
           <RefreshCw />
@@ -497,10 +501,10 @@ export default function SurveyCasePanel({
               {access.canManage &&
                 (!workspace.assignment ||
                   workspace.assignment.status === "CANCELLED") && (
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
-                    <div className="min-w-0 flex-1">
+                  <div className="mt-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end"><div className="min-w-0 flex-1">
                       <Label htmlFor="survey-method">
-                        Método de evaluación
+                        Método de Survey
                       </Label>
                       <Select
                         value={method}
@@ -522,12 +526,13 @@ export default function SurveyCasePanel({
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button
-                      disabled={saving}
-                      onClick={() => void saveDecision()}
-                    >
-                      {saving ? "Guardando…" : "Guardar decisión"}
-                    </Button>
+                    <Button disabled={saving} onClick={() => void saveDecision()}>{saving ? "Guardando…" : "Guardar decisión"}</Button></div>
+                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2" data-testid="survey-method-guidance">
+                      <p className="border-l-2 border-sky-400 pl-2"><strong>Presencial:</strong> agenda, evaluador, zona, buffers, traslado y Visit Fee.</p>
+                      <p className="border-l-2 border-violet-400 pl-2"><strong>Virtual:</strong> cita remota con evaluador y duración; sin traslado físico.</p>
+                      <p className="border-l-2 border-amber-400 pl-2"><strong>Listado + fotografías:</strong> artículos, fotos, documentos y medidas aportados por el cliente.</p>
+                      <p className="border-l-2 border-emerald-500 pl-2"><strong>Mini-visita:</strong> captura rápida por teléfono, email, WhatsApp o conversación comercial; máximo 10 tipos.</p>
+                    </div>
                   </div>
                 )}
             </section>
@@ -769,18 +774,12 @@ export default function SurveyCasePanel({
                 </p>
               </div>
             </section>
-            {communicationsEnabled &&
-              communicationsAccess &&
-              workspace.assignment && (
-                <CommunicationPanel
-                  caseRef={caseRef}
-                  authorization={authorization}
-                  access={communicationsAccess}
-                  context="SCHEDULING"
-                  surveyAssignmentRef={workspace.assignment.assignmentRef}
-                  onUnauthorized={onUnauthorized}
-                />
-              )}
+            {communicationsEnabled && communicationsAccess && onOpenCommunications && (
+              <section className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-4" data-testid="survey-communications-link">
+                <div><h3 className="text-xs font-black uppercase tracking-wide text-slate-600">Comunicaciones de Survey</h3><p className="mt-1 text-xs text-slate-500">El historial completo vive en la autoridad única de Actividad / Comunicaciones.</p></div>
+                <Button size="sm" variant="outline" onClick={onOpenCommunications}><MessageSquareText />Ver comunicaciones de Survey</Button>
+              </section>
+            )}
 
             <section className="p-4">
               <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">

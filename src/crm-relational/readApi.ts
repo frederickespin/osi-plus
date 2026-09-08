@@ -6,6 +6,8 @@ import {
   type CrmPipelineFilters,
   type CrmPipelineList,
   type CrmPipelineSummary,
+  type CrmPublishedRoute,
+  type CrmRouteEndpoint,
   type PipelineCaseStatus,
 } from "./types";
 
@@ -120,13 +122,44 @@ function owner(value: unknown): CrmPipelineCase["owner"] {
   });
 }
 
+function routeEndpoint(value: unknown): CrmRouteEndpoint | null {
+  if (value === null) return null;
+  const row = record(value);
+  exactKeys(row, ["compactAddress", "area", "areaSource"]);
+  if (!new Set(["METRO", "INTERIOR", "UNAVAILABLE"]).has(String(row.area))
+    || !new Set(["PUBLISHED_LOGISTICS", "UNAVAILABLE"]).has(String(row.areaSource))) {
+    throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  }
+  if ((row.area === "UNAVAILABLE") !== (row.areaSource === "UNAVAILABLE")) {
+    throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  }
+  return Object.freeze({
+    compactAddress: text(row.compactAddress)!,
+    area: row.area as CrmRouteEndpoint["area"],
+    areaSource: row.areaSource as CrmRouteEndpoint["areaSource"],
+  });
+}
+
+function publishedRoute(value: unknown): CrmPublishedRoute | null {
+  if (value === null) return null;
+  const row = record(value);
+  exactKeys(row, ["revision", "origin", "destination"]);
+  return Object.freeze({
+    revision: integer(row.revision, 1),
+    origin: routeEndpoint(row.origin),
+    destination: routeEndpoint(row.destination),
+  });
+}
+
 function pipelineCase(value: unknown): CrmPipelineCase {
   const row = record(value);
-  exactKeys(row, [
+  const keys = [
     "caseRef", "caseCode", "client", "mode", "serviceType", "customerType", "status",
     "estimatedCbm", "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation",
     "destinationContracted", "assetsCount", "owner", "quoteCount", "eventCount", "createdAt", "updatedAt",
-  ]);
+  ];
+  if (Object.hasOwn(row, "route")) keys.push("route");
+  exactKeys(row, keys);
   if (typeof row.mode !== "string" || !MODES.has(row.mode)) {
     throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   }
@@ -143,6 +176,7 @@ function pipelineCase(value: unknown): CrmPipelineCase {
     surveyMethod: text(row.surveyMethod)!,
     originLocation: text(row.originLocation)!,
     destinationLocation: text(row.destinationLocation)!,
+    route: Object.hasOwn(row, "route") ? publishedRoute(row.route) : null,
     destinationContracted: bool(row.destinationContracted),
     assetsCount: integer(row.assetsCount),
     owner: owner(row.owner),
@@ -174,11 +208,13 @@ function serviceClient(value: unknown): CrmPipelineCaseDetail["client"] {
 
 function pipelineCaseDetail(value: unknown): CrmPipelineCaseDetail {
   const row = record(value);
-  exactKeys(row, [
+  const keys = [
     "caseRef", "caseCode", "version", "status", "mode", "serviceType", "customerType", "estimatedCbm",
     "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation", "destinationContracted",
     "assetsCount", "quoteCount", "eventCount", "client", "owner", "createdAt", "updatedAt",
-  ]);
+  ];
+  if (Object.hasOwn(row, "route")) keys.push("route");
+  exactKeys(row, keys);
   if (row.mode !== null && (typeof row.mode !== "string" || !MODES.has(row.mode))) {
     throw new CrmPipelineReadError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   }
@@ -201,6 +237,7 @@ function pipelineCaseDetail(value: unknown): CrmPipelineCaseDetail {
     surveyMethod: text(row.surveyMethod, true),
     originLocation: text(row.originLocation, true),
     destinationLocation: text(row.destinationLocation, true),
+    route: Object.hasOwn(row, "route") ? publishedRoute(row.route) : null,
     destinationContracted: row.destinationContracted === null ? null : bool(row.destinationContracted),
     assetsCount: integer(row.assetsCount),
     quoteCount: integer(row.quoteCount),

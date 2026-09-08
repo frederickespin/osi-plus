@@ -22,6 +22,18 @@ export type CrmServiceClient = Readonly<{
   status: string;
 }>;
 
+export type CrmRouteArea = "METRO" | "INTERIOR" | "UNAVAILABLE";
+export type CrmRouteEndpoint = Readonly<{
+  compactAddress: string;
+  area: CrmRouteArea;
+  areaSource: "PUBLISHED_LOGISTICS" | "UNAVAILABLE";
+}>;
+export type CrmPublishedRoute = Readonly<{
+  revision: number;
+  origin: CrmRouteEndpoint | null;
+  destination: CrmRouteEndpoint | null;
+}>;
+
 export type CrmPipelineCase = Readonly<{
   caseRef: string;
   caseCode: string;
@@ -35,6 +47,7 @@ export type CrmPipelineCase = Readonly<{
   surveyMethod: string;
   originLocation: string;
   destinationLocation: string;
+  route?: CrmPublishedRoute | null;
   destinationContracted: boolean;
   assetsCount: number;
   owner: CrmOwner | null;
@@ -57,6 +70,7 @@ export type CrmPipelineCaseDetail = Readonly<{
   surveyMethod: string | null;
   originLocation: string | null;
   destinationLocation: string | null;
+  route?: CrmPublishedRoute | null;
   destinationContracted: boolean | null;
   assetsCount: number;
   quoteCount: number;

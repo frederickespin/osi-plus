@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, BellRing, ChevronLeft, ChevronRight, Filter, MapPin, Plus, Search } from "lucide-react";
+import { AlertCircle, ArrowLeft, BellRing, ChevronLeft, ChevronRight, Filter, MapPin, Pencil, Plus, Search, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,13 @@ import {
   type CrmPipelineFilters,
   type CrmPipelineList,
   type CrmPipelineSummary,
+  type CrmRouteEndpoint,
   type PipelineCaseStatus,
   type PipelineMode,
 } from "@/crm-relational/types";
 import { STATUS_LABELS, commercialReadErrorCopy, statusClass } from "./presentation";
 import { CrmCaseMutationApi, isCrmCaseMutationUiEnabled } from "@/crm-relational/mutationApi";
+import type { CrmCaseFields } from "@/crm-relational/mutationApi";
 import CommercialCaseForm from "./CommercialCaseForm";
 import type { CrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 import IcpIntakeForm from "@/crm-icp-v2/IcpIntakeForm";
@@ -98,6 +100,18 @@ function EmptyState() {
   return <div className="border border-dashed border-slate-300 bg-white px-5 py-12 text-center" data-testid="commercial-crm-empty"><h2 className="text-base font-bold text-slate-900">Inbox Comercial vacío</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">Aún no hay oportunidades reales registradas en el alcance autorizado. No se generan datos de demostración.</p></div>;
 }
 
+function RouteEndpoint({ label, item, mode }: { label: "Dir. origen" | "Dir. destino"; item: CrmRouteEndpoint | null; mode: PipelineMode | null }) {
+  const outsideMetro = mode === "LOCAL" && item?.area === "INTERIOR";
+  const publishedMetro = mode === "LOCAL" && item?.area === "METRO";
+  return <span className={`flex min-w-0 items-center gap-1 ${outsideMetro ? "font-bold text-red-700" : "text-slate-600"}`} title={outsideMetro ? "Fuera de área METRO según la clasificación logística publicada" : undefined}>
+    {outsideMetro ? <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />}
+    <span className="shrink-0 font-bold">{label}:</span>
+    <span className="truncate">{item?.compactAddress || "Dirección estructurada pendiente"}</span>
+    {outsideMetro && <span className="sr-only">Fuera de área METRO.</span>}
+    {publishedMetro && <span className="sr-only">Dentro del área METRO publicada.</span>}
+  </span>;
+}
+
 function QueueItem({ item, selected, onSelect, onOpen }: {
   item: CrmPipelineCase;
   selected: boolean;
@@ -116,13 +130,16 @@ function QueueItem({ item, selected, onSelect, onOpen }: {
       className="min-w-0 px-3 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0079b8]"
     >
       <p className="min-w-0 truncate text-[13px] font-bold text-slate-900"><span className="font-mono font-black text-[#003366]">{item.caseCode}</span><span className="text-slate-400"> · </span>{clientDisplayName}</p>
-      <span className="mt-1 flex min-w-0 items-center gap-1 overflow-hidden text-[10px]">
-        <span className="flex min-w-24 flex-1 items-center gap-1 truncate text-slate-600"><MapPin className="h-3 w-3 shrink-0" />{item.originLocation || "Origen pendiente"} → {item.destinationLocation || "Destino pendiente"}</span>
+      <span className="mt-1 grid min-w-0 gap-0.5 text-[10px]">
+        <RouteEndpoint label="Dir. origen" item={item.route?.origin || null} mode={item.mode} />
+        <RouteEndpoint label="Dir. destino" item={item.route?.destination || null} mode={item.mode} />
+        <span className="mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden">
         <Badge variant="outline" className="shrink-0 px-1.5 text-[9px]">{item.mode ? MODE_LABELS[item.mode] : "Modo pendiente"}</Badge>
         <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">SLA sin configurar</span>
         {alerts.slice(0, 1).map((alert) => <span key={alert} className="max-w-32 truncate rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-800">{alert}</span>)}
         <span className="max-w-32 truncate text-slate-600">{item.owner?.displayName || "Sin asignar"}</span>
         {item.eventCount > 0 && <span className="shrink-0 text-slate-500">Act. {item.eventCount}</span>}
+        </span>
       </span>
     </button>
     <div className="flex shrink-0 items-center gap-1.5 py-1.5 pr-3">
@@ -141,17 +158,19 @@ function SummaryRow({ label, value, note }: { label: string; value: string; note
   return <div className="grid gap-1 border-b border-slate-100 py-2 last:border-b-0 sm:grid-cols-[150px_minmax(0,1fr)]"><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</dt><dd className="min-w-0 text-sm font-semibold text-slate-900"><span className="break-words">{value}</span>{note && <span className="mt-0.5 block text-xs font-normal leading-5 text-slate-500">{note}</span>}</dd></div>;
 }
 
-function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, onClear, onOpen, onReload }: {
+function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, mutationApi, onClear, onReload }: {
   state: DetailState;
   mutationEnvironmentEnabled: boolean;
   mutationAccess: CrmCaseMutationUiAccess;
+  mutationApi: CrmCaseMutationApi;
   onClear(): void;
-  onOpen(caseRef: string): void;
   onReload(): void;
 }) {
+  const [editOpen, setEditOpen] = useState(false);
   const item = state.value;
   const alerts = item ? factualAlerts(item) : [];
   const canEdit = Boolean(item && mutationEnvironmentEnabled && !["APPROVED", "OPS_HANDOFF"].includes(item.status) && (mutationAccess.canUpdateAny || (mutationAccess.canUpdateOwn && item.owner?.isCurrentActor)));
+  const initial = useMemo<CrmCaseFields | undefined>(() => item ? ({ clientRef: item.client?.clientRef || null, mode: item.mode || "LOCAL", serviceType: item.serviceType || "", customerType: (item.customerType || "L4_PERSONAL") as CrmCaseFields["customerType"], estimatedCbm: item.estimatedCbm || 0, requiresSurvey: item.requiresSurvey, surveyMethod: (item.surveyMethod || "NO_APLICA") as CrmCaseFields["surveyMethod"], originLocation: item.originLocation || "", destinationLocation: item.destinationLocation || "", destinationContracted: item.destinationContracted ?? true }) : undefined, [item]);
   return <section data-testid="commercial-case-summary" className="min-h-full bg-white" aria-labelledby="case-summary-heading">
     <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
       <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#0070a8]">Caso seleccionado</p><h2 id="case-summary-heading" className="mt-1 text-xl font-black text-[#003366]">Resumen comercial</h2></div>
@@ -161,11 +180,12 @@ function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, o
     {state.error && <Alert variant="destructive" role="alert" className="m-4"><AlertCircle /><AlertTitle>{state.error.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(state.error)}<Button className="mt-3" size="sm" variant="outline" onClick={onReload}>Reintentar lectura</Button></AlertDescription></Alert>}
     {item && <div className="divide-y divide-slate-200">
       <section className="px-4 py-3"><p className="font-mono text-sm font-black text-[#003366]">{item.caseCode}</p><p className="mt-1 text-base font-bold text-slate-900">{item.client?.displayName || "Sin Client vinculado"}</p><div className="mt-2 flex flex-wrap gap-2"><Badge data-status={item.status} variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">Etapa no publicada</span><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">SLA sin autoridad</span></div></section>
-      <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Identidad y servicio</h3><dl className="mt-1"><SummaryRow label="Vendedor" value={item.owner?.displayName || "Sin asignar"} /><SummaryRow label="Ruta" value={`${item.originLocation || "Origen pendiente"} → ${item.destinationLocation || "Destino pendiente"}`} /><SummaryRow label="Servicio" value={`${item.mode ? MODE_LABELS[item.mode] : "Modo no disponible"} · ${item.serviceType || "Tipo no disponible"}`} /><SummaryRow label="Volumen" value={formatCbm(item.estimatedCbm)} /></dl></section>
+      <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Identidad y servicio</h3><dl className="mt-1"><SummaryRow label="Vendedor" value={item.owner?.displayName || "Sin asignar"} /><SummaryRow label="Dir. origen" value={item.route?.origin?.compactAddress || "Dirección estructurada pendiente"} note={item.mode === "LOCAL" && item.route?.origin?.area === "INTERIOR" ? "⚠ Fuera de área METRO según clasificación publicada." : undefined} /><SummaryRow label="Dir. destino" value={item.route?.destination?.compactAddress || "Dirección estructurada pendiente"} note={item.mode === "LOCAL" && item.route?.destination?.area === "INTERIOR" ? "⚠ Fuera de área METRO según clasificación publicada." : undefined} /><SummaryRow label="Servicio" value={`${item.mode ? MODE_LABELS[item.mode] : "Modo no disponible"} · ${item.serviceType || "Tipo no disponible"}`} /><SummaryRow label="Volumen" value={formatCbm(item.estimatedCbm)} /></dl></section>
       <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Valor y seguimiento</h3><dl className="mt-1"><SummaryRow label="Precio" value="Sin cotización" note="No se infiere desde CBM, tarifas o borradores." /><SummaryRow label="Comunicación" value="Sin comunicación registrada" note="updatedAt no se utiliza como comunicación." /><SummaryRow label="Próximo paso" value="Pendiente de definir" note="Requiere una tarea o regla de workflow explícita." /></dl></section>
       <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Alertas</h3><div className="mt-2 flex flex-wrap gap-1.5">{alerts.length ? alerts.map((alert) => <span key={alert} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">{alert}</span>) : <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Sin alertas deterministas · SLA no calculable</span>}</div></section>
       <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Conteos publicados</h3><div className="mt-2 grid grid-cols-3 divide-x divide-slate-200 border-y border-slate-200 py-2 text-center"><div><strong className="block text-sm text-[#003366]">—</strong><span className="text-[10px] text-slate-500">Survey sin conteo</span></div><div><strong className="block text-sm text-[#003366]">{item.quoteCount}</strong><span className="text-[10px] text-slate-500">Cotizaciones</span></div><div><strong className="block text-sm text-[#003366]">{item.eventCount}</strong><span className="text-[10px] text-slate-500">Actividad</span></div></div></section>
-      <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Acciones autorizadas</h3><div className="mt-2 flex flex-wrap items-center gap-2"><Button aria-label={`Ficha del caso ${item.caseCode} · ${item.client?.displayName || "Sin Client vinculado"}`} onClick={() => onOpen(item.caseRef)}>Ficha del caso</Button><span className="text-xs text-slate-500">{canEdit ? "Edición disponible dentro de la Ficha." : "Consulta en modo de sólo lectura."}</span></div></section>
+      <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Acciones autorizadas</h3><div className="mt-2 flex flex-wrap items-center gap-2">{canEdit && <Button onClick={() => setEditOpen(true)}><Pencil />Editar</Button>}<span className="text-xs text-slate-500">{canEdit ? "La edición general se inicia únicamente desde el Inbox." : "Consulta en modo de sólo lectura."}</span></div></section>
+      {canEdit && initial && <CommercialCaseForm open={editOpen} mode="UPDATE" api={mutationApi} caseRef={item.caseRef} expectedVersion={item.version} initial={initial} initialClient={item.client ? { clientRef: item.client.clientRef, displayName: item.client.displayName, type: item.client.type, status: item.client.status } : undefined} onOpenChange={setEditOpen} onCommitted={() => { setEditOpen(false); onReload(); }} />}
     </div>}
   </section>;
 }
@@ -242,7 +262,7 @@ export default function CommercialInboxModule({ authorization, mutationAccess, s
     {!icpUiEnabled && mutationEnvironmentEnabled && mutationAccess.canCreate && <CommercialCaseForm open={createOpen} mode="CREATE" api={mutationApi} onOpenChange={setCreateOpen} onCommitted={(receipt) => { setRefresh((value) => value + 1); openFullCase(receipt.caseRef); }} />}
     {summaryError && <Alert variant="destructive" className="m-3"><AlertCircle /><AlertTitle>{summaryError.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(summaryError)}</AlertDescription></Alert>}
     {fullCaseWorkspace
-      ? <main className="min-h-0 flex-1 bg-white" data-testid="commercial-full-case-workspace"><Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm font-semibold text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} authorization={authorization} servicesAccess={servicesAccess} logisticsAccess={logisticsAccess} logisticsEnabled={logisticsEnabled} costingAccess={costingAccess} costingEnabled={costingEnabled} quoteAccess={quoteAccess} quoteEnabled={quoteEnabled} surveyEnabled={surveyEnabled} surveySchedulingAccess={surveySchedulingAccess} commercialRelationshipsEnabled={commercialRelationshipsEnabled} commercialRelationshipsAccess={commercialRelationshipsAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} onNavigate={onNavigate} onUnauthorized={onUnauthorized} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onOpenNavigation={onOpenNavigation} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense></main>
-      : <div data-testid="commercial-master-detail-layout" className="min-h-0 flex-1 xl:grid" style={{ gridTemplateColumns: "clamp(560px, 40%, 720px) minmax(0, 1fr)" }}><div className={selectedCaseRef ? "hidden xl:block" : "block"}>{queue}</div><main className={selectedCaseRef ? "block min-w-0 bg-white" : "hidden min-w-0 bg-white xl:block"}>{selectedCaseRef ? <CaseSummaryPanel state={detail} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} onClear={() => setSelectedCaseRef(null)} onOpen={openFullCase} onReload={() => setDetailRefresh((value) => value + 1)} /> : <SupervisionPanel summary={summary} role={role} />}</main></div>}
+      ? <main className="min-h-0 flex-1 bg-white" data-testid="commercial-full-case-workspace"><Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm font-semibold text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} authorization={authorization} servicesAccess={servicesAccess} logisticsAccess={logisticsAccess} logisticsEnabled={logisticsEnabled} costingAccess={costingAccess} costingEnabled={costingEnabled} quoteAccess={quoteAccess} quoteEnabled={quoteEnabled} surveyEnabled={surveyEnabled} surveySchedulingAccess={surveySchedulingAccess} commercialRelationshipsEnabled={commercialRelationshipsEnabled} commercialRelationshipsAccess={commercialRelationshipsAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} onNavigate={onNavigate} onUnauthorized={onUnauthorized} onOpenNavigation={onOpenNavigation} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense></main>
+      : <div data-testid="commercial-master-detail-layout" className="min-h-0 flex-1 xl:grid" style={{ gridTemplateColumns: "clamp(560px, 40%, 720px) minmax(0, 1fr)" }}><div className={selectedCaseRef ? "hidden xl:block" : "block"}>{queue}</div><main className={selectedCaseRef ? "block min-w-0 bg-white" : "hidden min-w-0 bg-white xl:block"}>{selectedCaseRef ? <CaseSummaryPanel state={detail} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onClear={() => setSelectedCaseRef(null)} onReload={() => { setDetailRefresh((value) => value + 1); setRefresh((value) => value + 1); }} /> : <SupervisionPanel summary={summary} role={role} />}</main></div>}
   </section>;
 }

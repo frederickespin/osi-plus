@@ -32,7 +32,10 @@ export function validateToolsEquipmentGuard({ root = process.cwd(), overrides = 
   invariant(/const ToolsEquipmentApp = lazy/u.test(hub), "módulo no es lazy");
   const boundary = 'if (selected?.appId === "tools-equipment" && toolsEnabled && toolsAuthorized)';
   invariant(hub.includes(boundary) && hub.indexOf(boundary) < hub.indexOf("<ToolsEquipmentApp"), "autorización no precede lazy render");
-  const app = catalog.slice(catalog.indexOf('{ appId: "tools-equipment"'), catalog.indexOf('{ appId: "workshop"'));
+  const appStart = catalog.search(/\{\s*appId:\s*"tools-equipment"/u);
+  const appEnd = catalog.search(/\{\s*appId:\s*"workshop"/u);
+  invariant(appStart >= 0 && appEnd > appStart, "catálogo Hub de activos no localizado");
+  const app = catalog.slice(appStart, appEnd);
   invariant(/requiresExplicitPermissions: true/u.test(app) && /baselineRoles: \[\]/u.test(app) && /assets:instance:view/u.test(app), "Hub concede activos por rol baseline");
   const parsed = JSON.parse(inventory); const protectedRoutes = new Set(parsed.categories.protectedSameOrigin); for (const route of ROUTES) invariant(protectedRoutes.has(`/api/assets/${route}`), `ruta protegida no inventariada: ${route}`);
   invariant(/resourceAvailability/u.test(contract) && /kind === "VEHICLE"/u.test(contract) && /kind === "EXTERNAL_OFFER"/u.test(contract), "contrato común futuro incompleto");

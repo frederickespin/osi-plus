@@ -26,7 +26,10 @@ export function validateMaterialsInventoryGuard({ root = process.cwd(), override
   invariant(!/PRODUCTION/u.test(Object.values(JSON.parse(JSON.stringify({ mode }))).join("")) || !/PRODUCTION[_A-Z]*\s*:/u.test(mode), "modo Production introducido");
   invariant(/DISABLED/u.test(mode) && /LOCAL_ONLY/u.test(mode) && /PREVIEW_REHEARSAL/u.test(mode), "matriz de modos cerrada incompleta");
   invariant(/const MaterialsInventoryApp = lazy/u.test(hub) && /if \(selected\?\.appId === "materials-equipment" && materialsEnabled\)/u.test(hub) && hub.indexOf("if (selected?.appId === \"materials-equipment\" && materialsEnabled)") < hub.indexOf("<MaterialsInventoryApp"), "lazy boundary de inventario no autorizada");
-  const materialApp = catalog.slice(catalog.indexOf('{ appId: "materials-equipment"'), catalog.indexOf('{ appId: "tools-equipment"'));
+  const materialStart = catalog.search(/\{\s*appId:\s*"materials-equipment"/u);
+  const materialEnd = catalog.search(/\{\s*appId:\s*"tools-equipment"/u);
+  invariant(materialStart >= 0 && materialEnd > materialStart, "catálogo Hub de materiales no localizado");
+  const materialApp = catalog.slice(materialStart, materialEnd);
   invariant(/requiresExplicitPermissions: true/u.test(materialApp) && /baselineRoles: \[\]/u.test(materialApp) && /inventory:catalog:view/u.test(materialApp) && /inventory:stock:view/u.test(materialApp), "catálogo Hub concede acceso implícito");
   invariant(/El evaluador no selecciona materiales/u.test(survey) && !/materialRef|materialId/u.test(survey), "Survey selecciona materiales manualmente");
   invariant(/resolveRecipeQuantity/u.test(contract) && /surveyPublication.*recipeVersion/u.test(domain), "resolución Survey→receta ausente");

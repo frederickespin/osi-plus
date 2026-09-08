@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { validateServicePackages } from "./validate-v17-service-packages-guard.mjs";
+
+const root = resolve(import.meta.dirname, ".."); const read = (path) => readFileSync(resolve(root, path), "utf8"); let checks = 0;
+const rejects = (path, mutate) => { assert.throws(() => validateServicePackages({ [path]: mutate(read(path)) }), /V17_SERVICE_PACKAGES_GUARD/); checks += 1; };
+rejects("prisma/schema.prisma", (value) => value.replace("model ServicePackageVersion {", "model RemovedPackageVersion {"));
+rejects("prisma/migrations/20260915010000_v17_service_packages_resources/migration.sql", (value) => value.replace('CONSTRAINT "service_package_requirements_material_fkey" FOREIGN KEY ("tenant_id", "material_id")', 'CONSTRAINT "service_package_requirements_material_fkey" FOREIGN KEY ("material_id")'));
+rejects("prisma/migrations/20260915010000_v17_service_packages_resources/migration.sql", (value) => value.replace("service_package_version_services_primary_key", "removed_primary_guard"));
+rejects("prisma/migrations/20260915010000_v17_service_packages_resources/migration.sql", (value) => value.replace('CREATE OR REPLACE FUNCTION "osi"."service_configuration_append_only"', 'CREATE OR REPLACE FUNCTION "osi"."mutable_history"'));
+rejects("api/_lib/servicePackagesDomain.js", (value) => value.replace('JOIN "osi"."osi_users"', 'JOIN "osi"."removed_users"'));
+rejects("api/_lib/servicePackagesDomain.js", (value) => value.replace("denied.has(permission)", "false"));
+rejects("api/_lib/servicePackagesDomain.js", (value) => value.replace("serviceConfigurationAuditEvent.create", "removedAudit.create"));
+rejects("api/_lib/servicePackagesDomain.js", (value) => value.replace('state: "RESOLVED"', 'state: "OPEN"'));
+rejects("api/_lib/servicePackagesContract.js", (value) => value.replace("SERVICE_PACKAGES_PAYLOAD_HASH_INVALID", "HASH_ACCEPTED"));
+rejects("api/_lib/rbac.js", (value) => value.replace("services:packages:manage", "services:packages:removed"));
+rejects("src/crm-services/ServiceConfigurationAdmin.tsx", (value) => `${value}\nconst productionApiEnabled=true;`);
+rejects("src/crm-services/ServiceConfigurationAdmin.tsx", (value) => `${value}\nconst ratio='70%';`);
+rejects("api/_lib/servicePackagesDomain.js", (value) => `${value}\nconst employeeId='assigned';`);
+rejects("src/crm-services/ServiceCasePanel.tsx", (value) => value.replace("Configuración final del caso", "Configuración temporal"));
+rejects("src/crm-services/ServiceConfigurationAdmin.tsx", (value) => `${value}\nimport { useCasesStore } from './legacy';`);
+process.stdout.write(`${JSON.stringify({ ok: true, negativeAssertions: checks })}\n`);

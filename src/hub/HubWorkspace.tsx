@@ -21,6 +21,8 @@ import { isCommercialRelationshipsUiEnabled } from "@/commercial-relationships/m
 import { resolveCommercialRelationshipsAccess } from "@/commercial-relationships/access";
 import { resolveCommunicationsAccess } from "@/communications/access";
 import { isCommunicationsUiEnabled } from "@/communications/mode";
+import { resolvePersonnelPoliciesAccess } from "@/personnel-policies/access";
+import { isPersonnelPoliciesUiEnabled } from "@/personnel-policies/mode";
 import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
@@ -31,6 +33,7 @@ const CommunicationTemplatesAdmin = lazy(() => import("@/communications/Communic
 const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
+const PersonnelPoliciesAdmin = lazy(() => import("@/personnel-policies/PersonnelPoliciesAdmin"));
 
 const ICONS: Record<HubIconId, ElementType> = {
   briefcase: BriefcaseBusiness,
@@ -133,7 +136,10 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const communicationsAccess = resolveCommunicationsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   const communicationsEnabled = isCommunicationsUiEnabled();
   const communicationsAdminAvailable = communicationsEnabled && communicationsAccess.canTemplatesView;
-  const administrationAvailable = adminMembershipAvailable || logisticsAdminAvailable || communicationsAdminAvailable;
+  const personnelPoliciesAccess = resolvePersonnelPoliciesAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
+  const personnelPoliciesEnabled = isPersonnelPoliciesUiEnabled();
+  const personnelPoliciesAvailable = personnelPoliciesEnabled && personnelPoliciesAccess.canView;
+  const administrationAvailable = adminMembershipAvailable || logisticsAdminAvailable || communicationsAdminAvailable || personnelPoliciesAvailable;
   const commercialRelationshipsEnabled = isCommercialRelationshipsUiEnabled();
   const commercialRelationshipsAccess = resolveCommercialRelationshipsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   if (pathname === "/commercial/relationships" && (!commercialRelationshipsEnabled || !commercialRelationshipsAccess.canView)) {
@@ -182,9 +188,14 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         invitationMode={adminInvitationMode}
         communicationsEnabled={communicationsEnabled}
         communicationsAccess={communicationsAccess}
+        personnelPoliciesEnabled={personnelPoliciesEnabled}
+        personnelPoliciesAccess={personnelPoliciesAccess}
         onUnauthorized={onLogout}
       />
     </Suspense>;
+  }
+  if (selected?.appId === "administration" && personnelPoliciesAvailable) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Personal y Políticas…</div>}><main className="min-h-screen bg-slate-50 p-4 sm:p-7"><div className="mx-auto max-w-7xl"><PersonnelPoliciesAdmin authorization={authorization} access={personnelPoliciesAccess} onUnauthorized={onLogout} /></div></main></Suspense>;
   }
   if (selected?.appId === "administration" && communicationsAdminAvailable) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Plantillas y Comunicaciones…</div>}><main className="min-h-screen bg-slate-50 p-4 sm:p-7"><div className="mx-auto max-w-7xl"><CommunicationTemplatesAdmin authorization={authorization} access={communicationsAccess} onUnauthorized={onLogout} /></div></main></Suspense>;

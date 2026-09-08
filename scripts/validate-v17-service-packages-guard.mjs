@@ -8,7 +8,7 @@ const need = (text, expression, message) => { if (!expression.test(text)) fail(m
 
 export function validateServicePackages(overrides = {}) {
   const schema = read("prisma/schema.prisma", overrides); const migration = read("prisma/migrations/20260915010000_v17_service_packages_resources/migration.sql", overrides); const domain = read("api/_lib/servicePackagesDomain.js", overrides); const contract = read("api/_lib/servicePackagesContract.js", overrides); const http = read("api/_lib/crmServicesHttp.js", overrides); const rbac = read("api/_lib/rbac.js", overrides); const access = read("src/crm-services/access.ts", overrides); const admin = read("src/crm-services/ServiceConfigurationAdmin.tsx", overrides); const panel = read("src/crm-services/ServiceCasePanel.tsx", overrides); const packageJson = read("package.json", overrides);
-  for (const model of ["ServiceModeDefinition", "ServiceCatalogMode", "ServicePackage", "ServicePackageVersion", "ServicePackageVersionService", "ServicePackageRequirement", "ServiceMaterialPolicy", "ServiceMaterialPolicyVersion", "ServiceMaterialPolicyLine", "CaseServiceConfigurationRevision", "CaseServiceConfigurationItem", "ServiceConfigurationCommand", "ServiceConfigurationAuditEvent", "ServiceConfigurationConflict"]) need(schema, new RegExp(`model ${model}\\b`), `falta ${model}`);
+  for (const model of ["ServiceModeDefinition", "ServiceCatalogMode", "ServicePackage", "ServicePackageVersion", "ServicePackageVersionMode", "ServicePackageVersionService", "ServicePackageRequirement", "ServiceMaterialPolicy", "ServiceMaterialPolicyVersion", "ServiceMaterialPolicyLine", "CaseServiceConfigurationRevision", "CaseServiceConfigurationItem", "ServiceConfigurationCommand", "ServiceConfigurationAuditEvent", "ServiceConfigurationConflict"]) need(schema, new RegExp(`model ${model}\\b`), `falta ${model}`);
   for (const relation of ["service_package_versions_package_fkey", "service_package_requirements_material_fkey", "service_package_requirements_asset_fkey", "service_package_requirements_capability_fkey", "case_service_configurations_case_fkey"]) need(migration, new RegExp(`CONSTRAINT "${relation}" FOREIGN KEY \\("tenant_id",`), `FK ${relation} no es tenant-first`);
   for (const invariant of ["service_package_version_services_primary_key", "service_package_versions_one_published_key", "service_material_policy_lines_values_check"]) need(migration, new RegExp(invariant), `falta invariante ${invariant}`);
   for (const fn of ["service_configuration_append_only", "service_configuration_version_guard"]) need(migration, new RegExp(`CREATE OR REPLACE FUNCTION "osi"\\."${fn}"`), `falta función ${fn}`);
@@ -27,7 +27,7 @@ export function validateServicePackages(overrides = {}) {
   if (/productionApiEnabled\s*[:=]\s*true/i.test(`${packageJson}\n${http}\n${admin}\n${panel}`)) fail("Production fue activada");
   if (/\b(?:70|30)\s*%/.test(`${domain}\n${contract}\n${admin}`)) fail("porcentaje empresarial hard-coded");
   if (/employeeId|vehicleId|licensePlate|stockQuantity/.test(`${contract}\n${domain}`)) fail("paquete asigna persona/vehículo/stock concreto");
-  return Object.freeze({ models: 14, permissions: 6, productionApiEnabled: false });
+  return Object.freeze({ models: 15, permissions: 6, productionApiEnabled: false });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) process.stdout.write(`${JSON.stringify({ ok: true, ...validateServicePackages() })}\n`);

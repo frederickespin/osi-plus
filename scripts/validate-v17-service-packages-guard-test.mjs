@@ -6,6 +6,7 @@ import { validateServicePackages } from "./validate-v17-service-packages-guard.m
 const root = resolve(import.meta.dirname, ".."); const read = (path) => readFileSync(resolve(root, path), "utf8"); let checks = 0;
 const rejects = (path, mutate) => { assert.throws(() => validateServicePackages({ [path]: mutate(read(path)) }), /V17_SERVICE_PACKAGES_GUARD/); checks += 1; };
 rejects("prisma/schema.prisma", (value) => value.replace("model ServicePackageVersion {", "model RemovedPackageVersion {"));
+rejects("prisma/schema.prisma", (value) => value.replace("model ServicePackageVersionMode {", "model RemovedPackageVersionMode {"));
 rejects("prisma/migrations/20260915010000_v17_service_packages_resources/migration.sql", (value) => value.replace('CONSTRAINT "service_package_requirements_material_fkey" FOREIGN KEY ("tenant_id", "material_id")', 'CONSTRAINT "service_package_requirements_material_fkey" FOREIGN KEY ("material_id")'));
 rejects("prisma/migrations/20260915010000_v17_service_packages_resources/migration.sql", (value) => value.replace("service_package_version_services_primary_key", "removed_primary_guard"));
 rejects("prisma/migrations/20260915010000_v17_service_packages_resources/migration.sql", (value) => value.replace('CREATE OR REPLACE FUNCTION "osi"."service_configuration_append_only"', 'CREATE OR REPLACE FUNCTION "osi"."mutable_history"'));

@@ -142,7 +142,7 @@ Las mutaciones usan `requestId`, hash canónico recalculado, advisory lock, tran
 
 - Contratos/HTTP: 15 comprobaciones; gate DISABLED devuelve 409 antes de auth, body y Prisma.
 - PostgreSQL/domain: 25 comprobaciones, incluyendo idempotencia, tenant isolation, A/V, published immutability y cuatro carreras.
-- Guards 15A: 16 negativas.
+- Guards 15A: 17 negativas.
 - Guards de Auth, ICP, Survey, Scheduling, Relaciones, Comunicaciones, Personal, Materiales, Assets, Motor, Costing y Quote: verdes.
 - Build, TypeScript, ESLint focalizado y CORS inventory: verdes.
 

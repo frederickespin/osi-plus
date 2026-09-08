@@ -171,13 +171,14 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
     if (route.path.startsWith("/api/quote/") && route.source.includes("createQuoteHandler")) continue;
     if (route.path.startsWith("/api/commercial-relationships/") && route.source.includes("createCommercialRelationshipsHandler")) continue;
     if (route.path.startsWith("/api/communications/") && (route.source.includes("createCommunicationsHandler") || route.source.includes("createTransportDisabledHandler"))) continue;
+    if (route.path.startsWith("/api/personnel/") && route.source.includes("createPersonnelPoliciesHandler")) continue;
     invariant(/^\/api\/(?:auth|crm|admin)\//u.test(route.path), `${route.path} no usa wrapper privado ni adaptador canónico`);
   }
 
   for (const relativePath of [
     "api/_lib/adminIdentityInvitationHttp.js", "api/_lib/adminMembershipHttp.js", "api/_lib/authHttp.js", "api/_lib/authOrigin.js",
     "api/_lib/crmCaseMutationHttp.js", "api/_lib/crmIcpV2ApiHttp.js", "api/_lib/crmOwnerCatalogHttp.js", "api/_lib/crmPipelineReadHttp.js",
-    "api/_lib/crmServicesHttp.js", "api/_lib/crmSurveyHttp.js", "api/_lib/materialsInventoryHttp.js", "api/_lib/toolsEquipmentHttp.js", "api/_lib/logisticsEngineHttp.js", "api/_lib/costingHttp.js", "api/_lib/quoteHttp.js", "api/_lib/commercialRelationshipsHttp.js", "api/_lib/communicationsHttp.js", "api/_lib/pipelineCaseMutationHttp.js",
+    "api/_lib/crmServicesHttp.js", "api/_lib/crmSurveyHttp.js", "api/_lib/materialsInventoryHttp.js", "api/_lib/toolsEquipmentHttp.js", "api/_lib/logisticsEngineHttp.js", "api/_lib/costingHttp.js", "api/_lib/quoteHttp.js", "api/_lib/commercialRelationshipsHttp.js", "api/_lib/communicationsHttp.js", "api/_lib/personnelPoliciesHttp.js", "api/_lib/pipelineCaseMutationHttp.js",
   ]) {
     const wrapper = source(root, relativePath, overrides);
     invariant(!WILDCARD_ORIGIN.test(wrapper), `${relativePath} declara wildcard`);

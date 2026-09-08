@@ -3,10 +3,14 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(process.cwd());
-const read = (file, overrides = {}) => overrides[file] ?? fs.readFileSync(path.join(root, file), "utf8");
+const read = (file, overrides = {}) =>
+  overrides[file] ?? fs.readFileSync(path.join(root, file), "utf8");
 export function validateSchedulingConvergence(overrides = {}) {
   const schema = read("prisma/schema.prisma", overrides);
-  const migration = read("prisma/migrations/20260911010000_v17_scheduling_desktop_convergence/migration.sql", overrides);
+  const migration = read(
+    "prisma/migrations/20260911010000_v17_scheduling_desktop_convergence/migration.sql",
+    overrides,
+  );
   const domain = read("api/_lib/surveySchedulingDomain.js", overrides);
   const contract = read("api/_lib/surveySchedulingContract.js", overrides);
   const api = read("api/crm/survey/scheduling/index.js", overrides);
@@ -17,34 +21,166 @@ export function validateSchedulingConvergence(overrides = {}) {
   const access = read("src/survey/schedulingAccess.ts", overrides);
   const rbac = read("api/_lib/rbac.js", overrides);
   const motor = read("api/_lib/logisticsEngineContract.js", overrides);
-  const inventory = JSON.parse(read("scripts/protected-cors-route-inventory.json", overrides));
-  for (const model of ["SurveyEvaluationDecision", "SurveySchedulePolicyVersion", "SurveyAssignmentEvent", "SurveyVisitFee", "SurveyCommunicationRecord"]) assert.match(schema, new RegExp(`model ${model}\\s*\\{`), `${model} ausente`);
-  assert.match(schema, /model SurveyAssignment[\s\S]*evaluationDecisionId[\s\S]*schedulePolicyId[\s\S]*slotKey/, "SurveyAssignment dejó de ser autoridad de la cita");
-  assert.match(migration, /SET search_path = osi, public;/, "schema SQL no fijado");
-  for (const invariant of ["survey_assignments_decision_fkey", "survey_assignment_events_append_only", "survey_communications_append_only", "survey_assignment_public_identity_immutable", "survey_visit_fees_source_check"]) assert.match(migration, new RegExp(invariant), `${invariant} ausente`);
-  assert.match(domain, /pipelineCase\.findFirst\(\{ where: \{ tenantId: who\.tenantId, publicRef: caseRef, \.\.\.publicScope\(who\)/, "resolución tenant-first ausente");
-  assert.match(domain, /Prisma\.TransactionIsolationLevel\.Serializable/, "mutaciones sin SERIALIZABLE");
-  assert.match(domain, /pg_try_advisory_xact_lock/, "concurrencia sin advisory lock");
-  assert.match(domain, /logisticsPlanRevision[\s\S]*costingRevision[\s\S]*costingLine/, "Visit Fee no encadena Motor y Costing");
-  assert.match(motor, /rule\.family === "ZONE"[\s\S]*zoneType: r\.zoneType, zoneCode: r\.zoneCode/, "Motor dejó de publicar la zona versionada para Scheduling");
-  assert.match(domain, /contextSnapshot: evaluatorContext\(pipelineCase, serviceRevision, nextDecision, policy, zone\)/, "Assignment no recibe el contexto autoritativo de Scheduling");
-  assert.match(domain, /serviceSelectionRef: serviceRevision\.selectionRef[\s\S]*services: serviceRevision\.items\.map[\s\S]*evaluationMethod: decision\.method/, "ServicesRevision o método no llegan a la App del Evaluador");
-  assert.match(domain, /routeVersion === pipelineCase\.routeRevision[\s\S]*role === "ORIGIN"[\s\S]*role === "DESTINATION"/, "RouteSnapshot no llega a la App del Evaluador");
-  assert.match(surveyDomain, /evaluationMethod:[\s\S]*row\.evaluationDecision\?\.method[\s\S]*serviceSelectionRef:[\s\S]*row\.serviceRevision\?\.selectionRef/, "DTO de Assignment no publica método y ServicesRevision");
-  assert.match(surveyApp, /Método · \{label\[row\.evaluationMethod\]/, "App del Evaluador no representa el método asignado");
-  assert.doesNotMatch(surveyApp, /crm-survey-preview|SurveyVisualPreview|visitCalendarStore|schedulingBridge/, "App reciente fue sustituida por Preview o histórico");
-  assert.doesNotMatch(domain + contract + panel + client, /visitCalendarStore|schedulingBridge|localStorage|sessionStorage|salesStore/, "autoridad legacy/local reintroducida");
-  assert.doesNotMatch(domain, /evaluatorName|ownerName/, "evaluador resuelto por nombre");
-  assert.match(contract, /CAN_PERFORM_IN_PERSON_SURVEY[\s\S]*CAN_PERFORM_OUT_OF_AREA_VISIT[\s\S]*CAN_APPROVE_VISIT_FEE/, "capacidades operacionales ausentes");
-  assert.match(contract, /INTERIOR_SHORT[\s\S]*maxDistanceKm: 30[\s\S]*INTERIOR_LONG[\s\S]*dailyCapacity: 1/, "equivalencia INTERIOR perdida");
-  assert.match(contract, /closedWeekdays: Object\.freeze\(\[0\]\)[\s\S]*saturdayRequiresApproval: true/, "domingo/sábado históricos perdidos");
-  assert.match(panel, /PREPARED no envía mensajes externos/, "PIC simula transporte externo");
-  assert.match(panel, /Abrir Survey App/, "integración con Survey App 04A ausente");
-  assert.match(access, /denied\.has\(permission\)/, "deniedPermissions dejó de prevalecer");
-  for (const permission of ["SURVEY_SCHEDULE_VIEW", "SURVEY_SCHEDULE_MANAGE", "SURVEY_SCHEDULE_ASSIGN", "SURVEY_SCHEDULE_RESCHEDULE", "SURVEY_VISIT_FEE_VIEW", "SURVEY_VISIT_FEE_APPROVE"]) assert.match(rbac, new RegExp(`EXPLICIT_SURVEY_PERMISSIONS[\\s\\S]*PERMS\\.${permission}`), `${permission} dejó de ser grant explícito`);
-  assert.match(client, /credentials: "same-origin"[\s\S]*cache: "no-store"[\s\S]*referrerPolicy: "no-referrer"/, "cliente Scheduling no conserva contrato privado");
-  assert.ok(inventory.categories.protectedSameOrigin.includes("/api/crm/survey/scheduling"), "ruta Scheduling fuera del inventario CORS");
-  assert.match(api, /createCrmSurveyHandler/, "API no reutiliza AuthorizationContext/guardia 04A");
+  const inventory = JSON.parse(
+    read("scripts/protected-cors-route-inventory.json", overrides),
+  );
+  for (const model of [
+    "SurveyEvaluationDecision",
+    "SurveySchedulePolicyVersion",
+    "SurveyAssignmentEvent",
+    "SurveyVisitFee",
+    "SurveyCommunicationRecord",
+  ])
+    assert.match(
+      schema,
+      new RegExp(`model ${model}\\s*\\{`),
+      `${model} ausente`,
+    );
+  assert.match(
+    schema,
+    /model SurveyAssignment[\s\S]*evaluationDecisionId[\s\S]*schedulePolicyId[\s\S]*slotKey/,
+    "SurveyAssignment dejó de ser autoridad de la cita",
+  );
+  assert.match(
+    migration,
+    /SET search_path = osi, public;/,
+    "schema SQL no fijado",
+  );
+  for (const invariant of [
+    "survey_assignments_decision_fkey",
+    "survey_assignment_events_append_only",
+    "survey_communications_append_only",
+    "survey_assignment_public_identity_immutable",
+    "survey_visit_fees_source_check",
+  ])
+    assert.match(migration, new RegExp(invariant), `${invariant} ausente`);
+  assert.match(
+    domain,
+    /pipelineCase\.findFirst\(\{[\s\S]*?where:\s*\{[\s\S]*?tenantId:\s*who\.tenantId,[\s\S]*?publicRef:\s*caseRef,[\s\S]*?\.\.\.publicScope\(who\)[\s\S]*?\}/,
+    "resolución tenant-first ausente",
+  );
+  assert.match(
+    domain,
+    /Prisma\.TransactionIsolationLevel\.Serializable/,
+    "mutaciones sin SERIALIZABLE",
+  );
+  assert.match(
+    domain,
+    /pg_try_advisory_xact_lock/,
+    "concurrencia sin advisory lock",
+  );
+  assert.match(
+    domain,
+    /logisticsPlanRevision[\s\S]*costingRevision[\s\S]*costingLine/,
+    "Visit Fee no encadena Motor y Costing",
+  );
+  assert.match(
+    motor,
+    /rule\.family === "ZONE"[\s\S]*zoneType: r\.zoneType, zoneCode: r\.zoneCode/,
+    "Motor dejó de publicar la zona versionada para Scheduling",
+  );
+  assert.match(
+    domain,
+    /contextSnapshot:\s*evaluatorContext\(\s*pipelineCase,\s*serviceRevision,\s*nextDecision,\s*policy,\s*zone,?\s*\)/,
+    "Assignment no recibe el contexto autoritativo de Scheduling",
+  );
+  assert.match(
+    domain,
+    /serviceSelectionRef: serviceRevision\.selectionRef[\s\S]*services: serviceRevision\.items\.map[\s\S]*evaluationMethod: decision\.method/,
+    "ServicesRevision o método no llegan a la App del Evaluador",
+  );
+  assert.match(
+    domain,
+    /routeVersion === pipelineCase\.routeRevision[\s\S]*role === "ORIGIN"[\s\S]*role === "DESTINATION"/,
+    "RouteSnapshot no llega a la App del Evaluador",
+  );
+  assert.match(
+    surveyDomain,
+    /evaluationMethod:[\s\S]*row\.evaluationDecision\?\.method[\s\S]*serviceSelectionRef:[\s\S]*row\.serviceRevision\?\.selectionRef/,
+    "DTO de Assignment no publica método y ServicesRevision",
+  );
+  assert.match(
+    surveyApp,
+    /Método · \{label\[row\.evaluationMethod\]/,
+    "App del Evaluador no representa el método asignado",
+  );
+  assert.doesNotMatch(
+    surveyApp,
+    /crm-survey-preview|SurveyVisualPreview|visitCalendarStore|schedulingBridge/,
+    "App reciente fue sustituida por Preview o histórico",
+  );
+  assert.doesNotMatch(
+    domain + contract + panel + client,
+    /visitCalendarStore|schedulingBridge|localStorage|sessionStorage|salesStore/,
+    "autoridad legacy/local reintroducida",
+  );
+  assert.doesNotMatch(
+    domain,
+    /evaluatorName|ownerName/,
+    "evaluador resuelto por nombre",
+  );
+  assert.match(
+    contract,
+    /CAN_PERFORM_IN_PERSON_SURVEY[\s\S]*CAN_PERFORM_OUT_OF_AREA_VISIT[\s\S]*CAN_APPROVE_VISIT_FEE/,
+    "capacidades operacionales ausentes",
+  );
+  assert.match(
+    contract,
+    /INTERIOR_SHORT[\s\S]*maxDistanceKm: 30[\s\S]*INTERIOR_LONG[\s\S]*dailyCapacity: 1/,
+    "equivalencia INTERIOR perdida",
+  );
+  assert.match(
+    contract,
+    /closedWeekdays: Object\.freeze\(\[0\]\)[\s\S]*saturdayRequiresApproval: true/,
+    "domingo/sábado históricos perdidos",
+  );
+  assert.match(
+    panel,
+    /PREPARED no envía mensajes externos/,
+    "PIC simula transporte externo",
+  );
+  assert.match(
+    panel,
+    /Abrir Survey App/,
+    "integración con Survey App 04A ausente",
+  );
+  assert.match(
+    access,
+    /denied\.has\(permission\)/,
+    "deniedPermissions dejó de prevalecer",
+  );
+  for (const permission of [
+    "SURVEY_SCHEDULE_VIEW",
+    "SURVEY_SCHEDULE_MANAGE",
+    "SURVEY_SCHEDULE_ASSIGN",
+    "SURVEY_SCHEDULE_RESCHEDULE",
+    "SURVEY_VISIT_FEE_VIEW",
+    "SURVEY_VISIT_FEE_APPROVE",
+  ])
+    assert.match(
+      rbac,
+      new RegExp(`EXPLICIT_SURVEY_PERMISSIONS[\\s\\S]*PERMS\\.${permission}`),
+      `${permission} dejó de ser grant explícito`,
+    );
+  assert.match(
+    client,
+    /credentials: "same-origin"[\s\S]*cache: "no-store"[\s\S]*referrerPolicy: "no-referrer"/,
+    "cliente Scheduling no conserva contrato privado",
+  );
+  assert.ok(
+    inventory.categories.protectedSameOrigin.includes(
+      "/api/crm/survey/scheduling",
+    ),
+    "ruta Scheduling fuera del inventario CORS",
+  );
+  assert.match(
+    api,
+    /createCrmSurveyHandler/,
+    "API no reutiliza AuthorizationContext/guardia 04A",
+  );
   return 32;
 }
-if (import.meta.url === `file:///${process.argv[1]?.replaceAll("\\", "/")}`) process.stdout.write(`Scheduling 11B guard: ${validateSchedulingConvergence()}/32\n`);
+if (import.meta.url === `file:///${process.argv[1]?.replaceAll("\\", "/")}`)
+  process.stdout.write(
+    `Scheduling 11B guard: ${validateSchedulingConvergence()}/32\n`,
+  );

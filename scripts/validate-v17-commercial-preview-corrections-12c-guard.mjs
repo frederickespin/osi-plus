@@ -33,12 +33,14 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.match(hub, /const logisticsAdminAvailable = isLogisticsUiEnabled\(\) && logisticsAccess\.canRulesView/);
   assert.match(hub, /selected\?\.appId === "administration" && logisticsAdminAvailable/);
   assert.match(hub, /adminMembershipAvailable \|\| logisticsAdminAvailable/);
-  assert.match(catalog, /appId: "administration"[\s\S]*requiredPermissions: \["membership:view", "logistics:rules:view"\][\s\S]*permissionMode: "ANY"/);
+  const administrationCatalog = catalog.slice(catalog.indexOf('appId: "administration"'), catalog.indexOf('appId: "human-resources"'));
+  assert.match(administrationCatalog, /requiredPermissions: \[[^\]]*"membership:view"[^\]]*"logistics:rules:view"[^\]]*\]/);
+  assert.match(administrationCatalog, /permissionMode: "ANY"/);
   assert.match(rules, /id="admin-logistics-engine"/);
   assert.match(rules, /Administración · Motor Logístico/);
   assert.doesNotMatch(http, /PRODUCTION_(?:READ|WRITE|PILOT)/, "12C no activa Production");
   const migrationCount = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
-  assert.equal(migrationCount, 31, "12C no puede crear migraciones");
+  assert.equal(migrationCount, 33, "linaje consolidado debe conservar exactamente 33 migraciones");
   return Object.freeze({ ok: true, commercialMotorTabs: 0, adminLazyBoundary: true, independentAdminSurfaces: true, publishedResultOnly: true, productionApiEnabled: false, migrations: migrationCount });
 }
 

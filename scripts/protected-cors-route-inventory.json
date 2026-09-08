@@ -111,6 +111,7 @@
       "/api/materials/units",
       "/api/materials/warehouses",
       "/api/projects",
+      "/api/personnel/policies",
       "/api/quote/cases/[caseRef]",
       "/api/quote/proposals/[proposalRef]/client",
       "/api/quote/proposals/cancel",
@@ -120,10 +121,7 @@
       "/api/quote/proposals/revise",
       "/api/quote/proposals/send"
     ],
-    "publicDeliberate": [
-      "/api/health",
-      "/api/info"
-    ],
+    "publicDeliberate": ["/api/health", "/api/info"],
     "legacyPendingClosed": [
       "/api/_disabled/modules",
       "/api/_disabled/pgd/apply",

@@ -20,6 +20,7 @@ const baseline = new Map([
   ["api/_lib/logisticsEngineHttp.js", read("api/_lib/logisticsEngineHttp.js")],
   ["api/_lib/costingHttp.js", read("api/_lib/costingHttp.js")],
   ["api/_lib/quoteHttp.js", read("api/_lib/quoteHttp.js")],
+  ["api/_lib/personnelPoliciesHttp.js", read("api/_lib/personnelPoliciesHttp.js")],
   ["api/_lib/pipelineCaseMutationHttp.js", read("api/_lib/pipelineCaseMutationHttp.js")],
   ["api/clients/index.js", read("api/clients/index.js")], ["api/projects/index.js", read("api/projects/index.js")],
 ]);
@@ -82,6 +83,7 @@ rejected("wildcard wrapper compartido", "api/_lib/http.js", (value) => value.rep
 rejected("wildcard wrapper activos", "api/_lib/toolsEquipmentHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard Costing", "api/_lib/costingHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard Quote", "api/_lib/quoteHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
+rejected("wildcard Personal", "api/_lib/personnelPoliciesHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("credentials sin wildcard", "api/_lib/http.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Credentials", "true");`);
 rejected("reflejo de Origin", "api/clients/index.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", req.headers.origin);`);
 rejected("booleano CORS ambiguo", "api/_lib/http.js", (value) => value.replace("{ handleOptions = false }", "{ handleOptions = false, cors = false }"));

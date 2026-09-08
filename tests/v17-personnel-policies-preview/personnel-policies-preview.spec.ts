@@ -29,12 +29,20 @@ function account(prefix: string): Account {
   return { email, password };
 }
 
-async function login(page: Page, identity: Account) {
+async function login(page: Page, identity: Account, expectHub = true) {
   await page.goto("/");
   await page.getByLabel("Correo electrónico").fill(identity.email);
   await page.getByLabel("Contraseña").fill(identity.password);
   await page.getByRole("button", { name: "Iniciar Sesión" }).click();
-  await expect(page.getByText("OSi Plus Hub", { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => Boolean(localStorage.getItem("osi-plus.token"))),
+    )
+    .toBe(true);
+  if (expectHub)
+    await expect(
+      page.getByRole("main").getByText("OSi Plus Hub", { exact: true }),
+    ).toBeVisible();
 }
 
 function runtimeEvidence(page: Page) {
@@ -64,16 +72,22 @@ test("Administrador revisa Personal, capacidades, horarios, políticas y excepci
 }, testInfo) => {
   const problems = runtimeEvidence(page);
   await login(page, account("V17_PREVIEW_ADMIN"));
-  await page.getByRole("button", { name: /Administración/u }).click();
+  await page
+    .getByRole("button", { name: /Disponible Administración/u })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Personal y Políticas" }),
   ).toBeVisible();
-  await expect(page.getByText("Evaluador Preview", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Evaluador Preview" }),
+  ).toBeVisible();
   if (testInfo.project.name === "chromium-desktop")
     await capture(page, "01-administracion-personal");
 
   await page.getByRole("button", { name: "Capacidades" }).click();
-  await expect(page.getByText("Visita presencial", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Visita presencial", { exact: true }).first(),
+  ).toBeVisible();
   if (testInfo.project.name === "chromium-desktop")
     await capture(page, "02-capacidades");
 
@@ -89,7 +103,7 @@ test("Administrador revisa Personal, capacidades, horarios, políticas y excepci
     await capture(page, "04-slots-y-buffer");
 
   await page.getByRole("button", { name: "Excepciones" }).click();
-  await expect(page.getByText(/Fuera de horario/u)).toBeVisible();
+  await expect(page.getByText(/fuera de horario/iu)).toBeVisible();
   await expect(page.getByText(/Evaluador: ACCEPTED/u)).toBeVisible();
   await expect(page.getByText(/Administración: APPROVED/u)).toBeVisible();
   if (testInfo.project.name === "chromium-desktop") {
@@ -108,12 +122,14 @@ test("Evaluador consulta agenda tenant-first con presencial, virtual y reagendam
 }, testInfo) => {
   const problems = runtimeEvidence(page);
   await login(page, account("V17_PREVIEW_EVALUATOR"));
-  await page.getByRole("button", { name: /OSi Survey/u }).click();
+  await page
+    .getByRole("button", { name: /Disponible OSi Survey Agenda/u })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Agenda de visitas" }),
   ).toBeVisible();
-  await expect(page.getByText("Método · Visita presencial")).toBeVisible();
-  await expect(page.getByText("Método · Evaluación virtual")).toBeVisible();
+  await expect(page.getByText("Método · Visita presencial").first()).toBeVisible();
+  await expect(page.getByText("Método · Evaluación virtual").first()).toBeVisible();
   await expect(page.getByText(/PV10B-D-QUOTES/u).first()).toBeVisible();
   if (testInfo.project.name === "chromium-desktop") {
     await capture(page, "08-agenda-evaluador");
@@ -135,7 +151,7 @@ test("Deny se resuelve en shell sin chunks ni APIs protegidas", async ({
     if (/^\/api\/(?:personnel|crm)\//u.test(pathname))
       protectedRequests.push(pathname);
   });
-  await login(page, account("V17_PREVIEW_DENY"));
+  await login(page, account("V17_PREVIEW_DENY"), false);
   await page.goto("/administration");
   await expect(
     page.getByRole("heading", { name: "No puedes abrir esta aplicación" }),

@@ -182,6 +182,12 @@ export const PERMS = Object.freeze({
   SCHEDULING_EXCEPTIONS_APPROVE: "scheduling:exceptions:approve",
   SCHEDULING_EXCEPTIONS_RESPOND: "scheduling:exceptions:respond",
 
+  // V17 temporary client access. Explicit grants only; never implied by role.
+  CLIENT_ACCESS_VIEW: "client-access:view",
+  CLIENT_ACCESS_CREATE: "client-access:create",
+  CLIENT_ACCESS_REVOKE: "client-access:revoke",
+  CLIENT_ACCESS_MANAGE: "client-access:manage",
+
   // HR
   HR_VIEW: "hr:view",
   HR_KPI: "hr:kpi",
@@ -333,6 +339,13 @@ const EXPLICIT_PERSONNEL_POLICY_PERMISSIONS = new Set([
   PERMS.SCHEDULING_EXCEPTIONS_RESPOND,
 ]);
 
+const EXPLICIT_CLIENT_ACCESS_PERMISSIONS = new Set([
+  PERMS.CLIENT_ACCESS_VIEW,
+  PERMS.CLIENT_ACCESS_CREATE,
+  PERMS.CLIENT_ACCESS_REVOKE,
+  PERMS.CLIENT_ACCESS_MANAGE,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
@@ -346,7 +359,8 @@ const ROLE_PERMS = {
     && !EXPLICIT_QUOTE_PERMISSIONS.has(permission)
     && !EXPLICIT_COMMERCIAL_RELATIONSHIP_PERMISSIONS.has(permission)
     && !EXPLICIT_COMMUNICATION_PERMISSIONS.has(permission)
-    && !EXPLICIT_PERSONNEL_POLICY_PERMISSIONS.has(permission)),
+    && !EXPLICIT_PERSONNEL_POLICY_PERMISSIONS.has(permission)
+    && !EXPLICIT_CLIENT_ACCESS_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

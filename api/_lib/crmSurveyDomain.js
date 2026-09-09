@@ -328,6 +328,7 @@ function totals(items) {
 }
 function publicDraft(row) {
   const activeItems = row.items.filter((item) => !item.deletedAt);
+  const clientContribution = row.assignment.clientContributions?.[0] || null;
   return Object.freeze({
     surveyRef: row.surveyRef,
     assignmentRef: row.assignment.assignmentRef,
@@ -345,6 +346,25 @@ function publicDraft(row) {
       null,
     informationSource:
       row.assignment.evaluationDecision?.informationSource || null,
+    clientSupplied: clientContribution ? Object.freeze({
+      contributionRef: clientContribution.contributionRef,
+      revision: clientContribution.revision,
+      status: clientContribution.status,
+      source: "CLIENT_SUPPLIED",
+      typeCount: clientContribution.items.length,
+      estimatedWeightKg: asNumber(clientContribution.estimatedWeightKg) || 0,
+      estimatedVolumeM3: asNumber(clientContribution.estimatedVolumeM3) || 0,
+      items: Object.freeze(clientContribution.items.map((item) => Object.freeze({
+        itemRef: item.itemRef,
+        articleRef: item.articleRefSnapshot,
+        name: item.articleNameSnapshot,
+        quantity: item.quantity,
+        measurements: item.clientMeasurements,
+        notes: item.notes,
+      }))),
+      assetCount: clientContribution.assets.length,
+      evaluatorVerified: false,
+    }) : null,
     catalog: publicCatalog(row.catalogVersion),
     items: Object.freeze(activeItems.map(publicItem)),
     access: Object.freeze(row.accessObservations.map(publicAccess)),
@@ -358,7 +378,7 @@ export function assertSurveyItemTypeLimit(evaluationMethod, activeItemTypes, cre
     surveyFail("CRM_SURVEY_MINI_ITEM_TYPE_LIMIT", 409);
 }
 const draftInclude = Object.freeze({
-  assignment: { include: { evaluationDecision: true } },
+  assignment: { include: { evaluationDecision: true, clientContributions: { where: { status: { in: ["DRAFT", "SUBMITTED"] } }, orderBy: { revision: "desc" }, take: 1, include: { items: { orderBy: { sortOrder: "asc" } }, assets: { select: { assetRef: true } } } } } },
   pipelineCase: { include: { client: true } },
   serviceRevision: true,
   catalogVersion: {

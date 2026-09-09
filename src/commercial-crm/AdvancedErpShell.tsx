@@ -25,6 +25,7 @@ import type { QuoteUiAccess } from "@/quote/access";
 import type { SurveySchedulingUiAccess } from "@/survey/schedulingAccess";
 import type { CommercialRelationshipsAccess } from "@/commercial-relationships/access";
 import type { CommunicationsAccess } from "@/communications/access";
+import type { ClientTemporaryAccessUi } from "@/client-portal/access";
 
 const CommercialRelationshipsAdmin = lazy(() => import("@/commercial-relationships/CommercialRelationshipsAdmin"));
 
@@ -49,6 +50,8 @@ type Props = Readonly<{
   commercialRelationshipsAccess: CommercialRelationshipsAccess;
   communicationsEnabled: boolean;
   communicationsAccess: CommunicationsAccess;
+  clientTemporaryAccessEnabled: boolean;
+  clientTemporaryAccess: ClientTemporaryAccessUi;
   userName?: string;
   onNavigate(pathname: string): void;
   onLogout(): void;
@@ -137,7 +140,7 @@ function Sidebar({ collapsed, userName, role, materialsEnabled, toolsEnabled, co
   </aside>;
 }
 
-export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, userName, onNavigate, onLogout, onUnauthorized }: Props) {
+export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, clientTemporaryAccessEnabled, clientTemporaryAccess, userName, onNavigate, onLogout, onUnauthorized }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const goCommercial = () => {
@@ -179,6 +182,8 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
           commercialRelationshipsAccess={commercialRelationshipsAccess}
           communicationsEnabled={communicationsEnabled}
           communicationsAccess={communicationsAccess}
+          clientTemporaryAccessEnabled={clientTemporaryAccessEnabled}
+          clientTemporaryAccess={clientTemporaryAccess}
           role={role}
           caseRef={caseRef}
           onOpenNavigation={() => setMobileOpen(true)}

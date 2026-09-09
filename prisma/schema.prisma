@@ -46,174 +46,183 @@ model User {
 }
 
 model Tenant {
-  id                               String                                 @id @default(cuid())
-  code                             String                                 @unique @db.VarChar(64)
-  name                             String                                 @db.VarChar(160)
-  legalName                        String?                                @map("legal_name") @db.VarChar(200)
-  countryCode                      String?                                @map("country_code") @db.Char(2)
-  timezone                         String                                 @default("America/Santo_Domingo") @db.VarChar(64)
-  defaultCurrency                  String                                 @default("DOP") @map("default_currency") @db.Char(3)
-  status                           TenantStatus                           @default(ACTIVE)
-  provisioningSource               TenantProvisioningSource               @default(MANUAL) @map("provisioning_source")
-  provisioningBatchId              String?                                @map("provisioning_batch_id")
-  createdAt                        DateTime                               @default(now()) @map("created_at")
-  updatedAt                        DateTime                               @updatedAt @map("updated_at")
-  approval_requests                ApprovalRequest[]
-  commercial_audit_logs            CommercialAuditLog[]
-  crate_calculation_snapshots      crate_calculation_snapshots[]
-  crate_settings_versions          crate_settings_versions[]
-  logistic_override_approvals      LogisticOverrideApproval[]
-  logistics_configuration_versions logistics_configuration_versions[]
-  osi_geo_regions                  GeoRegion[]
-  osi_transport_zone_rules         TransportZoneRule[]
-  osi_vehicle_engine_settings      VehicleEngineSettings[]
-  osi_vehicles                     Vehicle[]
-  osi_zone_rules                   ZoneRule[]
-  quote_change_order_policies      quote_change_order_policies[]
-  quote_change_order_sequences     quote_change_order_sequences?
-  quote_change_order_subjects      quote_change_order_subjects[]
-  quote_change_orders              QuoteChangeOrder[]
-  risk_engine_rules                risk_engine_rules[]
-  risk_engine_settings             risk_engine_settings?
-  risk_evaluations                 risk_evaluations[]
-  employeeProfiles                 EmployeeProfile[]
-  employeeProvisioningRequests     EmployeeProvisioningRequest[]
-  employeeProvisioningInvitations  EmployeeProvisioningInvitation[]
-  employeeAdminRoleProposals       EmployeeAdminRoleProposal[]
-  adminIdentityInvitations         AdminIdentityInvitation[]
-  clients                          Client[]
-  clientAddresses                  ClientAddress[]
-  projects                         Project[]
-  leads                            Lead[]
-  pipelineCases                    PipelineCase[]
-  pipelineCaseRouteSnapshots       PipelineCaseRouteSnapshot[]
-  pipelineCaseCommands             PipelineCaseCommand[]
-  serviceCatalogItems              ServiceCatalogItem[]
-  serviceCatalogCompatibilities    ServiceCatalogCompatibility[]
-  serviceDefaultCombinations       ServiceDefaultCombination[]
-  serviceDefaultCombinationItems   ServiceDefaultCombinationItem[]
-  pipelineCaseServiceRevisions     PipelineCaseServiceRevision[]
-  pipelineCaseServiceItems         PipelineCaseServiceItem[]
-  serviceMutationCommands          ServiceMutationCommand[]
-  serviceModeDefinitions           ServiceModeDefinition[]
-  serviceCatalogModes              ServiceCatalogMode[]
-  servicePackages                  ServicePackage[]
-  servicePackageVersions           ServicePackageVersion[]
-  servicePackageVersionModes       ServicePackageVersionMode[]
-  servicePackageVersionServices    ServicePackageVersionService[]
-  servicePackageRequirements       ServicePackageRequirement[]
-  serviceMaterialPolicies          ServiceMaterialPolicy[]
-  serviceMaterialPolicyVersions    ServiceMaterialPolicyVersion[]
-  serviceMaterialPolicyLines       ServiceMaterialPolicyLine[]
-  caseServiceConfigurations        CaseServiceConfigurationRevision[]
-  caseServiceConfigurationItems    CaseServiceConfigurationItem[]
-  serviceConfigurationCommands     ServiceConfigurationCommand[]
-  serviceConfigurationAuditEvents  ServiceConfigurationAuditEvent[]
-  serviceConfigurationConflicts    ServiceConfigurationConflict[]
-  surveyCatalogVersions            SurveyCatalogVersion[]
-  surveyArticleCatalogItems        SurveyArticleCatalogItem[]
-  surveyAreaCatalogItems           SurveyAreaCatalogItem[]
-  surveyConditionCatalogItems      SurveyConditionCatalogItem[]
-  surveyAssignments                SurveyAssignment[]
-  surveyEvaluationDecisions        SurveyEvaluationDecision[]
-  surveySchedulePolicyVersions     SurveySchedulePolicyVersion[]
-  surveyDrafts                     SurveyDraft[]
-  surveyDraftItems                 SurveyDraftItem[]
-  surveyAccessObservations         SurveyAccessObservation[]
-  surveyBlobObjects                SurveyBlobObject[]
-  surveyPhotos                     SurveyPhoto[]
-  surveyPublications               SurveyPublication[]
-  surveyPublicationItems           SurveyPublicationItem[]
-  surveyPublicationAccess          SurveyPublicationAccess[]
-  surveySignatures                 SurveyPublicationSignature[]
-  surveyMutationCommands           SurveyMutationCommand[]
-  materialUnits                    MaterialUnit[]
-  materialCatalogItems             MaterialCatalogItem[]
-  materialUnitConversions          MaterialUnitConversion[]
-  materialCostVersions             MaterialCostVersion[]
-  materialSupplierReferences       MaterialSupplierReference[]
-  materialWarehouses               MaterialWarehouse[]
-  materialLocations                MaterialLocation[]
-  materialInventoryCommands        MaterialInventoryCommand[]
-  materialInventoryMovements       MaterialInventoryMovement[]
-  materialReservations             MaterialReservation[]
-  materialReservationEvents        MaterialReservationEvent[]
-  packingRecipes                   PackingRecipe[]
-  packingRecipeVersions            PackingRecipeVersion[]
-  packingRecipeLines               PackingRecipeLine[]
-  materialRequirementSnapshots     MaterialRequirementSnapshot[]
-  materialRequirementLines         MaterialRequirementLine[]
-  materialPurchaseRequests         MaterialPurchaseRequest[]
-  assetModels                      AssetModel[]
-  assetInstances                   AssetInstance[]
-  assetCodeCounters                AssetCodeCounter[]
-  assetCostVersions                AssetCostVersion[]
-  assetReservations                AssetReservation[]
-  assetAssignments                 AssetAssignment[]
-  assetInspections                 AssetInspection[]
-  assetIncidents                   AssetIncident[]
-  assetMaintenanceRules            AssetMaintenanceRule[]
-  assetMaintenanceOrders           AssetMaintenanceOrder[]
-  assetHistoryEvents               AssetHistoryEvent[]
-  assetMutationCommands            AssetMutationCommand[]
-  externalResourceOffers           ExternalResourceOffer[]
-  externalResourceReservations     ExternalResourceReservation[]
-  logisticsRules                   LogisticsRule[]
-  logisticsCalculations            LogisticsCalculation[]
-  logisticsPlans                   LogisticsPlan[]
-  logisticsPlanRevisions           LogisticsPlanRevision[]
-  logisticsPlanItems               LogisticsPlanItem[]
-  logisticsPlanIssues              LogisticsPlanIssue[]
-  logisticsPlanOverrides           LogisticsPlanOverride[]
-  logisticsMutationCommands        LogisticsMutationCommand[]
-  costingRules                     CostingRule[]
-  costingExchangeRates             CostingExchangeRate[]
-  costingCalculations              CostingCalculation[]
-  costingRevisions                 CostingRevision[]
-  costingLines                     CostingLine[]
-  costingIssues                    CostingIssue[]
-  costingOverrides                 CostingOverride[]
-  costingMarginAuthorizations      CostingMarginAuthorization[]
-  costingMutationCommands          CostingMutationCommand[]
-  quoteProposals                   QuoteProposal[]
-  quoteProposalRevisions           QuoteProposalRevision[]
-  quoteLines                       QuoteLine[]
-  quoteIssues                      QuoteIssue[]
-  quoteDispatches                  QuoteDispatch[]
-  quoteClientDecisions             QuoteClientDecision[]
-  quoteMutationCommands            QuoteMutationCommand[]
-  quoteReferenceCounters           QuoteReferenceCounter[]
-  commercialEntities               CommercialEntity[]
-  commercialRelationships          CommercialRelationship[]
-  commercialTariffVersions         CommercialTariffVersion[]
-  commercialPricingAgreements      CommercialPricingAgreementVersion[]
-  commercialReferralAgreements     CommercialReferralAgreementVersion[]
-  commercialCommissionAgreements   CommercialCommissionAgreementVersion[]
-  commercialAssociationMemberships CommercialAssociationMembership[]
-  commercialCertifications         CommercialCertification[]
-  commercialInstructions           CommercialInstructionVersion[]
-  commercialCaseContexts           PipelineCaseCommercialContextVersion[]
-  commercialMutationCommands       CommercialRelationshipCommand[]
-  commercialHistoryEvents          CommercialRelationshipEvent[]
-  communicationTemplates           CommunicationTemplate[]
-  communicationTemplateVersions    CommunicationTemplateVersion[]
-  communicationRecords             CommunicationRecord[]
-  communicationCommands            CommunicationCommand[]
-  communicationAuditEvents         CommunicationAuditEvent[]
-  operationalCapabilities          OperationalCapability[]
-  operationalCapabilityAssignments OperationalCapabilityAssignment[]
-  operationalZoneAssignments       OperationalZoneAssignment[]
-  visitPolicyVersions              VisitPolicyVersion[]
-  visitPolicyWindows               VisitPolicyWindow[]
-  visitReasons                     VisitReason[]
-  operationalScheduleOverrides     OperationalScheduleOverride[]
-  afterHoursVisitRequests          AfterHoursVisitRequest[]
-  visitPolicyEvents                VisitPolicyEvent[]
-  personnelPolicyCommands          PersonnelPolicyCommand[]
-  memberships                      TenantMembership[]
-  vehicle_import_batches           vehicle_import_batches[]
-  vehicle_import_items             vehicle_import_items[]
-  pipelineCaseQuotes               PipelineCaseQuote[]
+  id                                String                                   @id @default(cuid())
+  code                              String                                   @unique @db.VarChar(64)
+  name                              String                                   @db.VarChar(160)
+  legalName                         String?                                  @map("legal_name") @db.VarChar(200)
+  countryCode                       String?                                  @map("country_code") @db.Char(2)
+  timezone                          String                                   @default("America/Santo_Domingo") @db.VarChar(64)
+  defaultCurrency                   String                                   @default("DOP") @map("default_currency") @db.Char(3)
+  status                            TenantStatus                             @default(ACTIVE)
+  provisioningSource                TenantProvisioningSource                 @default(MANUAL) @map("provisioning_source")
+  provisioningBatchId               String?                                  @map("provisioning_batch_id")
+  createdAt                         DateTime                                 @default(now()) @map("created_at")
+  updatedAt                         DateTime                                 @updatedAt @map("updated_at")
+  approval_requests                 ApprovalRequest[]
+  commercial_audit_logs             CommercialAuditLog[]
+  crate_calculation_snapshots       crate_calculation_snapshots[]
+  crate_settings_versions           crate_settings_versions[]
+  logistic_override_approvals       LogisticOverrideApproval[]
+  logistics_configuration_versions  logistics_configuration_versions[]
+  osi_geo_regions                   GeoRegion[]
+  osi_transport_zone_rules          TransportZoneRule[]
+  osi_vehicle_engine_settings       VehicleEngineSettings[]
+  osi_vehicles                      Vehicle[]
+  osi_zone_rules                    ZoneRule[]
+  quote_change_order_policies       quote_change_order_policies[]
+  quote_change_order_sequences      quote_change_order_sequences?
+  quote_change_order_subjects       quote_change_order_subjects[]
+  quote_change_orders               QuoteChangeOrder[]
+  risk_engine_rules                 risk_engine_rules[]
+  risk_engine_settings              risk_engine_settings?
+  risk_evaluations                  risk_evaluations[]
+  employeeProfiles                  EmployeeProfile[]
+  employeeProvisioningRequests      EmployeeProvisioningRequest[]
+  employeeProvisioningInvitations   EmployeeProvisioningInvitation[]
+  employeeAdminRoleProposals        EmployeeAdminRoleProposal[]
+  adminIdentityInvitations          AdminIdentityInvitation[]
+  clients                           Client[]
+  clientAddresses                   ClientAddress[]
+  projects                          Project[]
+  leads                             Lead[]
+  pipelineCases                     PipelineCase[]
+  pipelineCaseRouteSnapshots        PipelineCaseRouteSnapshot[]
+  pipelineCaseCommands              PipelineCaseCommand[]
+  serviceCatalogItems               ServiceCatalogItem[]
+  serviceCatalogCompatibilities     ServiceCatalogCompatibility[]
+  serviceDefaultCombinations        ServiceDefaultCombination[]
+  serviceDefaultCombinationItems    ServiceDefaultCombinationItem[]
+  pipelineCaseServiceRevisions      PipelineCaseServiceRevision[]
+  pipelineCaseServiceItems          PipelineCaseServiceItem[]
+  serviceMutationCommands           ServiceMutationCommand[]
+  serviceModeDefinitions            ServiceModeDefinition[]
+  serviceCatalogModes               ServiceCatalogMode[]
+  servicePackages                   ServicePackage[]
+  servicePackageVersions            ServicePackageVersion[]
+  servicePackageVersionModes        ServicePackageVersionMode[]
+  servicePackageVersionServices     ServicePackageVersionService[]
+  servicePackageRequirements        ServicePackageRequirement[]
+  serviceMaterialPolicies           ServiceMaterialPolicy[]
+  serviceMaterialPolicyVersions     ServiceMaterialPolicyVersion[]
+  serviceMaterialPolicyLines        ServiceMaterialPolicyLine[]
+  caseServiceConfigurations         CaseServiceConfigurationRevision[]
+  caseServiceConfigurationItems     CaseServiceConfigurationItem[]
+  serviceConfigurationCommands      ServiceConfigurationCommand[]
+  serviceConfigurationAuditEvents   ServiceConfigurationAuditEvent[]
+  serviceConfigurationConflicts     ServiceConfigurationConflict[]
+  surveyCatalogVersions             SurveyCatalogVersion[]
+  surveyArticleCatalogItems         SurveyArticleCatalogItem[]
+  surveyAreaCatalogItems            SurveyAreaCatalogItem[]
+  surveyConditionCatalogItems       SurveyConditionCatalogItem[]
+  surveyAssignments                 SurveyAssignment[]
+  surveyEvaluationDecisions         SurveyEvaluationDecision[]
+  surveySchedulePolicyVersions      SurveySchedulePolicyVersion[]
+  surveyDrafts                      SurveyDraft[]
+  surveyDraftItems                  SurveyDraftItem[]
+  surveyAccessObservations          SurveyAccessObservation[]
+  surveyBlobObjects                 SurveyBlobObject[]
+  surveyPhotos                      SurveyPhoto[]
+  surveyPublications                SurveyPublication[]
+  surveyPublicationItems            SurveyPublicationItem[]
+  surveyPublicationAccess           SurveyPublicationAccess[]
+  surveySignatures                  SurveyPublicationSignature[]
+  surveyMutationCommands            SurveyMutationCommand[]
+  materialUnits                     MaterialUnit[]
+  materialCatalogItems              MaterialCatalogItem[]
+  materialUnitConversions           MaterialUnitConversion[]
+  materialCostVersions              MaterialCostVersion[]
+  materialSupplierReferences        MaterialSupplierReference[]
+  materialWarehouses                MaterialWarehouse[]
+  materialLocations                 MaterialLocation[]
+  materialInventoryCommands         MaterialInventoryCommand[]
+  materialInventoryMovements        MaterialInventoryMovement[]
+  materialReservations              MaterialReservation[]
+  materialReservationEvents         MaterialReservationEvent[]
+  packingRecipes                    PackingRecipe[]
+  packingRecipeVersions             PackingRecipeVersion[]
+  packingRecipeLines                PackingRecipeLine[]
+  materialRequirementSnapshots      MaterialRequirementSnapshot[]
+  materialRequirementLines          MaterialRequirementLine[]
+  materialPurchaseRequests          MaterialPurchaseRequest[]
+  assetModels                       AssetModel[]
+  assetInstances                    AssetInstance[]
+  assetCodeCounters                 AssetCodeCounter[]
+  assetCostVersions                 AssetCostVersion[]
+  assetReservations                 AssetReservation[]
+  assetAssignments                  AssetAssignment[]
+  assetInspections                  AssetInspection[]
+  assetIncidents                    AssetIncident[]
+  assetMaintenanceRules             AssetMaintenanceRule[]
+  assetMaintenanceOrders            AssetMaintenanceOrder[]
+  assetHistoryEvents                AssetHistoryEvent[]
+  assetMutationCommands             AssetMutationCommand[]
+  externalResourceOffers            ExternalResourceOffer[]
+  externalResourceReservations      ExternalResourceReservation[]
+  logisticsRules                    LogisticsRule[]
+  logisticsCalculations             LogisticsCalculation[]
+  logisticsPlans                    LogisticsPlan[]
+  logisticsPlanRevisions            LogisticsPlanRevision[]
+  logisticsPlanItems                LogisticsPlanItem[]
+  logisticsPlanIssues               LogisticsPlanIssue[]
+  logisticsPlanOverrides            LogisticsPlanOverride[]
+  logisticsMutationCommands         LogisticsMutationCommand[]
+  costingRules                      CostingRule[]
+  costingExchangeRates              CostingExchangeRate[]
+  costingCalculations               CostingCalculation[]
+  costingRevisions                  CostingRevision[]
+  costingLines                      CostingLine[]
+  costingIssues                     CostingIssue[]
+  costingOverrides                  CostingOverride[]
+  costingMarginAuthorizations       CostingMarginAuthorization[]
+  costingMutationCommands           CostingMutationCommand[]
+  quoteProposals                    QuoteProposal[]
+  quoteProposalRevisions            QuoteProposalRevision[]
+  quoteLines                        QuoteLine[]
+  quoteIssues                       QuoteIssue[]
+  quoteDispatches                   QuoteDispatch[]
+  quoteClientDecisions              QuoteClientDecision[]
+  quoteMutationCommands             QuoteMutationCommand[]
+  quoteReferenceCounters            QuoteReferenceCounter[]
+  commercialEntities                CommercialEntity[]
+  commercialRelationships           CommercialRelationship[]
+  commercialTariffVersions          CommercialTariffVersion[]
+  commercialPricingAgreements       CommercialPricingAgreementVersion[]
+  commercialReferralAgreements      CommercialReferralAgreementVersion[]
+  commercialCommissionAgreements    CommercialCommissionAgreementVersion[]
+  commercialAssociationMemberships  CommercialAssociationMembership[]
+  commercialCertifications          CommercialCertification[]
+  commercialInstructions            CommercialInstructionVersion[]
+  commercialCaseContexts            PipelineCaseCommercialContextVersion[]
+  commercialMutationCommands        CommercialRelationshipCommand[]
+  commercialHistoryEvents           CommercialRelationshipEvent[]
+  communicationTemplates            CommunicationTemplate[]
+  communicationTemplateVersions     CommunicationTemplateVersion[]
+  communicationRecords              CommunicationRecord[]
+  communicationCommands             CommunicationCommand[]
+  communicationAuditEvents          CommunicationAuditEvent[]
+  operationalCapabilities           OperationalCapability[]
+  operationalCapabilityAssignments  OperationalCapabilityAssignment[]
+  operationalZoneAssignments        OperationalZoneAssignment[]
+  visitPolicyVersions               VisitPolicyVersion[]
+  visitPolicyWindows                VisitPolicyWindow[]
+  visitReasons                      VisitReason[]
+  operationalScheduleOverrides      OperationalScheduleOverride[]
+  afterHoursVisitRequests           AfterHoursVisitRequest[]
+  visitPolicyEvents                 VisitPolicyEvent[]
+  personnelPolicyCommands           PersonnelPolicyCommand[]
+  clientTemporaryAccesses           ClientTemporaryAccess[]
+  clientTemporaryAccessGrants       ClientTemporaryAccessGrant[]
+  clientTemporaryAccessEvents       ClientTemporaryAccessEvent[]
+  clientTemporaryAccessCommands     ClientTemporaryAccessCommand[]
+  clientTemporaryVisitResponses     ClientTemporaryVisitResponse[]
+  clientTemporaryContributions      ClientTemporarySurveyContribution[]
+  clientTemporaryContributionItems  ClientTemporarySurveyContributionItem[]
+  clientTemporaryContributionAssets ClientTemporarySurveyContributionAsset[]
+  clientTemporaryQrConfirmations    ClientTemporaryQrConfirmation[]
+  memberships                       TenantMembership[]
+  vehicle_import_batches            vehicle_import_batches[]
+  vehicle_import_items              vehicle_import_items[]
+  pipelineCaseQuotes                PipelineCaseQuote[]
 
   @@index([status])
   @@index([provisioningBatchId])
@@ -349,6 +358,8 @@ model TenantMembership {
   afterHoursVisitRequestsDecided                                                                                                                AfterHoursVisitRequest[]           @relation("AfterHoursVisitAdmin")
   visitPolicyEventsCreated                                                                                                                      VisitPolicyEvent[]                 @relation("VisitPolicyEventActor")
   personnelPolicyCommandsCreated                                                                                                                PersonnelPolicyCommand[]           @relation("PersonnelPolicyCommandActor")
+  clientTemporaryAccessesIssued                                                                                                                 ClientTemporaryAccess[]            @relation("ClientTemporaryAccessIssuer")
+  clientTemporaryAccessEventsAuthored                                                                                                           ClientTemporaryAccessEvent[]       @relation("ClientTemporaryAccessEventActor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, publicRef], map: "tenant_memberships_tenant_id_public_ref_key")
@@ -592,17 +603,17 @@ model AuthRefreshToken {
 }
 
 model Client {
-  id                        String             @id @default(cuid())
-  publicRef                 String             @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
-  tenantId                  String?            @map("tenant_id")
-  code                      String             @unique
+  id                        String                  @id @default(cuid())
+  publicRef                 String                  @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
+  tenantId                  String?                 @map("tenant_id")
+  code                      String                  @unique
   name                      String
   email                     String
   phone                     String
   address                   String
   type                      String
   status                    String
-  totalServices             Int                @default(0)
+  totalServices             Int                     @default(0)
   lastService               String?
   createdAt                 String
   fiscalName                String?
@@ -615,24 +626,25 @@ model Client {
   accountsPayableEmail      String?
   accountsPayablePhone      String?
   complianceNotes           String?
-  kycCompleted              Boolean            @default(false)
+  kycCompleted              Boolean                 @default(false)
   normalizedPhone           String?
-  normalizedEmail           String?            @map("normalized_email") @db.VarChar(320)
-  taxIdNormalized           String?            @map("tax_id_normalized") @db.VarChar(32)
+  normalizedEmail           String?                 @map("normalized_email") @db.VarChar(320)
+  taxIdNormalized           String?                 @map("tax_id_normalized") @db.VarChar(32)
   billingTaxId              String?
   serviceOriginAddress      String?
   serviceDestinationAddress String?
-  updatedAt                 DateTime           @default(now()) @updatedAt
+  updatedAt                 DateTime                @default(now()) @updatedAt
   kycDocuments              KycDocument[]
   leads                     Lead[]
   projects                  Project[]
-  tenant                    Tenant?            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
-  tenantLeads               Lead[]             @relation("LeadTenantCustomer")
-  tenantProjects            Project[]          @relation("ProjectTenantClient")
-  pipelineCases             PipelineCase[]     @relation("PipelineCaseServiceClient")
+  tenant                    Tenant?                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
+  tenantLeads               Lead[]                  @relation("LeadTenantCustomer")
+  tenantProjects            Project[]               @relation("ProjectTenantClient")
+  pipelineCases             PipelineCase[]          @relation("PipelineCaseServiceClient")
   addresses                 ClientAddress[]
   surveys                   Survey[]
   commercialEntities        CommercialEntity[]
+  clientTemporaryAccesses   ClientTemporaryAccess[]
 
   @@unique([tenantId, id], map: "osi_clients_tenant_id_id_key")
   @@unique([tenantId, publicRef], map: "osi_clients_tenant_id_public_ref_key")
@@ -1603,6 +1615,7 @@ model PipelineCase {
   costingRevisions              CostingRevision[]
   quoteProposals                QuoteProposal[]
   commercialContexts            PipelineCaseCommercialContextVersion[]
+  clientTemporaryAccesses       ClientTemporaryAccess[]
   projects                      Project[]                              @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -2202,22 +2215,23 @@ model ServiceConfigurationConflict {
 }
 
 model SurveyCatalogVersion {
-  id                    String                       @id @default(cuid())
-  catalogRef            String                       @default(dbgenerated("gen_random_uuid()")) @map("catalog_ref") @db.Uuid
-  tenantId              String                       @map("tenant_id")
+  id                    String                              @id @default(cuid())
+  catalogRef            String                              @default(dbgenerated("gen_random_uuid()")) @map("catalog_ref") @db.Uuid
+  tenantId              String                              @map("tenant_id")
   version               Int
-  status                SurveyCatalogVersionStatus   @default(DRAFT)
-  createdByMembershipId String                       @map("created_by_membership_id")
-  createdByUserId       String                       @map("created_by_user_id")
-  activatedAt           DateTime?                    @map("activated_at") @db.Timestamptz(6)
-  retiredAt             DateTime?                    @map("retired_at") @db.Timestamptz(6)
-  createdAt             DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant                Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_catalog_versions_tenant_fkey")
-  createdByMembership   TenantMembership             @relation("SurveyCatalogVersionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_catalog_versions_actor_fkey")
+  status                SurveyCatalogVersionStatus          @default(DRAFT)
+  createdByMembershipId String                              @map("created_by_membership_id")
+  createdByUserId       String                              @map("created_by_user_id")
+  activatedAt           DateTime?                           @map("activated_at") @db.Timestamptz(6)
+  retiredAt             DateTime?                           @map("retired_at") @db.Timestamptz(6)
+  createdAt             DateTime                            @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_catalog_versions_tenant_fkey")
+  createdByMembership   TenantMembership                    @relation("SurveyCatalogVersionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_catalog_versions_actor_fkey")
   articles              SurveyArticleCatalogItem[]
   areas                 SurveyAreaCatalogItem[]
   conditions            SurveyConditionCatalogItem[]
   drafts                SurveyDraft[]
+  clientContributions   ClientTemporarySurveyContribution[]
 
   @@unique([tenantId, id], map: "survey_catalog_versions_tenant_id_key")
   @@unique([tenantId, catalogRef], map: "survey_catalog_versions_tenant_ref_key")
@@ -2227,23 +2241,24 @@ model SurveyCatalogVersion {
 }
 
 model SurveyArticleCatalogItem {
-  id               String               @id @default(cuid())
-  articleRef       String               @map("article_ref") @db.Uuid
-  tenantId         String               @map("tenant_id")
-  catalogVersionId String               @map("catalog_version_id")
-  code             String               @db.VarChar(64)
-  name             String               @db.VarChar(160)
-  aliases          String[]             @default([])
-  frequentAreaRefs String[]             @default([]) @map("frequent_area_refs") @db.Uuid
-  defaultVolumeM3  Decimal?             @map("default_volume_m3") @db.Decimal(12, 6)
-  defaultWeightKg  Decimal?             @map("default_weight_kg") @db.Decimal(12, 3)
-  weightSource     SurveyMetricSource?  @map("weight_source")
-  status           ServiceCatalogStatus @default(ACTIVE)
-  sortOrder        Int                  @default(0) @map("sort_order")
-  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_article_catalog_items_tenant_fkey")
-  catalogVersion   SurveyCatalogVersion @relation(fields: [tenantId, catalogVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_article_catalog_items_version_fkey")
-  draftItems       SurveyDraftItem[]
+  id                      String                                  @id @default(cuid())
+  articleRef              String                                  @map("article_ref") @db.Uuid
+  tenantId                String                                  @map("tenant_id")
+  catalogVersionId        String                                  @map("catalog_version_id")
+  code                    String                                  @db.VarChar(64)
+  name                    String                                  @db.VarChar(160)
+  aliases                 String[]                                @default([])
+  frequentAreaRefs        String[]                                @default([]) @map("frequent_area_refs") @db.Uuid
+  defaultVolumeM3         Decimal?                                @map("default_volume_m3") @db.Decimal(12, 6)
+  defaultWeightKg         Decimal?                                @map("default_weight_kg") @db.Decimal(12, 3)
+  weightSource            SurveyMetricSource?                     @map("weight_source")
+  status                  ServiceCatalogStatus                    @default(ACTIVE)
+  sortOrder               Int                                     @default(0) @map("sort_order")
+  createdAt               DateTime                                @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                  Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_article_catalog_items_tenant_fkey")
+  catalogVersion          SurveyCatalogVersion                    @relation(fields: [tenantId, catalogVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_article_catalog_items_version_fkey")
+  draftItems              SurveyDraftItem[]
+  clientContributionItems ClientTemporarySurveyContributionItem[]
 
   @@unique([tenantId, id], map: "survey_article_catalog_items_tenant_id_key")
   @@unique([tenantId, catalogVersionId, id], map: "survey_article_catalog_items_tenant_version_id_key")
@@ -2297,60 +2312,65 @@ model SurveyConditionCatalogItem {
 }
 
 model SurveyAssignment {
-  id                      String                       @id @default(cuid())
-  assignmentRef           String                       @default(dbgenerated("gen_random_uuid()")) @map("assignment_ref") @db.Uuid
-  tenantId                String                       @map("tenant_id")
-  pipelineCaseId          String                       @map("pipeline_case_id")
-  serviceRevisionId       String                       @map("service_revision_id")
-  routeVersion            Int                          @map("route_version")
-  evaluatorMembershipId   String                       @map("evaluator_membership_id")
-  evaluatorUserId         String                       @map("evaluator_user_id")
-  scheduledStart          DateTime                     @map("scheduled_start") @db.Timestamptz(6)
-  scheduledEnd            DateTime?                    @map("scheduled_end") @db.Timestamptz(6)
-  status                  SurveyAssignmentStatus       @default(ASSIGNED)
-  arrivalAt               DateTime?                    @map("arrival_at") @db.Timestamptz(6)
-  punctualityConfirmedAt  DateTime?                    @map("punctuality_confirmed_at") @db.Timestamptz(6)
-  contextSnapshot         Json                         @map("context_snapshot")
-  instructionSnapshot     String?                      @map("instruction_snapshot") @db.VarChar(1000)
-  evaluationDecisionId    String?                      @map("evaluation_decision_id")
-  schedulePolicyId        String?                      @map("schedule_policy_id")
-  operationalPolicyId     String?                      @map("operational_policy_id")
-  visitReasonId           String?                      @map("visit_reason_id")
-  logisticsRevisionId     String?                      @map("logistics_revision_id")
-  scheduleProfile         SurveyScheduleProfile?       @map("schedule_profile")
-  zoneCode                String?                      @map("zone_code") @db.VarChar(64)
-  slotKey                 String?                      @map("slot_key") @db.VarChar(64)
-  travelBufferMinutes     Int                          @default(0) @map("travel_buffer_minutes")
-  clientConfirmation      VisitClientConfirmation      @default(NOT_CONFIRMED) @map("client_confirmation")
-  evaluatorConfirmation   VisitEvaluatorConfirmation   @default(PENDING) @map("evaluator_confirmation")
-  resourcesSnapshot       Json                         @default("[]") @map("resources_snapshot")
-  replacesAssignmentId    String?                      @map("replaces_assignment_id")
-  routeInvalidatedAt      DateTime?                    @map("route_invalidated_at") @db.Timestamptz(6)
-  version                 Int                          @default(1)
-  createdByMembershipId   String                       @map("created_by_membership_id")
-  createdByUserId         String                       @map("created_by_user_id")
-  createdAt               DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant                  Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_tenant_fkey")
-  pipelineCase            PipelineCase                 @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_case_fkey")
-  serviceRevision         PipelineCaseServiceRevision  @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_service_revision_fkey")
-  evaluatorMembership     TenantMembership             @relation("SurveyAssignmentEvaluator", fields: [tenantId, evaluatorMembershipId, evaluatorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_evaluator_fkey")
-  createdByMembership     TenantMembership             @relation("SurveyAssignmentCreator", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_creator_fkey")
-  evaluationDecision      SurveyEvaluationDecision?    @relation(fields: [tenantId, evaluationDecisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_decision_fkey")
-  schedulePolicy          SurveySchedulePolicyVersion? @relation(fields: [tenantId, schedulePolicyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_policy_fkey")
-  operationalPolicy       VisitPolicyVersion?          @relation(fields: [tenantId, operationalPolicyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_operational_policy_fkey")
-  visitReason             VisitReason?                 @relation(fields: [tenantId, visitReasonId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_visit_reason_fkey")
-  logisticsRevision       LogisticsPlanRevision?       @relation("SurveyAssignmentLogisticsRevision", fields: [tenantId, logisticsRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_logistics_revision_fkey")
-  replacesAssignment      SurveyAssignment?            @relation("SurveyAssignmentReplacement", fields: [tenantId, replacesAssignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_replaces_fkey")
-  replacementAssignment   SurveyAssignment?            @relation("SurveyAssignmentReplacement")
+  id                      String                              @id @default(cuid())
+  assignmentRef           String                              @default(dbgenerated("gen_random_uuid()")) @map("assignment_ref") @db.Uuid
+  tenantId                String                              @map("tenant_id")
+  pipelineCaseId          String                              @map("pipeline_case_id")
+  serviceRevisionId       String                              @map("service_revision_id")
+  routeVersion            Int                                 @map("route_version")
+  evaluatorMembershipId   String                              @map("evaluator_membership_id")
+  evaluatorUserId         String                              @map("evaluator_user_id")
+  scheduledStart          DateTime                            @map("scheduled_start") @db.Timestamptz(6)
+  scheduledEnd            DateTime?                           @map("scheduled_end") @db.Timestamptz(6)
+  status                  SurveyAssignmentStatus              @default(ASSIGNED)
+  arrivalAt               DateTime?                           @map("arrival_at") @db.Timestamptz(6)
+  punctualityConfirmedAt  DateTime?                           @map("punctuality_confirmed_at") @db.Timestamptz(6)
+  contextSnapshot         Json                                @map("context_snapshot")
+  instructionSnapshot     String?                             @map("instruction_snapshot") @db.VarChar(1000)
+  evaluationDecisionId    String?                             @map("evaluation_decision_id")
+  schedulePolicyId        String?                             @map("schedule_policy_id")
+  operationalPolicyId     String?                             @map("operational_policy_id")
+  visitReasonId           String?                             @map("visit_reason_id")
+  logisticsRevisionId     String?                             @map("logistics_revision_id")
+  scheduleProfile         SurveyScheduleProfile?              @map("schedule_profile")
+  zoneCode                String?                             @map("zone_code") @db.VarChar(64)
+  slotKey                 String?                             @map("slot_key") @db.VarChar(64)
+  travelBufferMinutes     Int                                 @default(0) @map("travel_buffer_minutes")
+  clientConfirmation      VisitClientConfirmation             @default(NOT_CONFIRMED) @map("client_confirmation")
+  evaluatorConfirmation   VisitEvaluatorConfirmation          @default(PENDING) @map("evaluator_confirmation")
+  resourcesSnapshot       Json                                @default("[]") @map("resources_snapshot")
+  replacesAssignmentId    String?                             @map("replaces_assignment_id")
+  routeInvalidatedAt      DateTime?                           @map("route_invalidated_at") @db.Timestamptz(6)
+  version                 Int                                 @default(1)
+  createdByMembershipId   String                              @map("created_by_membership_id")
+  createdByUserId         String                              @map("created_by_user_id")
+  createdAt               DateTime                            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                  Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_tenant_fkey")
+  pipelineCase            PipelineCase                        @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_case_fkey")
+  serviceRevision         PipelineCaseServiceRevision         @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_service_revision_fkey")
+  evaluatorMembership     TenantMembership                    @relation("SurveyAssignmentEvaluator", fields: [tenantId, evaluatorMembershipId, evaluatorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_evaluator_fkey")
+  createdByMembership     TenantMembership                    @relation("SurveyAssignmentCreator", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_creator_fkey")
+  evaluationDecision      SurveyEvaluationDecision?           @relation(fields: [tenantId, evaluationDecisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_decision_fkey")
+  schedulePolicy          SurveySchedulePolicyVersion?        @relation(fields: [tenantId, schedulePolicyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_policy_fkey")
+  operationalPolicy       VisitPolicyVersion?                 @relation(fields: [tenantId, operationalPolicyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_operational_policy_fkey")
+  visitReason             VisitReason?                        @relation(fields: [tenantId, visitReasonId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_visit_reason_fkey")
+  logisticsRevision       LogisticsPlanRevision?              @relation("SurveyAssignmentLogisticsRevision", fields: [tenantId, logisticsRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_logistics_revision_fkey")
+  replacesAssignment      SurveyAssignment?                   @relation("SurveyAssignmentReplacement", fields: [tenantId, replacesAssignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "survey_assignments_replaces_fkey")
+  replacementAssignment   SurveyAssignment?                   @relation("SurveyAssignmentReplacement")
   afterHoursRequests      AfterHoursVisitRequest[]
   schedulingEvents        SurveyAssignmentEvent[]
   visitFees               SurveyVisitFee[]
   communicationRecords    SurveyCommunicationRecord[]
   canonicalCommunications CommunicationRecord[]
   drafts                  SurveyDraft[]
+  clientTemporaryAccesses ClientTemporaryAccess[]
+  clientVisitResponses    ClientTemporaryVisitResponse[]
+  clientContributions     ClientTemporarySurveyContribution[]
+  clientQrConfirmations   ClientTemporaryQrConfirmation[]
 
   @@unique([tenantId, id], map: "survey_assignments_tenant_id_key")
+  @@unique([tenantId, id, pipelineCaseId], map: "survey_assignments_tenant_id_case_key")
   @@unique([tenantId, assignmentRef], map: "survey_assignments_tenant_ref_key")
   @@unique([tenantId, replacesAssignmentId], map: "survey_assignments_replaces_key")
   @@index([tenantId, evaluatorMembershipId, evaluatorUserId, scheduledStart], map: "survey_assignments_evaluator_agenda_idx")
@@ -2624,20 +2644,21 @@ model SurveyAccessObservation {
 }
 
 model SurveyBlobObject {
-  id             String                      @id @default(cuid())
-  blobRef        String                      @default(dbgenerated("gen_random_uuid()")) @map("blob_ref") @db.Uuid
-  tenantId       String                      @map("tenant_id")
-  provider       String                      @db.VarChar(40)
-  storageKey     String                      @map("storage_key") @db.VarChar(320)
-  mimeType       String                      @map("mime_type") @db.VarChar(100)
-  sizeBytes      Int                         @map("size_bytes")
-  sha256         String                      @db.Char(64)
-  status         SurveyBlobStatus            @default(ACTIVE)
-  createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant         Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_blob_objects_tenant_fkey")
-  photos         SurveyPhoto[]
-  signature      SurveyPublicationSignature? @relation("SurveySignatureBlob")
-  publicationPdf SurveyPublication?          @relation("SurveyPublicationPdf")
+  id                      String                                  @id @default(cuid())
+  blobRef                 String                                  @default(dbgenerated("gen_random_uuid()")) @map("blob_ref") @db.Uuid
+  tenantId                String                                  @map("tenant_id")
+  provider                String                                  @db.VarChar(40)
+  storageKey              String                                  @map("storage_key") @db.VarChar(320)
+  mimeType                String                                  @map("mime_type") @db.VarChar(100)
+  sizeBytes               Int                                     @map("size_bytes")
+  sha256                  String                                  @db.Char(64)
+  status                  SurveyBlobStatus                        @default(ACTIVE)
+  createdAt               DateTime                                @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                  Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "survey_blob_objects_tenant_fkey")
+  photos                  SurveyPhoto[]
+  signature               SurveyPublicationSignature?             @relation("SurveySignatureBlob")
+  publicationPdf          SurveyPublication?                      @relation("SurveyPublicationPdf")
+  clientContributionAsset ClientTemporarySurveyContributionAsset?
 
   @@unique([tenantId, id], map: "survey_blob_objects_tenant_id_key")
   @@unique([tenantId, blobRef], map: "survey_blob_objects_tenant_ref_key")
@@ -7564,8 +7585,10 @@ model CommunicationRecord {
   surveyAssignment        SurveyAssignment?            @relation(fields: [tenantId, surveyAssignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "communication_records_assignment_fkey")
   quoteProposalRevision   QuoteProposalRevision?       @relation(fields: [tenantId, quoteProposalRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "communication_records_quote_revision_fkey")
   preparedByMembership    TenantMembership             @relation("CommunicationRecordActor", fields: [tenantId, preparedByMembershipId, preparedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "communication_records_actor_fkey")
+  clientTemporaryAccess   ClientTemporaryAccess?
 
   @@unique([tenantId, communicationRef], map: "communication_records_tenant_ref_key")
+  @@unique([tenantId, id], map: "communication_records_tenant_id_key")
   @@index([tenantId, pipelineCaseId, preparedAt(sort: Desc)], map: "communication_records_case_idx")
   @@index([tenantId, surveyAssignmentId, preparedAt(sort: Desc)], map: "communication_records_assignment_idx")
   @@index([tenantId, quoteProposalRevisionId, preparedAt(sort: Desc)], map: "communication_records_quote_revision_idx")
@@ -7652,27 +7675,260 @@ model CommercialEntity {
 }
 
 model CommercialEntityContact {
-  id               String                 @id @default(cuid())
-  contactRef       String                 @default(dbgenerated("gen_random_uuid()")) @map("contact_ref") @db.Uuid
-  tenantId         String                 @map("tenant_id")
-  entityId         String                 @map("entity_id")
-  displayName      String                 @map("display_name") @db.VarChar(160)
-  position         String?                @db.VarChar(120)
-  emailNormalized  String?                @map("email_normalized") @db.VarChar(320)
-  phoneNormalized  String?                @map("phone_normalized") @db.VarChar(32)
-  preferredChannel String?                @map("preferred_channel") @db.VarChar(32)
-  status           CommercialRecordStatus @default(ACTIVE)
-  validFrom        DateTime?              @map("valid_from") @db.Timestamptz(6)
-  validTo          DateTime?              @map("valid_to") @db.Timestamptz(6)
-  version          Int                    @default(1)
-  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
-  entity           CommercialEntity       @relation(fields: [tenantId, entityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_entity_contacts_entity_fkey")
+  id                      String                  @id @default(cuid())
+  contactRef              String                  @default(dbgenerated("gen_random_uuid()")) @map("contact_ref") @db.Uuid
+  tenantId                String                  @map("tenant_id")
+  entityId                String                  @map("entity_id")
+  displayName             String                  @map("display_name") @db.VarChar(160)
+  position                String?                 @db.VarChar(120)
+  emailNormalized         String?                 @map("email_normalized") @db.VarChar(320)
+  phoneNormalized         String?                 @map("phone_normalized") @db.VarChar(32)
+  preferredChannel        String?                 @map("preferred_channel") @db.VarChar(32)
+  status                  CommercialRecordStatus  @default(ACTIVE)
+  validFrom               DateTime?               @map("valid_from") @db.Timestamptz(6)
+  validTo                 DateTime?               @map("valid_to") @db.Timestamptz(6)
+  version                 Int                     @default(1)
+  createdAt               DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  entity                  CommercialEntity        @relation(fields: [tenantId, entityId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "commercial_entity_contacts_entity_fkey")
+  clientTemporaryAccesses ClientTemporaryAccess[]
 
   @@unique([tenantId, id], map: "commercial_entity_contacts_tenant_id_key")
   @@unique([tenantId, contactRef], map: "commercial_entity_contacts_tenant_ref_key")
   @@index([tenantId, entityId, status], map: "commercial_entity_contacts_entity_idx")
   @@map("commercial_entity_contacts")
+}
+
+model ClientTemporaryAccess {
+  id                    String                              @id @default(cuid())
+  accessRef             String                              @unique(map: "client_temporary_accesses_access_ref_key") @default(dbgenerated("gen_random_uuid()")) @map("access_ref") @db.Uuid
+  tenantId              String                              @map("tenant_id")
+  pipelineCaseId        String                              @map("pipeline_case_id")
+  clientId              String?                             @map("client_id")
+  surveyAssignmentId    String?                             @map("survey_assignment_id")
+  selectedContactId     String                              @map("selected_contact_id")
+  communicationRecordId String?                             @map("communication_record_id")
+  tokenHash             String                              @unique(map: "client_temporary_accesses_token_hash_key") @map("token_hash") @db.Char(64)
+  shortCodeHash         String?                             @map("short_code_hash") @db.Char(64)
+  shortCodeSalt         String?                             @map("short_code_salt") @db.Char(32)
+  shortCodeExpiresAt    DateTime?                           @map("short_code_expires_at") @db.Timestamptz(6)
+  shortCodeFailedCount  Int                                 @default(0) @map("short_code_failed_count")
+  shortCodeLockedUntil  DateTime?                           @map("short_code_locked_until") @db.Timestamptz(6)
+  purpose               ClientTemporaryAccessPurpose
+  status                ClientTemporaryAccessStatus         @default(ACTIVE)
+  maxUses               Int                                 @map("max_uses")
+  useCount              Int                                 @default(0) @map("use_count")
+  issuedAt              DateTime                            @default(now()) @map("issued_at") @db.Timestamptz(6)
+  expiresAt             DateTime                            @map("expires_at") @db.Timestamptz(6)
+  lastUsedAt            DateTime?                           @map("last_used_at") @db.Timestamptz(6)
+  revokedAt             DateTime?                           @map("revoked_at") @db.Timestamptz(6)
+  revocationReason      String?                             @map("revocation_reason") @db.VarChar(500)
+  version               Int                                 @default(1)
+  issuedByMembershipId  String                              @map("issued_by_membership_id")
+  issuedByUserId        String                              @map("issued_by_user_id")
+  tenant                Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_accesses_tenant_fkey")
+  pipelineCase          PipelineCase                        @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_accesses_case_fkey")
+  client                Client?                             @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_accesses_client_fkey")
+  surveyAssignment      SurveyAssignment?                   @relation(fields: [tenantId, surveyAssignmentId, pipelineCaseId], references: [tenantId, id, pipelineCaseId], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_accesses_assignment_fkey")
+  selectedContact       CommercialEntityContact             @relation(fields: [tenantId, selectedContactId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_accesses_contact_fkey")
+  communicationRecord   CommunicationRecord?                @relation(fields: [tenantId, communicationRecordId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_accesses_communication_fkey")
+  issuedByMembership    TenantMembership                    @relation("ClientTemporaryAccessIssuer", fields: [tenantId, issuedByMembershipId, issuedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_accesses_issuer_fkey")
+  grants                ClientTemporaryAccessGrant[]
+  events                ClientTemporaryAccessEvent[]
+  commands              ClientTemporaryAccessCommand[]
+  visitResponse         ClientTemporaryVisitResponse?
+  contributions         ClientTemporarySurveyContribution[]
+  qrConfirmations       ClientTemporaryQrConfirmation[]
+
+  @@unique([tenantId, id], map: "client_temporary_accesses_tenant_id_key")
+  @@unique([tenantId, id, surveyAssignmentId], map: "client_temporary_accesses_tenant_id_assignment_key")
+  @@unique([tenantId, accessRef], map: "client_temporary_accesses_tenant_ref_key")
+  @@unique([tenantId, communicationRecordId], map: "client_temporary_accesses_communication_key")
+  @@index([tenantId, pipelineCaseId, status, expiresAt], map: "client_temporary_accesses_case_status_idx")
+  @@index([tenantId, surveyAssignmentId, status], map: "client_temporary_accesses_assignment_idx")
+  @@index([status, expiresAt], map: "client_temporary_accesses_expiry_idx")
+  @@map("client_temporary_accesses")
+}
+
+model ClientTemporaryAccessGrant {
+  id        String                     @id @default(cuid())
+  tenantId  String                     @map("tenant_id")
+  accessId  String                     @map("access_id")
+  scope     ClientTemporaryAccessScope
+  createdAt DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant    Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_access_grants_tenant_fkey")
+  access    ClientTemporaryAccess      @relation(fields: [tenantId, accessId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_access_grants_access_fkey")
+
+  @@unique([tenantId, accessId, scope], map: "client_temporary_access_grants_scope_key")
+  @@index([tenantId, scope, accessId], map: "client_temporary_access_grants_scope_idx")
+  @@map("client_temporary_access_grants")
+}
+
+model ClientTemporaryAccessEvent {
+  id                String                         @id @default(cuid())
+  eventRef          String                         @default(dbgenerated("gen_random_uuid()")) @map("event_ref") @db.Uuid
+  tenantId          String                         @map("tenant_id")
+  accessId          String                         @map("access_id")
+  eventType         ClientTemporaryAccessEventType @map("event_type")
+  actorKind         ClientTemporaryActorKind       @map("actor_kind")
+  actorMembershipId String?                        @map("actor_membership_id")
+  actorUserId       String?                        @map("actor_user_id")
+  metadata          Json                           @default("{}")
+  occurredAt        DateTime                       @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  tenant            Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_access_events_tenant_fkey")
+  access            ClientTemporaryAccess          @relation(fields: [tenantId, accessId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_access_events_access_fkey")
+  actorMembership   TenantMembership?              @relation("ClientTemporaryAccessEventActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_access_events_actor_fkey")
+
+  @@unique([tenantId, eventRef], map: "client_temporary_access_events_tenant_ref_key")
+  @@index([tenantId, accessId, occurredAt(sort: Desc)], map: "client_temporary_access_events_access_idx")
+  @@map("client_temporary_access_events")
+}
+
+model ClientTemporaryAccessCommand {
+  id          String                @id @default(cuid())
+  tenantId    String                @map("tenant_id")
+  accessId    String                @map("access_id")
+  requestId   String                @map("request_id") @db.VarChar(191)
+  operation   String                @db.VarChar(80)
+  payloadHash String                @map("payload_hash") @db.Char(64)
+  resultJson  Json                  @map("result_json")
+  createdAt   DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_access_commands_tenant_fkey")
+  access      ClientTemporaryAccess @relation(fields: [tenantId, accessId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_access_commands_access_fkey")
+
+  @@unique([tenantId, requestId], map: "client_temporary_access_commands_request_key")
+  @@index([tenantId, accessId, operation, createdAt(sort: Desc)], map: "client_temporary_access_commands_operation_idx")
+  @@map("client_temporary_access_commands")
+}
+
+model ClientTemporaryVisitResponse {
+  id                      String                            @id @default(cuid())
+  responseRef             String                            @default(dbgenerated("gen_random_uuid()")) @map("response_ref") @db.Uuid
+  tenantId                String                            @map("tenant_id")
+  accessId                String                            @map("access_id")
+  surveyAssignmentId      String                            @map("survey_assignment_id")
+  state                   ClientTemporaryVisitResponseState @default(PENDING)
+  visitReasonId           String?                           @map("visit_reason_id")
+  comment                 String?                           @db.VarChar(1000)
+  suggestedAvailability   Json                              @default("[]") @map("suggested_availability")
+  confirmedAt             DateTime?                         @map("confirmed_at") @db.Timestamptz(6)
+  changeRequestedAt       DateTime?                         @map("change_requested_at") @db.Timestamptz(6)
+  cancellationRequestedAt DateTime?                         @map("cancellation_requested_at") @db.Timestamptz(6)
+  version                 Int                               @default(1)
+  createdAt               DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                  Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_visit_responses_tenant_fkey")
+  access                  ClientTemporaryAccess             @relation(fields: [tenantId, accessId, surveyAssignmentId], references: [tenantId, id, surveyAssignmentId], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_visit_responses_access_fkey")
+  surveyAssignment        SurveyAssignment                  @relation(fields: [tenantId, surveyAssignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_visit_responses_assignment_fkey")
+  visitReason             VisitReason?                      @relation(fields: [tenantId, visitReasonId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_visit_responses_reason_fkey")
+
+  @@unique([tenantId, responseRef], map: "client_temporary_visit_responses_tenant_ref_key")
+  @@unique([tenantId, accessId], map: "client_temporary_visit_responses_access_key")
+  @@unique([tenantId, accessId, surveyAssignmentId], map: "client_temporary_visit_responses_access_assignment_key")
+  @@index([tenantId, surveyAssignmentId, state, updatedAt(sort: Desc)], map: "client_temporary_visit_responses_scheduling_idx")
+  @@map("client_temporary_visit_responses")
+}
+
+model ClientTemporarySurveyContribution {
+  id                 String                                   @id @default(cuid())
+  contributionRef    String                                   @default(dbgenerated("gen_random_uuid()")) @map("contribution_ref") @db.Uuid
+  tenantId           String                                   @map("tenant_id")
+  accessId           String                                   @map("access_id")
+  surveyAssignmentId String                                   @map("survey_assignment_id")
+  catalogVersionId   String                                   @map("catalog_version_id")
+  revision           Int                                      @default(1)
+  status             ClientSurveyContributionStatus           @default(DRAFT)
+  source             ClientSurveyInformationSource            @default(CLIENT_SUPPLIED)
+  notes              String?                                  @db.VarChar(2000)
+  estimatedWeightKg  Decimal                                  @default(0) @map("estimated_weight_kg") @db.Decimal(14, 3)
+  estimatedVolumeM3  Decimal                                  @default(0) @map("estimated_volume_m3") @db.Decimal(14, 6)
+  version            Int                                      @default(1)
+  submittedAt        DateTime?                                @map("submitted_at") @db.Timestamptz(6)
+  createdAt          DateTime                                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant             Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contributions_tenant_fkey")
+  access             ClientTemporaryAccess                    @relation(fields: [tenantId, accessId, surveyAssignmentId], references: [tenantId, id, surveyAssignmentId], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contributions_access_fkey")
+  surveyAssignment   SurveyAssignment                         @relation(fields: [tenantId, surveyAssignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contributions_assignment_fkey")
+  catalogVersion     SurveyCatalogVersion                     @relation(fields: [tenantId, catalogVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contributions_catalog_fkey")
+  items              ClientTemporarySurveyContributionItem[]
+  assets             ClientTemporarySurveyContributionAsset[]
+
+  @@unique([tenantId, id], map: "client_survey_contributions_tenant_id_key")
+  @@unique([tenantId, id, catalogVersionId], map: "client_survey_contributions_tenant_id_catalog_key")
+  @@unique([tenantId, contributionRef], map: "client_survey_contributions_tenant_ref_key")
+  @@unique([tenantId, accessId, revision], map: "client_survey_contributions_revision_key")
+  @@index([tenantId, surveyAssignmentId, status, updatedAt(sort: Desc)], map: "client_survey_contributions_assignment_idx")
+  @@map("client_survey_contributions")
+}
+
+model ClientTemporarySurveyContributionItem {
+  id                  String                            @id @default(cuid())
+  itemRef             String                            @default(dbgenerated("gen_random_uuid()")) @map("item_ref") @db.Uuid
+  tenantId            String                            @map("tenant_id")
+  contributionId      String                            @map("contribution_id")
+  catalogVersionId    String                            @map("catalog_version_id")
+  catalogItemId       String                            @map("catalog_item_id")
+  articleRefSnapshot  String                            @map("article_ref_snapshot") @db.Uuid
+  articleCodeSnapshot String                            @map("article_code_snapshot") @db.VarChar(64)
+  articleNameSnapshot String                            @map("article_name_snapshot") @db.VarChar(160)
+  quantity            Int
+  unitVolumeM3        Decimal?                          @map("unit_volume_m3") @db.Decimal(12, 6)
+  unitWeightKg        Decimal?                          @map("unit_weight_kg") @db.Decimal(12, 3)
+  totalVolumeM3       Decimal?                          @map("total_volume_m3") @db.Decimal(14, 6)
+  totalWeightKg       Decimal?                          @map("total_weight_kg") @db.Decimal(14, 3)
+  source              ClientSurveyInformationSource     @default(CLIENT_SUPPLIED)
+  clientMeasurements  Json?                             @map("client_measurements")
+  notes               String?                           @db.VarChar(1000)
+  sortOrder           Int                               @map("sort_order")
+  createdAt           DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant              Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contribution_items_tenant_fkey")
+  contribution        ClientTemporarySurveyContribution @relation(fields: [tenantId, contributionId, catalogVersionId], references: [tenantId, id, catalogVersionId], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contribution_items_contribution_fkey")
+  catalogItem         SurveyArticleCatalogItem          @relation(fields: [tenantId, catalogVersionId, catalogItemId], references: [tenantId, catalogVersionId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contribution_items_catalog_fkey")
+
+  @@unique([tenantId, itemRef], map: "client_survey_contribution_items_tenant_ref_key")
+  @@unique([tenantId, contributionId, catalogItemId], map: "client_survey_contribution_items_type_key")
+  @@unique([tenantId, contributionId, sortOrder], map: "client_survey_contribution_items_order_key")
+  @@index([tenantId, catalogVersionId, catalogItemId], map: "client_survey_contribution_items_catalog_idx")
+  @@map("client_survey_contribution_items")
+}
+
+model ClientTemporarySurveyContributionAsset {
+  id             String                            @id @default(cuid())
+  assetRef       String                            @default(dbgenerated("gen_random_uuid()")) @map("asset_ref") @db.Uuid
+  tenantId       String                            @map("tenant_id")
+  contributionId String                            @map("contribution_id")
+  blobObjectId   String                            @map("blob_object_id")
+  category       ClientSurveyAssetCategory
+  documentType   ClientSurveyDocumentType?         @map("document_type")
+  source         ClientSurveyInformationSource     @default(CLIENT_SUPPLIED)
+  createdAt      DateTime                          @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant         Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contribution_assets_tenant_fkey")
+  contribution   ClientTemporarySurveyContribution @relation(fields: [tenantId, contributionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contribution_assets_contribution_fkey")
+  blobObject     SurveyBlobObject                  @relation(fields: [tenantId, blobObjectId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_survey_contribution_assets_blob_fkey")
+
+  @@unique([tenantId, assetRef], map: "client_survey_contribution_assets_tenant_ref_key")
+  @@unique([tenantId, blobObjectId], map: "client_survey_contribution_assets_blob_key")
+  @@index([tenantId, contributionId, category, createdAt], map: "client_survey_contribution_assets_contribution_idx")
+  @@map("client_survey_contribution_assets")
+}
+
+model ClientTemporaryQrConfirmation {
+  id                   String                  @id @default(cuid())
+  confirmationRef      String                  @default(dbgenerated("gen_random_uuid()")) @map("confirmation_ref") @db.Uuid
+  tenantId             String                  @map("tenant_id")
+  accessId             String                  @map("access_id")
+  surveyAssignmentId   String                  @map("survey_assignment_id")
+  visitRefSnapshot     String                  @map("visit_ref_snapshot") @db.Uuid
+  evaluatorRefSnapshot String                  @map("evaluator_ref_snapshot") @db.Uuid
+  result               ClientTemporaryQrResult
+  confirmedAt          DateTime                @default(now()) @map("confirmed_at") @db.Timestamptz(6)
+  tenant               Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_qr_confirmations_tenant_fkey")
+  access               ClientTemporaryAccess   @relation(fields: [tenantId, accessId, surveyAssignmentId], references: [tenantId, id, surveyAssignmentId], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_qr_confirmations_access_fkey")
+  surveyAssignment     SurveyAssignment        @relation(fields: [tenantId, surveyAssignmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "client_temporary_qr_confirmations_assignment_fkey")
+
+  @@unique([tenantId, confirmationRef], map: "client_temporary_qr_confirmations_tenant_ref_key")
+  @@index([tenantId, surveyAssignmentId, confirmedAt(sort: Desc)], map: "client_temporary_qr_confirmations_assignment_idx")
+  @@map("client_temporary_qr_confirmations")
 }
 
 model CommercialRelationship {
@@ -8149,21 +8405,22 @@ model VisitPolicyWindow {
 }
 
 model VisitReason {
-  id                 String                   @id @default(cuid())
-  reasonRef          String                   @default(dbgenerated("gen_random_uuid()")) @map("reason_ref") @db.Uuid
-  tenantId           String                   @map("tenant_id")
-  code               String                   @db.VarChar(80)
-  name               String                   @db.VarChar(160)
-  kind               VisitReasonKind
-  requesterOrigin    VisitRequestOrigin?      @map("requester_origin")
-  visibleToClient    Boolean                  @default(true) @map("visible_to_client")
-  visibleToEvaluator Boolean                  @default(true) @map("visible_to_evaluator")
-  status             OperationalRecordStatus  @default(ACTIVE)
-  sortOrder          Int                      @default(0) @map("sort_order")
-  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant             Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "visit_reasons_tenant_fkey")
-  assignments        SurveyAssignment[]
-  afterHoursRequests AfterHoursVisitRequest[]
+  id                   String                         @id @default(cuid())
+  reasonRef            String                         @default(dbgenerated("gen_random_uuid()")) @map("reason_ref") @db.Uuid
+  tenantId             String                         @map("tenant_id")
+  code                 String                         @db.VarChar(80)
+  name                 String                         @db.VarChar(160)
+  kind                 VisitReasonKind
+  requesterOrigin      VisitRequestOrigin?            @map("requester_origin")
+  visibleToClient      Boolean                        @default(true) @map("visible_to_client")
+  visibleToEvaluator   Boolean                        @default(true) @map("visible_to_evaluator")
+  status               OperationalRecordStatus        @default(ACTIVE)
+  sortOrder            Int                            @default(0) @map("sort_order")
+  createdAt            DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant               Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "visit_reasons_tenant_fkey")
+  assignments          SurveyAssignment[]
+  afterHoursRequests   AfterHoursVisitRequest[]
+  clientVisitResponses ClientTemporaryVisitResponse[]
 
   @@unique([tenantId, id], map: "visit_reasons_tenant_id_key")
   @@unique([tenantId, reasonRef], map: "visit_reasons_tenant_ref_key")
@@ -8539,4 +8796,83 @@ enum CommercialCasePartyRole {
   REFERRER
   AGENT
   SUPPLIER
+}
+
+enum ClientTemporaryAccessPurpose {
+  VISIT
+  INFORMATION_REQUEST
+  MINI_SURVEY
+}
+
+enum ClientTemporaryAccessStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  EXHAUSTED
+}
+
+enum ClientTemporaryAccessScope {
+  VISIT_VIEW
+  VISIT_CONFIRM
+  VISIT_CHANGE_REQUEST
+  VISIT_CANCEL_REQUEST
+  VISIT_QR_CONFIRM
+  SURVEY_INFO_VIEW
+  SURVEY_INFO_UPLOAD
+  MINI_SURVEY_EDIT
+}
+
+enum ClientTemporaryAccessEventType {
+  ACCESS_CREATED
+  ACCESS_REVOKED
+  ACCESS_USED
+  VISIT_CONFIRMED
+  CHANGE_REQUESTED
+  CANCELLATION_REQUESTED
+  SURVEY_ASSET_UPLOADED
+  MINI_SURVEY_SAVED
+  MINI_SURVEY_COMPLETED
+  QR_VALIDATED
+}
+
+enum ClientTemporaryActorKind {
+  EMPLOYEE
+  CLIENT_TEMPORARY
+  SYSTEM
+}
+
+enum ClientTemporaryVisitResponseState {
+  PENDING
+  CONFIRMED
+  CHANGE_REQUESTED
+  CANCEL_REQUESTED
+  EXPIRED
+}
+
+enum ClientSurveyContributionStatus {
+  DRAFT
+  SUBMITTED
+  SUPERSEDED
+}
+
+enum ClientSurveyInformationSource {
+  CLIENT_SUPPLIED
+  EVALUATOR_VERIFIED
+}
+
+enum ClientSurveyAssetCategory {
+  PHOTO
+  DOCUMENT
+}
+
+enum ClientSurveyDocumentType {
+  INVENTORY_LIST
+  ACCESS_PLAN
+  PROPERTY_DOCUMENT
+  OTHER_AUTHORIZED
+}
+
+enum ClientTemporaryQrResult {
+  VERIFIED
+  REJECTED
 }

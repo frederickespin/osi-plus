@@ -13,6 +13,7 @@ import type { QuoteUiAccess } from "@/quote/access";
 import type { SurveySchedulingUiAccess } from "@/survey/schedulingAccess";
 import type { CommercialRelationshipsAccess } from "@/commercial-relationships/access";
 import type { CommunicationsAccess } from "@/communications/access";
+import type { ClientTemporaryAccessUi } from "@/client-portal/access";
 
 const ServiceCasePanel = lazy(() => import("@/crm-services/ServiceCasePanel"));
 const CostingPanel = lazy(() => import("@/costing/CostingPanel"));
@@ -41,6 +42,8 @@ type Props = Readonly<{
   commercialRelationshipsAccess: CommercialRelationshipsAccess;
   communicationsEnabled: boolean;
   communicationsAccess: CommunicationsAccess;
+  clientTemporaryAccessEnabled: boolean;
+  clientTemporaryAccess: ClientTemporaryAccessUi;
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
@@ -54,7 +57,7 @@ const TABS = Object.freeze([
   ["QUOTE", "Cotización", BriefcaseBusiness],
 ] as const);
 
-export default function CommercialCaseDetail({ state, authorization, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, commercialRelationshipsEnabled, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, onNavigate, onUnauthorized, onBack, onOpenNavigation, onReload }: Props) {
+export default function CommercialCaseDetail({ state, authorization, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, commercialRelationshipsEnabled, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, clientTemporaryAccessEnabled, clientTemporaryAccess, onNavigate, onUnauthorized, onBack, onOpenNavigation, onReload }: Props) {
   const [tab, setTab] = useState<WorkspaceTab>("SUMMARY");
   const item = state.value;
   const alerts = item ? [!item.client ? "Cliente receptor pendiente" : null, !item.owner ? "Caso sin asignar" : null, item.requiresSurvey ? "Survey requerido" : null, !item.route?.destination ? "Destino estructurado pendiente" : null, item.estimatedCbm === null || item.estimatedCbm <= 0 ? "Volumen pendiente" : null].filter((value): value is string => Boolean(value)) : [];
@@ -71,7 +74,7 @@ export default function CommercialCaseDetail({ state, authorization, servicesAcc
     {item && <>
       <div role="tablist" aria-label="Áreas del Caso Comercial" className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-[#e7e5e4] p-1">{tabs.map(([value, label, Icon]) => <button id={`${value.toLowerCase()}-tab`} key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`flex shrink-0 items-center gap-1.5 rounded px-3 py-2 text-xs font-bold ${tab === value ? "bg-[#df8750] text-white shadow-sm" : "text-slate-700 hover:bg-white/60"}`}><Icon className="h-3.5 w-3.5" />{label}</button>)}</div>
       <div className="p-4">{tab === "SUMMARY" && <div className="space-y-3"><Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando resumen integrado…</div>}><CaseWorkflowOverview item={item} authorization={authorization} servicesEnabled={servicesEnabled} surveyEnabled={surveyEnabled} logisticsEnabled={logisticsEnabled && logisticsAccess.canView} costingEnabled={costingEnabled && costingAccess.canView} quoteEnabled={quoteEnabled && quoteAccess.canView} onSelectTab={setTab} onUnauthorized={onUnauthorized} /></Suspense>{commercialRelationshipsEnabled && commercialRelationshipsAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando contexto comercial…</div>}><CaseCommercialContextPanel caseRef={item.caseRef} authorization={authorization} access={commercialRelationshipsAccess} onUnauthorized={onUnauthorized} /></Suspense>}{communicationsEnabled && (communicationsAccess.canView || communicationsAccess.canPrepare) && <section id="case-communications" aria-label="Actividad y Comunicaciones"><Suspense fallback={<p className="p-4 text-xs text-slate-500">Cargando comunicaciones…</p>}><CommunicationPanel caseRef={item.caseRef} authorization={authorization} access={communicationsAccess} context="CASE" onUnauthorized={onUnauthorized} /></Suspense></section>}</div>}
-        {tab === "SURVEY" && surveyEnabled && surveySchedulingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Survey…</div>}><SurveyCasePanel caseRef={item.caseRef} authorization={authorization} access={surveySchedulingAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} logisticsSummaryEnabled={logisticsEnabled && logisticsAccess.canView} onOpenCommunications={openCommunications} onNavigate={onNavigate} onUnauthorized={onUnauthorized} /></Suspense>}
+        {tab === "SURVEY" && surveyEnabled && surveySchedulingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Survey…</div>}><SurveyCasePanel caseRef={item.caseRef} authorization={authorization} access={surveySchedulingAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} logisticsSummaryEnabled={logisticsEnabled && logisticsAccess.canView} clientTemporaryAccessEnabled={clientTemporaryAccessEnabled} clientTemporaryAccess={clientTemporaryAccess} onOpenCommunications={openCommunications} onNavigate={onNavigate} onUnauthorized={onUnauthorized} /></Suspense>}
         {tab === "SERVICES" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando selección de Servicios…</div>}><ServiceCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} canViewConfiguration={servicesAccess.canCaseConfigView} canConfigure={servicesAccess.canCaseConfigUpdate} onUnauthorized={onUnauthorized} /></Suspense>}
         {tab === "COSTING" && costingEnabled && costingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Costos…</div>}><CostingPanel caseRef={item.caseRef} authorization={authorization} access={costingAccess} onUnauthorized={onUnauthorized} /></Suspense>}
         {tab === "QUOTE" && quoteEnabled && quoteAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Cotización…</div>}><QuotePanel caseRef={item.caseRef} authorization={authorization} access={quoteAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} onOpenCommunications={openCommunications} onUnauthorized={onUnauthorized} /></Suspense>}

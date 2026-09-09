@@ -54,6 +54,10 @@ export const PERMS = {
   INVENTORY_EDIT: "inventory:edit",
   PURCHASES_VIEW: "purchases:view",
   PURCHASES_CREATE: "purchases:create",
+  CLIENT_ACCESS_VIEW: "client-access:view",
+  CLIENT_ACCESS_CREATE: "client-access:create",
+  CLIENT_ACCESS_REVOKE: "client-access:revoke",
+  CLIENT_ACCESS_MANAGE: "client-access:manage",
   INVENTORY_CATALOG_VIEW: "inventory:catalog:view",
   INVENTORY_CATALOG_MANAGE: "inventory:catalog:manage",
   INVENTORY_STOCK_VIEW: "inventory:stock:view",
@@ -97,6 +101,11 @@ const EXPLICIT_MATERIALS_PERMISSIONS = new Set<Perm>([
   PERMS.INVENTORY_RECIPES_VIEW, PERMS.INVENTORY_RECIPES_MANAGE,
 ]);
 
+const EXPLICIT_CLIENT_ACCESS_PERMISSIONS = new Set<Perm>([
+  PERMS.CLIENT_ACCESS_VIEW, PERMS.CLIENT_ACCESS_CREATE,
+  PERMS.CLIENT_ACCESS_REVOKE, PERMS.CLIENT_ACCESS_MANAGE,
+]);
+
 export type RoleCode =
   | "A"
   | "V"
@@ -118,7 +127,7 @@ export type RoleCode =
   | "RB";
 export function permsForRole(role: RoleCode): Perm[] {
   const rolePerms: Record<RoleCode, Perm[]> = {
-    A: Object.values(PERMS).filter((permission) => !EXPLICIT_MATERIALS_PERMISSIONS.has(permission)),
+    A: Object.values(PERMS).filter((permission) => !EXPLICIT_MATERIALS_PERMISSIONS.has(permission) && !EXPLICIT_CLIENT_ACCESS_PERMISSIONS.has(permission)),
     V: [
       PERMS.TEMPLATES_VIEW,
       PERMS.TEMPLATES_CREATE,

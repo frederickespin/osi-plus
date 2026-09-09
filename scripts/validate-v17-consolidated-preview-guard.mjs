@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,7 +44,8 @@ export function validateV17ConsolidatedPreviewGuard({ root = process.cwd(), over
     invariant(!/PRODUCTION_(?:READ|PILOT|WRITE)/u.test(source), `modo Production introducido:${path}`);
   }
   const migrationCount = migrations ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
-  invariant(migrationCount === 34, `migraciones:${migrationCount}`);
+  const known16AExtension = migrations === undefined && migrationCount === 35 && existsSync(resolve(root, "prisma/migrations/20260916010000_v17_client_temporary_portal/migration.sql"));
+  invariant(migrationCount === 34 || known16AExtension, `migraciones:${migrationCount}`);
   invariant(!/Auth V2|VITE_MT01B2_CLIENT_ENABLED=true/u.test(shared + detail + hub), "Auth V2 activado");
   return Object.freeze({ ok: true, tabs: expectedTabs.length, domains: 9, migrations: migrationCount, productionApiEnabled: false });
 }

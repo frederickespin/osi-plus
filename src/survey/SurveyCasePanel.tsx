@@ -36,6 +36,8 @@ import LogisticsVisitSummary from "@/logistics-engine/LogisticsVisitSummary";
 import type { LogisticsRevision } from "@/logistics-engine/api";
 import type { CommunicationsAccess } from "@/communications/access";
 import { createPersonnelPoliciesApi } from "@/personnel-policies/api";
+import type { ClientTemporaryAccessUi } from "@/client-portal/access";
+import ClientTemporaryAccessPanel from "@/client-portal/ClientTemporaryAccessPanel";
 
 type Props = Readonly<{
   caseRef: string;
@@ -44,6 +46,8 @@ type Props = Readonly<{
   communicationsEnabled?: boolean;
   communicationsAccess?: CommunicationsAccess;
   logisticsSummaryEnabled?: boolean;
+  clientTemporaryAccessEnabled?: boolean;
+  clientTemporaryAccess?: ClientTemporaryAccessUi;
   onOpenCommunications?(): void;
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
@@ -106,6 +110,8 @@ export default function SurveyCasePanel({
   communicationsEnabled = false,
   communicationsAccess,
   logisticsSummaryEnabled = false,
+  clientTemporaryAccessEnabled = false,
+  clientTemporaryAccess,
   onOpenCommunications,
   onNavigate,
   onUnauthorized,
@@ -536,6 +542,15 @@ export default function SurveyCasePanel({
                   </div>
                 )}
             </section>
+
+            {clientTemporaryAccessEnabled && clientTemporaryAccess && workspace.assignment && commercialContext && (clientTemporaryAccess.canView || clientTemporaryAccess.canCreate) && <ClientTemporaryAccessPanel
+              caseRef={caseRef}
+              assignmentRef={workspace.assignment.assignmentRef}
+              contacts={commercialContext.parties.flatMap((party) => party.contacts.map((contact) => ({ contactRef: contact.contactRef, displayName: contact.displayName })))}
+              authorization={authorization}
+              access={clientTemporaryAccess}
+              onUnauthorized={onUnauthorized}
+            />}
 
             <section className="p-4" aria-labelledby="evaluation-agenda-title">
               <div className="flex flex-wrap items-start justify-between gap-2">

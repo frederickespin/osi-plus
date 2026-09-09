@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { validateClientTemporaryPortal } from "./validate-v17-client-temporary-portal-guard.mjs";
+
+const root = resolve(import.meta.dirname, ".."); const read = (path) => readFileSync(resolve(root, path), "utf8"); let negativeAssertions = 0;
+const rejects = (path, mutate) => { assert.throws(() => validateClientTemporaryPortal({ [path]: mutate(read(path)) }), /V17_CLIENT_TEMPORARY_PORTAL_GUARD/); negativeAssertions += 1; };
+rejects("prisma/schema.prisma", (value) => value.replace("model ClientTemporaryAccess {", "model RemovedTemporaryAccess {"));
+rejects("prisma/schema.prisma", (value) => `${value}\nmodel UnsafeToken { id String @id token String }`);
+rejects("prisma/migrations/20260916010000_v17_client_temporary_portal/migration.sql", (value) => value.replace('CONSTRAINT "client_temporary_accesses_case_fkey" FOREIGN KEY ("tenant_id", "pipeline_case_id")', 'CONSTRAINT "client_temporary_accesses_case_fkey" FOREIGN KEY ("pipeline_case_id")'));
+rejects("api/_lib/clientTemporaryAccessDomain.js", (value) => value.replace('JOIN "osi"."osi_users"', 'JOIN "osi"."removed_users"'));
+rejects("api/_lib/clientTemporaryAccessDomain.js", (value) => value.replace("denied.has(permission)", "false"));
+rejects("api/_lib/clientTemporaryAccessDomain.js", (value) => value.replaceAll("ownerMembershipId: who.membershipId", "ownerName: who.userId"));
+rejects("api/_lib/clientTemporaryAccessDomain.js", (value) => value.replace("randomBytes(32).toString(\"base64url\")", '"predictable-token"'));
+rejects("api/_lib/clientTemporaryAccessContract.js", (value) => value.replace("items.length > 10", "items.length > 100"));
+rejects("api/_lib/clientTemporaryAccessHttp.js", (value) => value.replace("productionApiEnabled = false", "productionApiEnabled = true"));
+rejects("src/client-portal/ClientTemporaryPortal.tsx", (value) => `${value}\nlocalStorage.setItem("token", "unsafe");`);
+rejects("src/client-portal/ClientTemporaryPortal.tsx", (value) => `${value}\nconst UnsafeShell = HubWorkspace;`);
+rejects("api/_lib/crmSurveyDomain.js", (value) => value.replace("evaluatorVerified: false", "evaluatorVerified: true"));
+rejects("api/_lib/rbac.js", (value) => value.replace("client-access:create", "client-access:missing"));
+rejects("src/client-portal/ClientTemporaryAccessPanel.tsx", (value) => `${value}\nconst acceptQuote = true;`);
+rejects("src/client-portal/ClientTemporaryAccessPanel.tsx", (value) => value.replace("<QRCodeSVG", "<RemovedQr"));
+process.stdout.write(`${JSON.stringify({ ok: true, negativeAssertions })}\n`);

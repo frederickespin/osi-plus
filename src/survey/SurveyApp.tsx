@@ -811,6 +811,7 @@ function Review({
           {draft.catalog.version} · Ruta v{draft.routeVersion}
         </p>
         {draft.evaluationMethod === "MINI" && <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">Estimado / Aproximado · Fuente {draft.informationSource === "MINI" ? "MINI_SURVEY" : draft.informationSource || "MINI_SURVEY"} · {draft.items.length}/10 tipos</p>}
+        {draft.clientSupplied && <section className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3" aria-label="Información suministrada por el cliente"><p className="text-xs font-black uppercase tracking-wide text-sky-900">Información suministrada por el cliente</p><p className="mt-1 text-xs text-sky-950">Mini Survey v{draft.clientSupplied.revision}: {draft.clientSupplied.typeCount} tipos, {draft.clientSupplied.assetCount} archivo(s), {draft.clientSupplied.estimatedVolumeM3.toFixed(2)} m³ y {draft.clientSupplied.estimatedWeightKg.toFixed(1)} kg aproximados.</p><p className="mt-1 text-[11px] font-semibold text-sky-800">Fuente CLIENT_SUPPLIED · pendiente de verificación del evaluador. No sustituye la publicación inmutable del Survey.</p></section>}
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl bg-slate-50 p-3">
             <strong className="block text-xl">{draft.totals.quantity}</strong>

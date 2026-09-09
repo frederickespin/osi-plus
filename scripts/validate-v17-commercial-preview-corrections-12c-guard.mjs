@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(path, "utf8");
 
@@ -40,7 +40,7 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.match(rules, /Administración · Motor Logístico/);
   assert.doesNotMatch(http, /PRODUCTION_(?:READ|WRITE|PILOT)/, "12C no activa Production");
   const migrationCount = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
-  assert.equal(migrationCount, 34, "linaje consolidado debe conservar exactamente 34 migraciones");
+  assert.ok(migrationCount === 34 || migrationCount === 35 && existsSync("prisma/migrations/20260916010000_v17_client_temporary_portal/migration.sql"), "linaje consolidado debe conservar 34 migraciones o la extensión 16A exacta");
   return Object.freeze({ ok: true, commercialMotorTabs: 0, adminLazyBoundary: true, independentAdminSurfaces: true, publishedResultOnly: true, productionApiEnabled: false, migrations: migrationCount });
 }
 

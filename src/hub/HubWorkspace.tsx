@@ -24,6 +24,8 @@ import { isCommunicationsUiEnabled } from "@/communications/mode";
 import { resolvePersonnelPoliciesAccess } from "@/personnel-policies/access";
 import { isPersonnelPoliciesUiEnabled } from "@/personnel-policies/mode";
 import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
+import { resolveClientTemporaryAccessUi } from "@/client-portal/access";
+import { resolveClientTemporaryPortalMode } from "@/client-portal/mode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
@@ -168,6 +170,8 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         commercialRelationshipsAccess={commercialRelationshipsAccess}
         communicationsEnabled={communicationsEnabled}
         communicationsAccess={communicationsAccess}
+        clientTemporaryAccessEnabled={resolveClientTemporaryPortalMode().enabled}
+        clientTemporaryAccess={resolveClientTemporaryAccessUi(accessContext.effectivePermissions, accessContext.deniedPermissions)}
         userName={userName}
         onNavigate={onNavigate}
         onLogout={onLogout}

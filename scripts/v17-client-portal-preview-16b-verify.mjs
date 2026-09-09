@@ -24,11 +24,14 @@ try {
     assert.ok(ACCESS_PERMISSIONS.every((permission) => admin.grantedPermissions.includes(permission) && !admin.deniedPermissions.includes(permission)));
     const accesses = await tx.clientTemporaryAccess.findMany({
       where: { tenantId: tenant.id },
-      include: { grants: true, visitResponse: true, surveyAssignment: { include: { evaluationDecision: true } }, contributions: { include: { items: true } }, qrConfirmations: true, events: true },
+      include: { grants: true, commands: true, visitResponse: true, surveyAssignment: { include: { evaluationDecision: true } }, contributions: { include: { items: true } }, qrConfirmations: true, events: true },
     });
-    assert.equal(accesses.length, 15);
+    const remoteEvidence = accesses.filter((row) => row.commands.some((command) => command.requestId.startsWith("v17-16b-remote-")));
+    assert.equal(accesses.length, 19);
+    assert.equal(remoteEvidence.length, 4);
+    assert.ok(remoteEvidence.every((row) => row.status === "REVOKED"));
     assert.equal(accesses.filter((row) => row.status === "ACTIVE").length, 6);
-    assert.equal(accesses.filter((row) => row.status === "REVOKED").length, 8);
+    assert.equal(accesses.filter((row) => row.status === "REVOKED").length, 12);
     assert.equal(accesses.filter((row) => row.status === "EXPIRED").length, 1);
     assert.ok(accesses.some((row) => row.surveyAssignment?.evaluationDecision?.method === "IN_PERSON" && !row.visitResponse));
     assert.ok(accesses.some((row) => row.surveyAssignment?.evaluationDecision?.method === "VIRTUAL"));
@@ -42,7 +45,7 @@ try {
     const externalSent = await tx.communicationRecord.count({ where: { tenantId: tenant.id, status: "SENT", preparedAt: { gte: new Date("2026-09-09T00:00:00.000Z") } } });
     assert.equal(externalSent, 0);
     const responseStates = Object.fromEntries((await tx.clientTemporaryVisitResponse.groupBy({ by: ["state"], where: { tenantId: tenant.id }, _count: { _all: true } })).map((row) => [row.state, row._count._all]));
-    console.log(JSON.stringify({ ok: true, database: EXPECTED_DATABASE, branch: EXPECTED_BRANCH, migrations: "35/35", accesses: accesses.length, usableScenarios: 8, active: 6, revoked: 8, setupRecoveryRevoked: 7, expired: 1, responseStates, miniTypes: 10, miniSource: "CLIENT_SUPPLIED", qrVerified: true, externalSent: 0, productionApiEnabled: false }));
+    console.log(JSON.stringify({ ok: true, database: EXPECTED_DATABASE, branch: EXPECTED_BRANCH, migrations: "35/35", accesses: accesses.length, usableScenarios: 8, active: 6, revoked: 12, setupRecoveryRevoked: 7, remoteEvidenceRevoked: 4, expired: 1, responseStates, miniTypes: 10, miniSource: "CLIENT_SUPPLIED", qrVerified: true, externalSent: 0, productionApiEnabled: false }));
   });
 } finally {
   await prisma.$disconnect();

@@ -33,8 +33,11 @@ function portalData() {
       fee: { disposition: "CLIENT_CHARGE", amount: 1500, currency: "DOP" },
       clientResponse: { state: "PENDING", version: 0 },
     },
-    reasons: [{ reasonRef: REASON_REF, name: "Cambio solicitado por cliente", kind: "RESCHEDULE" }],
-    miniCatalog: [{ articleRef: ARTICLE_REF, name: "Caja sintética" }],
+    reasons: [
+      { reasonRef: REASON_REF, name: "Cambio solicitado por cliente", kind: "RESCHEDULE" },
+      { reasonRef: "99999999-9999-4999-8999-999999999999", name: "Ya no requiere visita", kind: "CANCELLATION" },
+    ],
+    miniCatalog: Array.from({ length: 10 }, (_, index) => ({ articleRef: index === 0 ? ARTICLE_REF : `55555555-5555-4555-8555-5555555555${String(index).padStart(2, "0")}`, name: `Artículo sintético ${index + 1}` })),
     contribution: null,
     notices: { surveySource: "CLIENT_SUPPLIED", quoteAcceptanceAvailable: false, externalTransportEnabled: false },
   };
@@ -79,6 +82,8 @@ test("acceso temporal ejecuta visita, Mini, carga y QR sin montar el ERP", async
 
   await page.getByRole("button", { name: "Confirmar visita" }).click();
   await expect(page.getByText("CONFIRMED")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("CONFIRMED")).toBeVisible();
   await page.getByRole("button", { name: "Solicitar cambio" }).click();
   await page.getByLabel("Razón").selectOption(REASON_REF);
   await page.getByLabel("Disponibilidad sugerida").fill("2026-09-19T10:00");
@@ -109,4 +114,14 @@ test("inválido, expirado y revocado son indistinguibles y no revelan contexto",
   await expect(page.getByText("PORTAL-001")).toHaveCount(0);
   await expect(page.getByText("Evaluadora autorizada")).toHaveCount(0);
   expect(await page.context().cookies()).toEqual([]);
+});
+
+test("el artículo 11 conserva el método y ofrece escalamiento informativo", async ({ page }) => {
+  await installPortal(page);
+  await page.goto(`/client-access/${ACCESS_REF}#token=${TOKEN}`);
+  for (let index = 0; index < 10; index += 1) await page.getByRole("button", { name: "Agregar tipo de artículo" }).click();
+  await page.getByRole("button", { name: "Necesito registrar más artículos" }).click();
+  await expect(page.getByText("La información requiere un Survey más detallado.")).toBeVisible();
+  await expect(page.getByText("visita presencial, visita virtual o listado/fotos", { exact: false })).toBeVisible();
+  await expect(page.getByText("Visita programada")).toBeVisible();
 });

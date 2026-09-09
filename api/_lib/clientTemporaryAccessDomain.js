@@ -79,10 +79,10 @@ async function priorCommand(tx, tenantId, command) {
 }
 
 function internalDto(row) {
-  return Object.freeze({ accessRef: row.accessRef, purpose: row.purpose, status: row.status, scopes: Object.freeze((row.grants || []).map((grant) => grant.scope)), expiresAt: row.expiresAt.toISOString(), maxUses: row.maxUses, useCount: row.useCount, version: row.version, contact: Object.freeze({ contactRef: row.selectedContact.contactRef, displayName: row.selectedContact.displayName }), assignmentRef: row.surveyAssignment?.assignmentRef || null, communicationRef: row.communicationRecord?.communicationRef || null, issuedAt: row.issuedAt.toISOString(), revokedAt: row.revokedAt?.toISOString() || null });
+  return Object.freeze({ accessRef: row.accessRef, purpose: row.purpose, status: row.status, scopes: Object.freeze((row.grants || []).map((grant) => grant.scope)), expiresAt: row.expiresAt.toISOString(), maxUses: row.maxUses, useCount: row.useCount, version: row.version, contact: Object.freeze({ contactRef: row.selectedContact.contactRef, displayName: row.selectedContact.displayName }), assignmentRef: row.surveyAssignment?.assignmentRef || null, communicationRef: row.communicationRecord?.communicationRef || null, clientResponseState: row.visitResponse?.state || "PENDING", issuedAt: row.issuedAt.toISOString(), lastUsedAt: row.lastUsedAt?.toISOString() || null, revokedAt: row.revokedAt?.toISOString() || null });
 }
 
-const internalInclude = Object.freeze({ grants: { orderBy: { scope: "asc" } }, selectedContact: { select: { contactRef: true, displayName: true } }, surveyAssignment: { select: { assignmentRef: true } }, communicationRecord: { select: { communicationRef: true } } });
+const internalInclude = Object.freeze({ grants: { orderBy: { scope: "asc" } }, selectedContact: { select: { contactRef: true, displayName: true } }, surveyAssignment: { select: { assignmentRef: true } }, communicationRecord: { select: { communicationRef: true } }, visitResponse: { select: { state: true } } });
 
 export async function createClientTemporaryAccess(context, raw, database = prisma, now = new Date()) {
   const command = normalizeCreateTemporaryAccess(raw);

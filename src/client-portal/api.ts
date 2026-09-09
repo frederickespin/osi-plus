@@ -49,6 +49,8 @@ export type InternalClientAccess = Readonly<{
   contact: Readonly<{ contactRef: string; displayName: string }>;
   assignmentRef: string | null;
   communicationRef: string | null;
+  clientResponseState: string;
+  lastUsedAt: string | null;
 }>;
 
 async function internalResult<T>(response: Response): Promise<T> {

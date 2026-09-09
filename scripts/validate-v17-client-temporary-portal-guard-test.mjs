@@ -14,6 +14,16 @@ rejects("api/_lib/clientTemporaryAccessDomain.js", (value) => value.replaceAll("
 rejects("api/_lib/clientTemporaryAccessDomain.js", (value) => value.replace("randomBytes(32).toString(\"base64url\")", '"predictable-token"'));
 rejects("api/_lib/clientTemporaryAccessContract.js", (value) => value.replace("items.length > 10", "items.length > 100"));
 rejects("api/_lib/clientTemporaryAccessHttp.js", (value) => value.replace("productionApiEnabled = false", "productionApiEnabled = true"));
+rejects("api/_lib/clientTemporaryAccessHttp.js", (value) => value.replace("VERCEL_PREVIEW:", "REMOVED_PREVIEW_ENV:"));
+rejects("api/_lib/clientTemporaryAccessHttp.js", (value) => value.replace("PREVIEW_BRANCH:", "REMOVED_PREVIEW_BRANCH:"));
+rejects("api/_lib/clientTemporaryAccessHttp.js", (value) => value.replace("PREVIEW_MANIFEST_SHA256:", "REMOVED_MANIFEST_HASH:"));
+rejects("api/_lib/clientTemporaryAccessHttp.js", (value) => value.replace("AUTH_V2_DISABLED:", "REMOVED_AUTH_V2:"));
+rejects("api/_lib/clientTemporaryAccessHttp.js", (value) => value.replace("EXTERNAL_TRANSPORT_DISABLED:", "REMOVED_TRANSPORT:"));
+rejects("api/_lib/clientTemporaryAccessHttp.js", (value) => value.replace("STORAGE_MODE:", "REMOVED_STORAGE_MODE:"));
+rejects("api/_lib/clientTemporaryAccessHttp.js", (value) => value.replace("current_database()", "current_schema()"));
+rejects("src/client-portal/mode.ts", (value) => value.replace('env.VITE_VERCEL_ENV === "preview"', "true"));
+rejects("src/client-portal/mode.ts", (value) => value.replace('env.VITE_VERCEL_GIT_COMMIT_REF === "feature/v17-consolidated-preview"', "true"));
+rejects("src/client-portal/mode.ts", (value) => value.replace('env.VITE_COMMUNICATIONS_TRANSPORT_MODE === "DISABLED"', "true"));
 rejects("src/client-portal/ClientTemporaryPortal.tsx", (value) => `${value}\nlocalStorage.setItem("token", "unsafe");`);
 rejects("src/client-portal/ClientTemporaryPortal.tsx", (value) => `${value}\nconst UnsafeShell = HubWorkspace;`);
 rejects("api/_lib/crmSurveyDomain.js", (value) => value.replace("evaluatorVerified: false", "evaluatorVerified: true"));

@@ -14,6 +14,7 @@ export function validateClientTemporaryPortal(overrides = {}) {
   const http = read("api/_lib/clientTemporaryAccessHttp.js", overrides);
   const app = read("src/App.tsx", overrides);
   const portal = read("src/client-portal/ClientTemporaryPortal.tsx", overrides);
+  const mode = read("src/client-portal/mode.ts", overrides);
   const panel = read("src/client-portal/ClientTemporaryAccessPanel.tsx", overrides);
   const survey = read("api/_lib/crmSurveyDomain.js", overrides);
   const backendRbac = read("api/_lib/rbac.js", overrides); const frontendRbac = read("src/lib/rbac.ts", overrides);
@@ -34,16 +35,19 @@ export function validateClientTemporaryPortal(overrides = {}) {
   need(contract, /items\.length > 10\) fail\("CLIENT_TEMPORARY_MINI_REQUIRES_DETAILED_SURVEY"/, "límite Mini exacto ausente");
   need(http, /productionApiEnabled = false/, "Production API fue activada");
   need(http, /hasVercel\(env\)[\s\S]*!isRealLoopbackRequest\(req\)/, "LOCAL_ONLY no falla cerrado en Vercel/no-loopback");
+  need(http, /PREVIEW_REHEARSAL[\s\S]*\bVERCEL_PREVIEW:[\s\S]*\bPREVIEW_BRANCH:[\s\S]*\bPREVIEW_MANIFEST_SHA256:[\s\S]*\bDATABASE_URL:[\s\S]*\bDIRECT_URL:[\s\S]*\bAUTH_V2_DISABLED:[\s\S]*\bEXTERNAL_TRANSPORT_DISABLED:[\s\S]*\bSTORAGE_MODE:[\s\S]*\bSTORAGE_ROOT:/, "gate Preview backend incompleto");
+  need(http, /assertClientTemporaryPreviewDatabase[\s\S]*current_database\(\)[\s\S]*neon\.branch_id/, "identidad DB Preview no se revalida");
+  need(mode, /PREVIEW_REHEARSAL[\s\S]*VITE_VERCEL_ENV[\s\S]*feature\/v17-consolidated-preview[\s\S]*VITE_CLIENT_TEMPORARY_PREVIEW_BATCH[\s\S]*VITE_CLIENT_TEMPORARY_PREVIEW_STORAGE_MODE[\s\S]*VITE_COMMUNICATIONS_TRANSPORT_MODE/, "gate Preview frontend incompleto");
   need(http, /prepareClientTemporaryRequest\(req, res, env\)[\s\S]*resolveContext/, "gate no precede auth/body/Prisma");
   need(app, /isClientTemporaryPortalRoute\(\)[\s\S]*<ClientTemporaryPortal/, "ruta externa no se separa antes del shell autenticado");
   if (/Sidebar|HubWorkspace|AdvancedErpShell/.test(portal)) fail("portal externo importa el ERP/Hub");
   if (/localStorage|sessionStorage/.test(portal)) fail("portal usa browser storage como autoridad");
-  need(portal, /history\.replaceState\(\{\}, "", window\.location\.pathname\)/, "token no se elimina del fragmento");
+  need(portal, /HISTORY_CREDENTIAL[\s\S]*history\.replaceState[\s\S]*window\.location\.pathname/, "token no se elimina del fragmento o no sobrevive reload en history state");
   need(panel, /Credencial de una sola visualización[\s\S]*no se almacena en texto claro/, "emisión interna no advierte one-time secret");
   need(panel, /<QRCodeSVG[\s\S]*value=\{new URL\(credentials\.link, window\.location\.origin\)\.toString\(\)\}/, "QR one-time no usa el acceso temporal exacto");
   need(survey, /clientSupplied:[\s\S]*source: "CLIENT_SUPPLIED"[\s\S]*evaluatorVerified: false/, "Survey App no consume el aporte como no verificado");
   for (const permission of ["client-access:view", "client-access:create", "client-access:revoke", "client-access:manage"]) if (!backendRbac.includes(permission) || !frontendRbac.includes(permission)) fail(`falta permiso ${permission}`);
-  if (/productionApiEnabled\s*[:=]\s*true/i.test(`${http}\n${portal}\n${panel}`)) fail("Production fue habilitada");
+  if (/productionApiEnabled\s*[:=]\s*true/i.test(`${http}\n${mode}\n${portal}\n${panel}`)) fail("Production fue habilitada");
   if (/\bacceptQuote\b|status:\s*"SENT"/.test(`${domain}\n${portal}\n${panel}`)) fail("se amplió a aceptación de cotización o envío externo");
   return Object.freeze({ models: 9, permissions: 4, migration: 35, productionApiEnabled: false, externalTransports: 0 });
 }

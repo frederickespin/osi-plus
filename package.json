@@ -139,6 +139,8 @@
     "verify:v17-communications-preview": "node scripts/v17-communications-preview-verify.mjs",
     "seed:v17-commercial-relationships-preview": "node scripts/v17-commercial-relationships-preview-seed.mjs",
     "verify:v17-commercial-relationships-preview": "node scripts/v17-commercial-relationships-preview-verify.mjs",
+    "seed:v17-client-portal-preview": "node scripts/v17-client-portal-preview-16b-seed.mjs",
+    "verify:v17-client-portal-preview": "node scripts/v17-client-portal-preview-16b-verify.mjs",
     "test:v17-admin-tenant-memberships:http": "node scripts/v17-admin-tenant-memberships-http-test.mjs",
     "test:v17-admin-tenant-memberships": "node scripts/v17-admin-tenant-memberships-test.mjs",
     "test:v17-admin-membership-bootstrap": "node scripts/v17-admin-membership-bootstrap-test.mjs",

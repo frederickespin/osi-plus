@@ -81,14 +81,14 @@ test("acceso temporal ejecuta visita, Mini, carga y QR sin montar el ERP", async
   await expect(page.getByText("OSi Plus Hub")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Confirmar visita" }).click();
-  await expect(page.getByText("CONFIRMED")).toBeVisible();
+  await expect(page.getByText("Visita confirmada")).toBeVisible();
   await page.reload();
-  await expect(page.getByText("CONFIRMED")).toBeVisible();
+  await expect(page.getByText("Visita confirmada")).toBeVisible();
   await page.getByRole("button", { name: "Solicitar cambio" }).click();
   await page.getByLabel("Razón").selectOption(REASON_REF);
   await page.getByLabel("Disponibilidad sugerida").fill("2026-09-19T10:00");
   await page.getByRole("button", { name: "Enviar solicitud" }).click();
-  await expect(page.getByText("CHANGE REQUESTED")).toBeVisible();
+  await expect(page.getByText("Cambio solicitado")).toBeVisible();
 
   await page.getByRole("button", { name: "Agregar tipo de artículo" }).click();
   await page.getByRole("button", { name: "Completar Mini" }).click();

@@ -157,7 +157,10 @@
     "preview": "vite preview",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:seed": "node prisma/seed.mjs"
+    "db:seed": "node prisma/seed.mjs",
+    "build:v17-tool-access-preview": "node scripts/build-v17-tool-access-preview.mjs",
+    "typecheck:v17-tool-access": "tsc -p tsconfig.v17-tool-access.json --pretty false",
+    "test:v17-tool-access:browser": "playwright test -c playwright.v17-tool-access.config.ts"
   },
   "dependencies": {
     "22": "^0.0.0",

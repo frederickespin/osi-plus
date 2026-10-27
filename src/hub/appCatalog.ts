@@ -2,6 +2,7 @@ import type { UserRole } from "@/types/osi.types";
 
 export type HubAppId =
   | "commercial-crm"
+  | "quotation-tools"
   | "coordination"
   | "operations"
   | "materials-equipment"
@@ -19,7 +20,9 @@ export type HubIconId =
   | "hammer"
   | "settings"
   | "users"
-  | "clipboard";
+  | "clipboard"
+  | "calculator"
+  | "smartphone";
 export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED";
 export type HubMobileAvailability =
   "RESPONSIVE" | "MOBILE_PRIMARY" | "DESKTOP_PRIMARY";
@@ -54,6 +57,21 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     permissionMode: "ALL",
     requiresExplicitPermissions: true,
     baselineRoles: ["A", "V"],
+    mobileAvailability: "RESPONSIVE",
+    directAccessAllowed: true,
+    lazy: true,
+  },
+  {
+    appId: "quotation-tools",
+    name: "Herramientas de cotización",
+    description: "Calculadora de empaque para preparar cotizaciones.",
+    icon: "calculator",
+    route: "/quotation-tools",
+    status: "REGISTERED_INACTIVE",
+    requiredPermissions: ["pipeline:view"],
+    permissionMode: "ALL",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
     mobileAvailability: "RESPONSIVE",
     directAccessAllowed: true,
     lazy: true,
@@ -175,10 +193,11 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   },
   {
     appId: "osi-survey",
-    name: "OSi Survey",
-    description: "Agenda, inventario observado y publicaciones inmutables.",
-    icon: "clipboard",
-    route: "/survey",
+    name: "Procesos móviles",
+    description: "Inventario visual, fotografías y levantamientos.",
+    icon: "smartphone",
+    route: "/mobile-processes",
+    routeAliases: ["/survey"],
     status: "REGISTERED_INACTIVE",
     requiredPermissions: ["survey:assignment:view"],
     permissionMode: "ALL",

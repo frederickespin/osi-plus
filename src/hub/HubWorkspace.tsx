@@ -1,5 +1,5 @@
-import { Suspense, lazy, useMemo, useState, type ElementType } from "react";
-import { BriefcaseBusiness, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Truck, Users, Warehouse } from "lucide-react";
+import { Suspense, lazy, useMemo, useState, type ElementType, type ReactNode } from "react";
+import { BriefcaseBusiness, Calculator, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Smartphone, Truck, Users, Warehouse } from "lucide-react";
 import { ENV_LABELS, getAppEnv } from "@/lib/env";
 import { HUB_APPLICATIONS, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
 import { visibleHubApplications, type HubAccessContext } from "./hubAccess";
@@ -28,6 +28,7 @@ import { resolveClientTemporaryAccessUi } from "@/client-portal/access";
 import { resolveClientTemporaryPortalMode } from "@/client-portal/mode";
 
 const OsiSurveyInactive = lazy(() => import("./OsiSurveyInactive"));
+const ExternalToolLauncher = lazy(() => import("./ExternalToolLauncher"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
 const AdminTenantMembershipModule = lazy(() => import("@/admin-tenant/AdminTenantMembershipModule"));
 const LogisticsRulesAdmin = lazy(() => import("@/logistics-engine/LogisticsRulesAdmin"));
@@ -46,6 +47,8 @@ const ICONS: Record<HubIconId, ElementType> = {
   settings: Settings,
   users: Users,
   clipboard: ClipboardCheck,
+  calculator: Calculator,
+  smartphone: Smartphone,
 };
 
 type Props = {
@@ -59,19 +62,20 @@ type Props = {
   onLogout: () => void;
 };
 
-function statusLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean, surveyEnabled: boolean, materialsEnabled: boolean, toolsEnabled: boolean) {
+function statusLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean, materialsEnabled: boolean, toolsEnabled: boolean) {
   if (application.appId === "commercial-crm" && crmReadEnabled) return "Disponible";
+  if (application.appId === "quotation-tools" || application.appId === "osi-survey") return "Disponible";
   if (application.appId === "administration" && adminEnabled) return "Disponible";
-  if (application.appId === "osi-survey" && surveyEnabled) return "Disponible";
   if (application.appId === "materials-equipment" && materialsEnabled) return "Disponible";
   if (application.appId === "tools-equipment" && toolsEnabled) return "Disponible";
   return application.status === "PLANNED" ? "Próximamente" : "En integración";
 }
 
-function ctaLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean, surveyEnabled: boolean, materialsEnabled: boolean, toolsEnabled: boolean) {
+function ctaLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean, materialsEnabled: boolean, toolsEnabled: boolean) {
   if (application.appId === "commercial-crm" && crmReadEnabled) return "Abrir ERP →";
+  if (application.appId === "quotation-tools") return "Abrir herramientas →";
+  if (application.appId === "osi-survey") return "Abrir procesos móviles →";
   if (application.appId === "administration" && adminEnabled) return "Abrir Administración →";
-  if (application.appId === "osi-survey" && surveyEnabled) return "Abrir Survey →";
   if (application.appId === "materials-equipment" && materialsEnabled) return "Abrir Inventario →";
   if (application.appId === "tools-equipment" && toolsEnabled) return "Abrir Activos →";
   return "Ver descriptor →";
@@ -85,7 +89,7 @@ function environmentLabel(mode: OsiHubMode) {
     : ENV_LABELS[getAppEnv()];
 }
 
-function HubHome({ applications, crmReadEnabled, adminEnabled, surveyEnabled, materialsEnabled, toolsEnabled, userName, onNavigate }: { applications: readonly HubApplication[]; crmReadEnabled: boolean; adminEnabled: boolean; surveyEnabled: boolean; materialsEnabled: boolean; toolsEnabled: boolean; userName?: string; onNavigate: (pathname: string) => void }) {
+function HubHome({ applications, crmReadEnabled, adminEnabled, materialsEnabled, toolsEnabled, userName, onNavigate }: { applications: readonly HubApplication[]; crmReadEnabled: boolean; adminEnabled: boolean; materialsEnabled: boolean; toolsEnabled: boolean; userName?: string; onNavigate: (pathname: string) => void }) {
   return (
     <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-11">
       <p className="text-xs font-bold uppercase tracking-[.2em] text-indigo-600">OSi Plus Hub</p>
@@ -96,10 +100,10 @@ function HubHome({ applications, crmReadEnabled, adminEnabled, surveyEnabled, ma
           const Icon = ICONS[application.icon];
           return (
             <button key={application.appId} onClick={() => onNavigate(application.route)} className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg">
-              <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Icon className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">{statusLabel(application, crmReadEnabled, adminEnabled, surveyEnabled, materialsEnabled, toolsEnabled)}</span></div>
+              <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Icon className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">{statusLabel(application, crmReadEnabled, adminEnabled, materialsEnabled, toolsEnabled)}</span></div>
               <h2 className="mt-5 font-bold text-slate-950">{application.name}</h2>
               <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">{application.description}</p>
-              <p className="mt-5 text-xs font-semibold text-indigo-600">{ctaLabel(application, crmReadEnabled, adminEnabled, surveyEnabled, materialsEnabled, toolsEnabled)}</p>
+              <p className="mt-5 text-xs font-semibold text-indigo-600">{ctaLabel(application, crmReadEnabled, adminEnabled, materialsEnabled, toolsEnabled)}</p>
             </button>
           );
         })}
@@ -129,6 +133,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const materialsEnabled = isMaterialsUiEnabled();
   const toolsEnabled = isToolsEquipmentUiEnabled();
   const surveyAuthorized = visible.some((application) => application.appId === "osi-survey");
+  const quotationToolsAuthorized = visible.some((application) => application.appId === "quotation-tools");
   const materialsAuthorized = visible.some((application) => application.appId === "materials-equipment");
   const toolsAuthorized = visible.some((application) => application.appId === "tools-equipment");
   const materialsAvailable = materialsEnabled && materialsAuthorized;
@@ -144,6 +149,10 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const administrationAvailable = adminMembershipAvailable || logisticsAdminAvailable || communicationsAdminAvailable || personnelPoliciesAvailable;
   const commercialRelationshipsEnabled = isCommercialRelationshipsUiEnabled();
   const commercialRelationshipsAccess = resolveCommercialRelationshipsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
+  if ((selected?.appId === "quotation-tools" && !quotationToolsAuthorized)
+    || (selected?.appId === "osi-survey" && !surveyAuthorized)) {
+    return <CanonicalAccessDenied onReturnToSafeRoute={() => onNavigate("/hub")} />;
+  }
   if (pathname === "/commercial/relationships" && (!commercialRelationshipsEnabled || !commercialRelationshipsAccess.canView)) {
     return <CanonicalAccessDenied onReturnToSafeRoute={() => onNavigate("/hub")} />;
   }
@@ -217,7 +226,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       </main>
     </Suspense>;
   }
-  if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {
+  if (selected?.appId === "osi-survey" && pathname === "/survey" && surveyEnabled && surveyAuthorized) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
       <SurveyApp authorization={authorization} onUnauthorized={onLogout} />
     </Suspense>;
@@ -239,12 +248,19 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       <div className="border-t border-white/10 p-4"><p className="mb-3 text-xs text-slate-400">{userName || "Usuario"}<br />{environmentLabel(mode)}</p><button onClick={onLogout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-500/10"><LogOut className="h-4 w-4" />Cerrar sesión</button></div>
     </aside>
   );
-  const content = pathname === "/hub"
-    ? <HubHome applications={visible} crmReadEnabled={crmReadEnabled} adminEnabled={administrationAvailable} surveyEnabled={surveyEnabled} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} userName={userName} onNavigate={onNavigate} />
-    : selected
-      ? selected.appId === "osi-survey"
-            ? <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>
-            : <RegisteredApplication application={selected} />
-      : <section className="p-12 text-center"><p className="font-bold">404 · Ruta del Hub no registrada</p></section>;
+  let content: ReactNode;
+  if (pathname === "/hub") {
+    content = <HubHome applications={visible} crmReadEnabled={crmReadEnabled} adminEnabled={administrationAvailable} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} userName={userName} onNavigate={onNavigate} />;
+  } else if (selected?.appId === "quotation-tools") {
+    content = <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando herramientas…</div>}><ExternalToolLauncher toolId="packing" /></Suspense>;
+  } else if (selected?.appId === "osi-survey" && pathname === "/mobile-processes") {
+    content = <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando procesos móviles…</div>}><ExternalToolLauncher toolId="visual-inventory" onOpenSurvey={surveyEnabled ? () => onNavigate("/survey") : undefined} /></Suspense>;
+  } else if (selected?.appId === "osi-survey") {
+    content = <Suspense fallback={<div className="p-8 text-sm text-slate-500">Cargando descriptor…</div>}><OsiSurveyInactive /></Suspense>;
+  } else if (selected) {
+    content = <RegisteredApplication application={selected} />;
+  } else {
+    content = <section className="p-12 text-center"><p className="font-bold">404 · Ruta del Hub no registrada</p></section>;
+  }
   return <div className="flex min-h-screen bg-slate-50"><div className="hidden lg:block">{sidebar}</div>{mobileOpen && <div className="fixed inset-0 z-50 flex lg:hidden"><div className="h-full">{sidebar}</div><button aria-label="Cerrar navegación" className="flex-1 bg-black/50" onClick={() => setMobileOpen(false)} /></div>}<div className="min-w-0 flex-1"><header className="flex h-16 items-center justify-between border-b bg-white px-4 sm:px-6"><button aria-label="Abrir navegación" className="rounded-lg border p-2 lg:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></button><button onClick={() => onNavigate("/hub")} className="text-sm font-bold text-slate-900">OSi Plus Hub</button><span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">{mode === "PRODUCTION_READ" ? "CRM · sólo lectura" : mode}</span></header><main>{content}</main></div></div>;
 }

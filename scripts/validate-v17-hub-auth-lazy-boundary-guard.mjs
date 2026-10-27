@@ -40,6 +40,7 @@ const lazyRenderIndex = app.indexOf("<HubWorkspace");
 if (denialIndex < 0 || lazyRenderIndex < 0 || denialIndex > lazyRenderIndex) fail("HubWorkspace puede renderizar antes de autorizar");
 
 requireText(routeAccess, "findHubApplicationByRoute(normalizedPath)", "la ruta directa no usa el catálogo canónico");
+requireText(routeAccess, "findHubSuiteByRoute(normalizedPath)", "la suite móvil no usa el catálogo canónico");
 requireText(routeAccess, "visibleHubApplications(HUB_APPLICATIONS, context)", "el Hub no exige una aplicación autorizada");
 requireText(routeAccess, "evaluateHubAccess(application, context)", "tarjeta y ruta no comparten decisión pura");
 if (/localStorage|sessionStorage|URLSearchParams|x-osi-|location\.search|location\.hash/i.test(routeAccess)) fail("la frontera confía en autoridad del navegador");
@@ -54,6 +55,7 @@ if (/evaluateHubAccess\s*\(\s*selected|function\s+AccessDenied|<AccessDenied|add
 for (const signature of ["pathname: string", "onNavigate: (pathname: string) => void"]) requireText(workspace, signature, `HubWorkspace dejó de ser controlado: ${signature}`);
 requireText(workspace, "selected?.appId === \"commercial-crm\" && crmReadEnabled", "la lectura CRM perdió su compuerta funcional");
 requireText(workspace, 'lazy(() => import("@/commercial-crm/AdvancedErpShell"))', "el ERP Comercial dejó de ser lazy");
+requireText(workspace, 'lazy(() => import("@/crm-survey-preview/SurveyVisualPreview"))', "OSi Survey dejó de ser lazy");
 if (/const\s+BASE\s*=|allowed(?:Backend|Prisma|Global)?Changes|[0-9a-f]{40}/i.test(commercialGuard)) fail("una guardia protegida usa SHA fijo o allowlist global");
 if (/prefetch|webpackPrefetch|rel=["'](?:modulepreload|preload)["']/i.test([app, routeAccess, workspace, index].join("\n"))) fail("se introdujo prefetch o preload protegido");
 
@@ -63,4 +65,4 @@ for (const signature of ["headingRef.current?.focus()", "tabIndex={-1}", "Volver
   requireText(errorBoundary, signature, `el error accesible perdió: ${signature}`);
 }
 
-console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, protectedLazyImports: 3, migrationsExpected: 20 }));
+console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, protectedLazyImports: 4, migrationsExpected: 20 }));

@@ -14,6 +14,7 @@ import {
   V17_COMMERCIAL_CRM_PREVIEW_BATCH,
   V17_COMMERCIAL_CRM_PREVIEW_BRANCH,
   V17_COMMERCIAL_CRM_PREVIEW_MODE,
+  V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH,
   isExactV17CommercialCrmPreviewServerEnvironment,
   resolveV17CommercialCrmPreviewClientAuthority,
 } from "../shared/v17CommercialCrmPreview.js";
@@ -74,6 +75,13 @@ check("production without variables remains fully disabled", resolveCrmPipelineM
   && resolveCrmPipelineModes({ VERCEL_ENV: "production", VERCEL_GIT_COMMIT_REF: "main" }).mutationMode === "DISABLED");
 check("local read remains available off Vercel", resolveCrmPipelineModes({ CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" }).readMode === "READ_ONLY");
 check("exact preview certified", isExactV17CommercialCrmPreviewServerEnvironment(exactPreview));
+const exactMobileHubPreview = Object.freeze({ ...exactPreview, VERCEL_GIT_COMMIT_REF: V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH });
+check("exact OSi Plus Mobile preview certified read only", isExactV17CommercialCrmPreviewServerEnvironment(exactMobileHubPreview)
+  && resolveCrmPipelineModes(exactMobileHubPreview).mutationMode === "DISABLED");
+expectConfigurationError("OSi Plus Mobile preview rejects writes", () => resolveCrmPipelineModes({
+  ...exactMobileHubPreview,
+  CRM_PIPELINE_MUTATION_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE,
+}));
 check("preview read only enabled", resolveCrmPipelineModes(exactPreview).readMode === CRM_PIPELINE_READ_MODES.PREVIEW_REHEARSAL && resolveCrmPipelineModes(exactPreview).preview === true);
 check("preview case mutations require the same exact authority", resolveCrmPipelineModes({ ...exactPreview, CRM_PIPELINE_MUTATION_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE }).mutationMode === V17_COMMERCIAL_CRM_PREVIEW_MODE);
 const exactPreviewWrite = Object.freeze({ ...exactPreview, CRM_PIPELINE_MUTATION_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE });
@@ -108,6 +116,10 @@ const exactClient = Object.freeze({
   hostname: "preview.example.test",
 });
 check("frontend exact preview enabled", resolveV17CommercialCrmPreviewClientAuthority(exactClient).enabled);
+check("frontend exact OSi Plus Mobile preview enabled", resolveV17CommercialCrmPreviewClientAuthority({
+  ...exactClient,
+  gitBranch: V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH,
+}).enabled);
 for (const [name, overrides] of [
   ["frontend local simulation rejected", { hostname: "127.0.0.1" }],
   ["frontend production rejected", { vercelEnvironment: "production" }],

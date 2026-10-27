@@ -39,6 +39,9 @@ export const PERMS = {
   PIPELINE_UPDATE_OWN: "pipeline:update:own",
   PIPELINE_UPDATE_ANY: "pipeline:update:any",
 
+  // Mobile applications. Survey assignments remain explicit for non-admin actors.
+  SURVEY_ASSIGNED_VIEW: "survey:assigned:view",
+
   // Projects
   PROJECTS_VIEW: "projects:view",
   PROJECTS_CREATE: "projects:create",

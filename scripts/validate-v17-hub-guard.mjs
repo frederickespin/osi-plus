@@ -57,7 +57,7 @@ const allowedBackendChanges = new Set([
   "api/k/project-validate.js",
   "api/projects/index.js",
 ]);
-const requiredApps = ["commercial-crm", "coordination", "operations", "materials-equipment", "workshop", "administration", "human-resources", "osi-survey"];
+const requiredApps = ["commercial-crm", "coordination", "operations", "materials-equipment", "workshop", "administration", "human-resources", "osi-survey", "packing-calculator"];
 const requiredSuites = ["osi-plus-mobile"];
 const allowedPrismaChanges = new Set([
   "prisma/schema.prisma",

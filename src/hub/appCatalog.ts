@@ -10,9 +10,18 @@ export type HubAppId =
   | "human-resources"
   | "osi-survey";
 
+export type HubSuiteId = "osi-plus-mobile";
 export type HubIconId = "briefcase" | "route" | "truck" | "warehouse" | "hammer" | "settings" | "users" | "clipboard";
-export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED";
+export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED" | "PREVIEW_AVAILABLE";
 export type HubMobileAvailability = "RESPONSIVE" | "MOBILE_PRIMARY" | "DESKTOP_PRIMARY";
+
+export type HubSuite = Readonly<{
+  suiteId: HubSuiteId;
+  name: string;
+  description: string;
+  icon: HubIconId;
+  route: string;
+}>;
 
 export type HubApplication = Readonly<{
   appId: HubAppId;
@@ -29,7 +38,18 @@ export type HubApplication = Readonly<{
   mobileAvailability: HubMobileAvailability;
   directAccessAllowed: boolean;
   lazy: true;
+  suiteId?: HubSuiteId;
 }>;
+
+export const HUB_SUITES: readonly HubSuite[] = Object.freeze([
+  {
+    suiteId: "osi-plus-mobile",
+    name: "OSi Plus Mobile",
+    description: "Aplicaciones móviles disponibles según el rol, los permisos y las asignaciones del usuario.",
+    icon: "clipboard",
+    route: "/mobile",
+  },
+]);
 
 export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   { appId: "commercial-crm", name: "Comercial y CRM", description: "Clientes, oportunidades y continuidad comercial.", icon: "briefcase", route: "/commercial", routeAliases: ["/crm", "/sales/pipeline"], status: "REGISTERED_INACTIVE", requiredPermissions: ["pipeline:view"], permissionMode: "ALL", requiresExplicitPermissions: true, baselineRoles: ["A", "V"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
@@ -39,7 +59,7 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   { appId: "workshop", name: "Taller y Carpintería", description: "Órdenes, cajas, instalación y mantenimiento.", icon: "hammer", route: "/workshop", status: "REGISTERED_INACTIVE", requiredPermissions: ["wms:view", "fleet:view", "osi:view"], permissionMode: "ANY", baselineRoles: ["A", "PA", "PB", "PC", "PD", "PF"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
   { appId: "administration", name: "Administración", description: "Acceso, roles y permisos del tenant.", icon: "settings", route: "/administration", status: "REGISTERED_INACTIVE", requiredPermissions: ["membership:view"], permissionMode: "ALL", requiresExplicitPermissions: true, baselineRoles: ["A"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
   { appId: "human-resources", name: "Recursos Humanos", description: "Personal, indicadores y gestión laboral.", icon: "users", route: "/hr", status: "REGISTERED_INACTIVE", requiredPermissions: ["hr:view"], permissionMode: "ALL", baselineRoles: ["A", "I"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
-  { appId: "osi-survey", name: "OSi Survey", description: "Visitas asignadas y captura móvil del evaluador.", icon: "clipboard", route: "/survey", status: "PLANNED", requiredPermissions: ["survey:assigned:view"], permissionMode: "ALL", baselineRoles: [], mobileAvailability: "MOBILE_PRIMARY", directAccessAllowed: true, lazy: true },
+  { appId: "osi-survey", name: "OSi Survey", description: "Visitas asignadas y captura móvil del evaluador.", icon: "clipboard", route: "/mobile/survey", routeAliases: ["/survey"], status: "PREVIEW_AVAILABLE", requiredPermissions: ["survey:assigned:view"], permissionMode: "ALL", requiresExplicitPermissions: true, baselineRoles: [], mobileAvailability: "MOBILE_PRIMARY", directAccessAllowed: true, lazy: true, suiteId: "osi-plus-mobile" },
 ]);
 
 const COMMERCIAL_CASE_ROUTE = /^\/commercial\/cases\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
@@ -53,4 +73,12 @@ export function findHubApplicationByRoute(pathname: string) {
     return HUB_APPLICATIONS.find((application) => application.appId === "commercial-crm") ?? null;
   }
   return HUB_APPLICATIONS.find((application) => application.route === pathname || application.routeAliases?.includes(pathname)) ?? null;
+}
+
+export function findHubSuiteByRoute(pathname: string) {
+  return HUB_SUITES.find((suite) => suite.route === pathname) ?? null;
+}
+
+export function applicationsForHubSuite(suiteId: HubSuiteId, applications: readonly HubApplication[] = HUB_APPLICATIONS) {
+  return applications.filter((application) => application.suiteId === suiteId);
 }

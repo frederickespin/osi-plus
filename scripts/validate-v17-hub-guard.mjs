@@ -29,6 +29,7 @@ const allowedBackendChanges = new Set([
   "api/_lib/membershipAuthorization.js",
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/rbac.js",
+  "api/_lib/rbac.js",
   "api/_lib/v17CommercialCrmPreviewAuth.js",
   "api/_lib/v17CommercialCrmProductionAuth.js",
   "api/_lib/v17ProductionPilotGate.js",
@@ -57,6 +58,7 @@ const allowedBackendChanges = new Set([
   "api/projects/index.js",
 ]);
 const requiredApps = ["commercial-crm", "coordination", "operations", "materials-equipment", "workshop", "administration", "human-resources", "osi-survey"];
+const requiredSuites = ["osi-plus-mobile"];
 const allowedPrismaChanges = new Set([
   "prisma/schema.prisma",
   "prisma/migrations/20260821010000_v17_pipeline_case_public_ref/migration.sql",
@@ -95,14 +97,16 @@ if (!workflow.includes("run: npm run test:v17-hub:browser")) fail("CI does not e
 
 const catalog = text(join("src", "hub", "appCatalog.ts"));
 for (const appId of requiredApps) if (!catalog.includes(`appId: "${appId}"`)) fail(`catalog missing ${appId}`);
+for (const suiteId of requiredSuites) if (!catalog.includes(`suiteId: "${suiteId}"`)) fail(`catalog missing suite ${suiteId}`);
 if (/portal.client|portal-cliente|client-portal/i.test(catalog)) fail("employee catalog contains Client Portal");
-const hubSources = ["appCatalog.ts", "hubAccess.ts", "HubWorkspace.tsx", "OsiSurveyInactive.tsx"].map((name) => text(join("src", "hub", name))).join("\n");
+const hubSources = ["appCatalog.ts", "hubAccess.ts", "hubRouteAccess.ts", "HubWorkspace.tsx", "OsiPlusMobileHub.tsx"].map((name) => text(join("src", "hub", name))).join("\n");
 if (/x-osi-|localStorage|sessionStorage|URLSearchParams|\/api\//i.test(hubSources)) fail("Hub trusts browser authority or calls an API");
 if (/ADD_TAGS|ADD_ATTR|dangerouslySetInnerHTML|fixture|mock|offline.?queue|password|token/i.test(hubSources)) fail("Hub source contains unsafe rendering, fixtures, queues, or credentials");
 
 const catalogRoutes = [...catalog.matchAll(/route:\s*"([^"]+)"/g)].map((match) => match[1]);
-if (catalogRoutes.length !== requiredApps.length || catalogRoutes.some((route) => !/^\/[a-z][a-z-]*$/.test(route))) fail("catalog contains a missing or unsafe route");
+if (catalogRoutes.length !== requiredApps.length + requiredSuites.length || catalogRoutes.some((route) => !/^\/[a-z][a-z-]*(?:\/[a-z][a-z-]*)*$/.test(route))) fail("catalog contains a missing or unsafe route");
 if (!catalog.includes('appId: "osi-survey"') || !catalog.includes("baselineRoles: []")) fail("OSi Survey has implicit role authorization");
+if (!catalog.includes('route: "/mobile/survey", routeAliases: ["/survey"]')) fail("OSi Survey lost its canonical mobile route or compatibility alias");
 
 const changed = execFileSync("git", ["diff", "--name-only", BASE, "--"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
 function isPrivateCorsWrapperMigration(path) {
@@ -118,4 +122,4 @@ if (forbiddenBackend.length > 0
   || changed.some((path) => (path.startsWith("prisma/") && !allowedPrismaChanges.has(path)) || path.startsWith("src/data/"))) {
   fail("forbidden backend, unauthorized Prisma, or mock change");
 }
-console.log(JSON.stringify({ ok: true, migrations: migrations.length, applications: requiredApps.length, changedFiles: changed.length }));
+console.log(JSON.stringify({ ok: true, migrations: migrations.length, applications: requiredApps.length, suites: requiredSuites.length, changedFiles: changed.length }));

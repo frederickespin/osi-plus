@@ -76,7 +76,7 @@ test("DISABLED conserva la aplicación actual y no descarga el chunk Hub", async
   await page.goto("http://127.0.0.1:4184/");
   await expect(page.getByText("Actor legacy")).toBeVisible();
   await expect(page.getByText("OSi Plus Hub", { exact: true })).toHaveCount(0);
-  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(requests.some((path) => /HubWorkspace|OsiPlusMobileHub|SurveyVisualPreview|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(requests.filter((path) => path.startsWith("/api/"))).toEqual(["/api/auth/me"]);
 });
 
@@ -89,12 +89,12 @@ test("DISABLED también bloquea deep links sin prefetch, listeners ni timers del
     Object.defineProperty(window, "__v17HubDisabledAudit", { value: audit });
     window.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
       const stack = new Error().stack || "";
-      if (/src[\\/]hub|HubWorkspace|OsiSurveyInactive/i.test(stack)) audit.listeners.push(type);
+      if (/src[\\/]hub|HubWorkspace|OsiPlusMobileHub|SurveyVisualPreview/i.test(stack)) audit.listeners.push(type);
       return originalAddEventListener(type, listener, options);
     }) as typeof window.addEventListener;
     window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
       const stack = new Error().stack || "";
-      if (/src[\\/]hub|HubWorkspace|OsiSurveyInactive/i.test(stack)) audit.timers.push(String(timeout));
+      if (/src[\\/]hub|HubWorkspace|OsiPlusMobileHub|SurveyVisualPreview/i.test(stack)) audit.timers.push(String(timeout));
       return originalSetTimeout(handler, timeout, ...args);
     }) as typeof window.setTimeout;
   });
@@ -103,11 +103,11 @@ test("DISABLED también bloquea deep links sin prefetch, listeners ni timers del
   await page.goto("http://127.0.0.1:4184/survey");
   await expect(page.getByText("Actor disabled")).toBeVisible();
   await expect(page.getByText("OSi Plus Hub", { exact: true })).toHaveCount(0);
-  await expect(page.getByTestId("osi-survey-inactive")).toHaveCount(0);
+  await expect(page.getByTestId("crm-survey-visual-preview")).toHaveCount(0);
   const audit = await page.evaluate(() => (window as typeof window & { __v17HubDisabledAudit: { listeners: string[]; timers: string[] } }).__v17HubDisabledAudit);
   expect(audit).toEqual({ listeners: [], timers: [] });
-  expect(resources.some((path) => /HubWorkspace|OsiSurveyInactive|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
-  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /HubWorkspace|OsiSurveyInactive|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(entry.name)))).toBe(false);
+  expect(resources.some((path) => /HubWorkspace|OsiPlusMobileHub|SurveyVisualPreview|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /HubWorkspace|OsiPlusMobileHub|SurveyVisualPreview|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(entry.name)))).toBe(false);
 });
 
 test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) => {
@@ -186,7 +186,7 @@ test("hash, URL, sessionStorage y headers de proxy no alteran autoridad", async 
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   await page.goto("/survey?permission=survey:assigned:view#role=A");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-  expect(resources.some((path) => /HubWorkspace|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail|OsiSurveyInactive/i.test(path))).toBe(false);
+  expect(resources.some((path) => /HubWorkspace|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail|SurveyVisualPreview/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
 });
 
@@ -457,19 +457,37 @@ test("denegar Survey no descarga el módulo destino", async ({ page }) => {
   await authenticate(page, { role: "A", deniedPermissions: ["survey:assigned:view"] });
   await page.goto("/survey");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive/i.test(path))).toBe(false);
+  expect(requests.some((path) => /HubWorkspace|SurveyVisualPreview/i.test(path))).toBe(false);
+});
+
+test("OSi Plus Mobile agrupa Survey sin duplicarlo en el Hub principal", async ({ page }) => {
+  await authenticate(page, { role: "D", permissions: ["survey:assigned:view"] });
+  await page.goto("/hub");
+  await expect(page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ })).toBeVisible();
+  await expect(page.locator("main").getByRole("button", { name: /OSi Survey/ })).toHaveCount(0);
+  await page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ }).click();
+  await expect(page).toHaveURL(/\/mobile$/);
+  await expect(page.getByTestId("osi-plus-mobile-hub").getByRole("heading", { name: "OSi Plus Mobile" })).toBeVisible();
+  await page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /OSi Survey/ }).click();
+  await expect(page).toHaveURL(/\/mobile\/survey$/);
+  await expect(page.getByTestId("crm-survey-visual-preview")).toBeVisible();
+  await page.getByRole("button", { name: "Volver a OSi Plus Mobile" }).click();
+  await expect(page).toHaveURL(/\/mobile$/);
 });
 
 test("OSi Survey exige autorización explícita y permanece sin API ni persistencia", async ({ page }) => {
   const apiRequests: string[] = [];
   page.on("request", (request) => { const path = new URL(request.url()).pathname; if (path.startsWith("/api/")) apiRequests.push(path); });
   await authenticate(page, { role: "D", permissions: ["survey:assigned:view"] });
-  await page.goto("/survey");
-  await expect(page.getByTestId("osi-survey-inactive")).toContainText("Módulo planificado — sin backend conectado");
+  await page.goto("/mobile/survey");
+  await expect(page.getByTestId("crm-survey-visual-preview")).toBeVisible();
+  await expect(page.getByText("Datos visuales · no productivos")).toBeVisible();
   expect(apiRequests).toEqual(["/api/auth/me"]);
   const stored = await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }));
   expect(stored.session).toEqual([]);
   expect(stored.local.some((key) => /survey|draft|autosave/i.test(key))).toBe(false);
+  await page.goto("/survey");
+  await expect(page.getByTestId("crm-survey-visual-preview")).toBeVisible();
 });
 
 test("deep link, reload, regreso al Hub y navegación móvil conservan autoridad", async ({ page }, testInfo) => {

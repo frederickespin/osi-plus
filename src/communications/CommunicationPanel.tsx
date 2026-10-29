@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Eye, MessageSquareText, Plus, ShieldCheck, X } from "lucide-react";
 import { communicationsApi, type CommunicationRecipient, type CommunicationRecord, type CommunicationTemplate } from "./api";
 import type { CommunicationsAccess } from "./access";
@@ -6,18 +6,115 @@ import type { CommunicationsAccess } from "./access";
 type Props = Readonly<{ caseRef: string; authorization?: string; access: CommunicationsAccess; context: "CASE" | "SCHEDULING" | "QUOTE"; surveyAssignmentRef?: string | null; quoteRevisionRef?: string | null; onUnauthorized(): void }>;
 const MILESTONES: Record<Props["context"], readonly string[]> = { CASE: ["CLIENT_INFORMATION_REQUEST", "DOCUMENT_REQUEST", "BOOKER_NOTIFICATION", "AGENT_NOTIFICATION", "LEAD_ACCOUNT_NOTIFICATION"], SCHEDULING: ["VISIT_CONFIRMATION", "EVALUATOR_ASSIGNMENT", "SURVEY_PIC_CLIENT", "SURVEY_PIC_EVALUATOR", "VISIT_RESCHEDULED", "VISIT_CANCELLED"], QUOTE: ["QUOTE_SENT", "FOLLOW_UP_1", "FOLLOW_UP_2", "EXPIRY_REMINDER", "QUOTE_ACCEPTED", "QUOTE_REJECTED"] };
 function date(value: string) { return new Intl.DateTimeFormat("es-DO", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
-export default function CommunicationPanel({ caseRef, authorization, access, context, surveyAssignmentRef = null, quoteRevisionRef = null, onUnauthorized }: Props) {
-  const [records, setRecords] = useState<readonly CommunicationRecord[]>([]); const [templates, setTemplates] = useState<readonly CommunicationTemplate[]>([]); const [recipients, setRecipients] = useState<readonly CommunicationRecipient[]>([]); const [open, setOpen] = useState(false); const [selectedRecord, setSelectedRecord] = useState<CommunicationRecord | null>(null); const [templateRef, setTemplateRef] = useState(""); const [recipientRef, setRecipientRef] = useState(""); const [channel, setChannel] = useState(""); const [milestone, setMilestone] = useState(MILESTONES[context][0]); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
-  const load = useCallback(async () => { try { const values = await Promise.all([access.canView ? communicationsApi.records(authorization, caseRef) : Promise.resolve([]), access.canPrepare ? communicationsApi.templates(authorization) : Promise.resolve([])]); setRecords(values[0]); setTemplates(values[1].filter((item) => item.state === "PUBLISHED")); } catch (cause) { const code = cause instanceof Error ? cause.message : "COMMUNICATION_REQUEST_FAILED"; if (/AUTH/.test(code)) onUnauthorized(); else setError(code); } }, [access.canPrepare, access.canView, authorization, caseRef, onUnauthorized]);
-  useEffect(() => { void load(); }, [load]);
+export default function CommunicationPanel(props: Props) {
+  const panelKey = JSON.stringify([
+    props.caseRef,
+    props.context,
+    props.surveyAssignmentRef ?? null,
+    props.quoteRevisionRef ?? null,
+    props.authorization ?? null,
+    props.access.canView,
+    props.access.canPrepare,
+    props.access.canTemplatesView,
+    props.access.tenantWide,
+  ]);
+  return <CommunicationPanelContent key={panelKey} {...props} />;
+}
+
+function CommunicationPanelContent({ caseRef, authorization, access, context, surveyAssignmentRef = null, quoteRevisionRef = null, onUnauthorized }: Props) {
+  const canPrepare = access.canPrepare && access.canTemplatesView;
+  const [records, setRecords] = useState<readonly CommunicationRecord[]>([]);
+  const [templates, setTemplates] = useState<readonly CommunicationTemplate[]>([]);
+  const [recipients, setRecipients] = useState<readonly CommunicationRecipient[]>([]);
+  const [open, setOpen] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<CommunicationRecord | null>(null);
+  const [templateRef, setTemplateRef] = useState("");
+  const [recipientRef, setRecipientRef] = useState("");
+  const [channel, setChannel] = useState("");
+  const [milestone, setMilestone] = useState(MILESTONES[context][0]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const mounted = useRef(false);
+  const loadVersion = useRef(0);
+  const recipientVersion = useRef(0);
+
+  const load = useCallback(async () => {
+    const version = ++loadVersion.current;
+    try {
+      const [nextRecords, nextTemplates] = await Promise.all([
+        access.canView ? communicationsApi.records(authorization, caseRef) : Promise.resolve([]),
+        canPrepare ? communicationsApi.templates(authorization) : Promise.resolve([]),
+      ]);
+      if (!mounted.current || version !== loadVersion.current) return;
+      setRecords(nextRecords);
+      setTemplates(nextTemplates.filter((item) => item.state === "PUBLISHED"));
+    } catch (cause) {
+      if (!mounted.current || version !== loadVersion.current) return;
+      const code = cause instanceof Error ? cause.message : "COMMUNICATION_REQUEST_FAILED";
+      if (/AUTH/.test(code)) onUnauthorized();
+      else setError(code);
+    }
+  }, [canPrepare, access.canView, authorization, caseRef, onUnauthorized]);
+
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      loadVersion.current += 1;
+      recipientVersion.current += 1;
+    };
+  }, [load]);
+
   const selectedTemplate = useMemo(() => templates.find((item) => item.templateRef === templateRef) || null, [templateRef, templates]);
-  const selectTemplate = async (ref: string) => { setTemplateRef(ref); setRecipientRef(""); setChannel(""); const template = templates.find((item) => item.templateRef === ref); const audience = template?.current?.audiences[0]; if (!audience) { setRecipients([]); return; } try { const rows = await communicationsApi.recipients(authorization, { caseRef, audience, surveyAssignmentRef, quoteRevisionRef }); setRecipients(rows); } catch (cause) { setError(cause instanceof Error ? cause.message : "COMMUNICATION_RECIPIENTS_UNAVAILABLE"); } };
-  const prepare = async () => { const template = selectedTemplate; const recipient = recipients.find((item) => item.recipientRef === recipientRef); if (!template?.current || !recipient || !channel) return; setBusy(true); setError(null); try { await communicationsApi.prepare(authorization, { templateRef: template.templateRef, version: template.current.version, caseRef, surveyAssignmentRef, quoteRevisionRef, recipientType: recipient.recipientType, recipientRef, channel, milestone }); setOpen(false); setTemplateRef(""); setRecipientRef(""); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "COMMUNICATION_PREPARE_FAILED"); } finally { setBusy(false); } };
-  if (!access.canView && !access.canPrepare) return null;
-  return <section className="mt-4 min-w-0 max-w-full overflow-hidden border border-slate-200 bg-white" data-testid={`communications-${context.toLowerCase()}`}><header className="flex flex-wrap items-center justify-between gap-2 border-b bg-slate-50 px-3 py-2"><div><h3 className="text-xs font-black uppercase tracking-wide text-[#003366]"><MessageSquareText className="mr-1 inline h-4 w-4" />Comunicaciones</h3><p className="text-[10px] text-slate-500">Registro inmutable · Transporte externo desactivado en Preview</p></div>{access.canPrepare && <button type="button" onClick={() => setOpen((value) => !value)} className="rounded border bg-white px-2 py-1 text-xs font-bold"><Plus className="mr-1 inline h-3 w-3" />Preparar</button>}</header>{error && <p role="alert" className="border-b bg-red-50 px-3 py-2 text-xs text-red-800">No fue posible completar la operación.</p>}
-    {open && <div className="grid gap-2 border-b bg-indigo-50/40 p-3 sm:grid-cols-2 lg:grid-cols-4"><label className="min-w-0 text-[10px] font-bold uppercase">Plantilla<select value={templateRef} onChange={(event) => void selectTemplate(event.target.value)} className="mt-1 h-9 w-full min-w-0 rounded border bg-white px-2 text-xs"><option value="">Seleccionar…</option>{templates.map((item) => <option key={item.templateRef} value={item.templateRef}>{item.code} · {item.name}</option>)}</select></label><label className="min-w-0 text-[10px] font-bold uppercase">Destinatario<select value={recipientRef} onChange={(event) => { const value = event.target.value; setRecipientRef(value); const row = recipients.find((item) => item.recipientRef === value); setChannel(row?.availableChannels[0] || ""); }} className="mt-1 h-9 w-full min-w-0 rounded border bg-white px-2 text-xs"><option value="">Seleccionar explícitamente…</option>{recipients.map((item) => <option key={item.recipientRef} value={item.recipientRef}>{item.displayName} · {item.email || item.phone || "sin canal"}</option>)}</select></label><label className="min-w-0 text-[10px] font-bold uppercase">Canal<select value={channel} onChange={(event) => setChannel(event.target.value)} className="mt-1 h-9 w-full min-w-0 rounded border bg-white px-2 text-xs"><option value="">Seleccionar…</option>{recipients.find((item) => item.recipientRef === recipientRef)?.availableChannels.map((item) => <option key={item}>{item}</option>)}</select></label><label className="min-w-0 text-[10px] font-bold uppercase">Hito<select value={milestone} onChange={(event) => setMilestone(event.target.value)} className="mt-1 h-9 w-full min-w-0 rounded border bg-white px-2 text-xs">{MILESTONES[context].map((item) => <option key={item}>{item}</option>)}</select></label><div className="flex flex-col items-start gap-2 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between lg:col-span-4"><p className="text-[10px] text-slate-600"><ShieldCheck className="mr-1 inline h-3 w-3" />El servidor renderiza y guarda el snapshot. No se enviará.</p><button type="button" disabled={busy || !templateRef || !recipientRef || !channel} onClick={() => void prepare()} className="rounded bg-[#003366] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{busy ? "Preparando…" : "Guardar como PREPARED"}</button></div></div>}
+  const selectTemplate = async (ref: string) => {
+    if (!mounted.current || !canPrepare) return;
+    const version = ++recipientVersion.current;
+    setTemplateRef(ref);
+    setRecipients([]);
+    setRecipientRef("");
+    setChannel("");
+    setError(null);
+    const template = templates.find((item) => item.templateRef === ref);
+    const audience = template?.current?.audiences[0];
+    if (!audience) return;
+    try {
+      const rows = await communicationsApi.recipients(authorization, { caseRef, audience, surveyAssignmentRef, quoteRevisionRef });
+      if (mounted.current && version === recipientVersion.current) setRecipients(rows);
+    } catch (cause) {
+      if (mounted.current && version === recipientVersion.current) {
+        setError(cause instanceof Error ? cause.message : "COMMUNICATION_RECIPIENTS_UNAVAILABLE");
+      }
+    }
+  };
+
+  const prepare = async () => {
+    const template = selectedTemplate;
+    const recipient = recipients.find((item) => item.recipientRef === recipientRef);
+    if (!mounted.current || !canPrepare || busy || !template?.current || !recipient || !channel) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await communicationsApi.prepare(authorization, { templateRef: template.templateRef, version: template.current.version, caseRef, surveyAssignmentRef, quoteRevisionRef, recipientType: recipient.recipientType, recipientRef, channel, milestone });
+      if (!mounted.current) return;
+      recipientVersion.current += 1;
+      setOpen(false);
+      setTemplateRef("");
+      setRecipients([]);
+      setRecipientRef("");
+      setChannel("");
+      await load();
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : "COMMUNICATION_PREPARE_FAILED");
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  };
+  if (!access.canView && !canPrepare) return null;
+  return <section className="mt-4 min-w-0 max-w-full overflow-hidden border border-slate-200 bg-white" data-testid={`communications-${context.toLowerCase()}`}><header className="flex flex-wrap items-center justify-between gap-2 border-b bg-slate-50 px-3 py-2"><div><h3 className="text-xs font-black uppercase tracking-wide text-[#003366]"><MessageSquareText className="mr-1 inline h-4 w-4" />Comunicaciones</h3><p className="text-[10px] text-slate-500">Registro inmutable · Transporte externo desactivado en Preview</p></div>{canPrepare && <button type="button" onClick={() => setOpen((value) => !value)} className="rounded border bg-white px-2 py-1 text-xs font-bold"><Plus className="mr-1 inline h-3 w-3" />Preparar</button>}</header>{error && <p role="alert" className="border-b bg-red-50 px-3 py-2 text-xs text-red-800">No fue posible completar la operación.</p>}
+    {canPrepare && open && <div className="grid gap-2 border-b bg-indigo-50/40 p-3 sm:grid-cols-2 lg:grid-cols-4"><label className="min-w-0 text-[10px] font-bold uppercase">Plantilla<select value={templateRef} onChange={(event) => void selectTemplate(event.target.value)} className="mt-1 h-9 w-full min-w-0 rounded border bg-white px-2 text-xs"><option value="">Seleccionar…</option>{templates.map((item) => <option key={item.templateRef} value={item.templateRef}>{item.code} · {item.name}</option>)}</select></label><label className="min-w-0 text-[10px] font-bold uppercase">Destinatario<select value={recipientRef} onChange={(event) => { const value = event.target.value; setRecipientRef(value); const row = recipients.find((item) => item.recipientRef === value); setChannel(row?.availableChannels[0] || ""); }} className="mt-1 h-9 w-full min-w-0 rounded border bg-white px-2 text-xs"><option value="">Seleccionar explícitamente…</option>{recipients.map((item) => <option key={item.recipientRef} value={item.recipientRef}>{item.displayName} · {item.email || item.phone || "sin canal"}</option>)}</select></label><label className="min-w-0 text-[10px] font-bold uppercase">Canal<select value={channel} onChange={(event) => setChannel(event.target.value)} className="mt-1 h-9 w-full min-w-0 rounded border bg-white px-2 text-xs"><option value="">Seleccionar…</option>{recipients.find((item) => item.recipientRef === recipientRef)?.availableChannels.map((item) => <option key={item}>{item}</option>)}</select></label><label className="min-w-0 text-[10px] font-bold uppercase">Hito<select value={milestone} onChange={(event) => setMilestone(event.target.value)} className="mt-1 h-9 w-full min-w-0 rounded border bg-white px-2 text-xs">{MILESTONES[context].map((item) => <option key={item}>{item}</option>)}</select></label><div className="flex flex-col items-start gap-2 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between lg:col-span-4"><p className="text-[10px] text-slate-600"><ShieldCheck className="mr-1 inline h-3 w-3" />El servidor renderiza y guarda el snapshot. No se enviará.</p><button type="button" disabled={busy || !templateRef || !recipientRef || !channel} onClick={() => void prepare()} className="rounded bg-[#003366] px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{busy ? "Preparando…" : "Guardar como PREPARED"}</button></div></div>}
     <div className="divide-y sm:hidden">{records.map((item) => <article key={item.communicationRef} className="p-3 text-xs"><div className="flex min-w-0 items-start justify-between gap-2"><div className="min-w-0"><p className="break-words font-semibold">{item.milestone}</p><p className="mt-0.5 break-words text-[10px] text-slate-500">{item.templateCode} · v{item.templateVersion}</p></div><span className="shrink-0 rounded bg-slate-100 px-2 py-1 text-[10px] font-bold">{item.status}</span></div><dl className="mt-2 grid min-w-0 grid-cols-2 gap-x-3 gap-y-1"><div className="min-w-0"><dt className="text-[10px] uppercase text-slate-500">Destinatario</dt><dd className="break-words font-semibold">{item.recipient.displayName}</dd>{item.recipient.destination && <dd className="break-all text-[10px] text-slate-500">{item.recipient.destination}</dd>}</div><div className="min-w-0"><dt className="text-[10px] uppercase text-slate-500">Canal</dt><dd>{item.channel}</dd></div></dl><div className="mt-2 flex items-center justify-between gap-2"><time className="text-[10px] text-slate-500">{date(item.preparedAt)}</time><button type="button" onClick={() => setSelectedRecord(item)} className="rounded border bg-white px-2 py-1 text-[10px] font-bold" aria-label={`Ver detalle de ${item.templateCode} para ${item.recipient.displayName}`}><Eye className="mr-1 inline h-3 w-3" />Detalle</button></div></article>)}{records.length === 0 && <p className="p-4 text-center text-xs text-slate-500">Sin comunicaciones canónicas registradas.</p>}</div>
     <div className="hidden max-w-full overflow-x-auto sm:block"><table className="w-full min-w-[720px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Tipo</th><th className="px-3 py-2">Destinatario</th><th className="px-3 py-2">Canal</th><th className="px-3 py-2">Plantilla</th><th className="px-3 py-2">Estado</th><th className="px-3 py-2"><span className="sr-only">Detalle</span></th></tr></thead><tbody>{records.map((item) => <tr key={item.communicationRef} className="border-t"><td className="whitespace-nowrap px-3 py-2 text-[10px] text-slate-500">{date(item.preparedAt)}</td><td className="px-3 py-2 font-semibold">{item.milestone}</td><td className="px-3 py-2"><span className="font-semibold">{item.recipient.displayName}</span>{item.recipient.destination && <span className="block text-[10px] text-slate-500">{item.recipient.destination}</span>}</td><td className="px-3 py-2">{item.channel}</td><td className="px-3 py-2">{item.templateCode} · v{item.templateVersion}</td><td className="px-3 py-2"><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold">{item.status}</span></td><td className="px-3 py-2"><button type="button" onClick={() => setSelectedRecord(item)} className="rounded border bg-white px-2 py-1 text-[10px] font-bold" aria-label={`Ver detalle de ${item.templateCode} para ${item.recipient.displayName}`}><Eye className="mr-1 inline h-3 w-3" />Detalle</button></td></tr>)}{records.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-xs text-slate-500">Sin comunicaciones canónicas registradas.</td></tr>}</tbody></table></div>
-    {selectedRecord && <div className="border-t border-indigo-200 bg-indigo-50/30 p-3" data-testid="communication-record-detail"><div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Detalle de comunicación</p><h4 className="text-sm font-black text-[#003366]">{selectedRecord.templateCode} · versión {selectedRecord.templateVersion}</h4></div><button type="button" onClick={() => setSelectedRecord(null)} aria-label="Cerrar detalle de comunicación" className="rounded border bg-white p-1"><X className="h-4 w-4" /></button></div><dl className="mt-3 grid gap-x-5 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-4"><div><dt className="text-[10px] font-bold uppercase text-slate-500">Destinatario</dt><dd>{selectedRecord.recipient.displayName}{selectedRecord.recipient.destination ? ` · ${selectedRecord.recipient.destination}` : ""}</dd></div><div><dt className="text-[10px] font-bold uppercase text-slate-500">Canal</dt><dd>{selectedRecord.channel}</dd></div><div><dt className="text-[10px] font-bold uppercase text-slate-500">Contexto</dt><dd>{context} · {selectedRecord.milestone}</dd></div><div><dt className="text-[10px] font-bold uppercase text-slate-500">Estado</dt><dd>{selectedRecord.status}</dd></div><div><dt className="text-[10px] font-bold uppercase text-slate-500">Preparado</dt><dd>{date(selectedRecord.preparedAt)}</dd></div>{selectedRecord.sentAt && <div><dt className="text-[10px] font-bold uppercase text-slate-500">Enviado</dt><dd>{date(selectedRecord.sentAt)}</dd></div>}{selectedRecord.deliveredAt && <div><dt className="text-[10px] font-bold uppercase text-slate-500">Entregado</dt><dd>{date(selectedRecord.deliveredAt)}</dd></div>}{selectedRecord.failedAt && <div><dt className="text-[10px] font-bold uppercase text-slate-500">Fallido</dt><dd>{date(selectedRecord.failedAt)}</dd></div>}</dl><div className="mt-3 border-t pt-3"><p className="text-[10px] font-bold uppercase text-slate-500">Contenido renderizado</p>{selectedRecord.subject && <p className="mt-1 font-bold">{selectedRecord.subject}</p>}<p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">{selectedRecord.bodyText}</p></div></div>}
+    {selectedRecord && <div className="border-t border-indigo-200 bg-indigo-50/30 p-3" data-testid="communication-record-detail"><div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Detalle de comunicación</p><h4 className="text-sm font-black text-[#003366]">{selectedRecord.templateCode} · versión {selectedRecord.templateVersion}</h4></div><button type="button" onClick={() => setSelectedRecord(null)} aria-label="Cerrar detalle de comunicación" className="rounded border bg-white p-1"><X className="h-4 w-4" /></button></div><dl className="mt-3 grid gap-x-5 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-4"><div><dt className="text-[10px] font-bold uppercase text-slate-500">Destinatario</dt><dd>{selectedRecord.recipient.displayName}{selectedRecord.recipient.destination ? ` · ${selectedRecord.recipient.destination}` : ""}</dd></div><div><dt className="text-[10px] font-bold uppercase text-slate-500">Canal</dt><dd>{selectedRecord.channel}</dd></div><div><dt className="text-[10px] font-bold uppercase text-slate-500">Hito</dt><dd>{selectedRecord.milestone}</dd></div><div><dt className="text-[10px] font-bold uppercase text-slate-500">Estado</dt><dd>{selectedRecord.status}</dd></div><div><dt className="text-[10px] font-bold uppercase text-slate-500">Preparado</dt><dd>{date(selectedRecord.preparedAt)}</dd></div>{selectedRecord.sentAt && <div><dt className="text-[10px] font-bold uppercase text-slate-500">Enviado</dt><dd>{date(selectedRecord.sentAt)}</dd></div>}{selectedRecord.deliveredAt && <div><dt className="text-[10px] font-bold uppercase text-slate-500">Entregado</dt><dd>{date(selectedRecord.deliveredAt)}</dd></div>}{selectedRecord.failedAt && <div><dt className="text-[10px] font-bold uppercase text-slate-500">Fallido</dt><dd>{date(selectedRecord.failedAt)}</dd></div>}</dl><div className="mt-3 border-t pt-3"><p className="text-[10px] font-bold uppercase text-slate-500">Contenido renderizado</p>{selectedRecord.subject && <p className="mt-1 font-bold">{selectedRecord.subject}</p>}<p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">{selectedRecord.bodyText}</p></div></div>}
   </section>;
 }

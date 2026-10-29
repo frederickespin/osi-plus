@@ -6,7 +6,7 @@ Este incremento atiende el punto 1 de la revisión del Draft PR #82: hacer que e
 
 Los tres primeros bloqueos reproducidos eran una prueba negativa detectada como configuración Prisma real, rutas API aprobadas ausentes del inventario de autenticación y validadores que sólo reconocían 22–24 migraciones frente a las 35 existentes. Al superarlos aparecieron dependencias de esos mismos inventarios en ICP, referencias públicas, Vary y pruebas históricas del Hub.
 
-Los cambios de este incremento se limitan a validadores, pruebas, su ejecución en CI y esta documentación. No modifican los consumidores de la aplicación, las APIs, el datamodel, los SQL de migraciones, la configuración de Vercel ni las compuertas de activación. Las conexiones declaradas en el workflow corresponden únicamente al PostgreSQL efímero local de las pruebas.
+El incremento actualiza validadores, fixtures, pruebas y su ejecución en CI. La ejecución de Scheduling también detectó una regresión de la consolidación: Survey y Cotización abrían el panel central de comunicaciones sin conservar la asignación o revisión de origen. Se corrige ese recorrido en cuatro componentes de UI, manteniendo una sola superficie en Resumen. Las APIs, el datamodel, los SQL de migraciones, la configuración de Vercel y las compuertas de activación permanecen intactos. Las conexiones declaradas en el workflow corresponden únicamente al PostgreSQL efímero local de las pruebas.
 
 ## Contratos actualizados
 
@@ -47,13 +47,34 @@ Los cambios de este incremento se limitan a validadores, pruebas, su ejecución 
 - La prueba de acceso a Administración verifica Coordinación como información pendiente, conserva el recorrido de membresías e invitación y comprueba que el módulo administrativo se descargue después del clic autorizado.
 - En el Inbox móvil, seleccionar un caso muestra su resumen y oculta la cola; volver desde Ficha conserva esa selección. Las pruebas regresan a la cola mediante el botón visible del resumen antes de volver a seleccionar o abrir una ficha, y conservan las comprobaciones de escrituras, permisos, owner, filtros y barreras de solicitudes.
 
+### Comunicaciones contextuales de Survey y Cotización
+
+- Los contratos aprobados de Communications 13A y de consolidación 15B requieren una única superficie completa en Resumen y accesos contextuales desde Survey/Cotización. El callback anterior había perdido las referencias: el panel recibía siempre `CASE`, que no ofrece los hitos PIC ni las variables de visita.
+- Survey entrega el `assignmentRef` exacto de su workspace; Cotización entrega el `revisionRef` de la propuesta seleccionada. El estado de navegación es una unión cerrada: la preparación nunca mezcla una asignación con una revisión. La API sigue infiriendo el contexto desde esas referencias y revalida su autoridad.
+- Cambiar de caso reinicia el workspace. El panel reinicia formulario, hito y selección cuando cambian caso, contexto, referencias, autorización o permisos. Las respuestas tardías de carga y destinatarios no pueden sustituir la selección vigente.
+- Los accesos se muestran únicamente con permiso de consulta o preparación. Preparar requiere tanto el grant de preparación como el de consulta de plantillas. El usuario puede volver explícitamente a las comunicaciones generales del caso.
+- Las pruebas recorren los enlaces visibles hasta Resumen y conservan la preparación PIC, su escritura única y el estado `PREPARED`. Los mocks usan UUID válidos, grants explícitos y el normalizador real del body cerrado, incluido su hash. Se añade la ida y vuelta que descarta un borrador sin escribir, y la suite de Communications verifica también la revisión exacta de Quote y el retorno al contexto del caso.
+
 ## Cobertura de regresión
 
 El job `build` ejecuta ahora las pruebas de la excepción de esquema, del inventario canónico, de la baseline SQL, de los destinos locales de Quote y Servicios, de MT01C1B2A y de los contratos Hub/Comercial. No se retiran pasos del CI ni se convierten fallos obligatorios en opcionales.
 
 El archivo `hub.spec.ts` conserva sus 17 casos en seis proyectos de navegador. La configuración completa incluye también Administración y selección de membresía, para un total de 168 ejecuciones. Los módulos pendientes se verifican como información sin acceso operativo; Mobile y Empaque sirven como destinos disponibles para probar navegación, revocación, errores de red, logout y cancelación de solicitudes anteriores. Production Read verifica las pestañas disponibles y la ausencia de chunks y APIs de Survey/Quote cuando sus compuertas están deshabilitadas.
 
-El job general de navegadores dispone de 45 minutos para sus 730 casos. La ejecución anterior se interrumpió tras 30 minutos y 16 segundos mientras acumulaba timeouts de acciones móviles, antes de emitir su resumen completo. Se corrigen esos recorridos y se amplía el margen del job; no cambian los timeouts de cada prueba, los reintentos ni las suites obligatorias.
+Las 15 suites originales de navegador se conservan y se añade Communications. Scheduling incorpora un caso de reseteo, por lo que el inventario completo pasa de 730 a 754 ejecuciones. El workflow las distribuye en siete grupos independientes; un fallo no cancela los demás grupos ni impide ejecutar las suites siguientes del mismo grupo cuando su preparación y typecheck fueron correctos. Se conservan los timeouts y reintentos propios de cada prueba.
+
+| Grupo | Ejecuciones |
+|---|---:|
+| Sesiones y PIC | 75 |
+| CRM relacional | 210 |
+| Hub y Administración | 168 |
+| Inbox Comercial | 114 |
+| ICP y CRM Preview | 49 |
+| Survey, Scheduling y Communications | 60 |
+| Costing, Quote, Relaciones y Production Read | 78 |
+| **Total** | **754** |
+
+El check requerido `browser-session-validation` conserva su nombre y agrega el resultado de todos los grupos. Sólo pasa cuando el job matricial terminó con `success`; un fallo, cancelación o salto se rechaza. Los artefactos se publican por grupo y PIC usa un directorio propio para no borrar evidencia previa de sesiones.
 
 Las comprobaciones de PostgreSQL continúan ejecutándose contra la instancia efímera local de GitHub Actions. No se utiliza la conexión Neon del Preview para estas pruebas.
 

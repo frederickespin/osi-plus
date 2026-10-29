@@ -175,6 +175,18 @@ async function mockCrm(page: Page, options: { total?: number; cases?: ReturnType
   return audit;
 }
 
+async function showCommercialQueue(page: Page) {
+  await expect(page.getByTestId("commercial-master-detail-layout")).toBeVisible();
+  const queue = page.getByRole("region", { name: "Cola comercial", exact: true, includeHidden: true });
+  await expect(queue).toHaveCount(1);
+  if (!await queue.isVisible()) {
+    const backToInbox = page.getByTestId("commercial-case-summary").getByRole("button", { name: "Volver al Inbox", exact: true });
+    await expect(backToInbox).toBeVisible();
+    await backToInbox.click();
+  }
+  await expect(queue).toBeVisible();
+}
+
 test("cero casos presenta estado empresarial vacío y sólo ejecuta GET canónicos", async ({ page }) => {
   await authenticate(page);
   const audit = await mockCrm(page);
@@ -274,14 +286,19 @@ test("seleccionar una fila abre el resumen y Ficha del caso usa el workspace com
   if (testInfo.project.name.endsWith("desktop")) await expect(page.getByRole("region", { name: "Cola comercial" })).toBeVisible();
   else await expect(page.getByRole("region", { name: "Cola comercial" })).toBeHidden();
 
+  await showCommercialQueue(page);
   await page.evaluate(() => globalThis.scrollTo(0, Math.min(180, document.documentElement.scrollHeight - innerHeight)));
+  await fullCaseAction.scrollIntoViewIfNeeded();
+  await expect(fullCaseAction).toBeVisible();
+  await expect(fullCaseAction).toBeInViewport();
   const scrollBefore = await page.evaluate(() => globalThis.scrollY);
   if (testInfo.project.name.endsWith("desktop")) expect(scrollBefore).toBeGreaterThan(0);
-  await fullCaseAction.evaluate((element) => (element as HTMLButtonElement).click());
+  await fullCaseAction.click();
   await expect(page).toHaveURL(new RegExp(`/commercial/cases/${rows[10].caseRef}$`));
   await expect(page.getByTestId("commercial-full-case-workspace")).toBeVisible();
   await expect(page.getByTestId("commercial-master-detail-layout")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
+  await expect(page.getByTestId("commercial-case-focused-header")).toContainText("CRM-SELECT-11");
   await page.getByRole("button", { name: "Volver al Inbox" }).click();
 
   await expect(page).toHaveURL(/\/commercial$/);
@@ -289,13 +306,22 @@ test("seleccionar una fila abre el resumen y Ficha del caso usa el workspace com
   await expect(page.getByLabel("Estado")).toHaveValue("NEW_INBOX");
   await expect(page.getByText("Página 2 de 2")).toContainText("Página 2 de 2");
   await expect(page.getByTestId("commercial-case-summary")).toBeVisible();
+  await expect(page.getByTestId("commercial-case-summary")).toContainText("CRM-SELECT-11");
   await expect(row).toHaveAttribute("data-selected", "true");
-  expect(await page.evaluate(() => globalThis.scrollY)).toBe(scrollBefore);
-
-  if (!testInfo.project.name.endsWith("desktop")) {
-    await page.getByTestId("commercial-case-summary").getByRole("button", { name: "Volver al Inbox" }).click();
-    await expect(row).toBeVisible();
+  await expect(rowSelector).toHaveAttribute("aria-pressed", "true");
+  if (testInfo.project.name.endsWith("desktop")) {
+    await expect.poll(() => page.evaluate(() => globalThis.scrollY)).toBe(scrollBefore);
+  } else {
+    // The selected summary is shorter than the queue, so native scrolling clamps at its end.
+    const maxScroll = await page.evaluate(() => {
+      const scrollingElement = document.scrollingElement ?? document.documentElement;
+      return Math.max(0, scrollingElement.scrollHeight - scrollingElement.clientHeight);
+    });
+    await expect.poll(() => page.evaluate(() => globalThis.scrollY)).toBe(Math.min(scrollBefore, maxScroll));
   }
+
+  await showCommercialQueue(page);
+  await expect(row).toBeVisible();
   await rowSelector.focus();
   await page.keyboard.press("Space");
   await expect(rowSelector).toHaveAttribute("aria-pressed", "true");
@@ -342,6 +368,7 @@ test("A crea un caso y lo edita desde Inbox sólo después de confirmación del 
   await expect(page.getByRole("heading", { name: "Ficha del Caso" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(0);
   await page.getByRole("button", { name: "Volver al Inbox" }).click();
+  await showCommercialQueue(page);
   await page.getByRole("button", { name: /Seleccionar caso CS-2026-SERVER/ }).click();
   await page.getByTestId("commercial-case-summary").getByRole("button", { name: "Editar" }).click();
   await expect(page.getByRole("heading", { name: "Editar Ficha del Caso" })).toBeVisible();
@@ -412,7 +439,9 @@ test("los permisos explícitos y el owner efectivo gobiernan los controles local
     await page.goto("/commercial");
     await expect(page.getByRole("button", { name: "Nuevo Caso" })).toHaveCount(scenario.create ? 1 : 0);
     await page.getByRole("button", { name: /Seleccionar caso/ }).click();
+    await expect(page.getByTestId("commercial-case-summary").getByText("Ventas Sintético", { exact: true })).toBeVisible();
     await expect(page.getByTestId("commercial-case-summary").getByRole("button", { name: "Editar" })).toHaveCount(scenario.edit ? 1 : 0);
+    await showCommercialQueue(page);
     await page.getByRole("button", { name: /Ficha del caso/ }).click();
     await expect(page.getByRole("button", { name: "Editar" })).toHaveCount(0);
     await context.close();
@@ -494,6 +523,7 @@ test("Ficha soporta deep link, reload, error accesible y regreso preservando fil
   await expect(page.getByTestId("commercial-case-detail")).toBeVisible();
   detailBarrier.markUiStable(firstDetail, "detail-rendered");
   await page.getByRole("button", { name: "Volver al Inbox" }).click();
+  await showCommercialQueue(page);
   await expect(page.getByPlaceholder("Caso, cliente o ruta")).toHaveValue("CRM-DEMO");
 
   controlledGate = createControlledGate();

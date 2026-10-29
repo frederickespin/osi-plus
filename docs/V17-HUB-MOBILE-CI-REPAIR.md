@@ -45,12 +45,15 @@ Los cambios de este incremento se limitan a validadores, pruebas, su ejecución 
 - La selección pública de membresía en los adaptadores del piloto es una excepción específica, validada por AST: clase, método, proveedor, comprobaciones previas y objeto de headers con Bearer. Otros headers de autoridad, métodos u objetos no quedan autorizados por esa excepción.
 - Las tres lecturas aprobadas del modo Preview siguen requiriendo los prerrequisitos completos y la delegación al contexto central; no se permiten lecturas arbitrarias del modo en otros consumidores.
 - La prueba de acceso a Administración verifica Coordinación como información pendiente, conserva el recorrido de membresías e invitación y comprueba que el módulo administrativo se descargue después del clic autorizado.
+- En el Inbox móvil, seleccionar un caso muestra su resumen y oculta la cola; volver desde Ficha conserva esa selección. Las pruebas regresan a la cola mediante el botón visible del resumen antes de volver a seleccionar o abrir una ficha, y conservan las comprobaciones de escrituras, permisos, owner, filtros y barreras de solicitudes.
 
 ## Cobertura de regresión
 
 El job `build` ejecuta ahora las pruebas de la excepción de esquema, del inventario canónico, de la baseline SQL, de los destinos locales de Quote y Servicios, de MT01C1B2A y de los contratos Hub/Comercial. No se retiran pasos del CI ni se convierten fallos obligatorios en opcionales.
 
 El archivo `hub.spec.ts` conserva sus 17 casos en seis proyectos de navegador. La configuración completa incluye también Administración y selección de membresía, para un total de 168 ejecuciones. Los módulos pendientes se verifican como información sin acceso operativo; Mobile y Empaque sirven como destinos disponibles para probar navegación, revocación, errores de red, logout y cancelación de solicitudes anteriores. Production Read verifica las pestañas disponibles y la ausencia de chunks y APIs de Survey/Quote cuando sus compuertas están deshabilitadas.
+
+El job general de navegadores dispone de 45 minutos para sus 730 casos. La ejecución anterior se interrumpió tras 30 minutos y 16 segundos mientras acumulaba timeouts de acciones móviles, antes de emitir su resumen completo. Se corrigen esos recorridos y se amplía el margen del job; no cambian los timeouts de cada prueba, los reintentos ni las suites obligatorias.
 
 Las comprobaciones de PostgreSQL continúan ejecutándose contra la instancia efímera local de GitHub Actions. No se utiliza la conexión Neon del Preview para estas pruebas.
 

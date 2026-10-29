@@ -142,10 +142,10 @@ try {
   check("transiciones permitidas omiten WON desde NEGOTIATION", !(await domain.getAllowedPipelineTransitions(ctxV1, negotiationWonBlocked.id)).transitions.some((item) => item.toStatus === "WON"));
 
   const quoteCase = await prisma.pipelineCase.create({ data: caseData(`${run}-case-quote`, tenantOne.id, "PRICING_IN_PROGRESS", sellerOne) });
-  const quote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote`, caseId: quoteCase.id, level: "BASIC", status: "DRAFT" } });
+  const quote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote`, tenantId: quoteCase.tenantId, caseId: quoteCase.id, level: "BASIC", status: "DRAFT" } });
   await expectCode("evidencia obligatoria ausente", () => domain.transitionPipelineCase(ctxV1, { caseId: quoteCase.id, expectedVersion: 1, requestId: request("quote-missing"), toStatus: "QUOTE_DRAFT" }), "CRM_PIPELINE_EVIDENCE_REQUIRED");
   const foreignQuoteCase = await prisma.pipelineCase.create({ data: caseData(`${run}-case-foreign-quote`, tenantOne.id, "PRICING_IN_PROGRESS", sellerOne) });
-  const foreignQuote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote-foreign`, caseId: foreignQuoteCase.id, level: "BASIC", status: "DRAFT" } });
+  const foreignQuote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote-foreign`, tenantId: foreignQuoteCase.tenantId, caseId: foreignQuoteCase.id, level: "BASIC", status: "DRAFT" } });
   await expectCode("evidencia de otro caso se rechaza", () => domain.transitionPipelineCase(ctxV1, { caseId: quoteCase.id, expectedVersion: 1, requestId: request("quote-foreign"), toStatus: "QUOTE_DRAFT", evidence: { type: "QUOTE", id: foreignQuote.id } }), "CRM_PIPELINE_EVIDENCE_INVALID");
   const quoteTransition = await domain.transitionPipelineCase(ctxV1, { caseId: quoteCase.id, expectedVersion: 1, requestId: request("quote-valid"), toStatus: "QUOTE_DRAFT", evidence: { type: "QUOTE", id: quote.id } });
   check("evidencia QUOTE válida queda en journal", quoteTransition.evidence?.type === "QUOTE" && quoteTransition.evidence?.id === quote.id);
@@ -153,11 +153,11 @@ try {
   check("consulta de transiciones devuelve grafo efectivo", allowedQuote.status === "QUOTE_DRAFT" && allowedQuote.transitions.some((item) => item.toStatus === "INTERNAL_REVIEW"));
 
   const quoteSentCase = await prisma.pipelineCase.create({ data: caseData(`${run}-case-quote-sent`, tenantOne.id, "INTERNAL_REVIEW", sellerOne) });
-  const sentQuote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote-sent`, caseId: quoteSentCase.id, level: "STANDARD", status: "SENT", sentAt: new Date() } });
+  const sentQuote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote-sent`, tenantId: quoteSentCase.tenantId, caseId: quoteSentCase.id, level: "STANDARD", status: "SENT", sentAt: new Date() } });
   const quoteSent = await domain.transitionPipelineCase(ctxV1, { caseId: quoteSentCase.id, expectedVersion: 1, requestId: request("quote-sent"), toStatus: "QUOTE_SENT", evidence: { type: "QUOTE", id: sentQuote.id } });
   check("envío de Quote prueba QUOTE_SENT", quoteSent.resultingStatus === "QUOTE_SENT" && quoteSent.evidence?.id === sentQuote.id);
   const changeCase = await prisma.pipelineCase.create({ data: caseData(`${run}-case-change-quote`, tenantOne.id, "CHANGE_CONTROL", sellerOne) });
-  const changeQuote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote-change`, caseId: changeCase.id, level: "PREMIUM", status: "DRAFT" } });
+  const changeQuote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote-change`, tenantId: changeCase.tenantId, caseId: changeCase.id, level: "PREMIUM", status: "DRAFT" } });
   const changeToDraft = await domain.transitionPipelineCase(ctxV1, { caseId: changeCase.id, expectedVersion: 1, requestId: request("change-quote"), toStatus: "QUOTE_DRAFT", evidence: { type: "QUOTE", id: changeQuote.id } });
   check("CHANGE_CONTROL vuelve a QUOTE_DRAFT con Quote compatible", changeToDraft.resultingStatus === "QUOTE_DRAFT");
 

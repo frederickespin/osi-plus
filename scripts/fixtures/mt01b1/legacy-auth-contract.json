@@ -1,48 +1,83 @@
 {
   "loginMissing": {
     "status": 400,
+    "headers": {
+      "cache-control": "private, no-store",
+      "vary": "Authorization, Origin",
+      "content-type": "application/json; charset=utf-8"
+    },
     "body": { "ok": false, "error": "email y password son requeridos" }
   },
   "loginInvalid": {
     "status": 401,
+    "headers": {
+      "cache-control": "private, no-store",
+      "vary": "Authorization, Origin",
+      "content-type": "application/json; charset=utf-8"
+    },
     "body": { "ok": false, "error": "Credenciales inválidas" }
+  },
+  "loginMembershipMissing": {
+    "status": 403,
+    "headers": {
+      "cache-control": "private, no-store",
+      "vary": "Authorization, Origin",
+      "content-type": "application/json; charset=utf-8"
+    },
+    "body": { "ok": false, "error": "MT01B_MEMBERSHIP_NOT_FOUND" }
   },
   "loginSuccess": {
     "status": 200,
+    "headers": {
+      "cache-control": "private, no-store",
+      "vary": "Authorization, Origin",
+      "content-type": "application/json; charset=utf-8"
+    },
     "body": {
       "ok": true,
       "token": "[JWT]",
-      "user": {
-        "id": "[USER_ID]",
-        "code": "MT01B-LEGACY",
-        "name": "Usuario Legacy Sintético",
-        "email": "mt01b-legacy@example.invalid",
-        "phone": "0000000000",
-        "role": "A",
-        "status": "active",
-        "department": "QA",
-        "joinDate": "2026-08-03",
-        "points": 0,
-        "rating": 0
+      "user": { "name": "Usuario Legacy Sintético" },
+      "membershipSelection": {
+        "required": false,
+        "options": [
+          {
+            "membershipRef": "[MEMBERSHIP_REF]",
+            "tenantName": "Empresa Legacy Sintética",
+            "role": "N",
+            "preferred": true
+          }
+        ]
       }
     }
   },
   "meSuccess": {
     "status": 200,
+    "headers": {
+      "cache-control": "private, no-store",
+      "vary": "Authorization, Origin",
+      "content-type": "application/json; charset=utf-8"
+    },
     "body": {
       "ok": true,
       "user": {
-        "id": "[USER_ID]",
-        "code": "MT01B-LEGACY",
         "name": "Usuario Legacy Sintético",
-        "email": "mt01b-legacy@example.invalid",
-        "phone": "0000000000",
-        "role": "A",
+        "role": "N",
         "status": "active",
-        "department": "QA",
-        "joinDate": "2026-08-03",
-        "points": 0,
-        "rating": 0
+        "permissions": ["pipeline:view"],
+        "deniedPermissions": ["osi:view"],
+        "membership": {
+          "membershipRef": "[MEMBERSHIP_REF]",
+          "tenantName": "Empresa Legacy Sintética",
+          "role": "N"
+        },
+        "memberships": [
+          {
+            "membershipRef": "[MEMBERSHIP_REF]",
+            "tenantName": "Empresa Legacy Sintética",
+            "role": "N",
+            "preferred": true
+          }
+        ]
       }
     }
   }

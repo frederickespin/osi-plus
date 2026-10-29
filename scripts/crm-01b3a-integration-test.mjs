@@ -142,7 +142,7 @@ try {
 
   const client = await prisma.client.create({ data: { id: `${run}-client`, tenantId: tenantOne.id, name: "Synthetic", code: `${prefix}-CLIENT`, email: `${run}-client@example.test`, phone: "0", address: "Synthetic", type: "PERSON", status: "active", createdAt: "2026-08-12" } });
   const quoteCase = await prisma.pipelineCase.create({ data: caseData(`${run}-quote`, tenantOne.id, "PRICING_IN_PROGRESS", seller) });
-  const quote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote-evidence`, caseId: quoteCase.id, level: "BASIC", status: "DRAFT" } });
+  const quote = await prisma.pipelineCaseQuote.create({ data: { id: `${run}-quote-evidence`, tenantId: quoteCase.tenantId, caseId: quoteCase.id, level: "BASIC", status: "DRAFT" } });
   await expect("evidencia ausente", invoke(transition, request(sellerUser, quoteCase.id, { expectedVersion: 1, toStatus: "QUOTE_DRAFT", reasonCode: null, evidence: null }, key("evidence-missing"))), 409, "CRM_PIPELINE_EVIDENCE_REQUIRED");
   check("evidencia válida", (await invoke(transition, request(sellerUser, quoteCase.id, { expectedVersion: 1, toStatus: "QUOTE_DRAFT", reasonCode: null, evidence: { type: "QUOTE", id: quote.id } }, key("evidence-valid")))).statusCode === 200);
   void client;

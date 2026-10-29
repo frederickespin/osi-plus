@@ -1,32 +1,37 @@
 import { strict as assert } from "node:assert";
 import { randomUUID } from "node:crypto";
+import { validateAppliedMigrationHistory } from "./canonical-migrations.mjs";
 
 function testTarget() {
   const raw = process.env.V17_CRM_ICP_TEST_DATABASE_URL;
   if (!raw) throw new Error("V17_CRM_ICP_TEST_DATABASE_URL_REQUIRED");
   const parsed = new URL(raw);
-  const allowedDatabase = new Set(["osi_v17_icp_local", "osi_db01n_ci"]);
-  const allowedPort = new Set(["55445", "55432"]);
+  const database = parsed.pathname.slice(1);
+  const canonicalCi = database === "osi_db01n_ci" && parsed.port === "55432"
+    && process.env.CANONICAL_DB_VALIDATION === "true";
+  const isolatedFixture = database === "osi_v17_icp_local" && parsed.port === "55445";
   if (parsed.protocol !== "postgresql:" || !new Set(["127.0.0.1", "localhost"]).has(parsed.hostname)
-    || !allowedPort.has(parsed.port) || !allowedDatabase.has(parsed.pathname.slice(1))
-    || parsed.searchParams.get("schema") !== "osi") {
+    || (!canonicalCi && !isolatedFixture)
+    || parsed.searchParams.getAll("schema").length !== 1 || parsed.searchParams.get("schema") !== "osi") {
     throw new Error("V17_CRM_ICP_TEST_DATABASE_TARGET_REJECTED");
   }
-  return raw;
+  return { raw, canonicalCi };
 }
 
-testTarget();
+const target = testTarget();
 const { PrismaClient } = await import("@prisma/client");
-const prisma = new PrismaClient({ datasourceUrl: process.env.V17_CRM_ICP_TEST_DATABASE_URL });
+const prisma = new PrismaClient({ datasourceUrl: target.raw });
 const results = [];
 function check(name, condition) {
   assert.equal(Boolean(condition), true, name);
   results.push({ name, passed: true });
 }
-async function rejected(name, action) {
+async function rejected(name, action, expectedDatabaseError) {
   let error;
   try { await action(); } catch (caught) { error = caught; }
-  check(name, Boolean(error));
+  check(name, Boolean(error) && (!expectedDatabaseError
+    || (error.code === "P2010" && error.meta?.code === expectedDatabaseError.code
+      && String(error.meta?.message).includes(expectedDatabaseError.message))));
 }
 
 const marker = randomUUID().replaceAll("-", "").slice(0, 12);
@@ -119,10 +124,13 @@ async function commitRoute(caseId, version, destinationStatus, snapshots) {
 
 try {
   const migration = await prisma.$queryRawUnsafe(`
-    SELECT count(*)::int AS "count", count(*) FILTER (WHERE "finished_at" IS NULL)::int AS "failed"
-    FROM "osi"."_prisma_migrations"
+    SELECT migration_name, finished_at, rolled_back_at, applied_steps_count
+    FROM "osi"."_prisma_migrations" ORDER BY migration_name
   `);
-  check("PostgreSQL contiene exactamente 22 migraciones completas", migration[0].count === 22 && migration[0].failed === 0);
+  const migrationNames = validateAppliedMigrationHistory(migration, {
+    throughMigration: target.canonicalCi ? undefined : "20260831010000_v17_crm_icp_foundation",
+  });
+  check("PostgreSQL conserva el historial aprobado completo hasta su checkpoint", migration.at(-1).migration_name === migrationNames.at(-1));
 
   await insertTenant(tenantId, `ICP-${marker}`);
   await insertTenant(otherTenantId, `ICP-O-${marker}`);
@@ -201,13 +209,23 @@ try {
   const pendingCaseId = `icp_pending_${marker}`;
   await insertCase(pendingCaseId, tenantId, clientId, `ICP-PEND-${marker}`);
   await commitRoute(pendingCaseId, 1, "PENDING", [{ role: "ORIGIN" }]);
-  await prisma.$executeRawUnsafe(`
-    INSERT INTO "osi"."osi_pipeline_case_quotes" ("id", "caseId", "level", "version", "status", "createdAt", "updatedAt")
-    VALUES ($1, $2, 'BASIC', 1, 'DRAFT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-  `, `icp_q_${marker}`, pendingCaseId);
+  if (target.canonicalCi) {
+    // The Quote migration adopts the tenant scope of each legacy quote cycle.
+    // Retain contract_version=1 while supplying its now-required tenant identity.
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "osi"."osi_pipeline_case_quotes"
+        ("id", "tenant_id", "caseId", "level", "version", "status", "createdAt", "updatedAt")
+      VALUES ($1, $2, $3, 'BASIC', 1, 'DRAFT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `, `icp_q_${marker}`, tenantId, pendingCaseId);
+  } else {
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "osi"."osi_pipeline_case_quotes" ("id", "caseId", "level", "version", "status", "createdAt", "updatedAt")
+      VALUES ($1, $2, 'BASIC', 1, 'DRAFT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `, `icp_q_${marker}`, pendingCaseId);
+  }
   await rejected("cotización FINAL queda bloqueada con destino PENDING", () => prisma.$executeRawUnsafe(`
     UPDATE "osi"."osi_pipeline_case_quotes" SET "status"='FINAL' WHERE "id"=$1
-  `, `icp_q_${marker}`));
+  `, `icp_q_${marker}`), { code: "23514", message: "Final quote requires confirmed or approximate destination" });
 
   const invalidExportId = `icp_export_${marker}`;
   await insertCase(invalidExportId, tenantId, clientId, `ICP-EXP-${marker}`, "EXPORT");

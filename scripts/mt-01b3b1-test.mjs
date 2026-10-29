@@ -59,6 +59,17 @@ async function expectMethodError(name, handler, token, method, expectedStatus, e
   return res;
 }
 
+function checkRetiredUsers(name, response) {
+  check(name, response.statusCode === 410
+    && JSON.stringify(response.body) === JSON.stringify({
+      ok: false,
+      error: "USERS_ADMINISTRATION_MOVED_TO_MEMBERSHIPS",
+      replacement: "/api/admin/memberships",
+      identityCreation: "ADMIN_IDENTITY_INVITATION",
+    })
+    && response.getHeader("Cache-Control") === "private, no-store");
+}
+
 try {
   const admin = await identitySession("pilot-admin", { role: "A" });
   const legacyToken = signAccessToken({ sub: admin.identity.userId, email: "legacy-pilot@example.invalid", role: "A" });
@@ -90,7 +101,8 @@ try {
     && Array.isArray(legacyMe.body.user.permissions)
     && Array.isArray(legacyMe.body.user.deniedPermissions)
     && legacyMe.body.user.role === "A");
-  for (const [name, response] of [["Usuarios", legacyUsers], ["Clientes", legacyClients], ["Proyectos", legacyProjects]]) {
+  checkRetiredUsers("LEGACY Usuarios permanece retirado con respuesta privada", legacyUsers);
+  for (const [name, response] of [["Clientes", legacyClients], ["Proyectos", legacyProjects]]) {
     check(`LEGACY ${name} conserva envoltura`, response.statusCode === 200 && JSON.stringify(Object.keys(response.body).sort()) === JSON.stringify(["data", "ok", "total"]));
   }
   check("LEGACY anónimo falla cerrado", legacyAnonymous.statusCode === 401 && legacyAnonymous.body?.error === "MT01B_TOKEN_REQUIRED");
@@ -104,13 +116,18 @@ try {
   check("/auth/me V2 usa identidad de backend", meV2.body.auth.userId === admin.identity.userId && meV2.body.auth.tenantId === admin.identity.tenantId && meV2.body.auth.membershipId === admin.identity.membershipId && meV2.body.auth.role === "A" && meV2.body.auth.sessionId === admin.session.identity.sessionId);
   check("/auth/me V2 no filtra secretos ni permisos internos", !/token|hash|cookie|granted|denied/i.test(Object.keys(meV2.body.auth).join("|")));
 
-  for (const [name, handler] of [["Usuarios", usersHandler], ["Clientes", clientsHandler], ["Proyectos", projectsHandler]]) {
+  const retiredV2Users = await invoke(usersHandler, request(admin.session.accessToken, "GET", {
+    headers: { "x-osi-role": "A", "x-osi-userid": admin.identity.userId },
+  }));
+  checkRetiredUsers("V2 y headers de administrador no reactivan Usuarios", retiredV2Users);
+  for (const [name, handler] of [["Clientes", clientsHandler], ["Proyectos", projectsHandler]]) {
     const response = await invoke(handler, request(admin.session.accessToken, "GET", { headers: { "x-osi-role": "N", "x-osi-userid": "forged" } }));
     check(`V2 ${name} acepta contexto empresarial y omite headers`, response.statusCode === 200 && response.body?.ok === true);
   }
 
   const vendor = await identitySession("pilot-vendor", { role: "V" });
-  await expectRouteError("headers falsificados no elevan rol V2", usersHandler, vendor.session.accessToken, 403, "MT01B_PERMISSION_FORBIDDEN", { "x-osi-role": "A", "x-osi-userid": admin.identity.userId });
+  const unprivileged = await identitySession("pilot-unprivileged", { role: "N" });
+  await expectRouteError("headers falsificados no elevan rol V2 en ruta activa", clientsHandler, unprivileged.session.accessToken, 403, "MT01B_PERMISSION_FORBIDDEN", { "x-osi-role": "A", "x-osi-userid": admin.identity.userId });
 
   const coordinatorIdentity = await createIdentity(prisma, `pilot-read-only-${randomUUID().slice(0, 6)}`, { role: "N" });
   await prisma.tenantMembership.update({
@@ -133,7 +150,13 @@ try {
   );
   check("POST denegado no crea recurso", await prisma.client.count() === clientCountBeforeForgedPost);
 
-  for (const [name, handler] of [["Usuarios", usersHandler], ["Clientes", clientsHandler], ["Proyectos", projectsHandler]]) {
+  const retiredUsersCountBefore = await prisma.user.count();
+  const retiredUsersPost = await invoke(usersHandler, request(coordinator.session.accessToken, "POST", {
+    body: { tenantId: admin.identity.tenantId, membershipId: admin.identity.membershipId, userId: admin.identity.userId, role: "A", permissions: ["*"], authorizationVersion: 999 },
+  }));
+  checkRetiredUsers("POST de Usuarios permanece retirado ante autoridad falsificada", retiredUsersPost);
+  check("POST retirado no crea usuario", await prisma.user.count() === retiredUsersCountBefore);
+  for (const [name, handler] of [["Clientes", clientsHandler], ["Proyectos", projectsHandler]]) {
     await expectMethodError(
       `campos empresariales no elevan POST de ${name}`,
       handler,

@@ -177,7 +177,9 @@ try {
     && Array.isArray(meRes.body.user.permissions)
     && Array.isArray(meRes.body.user.deniedPermissions)
     && meRes.body.user.role === "V");
-  check("/auth/me LEGACY conserva error 401 exacto", missingMeRes.statusCode === 401 && JSON.stringify(missingMeRes.body) === JSON.stringify({ ok: false, error: "Unauthorized" }));
+  check("/auth/me LEGACY anónimo usa el error canónico privado", missingMeRes.statusCode === 401
+    && JSON.stringify(missingMeRes.body) === JSON.stringify({ ok: false, error: "MT01B_TOKEN_REQUIRED" })
+    && missingMeRes.getHeader("Cache-Control") === "private, no-store");
 
   const meV2Req = bearer(valid.session.accessToken);
   const meV2Res = mockResponse();

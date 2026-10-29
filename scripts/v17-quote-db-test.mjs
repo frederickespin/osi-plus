@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { PrismaClient } from "@prisma/client";
 import { createQuoteProposal, getQuoteCase, getQuoteClientProjection, publishQuoteProposal, recordQuoteDecision, reviseQuoteProposal, sendQuoteProposal } from "../api/_lib/quoteDomain.js";
 import { quoteHash } from "../api/_lib/quoteContract.js";
+import { createV17QuoteLocalPrisma } from "./v17-quote-local-target.mjs";
+import { createPublishedQuoteCostingFixture } from "./v17-quote-db-fixture.mjs";
 
-const prisma = new PrismaClient();
+const { prisma } = await createV17QuoteLocalPrisma(process.env.V17_QUOTE_TEST_DATABASE_URL);
 const permissions = ["quote:view", "quote:create", "quote:update", "quote:publish", "quote:send", "quote:record-client-decision", "quote:override-price", "quote:internal-cost:view", "quote:tenant"];
 function signed(operation, payload, requestId = randomUUID()) { return { requestId, payloadHash: quoteHash({ operation, requestId, ...payload }), ...payload }; }
 function draft(costing, position, overrides = {}) {
@@ -23,9 +24,15 @@ function draft(costing, position, overrides = {}) {
 
 let assertions = 0;
 try {
-  const costings = await prisma.costingRevision.findMany({ where: { status: "PUBLISHED", issues: { none: { severity: "BLOCKER", status: "OPEN" } }, lines: { some: { suggestedPrice: { not: null } } } }, include: { lines: true, pipelineCase: true }, orderBy: { publishedAt: "asc" } });
+  const fixtures = [];
+  for (let index = 0; index < 2; index += 1) fixtures.push(await createPublishedQuoteCostingFixture(prisma, permissions));
+  const costings = fixtures.map((fixture) => fixture.costing);
+  const contexts = fixtures.map((fixture) => fixture.context);
   assert.ok(costings.length >= 2); assertions += 1;
-  const contexts = costings.map((costing) => ({ tenantId: costing.tenantId, membershipId: costing.publishedByMembershipId, userId: costing.publishedByUserId, role: "A", effectivePermissions: permissions, deniedPermissions: [] }));
+  assert.notEqual(costings[0].tenantId, costings[1].tenantId); assertions += 1;
+  assert.notEqual(costings[0].pipelineCaseId, costings[1].pipelineCaseId); assertions += 1;
+  await assert.rejects(getQuoteCase(prisma, contexts[0], costings[1].pipelineCase.publicRef), /QUOTE_NOT_FOUND/); assertions += 1;
+  await assert.rejects(createQuoteProposal(prisma, contexts[0], signed("QUOTE_PROPOSAL_CREATE", draft(costings[1], 1))), /QUOTE_NOT_FOUND/); assertions += 1;
   const input = signed("QUOTE_PROPOSAL_CREATE", draft(costings[0], 1));
   const first = await createQuoteProposal(prisma, contexts[0], input); assert.equal(first.position, 1); assert.match(first.reference, /^Q-\d{4}-\d{6}-A$/); assertions += 2;
   const replay = await createQuoteProposal(prisma, contexts[0], input); assert.equal(replay.proposalRef, first.proposalRef); assertions += 1;

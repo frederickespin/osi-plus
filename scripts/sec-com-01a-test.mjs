@@ -195,14 +195,32 @@ try {
   await prisma.tenant.create({
     data: { id: ids.tenant, code: `SEC-${suffix}`.toUpperCase(), name: "Tenant sintético SEC-COM-01A" },
   });
+  await prisma.tenantMembership.createMany({
+    data: [
+      [ids.authorized, "A"],
+      [ids.inactive, "A"],
+      [ids.suspended, "A"],
+      [ids.coordinator, "K"],
+      [ids.projectViewer, "V"],
+    ].map(([userId, role]) => ({
+      id: `sec-membership-${userId}`,
+      tenantId: ids.tenant,
+      userId,
+      role,
+      status: "ACTIVE",
+      isDefault: true,
+      authorizationVersion: 1,
+    })),
+  });
   await prisma.tenantMembership.create({
     data: {
       id: ids.membership,
       tenantId: ids.tenant,
-      userId: ids.authorized,
+      userId: ids.denied,
       role: "A",
       status: "ACTIVE",
-      deniedPermissions: [PERMS.OSI_VIEW],
+      isDefault: true,
+      deniedPermissions: [PERMS.OSI_VIEW, PERMS.PROJECTS_VIEW],
       authorizationVersion: 1,
     },
   });
@@ -211,7 +229,7 @@ try {
       id: ids.session,
       tenantId: ids.tenant,
       membershipId: ids.membership,
-      userId: ids.authorized,
+      userId: ids.denied,
       status: "ACTIVE",
       authorizationVersionSnapshot: 1,
       fingerprintHash: "a".repeat(64),
@@ -246,7 +264,8 @@ try {
   check("dos Authorization ambiguos se rechazan", (await invoke(osiIndex, request("GET", { headers: { authorization: `Bearer ${authorizedToken}, Bearer ${authorizedToken}` } }))).statusCode === 401);
 
   const denied = await invoke(osiIndex, request("GET", { token: deniedToken }));
-  check("usuario sin osi:view devuelve 403 sin cache", denied.statusCode === 403 && denied.body?.perm === PERMS.OSI_VIEW && hasPrivateNoStore(denied));
+  check("usuario sin osi:view devuelve 403 sin cache", denied.statusCode === 403
+    && denied.body?.error === "MT01B_PERMISSION_FORBIDDEN" && denied.body?.data === undefined && hasPrivateNoStore(denied));
   const forged = await invoke(osiIndex, request("GET", { token: deniedToken, headers: { "x-osi-role": "A", "x-osi-userid": ids.authorized } }));
   check("headers falsificados no conceden osi:view", forged.statusCode === 403);
 
@@ -264,14 +283,20 @@ try {
     && optionsResponse.getHeader("access-control-allow-headers") === undefined);
 
   const originalOsiFindMany = appPrisma.osi.findMany;
-  appPrisma.osi.findMany = async () => { throw new Error("sensitive query detail"); };
-  const osiDatabaseFailure = await invoke(osiIndex, request("GET", { token: authorizedToken }));
-  appPrisma.osi.findMany = originalOsiFindMany;
+  let osiDatabaseFailure;
+  try {
+    appPrisma.osi.findMany = async () => { throw new Error("sensitive query detail"); };
+    osiDatabaseFailure = await invoke(osiIndex, request("GET", { token: authorizedToken }));
+  } finally {
+    appPrisma.osi.findMany = originalOsiFindMany;
+  }
   check("falla Prisma de lectura OSI devuelve 503 sanitizado sin cache", osiDatabaseFailure.statusCode === 503 && osiDatabaseFailure.body?.error === "DATABASE_UNAVAILABLE" && hasPrivateNoStore(osiDatabaseFailure) && !JSON.stringify(osiDatabaseFailure.body).includes("sensitive"));
 
   const unavailableReq = request("GET", { token: authorizedToken });
   const unavailableRes = mockResponse();
-  const unavailable = await requirePilotPermission(unavailableReq, unavailableRes, PERMS.OSI_VIEW, { prisma: { user: { findUnique: async () => { throw new Error("sensitive database detail"); } } } });
+  const unavailable = await requirePilotPermission(unavailableReq, unavailableRes, PERMS.OSI_VIEW, {
+    prisma: { $queryRaw: async () => { throw new Error("sensitive database detail"); } },
+  });
   check("falla de autenticación en base devuelve 503 sanitizado", unavailable === null && unavailableRes.statusCode === 503 && unavailableRes.body?.error === "MT01B_AUTH_DATABASE_UNAVAILABLE" && !JSON.stringify(unavailableRes.body).includes("sensitive"));
 
   process.env.MT01B_AUTH_MODE = "HYBRID";
@@ -280,7 +305,7 @@ try {
   const invalidV2 = `${candidate.slice(0, -1)}${candidate.endsWith("a") ? "b" : "a"}`;
   const invalidV2Response = await invoke(osiIndex, request("GET", { token: invalidV2, headers: { "x-osi-role": "A" } }));
   check("JWT V2 inválido no degrada a LEGACY", invalidV2Response.statusCode === 401 && invalidV2Response.body?.error === "MT01B_TOKEN_INVALID");
-  const explicitlyDeniedV2 = signMembershipAccessToken({ userId: ids.authorized, membershipId: ids.membership, tenantId: ids.tenant, role: "A", authorizationVersion: 1, sessionId: ids.session });
+  const explicitlyDeniedV2 = signMembershipAccessToken({ userId: ids.denied, membershipId: ids.membership, tenantId: ids.tenant, role: "A", authorizationVersion: 1, sessionId: ids.session });
   const explicitDeniedResponse = await invoke(osiIndex, request("GET", { token: explicitlyDeniedV2 }));
   check("deniedPermissions prevalece en V2", explicitDeniedResponse.statusCode === 403 && explicitDeniedResponse.body?.error === "MT01B_PERMISSION_FORBIDDEN" && hasPrivateNoStore(explicitDeniedResponse));
   process.env.MT01B_AUTH_MODE = "LEGACY";
@@ -301,9 +326,13 @@ try {
   const firstDashboard = await invoke(dashboard, request("GET", { token: authorizedToken }));
   const secondDashboard = await invoke(dashboard, request("GET", { token: coordinatorToken }));
   const originalProjectFindMany = appPrisma.project.findMany;
-  appPrisma.project.findMany = async () => { throw new Error("sensitive dashboard query detail"); };
-  const dashboardDatabaseFailure = await invoke(dashboard, request("GET", { token: authorizedToken }));
-  appPrisma.project.findMany = originalProjectFindMany;
+  let dashboardDatabaseFailure;
+  try {
+    appPrisma.project.findMany = async () => { throw new Error("sensitive dashboard query detail"); };
+    dashboardDatabaseFailure = await invoke(dashboard, request("GET", { token: authorizedToken }));
+  } finally {
+    appPrisma.project.findMany = originalProjectFindMany;
+  }
   check("falla Prisma de dashboard devuelve 503 sanitizado sin cache", dashboardDatabaseFailure.statusCode === 503 && dashboardDatabaseFailure.body?.error === "DATABASE_UNAVAILABLE" && hasPrivateNoStore(dashboardDatabaseFailure) && !JSON.stringify(dashboardDatabaseFailure.body).includes("sensitive"));
   const identityAfter = {
     projects: await prisma.project.findMany({ where: { id: ids.project }, orderBy: { id: "asc" } }),
@@ -328,7 +357,7 @@ try {
   await prisma.osiHandshake.deleteMany({ where: { osiId: ids.osi } }).catch(() => {});
   await prisma.osiChangeLog.deleteMany({ where: { osiId: ids.osi } }).catch(() => {});
   await prisma.authSession.deleteMany({ where: { id: ids.session } }).catch(() => {});
-  await prisma.tenantMembership.deleteMany({ where: { id: ids.membership } }).catch(() => {});
+  await prisma.tenantMembership.deleteMany({ where: { tenantId: ids.tenant } }).catch(() => {});
   await prisma.tenant.deleteMany({ where: { id: ids.tenant } }).catch(() => {});
   await prisma.projectSignal.deleteMany({ where: { projectId: ids.project } }).catch(() => {});
   await prisma.osi.deleteMany({ where: { id: ids.osi } }).catch(() => {});

@@ -322,7 +322,7 @@ try {
   const provisioningExecutorRun = runJson("mt-01c1b3a-test.mjs", "MT-01C1B3A/EXECUTOR");
   const provisioningExecutorGuardRun = runJson("validate-mt01c1b3a-guard-test.mjs", "MT-01C1B3A/GUARD");
   invariant(provisioningExecutorRun.report.failed === 0 && provisioningExecutorRun.assertions === 52, `MT-01C1B3A esperaba 52 pruebas y obtuvo ${provisioningExecutorRun.assertions}`);
-  invariant(provisioningExecutorGuardRun.assertions === 11, `MT-01C1B3A guard esperaba 11 pruebas y obtuvo ${provisioningExecutorGuardRun.assertions}`);
+  invariant(provisioningExecutorGuardRun.assertions === 12, `MT-01C1B3A guard esperaba 12 pruebas y obtuvo ${provisioningExecutorGuardRun.assertions}`);
   process.env.SECCOM01A_TEST_DATABASE_URL = process.env.DATABASE_URL;
   const secComRun = runJson("sec-com-01a-test.mjs", "SEC-COM-01A/ROUTES");
   const secComGuardRun = runJson("validate-sec-com-01a-guard-test.mjs", "SEC-COM-01A/GUARD");

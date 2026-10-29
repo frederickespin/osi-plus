@@ -1,7 +1,12 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { validateV17CrmIcpFoundationGuard } from "./validate-v17-crm-icp-foundation-guard.mjs";
+import { MT01B3A_ROUTE_INVENTORY } from "./validate-mt01b3a-auth-guard.mjs";
+import { PUBLIC_REFERENCE_CONTRACTS } from "./validate-v17-case-public-ref-guard.mjs";
+import { validateV17HubGuard } from "./validate-v17-hub-guard.mjs";
+import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
 
 const fail = (message) => { throw new Error(`V17_CRM_ICP_API_GUARD:${message}`); };
 const requireMatch = (text, pattern, message) => { if (!pattern.test(text)) fail(message); };
@@ -17,7 +22,100 @@ function walk(directory) {
   return files;
 }
 
-export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {} } = {}) {
+// Interpret only the pure assertion expressions, never the canonical runner or its database setup.
+function evaluateRunnerAssertion(node, scope) {
+  if (ts.isParenthesizedExpression(node)) return evaluateRunnerAssertion(node.expression, scope);
+  if (ts.isIdentifier(node)) {
+    if (!Object.hasOwn(scope, node.text)) throw new Error("identificador fuera del contrato");
+    return scope[node.text];
+  }
+  if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (ts.isStringLiteral(node)) return node.text;
+  if (ts.isNumericLiteral(node)) return Number(node.text);
+  if (ts.isObjectLiteralExpression(node) && node.properties.length === 0) return {};
+  if (ts.isPropertyAccessExpression(node)) return evaluateRunnerAssertion(node.expression, scope)[node.name.text];
+  if (ts.isElementAccessExpression(node)) return evaluateRunnerAssertion(node.expression, scope)[evaluateRunnerAssertion(node.argumentExpression, scope)];
+  if (ts.isBinaryExpression(node)) {
+    const left = evaluateRunnerAssertion(node.left, scope);
+    if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return left && evaluateRunnerAssertion(node.right, scope);
+    if (node.operatorToken.kind === ts.SyntaxKind.BarBarToken) return left || evaluateRunnerAssertion(node.right, scope);
+    if (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) return left === evaluateRunnerAssertion(node.right, scope);
+  }
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+    const { expression: receiver, name } = node.expression;
+    if (ts.isIdentifier(receiver) && node.arguments.length === 1) {
+      const argument = () => evaluateRunnerAssertion(node.arguments[0], scope);
+      if (receiver.text === "Object" && name.text === "keys") return Object.keys(argument());
+      if (receiver.text === "Object" && name.text === "entries") return Object.entries(argument());
+      if (receiver.text === "JSON" && name.text === "stringify") return JSON.stringify(argument());
+    }
+    const values = evaluateRunnerAssertion(receiver, scope);
+    if (Array.isArray(values) && name.text === "sort" && node.arguments.length === 0) return [...values].sort();
+    const callback = node.arguments[0];
+    if (Array.isArray(values) && name.text === "every" && node.arguments.length === 1
+      && ts.isArrowFunction(callback) && callback.parameters.length === 1 && !ts.isBlock(callback.body)) {
+      return values.every((value) => {
+        const binding = callback.parameters[0].name;
+        const local = { ...scope };
+        if (ts.isIdentifier(binding)) local[binding.text] = value;
+        else if (ts.isArrayBindingPattern(binding)) {
+          binding.elements.forEach((entry, index) => {
+            if (!ts.isBindingElement(entry) || !ts.isIdentifier(entry.name) || entry.dotDotDotToken || entry.initializer) throw new Error("binding fuera del contrato");
+            local[entry.name.text] = value[index];
+          });
+        } else throw new Error("binding fuera del contrato");
+        return evaluateRunnerAssertion(callback.body, local);
+      });
+    }
+  }
+  throw new Error("expresión fuera del contrato");
+}
+
+function validateCanonicalIcpAssertions(source, publicReferenceContracts) {
+  const file = ts.createSourceFile("run-canonical-db-tests.mjs", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  for (const [name, module] of [["PUBLIC_REFERENCE_CONTRACTS", "./validate-v17-case-public-ref-guard.mjs"], ["CANONICAL_MIGRATIONS", "./canonical-migrations.mjs"]]) {
+    if (!file.statements.some((statement) => ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)
+      && statement.moduleSpecifier.text === module && statement.importClause?.namedBindings
+      && ts.isNamedImports(statement.importClause.namedBindings)
+      && statement.importClause.namedBindings.elements.some((element) => element.name.text === name && (element.propertyName?.text ?? name) === name))) {
+      fail(`agregador canónico no importa el contrato ${name}`);
+    }
+  }
+  const assertions = [];
+  const visit = (node) => {
+    if (ts.isFunctionLike(node)) return;
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "invariant" && node.arguments.length >= 1) assertions.push(node.arguments[0]);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  const uses = (node, name) => ts.isIdentifier(node) && node.text === name || Boolean(ts.forEachChild(node, (child) => uses(child, name) || undefined));
+  const validate = (name, report, invalidReports) => {
+    const predicates = assertions.filter((node) => uses(node, name));
+    if (predicates.length !== 1) fail(`agregador canónico sin aserción única para ${name}`);
+    const accepts = (candidate) => {
+      try {
+        return evaluateRunnerAssertion(predicates[0], { [name]: { report: candidate }, PUBLIC_REFERENCE_CONTRACTS: publicReferenceContracts, CANONICAL_MIGRATIONS }) === true;
+      } catch { return false; }
+    };
+    if (!accepts(report) || invalidReports.some(accepts)) fail(`agregador canónico no valida el contrato de ${name}`);
+  };
+  for (const name of ["crmProductionGateGuardRun", "crmOwnerCatalogGuardRun"]) {
+    validate(name, { ok: true, routes: 12 }, [{ ok: false, routes: 12 }, { ok: true, routes: 9 }, { ok: true, routes: 13 }]);
+  }
+  const consumerContracts = Object.fromEntries(Object.entries(publicReferenceContracts).map(([path, kinds]) => [path, { kinds: [...kinds] }]));
+  const report = { ok: true, migrations: CANONICAL_MIGRATIONS.length, runtimeConsumers: Object.keys(consumerContracts).length, consumerContracts, runtimeConsumer: "api/_lib/crmPipelineRead.js", publicContract: "caseRef" };
+  const withoutIcp = { ...consumerContracts }; delete withoutIcp["api/_lib/crmIcpV2ApiDomain.js"];
+  validate("v17CasePublicRefGuardRun", report, [
+    { ...report, ok: false }, { ...report, runtimeConsumers: report.runtimeConsumers - 1 },
+    { ...report, consumerContracts: withoutIcp },
+    { ...report, consumerContracts: { ...consumerContracts, "api/_lib/crmIcpV2ApiDomain.js": { kinds: ["CLIENT"] } } },
+    { ...report, consumerContracts: { ...consumerContracts, "api/_lib/crmIcpV2ApiDomain.js": { kinds: ["CASE"] } } },
+    { ...report, consumerContracts: { ...consumerContracts, "api/_lib/unclassified.js": { kinds: ["CASE"] } } },
+  ]);
+}
+
+export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}, authInventory = MT01B3A_ROUTE_INVENTORY, publicReferenceContracts = PUBLIC_REFERENCE_CONTRACTS } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
   validateV17CrmIcpFoundationGuard({ root, overrides });
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
@@ -86,18 +184,28 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   for (const source of Object.values(routes)) {
     forbidMatch(source, /req\.body|tenantId|membershipId|userId|clientId/, "ruta interpreta autoridad o ID interno");
   }
-  const authInventory = read("scripts/validate-mt01b3a-auth-guard.mjs");
-  for (const path of [
-    "api/crm/icp-v2/clients/search.js",
-    "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
-    "api/crm/icp-v2/pipeline-cases/index.js",
-  ]) if (authInventory.split(`\"${path}\"`).length - 1 !== 2) fail(`ruta fuera del inventario auth: ${path}`);
-  requireMatch(authInventory, /ICP_V2_API_ROUTES[\s\S]*crmIcpV2ApiHttp\\\.js/, "rutas ICP no exigen su contrato HTTP en el inventario auth");
+  for (const [route, handler] of [
+    ["api/crm/icp-v2/clients/search.js", "createCrmIcpClientSearchHandler"],
+    ["api/crm/icp-v2/pipeline-cases/[caseKey]/index.js", "createCrmIcpV2DetailHandler"],
+    ["api/crm/icp-v2/pipeline-cases/index.js", "createCrmIcpV2CreateHandler"],
+  ]) {
+    const classification = authInventory[route];
+    if (!classification) fail(`ruta fuera del inventario auth: ${route}`);
+    if (classification.kind !== "TENANT" || classification.wrappedFactory !== true
+      || !Array.isArray(classification.calls) || classification.calls.length !== 1
+      || classification.calls[0].module !== "api/_lib/crmIcpV2ApiHttp.js"
+      || classification.calls[0].name !== handler) {
+      fail(`clasificación auth ICP incorrecta: ${route}`);
+    }
+  }
   const commercialWriteGuard = read("scripts/validate-mt01c2b3a-guard.mjs");
   requireMatch(commercialWriteGuard, /path === "api\/_lib\/crmIcpV2ApiDomain\.js"[\s\S]*no limita promoción por caso, tenant y revisión inicial/, "promoción ICP fuera del inventario comercial");
   requireMatch(commercialWriteGuard, /api\/_lib\/crmIcpV2ApiDomain\.js:client\.create[\s\S]*api\/_lib\/crmIcpV2ApiDomain\.js:pipelineCase\.create/, "creadores ICP fuera del inventario comercial");
-  const publicRefGuard = read("scripts/validate-v17-case-public-ref-guard.mjs");
-  requireMatch(publicRefGuard, /authorizedPublicRefConsumers[\s\S]*"api\/_lib\/crmIcpV2ApiDomain\.js"/, "dominio ICP fuera del inventario publicRef");
+  const icpReferences = publicReferenceContracts["api/_lib/crmIcpV2ApiDomain.js"];
+  if (!Array.isArray(icpReferences) || icpReferences.length !== 2
+    || !icpReferences.includes("CASE") || !icpReferences.includes("CLIENT")) {
+    fail("dominio ICP fuera del contrato CASE/CLIENT del inventario publicRef");
+  }
   const crm01aGuard = read("scripts/validate-crm-01a-guard.mjs");
   const crm01b1Guard = read("scripts/validate-crm-01b1-guard.mjs");
   const crm01b2Guard = read("scripts/validate-crm-01b2-guard.mjs");
@@ -106,7 +214,6 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   const crm01b3b3Guard = read("scripts/validate-crm-01b3b3-guard.mjs");
   const varyGuard = read("scripts/validate-v17-crm-vary-guard.mjs");
   const canonicalRunner = read("scripts/run-canonical-db-tests.mjs");
-  const hubGuard = read("scripts/validate-v17-hub-guard.mjs");
   requireMatch(crm01b1Guard, /RUNTIME_SERVICE_ALLOWLIST[\s\S]*api\/_lib\/crmIcpV2ApiDomain\.js/, "dominio ICP fuera del inventario journal");
   requireMatch(crm01b2Guard, /ICP_API_DOMAIN = "api\/_lib\/crmIcpV2ApiDomain\.js"/, "dominio ICP fuera del inventario de mutación");
   if (crm01b2Guard.split("CASE_MUTATION_DOMAIN, ICP_API_DOMAIN").length - 1 !== 2) {
@@ -125,14 +232,12 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   requireMatch(varyGuard, /EXPECTED_ROUTES[\s\S]*"api\/crm\/icp-v2\/clients\/search\.js": "createCrmIcpClientSearchHandler"[\s\S]*"api\/crm\/icp-v2\/pipeline-cases\/index\.js": "createCrmIcpV2CreateHandler"[\s\S]*"api\/crm\/icp-v2\/pipeline-cases\/\[caseKey\]\/index\.js": "createCrmIcpV2DetailHandler"/, "rutas ICP fuera del inventario Vary");
   requireMatch(varyGuard, /api\/_lib\/crmIcpV2ApiHttp\.js/, "wrapper ICP fuera del inventario Vary");
   requireMatch(crm01b3b3Guard, /routes\.length === 12[\s\S]*crmIcpV2ApiHttp/, "rutas ICP fuera del inventario CRM-01B3B3");
-  requireMatch(canonicalRunner, /crmProductionGateGuardRun\.report\.routes === 12[\s\S]*crmOwnerCatalogGuardRun\.report\.routes === 12[\s\S]*v17CasePublicRefGuardRun\.report\.runtimeConsumers === 7/, "agregador canónico no reconoce los consumidores ICP");
-  for (const path of [
-    "api/_lib/crmIcpV2ApiDomain.js",
-    "api/_lib/crmIcpV2ApiHttp.js",
-    "api/crm/icp-v2/clients/search.js",
-    "api/crm/icp-v2/pipeline-cases/[caseKey]/index.js",
-    "api/crm/icp-v2/pipeline-cases/index.js",
-  ]) if (!hubGuard.includes(`\"${path}\"`)) fail(`archivo fuera de la guardia Hub: ${path}`);
+  validateCanonicalIcpAssertions(canonicalRunner, publicReferenceContracts);
+  try {
+    validateV17HubGuard({ root, overrides: new Map(Object.entries(overrides)) });
+  } catch (error) {
+    fail(`contrato de la guardia Hub inválido: ${error.message}`);
+  }
 
   const srcFiles = walk(resolve(root, "src")).filter((path) => /\.(?:js|jsx|ts|tsx)$/.test(path));
   const frontendConsumers = srcFiles.map((path) => relative(resolve(root), path).replaceAll("\\", "/"))
@@ -149,7 +254,7 @@ export function validateV17CrmIcpApiGuard({ root = process.cwd(), overrides = {}
   }
   return Object.freeze({
     ok: true,
-    migrations: 22,
+    migrations: migrations.length,
     endpoints: Object.freeze([
       "POST /api/crm/icp-v2/pipeline-cases",
       "POST /api/crm/icp-v2/clients/search",

@@ -6,6 +6,7 @@ import { validateV17CrmVaryGuard } from "./validate-v17-crm-vary-guard.mjs";
 const paths = [
   "api/_lib/crmHttpHeaders.js",
   "api/_lib/crmPipelineReadHttp.js",
+  "api/_lib/crmCaseMutationHttp.js",
   "api/_lib/pipelineCaseMutationHttp.js",
   "api/_lib/crmOwnerCatalogHttp.js",
   "api/_lib/crmIcpV2ApiHttp.js",
@@ -31,6 +32,12 @@ const canonicalRoutes = [
   "api/crm/services/catalog/index.js",
   "api/crm/services/catalog/[serviceRef].js",
   "api/crm/services/defaults/index.js",
+  "api/crm/services/catalog-modes/index.js",
+  "api/crm/services/configurations/[caseRef].js",
+  "api/crm/services/configurations/conflicts/[conflictRef].js",
+  "api/crm/services/material-policies/index.js",
+  "api/crm/services/modes/index.js",
+  "api/crm/services/packages/index.js",
   "api/crm/survey/assignments/index.js",
   "api/crm/survey/assignments/[assignmentRef].js",
   "api/crm/survey/scheduling/index.js",
@@ -90,4 +97,53 @@ rejected("CI omite contrato", {
   routes: canonicalRoutes,
 }, /CI no exige/);
 
-process.stdout.write(`${JSON.stringify({ ok: true, assertions })}\n`);
+for (const route of [
+  "api/crm/services/catalog-modes/index.js", "api/crm/services/configurations/[caseRef].js",
+  "api/crm/services/configurations/conflicts/[conflictRef].js", "api/crm/services/material-policies/index.js",
+  "api/crm/services/modes/index.js", "api/crm/services/packages/index.js",
+]) {
+  rejected(`ruta consolidada ausente: ${route}`, { sources: baseline, routes: canonicalRoutes.filter((path) => path !== route) }, /ruta CRM nueva o faltante/);
+}
+for (const adapter of ["crmCaseMutationHttp", "crmServicesHttp", "crmSurveyHttp", "crmOwnerCatalogHttp"]) {
+  const path = `api/_lib/${adapter}.js`;
+  rejected(`headers antes de gate: ${adapter}`, { sources: { ...baseline, [path]: baseline[path].replaceAll("setCrmPrivateHeaders(res);", "") }, routes: canonicalRoutes }, /orden/);
+}
+rejected("ruta nueva bajo Services sigue sin estar autorizada", { sources: baseline, routes: [...canonicalRoutes, "api/crm/services/future.js"].sort() }, /ruta CRM nueva/);
+const packages = "api/crm/services/packages/index.js";
+const packageSource = readFileSync(resolve(packages), "utf8");
+rejected("import correcto sin llamada no preserva wrapper", {
+  sources: baseline, routes: canonicalRoutes,
+  routeSourceOverrides: { [packages]: packageSource.replace("export default createCrmServicesHandler(", "export default unsafeHandler(") },
+}, /evita el wrapper/);
+rejected("nombre de factory correcto desde otro módulo no autoriza", {
+  sources: baseline, routes: canonicalRoutes,
+  routeSourceOverrides: { [packages]: packageSource.replace("crmServicesHttp.js", "unsafeHttp.js") },
+}, /evita el wrapper/);
+rejected("ruta no puede retirar Vary", {
+  sources: baseline, routes: canonicalRoutes,
+  routeSourceOverrides: { [packages]: packageSource + '\nres.removeHeader("vary");' },
+}, /sobrescribe Vary/);
+rejected("comentario no suple la llamada al wrapper", {
+  sources: baseline, routes: canonicalRoutes,
+  routeSourceOverrides: { [packages]: '// createCrmServicesHandler({});\nexport default () => null;' },
+}, /evita el wrapper/);
+rejected("POST y PATCH de casos también requieren su wrapper", {
+  sources: baseline, routes: canonicalRoutes,
+  routeSourceOverrides: { "api/crm/pipeline-cases/index.js": readFileSync(resolve("api/crm/pipeline-cases/index.js"), "utf8").replaceAll("createCrmCaseMutationHandler", "unsafeMutation") },
+}, /evita el wrapper/);
+rejected("ruta nueva no puede sobrescribir Vary", {
+  sources: baseline, routes: canonicalRoutes,
+  routeSourceOverrides: { [packages]: packageSource + '\nres.setHeader("Vary", "Origin");' },
+}, /sobrescribe Vary/);
+rejected("ruta nueva no puede declarar wildcard", {
+  sources: baseline, routes: canonicalRoutes,
+  routeSourceOverrides: { [packages]: packageSource + '\nconst headers = { Vary: "*" };' },
+}, /Vary wildcard/);
+rejected("cache privado no puede eliminarse", {
+  sources: { ...baseline, "api/_lib/crmHttpHeaders.js": baseline["api/_lib/crmHttpHeaders.js"].replace('res.setHeader("Cache-Control", "private, no-store")', 'res.setHeader("Cache-Control", "public")') }, routes: canonicalRoutes,
+}, /cache privado/);
+rejected("CORS heredado no puede conservarse", {
+  sources: { ...baseline, "api/_lib/crmHttpHeaders.js": baseline["api/_lib/crmHttpHeaders.js"].replace('removeHeader("Access-Control-Allow-Origin")', 'removeHeader("Other-Header")') }, routes: canonicalRoutes,
+}, /wildcard heredado/);
+
+process.stdout.write(`${JSON.stringify({ ok: true, assertions, routes: canonicalRoutes.length })}\n`);

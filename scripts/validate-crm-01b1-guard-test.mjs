@@ -1,3 +1,4 @@
+import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateCrm01b1Guard } from "./validate-crm-01b1-guard.mjs";
@@ -24,10 +25,10 @@ function rejectedCatalog(name, catalog, pattern) {
 
 try {
   const baseline = validateCrm01b1Guard({ root });
-  check("fundación inactiva aprobada", baseline.ok && baseline.migrations === 22 && baseline.approved === "FROZEN_LEGACY_AMBIGUOUS");
-  rejected("migración 23 rechazada", {
-    migrations: [...Array.from({ length: 22 }, (_, index) => `m${index}`), "20260901010000_unexpected"],
-  }, /22 migraciones/);
+  check("fundación inactiva aprobada", baseline.ok && baseline.migrations === CANONICAL_MIGRATIONS.length && baseline.approved === "FROZEN_LEGACY_AMBIGUOUS");
+  rejected("migración adicional rechazada", {
+    migrations: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"],
+  }, /35 migraciones canónicas/);
   rejected("consumidor runtime rechazado", { extraSources: { "api/crm/mutate.js": "await prisma.pipelineCaseCommand.create({ data });" } }, /consumidores runtime/);
   rejected("mutación runtime rechazada", { extraSources: { "api/crm/mutate.js": "await prisma.pipelineCase.update({ where, data });" } }, /mutaciones PipelineCase/);
   const sqlPath = "prisma/migrations/20260801015000_crm01b_pipeline_mutation_authority/migration.sql";

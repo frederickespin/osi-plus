@@ -131,15 +131,18 @@ function summary(total: number, assigned = 0) {
 
 async function authenticate(page: Page, actor: Actor = { role: "A", permissions: ["pipeline:view"] }) {
   const membershipRef = "11111111-1111-4111-8111-111111111111";
-  await page.addInitScript(({ role, token }) => {
+  await page.addInitScript(({ role, token, membershipRef }) => {
     localStorage.setItem("osi-plus.token", token);
-    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic-user", name: "Actor sintético", role }));
-  }, { role: actor.role, token: actor.token ?? "synthetic.crm.read.token" });
-  await page.route("**/api/auth/me", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ ok: true, user: { name: "Actor sintético", role: actor.role, status: "active", permissions: actor.permissions, deniedPermissions: actor.deniedPermissions, membership: { membershipRef, tenantName: "Tenant sintético", role: actor.role }, memberships: [{ membershipRef, tenantName: "Tenant sintético", role: actor.role, preferred: true }] } }),
-  }));
+    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic-user", name: "Actor sintético", role, membershipRef, memberships: [{ membershipRef, tenantName: "Tenant sintético", role, preferred: true }] }));
+  }, { role: actor.role, token: actor.token ?? "synthetic.crm.read.token", membershipRef });
+  await page.route("**/api/auth/me", (route) => {
+    expect(route.request().headers()["x-osi-membership-ref"]).toBe(membershipRef);
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, user: { name: "Actor sintético", role: actor.role, status: "active", permissions: actor.permissions, deniedPermissions: actor.deniedPermissions, membership: { membershipRef, tenantName: "Tenant sintético", role: actor.role }, memberships: [{ membershipRef, tenantName: "Tenant sintético", role: actor.role, preferred: true }] } }),
+    });
+  });
 }
 
 async function mockCrm(page: Page, options: { total?: number; cases?: ReturnType<typeof pipelineCase>[]; status?: number; error?: string; delayMs?: number } = {}) {
@@ -205,7 +208,9 @@ test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo
   } else {
     await expect(page.getByText("OSi Plus ERP", { exact: true })).toBeVisible();
   }
-  await expect(page.getByText("Comercial y CRM", { exact: true })).toHaveCount(0);
+  // The module remains reachable in navigation while its Inbox header is absent from the focused case.
+  await expect(page.getByRole("navigation", { name: "Módulos del ERP", includeHidden: true }).getByRole("button", { name: "Comercial y CRM", exact: true, includeHidden: true })).toHaveCount(1);
+  await expect(page.locator("main").getByText("Comercial y CRM", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Control comercial relacional", { exact: true })).toHaveCount(0);
   await expect(page.getByText("ERP avanzado", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toHaveCount(0);
@@ -678,7 +683,11 @@ test("compuerta CRM desactivada mantiene descriptor inactivo sin chunk ni reques
   page.on("request", (request) => resources.push(new URL(request.url()).pathname));
   await authenticate(page);
   await page.goto("http://127.0.0.1:4186/commercial");
-  await expect(page.getByText("En integración.")).toBeVisible();
+  await expect(page.getByText("Pendiente de habilitación", { exact: true })).toBeVisible();
+  await expect(page.getByText("Esta aplicación todavía no está disponible en este entorno.", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Volver al Hub", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Hola, Actor sintético", exact: true })).toBeVisible();
+  await expect(page.getByTestId("hub-pending-applications")).toContainText("Comercial y CRM");
   expect(resources.some((path) => /AdvancedErpShell|CommercialInboxModule/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
 });

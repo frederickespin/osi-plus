@@ -1,3 +1,5 @@
+import { approvedCrmPreviewPrerequisite } from "./crm-preview-prerequisite-guard.mjs";
+import { validateMigrationInventory } from "./canonical-migrations.mjs";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { relative, resolve } from "node:path";
@@ -44,7 +46,7 @@ function filesBelow(directory) {
 export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, extraSources = {}, env = process.env, migrationNames } = {}) {
   const read = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.includes("20260904010000_v17_services_tenant_first") && migrations.includes("20260905010000_v17_survey_foundation"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exigen 22 migraciones base y sólo las extensiones Servicios/Survey autorizadas");
+  validateMigrationInventory(root, migrations);
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
   invariant(/model PipelineCaseCommand\s*\{/.test(read("prisma/schema.prisma")), "datamodel no contiene autoridad PipelineCaseCommand");
 
@@ -76,7 +78,13 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
     const path = relative(root, absolute).replaceAll("\\", "/");
     const source = read(path);
     if (path !== "api/_lib/crmPipelineAccess.js") {
-      for (const name of CONFIG_NAMES) invariant(!source.includes(`env.${name}`) && !source.includes(`process.env.${name}`), `${path} interpreta ${name} fuera del resolver único`);
+      const prerequisite = approvedCrmPreviewPrerequisite(path, source);
+      for (const name of CONFIG_NAMES) {
+        const reads = [...source.matchAll(new RegExp(`(?:process\\.)?env\\.${name}`, "g"))];
+        invariant(reads.every((match) => name === "CRM_PIPELINE_RUNTIME_MODE" && prerequisite
+          && match.index === prerequisite.start && match.index + match[0].length === prerequisite.end),
+        `${path} interpreta ${name} fuera del resolver único`);
+      }
     }
   }
 
@@ -142,7 +150,7 @@ export function validateCrm01b3b1Guard({ root = process.cwd(), overrides = {}, e
   for (const suite of ["crm-01b3b1-gate-test.mjs", "crm-01b3b1-adversarial-test.mjs", "validate-crm-01b3b1-guard.mjs", "validate-crm-01b3b1-guard-test.mjs", "crm-01a-test.mjs", "crm-01b3a-integration-test.mjs"]) {
     invariant(canonical.includes(suite), `runner canónico no exige ${suite}`);
   }
-  return Object.freeze({ ok: true, migrations: 22, routes: 12, historicalRoutes: 9, isolatedApiRoutes: 3, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 4 });
+  return Object.freeze({ ok: true, migrations: migrations.length, routes: 12, historicalRoutes: 9, isolatedApiRoutes: 3, readMode: "DISABLED", mutationMode: "DISABLED", frontendConsumers: 4 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

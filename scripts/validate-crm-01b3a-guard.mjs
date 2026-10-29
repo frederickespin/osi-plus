@@ -1,3 +1,4 @@
+import { validateMigrationInventory } from "./canonical-migrations.mjs";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -31,7 +32,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   const read = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const files = inventory(root);
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.includes("20260904010000_v17_services_tenant_first") && migrations.includes("20260905010000_v17_survey_foundation"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exige la base canónica y sólo las extensiones Servicios/Survey autorizadas");
+  validateMigrationInventory(root, migrations);
   invariant(createHash("sha256").update(read(`prisma/migrations/${MIGRATION}/migration.sql`).replace(/\r\n/g, "\n")).digest("hex") === MIGRATION_HASH, "migración 16 modificada");
 
   const adapter = read("api/_lib/pipelineCaseMutationHttp.js");
@@ -119,7 +120,7 @@ export function validateCrm01b3aGuard({ root = process.cwd(), overrides = {}, ex
   invariant(/lostResponseCommits/.test(stress) && /transportLost/.test(stress), "falta escenario de respuesta perdida post-commit");
   const domain = read("api/_lib/pipelineCaseDomain.js");
   invariant(/APPROVED:\s*Object\.freeze\(\[\]\)/.test(domain) && !/APPROVED:\s*Object\.freeze\(\["WON"\]/.test(domain), "APPROVED no puede tratarse como WON");
-  return Object.freeze({ ok: true, migrations: 22, mutationMode: "DISABLED", postEndpoints: 3, readEndpoints: 1, runtimeConsumers: 4, frontendConsumers: 1 });
+  return Object.freeze({ ok: true, migrations: migrations.length, mutationMode: "DISABLED", postEndpoints: 3, readEndpoints: 1, runtimeConsumers: 4, frontendConsumers: 1 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

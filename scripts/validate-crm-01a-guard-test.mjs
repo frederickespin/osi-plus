@@ -1,3 +1,4 @@
+import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateCrm01aGuard } from "./validate-crm-01a-guard.mjs";
@@ -22,7 +23,7 @@ try {
   check("adaptadores frontend relacionales gobernados", baseline.frontendConsumers === 4 && baseline.writeEndpoints === 2 && baseline.isolatedApiRoutes === 3);
   check("pipeline:view limitado a A y V", baseline.permission === "pipeline:view" && JSON.stringify(baseline.baseRoles) === JSON.stringify(["A", "V"]));
   rejected("READ_ONLY en CI rechazado", { env: { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" } }, /READ_ONLY/);
-  rejected("migración 23 rechazada", { migrations: [...Array.from({ length: 22 }, (_, index) => `m${index}`), "20260901010000_unexpected"] }, /22 migraciones/);
+  rejected("migración adicional rechazada", { migrations: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /35 migraciones canónicas/);
   const service = read("api/_lib/crmPipelineRead.js");
   rejected("clients:view como autoridad rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("PERMS.PIPELINE_VIEW", '"clients:view"') } }, /pipeline:view/);
   const rbac = read("api/_lib/rbac.js");
@@ -33,6 +34,7 @@ try {
   rejected("ownerId heredado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": `${service}\nconst authority = row.ownerId;` } }, /ownerId/);
   rejected("campo interno expuesto rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("publicRef: true,", "tenantId: true,\n  publicRef: true,") } }, /campos internos/);
   const list = read("api/crm/pipeline-cases/index.js");
+  rejected("autoridad por headers heredados rechazada", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("return createCrmPipelineReadHandler({", 'const unsafeRole = req.headers["x-osi-role"]; return createCrmPipelineReadHandler({') } }, /autoridad del navegador/);
   rejected("adaptador de lectura omitido rechazado", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("createCrmPipelineReadHandler({", "({") } }, /adaptador HTTP canónico/);
   const readHttp = read("api/_lib/crmPipelineReadHttp.js");
   rejected("fixture exacta OPTIONS 204 antes del gate rechazada", { overrides: { "api/_lib/crmPipelineReadHttp.js": readHttp.replace("{ handleOptions: false }", "{ handleOptions: true }") } }, /intercepta OPTIONS/);

@@ -1,7 +1,7 @@
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { validateMigrationFiles } from "./validate-canonical-ci.mjs";
+import { CANONICAL_MIGRATIONS, validateMigrationFiles } from "./canonical-migrations.mjs";
 import { validateMt01c2b1Guard } from "./validate-mt01c2b1-guard.mjs";
 
 const root = mkdtempSync(join(tmpdir(), "mt01c2b1-guard-"));
@@ -98,7 +98,8 @@ try {
   write(join("prisma/migrations/20260801021000_unexpected", "migration.sql"), "SELECT 1;\n");
   let unexpectedError;
   try { validateMigrationFiles(root); } catch (caught) { unexpectedError = caught; }
-  check("migración 23 inesperada rechazada", unexpectedError?.message.includes("22 migraciones canónicas"));
+  check("migración no incluida en el inventario canónico rechazada",
+    unexpectedError?.message.includes(`${CANONICAL_MIGRATIONS.length} migraciones canónicas`));
 
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } finally {

@@ -7,7 +7,12 @@ const schema = readFileSync(resolve(root, "prisma/schema.prisma"), "utf8");
 const sql = readFileSync(resolve(root, "prisma/migrations", V17_CASE_PUBLIC_REF_MIGRATION, "migration.sql"), "utf8");
 const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
 const canonicalRead = readFileSync(resolve(root, "api/_lib/crmPipelineRead.js"), "utf8");
-const canonicalRuntime = { "api/_lib/crmPipelineRead.js": canonicalRead, "api/_lib/crmCaseMutationDomain.js": "const caseRef = row.public_ref;", "api/_lib/crmClientOptions.js": "const clientRef = row.publicRef;", "api/crm/pipeline-cases/[caseKey]/index.js": "findCrmPipelineCase(database, { tenantId: context.tenantId, role: context.role, membershipId: context.membershipId, userId: context.userId, caseRef: req.query?.caseKey });", "src/crm-relational/readApi.ts": "const caseRef = 'public DTO';" };
+const baseline = validateV17CasePublicRefGuard({ root });
+const canonicalRuntime = Object.fromEntries([
+  ...Object.keys(baseline.consumerContracts),
+  "api/crm/pipeline-cases/[caseKey]/index.js",
+  "src/crm-relational/readApi.ts",
+].map((path) => [path, readFileSync(resolve(root, path), "utf8")]));
 const results = [];
 function mutatePipeline(mutator) {
   return schema.replace(/model PipelineCase\s*\{[\s\S]*?\n\}/, (block) => mutator(block));
@@ -25,8 +30,26 @@ function rejected(name, overrides, expected) {
 function withCanonicalRead(source) {
   return { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": source } };
 }
+function changeConsumer(path, before, after) {
+  const source = canonicalRuntime[path];
+  if (!source?.includes(before) || before === after) throw new Error("Mutación sin efecto: " + path + " / " + before);
+  return { extraRuntimeSources: { ...canonicalRuntime, [path]: source.replace(before, after) } };
+}
 
-check("baseline publicRef aprobada", validateV17CasePublicRefGuard().ok);
+check("baseline publicRef aprobada", baseline.ok);
+check("inventario distingue casos y clientes de membresías e invitaciones",
+  baseline.runtimeConsumers === 23
+  && baseline.consumerContracts["api/_lib/crmIcpV2ApiDomain.js"].kinds.join(",") === "CASE,CLIENT"
+  && baseline.consumerContracts["api/_lib/authContext.js"].kinds.join(",") === "MEMBERSHIP"
+  && baseline.consumerContracts["api/_lib/adminIdentityInvitationDomain.js"].kinds.join(",") === "INVITATION,MEMBERSHIP");
+check("todos los consumidores persistentes tienen consultas verificadas",
+  Object.entries(baseline.consumerContracts).every(([path, contract]) =>
+    ["api/_lib/authorizationContext.js", "api/_lib/crmIcpV2Domain.js"].includes(path)
+      || contract.prismaQueries + contract.sqlQueries > 0));
+check("el reporte conserva el tamaño real de la cadena de migraciones", baseline.migrations === migrations.length);
+check("propiedades entre comillas equivalentes conservan alcance tenant-first",
+  validateV17CasePublicRefGuard({ root, ...changeConsumer("api/_lib/toolsEquipmentDomain.js",
+    "where: { tenantId, publicRef: caseRef }", 'where: { "tenantId": tenantId, "publicRef": caseRef }') }).ok);
 rejected("nullable rechazado", { schemaSource: mutatePipeline((block) => block.replace("publicRef                     String ", "publicRef                     String? ")) }, /NOT NULL|nullable/);
 rejected("default PostgreSQL eliminado", { schemaSource: mutatePipeline((block) => block.replace('@default(dbgenerated("gen_random_uuid()")) ', "")) }, /default PostgreSQL/);
 rejected("unicidad tenant-first eliminada", { schemaSource: mutatePipeline((block) => block.replace(/\s*@@unique\(\[tenantId, publicRef\][^\r\n]*\r?\n/, "\n")) }, /unicidad tenant-first/);
@@ -41,7 +64,7 @@ const backfill = sql.match(/UPDATE "osi"\."osi_pipeline_cases"[\s\S]*?WHERE "pub
 rejected("orden inseguro rechazado", { migrationSource: sql.replace(backfill, "").replace('ADD COLUMN "public_ref" UUID;', `${backfill}\n\nADD COLUMN "public_ref" UUID;`) }, /orden|eventos de triggers/);
 rejected("CUID como fallback rechazado", { schemaSource: mutatePipeline((block) => block.replace('dbgenerated("gen_random_uuid()")', "cuid()")) }, /default PostgreSQL|Prisma no puede/);
 rejected("JWT como fuente rechazado", { migrationSource: sql.replace("COMMIT;", "-- derive from JWT secret\nCOMMIT;") }, /fallback|debilitamiento/);
-rejected("migración 23 rechazada", { migrationNames: [...migrations, "20260901010000_future"] }, /22 migraciones|migración 20/);
+rejected("extensión de migraciones fuera de orden rechazada", { migrationNames: [...migrations, "20260901010000_future"] }, /22 migraciones|orden/);
 rejected("consumidor backend adicional rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/public-ref.js": "const value = row.publicRef;" } }, /sólo puede consumirse/);
 rejected("mutación consumidora rechazada", { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/pipelineCaseMutationHttp.js": "const value = command.publicRef;" } }, /sólo puede consumirse/);
 rejected("consumidor frontend rechazado", { extraRuntimeSources: { ...canonicalRuntime, "src/unsafe.ts": "const leaked = value.publicRef;" } }, /sólo puede consumirse|frontend/);
@@ -73,5 +96,74 @@ rejected("frontend clientName rechazado", { extraRuntimeSources: { ...canonicalR
 rejected("campo público interno rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/leak.js": "res.json({ public_ref: row.value })" } }, /sólo puede consumirse/);
 rejected("alias dinámico id rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/pipeline-cases/[id].js": "export default function handler() {}" } }, /segmento dinámico físico único|alias ambiguo/);
 rejected("segmento dinámico conflictivo rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/pipeline-cases/[other]/future.js": "export default function handler() {}" } }, /segmento dinámico físico único/);
+
+rejected("archivo nuevo dentro de _lib no hereda la clasificación de otro dominio", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/costingDomainExtra.js": "tx.pipelineCase.findFirst({ where: { tenantId: context.tenantId, publicRef: caseRef } });" },
+}, /sólo puede consumirse/);
+rejected("un nombre aprobado sin contrato no autoriza consumir referencias", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/materialsInventoryDomain.js": "const caseRef = row.publicRef;" },
+}, /sin contrato tenant-first verificable/);
+rejected("un nuevo modelo en un consumidor conocido necesita clasificación", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/costingDomain.js": canonicalRuntime["api/_lib/costingDomain.js"] + "\ntx.unclassifiedEntity.findFirst({ where: { tenantId: context.tenantId, publicRef: ref } });\n" },
+}, /modelo de referencia sin clasificar/);
+rejected("la clasificación CASE no autoriza consultar membresías", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/materialsInventoryDomain.js": canonicalRuntime["api/_lib/materialsInventoryDomain.js"] + "\ntx.tenantMembership.findFirst({ where: { tenantId: context.tenantId, publicRef: ref } });\n" },
+}, /modelo de referencia sin clasificar/);
+rejected("una consulta adicional sin tenant falla aunque la anterior sea válida", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/costingDomain.js": canonicalRuntime["api/_lib/costingDomain.js"] + "\ntx.pipelineCase.findFirst({ where: { publicRef: ref } });\n" },
+}, /contrato tenant-first/);
+
+const scopedConsumers = [
+  ["Portal", "api/_lib/clientTemporaryAccessDomain.js", "tenantId: who.tenantId, publicRef: assertAccessRef(caseRef)", "publicRef: assertAccessRef(caseRef)"],
+  ["Relaciones cliente", "api/_lib/commercialRelationshipsDomain.js", "tenantId: context.tenantId, publicRef: input.clientRef", "publicRef: input.clientRef"],
+  ["Comunicaciones", "api/_lib/communicationsDomain.js", "tenantId: context.tenantId, publicRef: normalizeCaseRef(caseRef)", "publicRef: normalizeCaseRef(caseRef)"],
+  ["Costos", "api/_lib/costingDomain.js", "tenantId: context.tenantId, publicRef: caseRef", "publicRef: caseRef"],
+  ["Servicios", "api/_lib/crmServicesApiDomain.js", "tenantId: who.tenantId, publicRef: serviceRef(ref)", "publicRef: serviceRef(ref)"],
+  ["Survey caso", "api/_lib/crmSurveyDomain.js", "tenantId: who.tenantId, publicRef: command.caseRef", "publicRef: command.caseRef"],
+  ["Survey evaluador", "api/_lib/crmSurveyDomain.js", "tenantId: who.tenantId,\n          publicRef: command.evaluatorMembershipRef", "publicRef: command.evaluatorMembershipRef"],
+  ["Logística", "api/_lib/logisticsEngineDomain.js", "tenantId: context.tenantId, publicRef: caseRef", "publicRef: caseRef"],
+  ["Materiales", "api/_lib/materialsInventoryDomain.js", "tenantId: context.tenantId, publicRef: input.caseRef", "publicRef: input.caseRef"],
+  ["Personal", "api/_lib/personnelPoliciesDomain.js", "tenantId: who.tenantId, publicRef: command.caseRef", "publicRef: command.caseRef"],
+  ["Cotización", "api/_lib/quoteDomain.js", "tenantId: context.tenantId, publicRef: caseRef", "publicRef: caseRef"],
+  ["Paquetes", "api/_lib/servicePackagesDomain.js", "tenantId: who.tenantId, publicRef: caseRef", "publicRef: caseRef"],
+  ["Agenda caso", "api/_lib/surveySchedulingDomain.js", "tenantId: who.tenantId, publicRef: caseRef", "publicRef: caseRef"],
+  ["Agenda evaluador", "api/_lib/surveySchedulingDomain.js", "tenantId: who.tenantId,\n      publicRef: membershipRef", "publicRef: membershipRef"],
+  ["Equipo caso", "api/_lib/toolsEquipmentDomain.js", "tenantId, publicRef: caseRef", "publicRef: caseRef"],
+  ["Equipo membresía", "api/_lib/toolsEquipmentDomain.js", "tenantId, publicRef: membershipRef", "publicRef: membershipRef"],
+  ["Opciones de cliente", "api/_lib/crmClientOptions.js", "tenantId: String(tenantId),", ""],
+  ["ICP fábrica de filtro", "api/_lib/crmIcpV2ApiDomain.js", "return { tenantId, OR: matches };", "return { OR: matches };"],
+];
+for (const [name, path, before, after] of scopedConsumers) {
+  rejected(name + " rechaza perder su predicado tenant", changeConsumer(path, before, after), /contrato tenant-first/);
+}
+rejected("tenant desde input no satisface el contrato", changeConsumer("api/_lib/costingDomain.js",
+  "tenantId: context.tenantId, publicRef: caseRef", "tenantId: input.tenantId, publicRef: caseRef"), /contrato tenant-first/);
+rejected("spread posterior desconocido no puede sobrescribir tenant", changeConsumer("api/_lib/costingDomain.js",
+  "publicRef: caseRef, ...caseScope(context)", "publicRef: caseRef, ...rawScope"), /contrato tenant-first/);
+rejected("comentario no rescata la pérdida de tenant", changeConsumer("api/_lib/costingDomain.js",
+  "tenantId: context.tenantId, publicRef: caseRef", "/* tenantId: context.tenantId */ publicRef: caseRef"), /contrato tenant-first/);
+rejected("reasignación posterior no puede eliminar aislamiento", changeConsumer("api/_lib/crmClientOptions.js",
+  "  try {", "  where.tenantId = filters.tenantId;\n  try {"), /no admite reasignar tenantId/);
+rejected("SQL CASE pierde tenant", changeConsumer("api/_lib/crmCaseMutationDomain.js",
+  'WHERE "tenant_id"=${who.tenantId} AND "public_ref"', 'WHERE "public_ref"'), /contrato tenant-first/);
+rejected("SQL CLIENT pierde tenant", changeConsumer("api/_lib/crmCaseMutationDomain.js",
+  'WHERE "tenant_id"=${tenantId} AND "public_ref"', 'WHERE "public_ref"'), /contrato tenant-first/);
+rejected("SQL MEMBERSHIP pierde tenant", changeConsumer("api/_lib/adminMembershipDomain.js",
+  'WHERE tm."tenant_id"=${actor.tenantId} AND tm."public_ref"', 'WHERE tm."public_ref"'), /contrato tenant-first/);
+rejected("SQL lista de membresías cambia AND por OR", changeConsumer("api/_lib/adminMembershipDomain.js",
+  'Prisma.join(conditions, " AND ")', 'Prisma.join(conditions, " OR ")'), /contrato tenant-first/);
+rejected("SQL invitación pierde tenant", changeConsumer("api/_lib/adminIdentityInvitationDomain.js",
+  'WHERE "tenant_id"=${actor.tenantId} AND "public_ref"', 'WHERE "public_ref"'), /contrato tenant-first/);
+rejected("SQL invitación no acepta tenant de una entrada", changeConsumer("api/_lib/adminIdentityInvitationDomain.js",
+  '${actor.tenantId}, ${email}', '${input.tenantId}, ${email}'), /contrato tenant-first/);
+rejected("sesión legacy conserva vínculo Membership/Tenant", changeConsumer("api/_lib/authContext.js",
+  'LEFT JOIN "osi"."tenants" t ON t."id" = tm."tenant_id"', 'LEFT JOIN "osi"."tenants" t ON true'), /contrato tenant-first/);
+rejected("sesión V2 conserva vínculo de tenant", changeConsumer("api/_lib/authContext.js",
+  'tm."tenant_id" = s."tenant_id" AND tm."id"', 'tm."id"'), /contrato tenant-first/);
+rejected("proyección de contexto conserva empresa canónica", changeConsumer("api/_lib/authorizationContext.js",
+  "tenantId: frozenTenant.id", "tenantId: membership.publicRef"), /proyección de membresía/);
+rejected("SQL literal no parametrizado no obtiene permiso por nombre de archivo", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/costingDomain.js": canonicalRuntime["api/_lib/costingDomain.js"] + '\ntx.$queryRawUnsafe(\'SELECT "public_ref" FROM "osi"."osi_pipeline_cases"\');\n' },
+}, /SQL público sin parámetros/);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

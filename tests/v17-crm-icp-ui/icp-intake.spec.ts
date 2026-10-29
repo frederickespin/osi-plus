@@ -45,6 +45,51 @@ async function mockEmptyInbox(page: Page) {
   await page.route("**/api/crm/pipeline-cases?**", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 0, page: 1, pageSize: 25, data: [] }) }));
 }
 
+async function mockCreatedCaseReads(page: Page) {
+  const client = { clientRef: CLIENT_REF, displayName: "Cliente confirmado por servidor", type: "INDIVIDUAL", status: "ACTIVE" };
+  const address = {
+    countryCode: "DO", provinceState: "Distrito Nacional", cityMunicipality: "Santo Domingo",
+    sector: null, streetAndNumber: "Av. Principal 10", buildingResidential: null, floorUnit: null,
+    arrivalReference: null, locationContactName: null, locationContactPhone: null,
+  };
+  const common = {
+    caseRef: CASE_REF, caseCode: "ICP-SERVER-001", version: 1, status: "NEW_INBOX", mode: "LOCAL",
+    serviceType: "PENDING_DEFINITION", requiresSurvey: false, surveyMethod: "NO_APLICA", client,
+    createdAt: "2026-09-01T10:00:00.000Z", updatedAt: "2026-09-01T10:00:00.000Z",
+  };
+  const detail = {
+    ...common, customerType: "INDIVIDUAL", estimatedCbm: null,
+    originLocation: "Santo Domingo", destinationLocation: "Santiago", destinationContracted: false,
+    assetsCount: 0, quoteCount: 0, eventCount: 1, owner: null,
+  };
+  const icp = {
+    ...common, volume: { status: "PENDING", estimatedCbm: null, source: null },
+    intakeChannel: "WHATSAPP", clientProfileType: "INDIVIDUAL",
+    requirementNotes: "Acceso limitado para camión y fecha deseada en septiembre.",
+    serviceDefinitionStatus: "PENDING", surveyDecisionStatus: "PENDING", ownerName: null,
+    caseContact: { displayName: "Ana Cliente", phone: "+18095550101", email: "ana@example.invalid" },
+    route: {
+      contractVersion: 2, revision: 1, destinationStatus: "CONFIRMED", origin: address,
+      destination: { ...address, provinceState: "Santiago", cityMunicipality: "Santiago de los Caballeros", streetAndNumber: "Calle Destino 20" },
+      additionalStops: [],
+    },
+  };
+  const reads: string[] = [];
+  for (const [pathname, data] of [
+    [`/api/crm/pipeline-cases/${CASE_REF}`, detail],
+    [`/api/crm/icp-v2/pipeline-cases/${CASE_REF}`, icp],
+  ] as const) {
+    await page.route(`**${pathname}`, (route) => {
+      expect(route.request().method()).toBe("GET");
+      expect(route.request().headers().authorization).toBe("Bearer synthetic.icp.ui.token");
+      expect(route.request().headers()["x-osi-membership-ref"]).toBe(MEMBERSHIP_REF);
+      reads.push(pathname);
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data }) });
+    });
+  }
+  return reads;
+}
+
 async function fillInlineClient(page: Page) {
   const dialog = page.getByTestId("crm-icp-v2-intake-form");
   await dialog.getByRole("button", { name: "Nuevo" }).click();
@@ -64,6 +109,7 @@ test.beforeEach(async ({ page }) => { await mockEmptyInbox(page); });
 
 test("el ICP aprobado crea cliente, ruta y notas con sesión real sin RNC, volumen, servicios, Survey ni paradas", async ({ page }) => {
   await authenticate(page);
+  const reads = await mockCreatedCaseReads(page);
   let createBody: Record<string, unknown> | null = null;
   await page.route("**/api/crm/icp-v2/pipeline-cases", async (route: Route) => {
     createBody = route.request().postDataJSON() as Record<string, unknown>;
@@ -72,7 +118,7 @@ test("el ICP aprobado crea cliente, ruta y notas con sesión real sin RNC, volum
     await route.fulfill({ status: 201, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, version: 1, routeRevision: 1, clientRef: CLIENT_REF }, replayed: false }) });
   });
   await page.goto("/commercial");
-  await page.getByRole("button", { name: "Nuevo ICP" }).click();
+  await page.getByRole("button", { name: "Nuevo caso", exact: true }).click();
   const dialog = page.getByTestId("crm-icp-v2-intake-form");
   await expect(dialog.getByText(/volumen|cbm|rnc|cédula|servicio principal|survey|paradas/i)).toHaveCount(0);
   await fillInlineClient(page);
@@ -86,7 +132,15 @@ test("el ICP aprobado crea cliente, ruta y notas con sesión real sin RNC, volum
   await destination.getByLabel("Dirección *").fill("Calle Destino 20");
   await dialog.getByLabel("Notas del requerimiento").fill("Acceso limitado para camión y fecha deseada en septiembre.");
   await dialog.getByRole("button", { name: "Crear caso" }).click();
-  await expect(page.getByTestId("crm-icp-v2-success")).toContainText("listo para continuar en su Ficha");
+  await expect(page).toHaveURL(new RegExp(`/commercial/cases/${CASE_REF}$`));
+  await expect(dialog).toHaveCount(0);
+  const focusedHeader = page.getByTestId("commercial-case-focused-header");
+  await expect(focusedHeader.getByRole("heading", { name: "Ficha del Caso", exact: true })).toBeVisible();
+  await expect(focusedHeader.getByRole("heading", { name: "Cliente confirmado por servidor", exact: true })).toBeVisible();
+  await expect(focusedHeader).toContainText("ICP-SERVER-001");
+  await expect(page.getByTestId("case-workflow-overview").getByRole("heading", { name: "ICP y relación comercial", exact: true })).toBeVisible();
+  expect(reads).toContain(`/api/crm/pipeline-cases/${CASE_REF}`);
+  expect(reads).toContain(`/api/crm/icp-v2/pipeline-cases/${CASE_REF}`);
   expect(createBody).not.toBeNull();
   expect(createBody).toMatchObject({ mode: "LOCAL", serviceType: "PENDING_DEFINITION", requiresSurvey: false, surveyMethod: "NO_APLICA", requirementNotes: "Acceso limitado para camión y fecha deseada en septiembre." });
   expect((createBody?.client as Record<string, unknown>).taxId).toBeNull();
@@ -106,7 +160,7 @@ test("busca Client por POST y permite destino pendiente sólo con permiso explí
     await route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, total: 1, page: 1, pageSize: 10, data: [{ clientRef: CLIENT_REF, displayName: "Cliente Existente", type: "INDIVIDUAL", status: "ACTIVE", matchHints: { taxId: "••••0001", phone: "••••0101", email: "c•••@example.invalid" } }] }) });
   });
   await page.goto("/commercial");
-  await page.getByRole("button", { name: "Nuevo ICP" }).click();
+  await page.getByRole("button", { name: "Nuevo caso", exact: true }).click();
   const dialog = page.getByTestId("crm-icp-v2-intake-form");
   await dialog.getByRole("button", { name: "Buscar" }).click();
   await page.getByLabel("Buscar cliente").fill("Cliente");
@@ -122,6 +176,8 @@ test("Administrador y Ventas requieren grant explícito; un deny prevalece y otr
   for (const scenario of [
     { role: "A", permissions: ["pipeline:view", "pipeline:create"], deniedPermissions: [], expected: true },
     { role: "V", permissions: ["pipeline:view", "pipeline:create"], deniedPermissions: [], expected: true },
+    { role: "A", permissions: ["pipeline:view"], deniedPermissions: [], expected: false },
+    { role: "V", permissions: ["pipeline:view"], deniedPermissions: [], expected: false },
     { role: "A", permissions: ["pipeline:view", "pipeline:create"], deniedPermissions: ["pipeline:create"], expected: false },
     { role: "K", permissions: ["pipeline:view", "pipeline:create"], deniedPermissions: [], expected: false },
   ]) {
@@ -130,7 +186,9 @@ test("Administrador y Ventas requieren grant explícito; un deny prevalece y otr
     await authenticate(page, scenario);
     await mockEmptyInbox(page);
     await page.goto("/commercial");
-    await expect(page.getByRole("button", { name: "Nuevo ICP" })).toHaveCount(scenario.expected ? 1 : 0);
+    if (scenario.role === "K") await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+    else await expect(page.getByRole("heading", { name: "Inbox Comercial", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Nuevo caso", exact: true })).toHaveCount(scenario.expected ? 1 : 0);
     await context.close();
   }
 });
@@ -141,7 +199,7 @@ test("una sesión rechazada durante la búsqueda cierra el acceso sin enviar dat
   await page.route("**/api/crm/icp-v2/clients/search", (route) => route.fulfill({ status: 401, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: false, error: "COMMERCIAL_AUTH_INVALID" }) }));
   await page.route("**/api/crm/icp-v2/pipeline-cases", (route) => { createCalls += 1; return route.abort(); });
   await page.goto("/commercial");
-  await page.getByRole("button", { name: "Nuevo ICP" }).click();
+  await page.getByRole("button", { name: "Nuevo caso", exact: true }).click();
   await page.getByRole("button", { name: "Buscar" }).click();
   await page.getByLabel("Buscar cliente").fill("Cliente");
   await expect(page.getByRole("button", { name: "Iniciar Sesión" })).toBeVisible();

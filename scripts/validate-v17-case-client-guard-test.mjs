@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
 import { validateV17CaseClientGuard, V17_CASE_CLIENT_MIGRATION } from "./validate-v17-case-client-guard.mjs";
 
 const results = [];
@@ -15,12 +16,14 @@ function rejected(name, overrides, pattern) {
 
 const schema = readFileSync(resolve("prisma/schema.prisma"), "utf8");
 const sql = readFileSync(resolve("prisma/migrations", V17_CASE_CLIENT_MIGRATION, "migration.sql"), "utf8");
-const migrations = Array.from({ length: 16 }, (_, index) => `m${String(index).padStart(2, "0")}`)
-  .concat(V17_CASE_CLIENT_MIGRATION, "20260821010000_v17_pipeline_case_public_ref", "20260824010000_v17_client_public_ref_case_mutations");
+const migrations = [...CANONICAL_MIGRATIONS];
+const inventoryFailure = new RegExp(`${CANONICAL_MIGRATIONS.length} migraciones canónicas`);
 
 try {
   check("baseline V17 aprobada", validateV17CaseClientGuard().ok);
-  rejected("cadena incompleta o migración futura rechazada", { migrationNames: [...migrations, "20260901010000_v17_forbidden"] }, /22 migraciones|migración 20/);
+  rejected("migración adicional desconocida rechazada", { migrationNames: [...migrations, "20260901010000_v17_forbidden"] }, inventoryFailure);
+  rejected("cadena incompleta rechazada", { migrationNames: migrations.slice(0, -1) }, inventoryFailure);
+  rejected("reemplazo desconocido con cardinalidad intacta rechazado", { migrationNames: [...migrations.slice(0, -1), "20260901010000_v17_forbidden"] }, inventoryFailure);
   rejected("clientId obligatorio rechazado", { schemaSource: schema.replace("clientId                      String?", "clientId                      String ") }, /nullable/);
   rejected("Project.clientId nullable rechazado", { schemaSource: schema.replace(/(model Project\s*\{[\s\S]*?\n\s*clientId\s+)String(\s*)/, "$1String?$2") }, /Project\.clientId/);
   rejected("CHECK previo contra tenantId NULL es obligatorio", { projectAuthorityMigrationSource: "SELECT 1;" }, /migración 16/);

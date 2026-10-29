@@ -1,3 +1,4 @@
+import { validateMigrationInventory } from "./canonical-migrations.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +19,7 @@ export function validateMt01c1b2aGuard(root = process.cwd()) {
 
   const migrations = fs.readdirSync(path.join(root, "prisma", "migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first") && migrations.some((entry) => entry.name === "20260905010000_v17_survey_foundation"))) && migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation"), `MT-01C1B2A: cadena canónica o extensión Servicios/Survey inválida; encontradas ${migrations.length}`);
+  validateMigrationInventory(root, migrations.map((entry) => entry.name));
 
   const requireAuthSource = source(root, "api/_lib/requireAuth.js");
   invariant(/select:\s*\{\s*status:\s*true\s*\}/s.test(requireAuthSource), "MT-01C1B2A: requireAuth debe consultar el estado vigente");
@@ -26,8 +27,15 @@ export function validateMt01c1b2aGuard(root = process.cwd()) {
   invariant(!/payload\.status/.test(requireAuthSource), "MT-01C1B2A: requireAuth no puede confiar en status del JWT");
 
   const pilotSource = source(root, "api/_lib/authContextPilot.js");
-  invariant((pilotSource.match(/requireAuth\(/g) || []).length === 2, "MT-01C1B2A: cambió el adaptador consumidor de requireAuth");
-  const routeConsumers = ["api/users/index.js", "api/clients/index.js", "api/projects/index.js"];
+  invariant((pilotSource.match(/requireAuthContext\(/g) || []).length === 2
+    && /from ["']\.\/authContextMiddleware\.js["']/.test(pilotSource), "MT-01C1B2A: el adaptador debe delegar las dos rutas al AuthorizationContext canónico");
+  invariant(!/requireAuth\(|requirePerm\(|x-osi-(?:role|userid)/i.test(pilotSource), "MT-01C1B2A: el adaptador no puede restaurar autoridad heredada paralela");
+  invariant(/context\.effectivePermissions\.includes\(String\(permission\)\)/.test(pilotSource), "MT-01C1B2A: el piloto debe exigir el permiso efectivo canónico");
+  const retiredUsers = source(root, "api/users/index.js");
+  invariant(/status\(410\)/.test(retiredUsers) && /USERS_ADMINISTRATION_MOVED_TO_MEMBERSHIPS/.test(retiredUsers)
+    && /ADMIN_IDENTITY_INVITATION/.test(retiredUsers), "MT-01C1B2A: /api/users debe permanecer retirado a favor de Memberships e Invitation");
+  invariant(!/password|hashPassword|prisma\.(?:user|tenantMembership)\.(?:findMany|create)/i.test(retiredUsers), "MT-01C1B2A: /api/users no puede recuperar listado global ni alta con password");
+  const routeConsumers = ["api/clients/index.js", "api/projects/index.js"];
   for (const route of routeConsumers) {
     const routeSource = source(root, route);
     invariant(/requirePilot(?:Auth|Permission)/.test(routeSource), `MT-01C1B2A: ${route} dejó de usar el piloto autenticado`);
@@ -53,7 +61,8 @@ export function validateMt01c1b2aGuard(root = process.cwd()) {
 
   return {
     migrations: migrations.length,
-    requireAuthDirectConsumer: "api/_lib/authContextPilot.js",
+    canonicalAuthConsumer: "api/_lib/authContextPilot.js",
+    retiredRoutes: ["api/users/index.js"],
     indirectlyAffectedRoutes: routeConsumers,
     legacy: true,
     hybrid: false,

@@ -1,3 +1,4 @@
+import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateMt01c2b3c } from "./validate-mt01c2b3c-guard.mjs";
@@ -19,8 +20,8 @@ function rejected(name, options, pattern) {
 
 try {
   const baseline = validateMt01c2b3c({ root });
-  check("estado inactivo actual aprobado", baseline.ok && baseline.migrations === 22 && baseline.previewBlocked);
-  check("allowlist heredada continúa en 24", baseline.legacyHeaderExceptions === 24);
+  check("estado inactivo actual aprobado", baseline.ok && baseline.migrations === CANONICAL_MIGRATIONS.length && baseline.previewBlocked);
+  check("no quedan excepciones activas de autoridad por headers", baseline.legacyHeaderExceptions === 0);
 
   const bridge = read("api/_lib/commercialTenancyWrite.js");
   rejected("batch distinto rechazado por guardia", {
@@ -44,9 +45,9 @@ try {
   rejected("modo tenant versionado rechazado", {
     overrides: { ".env.example": envExample.replace('COMMERCIAL_TENANCY_READ_MODE="LEGACY_ONLY"', 'COMMERCIAL_TENANCY_READ_MODE="TENANT_READ"') },
   }, /READ debe|activa/);
-  rejected("migración 23 rechazada", {
-    migrationNames: [...Array.from({ length: 22 }, (_, index) => `m${index}`), "20260901010000_unexpected"],
-  }, /22 migraciones/);
+  rejected("migración adicional rechazada", {
+    migrationNames: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"],
+  }, /35 migraciones canónicas/);
   rejected("hook de backfill rechazado", {
     overrides: { "package.json": JSON.stringify({ ...JSON.parse(read("package.json")), scripts: { build: "node scripts/mt-01c2b2-backfill.mjs" } }) },
   }, /hook|automático/);
@@ -54,6 +55,7 @@ try {
     extraRuntimeSources: { "src/activation.ts": "export const value = process.env.COMMERCIAL_TENANCY_ACTIVATION_BATCH;" },
   }, /expone|consume/);
   const clients = read("api/clients/index.js");
+  rejected("autoridad por headers heredados rechazada", { overrides: { "api/clients/index.js": `${clients}\nconst unsafeRole = req.headers["x-osi-role"];` } }, /autoridad empresarial del navegador/);
   rejected("lectura directa de modo en ruta rechazada", {
     overrides: { "api/clients/index.js": clients.replace("const permission", "const unsafe = process.env.COMMERCIAL_TENANCY_READ_MODE;\n  const permission") },
   }, /interpreta directamente/);

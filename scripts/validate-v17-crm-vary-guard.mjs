@@ -1,11 +1,12 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { join, relative, resolve, sep, posix } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const EXPECTED_ROUTES = Object.freeze({
-  "api/crm/client-options.js": "createCrmClientOptionsHandler",
-  "api/crm/pipeline-cases/index.js": "createCrmPipelineReadHandler",
-  "api/crm/pipeline-cases/[caseKey]/index.js": "createCrmPipelineReadHandler",
+  "api/crm/client-options.js": "createCrmPipelineReadHandler",
+  "api/crm/pipeline-cases/index.js": ["createCrmPipelineReadHandler", "createCrmCaseMutationHandler"],
+  "api/crm/pipeline-cases/[caseKey]/index.js": ["createCrmPipelineReadHandler", "createCrmCaseMutationHandler"],
   "api/crm/pipeline-summary.js": "createCrmPipelineReadHandler",
   "api/crm/pipeline-owner-options.js": "createCrmOwnerCatalogHandler",
   "api/crm/pipeline-cases/[caseKey]/allowed-transitions.js": "createAllowedTransitionsHandler",
@@ -19,6 +20,12 @@ const EXPECTED_ROUTES = Object.freeze({
   "api/crm/services/catalog/index.js": "createCrmServicesHandler",
   "api/crm/services/catalog/[serviceRef].js": "createCrmServicesHandler",
   "api/crm/services/defaults/index.js": "createCrmServicesHandler",
+  "api/crm/services/catalog-modes/index.js": "createCrmServicesHandler",
+  "api/crm/services/configurations/[caseRef].js": "createCrmServicesHandler",
+  "api/crm/services/configurations/conflicts/[conflictRef].js": "createCrmServicesHandler",
+  "api/crm/services/material-policies/index.js": "createCrmServicesHandler",
+  "api/crm/services/modes/index.js": "createCrmServicesHandler",
+  "api/crm/services/packages/index.js": "createCrmServicesHandler",
   "api/crm/survey/assignments/index.js": "createCrmSurveyHandler",
   "api/crm/survey/assignments/[assignmentRef].js": "createCrmSurveyHandler",
   "api/crm/survey/scheduling/index.js": "createCrmSurveyHandler",
@@ -29,6 +36,24 @@ const EXPECTED_ROUTES = Object.freeze({
   "api/crm/survey/publications/[publicationRef].js": "createCrmSurveyHandler",
   "api/crm/survey/publications/[publicationRef]/pdf.js": "prepareCrmSurveyRequest",
 });
+
+const FACTORY_ADAPTERS = Object.freeze({
+  createCrmPipelineReadHandler: "api/_lib/crmPipelineReadHttp.js",
+  createCrmCaseMutationHandler: "api/_lib/crmCaseMutationHttp.js",
+  createCrmOwnerCatalogHandler: "api/_lib/crmOwnerCatalogHttp.js",
+  createAllowedTransitionsHandler: "api/_lib/pipelineCaseMutationHttp.js",
+  createTransitionHandler: "api/_lib/pipelineCaseMutationHttp.js",
+  createAssignOwnerHandler: "api/_lib/pipelineCaseMutationHttp.js",
+  createUnassignOwnerHandler: "api/_lib/pipelineCaseMutationHttp.js",
+  createCrmIcpClientSearchHandler: "api/_lib/crmIcpV2ApiHttp.js",
+  createCrmIcpV2CreateHandler: "api/_lib/crmIcpV2ApiHttp.js",
+  createCrmIcpV2DetailHandler: "api/_lib/crmIcpV2ApiHttp.js",
+  createCrmServicesHandler: "api/_lib/crmServicesHttp.js",
+  createCrmSurveyHandler: "api/_lib/crmSurveyHttp.js",
+  prepareCrmSurveyRequest: "api/_lib/crmSurveyHttp.js",
+});
+
+export const V17_CRM_VARY_ROUTES = Object.freeze(Object.keys(EXPECTED_ROUTES).sort());
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`V17_CRM_VARY_GUARD: ${message}`);
@@ -45,6 +70,7 @@ function readSources(root) {
   const paths = [
     "api/_lib/crmHttpHeaders.js",
     "api/_lib/crmPipelineReadHttp.js",
+    "api/_lib/crmCaseMutationHttp.js",
     "api/_lib/pipelineCaseMutationHttp.js",
     "api/_lib/crmOwnerCatalogHttp.js",
     "api/_lib/crmIcpV2ApiHttp.js",
@@ -77,6 +103,7 @@ export function validateV17CrmVaryGuard({
   const helper = sources["api/_lib/crmHttpHeaders.js"];
   const readHttp = sources["api/_lib/crmPipelineReadHttp.js"];
   const mutationHttp = sources["api/_lib/pipelineCaseMutationHttp.js"];
+  const caseMutationHttp = sources["api/_lib/crmCaseMutationHttp.js"];
   const ownerHttp = sources["api/_lib/crmOwnerCatalogHttp.js"];
   const icpApiHttp = sources["api/_lib/crmIcpV2ApiHttp.js"];
   const servicesHttp = sources["api/_lib/crmServicesHttp.js"];
@@ -91,6 +118,7 @@ export function validateV17CrmVaryGuard({
   invariant(helper.includes('removeHeader("Access-Control-Allow-Origin")'), "wildcard heredado no se retira");
 
   before(readHttp, "setCrmPrivateHeaders(res);", "requireCrmPipelineReadOnly(env);", "lecturas");
+  before(caseMutationHttp, "setCrmPrivateHeaders(res);", "mode = gate(env, req);", "creación y edición de casos");
   before(mutationHttp, "setCrmPrivateHeaders(res);", "requireCrmPipelineMutationsLocal(env);", "mutaciones");
   before(ownerHttp, "setCrmPrivateHeaders(res);", "requireCrmPipelineMutationsLocal(env);", "owner catalog");
   before(icpApiHttp, "setCrmPrivateHeaders(res);", "resolveCrmIcpV2ApiMode(env, req);", "API ICP v2");
@@ -100,10 +128,28 @@ export function validateV17CrmVaryGuard({
 
   const expected = Object.keys(EXPECTED_ROUTES).sort();
   invariant(JSON.stringify(routes) === JSON.stringify(expected), "ruta CRM nueva o faltante sin cobertura Vary");
-  for (const [path, factory] of Object.entries(EXPECTED_ROUTES)) {
+  for (const [path, factories] of Object.entries(EXPECTED_ROUTES)) {
     const source = routeSourceOverrides[path] ?? readFileSync(resolve(root, path), "utf8");
-    invariant(source.includes(factory), `${path} evita el wrapper CRM esperado`);
-    invariant(!/setHeader\(\s*["']Vary["']/.test(source), `${path} sobrescribe Vary directamente`);
+    const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    invariant(file.parseDiagnostics.length === 0, `${path} contiene sintaxis inválida`);
+    const imported = new Map(); const calls = new Set();
+    for (const statement of file.statements) {
+      const bindings = ts.isImportDeclaration(statement) ? statement.importClause?.namedBindings : undefined;
+      if (bindings && ts.isNamedImports(bindings) && ts.isStringLiteral(statement.moduleSpecifier)) {
+        const module = posix.normalize(posix.join(posix.dirname(path), statement.moduleSpecifier.text));
+        for (const binding of bindings.elements) imported.set(binding.name.text, { name: binding.propertyName?.text || binding.name.text, module });
+      }
+    }
+    function visit(node) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        const binding = imported.get(node.expression.text);
+        if (binding && FACTORY_ADAPTERS[binding.name] === binding.module) calls.add(binding.name);
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(file);
+    invariant([].concat(factories).every((factory) => calls.has(factory)), `${path} evita el wrapper CRM esperado`);
+    invariant(!/(?:setHeader|removeHeader)\(\s*["']Vary["']/i.test(source), `${path} sobrescribe Vary directamente`);
     invariant(!/Vary\s*:\s*["']\*/.test(source), `${path} declara Vary wildcard`);
   }
 
@@ -115,7 +161,7 @@ export function validateV17CrmVaryGuard({
     invariant(workflow.includes(command), `CI no exige ${command}`);
   }
 
-  return Object.freeze({ ok: true, routes: routes.length, wrappers: 6, requiredVary: ["Authorization", "Origin"] });
+  return Object.freeze({ ok: true, routes: routes.length, wrappers: 7, requiredVary: ["Authorization", "Origin"] });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

@@ -1,3 +1,4 @@
+import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,10 +19,8 @@ function safeExecutor() {
   `);
   write("api/_lib/employeeProvisioningPolicy.js", "const NEVER_DELEGABLE = new Set([EMPLOYEE_PROVISIONING_PERMISSIONS.MATERIALIZE]);\n");
   write("api/users/index.js", `
-    if (req.method === "POST") {
-      const role = body.role;
-      const passwordHash = await hashPassword(body.password);
-      return prisma.user.create({ data: { role, passwordHash } });
+    if (req.method === "GET" || req.method === "POST") {
+      return res.status(410).json({ error: "USERS_ADMINISTRATION_MOVED_TO_MEMBERSHIPS", identityCreation: "ADMIN_IDENTITY_INVITATION" });
     }
   `);
 }
@@ -32,23 +31,23 @@ function expectFailure(name, files, env, pattern) {
 
 try {
   safeExecutor();
-  const migrations = [
-    ...Array.from({ length: 21 }, (_, index) => `prisma/migrations/${String(index).padStart(2, "0")}/migration.sql`),
-    "prisma/migrations/20260831010000_v17_crm_icp_foundation/migration.sql",
-  ];
+  const migrations = CANONICAL_MIGRATIONS.map((name) => `prisma/migrations/${name}/migration.sql`);
   for (const migration of migrations) write(migration, "-- synthetic\n");
   const safeFiles = ["api/_lib/employeeProvisioningExecutor.js", "api/_lib/employeeProvisioningPolicy.js", "api/users/index.js", ...migrations];
   check("estado actual permitido", validateMt01c1b3aGuard({ root, files: safeFiles, env: {} }).ok);
-  expectFailure("bypass POST users ausente rechazado", safeFiles.filter((file) => file !== "api/users/index.js"), {}, /bypass heredado/);
+  expectFailure("ruta retirada users ausente rechazada", safeFiles.filter((file) => file !== "api/users/index.js"), {}, /ruta retirada/);
   write("api/users/index.js", "if (req.method === 'POST') return prisma.user.create({ data: {} });\n");
-  expectFailure("cambio no auditado del bypass rechazado", safeFiles, {}, /inventario del bypass/);
+  expectFailure("reactivación del bypass rechazada", safeFiles, {}, /debe permanecer retirada/);
+  safeExecutor();
+  write("api/users/index.js", `${readFileSync(join(root, "api/users/index.js"), "utf8")}\nconst passwordHash = await hashPassword(body.password); await prisma.user.create({ data: { passwordHash } });`);
+  expectFailure("alta directa aun con marcador 410 rechazada", safeFiles, {}, /no puede restaurar/);
   safeExecutor();
   write("api/users/materialize.js", 'import "../_lib/employeeProvisioningExecutor.js";\n');
   expectFailure("endpoint consumidor rechazado", [...safeFiles, "api/users/materialize.js"], {}, /consumidores runtime/);
   expectFailure("HYBRID rechazado", safeFiles, { MT01B_AUTH_MODE: "HYBRID" }, /HYBRID/);
   expectFailure("tenant switch rechazado", safeFiles, { MT01B_TENANT_SWITCH_ENABLED: "true" }, /tenant switch/);
   expectFailure("cliente V2 rechazado", safeFiles, { VITE_MT01B2_CLIENT_ENABLED: "true" }, /cliente V2/);
-  expectFailure("migración 23 rechazada", [...safeFiles, "prisma/migrations/20260901010000_future/migration.sql"], {}, /22 migraciones/);
+  expectFailure("migración adicional rechazada", [...safeFiles, "prisma/migrations/20260901010000_future/migration.sql"], {}, /35 migraciones canónicas/);
   safeExecutor();
   write("api/_lib/employeeProvisioningExecutor.js", readFileSync(join(root, "api/_lib/employeeProvisioningExecutor.js"), "utf8").replace("critical: true", "critical: false"));
   expectFailure("auditoría no crítica rechazada", safeFiles, {}, /auditoría crítica/);

@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { assertCanonicalCiTarget } from "./validate-canonical-ci.mjs";
+import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
+import { PUBLIC_REFERENCE_CONTRACTS } from "./validate-v17-case-public-ref-guard.mjs";
 import {
   expectedCrmCorsInventoryReport,
   validateCrmCorsInventoryReport,
@@ -348,13 +350,16 @@ try {
   invariant(v17CaseClientPerformanceRun.report.ok === true && v17CaseClientPerformanceRun.report.fixtureCases === 10_000, "V17-CASE-CLIENT rendimiento incompleto");
   invariant(v17CaseClientAdversarialRun.report.ok === true && v17CaseClientAdversarialRun.report.raceMetrics?.operations === 160, "V17-CASE-CLIENT adversarial incompleto");
   invariant(v17CaseClientDatabaseGuardRun.assertions >= 13, `V17-CASE-CLIENT database guard esperaba al menos 13 pruebas y obtuvo ${v17CaseClientDatabaseGuardRun.assertions}`);
-  invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === 22, "V17-CASE-CLIENT guard falló");
+  invariant(v17CaseClientGuardRun.report.ok === true && v17CaseClientGuardRun.report.migrations === CANONICAL_MIGRATIONS.length, "V17-CASE-CLIENT guard falló");
   invariant(v17CaseClientGuardTestsRun.assertions >= 10, `V17-CASE-CLIENT guard tests esperaba al menos 10 pruebas y obtuvo ${v17CaseClientGuardTestsRun.assertions}`);
   invariant(v17CasePublicRefRun.report.ok === true && v17CasePublicRefRun.assertions >= 15, "V17-CASE-PUBLIC-REF tests fallaron");
   invariant(v17CasePublicRefRaceRun.report.ok === true && v17CasePublicRefRaceRun.report.backfill?.rows === 10_000
     && v17CasePublicRefRaceRun.report.atomicity?.concurrentInsert === "blocked_then_uuid", "V17-CASE-PUBLIC-REF carrera de migración falló");
   invariant(v17CasePublicRefGuardRun.report.ok === true
-    && v17CasePublicRefGuardRun.report.runtimeConsumers === 7
+    && v17CasePublicRefGuardRun.report.migrations === CANONICAL_MIGRATIONS.length
+    && v17CasePublicRefGuardRun.report.runtimeConsumers === Object.keys(PUBLIC_REFERENCE_CONTRACTS).length
+    && JSON.stringify(Object.keys(v17CasePublicRefGuardRun.report.consumerContracts || {}).sort()) === JSON.stringify(Object.keys(PUBLIC_REFERENCE_CONTRACTS).sort())
+    && Object.entries(PUBLIC_REFERENCE_CONTRACTS).every(([path, kinds]) => JSON.stringify(v17CasePublicRefGuardRun.report.consumerContracts[path].kinds) === JSON.stringify(kinds))
     && v17CasePublicRefGuardRun.report.runtimeConsumer === "api/_lib/crmPipelineRead.js"
     && v17CasePublicRefGuardRun.report.publicContract === "caseRef", "V17-CASE-PUBLIC-REF guard falló");
   invariant(v17CasePublicRefGuardTestsRun.assertions >= 13, "V17-CASE-PUBLIC-REF guard tests incompletos");

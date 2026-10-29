@@ -1,3 +1,4 @@
+import { validateMigrationInventory } from "./canonical-migrations.mjs";
 import { readFileSync, readdirSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,7 +15,7 @@ function filesBelow(directory) {
 export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, extraSources = {}, migrationNames } = {}) {
   const source = (path) => overrides[path] ?? extraSources[path] ?? readFileSync(resolve(root, path), "utf8");
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.includes("20260904010000_v17_services_tenant_first") && migrations.includes("20260905010000_v17_survey_foundation"))) && migrations.includes("20260801020000_v17_pipeline_case_client_authority") && migrations.includes("20260821010000_v17_pipeline_case_public_ref") && migrations.includes("20260831010000_v17_crm_icp_foundation"), "se exigen 22 migraciones base y sólo las extensiones Servicios/Survey autorizadas");
+  validateMigrationInventory(root, migrations);
   const crypto = source("api/_lib/crmOwnerRef.js");
   for (const signature of ["aes-256-gcm", "hkdfSync", "randomBytes", "CRM_OWNER_REF_TTL_SECONDS = 300", "CRM_OWNER_REF_CLOCK_SKEW_SECONDS = 30", "osi-plus/crm/pipeline-owner-ref/v1", "setAAD", "setAuthTag"]) {
     invariant(crypto.includes(signature), `ownerRef incompleto: ${signature}`);
@@ -76,7 +77,7 @@ export function validateCrm01b3b3Guard({ root = process.cwd(), overrides = {}, e
   for (const path of routes) {
     invariant(/crmPipeline(?:Access|Read)|pipelineCaseMutationHttp|crmOwnerCatalogHttp|crmClientOptions|crmIcpV2ApiHttp/.test(source(path)), `${path} omite la compuerta CRM central`);
   }
-  return Object.freeze({ ok: true, migrations: 22, routes: routes.length, ttlSeconds: 300 });
+  return Object.freeze({ ok: true, migrations: migrations.length, routes: routes.length, ttlSeconds: 300 });
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

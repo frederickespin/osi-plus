@@ -40,6 +40,13 @@ jobs:
       - name: Validate Prisma schema target
         run: node scripts/validate-prisma-schema-target.mjs
 
+      - name: Validate CI guard regressions
+        run: |
+          node --test tests/prisma-schema-target/validate-prisma-schema-target.test.mjs
+          node scripts/validate-canonical-migration-inventory-test.mjs
+          node scripts/validate-mt01c1b2a-guard-test.mjs
+          node scripts/validate-v17-hub-commercial-contract-test.mjs
+
       - name: Validate Prisma datamodel
         run: npx prisma validate --schema prisma/schema.prisma
 

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 export const V17_CASE_PUBLIC_REF_MIGRATION = "20260821010000_v17_pipeline_case_public_ref";
 const V17_CLIENT_PUBLIC_REF_MIGRATION = "20260824010000_v17_client_public_ref_case_mutations";
@@ -59,6 +60,240 @@ function containsLegacyFrontendIdentifier(source) {
     || /["'](?:clientName|caseNumber)["']\s*:/.test(source);
 }
 
+// An exact inventory classifies the reference, not merely the directory. A
+// registered consumer must also retain its tenant-bound queries below; adding a
+// filename here never exempts its database operations from validation.
+export const PUBLIC_REFERENCE_CONTRACTS = Object.freeze({
+  "api/_lib/adminIdentityInvitationDomain.js": ["INVITATION", "MEMBERSHIP"],
+  "api/_lib/adminMembershipDomain.js": ["MEMBERSHIP"],
+  "api/_lib/authContext.js": ["MEMBERSHIP"],
+  "api/_lib/authorizationContext.js": ["MEMBERSHIP"],
+  "api/_lib/clientTemporaryAccessDomain.js": ["CASE"],
+  "api/_lib/commercialRelationshipsDomain.js": ["CASE", "CLIENT"],
+  "api/_lib/commercialTenancyWrite.js": ["MEMBERSHIP", "CLIENT"],
+  "api/_lib/communicationsDomain.js": ["CASE", "MEMBERSHIP"],
+  "api/_lib/costingDomain.js": ["CASE"],
+  "api/_lib/crmCaseMutationDomain.js": ["CASE", "CLIENT"],
+  "api/_lib/crmClientOptions.js": ["CLIENT"],
+  "api/_lib/crmIcpV2ApiDomain.js": ["CASE", "CLIENT"],
+  "api/_lib/crmIcpV2Domain.js": ["CASE", "CLIENT"],
+  "api/_lib/crmPipelineRead.js": ["CASE", "CLIENT"],
+  "api/_lib/crmServicesApiDomain.js": ["CASE"],
+  "api/_lib/crmSurveyDomain.js": ["CASE", "MEMBERSHIP"],
+  "api/_lib/logisticsEngineDomain.js": ["CASE"],
+  "api/_lib/materialsInventoryDomain.js": ["CASE"],
+  "api/_lib/personnelPoliciesDomain.js": ["CASE", "CLIENT", "MEMBERSHIP"],
+  "api/_lib/quoteDomain.js": ["CASE", "CLIENT"],
+  "api/_lib/servicePackagesDomain.js": ["CASE"],
+  "api/_lib/surveySchedulingDomain.js": ["CASE", "CLIENT", "MEMBERSHIP"],
+  "api/_lib/toolsEquipmentDomain.js": ["CASE", "MEMBERSHIP"],
+});
+for (const kinds of Object.values(PUBLIC_REFERENCE_CONTRACTS)) Object.freeze(kinds);
+const REFERENCE_MODELS = Object.freeze({
+  pipelineCase: "CASE", client: "CLIENT", tenantMembership: "MEMBERSHIP",
+  pipelineCaseCommand: "CASE", costingCalculation: "CASE", costingRevision: "CASE",
+  costingOverride: "CASE", logisticsCalculation: "CASE", logisticsPlanRevision: "CASE",
+  communicationRecord: "CASE", afterHoursVisitRequest: "CASE",
+});
+const REFERENCE_TABLES = Object.freeze({
+  osi_pipeline_cases: "CASE", osi_clients: "CLIENT", tenant_memberships: "MEMBERSHIP",
+  admin_identity_invitations: "INVITATION", osi_users: "MEMBERSHIP", auth_sessions: "MEMBERSHIP",
+});
+
+function visitNodes(node, visitor) {
+  visitor(node);
+  ts.forEachChild(node, (child) => visitNodes(child, visitor));
+}
+function propertyValue(object, name) {
+  if (!object || !ts.isObjectLiteralExpression(object)) return undefined;
+  const matches = object.properties.filter((property) => property.name
+    && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) && property.name.text === name);
+  if (matches.length !== 1) return undefined;
+  return ts.isShorthandPropertyAssignment(matches[0]) ? matches[0].name : matches[0].initializer;
+}
+function constInitializer(identifier) {
+  if (!identifier || !ts.isIdentifier(identifier)) return undefined;
+  for (let parent = identifier.parent; parent; parent = parent.parent) {
+    if (ts.isBlock(parent) || ts.isSourceFile(parent)) {
+      for (const statement of parent.statements) {
+        if (!ts.isVariableStatement(statement)) continue;
+        const declaration = statement.declarationList.declarations.find((entry) => ts.isIdentifier(entry.name) && entry.name.text === identifier.text);
+        if (declaration) return (statement.declarationList.flags & ts.NodeFlags.Const) && declaration.pos < identifier.pos ? declaration.initializer : undefined;
+      }
+    }
+    if (ts.isFunctionLike(parent) && parent.parameters.some((parameter) => ts.isIdentifier(parameter.name) && parameter.name.text === identifier.text)) return undefined;
+  }
+  return undefined;
+}
+function enclosingFunction(node) {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (ts.isFunctionDeclaration(parent)) return parent.name?.text;
+  }
+  return null;
+}
+function trustedTenantValue(node, source, bindings = new Map(), seen = new Set()) {
+  if (!node || seen.has(node)) return false;
+  const next = new Set(seen).add(node);
+  if (ts.isIdentifier(node) && bindings.has(node.text)) return trustedTenantValue(bindings.get(node.text), source, new Map(), next);
+  const text = node.getText(source).replace(/\s+/g, "");
+  return /^(?:tenantId|(?:who|actor|context)\.tenantId|String\(tenantId\))$/.test(text);
+}
+
+function validateReferenceConsumer(path, content, kinds) {
+  const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  invariant(source.parseDiagnostics.length === 0, "consumidor publicRef con sintaxis inválida: " + path);
+  const clean = ts.createPrinter({ removeComments: true }).printFile(source);
+  const compact = clean.replace(/\s+/g, "");
+  const definitions = new Map(source.statements.filter(ts.isFunctionDeclaration).map((node) => [node.name?.text, node]));
+  const fail = (message) => invariant(false, path + ": contrato tenant-first " + message);
+
+  // Return 1 for a guaranteed trusted tenant, 0 for no tenant, 2 for an optional
+  // trusted tenant, and -1 for an unknown/unsafe overwrite. Spreads are checked
+  // in source order, so a later raw spread cannot replace an authorized tenant.
+  function tenantState(node, bindings = new Map(), seen = new Set()) {
+    if (!node || seen.has(node)) return -1;
+    const next = new Set(seen).add(node);
+    if (ts.isParenthesizedExpression(node)) return tenantState(node.expression, bindings, next);
+    if (ts.isIdentifier(node)) return tenantState(constInitializer(node) ?? bindings.get(node.text), bindings, next);
+    if (ts.isConditionalExpression(node)) {
+      const yes = tenantState(node.whenTrue, bindings, next), no = tenantState(node.whenFalse, bindings, next);
+      return yes < 0 || no < 0 ? -1 : yes === no ? yes : 2;
+    }
+    if (ts.isObjectLiteralExpression(node)) {
+      let state = 0;
+      for (const property of node.properties) {
+        if (ts.isSpreadAssignment(property)) {
+          const spread = tenantState(property.expression, bindings, next);
+          state = spread === 0 ? state : spread === 2 && state === 1 ? 1 : spread;
+        } else if (property.name && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
+          if (property.name.text === "tenantId") state = trustedTenantValue(ts.isShorthandPropertyAssignment(property) ? property.name : property.initializer, source, bindings) ? 1 : -1;
+        } else state = -1;
+      }
+      return state;
+    }
+    if (ts.isCallExpression(node)) {
+      if (node.expression.getText(source) === "Object.freeze") return tenantState(node.arguments[0], bindings, next);
+      if (!ts.isIdentifier(node.expression)) return -1;
+      const name = node.expression.text;
+      if (path === "api/_lib/crmPipelineRead.js" && name === "resolveCrmPipelineReadScope") {
+        // Its role/owner/404 contract is independently checked by the main guard.
+        return tenantState(node.arguments[0], bindings, next);
+      }
+      const definition = definitions.get(name);
+      if (!definition?.body) return -1;
+      const parameters = new Map(bindings);
+      definition.parameters.forEach((parameter, index) => {
+        if (ts.isIdentifier(parameter.name)) parameters.set(parameter.name.text, node.arguments[index]);
+      });
+      const returns = [];
+      function returned(child) {
+        if (ts.isReturnStatement(child)) returns.push(tenantState(child.expression, parameters, next));
+        else if (!ts.isFunctionLike(child)) ts.forEachChild(child, returned);
+      }
+      returned(definition.body);
+      return returns.length === 0 || returns.some((state) => state < 0) ? -1 : returns.every((state) => state === 1) ? 1 : returns.every((state) => state === 0) ? 0 : 2;
+    }
+    return -1;
+  }
+
+  function sqlParts(node) {
+    const template = node.template;
+    if (ts.isNoSubstitutionTemplateLiteral(template)) return { sql: template.text, values: [] };
+    const values = template.templateSpans.map((span) => span.expression);
+    return { sql: template.head.text + template.templateSpans.map((span, index) => "<" + index + ">" + span.literal.text).join(""), values };
+  }
+  function sessionSql(node, sql, values) {
+    const name = enclosingFunction(node);
+    const normalized = sql.replace(/\s+/g, "");
+    const expressions = values.map((value) => value.getText(source).replace(/\s+/g, ""));
+    const legacy = path === "api/_lib/authContext.js" && ["resolveLegacyAuthorizationContext", "listLegacyMembershipOptions", "resolveSingleActiveMembership"].includes(name)
+      || path === "api/_lib/commercialTenancyWrite.js" && name === "resolveLegacyCommercialContext";
+    if (legacy) {
+      const principal = name === "listLegacyMembershipOptions" ? "String(userId)" : name === "resolveSingleActiveMembership" ? "userId" : "String(payload.sub)";
+      const predicate = name === "resolveSingleActiveMembership" ? 'WHEREtm."user_id"=<0>' : 'WHEREu."id"=<0>';
+      return expressions.length === 1 && expressions[0] === principal && normalized.includes(predicate)
+        && (normalized.includes('tm."user_id"=u."id"') || normalized.includes('u."id"=tm."user_id"'))
+        && normalized.includes('t."id"=tm."tenant_id"') && !/\bOR\b/.test(sql);
+    }
+    if (path === "api/_lib/authContext.js" && name === "resolveV2Context") {
+      return JSON.stringify(expressions) === JSON.stringify(["payload.sid", "payload.tenantId", "payload.membershipId", "payload.sub"])
+        && normalized.includes('tm."tenant_id"=s."tenant_id"ANDtm."id"=s."membership_id"ANDtm."user_id"=s."user_id"')
+        && normalized.includes('WHEREs."id"=<0>ANDs."tenant_id"=<1>ANDs."membership_id"=<2>ANDs."user_id"=<3>')
+        && !/\bOR\b/.test(sql);
+    }
+    return false;
+  }
+  let prismaQueries = 0, sqlQueries = 0;
+  visitNodes(source, (node) => {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && ts.isPropertyAccessExpression(node.left) && node.left.name.text === "tenantId") fail("no admite reasignar tenantId");
+    if (ts.isDeleteExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "tenantId") fail("no admite eliminar tenantId");
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && /^\$(?:queryRaw|executeRaw)(?:Unsafe)?$/.test(node.expression.name.text)
+      && /\bpublic_ref\b/.test(node.arguments.map((argument) => argument.getText(source)).join(" "))
+      && (node.arguments.length !== 1 || !ts.isTaggedTemplateExpression(node.arguments[0]) || node.arguments[0].tag.getText(source) !== "Prisma.sql")) {
+      fail("SQL público sin parámetros Prisma.sql verificables");
+    }
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && /^(?:findFirst|findUnique|findUniqueOrThrow|findMany|count|groupBy|aggregate|create|createMany|update|updateMany|delete|deleteMany|upsert)$/.test(node.expression.name.text)) {
+      const target = node.expression.expression;
+      const model = ts.isPropertyAccessExpression(target) ? target.name.text : null;
+      const args = node.arguments[0];
+      if (!["pipelineCase", "client", "tenantMembership"].includes(model) && !/\bpublicRef\b/.test(args?.getText(source) || "")) return;
+      const kind = REFERENCE_MODELS[model];
+      if (!kind || !kinds.includes(kind)) fail("modelo de referencia sin clasificar: " + model);
+      const field = /^(?:create|createMany)$/.test(node.expression.name.text) ? "data" : "where";
+      if (tenantState(propertyValue(args, field)) !== 1) fail("ausente o dinámico en " + target.getText(source) + "." + node.expression.name.text);
+      prismaQueries += 1;
+    }
+    if (!ts.isTaggedTemplateExpression(node) || node.tag.getText(source) !== "Prisma.sql" || !/\bpublic_ref\b/.test(node.template.getText(source))) return;
+    const parts = sqlParts(node);
+    const sql = parts.sql.replace(/--[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
+    const values = parts.values;
+    const table = sql.match(/\b(?:FROM|INSERT INTO|UPDATE)\s+"osi"\."([^"]+)"/)?.[1];
+    if (!REFERENCE_TABLES[table] || !kinds.includes(REFERENCE_TABLES[table])) fail("tabla de referencia sin clasificar: " + table);
+    let scoped = sessionSql(node, sql, values);
+    if (/\bINSERT INTO\b/.test(sql)) {
+      const insertion = sql.match(/\bINSERT INTO\s+"osi"\."[^"]+"\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/);
+      if (insertion) {
+        const column = insertion[1].split(",").map((value) => value.trim()).indexOf('"tenant_id"');
+        const token = insertion[2].split(",")[column]?.trim().match(/^<(\d+)>$/);
+        const value = token ? values[Number(token[1])] : null;
+        const invitationTenant = path === "api/_lib/adminIdentityInvitationDomain.js" && value?.getText(source) === "invitation.tenant_id"
+          && ["activateNewAdminIdentity", "acceptExistingAdminIdentity"].includes(enclosingFunction(node));
+        scoped = column >= 0 && (trustedTenantValue(value, source) || invitationTenant);
+      }
+    } else {
+      const tenant = sql.match(/\bWHERE\s+(?:[a-z]+\.)?"tenant_id"\s*=\s*<(\d+)>/);
+      if (tenant && trustedTenantValue(values[Number(tenant[1])], source) && !/\bOR\b/.test(sql)) scoped = true;
+      // The membership list composes AND predicates; its first term is the
+      // revalidated actor's tenant, not a request-supplied identifier.
+      if (path === "api/_lib/adminMembershipDomain.js" && enclosingFunction(node) === "listTenantMemberships" && /\bWHERE\s+<0>/.test(sql)) {
+        const where = constInitializer(values[0]);
+        const conditions = where && ts.isCallExpression(where) && where.expression.getText(source) === "Prisma.join"
+          && ts.isStringLiteral(where.arguments[1]) && where.arguments[1].text === " AND " ? constInitializer(where.arguments[0]) : null;
+        const first = conditions && ts.isArrayLiteralExpression(conditions) ? conditions.elements[0] : null;
+        if (first && ts.isTaggedTemplateExpression(first) && first.tag.getText(source) === "Prisma.sql") {
+          const initial = sqlParts(first);
+          scoped = initial.sql.replace(/\s+/g, "") === 'tm."tenant_id"=<0>' && initial.values[0]?.getText(source) === "actor.tenantId";
+        }
+      }
+    }
+    if (!scoped) fail("SQL público perdió el vínculo de empresa/identidad en " + enclosingFunction(node));
+    sqlQueries += 1;
+  });
+  if (path === "api/_lib/authorizationContext.js") {
+    invariant(compact.includes("if(!user?.id||!membership?.id||!tenant?.id)")
+      && compact.includes("tenantId:frozenTenant.id") && compact.includes("membershipRef:frozenMembership.publicRef"),
+    path + ": proyección de membresía sin User/Membership/Tenant canónicos");
+  } else if (path === "api/_lib/crmIcpV2Domain.js") {
+    invariant(compact.includes('!UUID_V4.test(value))fail("CRM_PIPELINE_RESOURCE_NOT_FOUND",404)')
+      && compact.includes("tenantId:authority.tenantId") && compact.includes("requireCrmIcpSearchAuthority(context)"),
+    path + ": contrato UUID/404 o autoridad tenant-first ausente");
+  } else invariant(prismaQueries + sqlQueries > 0, path + ": consumidor sin contrato tenant-first verificable");
+  return { kinds, prismaQueries, sqlQueries };
+}
+
 export function validateV17CasePublicRefGuard({
   root = process.cwd(), migrationNames, schemaSource, migrationSource,
   previousMigrationSources, extraRuntimeSources,
@@ -66,6 +301,8 @@ export function validateV17CasePublicRefGuard({
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   invariant(migrations.length >= 22, "se exigen al menos 22 migraciones");
+  invariant(new Set(migrations).size === migrations.length && migrations.every((name, index) => index === 0 || migrations[index - 1] < name),
+    "las 22 migraciones iniciales y sus extensiones deben conservar el orden sin duplicados");
   invariant(migrations.includes(V17_CASE_PUBLIC_REF_MIGRATION), "migración 18 exacta ausente");
   invariant(migrations.includes(V17_CLIENT_PUBLIC_REF_MIGRATION), "migración 19 exacta ausente");
   invariant(migrations.includes(V17_MEMBERSHIP_PUBLIC_REF_MIGRATION), "migración 20 exacta ausente");
@@ -114,20 +351,11 @@ export function validateV17CasePublicRefGuard({
 
   const runtime = extraRuntimeSources ?? runtimeSources(root);
   const canonicalReadPath = "api/_lib/crmPipelineRead.js";
-  const authorizedPublicRefConsumers = new Set([
-    canonicalReadPath,
-    "api/_lib/adminIdentityInvitationDomain.js",
-    "api/_lib/adminMembershipDomain.js",
-    "api/_lib/crmCaseMutationDomain.js",
-    "api/_lib/crmClientOptions.js",
-    "api/_lib/crmIcpV2ApiDomain.js",
-    "api/_lib/crmIcpV2Domain.js",
-  ]);
   const publicRefConsumers = Object.entries(runtime)
     .filter(([, source]) => /\bpublicRef\b|\bpublic_ref\b/.test(source))
     .map(([path]) => path);
   invariant(publicRefConsumers.includes(canonicalReadPath)
-    && publicRefConsumers.every((path) => authorizedPublicRefConsumers.has(path)),
+    && publicRefConsumers.every((path) => Object.hasOwn(PUBLIC_REFERENCE_CONTRACTS, path)),
   `publicRef sólo puede consumirse en backends canónicos tenant-first: ${publicRefConsumers.join(", ")}`);
 
   const canonicalRead = runtime[canonicalReadPath];
@@ -209,11 +437,15 @@ export function validateV17CasePublicRefGuard({
   invariant(!protectedPublicFrontend.some(([, source]) => containsLegacyFrontendIdentifier(source)),
     "frontend público no puede reintroducir clientName legacy ni caseNumber");
 
+  const consumerContracts = Object.fromEntries(publicRefConsumers.map((path) => [
+    path, validateReferenceConsumer(path, runtime[path], PUBLIC_REFERENCE_CONTRACTS[path]),
+  ]));
   return Object.freeze({
     ok: true,
-    migrations: 22,
+    migrations: migrations.length,
     runtimeConsumers: publicRefConsumers.length,
     runtimeConsumer: canonicalReadPath,
+    consumerContracts,
     publicContract: "caseRef",
     atomic: true,
     immutable: true,

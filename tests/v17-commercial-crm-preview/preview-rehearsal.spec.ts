@@ -14,11 +14,13 @@ const clientRefFor = (page: number, index: number) => `33333333-3333-4333-8333-$
 const membershipRef = "11111111-1111-4111-8111-111111111111";
 
 async function authenticate(page: Page, actor: Actor) {
-  await page.addInitScript(({ role }) => {
+  await page.addInitScript(({ role, membershipRef }) => {
     localStorage.setItem("osi-plus.token", "synthetic.preview.legacy.token");
-    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic-user", name: "Actor sintético", role }));
-  }, { role: actor.role });
-  await page.route("**/api/auth/me", (route) => route.fulfill({
+    localStorage.setItem("osi-plus.session", JSON.stringify({ userId: "synthetic-user", name: "Actor sintético", role, membershipRef, memberships: [{ membershipRef, tenantName: "Tenant Preview", role, preferred: true }] }));
+  }, { role: actor.role, membershipRef });
+  await page.route("**/api/auth/me", (route) => {
+    expect(route.request().headers()["x-osi-membership-ref"]).toBe(membershipRef);
+    return route.fulfill({
     status: 200,
     contentType: "application/json",
     headers: privateHeaders,
@@ -32,13 +34,16 @@ async function authenticate(page: Page, actor: Actor) {
         commercialCrmPreviewAuthorized: actor.confirmed !== false,
       },
     }),
-  }));
+    });
+  });
 }
 
 async function mockReadApi(page: Page, total = 0) {
   const audit: Audit[] = [];
   await page.route("**/api/crm/**", async (route: Route) => {
     const request = route.request();
+    expect(request.headers().authorization).toBe("Bearer synthetic.preview.legacy.token");
+    expect(request.headers()["x-osi-membership-ref"]).toBe(membershipRef);
     const url = new URL(request.url());
     audit.push({ method: request.method(), pathname: url.pathname, search: url.search });
     if (request.method() !== "GET") return route.fulfill({ status: 409, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: false, error: "CRM_PIPELINE_MUTATIONS_DISABLED" }) });
@@ -85,7 +90,8 @@ test("A y V autorizados ven Hub e Inbox en las tres rutas con datos vacíos", as
 
   for (const role of ["A", "V"]) {
     const { context, page, audit } = await openActor(browser, { role, permissions: ["pipeline:view"] }, "/hub");
-    await expect(page.getByText("PREVIEW_REHEARSAL", { exact: true })).toBeVisible();
+    await expect(page.locator("header").getByText("Preview", { exact: true })).toBeVisible();
+    await expect(page.getByText("Producción", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toBeVisible();
     for (const route of ["/commercial", "/crm", "/sales/pipeline"]) {
       await page.goto(route);

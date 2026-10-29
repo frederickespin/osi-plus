@@ -1,6 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
-import { resolve } from "node:path";
 import { normalizePrepare } from "../../api/_lib/communicationsContract.js";
 
 const CASE_REF = "138f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
@@ -654,14 +652,8 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   ).toBeLessThanOrEqual(1);
   expect(pageErrors).toEqual([]);
   if (["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) {
-    const evidence = resolve(
-      process.cwd(),
-      ".artifacts",
-      "v17-scheduling-desktop-convergence-11b",
-    );
-    mkdirSync(evidence, { recursive: true });
     await page.screenshot({
-      path: resolve(evidence, `evaluation-${testInfo.project.name}.png`),
+      path: testInfo.outputPath(`evaluation-${testInfo.project.name}.png`),
       fullPage: true,
     });
   }

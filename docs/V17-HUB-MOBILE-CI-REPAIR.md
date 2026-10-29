@@ -76,6 +76,8 @@ Las 15 suites originales de navegador se conservan y se añade Communications. S
 
 El check requerido `browser-session-validation` conserva su nombre y agrega el resultado de todos los grupos. Sólo pasa cuando el job matricial terminó con `success`; un fallo, cancelación o salto se rechaza. Los artefactos se publican por grupo y PIC usa un directorio propio para no borrar evidencia previa de sesiones.
 
+Las capturas de Scheduling se escriben mediante `testInfo.outputPath`, dentro del directorio temporal configurado por Playwright. Se conserva la evidencia visual sin sobrescribir los PNG históricos versionados. Las pruebas de Communications buscan las etiquetas de sus selectores dentro del panel correspondiente; las opciones anidadas forman parte del texto del label, por lo que no se exige igualdad con la palabra aislada.
+
 Las comprobaciones de PostgreSQL continúan ejecutándose contra la instancia efímera local de GitHub Actions. No se utiliza la conexión Neon del Preview para estas pruebas.
 
 ## Evidencia y límites

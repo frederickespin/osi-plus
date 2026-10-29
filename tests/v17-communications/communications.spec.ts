@@ -106,9 +106,9 @@ test("Survey y Cotización abren el panel único con assignment y revisión exac
   await detailButton.press("Enter");
   await expect(page.getByTestId("communication-record-detail")).toContainText("Mensaje renderizado sin transporte externo.");
   await surveyCommunications.getByRole("button", { name: "Preparar", exact: true }).click();
-  await surveyCommunications.getByLabel("Plantilla", { exact: true }).selectOption(TEMPLATE_REF);
-  await surveyCommunications.getByLabel("Destinatario", { exact: true }).selectOption(CASE_REF);
-  await surveyCommunications.getByLabel("Hito", { exact: true }).selectOption("SURVEY_PIC_CLIENT");
+  await surveyCommunications.getByLabel("Plantilla").selectOption(TEMPLATE_REF);
+  await surveyCommunications.getByLabel("Destinatario").selectOption(CASE_REF);
+  await surveyCommunications.getByLabel("Hito").selectOption("SURVEY_PIC_CLIENT");
   await surveyCommunications.getByRole("button", { name: "Guardar como PREPARED", exact: true }).click();
   await expect.poll(() => preparedBodies.length).toBe(1);
 
@@ -120,12 +120,12 @@ test("Survey y Cotización abren el panel único con assignment y revisión exac
   await expect(quoteCommunications).toBeVisible();
   await expect(page.locator('[data-testid^="communications-"]')).toHaveCount(1);
   await expect(page.getByTestId("communication-record-detail")).toHaveCount(0);
-  await expect(quoteCommunications.getByLabel("Plantilla", { exact: true })).toHaveCount(0);
+  await expect(quoteCommunications.getByLabel("Plantilla")).toHaveCount(0);
   await quoteCommunications.getByRole("button", { name: "Preparar", exact: true }).click();
-  await expect(quoteCommunications.getByLabel("Plantilla", { exact: true })).toHaveValue("");
-  await expect(quoteCommunications.getByLabel("Hito", { exact: true })).toHaveValue("QUOTE_SENT");
-  await quoteCommunications.getByLabel("Plantilla", { exact: true }).selectOption(QUOTE_TEMPLATE_REF);
-  await quoteCommunications.getByLabel("Destinatario", { exact: true }).selectOption(CASE_REF);
+  await expect(quoteCommunications.getByLabel("Plantilla")).toHaveValue("");
+  await expect(quoteCommunications.getByLabel("Hito")).toHaveValue("QUOTE_SENT");
+  await quoteCommunications.getByLabel("Plantilla").selectOption(QUOTE_TEMPLATE_REF);
+  await quoteCommunications.getByLabel("Destinatario").selectOption(CASE_REF);
   await quoteCommunications.getByRole("button", { name: "Guardar como PREPARED", exact: true }).click();
   await expect.poll(() => preparedBodies.length).toBe(2);
 
@@ -133,11 +133,11 @@ test("Survey y Cotización abren el panel único con assignment y revisión exac
   const caseCommunications = page.getByTestId("communications-case");
   await expect(caseCommunications).toBeVisible();
   await expect(page.locator('[data-testid^="communications-"]')).toHaveCount(1);
-  await expect(caseCommunications.getByLabel("Plantilla", { exact: true })).toHaveCount(0);
+  await expect(caseCommunications.getByLabel("Plantilla")).toHaveCount(0);
   await caseCommunications.getByRole("button", { name: "Preparar", exact: true }).click();
-  await expect(caseCommunications.getByLabel("Plantilla", { exact: true })).toHaveValue("");
-  await expect(caseCommunications.getByLabel("Destinatario", { exact: true })).toHaveValue("");
-  await expect(caseCommunications.getByLabel("Hito", { exact: true })).toHaveValue("CLIENT_INFORMATION_REQUEST");
+  await expect(caseCommunications.getByLabel("Plantilla")).toHaveValue("");
+  await expect(caseCommunications.getByLabel("Destinatario")).toHaveValue("");
+  await expect(caseCommunications.getByLabel("Hito")).toHaveValue("CLIENT_INFORMATION_REQUEST");
   await expect(caseCommunications.getByRole("button", { name: "Guardar como PREPARED", exact: true })).toBeDisabled();
   expect(recipientsBodies).toEqual(expectedContexts);
   expect(preparedBodies).toHaveLength(2);

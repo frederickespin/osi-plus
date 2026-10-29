@@ -1,5 +1,6 @@
+import { CANONICAL_MIGRATIONS, validateMigrationFiles } from "./canonical-migrations.mjs";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { PrismaClient } from "@prisma/client";
@@ -23,43 +24,7 @@ export const DB01_RUNTIME_SERVICE_MODULES = Object.freeze([
 
 export const DB01_RUNTIME_IMPORT_ALLOWLIST = Object.freeze([]);
 
-export const CANONICAL_MIGRATIONS = Object.freeze([
-  "20260801000000_production_baseline",
-  "20260801001000_mt01a_tenant_memberships",
-  "20260801002000_commercial_audit_log",
-  "20260801003000_approval_requests",
-  "20260801004000_risk_engine_rules_evaluations",
-  "20260801005000_logistic_override_approvals",
-  "20260801006000_quote_change_orders",
-  "20260801007000_logistics_geography_zone_rules",
-  "20260801008000_vehicle_engine_settings",
-  "20260801009000_logistics_rate_metadata",
-  "20260801010000_crate_settings",
-  "20260801011000_mt01b_auth_sessions",
-  "20260801012000_mt01c1a_employee_profiles",
-  "20260801013000_mt01c1b1_provisioning_persistence",
-  "20260801014000_mt01c2b1_commercial_tenant_foundation",
-  "20260801015000_crm01b_pipeline_mutation_authority",
-  "20260801020000_v17_pipeline_case_client_authority",
-  "20260821010000_v17_pipeline_case_public_ref",
-  "20260824010000_v17_client_public_ref_case_mutations",
-  "20260827010000_v17_tenant_membership_public_ref",
-  "20260827020000_v17_admin_identity_invitation",
-  "20260831010000_v17_crm_icp_foundation",
-  "20260904010000_v17_services_tenant_first",
-  "20260905010000_v17_survey_foundation",
-  "20260906010000_v17_materials_inventory",
-  "20260907010000_v17_tools_equipment",
-  "20260908010000_v17_logistics_engine",
-  "20260909010000_v17_costing",
-  "20260910010000_v17_quote",
-  "20260911010000_v17_scheduling_desktop_convergence",
-  "20260912010000_v17_commercial_relationships",
-  "20260913010000_v17_communications_templates",
-  "20260914010000_v17_personnel_operational_policies",
-  "20260915010000_v17_service_packages_resources",
-  "20260916010000_v17_client_temporary_portal",
-]);
+export { CANONICAL_MIGRATIONS, validateMigrationFiles } from "./canonical-migrations.mjs";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -89,29 +54,6 @@ export function assertCanonicalCiTarget(raw = process.env.DATABASE_URL) {
   return { database, host: url.hostname, port: url.port, schema: "osi" };
 }
 
-export function validateMigrationFiles(root = process.cwd()) {
-  const migrationRoot = resolve(root, "prisma/migrations");
-  const directories = readdirSync(migrationRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-  invariant(
-    JSON.stringify(directories) === JSON.stringify([...CANONICAL_MIGRATIONS].sort()),
-    `La cadena activa no coincide con las ${CANONICAL_MIGRATIONS.length} migraciones canónicas`,
-  );
-
-  for (const migration of CANONICAL_MIGRATIONS) {
-    const directory = resolve(migrationRoot, migration);
-    const entries = readdirSync(directory).sort();
-    invariant(entries.length === 1 && entries[0] === "migration.sql", `${migration} contiene archivos inesperados`);
-    const sqlPath = resolve(directory, "migration.sql");
-    invariant(statSync(sqlPath).size > 0, `${migration}/migration.sql está vacío`);
-    const bytes = readFileSync(sqlPath);
-    invariant(!bytes.includes(0), `${migration}/migration.sql contiene bytes nulos`);
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  }
-  return directories;
-}
 
 function trackedFiles() {
   const result = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });

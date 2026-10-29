@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { validateAppliedMigrationHistory } from "./canonical-migrations.mjs";
 
 import {
   HISTORICAL_POLICY_TEMPLATE,
@@ -113,8 +114,10 @@ async function createCase(tenant, membership, user, service, suffix) {
 
 try {
   const migrations = await prisma.$queryRaw`SELECT migration_name, finished_at, rolled_back_at, applied_steps_count FROM "osi"."_prisma_migrations" ORDER BY started_at`;
-  assert.equal(migrations.length, 30);
-  check(migrations.every((row) => row.finished_at && !row.rolled_back_at && row.applied_steps_count === 1), "30 migraciones completas");
+  const migrationNames = validateAppliedMigrationHistory(migrations, {
+    throughMigration: canonicalCi ? undefined : "20260911010000_v17_scheduling_desktop_convergence",
+  });
+  check(migrations.every((row) => row.finished_at && !row.rolled_back_at && row.applied_steps_count === 1), `${migrationNames.length} migraciones completas`);
 
   const tenant = await prisma.tenant.create({ data: { code: `SCH-${run}`, name: "Scheduling isolated test", countryCode: "DO" } });
   const otherTenant = await prisma.tenant.create({ data: { code: `SCX-${run}`, name: "Scheduling cross tenant", countryCode: "DO" } });
@@ -233,7 +236,7 @@ try {
     prisma.surveyCommunicationRecord.count({ where: { tenantId: tenant.id } }),
   ]);
   assert.deepEqual(counts.slice(1), [1, 7, 1, 1]); assertions += 1;
-  process.stdout.write(`${JSON.stringify({ ok: true, assertions, migrations: "30/30", simultaneousSlotWinners: 1, simultaneousSlotLosers: 1, concurrentRescheduleWinners: 1, concurrentEvaluatorChangeWinners: 1, idempotentCommands: 1, routeRevalidation: "REQUIRED", counts })}\n`);
+  process.stdout.write(`${JSON.stringify({ ok: true, assertions, migrations: `${migrationNames.length}/${migrationNames.length}`, simultaneousSlotWinners: 1, simultaneousSlotLosers: 1, concurrentRescheduleWinners: 1, concurrentEvaluatorChangeWinners: 1, idempotentCommands: 1, routeRevalidation: "REQUIRED", counts })}\n`);
 } finally {
   await prisma.$disconnect();
 }

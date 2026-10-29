@@ -1,10 +1,60 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import ts from "typescript";
 
 const root = resolve(process.env.V17_HUB_AUTH_LAZY_GUARD_ROOT || process.cwd());
 const read = (path) => readFileSync(join(root, path), "utf8");
 const fail = (message) => { throw new Error(`V17_HUB_AUTH_LAZY_GUARD_FAILED:${message}`); };
 const requireText = (source, signature, message) => { if (!source.includes(signature)) fail(message); };
+
+function commercialDescriptor(source) {
+  const file = ts.createSourceFile("appCatalog.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  if (file.parseDiagnostics.length) fail("el catálogo contiene sintaxis inválida");
+  const declarations = file.statements
+    .filter(ts.isVariableStatement)
+    .flatMap((statement) => statement.declarationList.declarations)
+    .filter((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "HUB_APPLICATIONS");
+  const initializer = declarations.length === 1 ? declarations[0].initializer : undefined;
+  if (!initializer || !ts.isCallExpression(initializer)
+    || !ts.isPropertyAccessExpression(initializer.expression)
+    || !ts.isIdentifier(initializer.expression.expression)
+    || initializer.expression.expression.text !== "Object"
+    || initializer.expression.name.text !== "freeze"
+    || initializer.arguments.length !== 1
+    || !ts.isArrayLiteralExpression(initializer.arguments[0])) {
+    fail("HUB_APPLICATIONS debe ser un catálogo declarativo único");
+  }
+  const descriptors = initializer.arguments[0].elements.map((element) => {
+    if (!ts.isObjectLiteralExpression(element)) fail("el catálogo no admite descriptores dinámicos");
+    const properties = new Map();
+    for (const property of element.properties) {
+      if (!ts.isPropertyAssignment(property)
+        || !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
+        fail("el catálogo no admite propiedades dinámicas ni spreads");
+      }
+      const name = property.name.text;
+      if (properties.has(name)) fail("el catálogo contiene una propiedad duplicada");
+      properties.set(name, property.initializer);
+    }
+    const appId = properties.get("appId");
+    if (!appId || !ts.isStringLiteral(appId)) fail("el catálogo requiere appId literal");
+    return { appId: appId.text, properties };
+  });
+  const commercial = descriptors.filter((descriptor) => descriptor.appId === "commercial-crm");
+  if (commercial.length !== 1) fail("el catálogo requiere un descriptor Comercial único");
+  return commercial[0].properties;
+}
+
+function hasLiteralString(node, expected) {
+  return Boolean(node && ts.isStringLiteral(node) && node.text === expected);
+}
+
+function hasLiteralStringArray(node, expected) {
+  if (!node || !ts.isArrayLiteralExpression(node) || node.elements.length !== expected.length
+    || node.elements.some((element) => !ts.isStringLiteral(element))) return false;
+  const actual = node.elements.map((element) => element.text);
+  return new Set(actual).size === actual.length && expected.every((value) => actual.includes(value));
+}
 
 const app = read("src/App.tsx");
 const boundary = read("src/components/auth/CanonicalAccessDenied.tsx");
@@ -47,8 +97,17 @@ if (/localStorage|sessionStorage|URLSearchParams|x-osi-|location\.search|locatio
 const deniedIndex = hubAccess.indexOf("application.requiredPermissions.some((permission) => denied.has(permission))");
 const roleIndex = hubAccess.indexOf("application.baselineRoles.includes(context.role)");
 if (deniedIndex < 0 || roleIndex < 0 || deniedIndex > roleIndex) fail("deniedPermissions no prevalece sobre roles baseline");
-if (!/appId: "commercial-crm"[^\n]+requiresExplicitPermissions: true/.test(catalog)) fail("roles baseline conceden pipeline:view");
-requireText(catalog, 'route: "/commercial", routeAliases: ["/crm", "/sales/pipeline", "/commercial/relationships"]', "las rutas comerciales no comparten descriptor");
+const commercial = commercialDescriptor(catalog);
+if (commercial.get("requiresExplicitPermissions")?.kind !== ts.SyntaxKind.TrueKeyword) fail("roles baseline conceden pipeline:view");
+if (!hasLiteralStringArray(commercial.get("requiredPermissions"), ["pipeline:view"])
+  || !hasLiteralString(commercial.get("permissionMode"), "ALL")) {
+  fail("Comercial debe exigir el permiso explícito pipeline:view con modo ALL");
+}
+if (!hasLiteralStringArray(commercial.get("baselineRoles"), ["A", "V"])) fail("los roles Comerciales deben conservar A y V");
+if (!hasLiteralString(commercial.get("route"), "/commercial")
+  || !hasLiteralStringArray(commercial.get("routeAliases"), ["/crm", "/sales/pipeline", "/commercial/relationships"])) {
+  fail("las rutas comerciales no comparten descriptor");
+}
 
 if (/evaluateHubAccess\s*\(\s*selected|function\s+AccessDenied|<AccessDenied|addEventListener\(["']popstate|history\.pushState/.test(workspace)) fail("la autorización o el routing regresó al chunk lazy");
 for (const signature of ["pathname: string", "onNavigate: (pathname: string) => void"]) requireText(workspace, signature, `HubWorkspace dejó de ser controlado: ${signature}`);
@@ -63,4 +122,4 @@ for (const signature of ["headingRef.current?.focus()", "tabIndex={-1}", "Volver
   requireText(errorBoundary, signature, `el error accesible perdió: ${signature}`);
 }
 
-console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, protectedLazyImports: 4, migrationsExpected: 32 }));
+console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, commercialCatalog: "AST_VALIDATED", protectedLazyImportsValidated: ["HubWorkspace", "AdvancedErpShell"] }));

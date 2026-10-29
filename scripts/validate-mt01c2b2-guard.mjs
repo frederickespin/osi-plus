@@ -1,3 +1,4 @@
+import { validateMigrationInventory } from "./canonical-migrations.mjs";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -22,7 +23,7 @@ function filesBelow(root) {
 export function validateMt01c2b2Guard(root = process.cwd()) {
   const read = (path) => readFileSync(resolve(root, path), "utf8");
   const migrations = readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first") && migrations.some((entry) => entry.name === "20260905010000_v17_survey_foundation"))) && migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation"), "la base canónica sólo admite las extensiones Servicios/Survey autorizadas");
+  validateMigrationInventory(root, migrations.map((entry) => entry.name));
   invariant(migrations.some((entry) => entry.name === "20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1");
   invariant(migrations.some((entry) => entry.name === "20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT");
   invariant(migrations.some((entry) => entry.name === "20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF");
@@ -100,7 +101,7 @@ export function validateMt01c2b2Guard(root = process.cwd()) {
   for (const [name, value] of Object.entries({ MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" })) {
     if (process.env[name] !== undefined) invariant(process.env[name] === value, `${name} inseguro`);
   }
-  return { ok: true, migrations: 22, runtimeConsumers: 0, automaticHooks: 0, c2b3Blocked: true, expected: { ...{ clients: 7, projects: 2, leads: 0, pipelineCases: 51, mappedOwners: 39, unassigned: 12 } }, modes: { legacy: true, hybrid: false, tenantSwitch: false, clientV2: false } };
+  return { ok: true, migrations: migrations.length, runtimeConsumers: 0, automaticHooks: 0, c2b3Blocked: true, expected: { ...{ clients: 7, projects: 2, leads: 0, pipelineCases: 51, mappedOwners: 39, unassigned: 12 } }, modes: { legacy: true, hybrid: false, tenantSwitch: false, clientV2: false } };
 }
 
 if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) {

@@ -147,9 +147,13 @@ test("CTA administrativo disponible abre el workspace lazy con dos membresías e
   await page.route("**/api/admin/identity-invitations", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, invitations: [] }) }));
 
   await page.goto("/hub");
-  await expect(page.getByRole("button", { name: /Coordinación.*Ver descriptor/s })).toBeVisible();
+  const pending = page.getByTestId("hub-pending-applications");
+  await pending.locator("summary").click();
+  await expect(pending.getByText("Coordinación", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Coordinación/ })).toHaveCount(0);
   const card = page.getByRole("button", { name: /Abrir Administración/ });
   await expect(card).toBeVisible();
+  expect(resources.some((path) => /AdminTenantMembershipModule/i.test(path))).toBe(false);
   await card.click();
 
   await expect(page).toHaveURL(/\/administration$/);

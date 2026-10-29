@@ -32,7 +32,9 @@ assert.match(files.app, /commercialCrmProductionAuthorized !== true/u);
 assert.ok(files.app.indexOf("!hubMode.valid || !serverConfirmed") < files.app.indexOf("<AuthorizedHubEntry"));
 assert.match(files.hubMode, /resolveV17CommercialCrmProductionClientAuthority/u);
 assert.match(files.clientMode, /productionPair/u);
-assert.match(files.hub, /Comercial abre el ERP sólo cuando la sesión y el entorno están autorizados/u);
+assert.match(files.hub, /visibleHubApplications\(HUB_APPLICATIONS, accessContext\)/u);
+assert.match(files.hub, /availableHubApplications\(visible,/u);
+assert.match(files.hub, /selected\?\.appId === "commercial-crm" && crmReadEnabled/u);
 assert.match(files.hub, /CRM · sólo lectura/u);
 assert.match(workflow, /npm run test:v17-erp-crm-foundation-02c\s/u);
 assert.match(workflow, /npm run test:v17-erp-crm-foundation-02c:browser/u);
@@ -42,4 +44,4 @@ for (const source of Object.values(files)) {
   assert.doesNotMatch(source, /prefetch|localStorage\.getItem\([^)]*(?:permission|role)|x-osi-/iu);
 }
 
-process.stdout.write(JSON.stringify({ ok: true, assertions: 25, protectedBoundary: "pre-lazy", sessionMutationModes: ["DISABLED", "PRODUCTION_PILOT"], browserCi: 18 }));
+process.stdout.write(JSON.stringify({ ok: true, assertions: 27, protectedBoundary: "pre-lazy", sessionMutationModes: ["DISABLED", "PRODUCTION_PILOT"], browserCi: 18 }));

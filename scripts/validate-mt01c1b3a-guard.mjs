@@ -1,3 +1,4 @@
+import { validateMigrationPaths } from "./canonical-migrations.mjs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -23,16 +24,13 @@ export function validateMt01c1b3aGuard({ root = process.cwd(), files = trackedFi
   }
   invariant(consumers.length === 0, `MT-01C1B3A no permite consumidores runtime: ${consumers.join(", ")}`);
 
-  const legacyBypassFile = "api/users/index.js";
-  invariant(normalized.includes(legacyBypassFile), "el bypass heredado POST /api/users debe permanecer inventariado hasta C1B3B");
-  const legacyBypass = readFileSync(resolve(root, legacyBypassFile), "utf8");
-  const bypassMarkers = [
-    /req\.method\s*===\s*["']POST["']/,
-    /prisma\.user\.create\s*\(/,
-    /hashPassword\s*\(/,
-    /body\.role/,
-  ];
-  invariant(bypassMarkers.every((pattern) => pattern.test(legacyBypass)), "el inventario del bypass heredado POST /api/users cambió; requiere revisión C1B3B");
+  const retiredUsersFile = "api/users/index.js";
+  invariant(normalized.includes(retiredUsersFile), "la ruta retirada POST /api/users debe permanecer inventariada");
+  const retiredUsers = readFileSync(resolve(root, retiredUsersFile), "utf8");
+  invariant(/status\(410\)/.test(retiredUsers) && /USERS_ADMINISTRATION_MOVED_TO_MEMBERSHIPS/.test(retiredUsers)
+    && /ADMIN_IDENTITY_INVITATION/.test(retiredUsers), "la ruta heredada /api/users debe permanecer retirada hacia Memberships e Invitation");
+  invariant(!/password|hashPassword|prisma\.(?:user|tenantMembership)\.(?:findMany|create)/i.test(retiredUsers),
+    "la ruta retirada /api/users no puede restaurar listado global ni alta con password");
 
   const executor = readFileSync(resolve(root, "api/_lib/employeeProvisioningExecutor.js"), "utf8");
   const policy = readFileSync(resolve(root, "api/_lib/employeeProvisioningPolicy.js"), "utf8");
@@ -51,11 +49,11 @@ export function validateMt01c1b3aGuard({ root = process.cwd(), files = trackedFi
   invariant(/EMPLOYEE_PROVISIONING_PERMISSIONS\.MATERIALIZE/.test(policy), "materialize debe permanecer no delegable");
 
   const migrations = normalized.filter((file) => /^prisma\/migrations\/[^/]+\/migration\.sql$/.test(file));
-  invariant((migrations.length === 22 || (migrations.length === 23 && migrations.includes("prisma/migrations/20260904010000_v17_services_tenant_first/migration.sql")) || (migrations.length === 24 && migrations.includes("prisma/migrations/20260904010000_v17_services_tenant_first/migration.sql") && migrations.includes("prisma/migrations/20260905010000_v17_survey_foundation/migration.sql"))) && migrations.includes("prisma/migrations/20260831010000_v17_crm_icp_foundation/migration.sql"), `MT-01C1B3A detectó una extensión canónica inválida; encontradas=${migrations.length}`);
+  validateMigrationPaths(root, migrations);
   invariant(String(env.MT01B_AUTH_MODE || "LEGACY").toUpperCase() !== "HYBRID", "HYBRID permanece bloqueado");
   invariant(String(env.MT01B_TENANT_SWITCH_ENABLED || "false").toLowerCase() !== "true", "tenant switch permanece bloqueado");
   invariant(String(env.VITE_MT01B2_CLIENT_ENABLED || "false").toLowerCase() !== "true", "cliente V2 permanece bloqueado");
-  return { ok: true, runtimeConsumers: 0, migrations: migrations.length, protectedService: "employeeProvisioningExecutor", legacyBypasses: ["POST /api/users"] };
+  return { ok: true, runtimeConsumers: 0, migrations: migrations.length, protectedService: "employeeProvisioningExecutor", legacyBypasses: [], retiredRoutes: ["GET /api/users", "POST /api/users"] };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

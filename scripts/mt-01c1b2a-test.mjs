@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import loginHandler, { authenticateLegacyCredentials } from "../api/auth/login.js";
@@ -56,6 +57,20 @@ function asyncBodyRequest(chunks, headers = { "content-type": "application/json"
     },
   };
 }
+async function checkRetiredUsers(name, token, method) {
+  const request = authorized(token, method);
+  let bodyReads = 0;
+  Object.defineProperty(request, "body", { get() { bodyReads += 1; throw new SyntaxError("never-log"); } });
+  const response = await invoke(usersHandler, request);
+  check(name, response.statusCode === 410 && bodyReads === 0
+    && isDeepStrictEqual(response.body, {
+      ok: false,
+      error: "USERS_ADMINISTRATION_MOVED_TO_MEMBERSHIPS",
+      replacement: "/api/admin/memberships",
+      identityCreation: "ADMIN_IDENTITY_INVITATION",
+    }) && response.getHeader("Cache-Control") === "private, no-store");
+  return response;
+}
 
 const suffix = randomUUID().slice(0, 8);
 const userId = randomUUID();
@@ -66,6 +81,9 @@ let initialSessionCount = 0;
 let initialRefreshCount = 0;
 let loginTiming = {};
 let requireAuthTiming = {};
+let createdUser = false;
+let fixtureTenantId = null;
+let fixtureMembershipId = null;
 
 try {
   initialSessionCount = await prisma.authSession.count();
@@ -84,10 +102,25 @@ try {
       passwordHash: await bcrypt.hash(password, 10),
     },
   });
+  createdUser = true;
+  const tenant = await prisma.tenant.create({ data: {
+    code: `C1B2A-${suffix}`.toUpperCase(), name: "Empresa C1B2A sintética", status: "ACTIVE",
+  } });
+  fixtureTenantId = tenant.id;
+  const membership = await prisma.tenantMembership.create({ data: {
+    tenantId: tenant.id, userId, role: "N", status: "ACTIVE", isDefault: true,
+    grantedPermissions: ["clients:view", "clients:create", "projects:view", "projects:create"],
+    deniedPermissions: ["osi:view"],
+  } });
+  fixtureMembershipId = membership.id;
+  const membershipOption = { membershipRef: membership.publicRef, tenantName: tenant.name, role: "N", preferred: true };
 
   const activeLogin = await invoke(loginHandler, post({ email, password }, { "content-type": "application/json" }));
   check("login activo conserva 200", activeLogin.statusCode === 200 && activeLogin.body?.ok === true);
-  check("login activo conserva contrato LEGACY", JSON.stringify(Object.keys(activeLogin.body).sort()) === JSON.stringify(["ok", "token", "user"]));
+  check("login activo conserva contrato LEGACY canónico cerrado", isDeepStrictEqual(activeLogin.body, {
+    ok: true, token: activeLogin.body.token,
+    user: { name: "Usuario sintético C1B2A" }, membershipSelection: { required: false, options: [membershipOption] },
+  }));
   token = activeLogin.body.token;
   const decoded = jwt.decode(token);
   check("JWT LEGACY conserva claims", JSON.stringify(Object.keys(decoded).sort()) === JSON.stringify(["email", "exp", "iat", "role", "sub"].sort()));
@@ -156,24 +189,40 @@ try {
   const suspendedMe = await invoke(meHandler, authorized(token));
   const suspendedRoute = await invoke(clientsHandler, authorized(token));
   check("JWT previo queda rechazado por /auth/me tras suspensión", suspendedMe.statusCode === 401);
-  check("JWT previo queda rechazado por requireAuth tras suspensión", suspendedRoute.statusCode === 401);
-  for (const [name, handler] of [["users", usersHandler], ["clients", clientsHandler], ["projects", projectsHandler]]) {
+  check("JWT previo queda rechazado por autorización canónica tras suspensión", suspendedRoute.statusCode === 401);
+  for (const [name, handler] of [["clients", clientsHandler], ["projects", projectsHandler]]) {
     check(`${name} GET rechaza usuario SUSPENDED`, (await invoke(handler, authorized(token))).statusCode === 401);
     check(`${name} POST rechaza usuario SUSPENDED antes del body`, (await invoke(handler, authorized(token, "POST", "{"))).statusCode === 401);
   }
+  await checkRetiredUsers("users GET permanece retirado para usuario SUSPENDED", token, "GET");
+  await checkRetiredUsers("users POST permanece retirado sin leer body para usuario SUSPENDED", token, "POST");
 
   await prisma.user.update({ where: { id: userId }, data: { status: "inactive" } });
-  for (const [name, handler] of [["users", usersHandler], ["clients", clientsHandler], ["projects", projectsHandler]]) {
+  for (const [name, handler] of [["clients", clientsHandler], ["projects", projectsHandler]]) {
     check(`${name} GET rechaza usuario INACTIVE`, (await invoke(handler, authorized(token))).statusCode === 401);
     check(`${name} POST rechaza usuario INACTIVE antes del body`, (await invoke(handler, authorized(token, "POST", "{"))).statusCode === 401);
   }
+  await checkRetiredUsers("users GET permanece retirado para usuario INACTIVE", token, "GET");
+  await checkRetiredUsers("users POST permanece retirado sin leer body para usuario INACTIVE", token, "POST");
 
   await prisma.user.update({ where: { id: userId }, data: { status: "active" } });
-  for (const [name, handler] of [["users", usersHandler], ["clients", clientsHandler], ["projects", projectsHandler]]) {
+  for (const [name, handler] of [["clients", clientsHandler], ["projects", projectsHandler]]) {
     check(`${name} GET conserva acceso ACTIVE`, (await invoke(handler, authorized(token))).statusCode === 200);
     check(`${name} POST ACTIVE alcanza parser`, (await invoke(handler, authorized(token, "POST", "{"))).statusCode === 400);
   }
-  check("/auth/me activo conserva contrato", JSON.stringify(Object.keys((await invoke(meHandler, authorized(token))).body?.user || {}).sort()) === JSON.stringify(["code", "department", "email", "id", "joinDate", "name", "phone", "points", "rating", "role", "status"]));
+  await checkRetiredUsers("users GET no recupera listado global para usuario ACTIVE", token, "GET");
+  await checkRetiredUsers("users POST ACTIVE no recupera alta ni parser", token, "POST");
+  const currentMe = await invoke(meHandler, authorized(token));
+  check("/auth/me activo conserva DTO cerrado con autoridad de Membership", currentMe.statusCode === 200
+    && currentMe.getHeader("Cache-Control") === "private, no-store" && isDeepStrictEqual(currentMe.body, {
+      ok: true,
+      user: {
+        name: "Usuario sintético C1B2A", role: "N", status: "active",
+        permissions: ["clients:create", "clients:view", "projects:create", "projects:view"], deniedPermissions: ["osi:view"],
+        membership: { membershipRef: membership.publicRef, tenantName: tenant.name, role: "N" },
+        memberships: [membershipOption],
+      },
+    }));
 
   let statusQueries = 0;
   const cachedRequest = authorized(token);
@@ -283,11 +332,14 @@ try {
   check("SyntaxError de parser de plataforma devuelve 400", parserGetterResponse.statusCode === 400 && parserGetterResponse.body?.code === "REQUEST_JSON_INVALID");
   check("SyntaxError de plataforma queda sanitizado", !safeBody(parserGetterResponse).includes("secret-parser-stack"));
 
-  for (const [name, handler] of [["users", usersHandler], ["clients", clientsHandler], ["projects", projectsHandler]]) {
+  for (const [name, handler] of [["clients", clientsHandler], ["projects", projectsHandler]]) {
     const response = await invoke(handler, authorized(token, "POST", "{\"password\":\"never-log\""));
     check(`${name} convierte SyntaxError en 400`, response.statusCode === 400 && response.body?.code === "REQUEST_JSON_INVALID");
     check(`${name} sanitiza parser`, !safeBody(response).includes("never-log") && !safeBody(response).includes("SyntaxError"));
   }
+  const retiredParserResponse = await checkRetiredUsers("users retirado devuelve 410 sin leer parser malformado", token, "POST");
+  check("users retirado no filtra payload ni SyntaxError", !safeBody(retiredParserResponse).includes("never-log")
+    && !safeBody(retiredParserResponse).includes("SyntaxError"));
 
   check("LEGACY no crea AuthSession", await prisma.authSession.count() === initialSessionCount);
   check("LEGACY no crea refresh token", await prisma.authRefreshToken.count() === initialRefreshCount);
@@ -298,6 +350,13 @@ try {
   process.stdout.write(`${JSON.stringify({ ok: false, passed: results.filter((item) => item.passed).length, failed: 1, results, error: { name: error.name, message: error.message, stack: error.stack } }, null, 2)}\n`);
   process.exitCode = 1;
 } finally {
-  await prisma.user.deleteMany({ where: { id: userId } });
-  await prisma.$disconnect();
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (fixtureMembershipId) await tx.tenantMembership.deleteMany({ where: { id: fixtureMembershipId, tenantId: fixtureTenantId, userId } });
+      if (fixtureTenantId) await tx.tenant.deleteMany({ where: { id: fixtureTenantId } });
+      if (createdUser) await tx.user.deleteMany({ where: { id: userId } });
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
 }

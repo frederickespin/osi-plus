@@ -36,7 +36,9 @@ export function validateAdminTenantMembershipGuard(overrides = {}) {
   invariant(/beforeAdmins >= 2[\s\S]*afterAdmins < 2/u.test(domain) && /ADMIN_MEMBERSHIP_SELF_PROTECTION/u.test(domain), "protección de administradores ausente");
   invariant(/auth_sessions/u.test(domain) && /auth_refresh_tokens/u.test(domain) && /appendCommercialAudit/u.test(domain), "revocación o auditoría ausente");
   invariant(/membership:view[\s\S]*requiresExplicitPermissions: true/u.test(catalog), "catálogo concede Administración sin permiso explícito");
-  invariant(/const AdminTenantMembershipModule = lazy/u.test(hub) && /selected\?\.appId === "administration"[\s\S]*adminEnabled/u.test(hub), "Administración no está lazy y gated");
+  invariant(/const AdminTenantMembershipModule = lazy/u.test(hub)
+    && /const adminMembershipAvailable = adminEnabled && effectivePermissions\.has\("membership:view"\) && !deniedPermissions\.has\("membership:view"\)/u.test(hub)
+    && /selected\?\.appId === "administration" && adminMembershipAvailable/u.test(hub), "Administración no está lazy y gated");
   invariant(!/\/api\/users|mockUsers|localStorage|sessionStorage|indexedDB/u.test(ui), "UI usa autoridad histórica o storage");
   invariant(!/\b(?:tenantId|membershipId|userId|publicRef|clientId)\b/u.test(ui), "UI expone identidad interna");
   invariant(/--apply[\s\S]*AUTHORIZATION_FILE_REQUIRED[\s\S]*TARGET_USER_NOT_AUTHENTICABLE_OR_UNIQUE/u.test(bootstrap), "bootstrap no exige dry-run/autorización/User autenticable");

@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { normalizePrepare } from "../../api/_lib/communicationsContract.js";
 
 const CASE_REF = "138f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const MEMBERSHIP_REF = "238f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
@@ -36,6 +35,7 @@ async function session(
             ...schedulingPermissions,
             "communications:view",
             "communications:prepare",
+            "communications:templates:view",
           ]
         : ["survey:schedule:view", "communications:view"]),
   ];
@@ -453,6 +453,15 @@ function readyWorkspace() {
 async function communicationsApi(page: Page) {
   let prepared = false;
   let mutations = 0;
+  const preparations: ReturnType<typeof normalizePrepare>[] = [];
+  const recipientRequests: Record<string, unknown>[] = [];
+  const requests: Array<{ method: string; pathname: string }> = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.startsWith("/api/communications/")) {
+      requests.push({ method: request.method(), pathname });
+    }
+  });
   const template = {
     templateRef: TEMPLATE_REF,
     code: "PIC_CLIENT_VISIT",
@@ -516,8 +525,17 @@ async function communicationsApi(page: Page) {
       body: JSON.stringify({ ok: true, data: prepared ? [record] : [] }),
     }),
   );
-  await page.route("**/api/communications/recipients", (route) =>
-    route.fulfill({
+  await page.route("**/api/communications/recipients", (route) => {
+    expect(route.request().method()).toBe("POST");
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    expect(body).toEqual({
+      caseRef: CASE_REF,
+      audience: "CLIENT",
+      surveyAssignmentRef: ASSIGNMENT_REF,
+      quoteRevisionRef: null,
+    });
+    recipientRequests.push(body);
+    return route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: privateHeaders,
@@ -526,7 +544,7 @@ async function communicationsApi(page: Page) {
         data: [
           {
             recipientType: "CLIENT",
-            recipientRef: "contact:case",
+            recipientRef: CASE_REF,
             displayName: "Contacto sintético",
             email: "c***@example.invalid",
             phone: null,
@@ -534,9 +552,11 @@ async function communicationsApi(page: Page) {
           },
         ],
       }),
-    }),
-  );
+    });
+  });
   await page.route("**/api/communications/prepare", (route) => {
+    expect(route.request().method()).toBe("POST");
+    preparations.push(normalizePrepare(route.request().postDataJSON()));
     prepared = true;
     mutations += 1;
     return route.fulfill({
@@ -546,7 +566,25 @@ async function communicationsApi(page: Page) {
       body: JSON.stringify({ ok: true, data: record }),
     });
   });
-  return () => mutations;
+  return { mutations: () => mutations, preparations, recipientRequests, requests };
+}
+
+async function openSurveyCommunications(page: Page) {
+  const survey = page.getByTestId("survey-scheduling-workspace");
+  await expect(survey).toBeVisible();
+  const openCommunications = survey.getByRole("button", {
+    name: "Ver comunicaciones de Survey",
+    exact: true,
+  });
+  await expect(openCommunications).toBeVisible();
+  await openCommunications.click();
+  await expect(page.getByRole("tab", { name: "Resumen", exact: true })).toHaveAttribute("aria-selected", "true");
+  const activity = page.getByRole("region", { name: "Actividad y Comunicaciones", exact: true });
+  await expect(activity).toBeVisible();
+  const communications = activity.getByTestId("communications-scheduling");
+  await expect(communications).toBeVisible();
+  await expect(page.locator('[data-testid^="communications-"]')).toHaveCount(1);
+  return communications;
 }
 
 test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Survey App", async ({
@@ -555,13 +593,13 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   await session(page);
   await crm(page);
   const schedulingMutations = await schedulingApi(page);
-  const communicationMutations = await communicationsApi(page);
+  const communicationAudit = await communicationsApi(page);
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Survey" }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Survey" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Survey", exact: true })).toBeVisible();
   await expect(
     page.getByText(
       "Evaluadora sintética · METRO · METRO_SANTO_DOMINGO · MORNING",
@@ -573,13 +611,13 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
     ),
   ).toBeVisible();
   await expect(page.getByText("Visita programada")).toBeVisible();
-  const communications = page.getByTestId("communications-scheduling");
+  const communications = await openSurveyCommunications(page);
   await expect(
     communications.getByText("Transporte externo desactivado en Preview"),
   ).toBeVisible();
   await communications.getByRole("button", { name: "Preparar" }).click();
   await communications.getByLabel("Plantilla").selectOption(TEMPLATE_REF);
-  await communications.getByLabel("Destinatario").selectOption("contact:case");
+  await communications.getByLabel("Destinatario").selectOption(CASE_REF);
   await communications.getByLabel("Hito").selectOption("SURVEY_PIC_CLIENT");
   await communications
     .getByRole("button", { name: "Guardar como PREPARED" })
@@ -589,7 +627,21 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
     .filter({ hasText: "SURVEY_PIC_CLIENT" });
   await expect(preparedRecord).toBeVisible();
   expect(schedulingMutations()).toBe(0);
-  expect(communicationMutations()).toBe(1);
+  expect(communicationAudit.mutations()).toBe(1);
+  expect(communicationAudit.preparations).toEqual([{
+    operation: "COMMUNICATION_PREPARE",
+    requestId: expect.any(String),
+    payloadHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    templateRef: TEMPLATE_REF,
+    version: 1,
+    caseRef: CASE_REF,
+    surveyAssignmentRef: ASSIGNMENT_REF,
+    quoteRevisionRef: null,
+    recipientType: "CLIENT",
+    recipientRef: CASE_REF,
+    channel: "EMAIL",
+    milestone: "SURVEY_PIC_CLIENT",
+  }]);
   await expect(preparedRecord.getByText("PREPARED")).toBeVisible();
   expect(
     await page.evaluate(
@@ -600,17 +652,42 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   ).toBeLessThanOrEqual(1);
   expect(pageErrors).toEqual([]);
   if (["chromium-desktop", "chromium-mobile"].includes(testInfo.project.name)) {
-    const evidence = resolve(
-      process.cwd(),
-      ".artifacts",
-      "v17-scheduling-desktop-convergence-11b",
-    );
-    mkdirSync(evidence, { recursive: true });
     await page.screenshot({
-      path: resolve(evidence, `evaluation-${testInfo.project.name}.png`),
+      path: testInfo.outputPath(`evaluation-${testInfo.project.name}.png`),
       fullPage: true,
     });
   }
+});
+
+test("volver a Survey descarta el borrador de comunicación sin arrastrar destinatario ni hito", async ({ page }) => {
+  await session(page);
+  await crm(page);
+  const schedulingMutations = await schedulingApi(page);
+  const communicationAudit = await communicationsApi(page);
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Survey", exact: true }).click();
+  const communications = await openSurveyCommunications(page);
+  await communications.getByRole("button", { name: "Preparar", exact: true }).click();
+  await communications.getByLabel("Plantilla").selectOption(TEMPLATE_REF);
+  await communications.getByLabel("Destinatario").selectOption(CASE_REF);
+  await communications.getByLabel("Hito").selectOption("SURVEY_PIC_CLIENT");
+  await expect(communications.getByRole("button", { name: "Guardar como PREPARED" })).toBeEnabled();
+
+  await page.getByRole("tab", { name: "Survey", exact: true }).click();
+  await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
+  await expect(page.locator('[data-testid^="communications-"]')).toHaveCount(0);
+  const reopenedCommunications = await openSurveyCommunications(page);
+  await expect(reopenedCommunications.getByLabel("Plantilla")).toHaveCount(0);
+  await reopenedCommunications.getByRole("button", { name: "Preparar", exact: true }).click();
+  await expect(reopenedCommunications.getByLabel("Plantilla")).toHaveValue("");
+  await expect(reopenedCommunications.getByLabel("Destinatario")).toHaveValue("");
+  await expect(reopenedCommunications.getByLabel("Canal")).toHaveValue("");
+  await expect(reopenedCommunications.getByLabel("Hito")).toHaveValue("VISIT_CONFIRMATION");
+  await expect(reopenedCommunications.getByRole("button", { name: "Guardar como PREPARED" })).toBeDisabled();
+  expect(schedulingMutations()).toBe(0);
+  expect(communicationAudit.mutations()).toBe(0);
+  expect(communicationAudit.preparations).toHaveLength(0);
+  expect(communicationAudit.recipientRequests).toHaveLength(1);
 });
 
 test("fuera de horario ofrece solicitud excepcional tenant-first", async ({
@@ -686,26 +763,29 @@ test("viewer consulta agenda y comunicaciones sin controles de gestión", async 
 }) => {
   await session(page, "viewer");
   await crm(page);
-  await schedulingApi(page);
-  await communicationsApi(page);
+  const schedulingMutations = await schedulingApi(page);
+  const communicationAudit = await communicationsApi(page);
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Survey" }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
   await expect(page.getByRole("button", { name: "Reprogramar" })).toHaveCount(
     0,
   );
-  await expect(page.getByTestId("communications-scheduling")).toBeVisible();
+  const communications = await openSurveyCommunications(page);
   await expect(
-    page
-      .getByTestId("communications-scheduling")
-      .getByRole("button", { name: "Preparar" }),
+    communications.getByRole("button", { name: "Preparar" }),
   ).toHaveCount(0);
   await expect(
-    page
-      .getByTestId("communications-scheduling")
+    communications
       .locator("p:visible, td:visible")
       .filter({ hasText: "Sin comunicaciones canónicas registradas." }),
   ).toBeVisible();
+  expect(schedulingMutations()).toBe(0);
+  expect(communicationAudit.mutations()).toBe(0);
+  expect(communicationAudit.preparations).toHaveLength(0);
+  expect(communicationAudit.recipientRequests).toHaveLength(0);
+  expect(communicationAudit.requests.some(({ pathname }) => pathname === "/api/communications/records")).toBe(true);
+  expect(communicationAudit.requests.every(({ method }) => method === "GET")).toBe(true);
 });
 
 test("deny prevalece y evita chunk y request de Scheduling", async ({

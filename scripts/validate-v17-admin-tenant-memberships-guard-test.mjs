@@ -3,6 +3,8 @@ import { validateAdminTenantMembershipGuard } from "./validate-v17-admin-tenant-
 
 const read = (path) => readFileSync(path, "utf8");
 const cases = [
+  ["gate de membresías omitido", "src/hub/HubWorkspace.tsx", (s) => s.replace('selected?.appId === "administration" && adminMembershipAvailable', 'selected?.appId === "administration"')],
+  ["deny UI omitido", "src/hub/HubWorkspace.tsx", (s) => s.replace(' && !deniedPermissions.has("membership:view")', '')],
   ["tenant ausente", "api/_lib/adminMembershipDomain.js", (s) => s.replace('WHERE tm."tenant_id"=${tenantId} AND tm."public_ref"=CAST(${ref} AS uuid)', 'WHERE tm."public_ref"=CAST(${ref} AS uuid)')],
   ["publicRef ausente", "api/_lib/adminMembershipDomain.js", (s) => s.replace('WHERE tm."tenant_id"=${tenantId} AND tm."public_ref"=CAST(${ref} AS uuid)', 'WHERE tm."tenant_id"=${tenantId}')],
   ["actor no revalidado", "api/_lib/adminMembershipDomain.js", (s) => s.replace('const actor = await revalidateAdminActor(tx, context);', 'const actor = { membershipId: context.membershipId, effective: new Set(context.permissions), row: { denied_permissions: [] } };')],
@@ -20,7 +22,10 @@ const cases = [
 let assertions = 0;
 for (const [name, path, mutate] of cases) {
   let failed = false;
-  try { validateAdminTenantMembershipGuard({ [path]: mutate(read(path)) }); } catch { failed = true; }
+  const original = read(path);
+  const changed = mutate(original);
+  if (changed === original) throw new Error(`mutación vacía: ${name}`);
+  try { validateAdminTenantMembershipGuard({ [path]: changed }); } catch { failed = true; }
   if (!failed) throw new Error(`guardia negativa no detectó: ${name}`);
   assertions += 1;
 }

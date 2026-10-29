@@ -1,5 +1,5 @@
 import type { UserRole } from "@/types/osi.types";
-import type { HubApplication } from "./appCatalog";
+import type { HubApplication, HubSuite } from "./appCatalog";
 
 export type HubAccessContext = Readonly<{
   role: UserRole;
@@ -46,4 +46,12 @@ export function evaluateHubAccess(application: HubApplication, context: HubAcces
 }
 export function visibleHubApplications(applications: readonly HubApplication[], context: HubAccessContext) {
   return applications.filter((application) => evaluateHubAccess(application, context).allowed);
+}
+
+export function evaluateHubSuiteAccess(suite: HubSuite, applications: readonly HubApplication[], context: HubAccessContext) {
+  const allowed = applications.some((application) => application.suiteId === suite.suiteId && evaluateHubAccess(application, context).allowed);
+  return Object.freeze({
+    allowed,
+    reason: allowed ? "APPLICATION_ALLOWED" : "ACCESS_DENIED",
+  } as const);
 }

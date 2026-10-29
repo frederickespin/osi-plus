@@ -351,7 +351,7 @@ try {
     caseRef: "<caseRef>", caseCode: "<caseCode>", client: { clientRef: "<clientRef>", displayName: "<displayName>", type: "PERSON", status: "active" }, mode: "EXPORT", serviceType: "MOVING",
     customerType: "L4_PERSONAL", status: "NEW_INBOX", estimatedCbm: 0.5, requiresSurvey: true,
     surveyMethod: "PRESENCIAL", originLocation: "Origen 0", destinationLocation: "Destino 0",
-    destinationContracted: true, assetsCount: 0,
+    route: null, destinationContracted: true, assetsCount: 0,
     owner: { displayName: "<displayName>", role: "V", membershipStatus: "ACTIVE" },
     quoteCount: 0, eventCount: 0, createdAt: "<timestamp>", updatedAt: "<timestamp>",
   };
@@ -359,7 +359,7 @@ try {
   checkJsonSnapshot("snapshot detalle", normalizeSuccessContract(detail.body), { ok: true, data: {
     caseRef: "<caseRef>", caseCode: "<caseCode>", version: 1, status: "NEW_INBOX", mode: "EXPORT", serviceType: "MOVING",
     customerType: "L4_PERSONAL", estimatedCbm: 0.5, requiresSurvey: true, surveyMethod: "PRESENCIAL",
-    originLocation: "Origen 0", destinationLocation: "Destino 0", destinationContracted: true,
+    originLocation: "Origen 0", destinationLocation: "Destino 0", route: null, destinationContracted: true,
     assetsCount: 0, quoteCount: 0, eventCount: 0,
     client: { clientRef: "<clientRef>", displayName: "<displayName>", type: "PERSON", status: "active" },
     owner: { displayName: "<displayName>", isCurrentActor: false }, createdAt: "<timestamp>", updatedAt: "<timestamp>",

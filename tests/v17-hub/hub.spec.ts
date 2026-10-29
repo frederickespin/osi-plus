@@ -73,7 +73,7 @@ test("DISABLED conserva la aplicación actual y no descarga el chunk Hub", async
   await page.goto("http://127.0.0.1:4184/");
   await expect(page.getByText("Actor legacy")).toBeVisible();
   await expect(page.getByText("OSi Plus Hub", { exact: true })).toHaveCount(0);
-  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|SurveyApp|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
   expect(requests.filter((path) => path.startsWith("/api/"))).toEqual(["/api/auth/me"]);
 });
 
@@ -86,12 +86,12 @@ test("DISABLED también bloquea deep links sin prefetch, listeners ni timers del
     Object.defineProperty(window, "__v17HubDisabledAudit", { value: audit });
     window.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
       const stack = new Error().stack || "";
-      if (/src[\\/]hub|HubWorkspace|OsiSurveyInactive/i.test(stack)) audit.listeners.push(type);
+      if (/src[\\/]hub|HubWorkspace|OsiSurveyInactive|SurveyApp/i.test(stack)) audit.listeners.push(type);
       return originalAddEventListener(type, listener, options);
     }) as typeof window.addEventListener;
     window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
       const stack = new Error().stack || "";
-      if (/src[\\/]hub|HubWorkspace|OsiSurveyInactive/i.test(stack)) audit.timers.push(String(timeout));
+      if (/src[\\/]hub|HubWorkspace|OsiSurveyInactive|SurveyApp/i.test(stack)) audit.timers.push(String(timeout));
       return originalSetTimeout(handler, timeout, ...args);
     }) as typeof window.setTimeout;
   });
@@ -103,14 +103,14 @@ test("DISABLED también bloquea deep links sin prefetch, listeners ni timers del
   await expect(page.getByTestId("osi-survey-inactive")).toHaveCount(0);
   const audit = await page.evaluate(() => (window as typeof window & { __v17HubDisabledAudit: { listeners: string[]; timers: string[] } }).__v17HubDisabledAudit);
   expect(audit).toEqual({ listeners: [], timers: [] });
-  expect(resources.some((path) => /HubWorkspace|OsiSurveyInactive|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
-  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /HubWorkspace|OsiSurveyInactive|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(entry.name)))).toBe(false);
+  expect(resources.some((path) => /HubWorkspace|OsiSurveyInactive|SurveyApp|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(path))).toBe(false);
+  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /HubWorkspace|OsiSurveyInactive|SurveyApp|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail/i.test(entry.name)))).toBe(false);
 });
 
-test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) => {
+test("matriz de roles conserva permisos y muestra módulos no habilitados sólo como información", async ({ browser }) => {
   const expected: Record<string, string[]> = {
-    A: ["Coordinación", "Operaciones", "Materiales y Equipos", "Taller y Carpintería", "Recursos Humanos"],
-    V: [], K: ["Coordinación"], B: ["Operaciones"], C: ["Materiales y Equipos"], C1: ["Operaciones"], D: ["Operaciones"], E: ["Operaciones"], G: ["Operaciones"], N: ["Operaciones"],
+    A: ["Coordinación", "Operaciones", "Taller y Carpintería", "Recursos Humanos"],
+    V: [], K: ["Coordinación"], B: ["Operaciones"], C: [], C1: ["Operaciones"], D: ["Operaciones"], E: ["Operaciones"], G: ["Operaciones"], N: ["Operaciones"],
     PA: ["Taller y Carpintería"], PB: ["Taller y Carpintería"], PC: ["Taller y Carpintería"], PD: ["Taller y Carpintería"], PF: ["Taller y Carpintería"], I: ["Recursos Humanos"], PE: ["Operaciones"], RB: [],
   };
   for (const [role, apps] of Object.entries(expected)) {
@@ -123,7 +123,12 @@ test("matriz de roles muestra sólo aplicaciones baseline", async ({ browser }) 
       await expect(page.getByText("OSi Plus Hub", { exact: true })).toHaveCount(0);
     } else {
       await expect(page.getByText("OSi Plus Hub", { exact: true }).first()).toBeVisible();
-      expect(await page.locator("main h2").allTextContents()).toEqual(apps);
+      expect(await page.locator("main h2").allTextContents()).toEqual([]);
+      const pending = page.getByTestId("hub-pending-applications");
+      await pending.locator("summary").click();
+      expect(await pending.locator("li").allTextContents()).toEqual(apps);
+      await expect(page.locator("main").getByRole("button")).toHaveCount(0);
+      for (const name of apps) await expect(page.getByRole("navigation", { name: "Aplicaciones OSi Plus" }).getByRole("button", { name, exact: true })).toHaveCount(0);
     }
     await context.close();
   }
@@ -148,7 +153,9 @@ test("deniedPermissions prevalece antes del lazy y no bloquea otras aplicaciones
   await authenticate(hubPage, { role: "A", deniedPermissions: ["pipeline:view"] });
   await hubPage.goto("/hub?app=commercial-crm", { waitUntil: "domcontentloaded" });
   await expect(hubPage.getByRole("heading", { name: "Comercial y CRM" })).toHaveCount(0);
-  await expect(hubPage.getByRole("heading", { name: "Coordinación" })).toBeVisible();
+  await hubPage.getByTestId("hub-pending-applications").locator("summary").click();
+  await expect(hubPage.getByTestId("hub-pending-applications").getByText("Coordinación", { exact: true })).toBeVisible();
+  await expect(hubPage.getByRole("button", { name: /Coordinación/ })).toHaveCount(0);
   await hubContext.close();
 });
 
@@ -163,7 +170,9 @@ test("query, storage y x-osi-* no elevan un contexto validado", async ({ page })
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
   await page.goto("/hub");
   await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Operaciones" })).toBeVisible();
+  await page.getByTestId("hub-pending-applications").locator("summary").click();
+  await expect(page.getByTestId("hub-pending-applications").getByText("Operaciones", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Operaciones/ })).toHaveCount(0);
 });
 
 test("hash, URL, sessionStorage y headers de proxy no alteran autoridad", async ({ page }) => {
@@ -177,11 +186,11 @@ test("hash, URL, sessionStorage y headers de proxy no alteran autoridad", async 
   await authenticate(page, { role: "RB" });
   await page.addInitScript(() => {
     sessionStorage.setItem("role", "A");
-    sessionStorage.setItem("permissions", "clients:view,survey:assigned:view");
+    sessionStorage.setItem("permissions", "clients:view,survey:assignment:view");
   });
   await page.goto("/commercial?role=A#permission=clients:view");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-  await page.goto("/survey?permission=survey:assigned:view#role=A");
+  await page.goto("/survey?permission=survey:assignment:view#role=A");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   expect(resources.some((path) => /HubWorkspace|AdvancedErpShell|CommercialInboxModule|CommercialCaseDetail|OsiSurveyInactive/i.test(path))).toBe(false);
   expect(resources.some((path) => path.startsWith("/api/crm/"))).toBe(false);
@@ -227,7 +236,7 @@ test("cuatro rutas deny, back/forward y logout permanecen antes del límite lazy
   await context.close();
 });
 
-test("un permiso retirado se revalida antes de una navegación SPA y bloquea el Inbox", async ({ browser }) => {
+test("un permiso retirado se revalida antes de una navegación SPA y bloquea Mobile sin descargar el Inbox", async ({ browser }) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   let denied = false;
@@ -241,11 +250,11 @@ test("un permiso retirado se revalida antes de una navegación SPA y bloquea el 
     body: authMeBody({ role: "V", name: "Actor revalidado", permissions: ["pipeline:view"], deniedPermissions: denied ? ["pipeline:view"] : [] }),
   }));
   await page.goto("/hub");
-  await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "OSi Plus Mobile", exact: true })).toBeVisible();
   denied = true;
   const requestsAfterRevocation: string[] = [];
   page.on("request", (request) => requestsAfterRevocation.push(new URL(request.url()).pathname));
-  await page.locator("main").getByRole("button").filter({ hasText: "Comercial y CRM" }).click();
+  await page.locator("main").getByRole("button").filter({ hasText: "OSi Plus Mobile" }).click();
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   expect(new URL(page.url()).pathname).toBe("/hub");
   expect(requestsAfterRevocation.filter((path) => path === "/api/auth/me")).toHaveLength(1);
@@ -280,7 +289,7 @@ test("pushState espera autorización y un fallo de red desmonta el Hub con error
   await page.goto("/hub");
   await expect(page.getByText("Hola, Actor A")).toBeVisible();
   navigationOutcome = "NETWORK_ERROR";
-  await page.locator("main").getByRole("button").filter({ hasText: "Comercial y CRM" }).click();
+  await page.locator("main").getByRole("button").filter({ hasText: "OSi Plus Mobile" }).click();
   await expect(page.locator('[role="status"]')).toContainText("Verificando acceso");
   expect(new URL(page.url()).pathname).toBe("/hub");
   await expect(page.getByText("Hola, Actor A")).toBeVisible();
@@ -318,7 +327,7 @@ test("cambio de identidad y logout durante revalidación cierran la sesión y an
   await page.waitForLoadState("networkidle");
   expect(JSON.parse(await page.evaluate(() => localStorage.getItem("osi-plus.session") || "{}"))).toMatchObject({ membershipRef: MEMBERSHIP_REF });
   phase = "IDENTITY_CHANGE";
-  await page.locator("main").getByRole("button").filter({ hasText: "Coordinación" }).click();
+  await page.locator("main").getByRole("button").filter({ hasText: "OSi Plus Mobile" }).click();
   await expect.poll(() => observedPhases.filter((value) => value === "IDENTITY_CHANGE").length).toBe(1);
   await expect(page.getByRole("button", { name: "Iniciar Sesión" })).toBeVisible();
   expect(await page.evaluate(() => [localStorage.getItem("osi-plus.token"), localStorage.getItem("osi-plus.session")])).toEqual([null, null]);
@@ -333,8 +342,9 @@ test("cambio de identidad y logout durante revalidación cierran la sesión y an
   phase = "PENDING_LOGOUT";
   releaseNavigation = null;
   const navigationRoot = testInfo.project.name.includes("mobile") ? page.getByRole("navigation", { name: "Aplicaciones OSi Plus" }) : page.locator("main");
-  await navigationRoot.getByRole("button").filter({ hasText: "Coordinación" }).click();
+  await navigationRoot.getByRole("button").filter({ hasText: "OSi Plus Mobile" }).click();
   await expect.poll(() => releaseNavigation !== null).toBe(true);
+  if (testInfo.project.name.includes("mobile")) await page.getByRole("button", { name: "Abrir navegación" }).click();
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
   releaseNavigation?.();
   await expect(page.getByRole("button", { name: "Iniciar Sesión" })).toBeVisible();
@@ -371,24 +381,24 @@ test("veinte intenciones rápidas cancelan las anteriores y sólo la última gan
     }
   });
 
-  await page.goto("/hub");
-  const commercial = page.locator("main").getByRole("button").filter({ hasText: "Comercial y CRM" });
-  const coordination = page.locator("main").getByRole("button").filter({ hasText: "Coordinación" });
+  await page.goto("/mobile");
+  const hub = page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: "Volver al Hub", exact: true });
+  const packing = page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /Calculadora de Empaque/ });
   for (let index = 0; index < 20; index += 1) {
-    await (index % 2 === 0 ? commercial : coordination).click();
+    await (index % 2 === 0 ? hub : packing).click();
   }
   await expect.poll(() => pendingNavigationResponses.length).toBe(20);
   pendingNavigationResponses.at(-1)?.();
-  await expect(page).toHaveURL(/\/coordination$/);
-  await expect(page.getByRole("heading", { name: "Coordinación" })).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe("/coordination");
+  await expect(page).toHaveURL(/\/mobile\/packing$/);
+  await expect(page.getByRole("heading", { name: "Calculadora de Empaque" })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/mobile/packing");
   expect(apiRequests.filter((path) => path === "/api/auth/me")).toHaveLength(21);
   expect(apiRequests.some((path) => path.startsWith("/api/crm/"))).toBe(false);
   expect(failedRequests.length).toBeGreaterThanOrEqual(19);
   for (const release of pendingNavigationResponses.slice(0, -1).reverse()) release();
   await page.waitForTimeout(100);
-  await expect(page.getByRole("heading", { name: "Coordinación" })).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe("/coordination");
+  await expect(page.getByRole("heading", { name: "Calculadora de Empaque" })).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/mobile/packing");
 });
 
 test("cincuenta navegaciones no acumulan listeners, timers ni revalidaciones", async ({ page }) => {
@@ -414,15 +424,15 @@ test("cincuenta navegaciones no acumulan listeners, timers ni revalidaciones", a
     authRequests += 1;
     await route.fulfill({ status: 200, contentType: "application/json", body: authMeBody(actor) });
   });
-  await page.goto("/hub");
+  await page.goto("/mobile");
   const startedAt = Date.now();
   for (let index = 0; index < 25; index += 1) {
-    await page.locator("main").getByRole("button").filter({ hasText: "Coordinación" }).click();
-    await expect(page).toHaveURL(/\/coordination$/);
-    await expect(page.getByRole("heading", { name: "Coordinación" })).toBeVisible();
-    await page.getByRole("button", { name: "OSi Plus Hub", exact: true }).click();
-    await expect(page).toHaveURL(/\/hub$/);
-    await expect(page.getByText("Hola, Actor A")).toBeVisible();
+    await page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /Calculadora de Empaque/ }).click();
+    await expect(page).toHaveURL(/\/mobile\/packing$/);
+    await expect(page.getByRole("heading", { name: "Calculadora de Empaque" })).toBeVisible();
+    await page.getByRole("button", { name: "Volver a OSi Plus Mobile", exact: true }).click();
+    await expect(page).toHaveURL(/\/mobile$/);
+    await expect(page.getByRole("heading", { name: "OSi Plus Mobile", exact: true })).toBeVisible();
   }
   const elapsedMs = Date.now() - startedAt;
   const audit = await page.evaluate(() => (window as typeof window & { __hubNavigationAudit: { activePopstate: number } }).__hubNavigationAudit);
@@ -437,32 +447,37 @@ test("rutas desconocidas y traversal permanecen cerrados; back/forward conserva 
     await page.goto(pathname);
     await expect(page.getByText("404 · Ruta del Hub no registrada")).toBeVisible();
   }
-  await page.goto("/hub");
-  await page.locator("main").getByRole("button", { name: /Comercial y CRM/ }).click();
-  await expect(page).toHaveURL(/\/commercial$/);
+  await page.goto("/commercial");
   await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toBeVisible();
+  await expect(page.getByText("Pendiente de habilitación", { exact: true })).toBeVisible();
+  await page.goto("/hub");
+  await page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ }).click();
+  await expect(page).toHaveURL(/\/mobile$/);
+  await expect(page.getByRole("heading", { name: "OSi Plus Mobile", exact: true })).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/\/hub$/);
   await expect(page.getByText("Hola, Actor A")).toBeVisible();
   await page.goForward();
-  await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toBeVisible();
+  await expect(page).toHaveURL(/\/mobile$/);
+  await expect(page.getByRole("heading", { name: "OSi Plus Mobile", exact: true })).toBeVisible();
 });
 
 test("denegar Survey no descarga el módulo destino", async ({ page }) => {
   const requests: string[] = [];
   page.on("request", (request) => requests.push(new URL(request.url()).pathname));
-  await authenticate(page, { role: "A", deniedPermissions: ["survey:assigned:view"] });
+  await authenticate(page, { role: "A", deniedPermissions: ["survey:assignment:view"] });
   await page.goto("/survey");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive/i.test(path))).toBe(false);
+  expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|SurveyApp/i.test(path))).toBe(false);
 });
 
-test("OSi Survey exige autorización explícita y permanece sin API ni persistencia", async ({ page }) => {
+test("OSi Survey exige autorización explícita y, con compuerta OFF, permanece sin API ni persistencia", async ({ page }) => {
   const apiRequests: string[] = [];
   page.on("request", (request) => { const path = new URL(request.url()).pathname; if (path.startsWith("/api/")) apiRequests.push(path); });
-  await authenticate(page, { role: "D", permissions: ["survey:assigned:view"] });
+  await authenticate(page, { role: "D", permissions: ["survey:assignment:view"] });
   await page.goto("/survey");
-  await expect(page.getByTestId("osi-survey-inactive")).toContainText("Módulo planificado — sin backend conectado");
+  await expect(page.getByRole("heading", { name: "OSi Survey", exact: true })).toBeVisible();
+  await expect(page.getByText("Pendiente de habilitación", { exact: true })).toBeVisible();
   expect(apiRequests).toEqual(["/api/auth/me"]);
   const stored = await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }));
   expect(stored.session).toEqual([]);
@@ -470,13 +485,16 @@ test("OSi Survey exige autorización explícita y permanece sin API ni persisten
 });
 
 test("deep link, reload, regreso al Hub y navegación móvil conservan autoridad", async ({ page }, testInfo) => {
-  await authenticate(page, { role: "A" });
+  await authenticate(page, { role: "A", permissions: ["inventory:catalog:view", "inventory:stock:view", "pipeline:view"] });
   await page.goto("/materials");
-  await expect(page.getByRole("heading", { name: "Materiales y Equipos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Materiales e Inventario" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Materiales y Equipos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Materiales e Inventario" })).toBeVisible();
+  await expect(page.getByText("Pendiente de habilitación", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "OSi Plus Hub", exact: true }).click();
   await expect(page.getByText("Hola, Actor A")).toBeVisible();
+  await expect(page.locator("main").getByRole("button", { name: /Materiales e Inventario/ })).toHaveCount(0);
+  await expect(page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ })).toBeVisible();
   if (testInfo.project.name.includes("mobile")) {
     await page.getByRole("button", { name: "Abrir navegación" }).click();
     await expect(page.getByRole("navigation", { name: "Aplicaciones OSi Plus" })).toBeVisible();

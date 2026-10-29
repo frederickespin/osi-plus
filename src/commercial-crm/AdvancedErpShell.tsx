@@ -4,19 +4,17 @@ import {
   BriefcaseBusiness,
   ChevronLeft,
   ChevronRight,
-  Home,
   LogOut,
   Menu,
-  Route,
   Settings,
-  Truck,
+  Smartphone,
   UserRound,
-  Users,
   Warehouse,
   Wrench,
   X,
 } from "lucide-react";
 import CommercialInboxModule from "./CommercialInboxModule";
+import type { HubApplication } from "@/hub/appCatalog";
 import type { CrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 import type { CrmServicesUiAccess } from "@/crm-services/access";
 import type { LogisticsUiAccess } from "@/logistics-engine/access";
@@ -53,94 +51,81 @@ type Props = Readonly<{
   clientTemporaryAccessEnabled: boolean;
   clientTemporaryAccess: ClientTemporaryAccessUi;
   userName?: string;
+  navigationApplications: readonly HubApplication[];
+  mobileAvailable: boolean;
   onNavigate(pathname: string): void;
   onLogout(): void;
   onUnauthorized(): void;
 }>;
 
-type NavigationItem = Readonly<{
-  label: string;
-  icon: ElementType;
-  functional: boolean;
-}>;
+const APPLICATION_ICONS: Readonly<Record<string, ElementType>> = {
+  "commercial-crm": BriefcaseBusiness,
+  "materials-equipment": Warehouse,
+  "tools-equipment": Wrench,
+  administration: Settings,
+};
 
-const NAVIGATION: readonly NavigationItem[] = Object.freeze([
-  { label: "General", icon: Home, functional: false },
-  { label: "Administración", icon: Settings, functional: false },
-  { label: "Comercial", icon: BriefcaseBusiness, functional: true },
-  { label: "Coordinación", icon: Route, functional: false },
-  { label: "Operaciones", icon: Truck, functional: false },
-  { label: "Campo y Taller", icon: Wrench, functional: false },
-  { label: "Logística", icon: Warehouse, functional: false },
-  { label: "Recursos Humanos", icon: Users, functional: false },
-]);
+type NavigationProps = {
+  collapsed: boolean;
+  applications: readonly HubApplication[];
+  mobileAvailable: boolean;
+  commercialRelationshipsEnabled: boolean;
+  commercialRelationshipsAdmin: boolean;
+  onNavigate(pathname: string): void;
+};
 
-function Navigation({ collapsed, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, onCommercial, onCommercialRelationships, onHub, onMaterials, onTools }: { collapsed: boolean; materialsEnabled: boolean; toolsEnabled: boolean; commercialRelationshipsEnabled: boolean; onCommercial(): void; onCommercialRelationships(): void; onHub(): void; onMaterials(): void; onTools(): void }) {
+function Navigation({ collapsed, applications, mobileAvailable, commercialRelationshipsEnabled, commercialRelationshipsAdmin, onNavigate }: NavigationProps) {
   return <nav aria-label="Módulos del ERP" className="flex-1 overflow-y-auto px-3 py-4">
-    <button
-      type="button"
-      onClick={onHub}
-      className="mb-4 flex w-full items-center gap-3 rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-left text-sm text-blue-50 hover:bg-white/10"
-    >
-      <Boxes className="h-4 w-4 shrink-0 text-amber-300" />
+    <button type="button" onClick={() => onNavigate("/hub")} aria-label="OSi Plus Hub" className="mb-4 flex w-full items-center gap-3 rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-left text-sm text-blue-50 hover:bg-white/10">
+      <Boxes className="h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
       {!collapsed && <span>OSi Plus Hub</span>}
     </button>
-    <p className={`px-3 pb-2 text-[10px] font-bold uppercase tracking-[.18em] text-blue-200/65 ${collapsed ? "sr-only" : ""}`}>Aplicaciones ERP</p>
+    <p className={`px-3 pb-2 text-[10px] font-bold uppercase tracking-[.18em] text-blue-200/65 ${collapsed ? "sr-only" : ""}`}>Aplicaciones</p>
     <div className="space-y-1">
-      {NAVIGATION.map(({ label, icon: Icon, functional }) => functional ? (
-        <div key={label}>
-          <button type="button" onClick={onCommercial} aria-current="page" className="flex w-full items-center gap-3 rounded-lg bg-sky-500 px-3 py-2.5 text-left text-sm font-semibold text-white shadow-sm"><Icon className="h-4 w-4 shrink-0" />{!collapsed && <><span className="flex-1">{label}</span><span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] uppercase">Activo</span></>}</button>
-          {!collapsed && <div className="ml-7 mt-1 space-y-0.5 border-l border-blue-300/30 pl-3"><button type="button" onClick={onCommercial} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Pipeline</button>{commercialRelationshipsEnabled ? <button type="button" onClick={onCommercialRelationships} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Relaciones Comerciales</button> : <div className="rounded px-2 py-1.5 text-xs text-blue-100/65">Relaciones · En integración</div>}<div className="rounded px-2 py-1.5 text-xs text-blue-100/65">Seguimiento · En integración</div></div>}
-        </div>
-      ) : (
-        <div
-          key={label}
-          aria-disabled="true"
-          title={`${label}: En integración`}
-          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-blue-100/70"
-        >
-          <Icon className="h-4 w-4 shrink-0" />
-          {!collapsed && <><span className="flex-1">{label}</span><span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] uppercase text-blue-100/65">En integración</span></>}
-        </div>
-      ))}
-      {(materialsEnabled || toolsEnabled) && <div className="mt-3 border-t border-white/15 pt-3"><p className={`px-3 pb-2 text-[10px] font-bold uppercase tracking-[.18em] text-blue-200/65 ${collapsed ? "sr-only" : ""}`}>Recursos</p>{materialsEnabled && <button type="button" onClick={onMaterials} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-blue-50 hover:bg-white/10"><Warehouse className="h-4 w-4 shrink-0" />{!collapsed && <span>Materiales e Inventario</span>}</button>}{toolsEnabled && <button type="button" onClick={onTools} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-blue-50 hover:bg-white/10"><Wrench className="h-4 w-4 shrink-0" />{!collapsed && <span>Herramientas y Equipos</span>}</button>}</div>}
+      {applications.map((application) => {
+        const commercial = application.appId === "commercial-crm";
+        const Icon = APPLICATION_ICONS[application.appId] || Boxes;
+        return <div key={application.appId}>
+          <button type="button" onClick={() => onNavigate(application.route)} aria-label={application.name} aria-current={commercial ? "page" : undefined} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${commercial ? "bg-sky-500 font-semibold text-white shadow-sm" : "text-blue-50 hover:bg-white/10"}`}>
+            <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {!collapsed && <span>{application.name}</span>}
+          </button>
+          {commercial && !collapsed && <div className="ml-7 mt-1 space-y-0.5 border-l border-blue-300/30 pl-3">
+            <button type="button" onClick={() => onNavigate("/commercial")} aria-current={!commercialRelationshipsAdmin ? "page" : undefined} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Pipeline</button>
+            {commercialRelationshipsEnabled && <button type="button" onClick={() => onNavigate("/commercial/relationships")} aria-current={commercialRelationshipsAdmin ? "page" : undefined} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Relaciones Comerciales</button>}
+          </div>}
+        </div>;
+      })}
+      {mobileAvailable && <button type="button" onClick={() => onNavigate("/mobile")} aria-label="OSi Plus Mobile" className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-blue-50 hover:bg-white/10"><Smartphone className="h-4 w-4 shrink-0" aria-hidden="true" />{!collapsed && <span>OSi Plus Mobile</span>}</button>}
     </div>
   </nav>;
 }
 
-function Sidebar({ collapsed, userName, role, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, onCollapse, onCommercial, onCommercialRelationships, onHub, onMaterials, onTools, onLogout }: {
-  collapsed: boolean;
+function Sidebar({ userName, role, onCollapse, onLogout, ...navigation }: NavigationProps & {
   userName?: string;
   role: string;
-  materialsEnabled: boolean;
-  toolsEnabled: boolean;
-  commercialRelationshipsEnabled: boolean;
   onCollapse(): void;
-  onCommercial(): void;
-  onCommercialRelationships(): void;
-  onHub(): void;
-  onMaterials(): void;
-  onTools(): void;
   onLogout(): void;
 }) {
+  const { collapsed } = navigation;
   return <aside className={`flex h-full flex-col bg-[#003366] text-white shadow-xl transition-[width] ${collapsed ? "w-[76px]" : "w-[286px]"}`}>
     <div className="flex h-[72px] items-center gap-3 border-b border-white/15 px-4">
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-lg font-black text-[#003366]">OS</span>
       {!collapsed && <div className="min-w-0"><p className="truncate text-lg font-black tracking-tight">OSi Plus ERP</p><p className="text-[10px] uppercase tracking-[.18em] text-blue-200">Gestión integrada</p></div>}
     </div>
-    <Navigation collapsed={collapsed} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} commercialRelationshipsEnabled={commercialRelationshipsEnabled} onCommercial={onCommercial} onCommercialRelationships={onCommercialRelationships} onHub={onHub} onMaterials={onMaterials} onTools={onTools} />
+    <Navigation {...navigation} />
     <div className="border-t border-white/15 p-3">
       <div className={`mb-2 flex items-center gap-3 rounded-lg bg-white/5 p-2.5 ${collapsed ? "justify-center" : ""}`}>
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-400 font-black text-[#003366]"><UserRound className="h-4 w-4" /></span>
         {!collapsed && <div className="min-w-0"><p className="truncate text-sm font-semibold">{userName || "Usuario"}</p><p className="text-[10px] uppercase tracking-wide text-blue-200">Rol {role}</p></div>}
       </div>
-      <button type="button" onClick={onLogout} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-200 hover:bg-red-500/15 ${collapsed ? "justify-center" : ""}`}><LogOut className="h-4 w-4" />{!collapsed && "Cerrar sesión"}</button>
+      <button type="button" onClick={onLogout} aria-label="Cerrar sesión" className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-200 hover:bg-red-500/15 ${collapsed ? "justify-center" : ""}`}><LogOut className="h-4 w-4" />{!collapsed && "Cerrar sesión"}</button>
       <button type="button" aria-label={collapsed ? "Expandir navegación ERP" : "Colapsar navegación ERP"} onClick={onCollapse} className="mt-1 hidden w-full items-center justify-center rounded-lg px-3 py-2 text-blue-200 hover:bg-white/10 lg:flex">{collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}</button>
     </div>
   </aside>;
 }
 
-export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, materialsEnabled, toolsEnabled, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, clientTemporaryAccessEnabled, clientTemporaryAccess, userName, onNavigate, onLogout, onUnauthorized }: Props) {
+export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, clientTemporaryAccessEnabled, clientTemporaryAccess, userName, navigationApplications, mobileAvailable, onNavigate, onLogout, onUnauthorized }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const goCommercial = () => {
@@ -152,7 +137,7 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
     onNavigate("/hub");
   };
   const goResource = (pathname: string) => { setMobileOpen(false); onNavigate(pathname); };
-  const sidebar = <Sidebar collapsed={collapsed} userName={userName} role={role} materialsEnabled={materialsEnabled} toolsEnabled={toolsEnabled} commercialRelationshipsEnabled={commercialRelationshipsEnabled && commercialRelationshipsAccess.canView} onCollapse={() => setCollapsed((value) => !value)} onCommercial={goCommercial} onCommercialRelationships={() => goResource("/commercial/relationships")} onHub={goHub} onMaterials={() => goResource("/materials")} onTools={() => goResource("/assets")} onLogout={onLogout} />;
+  const sidebar = <Sidebar collapsed={collapsed} userName={userName} role={role} applications={navigationApplications} mobileAvailable={mobileAvailable} commercialRelationshipsEnabled={commercialRelationshipsEnabled && commercialRelationshipsAccess.canView} commercialRelationshipsAdmin={commercialRelationshipsAdmin} onCollapse={() => setCollapsed((value) => !value)} onNavigate={goResource} onLogout={onLogout} />;
 
   return <div className="flex min-h-screen bg-[#f4f7fb]" data-testid="advanced-erp-shell">
     <div className="sticky top-0 hidden h-screen lg:block">{sidebar}</div>

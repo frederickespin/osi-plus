@@ -48,7 +48,7 @@ type Props = Readonly<{
   logisticsSummaryEnabled?: boolean;
   clientTemporaryAccessEnabled?: boolean;
   clientTemporaryAccess?: ClientTemporaryAccessUi;
-  onOpenCommunications?(): void;
+  onOpenCommunications?(surveyAssignmentRef: string): void;
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
@@ -789,10 +789,10 @@ export default function SurveyCasePanel({
                 </p>
               </div>
             </section>
-            {communicationsEnabled && communicationsAccess && onOpenCommunications && (
+            {communicationsEnabled && communicationsAccess && (communicationsAccess.canView || communicationsAccess.canPrepare && communicationsAccess.canTemplatesView) && workspace.assignment && onOpenCommunications && (
               <section className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-4" data-testid="survey-communications-link">
                 <div><h3 className="text-xs font-black uppercase tracking-wide text-slate-600">Comunicaciones de Survey</h3><p className="mt-1 text-xs text-slate-500">El historial completo vive en la autoridad única de Actividad / Comunicaciones.</p></div>
-                <Button size="sm" variant="outline" onClick={onOpenCommunications}><MessageSquareText />Ver comunicaciones de Survey</Button>
+                <Button size="sm" variant="outline" onClick={() => { if (workspace.assignment) onOpenCommunications(workspace.assignment.assignmentRef); }}><MessageSquareText />Ver comunicaciones de Survey</Button>
               </section>
             )}
 

@@ -1,11 +1,9 @@
+import { validateMigrationInventory } from "./canonical-migrations.mjs";
 import { readFileSync, readdirSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateMt01b3aRepository } from "./validate-mt01b3a-auth-guard.mjs";
 
-const EXPECTED_MIGRATIONS = 22;
-const SERVICES_MIGRATION = "20260904010000_v17_services_tenant_first";
-const SURVEY_MIGRATION = "20260905010000_v17_survey_foundation";
 const CRM_ROUTES = Object.freeze([
   "api/crm/pipeline-cases/index.js",
   "api/crm/pipeline-cases/[caseKey]/index.js",
@@ -62,7 +60,7 @@ export function validateCrm01aGuard({
   extraSources = {},
 } = {}) {
   const read = (path) => overrides[path] ?? readFileSync(resolve(root, path), "utf8");
-  invariant(migrations.length === EXPECTED_MIGRATIONS || (migrations.length === 23 && migrations.includes(SERVICES_MIGRATION)) || (migrations.length === 24 && migrations.includes(SERVICES_MIGRATION) && migrations.includes(SURVEY_MIGRATION)), `se requieren ${EXPECTED_MIGRATIONS} migraciones base y sólo las extensiones Servicios/Survey autorizadas`);
+  validateMigrationInventory(root, migrations);
   invariant(migrations.includes("20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1 autorizada");
   invariant(migrations.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
   invariant(migrations.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");
@@ -164,7 +162,7 @@ export function validateCrm01aGuard({
   invariant(/neon\.branch_id/.test(localTarget) && /Neon y poolers/.test(localTarget), "runner no bloquea Neon/pooler");
 
   const authInventory = validateMt01b3aRepository(root);
-  invariant(authInventory.legacyHeaderExceptions === 24, "aumentaron las 24 excepciones heredadas");
+  invariant(authInventory.legacyHeaderExceptions === 0, "no puede reintroducirse autoridad por headers heredados");
   return Object.freeze({
     ok: true,
     migrations: migrations.length,

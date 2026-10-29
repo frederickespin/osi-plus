@@ -24,21 +24,25 @@ function clone(snapshot = actual) {
 function mutate(path, transform) {
   const snapshot = clone();
   snapshot.files[path] = transform(snapshot.files[path]);
+  assert.ok(snapshot.files[path] !== actual.files[path], `la mutación debe modificar ${path}`);
   return snapshot;
 }
 
 function mustFail(name, snapshot, expression) {
   assert.throws(() => validateV17CommercialCrmPreviewSnapshot(snapshot), expression, name);
-  return { name, passed: true };
+  return { name, passed: true, kind: "negative" };
 }
 
 function mustPass(name, snapshot) {
   assert.equal(validateV17CommercialCrmPreviewSnapshot(snapshot).ok, true, name);
-  return { name, passed: true };
+  return { name, passed: true, kind: "positive" };
 }
 
 const results = [
   mustPass("árbol actual", clone()),
+  mustFail("selector de membresía no concede token", mutate("src/crm-relational/readApi.ts", (source) => source.replace('import { getMembershipRef }', 'import { getMembershipRef, getToken }')), /mock, bridge o store importado/),
+  mustFail("namespace de sessionStore prohibido", mutate("src/crm-relational/readApi.ts", (source) => source.replace('import { getMembershipRef }', 'import * as session')), /mock, bridge o store importado/),
+  mustFail("selector no se permite en presentación", mutate("src/commercial-crm/presentation.ts", (source) => 'import { getMembershipRef } from "@/lib/sessionStore";\n' + source), /mock, bridge o store importado/),
   mustFail("default Hub activo", mutate("src/hub/hubMode.ts", (source) => source.replace('DISABLED: "DISABLED"', 'DISABLED: "LOCAL_ONLY"')), /default Hub inseguro/),
   mustFail("default cliente CRM activo", mutate("src/crm-relational/clientMode.ts", (source) => source.replace("return Object.freeze({ mode: CRM_PIPELINE_CLIENT_MODES.DISABLED, valid: true })", "return Object.freeze({ mode: CRM_PIPELINE_CLIENT_MODES.LOCAL_ONLY, valid: true })")), /default cliente CRM no falla cerrado/),
   mustFail("default lectura CRM activo", mutate("src/crm-relational/clientMode.ts", (source) => source.replace("return Object.freeze({ mode: CRM_PIPELINE_READ_CLIENT_MODES.DISABLED, valid: true })", "return Object.freeze({ mode: CRM_PIPELINE_READ_CLIENT_MODES.READ_ONLY, valid: true })")), /default lectura CRM no falla cerrado/),
@@ -50,7 +54,7 @@ const results = [
   mustFail("Preview eliminado de la mutación focal", mutate("api/_lib/crmCaseMutationHttp.js", (source) => source.replace("mode !== CRM_PIPELINE_MUTATION_MODES.PREVIEW_REHEARSAL", "mode !== CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY")), /mutación focal no limita Preview exacto/),
   mustFail("mutaciones históricas habilitadas en Preview", mutate("api/_lib/pipelineCaseMutationHttp.js", (source) => source.replace('throw new CommercialTenancyError("CRM_PIPELINE_MUTATIONS_DISABLED", 409);', "return mode;")), /mutaciones históricas se habilitan/),
   mustFail("deniedPermissions ignorado", mutate("src/hub/hubAccess.ts", (source) => source.replace("application.requiredPermissions.some((permission) => denied.has(permission))", "false")), /deniedPermissions no prevalece/),
-  mustFail("alias CRM sin decisión compartida", mutate("src/hub/appCatalog.ts", (source) => source.replace('routeAliases: ["/crm", "/sales/pipeline"]', 'routeAliases: ["/sales/pipeline"]')), /rutas CRM equivalentes divergentes/),
+  mustFail("alias CRM sin decisión compartida", mutate("src/hub/appCatalog.ts", (source) => source.replace('routeAliases: ["/crm", "/sales/pipeline", "/commercial/relationships"]', 'routeAliases: ["/sales/pipeline", "/commercial/relationships"]')), /rutas CRM equivalentes divergentes/),
   mustFail("ruta directa sin decisión común", mutate("src/hub/hubRouteAccess.ts", (source) => source.replace("evaluateHubAccess(application, context)", "{ allowed: true }")), /ruta directa omite decisión común/),
   mustFail("CORS wildcard alcanza namespaces protegidos", mutate("vercel.json", (source) => source.replace('"headers": []', '"headers": [{"source":"/api/(.*)","headers":[{"key":"Access-Control-Allow-Origin","value":"*"}]}]')), /namespaces protegidos/),
   mustFail("Inbox importa localStorage", mutate("src/commercial-crm/CommercialInboxModule.tsx", (source) => `${source}\nlocalStorage.getItem("fixture");\n`), /storage empresarial importado/),
@@ -59,7 +63,7 @@ const results = [
   mustFail("confirmación servidor omitida", mutate("src/App.tsx", (source) => source.replace("isRelationalCrmReadEnabled() && serverConfirmed", "isRelationalCrmReadEnabled()")), /frontend no coordina Hub\/cliente\/lectura/),
   mustFail("variable privada incluida en bundle", { ...clone(), bundleText: `${actual.bundleText}\nJWT_SECRET` }, /configuración servidor empaquetada: JWT_SECRET/),
   mustPass("PR #51 documental 4/4", { ...clone(), unrelatedChanges: PR_51_DOCUMENTS }),
-  mustPass("corrección accesible del drawer", mutate("src/commercial-crm/CommercialInboxModule.tsx", (source) => source.replace("Detalle de la oportunidad comercial seleccionada.", "Descripción accesible actualizada."))),
+  mustPass("texto de presentación sin nueva autoridad", mutate("src/commercial-crm/CommercialInboxModule.tsx", (source) => source.replace("Control Comercial", "Control de oportunidades"))),
   mustPass("cambio no relacionado", { ...clone(), unrelatedChanges: ["src/components/unrelated.tsx"] }),
   mustPass("checkout shallow sin historial", { ...clone(), gitHistoryAvailable: false }),
   mustPass("main sin diff de PR", { ...clone(), gitRef: "main", changedFiles: [] }),
@@ -68,4 +72,4 @@ const results = [
 const guardSource = actual.files["scripts/validate-v17-commercial-crm-preview-guard.mjs"];
 assert.equal(/node:child_process|git\s+(?:diff|merge-base)|const\s+BASE\s*=/.test(guardSource), false);
 
-console.log(JSON.stringify({ ok: true, assertions: results.length, negative: 19, positive: 6, results }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: results.length, negative: results.filter((result) => result.kind === "negative").length, positive: results.filter((result) => result.kind === "positive").length, results }, null, 2));

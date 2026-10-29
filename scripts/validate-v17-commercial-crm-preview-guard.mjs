@@ -1,3 +1,5 @@
+import ts from "typescript";
+import { validateCommercialCatalog } from "./hub-catalog-contract.mjs";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -83,12 +85,21 @@ function validateInboxIsolation(files) {
     "src/crm-relational/readApi.ts",
   ]) {
     forbidText(files, path, /\b(?:localStorage|sessionStorage|indexedDB)\b/, `storage empresarial importado por Inbox: ${path}`);
-    forbidText(
-      files,
-      path,
-      /(?:import|from)\s*(?:\([^)]*)?["'][^"']*(?:mocks?|useCasesStore|salesStore|caseBridge|Store)[^"']*["']/i,
-      `mock, bridge o store importado por Inbox: ${path}`,
-    );
+    const parsed = ts.createSourceFile(path, files[path], ts.ScriptTarget.Latest, true, path.endsWith("tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+    if (parsed.parseDiagnostics.length) fail(`sintaxis UI inválida:${path}`);
+    function inspect(node) {
+      const module = ts.isImportDeclaration(node) || ts.isExportDeclaration(node) ? node.moduleSpecifier
+        : ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(node.expression) && node.expression.text === "require") ? node.arguments[0] : undefined;
+      if (module && ts.isStringLiteral(module) && /mocks?|useCasesStore|salesStore|caseBridge|Store/i.test(module.text)) {
+        const bindings = ts.isImportDeclaration(node) ? node.importClause?.namedBindings : undefined;
+        const selectorOnly = path === "src/crm-relational/readApi.ts" && module.text === "@/lib/sessionStore"
+          && ts.isImportDeclaration(node) && !node.importClause?.name && bindings && ts.isNamedImports(bindings)
+          && bindings.elements.length === 1 && bindings.elements[0].name.text === "getMembershipRef" && !bindings.elements[0].propertyName;
+        if (!selectorOnly) fail(`mock, bridge o store importado por Inbox: ${path}`);
+      }
+      ts.forEachChild(node, inspect);
+    }
+    inspect(parsed);
   }
 }
 
@@ -159,7 +170,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
   }
 
   const catalog = "src/hub/appCatalog.ts";
-  requireText(files, catalog, 'route: "/commercial", routeAliases: ["/crm", "/sales/pipeline"]', "rutas CRM equivalentes divergentes");
+  validateCommercialCatalog(files[catalog]);
   const workspace = "src/hub/HubWorkspace.tsx";
   const routeAccess = "src/hub/hubRouteAccess.ts";
   requireText(files, routeAccess, "findHubApplicationByRoute(normalizedPath)", "ruta directa omite catálogo común");

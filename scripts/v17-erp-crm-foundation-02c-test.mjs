@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { CANONICAL_MIGRATIONS, validateMigrationFiles } from "./canonical-migrations.mjs";
 import {
   V17_COMMERCIAL_CRM_PRODUCTION_MODE,
   resolveV17CommercialCrmProductionClientAuthority,
@@ -189,10 +190,11 @@ check("Auth me confirma Production sólo con contexto revalidado", () => {
   assert.match(auth, /commercialCrmProductionAuthorized: true/u);
 });
 
-check("Hub corrige copy local y declara CRM sólo lectura", () => {
+check("Hub limita CRM a disponibilidad y autorización canónicas", () => {
   const hub = read("src/hub/HubWorkspace.tsx");
-  assert.match(hub, /Comercial abre el ERP sólo cuando la sesión y el entorno están autorizados/u);
-  assert.match(hub, /CRM · sólo lectura/u);
+  assert.match(hub, /visibleHubApplications\(HUB_APPLICATIONS, accessContext\)/u);
+  assert.match(hub, /availableHubApplications\(visible,/u);
+  assert.match(hub, /selected\?\.appId === "commercial-crm" && crmReadEnabled/u);
 });
 
 check("Hub, Inbox y Ficha no invocan escrituras comerciales generales", () => {
@@ -207,16 +209,14 @@ check("Hub, Inbox y Ficha no invocan escrituras comerciales generales", () => {
   assert.doesNotMatch(protectedUi, /crm-relational\/api/u);
 });
 
-check("Survey y Cotización permanecen En integración", () => {
+check("Survey y Cotización exigen modo habilitado y permiso efectivo", () => {
   const detail = read("src/commercial-crm/CommercialCaseDetail.tsx");
-  assert.match(detail, /Survey en integración/u);
-  assert.match(detail, /Cotización en integración/u);
+  assert.match(detail, /tab === "SURVEY" && surveyEnabled && surveySchedulingAccess\.canView/u);
+  assert.match(detail, /tab === "QUOTE" && quoteEnabled && quoteAccess\.canView/u);
 });
 
-check("no existe migración comercial ambigua", () => {
-  const migrations = fs.readdirSync(path.join(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  assert.equal(migrations.length, 22);
-  assert.equal(migrations.some((entry) => /v17_(?:party|location|service|compliance)|migration.?19/iu.test(entry.name)), false);
+check("sólo existen las migraciones canónicas aprobadas", () => {
+  assert.deepEqual(validateMigrationFiles(root), CANONICAL_MIGRATIONS);
 });
 
 process.stdout.write(JSON.stringify({ ok: true, assertions, productionRead: true, sessionMutationModes: ["DISABLED", "PRODUCTION_PILOT"], ambiguousCommercialMigration: false }));

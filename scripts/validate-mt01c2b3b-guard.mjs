@@ -1,8 +1,8 @@
+import { validateMigrationInventory } from "./canonical-migrations.mjs";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const EXPECTED_MIGRATIONS = 22;
 const PREPARED_ROUTES = Object.freeze([
   "api/clients/index.js",
   "api/projects/index.js",
@@ -44,7 +44,7 @@ export function validateMt01c2b3b({
   migrationNames = migrations(root),
   extraRuntimeSources = {},
 } = {}) {
-  invariant(migrationNames.length === EXPECTED_MIGRATIONS || (migrationNames.length === 23 && migrationNames.includes("20260904010000_v17_services_tenant_first")) || (migrationNames.length === 24 && migrationNames.includes("20260904010000_v17_services_tenant_first") && migrationNames.includes("20260905010000_v17_survey_foundation")), `se requiere la base canónica y sólo las extensiones Servicios/Survey autorizadas`);
+  validateMigrationInventory(root, migrationNames);
   invariant(migrationNames.includes("20260801015000_crm01b_pipeline_mutation_authority"), "falta migración 16 CRM-01B1");
   invariant(migrationNames.includes("20260801020000_v17_pipeline_case_client_authority"), "falta migración 17 V17-CASE-CLIENT autorizada");
   invariant(migrationNames.includes("20260821010000_v17_pipeline_case_public_ref"), "falta migración 18 V17-CASE-PUBLIC-REF autorizada");

@@ -11,21 +11,11 @@ import {
   updateServiceCatalogItem,
 } from "../api/_lib/crmServicesApiDomain.js";
 import { hashCrmServicesPayload } from "../api/_lib/crmServicesContract.js";
+import { validateV17ServicesTestUrl, verifyV17ServicesLocalDatabase } from "./v17-services-local-target.mjs";
 
-function target() {
-  const raw = process.env.V17_SERVICES_TEST_DATABASE_URL;
-  if (!raw) throw new Error("V17_SERVICES_TEST_DATABASE_URL_REQUIRED");
-  const parsed = new URL(raw);
-  const destination = `${parsed.port}${parsed.pathname}`;
-  if (parsed.protocol !== "postgresql:" || !new Set(["127.0.0.1", "localhost"]).has(parsed.hostname)
-    || !new Set(["55439/postgres", "55432/osi_db01n_ci"]).has(destination) || parsed.searchParams.get("schema") !== "osi") {
-    throw new Error("V17_SERVICES_TEST_DATABASE_TARGET_REJECTED");
-  }
-  return raw;
-}
-
+const localTarget = validateV17ServicesTestUrl();
 const { PrismaClient } = await import("@prisma/client");
-const prisma = new PrismaClient({ datasourceUrl: target() });
+const prisma = new PrismaClient({ datasourceUrl: localTarget.raw });
 const results = [];
 function check(name, condition) { assert.equal(Boolean(condition), true, name); results.push({ name, passed: true }); }
 async function rejects(name, code, action) {
@@ -57,6 +47,7 @@ const sellerCaseId = `svc_vc_${marker}`;
 const admin = Object.freeze({ tenantId, userId, membershipId });
 const seller = Object.freeze({ tenantId, userId: sellerUserId, membershipId: sellerMembershipId });
 let cleaned = false;
+let targetVerified = false;
 
 async function cleanup() {
   for (const table of ["commercial_audit_logs", "pipeline_case_service_revisions", "pipeline_case_service_items"]) {
@@ -86,8 +77,9 @@ async function cleanup() {
 }
 
 try {
-  const identity = await prisma.$queryRawUnsafe("SELECT current_database() AS database, inet_server_addr()::text AS address, inet_server_port() AS port, current_setting('neon.branch_id',true) AS neon");
-  check("destino PostgreSQL 18 local aislado", identity[0]?.database === "postgres" && Number(identity[0]?.port) === 55439 && !identity[0]?.neon);
+  await verifyV17ServicesLocalDatabase(prisma, localTarget);
+  targetVerified = true;
+  check("destino PostgreSQL 18 local aislado", targetVerified);
   await prisma.tenant.createMany({ data: [
     { id: tenantId, code: `SVC${marker}`.toUpperCase(), name: "Synthetic services tenant", countryCode: "DO" },
     { id: otherTenantId, code: `SVCX${marker}`.toUpperCase(), name: "Synthetic cross tenant", countryCode: "DO" },
@@ -161,7 +153,7 @@ try {
   const packingRow = await prisma.serviceCatalogItem.findFirstOrThrow({ where: { tenantId, code: "PACKING" }, select: { id: true } });
   await throws("trigger impide cambiar publicRef", () => prisma.$executeRawUnsafe(`UPDATE "osi"."service_catalog_items" SET "service_ref"=gen_random_uuid() WHERE "tenant_id"=$1 AND "id"=$2`, tenantId, packingRow.id));
 } finally {
-  try { await cleanup(); } finally { await prisma.$disconnect(); }
+  try { if (targetVerified) await cleanup(); } finally { await prisma.$disconnect(); }
 }
 
 check("fixtures PostgreSQL eliminados", cleaned);

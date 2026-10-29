@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { validateAppliedMigrationHistory } from "./canonical-migrations.mjs";
 import { costingHash } from "../api/_lib/costingContract.js";
 import { authorizeCostingMargin, calculateCosting, createCostingOverride, listCostingRules, publishCosting, versionCostingExchangeRate, versionCostingRule } from "../api/_lib/costingDomain.js";
 import { canonicalHash as logisticsHash } from "../api/_lib/logisticsEngineContract.js";
@@ -18,9 +19,11 @@ let assertions = 0;
 const check = (value, message) => { assert.ok(value, message); assertions += 1; };
 try {
   const migrations = await prisma.$queryRaw`SELECT migration_name, finished_at, rolled_back_at, applied_steps_count FROM "osi"."_prisma_migrations" ORDER BY started_at`;
-  assert.equal(migrations.length, 28); assertions += 1;
+  const migrationNames = validateAppliedMigrationHistory(migrations, {
+    throughMigration: canonicalCi ? undefined : "20260909010000_v17_costing",
+  }); assertions += 1;
   check(migrations.every((row) => row.finished_at && !row.rolled_back_at && row.applied_steps_count === 1), "Migraciones incompletas");
-  assert.equal(migrations.at(-1).migration_name, "20260909010000_v17_costing"); assertions += 1;
+  assert.equal(migrations.at(-1).migration_name, migrationNames.at(-1)); assertions += 1;
   const tables = await prisma.$queryRaw`SELECT table_name FROM information_schema.tables WHERE table_schema='osi' AND table_name LIKE 'costing_%' ORDER BY table_name`;
   assert.deepEqual(tables.map((row) => row.table_name), ["costing_calculations", "costing_exchange_rates", "costing_issues", "costing_lines", "costing_margin_authorizations", "costing_mutation_commands", "costing_overrides", "costing_revisions", "costing_rules"]); assertions += 1;
   const triggers = await prisma.$queryRaw`SELECT event_object_table AS table_name, trigger_name FROM information_schema.triggers WHERE trigger_schema='osi' AND event_object_table LIKE 'costing_%' ORDER BY event_object_table, trigger_name`;
@@ -122,5 +125,5 @@ try {
   assert.equal(commandCount, auditCount); assertions += 1;
   assert.equal(commandCount, 9); assertions += 1;
 
-  process.stdout.write(JSON.stringify({ ok: true, assertions, migrations: "28/28", models: tables.length, families: 13, tenantFirstForeignKeys: tenantFks, immutableSnapshots: true, concurrentRuleVersions: "1/2", concurrentRateWinners: 1, concurrentPublicationReplay: true, concurrentOverrideReplay: true, concurrentAuthorizationReplay: true, stalePublishRejected: true, auditCommandParity: true }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, assertions, migrations: `${migrationNames.length}/${migrationNames.length}`, models: tables.length, families: 13, tenantFirstForeignKeys: tenantFks, immutableSnapshots: true, concurrentRuleVersions: "1/2", concurrentRateWinners: 1, concurrentPublicationReplay: true, concurrentOverrideReplay: true, concurrentAuthorizationReplay: true, stalePublishRejected: true, auditCommandParity: true }) + "\n");
 } finally { await prisma.$disconnect(); }

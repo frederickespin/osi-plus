@@ -1,15 +1,17 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { validateMigrationFiles } from "./canonical-migrations.mjs";
+import { validateCommercialCatalog } from "./hub-catalog-contract.mjs";
+import { validateV17ConsolidatedPreviewGuard } from "./validate-v17-consolidated-preview-guard.mjs";
 
-const read = (path) => readFileSync(path, "utf8");
 const invariant = (condition, message) => { if (!condition) throw new Error(`V17_COMMERCIAL_CRM_GUARD:${message}`); };
 
-const migrations = readdirSync(join("prisma", "migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d/.test(entry.name));
-invariant((migrations.length === 22 || (migrations.length === 23 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first")) || (migrations.length === 24 && migrations.some((entry) => entry.name === "20260904010000_v17_services_tenant_first") && migrations.some((entry) => entry.name === "20260905010000_v17_survey_foundation"))) && migrations.some((entry) => entry.name === "20260831010000_v17_crm_icp_foundation"), `cadena canónica o extensión Servicios/Survey inválida; existen ${migrations.length}`);
-
+export function validateV17CommercialCrmGuard({ root = process.cwd(), overrides = new Map() } = {}) {
+const read = (path) => overrides.get(path) ?? readFileSync(resolve(root, path), "utf8");
+const migrations = validateMigrationFiles(root);
 const catalog = read("src/hub/appCatalog.ts");
-invariant(/appId: "commercial-crm"[\s\S]{0,350}route: "\/commercial"[\s\S]{0,150}routeAliases: \["\/crm", "\/sales\/pipeline"\]/.test(catalog), "rutas canónicas/aliases ausentes");
-invariant(/appId: "commercial-crm"[\s\S]{0,500}requiredPermissions: \["pipeline:view"\][\s\S]{0,100}permissionMode: "ALL"[\s\S]{0,100}requiresExplicitPermissions: true[\s\S]{0,100}baselineRoles: \["A", "V"\]/.test(catalog), "autoridad explícita A/V + pipeline:view ausente");
+validateCommercialCatalog(catalog);
 
 const access = read("src/hub/hubAccess.ts");
 invariant(/application\.requiresExplicitPermissions[\s\S]{0,150}PERMISSION_MISSING/.test(access), "rol baseline no puede sustituir permiso explícito");
@@ -54,7 +56,7 @@ const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");
 const caseDetail = read("src/commercial-crm/CommercialCaseDetail.tsx");
 const erpShell = read("src/commercial-crm/AdvancedErpShell.tsx");
 const presentation = read("src/commercial-crm/presentation.ts");
-invariant(/Inbox Comercial/.test(inbox) && /Disponible en una fase posterior/.test(caseDetail), "presentación read-only incompleta");
+invariant(/Inbox Comercial/.test(inbox) && /commercial-case-focused-header/.test(caseDetail), "presentación canónica de Inbox y Ficha incompleta");
 invariant(/APPROVED[\s\S]*legacy congelado/.test(presentation) && /OPS_HANDOFF[\s\S]*terminal/.test(presentation)
   && /Legacy congelado/.test(caseDetail) && /Estado terminal/.test(caseDetail), "semántica terminal/legacy ausente");
 for (const [path, source] of [["ERP shell", erpShell], ["Inbox", inbox], ["Ficha", caseDetail]]) {
@@ -70,12 +72,12 @@ invariant(/commercial-case-summary/.test(inbox) && /commercial-full-case-workspa
   && /Sin cotización/.test(inbox) && /Sin comunicación registrada/.test(inbox) && /Pendiente de definir/.test(inbox),
   "resumen compacto inventa autoridad o no separa la Ficha completa");
 invariant(!/Abrir ficha|Volver al Pipeline/.test(inbox + caseDetail), "etiquetas históricas de navegación reaparecieron");
-invariant(/role="tablist"/.test(caseDetail) && /Survey en integración/.test(caseDetail) && /Cotización en integración/.test(caseDetail), "Ficha no conserva tabs avanzados como integración explícita");
-invariant(!/surveyApi|quoteApi|\/api\/survey|\/api\/quote|SalesQuoteWorkspace/.test(caseDetail), "tabs futuros conectaron autoridad inexistente");
-for (const section of ["General", "Administración", "Comercial", "Coordinación", "Operaciones", "Campo y Taller", "Logística", "Recursos Humanos"]) {
-  invariant(erpShell.includes(section), `shell ERP avanzado omite ${section}`);
-}
-invariant(/functional: true/.test(erpShell) && /functional: false/.test(erpShell) && /En integración/.test(erpShell), "shell ERP avanzado no distingue Comercial de áreas en integración");
+invariant(/role="tablist"/.test(caseDetail), "Ficha sin pestañas accesibles");
+validateV17ConsolidatedPreviewGuard({ root, overrides });
+invariant(/applications\.map\(\(application\)/.test(erpShell)
+  && /onNavigate\(application\.route\)/.test(erpShell)
+  && /navigationApplications/.test(erpShell), "menú ERP no usa aplicaciones autorizadas disponibles");
+invariant(/mobileAvailable && <button/.test(erpShell) && /onNavigate\("\/mobile"\)/.test(erpShell), "menú ERP perdió acceso autorizado a Mobile");
 
 const packageJson = JSON.parse(read("package.json"));
 invariant(packageJson.scripts?.["test:v17-commercial-crm:browser"] === "playwright test -c playwright.v17-commercial-crm.config.ts", "suite browser no está congelada");
@@ -86,4 +88,7 @@ for (const command of ["npm run typecheck:v17-commercial-crm", "npm run test:v17
 }
 const vite = read("vite.config.ts");
 invariant(/base:\s*["']\/["']/.test(vite), "assets deben usar raíz absoluta para deep links anidados");
-console.log(JSON.stringify({ ok: true, migrations: 22, routes: 3, methods: ["GET", "HEAD", "OPTIONS"], authorizationBoundary: "PRE_LAZY" }));
+return Object.freeze({ ok: true, migrations: migrations.length, routes: 4, readAdapterMethods: ["GET"], authorizationBoundary: "PRE_LAZY", functionalTabs: 5 });
+}
+
+if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) console.log(JSON.stringify(validateV17CommercialCrmGuard()));

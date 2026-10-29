@@ -1,9 +1,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateMigrationInventory } from "./canonical-migrations.mjs";
 
 export const V17_CASE_CLIENT_MIGRATION = "20260801020000_v17_pipeline_case_client_authority";
-const MINIMUM_MIGRATIONS = 22;
 const V17_CASE_PUBLIC_REF_MIGRATION = "20260821010000_v17_pipeline_case_public_ref";
 const V17_CLIENT_PUBLIC_REF_MIGRATION = "20260824010000_v17_client_public_ref_case_mutations";
 const V17_MEMBERSHIP_PUBLIC_REF_MIGRATION = "20260827010000_v17_tenant_membership_public_ref";
@@ -29,7 +29,7 @@ export function validateV17CaseClientGuard({
 } = {}) {
   const migrations = migrationNames ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
-  invariant(migrations.length >= MINIMUM_MIGRATIONS, `se exigen al menos ${MINIMUM_MIGRATIONS} migraciones`);
+  validateMigrationInventory(root, migrations);
   invariant(migrations.includes(V17_CASE_CLIENT_MIGRATION), "la migración 17 exacta debe existir");
   invariant(migrations.includes(V17_CASE_PUBLIC_REF_MIGRATION), "la migración 18 autorizada debe existir");
   invariant(migrations.includes(V17_CLIENT_PUBLIC_REF_MIGRATION), "la migración 19 autorizada debe existir");

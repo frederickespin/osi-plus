@@ -1,3 +1,4 @@
+import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
 import { readFileSync } from "node:fs";
 import { validateCrm01b3b1Guard } from "./validate-crm-01b3b1-guard.mjs";
 
@@ -17,7 +18,7 @@ const domain = readFileSync("api/_lib/pipelineCaseDomain.js", "utf8");
 try {
   const baseline = validateCrm01b3b1Guard({ env: {} });
   check("baseline CRM-01B3B1", baseline.ok && baseline.routes === 12 && baseline.historicalRoutes === 9 && baseline.isolatedApiRoutes === 3 && baseline.frontendConsumers === 4);
-  rejected("migración 23 rechazada", { migrationNames: [...Array.from({ length: 22 }, (_, index) => `m${index}`), "20260901010000_unexpected"] }, /22 migraciones/);
+  rejected("migración adicional rechazada", { migrationNames: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /35 migraciones canónicas/);
   rejected("producción CRM en CI rechazada", { env: { CRM_PIPELINE_RUNTIME_MODE: "PRODUCTION_READ" } }, /lectura CRM/);
   rejected("batch residual en CI rechazado", { env: { CRM_PIPELINE_ACTIVATION_BATCH: "CRM-01B3B1-PRODUCTION-V1" } }, /batch CRM/);
   rejected("HYBRID rechazado", { env: { MT01B_AUTH_MODE: "HYBRID" } }, /LEGACY/);
@@ -37,6 +38,30 @@ try {
   rejected("auth antes del gate rechazada", { overrides: { "api/_lib/crmPipelineReadHttp.js": readAdapter.replace("requireCrmPipelineReadOnly(env);", "void requirePermission(req); requireCrmPipelineReadOnly(env);") } }, /orden/);
   rejected("mutación antes del gate rechazada", { overrides: { "api/_lib/pipelineCaseMutationHttp.js": adapter.replace("requireCrmPipelineMutationsLocal(env);", "resolveContext(req); requireCrmPipelineMutationsLocal(env);") } }, /orden/);
   rejected("frontend CRM rechazado", { extraSources: { "src/crm-runtime.ts": 'fetch("/api/crm/pipeline-cases")' } }, /frontend/);
+  for (const [path, prefix] of [
+    ["api/_lib/clientTemporaryAccessHttp.js", "CLIENT_TEMPORARY"],
+    ["api/_lib/communicationsHttp.js", "COMMUNICATIONS"],
+    ["api/_lib/personnelPoliciesHttp.js", "PERSONNEL_POLICIES"],
+  ]) {
+    const consumer = readFileSync(path, "utf8");
+    const mutations = [
+      ["requisito CRM sustituido por Production", (source) => source.replace('CRM_RUNTIME_PREVIEW: env.CRM_PIPELINE_RUNTIME_MODE === "PREVIEW_REHEARSAL"', 'CRM_RUNTIME_PREVIEW: env.CRM_PIPELINE_RUNTIME_MODE === "PRODUCTION_READ"'), /requisito CRM_RUNTIME_PREVIEW/],
+      ["igualdad CRM invertida", (source) => source.replace('CRM_RUNTIME_PREVIEW: env.CRM_PIPELINE_RUNTIME_MODE === "PREVIEW_REHEARSAL"', 'CRM_RUNTIME_PREVIEW: env.CRM_PIPELINE_RUNTIME_MODE !== "PREVIEW_REHEARSAL"'), /requisito CRM_RUNTIME_PREVIEW/],
+      ["requisito CRM eliminado", (source) => source.replace('CRM_RUNTIME_PREVIEW: env.CRM_PIPELINE_RUNTIME_MODE === "PREVIEW_REHEARSAL",', ''), /inventario exacto/],
+      ["manifest ignorado", (source) => source.replace(`env.${prefix}_PREVIEW_MANIFEST === manifest.raw`, 'true'), /PREVIEW_MANIFEST/],
+      ["rama manifest modificada", (source) => source.replace('branch: "feature/v17-consolidated-preview"', 'branch: "main"'), /manifiesto branch/],
+      ["gate ampliado a Production", (source) => source.replace('env.VERCEL_ENV === "preview"', 'env.VERCEL_ENV === "production"'), /VERCEL_PREVIEW/],
+      ["contexto central sustituido", (source) => source.replace('resolveContext = resolveCrmPipelineContext', 'resolveContext = unsafeContext'), /delegar al resolver CRM central/],
+      ["autorización central omitida", (source) => source.replace('await resolveContext(req,', 'await unsafeContext(req,'), /autorización CRM central/],
+      ["rechazo del gate eliminado", (source) => source.replace(`fail("${prefix}_CONFIGURATION_INVALID", 503);\n  }\n  return mode;`, `void 0;\n  }\n  return mode;`), /rechazo cerrado/],
+      ["otra lectura CRM añadida", (source) => `${source}\nconst unsafe = env.CRM_PIPELINE_MUTATION_MODE;`, /fuera del resolver único/],
+    ];
+    for (const [name, mutate, pattern] of mutations) {
+      const changed = mutate(consumer);
+      check(`${path}: fixture ${name} cambia código`, changed !== consumer);
+      rejected(`${path}: ${name}`, { overrides: { [path]: changed } }, pattern);
+    }
+  }
   rejected("activación en workflow rechazada", { overrides: { ".github/workflows/ci.yml": `${readFileSync(".github/workflows/ci.yml", "utf8")}\nenv: CRM_PIPELINE_RUNTIME_MODE=PRODUCTION_READ` } }, /activa CRM/);
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } catch (error) {

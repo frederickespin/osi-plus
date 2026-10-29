@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { writeFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { APPROVAL_PERMISSIONS } from "../api/_lib/approvalRequest.js";
@@ -32,6 +31,7 @@ const actorT2 = { userId: actor.userId, membershipId: `db01g-m3-${run}` };
 const caseId = `db01g-case-${run}`;
 const quoteId = `db01g-quote-${run}`;
 const baseSnapshot = { id: quoteId, version: 1, total: "100000.00", currency: "DOP", lines: [{ id: "base", total: "100000.00" }] };
+const canonicalCi = process.env.CANONICAL_DB_VALIDATION === "true";
 
 function check(name, condition, details) {
   if (!condition) throw new Error(`Falló: ${name}${details ? ` (${details})` : ""}`);
@@ -80,15 +80,29 @@ async function seed() {
       ('${approver.membershipId}','${t1}','${approver.userId}','A','ACTIVE',ARRAY[${permissionSql}],false,'MANUAL',CURRENT_TIMESTAMP),
       ('${actorT2.membershipId}','${t2}','${actorT2.userId}','V','ACTIVE',ARRAY[${permissionSql}],false,'MANUAL',CURRENT_TIMESTAMP)
   `);
-  await prisma.$executeRawUnsafe(`
-    INSERT INTO "osi"."osi_pipeline_cases"(
-      "id","caseCode","mode","serviceType","customerType","status","ownerName","originLocation","destinationLocation"
-    ) VALUES ('${caseId}','DB01G-${run}','LOCAL','LOCAL_MOVE','L4_PERSONAL','APPROVED','Synthetic','Origin','Destination')
-  `);
-  await prisma.$executeRawUnsafe(`
-    INSERT INTO "osi"."osi_pipeline_case_quotes"("id","caseId","level","version","status")
-    VALUES ('${quoteId}','${caseId}','STANDARD',1,'APPROVED')
-  `);
+  if (canonicalCi) {
+    // The consolidated Quote migration requires the case and its quote to share
+    // a tenant. The isolated historical DB-01G fixture predates those columns.
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "osi"."osi_pipeline_cases"(
+        "id","tenant_id","caseCode","mode","serviceType","customerType","status","ownerName","originLocation","destinationLocation"
+      ) VALUES ($1,$2,$3,'LOCAL','LOCAL_MOVE','L4_PERSONAL','APPROVED','Synthetic','Origin','Destination')
+    `, caseId, t1, `DB01G-${run}`);
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "osi"."osi_pipeline_case_quotes"("id","tenant_id","caseId","level","version","status")
+      VALUES ($1,$2,$3,'STANDARD',1,'APPROVED')
+    `, quoteId, t1, caseId);
+  } else {
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "osi"."osi_pipeline_cases"(
+        "id","caseCode","mode","serviceType","customerType","status","ownerName","originLocation","destinationLocation"
+      ) VALUES ('${caseId}','DB01G-${run}','LOCAL','LOCAL_MOVE','L4_PERSONAL','APPROVED','Synthetic','Origin','Destination')
+    `);
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "osi"."osi_pipeline_case_quotes"("id","caseId","level","version","status")
+      VALUES ('${quoteId}','${caseId}','STANDARD',1,'APPROVED')
+    `);
+  }
 }
 
 function item(amount, key = "line-1", extra = {}) {

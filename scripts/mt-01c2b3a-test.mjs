@@ -164,8 +164,12 @@ try {
   await prisma.user.create({ data: userData(legacyUserId, "A") });
   created.users.push(legacyUserId);
   const legacyToken = signAccessToken({ sub: legacyUserId, email: `${legacyUserId}@example.invalid`, role: "A" });
+  await expectError("LEGACY_ONLY exige membresía revalidada antes de crear Client",
+    invoke(clientsHandler, request(legacyToken, "POST", clientBody("legacy-no-membership"))),
+    403, "MT01B_MEMBERSHIP_NOT_FOUND");
+  await trackedIdentity("legacy-member", { userId: legacyUserId, role: "A" });
   const legacyClientResponse = await invoke(clientsHandler, request(legacyToken, "POST", clientBody("legacy")));
-  check("LEGACY_ONLY crea Client sin consultar membresía", legacyClientResponse.statusCode === 201 && legacyClientResponse.body?.ok === true);
+  check("LEGACY_ONLY crea Client con membresía revalidada", legacyClientResponse.statusCode === 201 && legacyClientResponse.body?.ok === true);
   created.clients.push(legacyClientResponse.body.data.id);
   const legacyClient = await prisma.client.findUnique({ where: { id: legacyClientResponse.body.data.id } });
   check("LEGACY_ONLY conserva tenantId NULL", legacyClient.tenantId === null && !Object.hasOwn(legacyClientResponse.body.data, "tenantId"));
@@ -184,7 +188,7 @@ try {
     clientHeaders: responseHeaders(legacyClientResponse),
     projectHeaders: responseHeaders(legacyProjectResponse),
   };
-  check("snapshot LEGACY_ONLY coincide con main", JSON.stringify(legacySnapshot) === JSON.stringify({
+  check("snapshot LEGACY_ONLY conserva contrato de datos y headers privados", JSON.stringify(legacySnapshot) === JSON.stringify({
     clientStatus: 201,
     clientEnvelope: ["data", "ok"],
     projectStatus: 201,
@@ -212,10 +216,12 @@ try {
   created.clients.push(legacyAuthorityResponse.body.data.id);
   check("LEGACY_ONLY no persiste autoridad empresarial", (await prisma.client.findUnique({ where: { id: legacyAuthorityResponse.body.data.id } })).tenantId === null);
   const legacyInvalidResponse = await invoke(clientsHandler, request("invalid.invalid.invalid", "POST", clientBody("legacy-invalid")));
-  check("LEGACY_ONLY conserva error de JWT inválido", legacyInvalidResponse.statusCode === 401 && JSON.stringify(legacyInvalidResponse.body) === JSON.stringify({ ok: false, error: "Unauthorized" }));
+  check("LEGACY_ONLY usa error canónico de JWT inválido", legacyInvalidResponse.statusCode === 401 && JSON.stringify(legacyInvalidResponse.body) === JSON.stringify({ ok: false, error: "MT01B_TOKEN_INVALID" }));
   const clientRouteSource = readFileSync(new URL("../api/clients/index.js", import.meta.url), "utf8");
   const projectRouteSource = readFileSync(new URL("../api/projects/index.js", import.meta.url), "utf8");
-  check("LEGACY_ONLY no contiene consulta TenantMembership en rutas", !/tenantMembership|tenant_memberships/.test(clientRouteSource) && !/tenantMembership|tenant_memberships/.test(projectRouteSource));
+  check("LEGACY_ONLY delega autorización sin consulta Membership paralela en rutas",
+    [clientRouteSource, projectRouteSource].every((source) => source.includes("await requirePilotPermission(req, res, permission, { prisma })")
+      && !/tenantMembership|tenant_memberships/.test(source)));
   const legacyBefore = stableHash({ client: legacyClient, project: legacyProject });
 
   process.env.COMMERCIAL_TENANCY_WRITE_MODE = "TENANT_WRITE";
@@ -422,7 +428,7 @@ try {
   await measuredPrisma.$disconnect();
   check("caché vive sólo dentro del request", firstContext === secondContext && firstContext !== otherRequestContext && contextQueries === 2, { contextQueries });
 
-  process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, target: identity, modes: ["LEGACY_ONLY", "TENANT_WRITE"], metrics: { legacyOnlyAdditionalTenantQueries: 0, enterpriseContext: resolutionMetrics }, results }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, target: identity, modes: ["LEGACY_ONLY", "TENANT_WRITE"], legacyAuthorization: "CANONICAL_MEMBERSHIP_REVALIDATED", metrics: { enterpriseContext: resolutionMetrics }, results }, null, 2)}\n`);
 } catch (error) {
   process.stdout.write(`${JSON.stringify({ ok: false, assertions: results.filter((item) => item.passed).length, error: { name: error.name, code: error.code, message: error.message }, results }, null, 2)}\n`);
   process.exitCode = 1;

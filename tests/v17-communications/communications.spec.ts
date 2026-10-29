@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { normalizePrepare } from "../../api/_lib/communicationsContract.js";
 
 const MEMBERSHIP_REF = "11111111-1111-4111-8111-111111111111";
 const TEMPLATE_REF = "22222222-2222-4222-8222-222222222222";
@@ -6,6 +7,7 @@ const VERSION_REF = "33333333-3333-4333-8333-333333333333";
 const CASE_REF = "44444444-4444-4444-8444-444444444444";
 const ASSIGNMENT_REF = "55555555-5555-4555-8555-555555555555";
 const QUOTE_REF = "66666666-6666-4666-8666-666666666666";
+const QUOTE_TEMPLATE_REF = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const headers = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 const variables = [{ name: "client.name", source: "PipelineCase.client", type: "TEXT", pii: false, contexts: ["CASE", "SCHEDULING", "QUOTE"], fallback: "Cliente" }, { name: "case.reference", source: "PipelineCase.caseCode", type: "TEXT", pii: false, contexts: ["CASE", "SCHEDULING", "QUOTE"], fallback: "Caso" }];
 const template = { templateRef: TEMPLATE_REF, code: "SURVEY.PIC", name: "PIC de Survey", category: "SURVEY_PIC", state: "DRAFT", currentVersion: 1, current: { versionRef: VERSION_REF, version: 1, state: "DRAFT", audiences: ["CLIENT", "EVALUATOR"], channels: ["EMAIL", "WHATSAPP"], subject: "Caso {{case.reference}}", bodyText: "Hola {{client.name}}", bodyHtml: null, variables: { catalogVersion: 1, names: ["case.reference", "client.name"] }, contentSha256: "a".repeat(64), validFrom: null, validTo: null, createdAt: "2026-09-13T00:00:00.000Z", publishedAt: null }, versions: [], updatedAt: "2026-09-13T00:00:00.000Z" };
@@ -48,7 +50,7 @@ test("deny ocurre en shell antes del lazy y de cualquier API de comunicaciones",
   expect(chunks).toHaveLength(0);
 });
 
-test("Scheduling y Quote montan comunicación ligada a assignment y revisión exactos", async ({ page }) => {
+test("Survey y Cotización abren el panel único con assignment y revisión exactos", async ({ page }) => {
   await authorize(page); const detail = { caseRef: CASE_REF, caseCode: "CS-2026-1301", version: 1, status: "SURVEY_SCHEDULED", mode: "LOCAL", serviceType: "MOVING_LOCAL", customerType: "L4_PERSONAL", estimatedCbm: 12, requiresSurvey: true, surveyMethod: "PRESENCIAL", originLocation: "Origen estructurado", destinationLocation: "Destino estructurado", destinationContracted: true, assetsCount: 0, quoteCount: 1, eventCount: 0, client: { clientRef: "77777777-7777-4777-8777-777777777777", displayName: "Cliente relacional", type: "INDIVIDUAL", status: "ACTIVE" }, owner: { displayName: "Ventas", isCurrentActor: true }, createdAt: "2026-09-13T00:00:00.000Z", updatedAt: "2026-09-13T00:00:00.000Z" };
   const byStatus = Object.fromEntries(["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"].map((status) => [status, status === "SURVEY_SCHEDULED" ? 1 : 0]));
   await page.route(/\/api\/crm\/pipeline-cases(?:\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [detail], total: 1, page: 1, pageSize: 25 }) }));
@@ -62,16 +64,81 @@ test("Scheduling y Quote montan comunicación ligada a assignment y revisión ex
   await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: null }) }));
   const record = { communicationRef: "12121212-1212-4212-8212-121212121212", templateRef: TEMPLATE_REF, templateCode: "SURVEY.PIC", templateVersion: 1, milestone: "VISIT_CONFIRMATION", channel: "EMAIL", recipientType: "CLIENT", recipient: { displayName: "Contacto sintético", destination: "c***@example.invalid" }, subject: "Visita confirmada", bodyText: "Mensaje renderizado sin transporte externo.", bodyHtml: null, status: "PREPARED", preparedAt: "2026-09-13T12:00:00.000Z", sentAt: null, deliveredAt: null, failedAt: null };
   await page.route("**/api/communications/records?*", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [record] }) }));
-  await page.route("**/api/communications/templates", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [{ ...template, state: "PUBLISHED", current: { ...template.current, state: "PUBLISHED" } }] }) }));
+  const publishedTemplate = { ...template, state: "PUBLISHED", current: { ...template.current, state: "PUBLISHED", audiences: ["CLIENT"] } };
+  const quoteTemplate = { ...publishedTemplate, templateRef: QUOTE_TEMPLATE_REF, code: "QUOTE.SENT", name: "Envío de cotización", category: "QUOTE_SENT" };
+  await page.route("**/api/communications/templates", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [publishedTemplate, quoteTemplate] }) }));
+  const recipientsBodies: Record<string, unknown>[] = [];
+  const preparedBodies: Record<string, unknown>[] = [];
+  const expectedContexts = [
+    { caseRef: CASE_REF, audience: "CLIENT", surveyAssignmentRef: ASSIGNMENT_REF, quoteRevisionRef: null },
+    { caseRef: CASE_REF, audience: "CLIENT", surveyAssignmentRef: null, quoteRevisionRef: QUOTE_REF },
+  ];
+  await page.route("**/api/communications/recipients", async (route) => {
+    const body = route.request().postDataJSON();
+    expect(body).toEqual(expectedContexts[recipientsBodies.length]);
+    recipientsBodies.push(body);
+    await route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [{ recipientType: "CLIENT", recipientRef: CASE_REF, displayName: "Contacto sintético", email: "c***@example.invalid", phone: null, availableChannels: ["EMAIL"] }] }) });
+  });
+  await page.route("**/api/communications/prepare", async (route) => {
+    const body = route.request().postDataJSON();
+    const normalized = normalizePrepare(body);
+    const expected = expectedContexts[preparedBodies.length];
+    expect(normalized).toMatchObject({
+      operation: "COMMUNICATION_PREPARE", caseRef: expected.caseRef,
+      surveyAssignmentRef: expected.surveyAssignmentRef, quoteRevisionRef: expected.quoteRevisionRef,
+      templateRef: preparedBodies.length === 0 ? TEMPLATE_REF : QUOTE_TEMPLATE_REF,
+      version: 1, recipientType: "CLIENT", recipientRef: CASE_REF, channel: "EMAIL",
+      milestone: preparedBodies.length === 0 ? "SURVEY_PIC_CLIENT" : "QUOTE_SENT",
+    });
+    preparedBodies.push(body);
+    await route.fulfill({ status: 201, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { ...record, milestone: body.milestone } }) });
+  });
   await page.goto(`/commercial/cases/${CASE_REF}`);
-  await page.getByRole("tab", { name: "Survey" }).click();
-  await expect(page.getByTestId("communications-scheduling")).toBeVisible();
-  await expect(page.getByTestId("communications-scheduling").locator("th:visible, dt:visible").filter({ hasText: /^Destinatario$/ })).toBeVisible();
+  await page.getByRole("tab", { name: "Survey", exact: true }).click();
+  await page.getByRole("button", { name: "Ver comunicaciones de Survey", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Resumen", exact: true })).toHaveAttribute("aria-selected", "true");
+  const surveyCommunications = page.getByTestId("communications-scheduling");
+  await expect(surveyCommunications).toBeVisible();
+  await expect(page.locator('[data-testid^="communications-"]')).toHaveCount(1);
+  await expect(surveyCommunications.locator("th:visible, dt:visible").filter({ hasText: /^Destinatario$/ })).toBeVisible();
   const detailButton = page.getByRole("button", { name: "Ver detalle de SURVEY.PIC para Contacto sintético" });
   await detailButton.focus();
   await detailButton.press("Enter");
   await expect(page.getByTestId("communication-record-detail")).toContainText("Mensaje renderizado sin transporte externo.");
-  await page.getByRole("tab", { name: "Cotización" }).click();
-  await expect(page.getByTestId("communications-quote")).toBeVisible();
+  await surveyCommunications.getByRole("button", { name: "Preparar", exact: true }).click();
+  await surveyCommunications.getByLabel("Plantilla").selectOption(TEMPLATE_REF);
+  await surveyCommunications.getByLabel("Destinatario").selectOption(CASE_REF);
+  await surveyCommunications.getByLabel("Hito").selectOption("SURVEY_PIC_CLIENT");
+  await surveyCommunications.getByRole("button", { name: "Guardar como PREPARED", exact: true }).click();
+  await expect.poll(() => preparedBodies.length).toBe(1);
+
+  await page.getByRole("tab", { name: "Cotización", exact: true }).click();
   await expect(page.getByRole("button", { name: "Propuesta 1 Q-2026-000001-A" })).toBeVisible();
+  await page.getByRole("button", { name: "Ver comunicaciones de Cotización", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Resumen", exact: true })).toHaveAttribute("aria-selected", "true");
+  const quoteCommunications = page.getByTestId("communications-quote");
+  await expect(quoteCommunications).toBeVisible();
+  await expect(page.locator('[data-testid^="communications-"]')).toHaveCount(1);
+  await expect(page.getByTestId("communication-record-detail")).toHaveCount(0);
+  await expect(quoteCommunications.getByLabel("Plantilla")).toHaveCount(0);
+  await quoteCommunications.getByRole("button", { name: "Preparar", exact: true }).click();
+  await expect(quoteCommunications.getByLabel("Plantilla")).toHaveValue("");
+  await expect(quoteCommunications.getByLabel("Hito")).toHaveValue("QUOTE_SENT");
+  await quoteCommunications.getByLabel("Plantilla").selectOption(QUOTE_TEMPLATE_REF);
+  await quoteCommunications.getByLabel("Destinatario").selectOption(CASE_REF);
+  await quoteCommunications.getByRole("button", { name: "Guardar como PREPARED", exact: true }).click();
+  await expect.poll(() => preparedBodies.length).toBe(2);
+
+  await page.getByRole("button", { name: "Comunicaciones del caso", exact: true }).click();
+  const caseCommunications = page.getByTestId("communications-case");
+  await expect(caseCommunications).toBeVisible();
+  await expect(page.locator('[data-testid^="communications-"]')).toHaveCount(1);
+  await expect(caseCommunications.getByLabel("Plantilla")).toHaveCount(0);
+  await caseCommunications.getByRole("button", { name: "Preparar", exact: true }).click();
+  await expect(caseCommunications.getByLabel("Plantilla")).toHaveValue("");
+  await expect(caseCommunications.getByLabel("Destinatario")).toHaveValue("");
+  await expect(caseCommunications.getByLabel("Hito")).toHaveValue("CLIENT_INFORMATION_REQUEST");
+  await expect(caseCommunications.getByRole("button", { name: "Guardar como PREPARED", exact: true })).toBeDisabled();
+  expect(recipientsBodies).toEqual(expectedContexts);
+  expect(preparedBodies).toHaveLength(2);
 });

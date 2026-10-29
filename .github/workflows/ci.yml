@@ -40,6 +40,16 @@ jobs:
       - name: Validate Prisma schema target
         run: node scripts/validate-prisma-schema-target.mjs
 
+      - name: Validate CI guard regressions
+        run: |
+          node --test tests/prisma-schema-target/validate-prisma-schema-target.test.mjs
+          node scripts/validate-canonical-migration-inventory-test.mjs
+          node scripts/crm-01b1-sql-drift-baseline-test.mjs
+          node scripts/v17-quote-local-target-test.mjs
+          node scripts/v17-services-local-target-test.mjs
+          node scripts/validate-mt01c1b2a-guard-test.mjs
+          node scripts/validate-v17-hub-commercial-contract-test.mjs
+
       - name: Validate Prisma datamodel
         run: npx prisma validate --schema prisma/schema.prisma
 
@@ -50,9 +60,29 @@ jobs:
       - name: Build
         run: npm run build
 
-  browser-session-validation:
+  browser-suite-groups:
+    name: browser-suites (${{ matrix.group }}, ${{ matrix.cases }} cases)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 7
+      matrix:
+        include:
+          - group: sessions
+            cases: 75
+          - group: relational
+            cases: 210
+          - group: hub
+            cases: 168
+          - group: inbox
+            cases: 114
+          - group: icp-preview
+            cases: 49
+          - group: survey-scheduling-communications
+            cases: 60
+          - group: economic-production
+            cases: 78
     env:
       CANONICAL_DB_VALIDATION: "true"
       DATABASE_URL: postgresql://postgres:browser-ci-only@127.0.0.1:55432/osi_db01n_ci?schema=osi
@@ -101,6 +131,7 @@ jobs:
         run: node scripts/report-browser-ci-diagnostics.mjs before
 
       - name: Build LEGACY and verify inactive bundle
+        id: browser_preflight
         run: |
           npm run build
           node scripts/validate-canonical-ci.mjs --preflight
@@ -183,38 +214,44 @@ jobs:
           npm run test:webkit-internal-recovery
 
       - name: Typecheck inactive relational CRM client
+        id: browser_typecheck
         run: |
           npm run typecheck:crm-01b3b2
           npm run typecheck:v17-commercial-crm
 
       - name: Validate cross-tab sessions in real browsers
+        if: ${{ !cancelled() && matrix.group == 'sessions' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:mt01b2b:browser
 
       - name: Upload sanitized logout-refresh timeline
-        if: failure()
+        if: failure() && matrix.group == 'sessions'
         uses: actions/upload-artifact@v4
         with:
-          name: mt01b2b-logout-refresh-timeline-${{ github.run_attempt }}
+          name: mt01b2b-logout-refresh-timeline-${{ matrix.group }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/mt01b2b-logout-refresh-timeline
           if-no-files-found: ignore
           retention-days: 7
 
       - name: Validate anonymous sessions in real browsers
+        if: ${{ !cancelled() && matrix.group == 'sessions' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         env:
           AUTH_NULL_ARTIFACT_DIR: ${{ runner.temp }}/auth-null-playwright-artifacts
         run: npm run test:auth-null:browser
 
       - name: Validate safe PIC rendering in real browsers
-        run: npm run test:sec-dep-01:browser
+        if: ${{ !cancelled() && matrix.group == 'sessions' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
+        run: npm run test:sec-dep-01:browser -- --output="$RUNNER_TEMP/sec-dep-01-playwright-artifacts"
 
       - name: Validate inactive relational CRM client in real browsers
         id: crm_relational_browser
+        if: ${{ !cancelled() && matrix.group == 'relational' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         env:
           CRM01B3B2_ARTIFACT_DIR: ${{ runner.temp }}/crm01b3b2-playwright-artifacts
         run: npm run test:crm-01b3b2:browser
 
       - name: Generate controlled request-barrier failure evidence
-        if: github.event_name == 'workflow_dispatch' && inputs.verify_request_barrier_artifacts
+        id: request_barrier_probe
+        if: ${{ !cancelled() && matrix.group == 'relational' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.verify_request_barrier_artifacts }}
         shell: bash
         env:
           CRM01B3B2_ARTIFACT_DIR: ${{ runner.temp }}/request-barrier-artificial-raw
@@ -235,48 +272,63 @@ jobs:
             "${{ runner.temp }}/request-barrier-artificial-sanitized"
 
       - name: Publish controlled request-barrier failure evidence
-        if: github.event_name == 'workflow_dispatch' && inputs.verify_request_barrier_artifacts
+        if: ${{ !cancelled() && matrix.group == 'relational' && steps.request_barrier_probe.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: request-barrier-artificial-${{ github.run_id }}-${{ github.run_attempt }}
+          name: request-barrier-artificial-${{ matrix.group }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/request-barrier-artificial-sanitized
           if-no-files-found: error
           retention-days: 7
           compression-level: 6
 
       - name: Validate inactive OSi Plus Hub in real browsers
+        if: ${{ !cancelled() && matrix.group == 'hub' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-hub:browser
 
       - name: Validate inactive V17 Commercial Inbox in real browsers
+        if: ${{ !cancelled() && matrix.group == 'inbox' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         env:
           COMMERCIAL_CRM_ARTIFACT_DIR: ${{ runner.temp }}/v17-commercial-crm-playwright-artifacts
         run: npm run test:v17-commercial-crm:browser
 
       - name: Validate consolidated ICP v2 UI in real browsers (24/24)
+        if: ${{ !cancelled() && matrix.group == 'icp-preview' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-crm-icp-ui:browser
 
       - name: Validate isolated ICP visual Preview (1/1)
+        if: ${{ !cancelled() && matrix.group == 'icp-preview' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-crm-icp-ui:visual
 
       - name: Validate isolated CRM Preview rehearsal in real browsers (24/24)
+        if: ${{ !cancelled() && matrix.group == 'icp-preview' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-commercial-crm-preview:browser
 
       - name: Validate gated Survey foundation in real browsers (12/12)
+        if: ${{ !cancelled() && matrix.group == 'survey-scheduling-communications' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-survey:browser
 
-      - name: Validate Scheduling desktop convergence in real browsers (18/18)
+      - name: Validate Scheduling desktop convergence in real browsers (30/30)
+        if: ${{ !cancelled() && matrix.group == 'survey-scheduling-communications' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-scheduling:browser
 
+      - name: Validate centralized Communications in real browsers (18/18)
+        if: ${{ !cancelled() && matrix.group == 'survey-scheduling-communications' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
+        run: npm run test:v17-communications:browser
+
       - name: Validate gated Costing in real browsers (18/18)
+        if: ${{ !cancelled() && matrix.group == 'economic-production' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-costing:browser
 
       - name: Validate gated Quote in real browsers (24/24)
+        if: ${{ !cancelled() && matrix.group == 'economic-production' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-quote:browser
 
       - name: Validate Commercial Relationships in real browsers (18/18)
+        if: ${{ !cancelled() && matrix.group == 'economic-production' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-commercial-relationships:browser
 
       - name: Validate inactive Production Read pilot in real browsers (18/18)
+        if: ${{ !cancelled() && matrix.group == 'economic-production' && steps.browser_preflight.outcome == 'success' && steps.browser_typecheck.outcome == 'success' }}
         run: npm run test:v17-erp-crm-foundation-02c:browser
 
       - name: Report browser infrastructure after validation
@@ -284,16 +336,16 @@ jobs:
         run: node scripts/report-browser-ci-diagnostics.mjs after
 
       - name: Upload AUTH-NULL failure diagnostics
-        if: failure()
+        if: failure() && matrix.group == 'sessions'
         uses: actions/upload-artifact@v4
         with:
-          name: auth-null-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          name: auth-null-failure-${{ matrix.group }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/auth-null-playwright-artifacts
           if-no-files-found: warn
           retention-days: 7
 
       - name: Upload relational CRM failure diagnostics
-        if: steps.crm_relational_browser.outcome == 'failure'
+        if: always() && matrix.group == 'relational' && steps.crm_relational_browser.outcome == 'failure'
         shell: bash
         run: |
           python tests/crm-01b3b2/sanitize_failure_artifacts.py \
@@ -301,27 +353,44 @@ jobs:
             "${{ runner.temp }}/crm01b3b2-playwright-artifacts-sanitized"
 
       - name: Publish sanitized relational CRM failure diagnostics
-        if: steps.crm_relational_browser.outcome == 'failure'
+        if: always() && matrix.group == 'relational' && steps.crm_relational_browser.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: crm01b3b2-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          name: crm01b3b2-failure-${{ matrix.group }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/crm01b3b2-playwright-artifacts-sanitized
           if-no-files-found: error
           retention-days: 7
           compression-level: 6
 
       - name: Upload Commercial Inbox failure diagnostics
-        if: failure()
+        if: failure() && matrix.group == 'inbox'
         uses: actions/upload-artifact@v4
         with:
-          name: v17-commercial-crm-failure-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/v17-commercial-crm-playwright-artifacts
+          name: v17-commercial-crm-failure-${{ matrix.group }}-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: warn
           retention-days: 7
           compression-level: 6
 
       - name: Verify repository cleanliness
+        if: always()
         run: git diff --exit-code
+
+  browser-session-validation:
+    name: browser-session-validation
+    if: always()
+    needs: [browser-suite-groups]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Require every browser group to succeed
+        env:
+          BROWSER_GROUP_RESULT: ${{ needs.browser-suite-groups.result }}
+        run: |
+          if [ "$BROWSER_GROUP_RESULT" != "success" ]; then
+            printf 'Browser groups did not all succeed: %s\n' "$BROWSER_GROUP_RESULT"
+            exit 1
+          fi
 
   canonical-database-validation:
     runs-on: ubuntu-latest
@@ -349,6 +418,8 @@ jobs:
       V17_CASE_PUBLIC_REF_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       V17_SERVICES_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       V17_SURVEY_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      V17_SCHEDULING_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      V17_QUOTE_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       CRM01B2_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
       MT01B_AUTH_MODE: LEGACY
       MT01B_TENANT_SWITCH_ENABLED: "false"
@@ -517,36 +588,6 @@ jobs:
       - name: Verify explicit SQL-only catalog baseline
         run: node scripts/crm-01b1-sql-drift-baseline.mjs
 
-      - name: Validate V17 ICP v2 database foundation
-        env:
-          V17_CRM_ICP_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: npm run test:v17-crm-icp-foundation:db
-
-      - name: Validate V17 ICP v2 isolated API against PostgreSQL
-        env:
-          V17_CRM_ICP_API_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: npm run test:v17-crm-icp-api:db
-
-      - name: Validate V17 Costing against PostgreSQL 18
-        env:
-          V17_COSTING_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: npm run test:v17-costing:db
-
-      - name: Validate V17 Quote against PostgreSQL 18
-        env:
-          V17_QUOTE_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: npm run test:v17-quote:db
-
-      - name: Validate V17 Scheduling against PostgreSQL 18
-        env:
-          V17_SCHEDULING_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: npm run test:v17-scheduling:db
-
-      - name: Validate V17 Commercial Relationships against PostgreSQL 18
-        env:
-          V17_COMMERCIAL_RELATIONSHIPS_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: npm run test:v17-commercial-relationships:db
-
       - name: Verify canonical history and safe modes
         run: node scripts/validate-canonical-ci.mjs
 
@@ -583,6 +624,36 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           compression-level: 6
+
+      - name: Validate V17 ICP v2 database foundation
+        env:
+          V17_CRM_ICP_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-crm-icp-foundation:db
+
+      - name: Validate V17 ICP v2 isolated API against PostgreSQL
+        env:
+          V17_CRM_ICP_API_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-crm-icp-api:db
+
+      - name: Validate V17 Costing against PostgreSQL 18
+        env:
+          V17_COSTING_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-costing:db
+
+      - name: Validate V17 Quote against PostgreSQL 18
+        env:
+          V17_QUOTE_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-quote:db
+
+      - name: Validate V17 Scheduling against PostgreSQL 18
+        env:
+          V17_SCHEDULING_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-scheduling:db
+
+      - name: Validate V17 Commercial Relationships against PostgreSQL 18
+        env:
+          V17_COMMERCIAL_RELATIONSHIPS_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: npm run test:v17-commercial-relationships:db
 
       - name: Build
         run: npm run build

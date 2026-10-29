@@ -9,7 +9,10 @@ export type HubAppId =
   | "workshop"
   | "administration"
   | "human-resources"
-  | "osi-survey";
+  | "osi-survey"
+  | "packing-calculator";
+
+export type HubSuiteId = "osi-plus-mobile";
 
 export type HubIconId =
   | "briefcase"
@@ -19,10 +22,19 @@ export type HubIconId =
   | "hammer"
   | "settings"
   | "users"
-  | "clipboard";
-export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED";
+  | "clipboard"
+  | "calculator";
+export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED" | "EXTERNAL_AVAILABLE";
 export type HubMobileAvailability =
   "RESPONSIVE" | "MOBILE_PRIMARY" | "DESKTOP_PRIMARY";
+
+export type HubSuite = Readonly<{
+  suiteId: HubSuiteId;
+  name: string;
+  description: string;
+  icon: HubIconId;
+  route: string;
+}>;
 
 export type HubApplication = Readonly<{
   appId: HubAppId;
@@ -31,6 +43,7 @@ export type HubApplication = Readonly<{
   icon: HubIconId;
   route: string;
   routeAliases?: readonly string[];
+  externalHref?: string;
   status: HubAppStatus;
   requiredPermissions: readonly string[];
   permissionMode: "ANY" | "ALL";
@@ -39,7 +52,18 @@ export type HubApplication = Readonly<{
   mobileAvailability: HubMobileAvailability;
   directAccessAllowed: boolean;
   lazy: true;
+  suiteId?: HubSuiteId;
 }>;
+
+export const HUB_SUITES: readonly HubSuite[] = Object.freeze([
+  {
+    suiteId: "osi-plus-mobile",
+    name: "OSi Plus Mobile",
+    description: "Aplicaciones móviles disponibles según los permisos y las asignaciones del usuario.",
+    icon: "clipboard",
+    route: "/mobile",
+  },
+]);
 
 export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   {
@@ -178,7 +202,8 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     name: "OSi Survey",
     description: "Agenda, inventario observado y publicaciones inmutables.",
     icon: "clipboard",
-    route: "/survey",
+    route: "/mobile/survey",
+    routeAliases: ["/survey"],
     status: "REGISTERED_INACTIVE",
     requiredPermissions: ["survey:assignment:view"],
     permissionMode: "ALL",
@@ -187,6 +212,24 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     mobileAvailability: "MOBILE_PRIMARY",
     directAccessAllowed: true,
     lazy: true,
+    suiteId: "osi-plus-mobile",
+  },
+  {
+    appId: "packing-calculator",
+    name: "Calculadora de Empaque",
+    description: "Medidas, materiales, costos y reportes de cajas, huacales y pallets.",
+    icon: "calculator",
+    route: "/mobile/packing",
+    externalHref: "https://ip-suite-inventario-empaquee.vercel.app/empaque/index.html",
+    status: "EXTERNAL_AVAILABLE",
+    requiredPermissions: ["pipeline:view"],
+    permissionMode: "ALL",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
+    mobileAvailability: "RESPONSIVE",
+    directAccessAllowed: true,
+    lazy: true,
+    suiteId: "osi-plus-mobile",
   },
 ]);
 
@@ -212,4 +255,12 @@ export function findHubApplicationByRoute(pathname: string) {
         application.routeAliases?.includes(pathname),
     ) ?? null
   );
+}
+
+export function findHubSuiteByRoute(pathname: string) {
+  return HUB_SUITES.find((suite) => suite.route === pathname) ?? null;
+}
+
+export function applicationsForHubSuite(suiteId: HubSuiteId, applications: readonly HubApplication[] = HUB_APPLICATIONS) {
+  return applications.filter((application) => application.suiteId === suiteId);
 }

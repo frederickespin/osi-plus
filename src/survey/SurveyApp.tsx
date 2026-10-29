@@ -887,9 +887,13 @@ function Review({
 export default function SurveyApp({
   authorization,
   onUnauthorized,
+  onBack,
+  backLabel = "Volver a OSi Plus Mobile",
 }: {
   authorization?: string;
   onUnauthorized: () => void;
+  onBack?: () => void;
+  backLabel?: string;
 }) {
   const api = useMemo(() => createSurveyApi(authorization), [authorization]);
   const [agenda, setAgenda] = useState<readonly SurveyAssignment[]>([]);
@@ -995,7 +999,10 @@ export default function SurveyApp({
       URL.revokeObjectURL(href);
     });
   if (screen === "AGENDA")
-    return <Agenda rows={agenda} busy={busy} onAction={assignmentAction} />;
+    return <>
+      {onBack && <div className="border-b bg-white px-4 py-2"><div className="mx-auto max-w-5xl"><button type="button" onClick={onBack} disabled={busy} className="flex min-h-11 items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" />{backLabel}</button></div></div>}
+      <Agenda rows={agenda} busy={busy} onAction={assignmentAction} />
+    </>;
   if (!draft) return <div className="p-8">Cargando Survey…</div>;
   return (
     <div className="min-h-screen bg-slate-100 pb-24">

@@ -11,6 +11,11 @@ const bundled = await build({
   platform: "node", format: "esm", target: "node20", write: false, logLevel: "silent",
 });
 const api = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
+const identityBundle = await build({
+  absWorkingDir: root, entryPoints: ["src/admin-tenant/adminUserIdentityMode.ts"], bundle: true,
+  platform: "node", format: "esm", target: "node20", write: false, logLevel: "silent",
+});
+const identityApi = await import(`data:text/javascript;base64,${Buffer.from(identityBundle.outputFiles[0].text).toString("base64")}`);
 const environment = {
   VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "PREVIEW_REHEARSAL",
   VITE_ADMIN_MEMBERSHIP_PREVIEW_BATCH: ADMIN_MEMBERSHIP_PREVIEW_BATCH,
@@ -22,9 +27,11 @@ const mode = (env = environment, run = runtime) => api.resolveAdminTenantMembers
 test("Preview de membresías requiere ambiente, rama, batch y cliente de sesión compatibles", () => {
   assert.equal(mode(), "PREVIEW_REHEARSAL");
   assert.equal(mode(environment, { ...runtime, gitBranch: "feature/v17-consolidated-preview" }), "PREVIEW_REHEARSAL");
+  assert.equal(mode(environment, { ...runtime, gitBranch: "feature/v17-administration-identity-19c" }), "PREVIEW_REHEARSAL");
   assert.equal(api.isAdminTenantMembershipEnabled(environment, runtime.hostname, runtime), true);
   for (const patch of [{ vercelEnvironment: "production" }, { vercelEnvironment: null }, { gitBranch: "main" },
-    { gitBranch: `${ADMIN_MEMBERSHIP_PREVIEW_BRANCH}-suffix` }, { hostname: "localhost" },
+    { gitBranch: `${ADMIN_MEMBERSHIP_PREVIEW_BRANCH}-suffix` },
+    { gitBranch: "feature/v17-administration-identity-19c-suffix" }, { hostname: "localhost" },
     { hostname: "osi-test-preview.vercel.app.attacker.test" }]) {
     assert.equal(mode(environment, { ...runtime, ...patch }), "DISABLED", JSON.stringify(patch));
   }
@@ -50,4 +57,32 @@ test("la configuración local conserva su alcance de loopback", () => {
   assert.equal(mode({ ...env, VERCEL: "1" }, local), "DISABLED");
   assert.equal(mode(env, runtime), "DISABLED");
   assert.equal(api.resolveAdminIdentityInvitationMode(env, local.hostname, local), "LOCAL_ONLY");
+});
+
+test("identidad 19C exige su propia compuerta además del acceso a membresías", () => {
+  const identityEnvironment = { ...environment, VITE_ADMIN_USER_IDENTITY_MODE: "PREVIEW_REHEARSAL", VITE_ADMIN_USER_IDENTITY_BATCH: "V17-ADMINISTRATION-IDENTITY-19C" };
+  const identityRuntime = { ...runtime, gitBranch: "feature/v17-administration-identity-19c" };
+  const enabled = (env = identityEnvironment, run = identityRuntime) => identityApi.isAdminUserIdentityEnabled(env, run.hostname, run);
+  assert.equal(enabled(), true);
+  assert.equal(enabled(identityEnvironment, { ...identityRuntime, gitBranch: "feature/v17-consolidated-preview" }), true);
+  assert.equal(enabled(environment), false);
+  for (const patch of [{ VITE_ADMIN_USER_IDENTITY_MODE: "DISABLED" }, { VITE_ADMIN_USER_IDENTITY_MODE: "PRODUCTION_PILOT" },
+    { VITE_ADMIN_USER_IDENTITY_BATCH: "other" }, { VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "DISABLED" },
+    { VITE_ADMIN_MEMBERSHIP_PREVIEW_BATCH: "other" }, { VITE_MT01B2_CLIENT_ENABLED: "true" }]) {
+    assert.equal(enabled({ ...identityEnvironment, ...patch }), false, JSON.stringify(patch));
+  }
+  for (const patch of [{ vercelEnvironment: "production" }, { vercelEnvironment: null }, { gitBranch: "main" },
+    { gitBranch: "feature/v17-administration-identity-19c-suffix" }, { gitBranch: ADMIN_MEMBERSHIP_PREVIEW_BRANCH },
+    { hostname: "localhost" }, { hostname: "osi-test-preview.vercel.app.attacker.test" }]) {
+    assert.equal(enabled(identityEnvironment, { ...identityRuntime, ...patch }), false, JSON.stringify(patch));
+  }
+});
+
+test("identidad local sólo funciona en loopback sin contexto Vercel", () => {
+  const env = { VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "LOCAL_ONLY", VITE_ADMIN_USER_IDENTITY_MODE: "LOCAL_ONLY" };
+  const local = { vercelEnvironment: null, gitBranch: null };
+  for (const hostname of ["localhost", "127.0.0.1", "[::1]"]) assert.equal(identityApi.isAdminUserIdentityEnabled(env, hostname, local), true);
+  assert.equal(identityApi.isAdminUserIdentityEnabled(env, "other.test", local), false);
+  assert.equal(identityApi.isAdminUserIdentityEnabled({ ...env, VERCEL: "1" }, "localhost", local), false);
+  assert.equal(identityApi.isAdminUserIdentityEnabled(env, "localhost", { ...local, vercelEnvironment: "production" }), false);
 });

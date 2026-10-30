@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { validateMigrationFiles } from "./canonical-migrations.mjs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,9 +35,11 @@ export function validateV17ServicePackagesPreview15BGuard({ root = process.cwd()
   invariant((source.inbox.match(/>Ficha del caso<\/Button>/gu) || []).length === 1, "acción Ficha duplicada");
   invariant(/<Pencil \/>Editar/u.test(source.inbox) && !/Pencil|CommercialCaseForm|>Editar<\/Button>/u.test(source.detail), "edición general no está confinada al Inbox");
   invariant(/feature\/v17-consolidated-preview/u.test(source.shared) && !/PRODUCTION_(?:READ|PILOT|WRITE)/u.test(source.shared), "Preview dejó de ser fail-closed");
-  const migrationCount = migrations ?? readdirSync(resolve(root, "prisma/migrations"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
-  const known16AExtension = migrations === undefined && migrationCount === 35 && existsSync(resolve(root, "prisma/migrations/20260916010000_v17_client_temporary_portal/migration.sql"));
-  invariant(migrationCount === 34 || known16AExtension, `migraciones:${migrationCount}`);
+  // Current releases require the complete named inventory, including 19C.
+  // The historical injected 34-migration fixture remains explicit; a supplied
+  // count of 35 or 36 cannot stand in for source-file verification.
+  const migrationCount = migrations === undefined ? validateMigrationFiles(root).length : migrations;
+  invariant(migrations === undefined || migrationCount === 34, `migraciones:${migrationCount}`);
   return Object.freeze({ ok: true, tabs: 5, communicationsAuthorities: 1, miniItemTypes: 10, migrations: migrationCount, productionApiEnabled: false });
 }
 

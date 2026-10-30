@@ -47,7 +47,7 @@ try {
   }, /READ debe|activa/);
   rejected("migración adicional rechazada", {
     migrationNames: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"],
-  }, /35 migraciones canónicas/);
+  }, /36 migraciones canónicas/);
   rejected("hook de backfill rechazado", {
     overrides: { "package.json": JSON.stringify({ ...JSON.parse(read("package.json")), scripts: { build: "node scripts/mt-01c2b2-backfill.mjs" } }) },
   }, /hook|automático/);

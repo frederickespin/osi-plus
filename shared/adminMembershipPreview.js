@@ -4,7 +4,9 @@ export const ADMIN_MEMBERSHIP_PREVIEW_BATCH = "V17-ADMINISTRATION-USERS-ROLES-19
 export const ADMIN_MEMBERSHIP_PREVIEW_BRANCH = "feature/v17-administration-users-roles-19b";
 
 export function isAdminMembershipPreviewBranch(branch) {
-  return branch === ADMIN_MEMBERSHIP_PREVIEW_BRANCH || isV17ConsolidatedPreviewBranch(branch);
+  return branch === ADMIN_MEMBERSHIP_PREVIEW_BRANCH
+    || branch === "feature/v17-administration-identity-19c"
+    || isV17ConsolidatedPreviewBranch(branch);
 }
 
 export function isAdminMembershipPreviewClientEnvironment({ hostname, vercelEnvironment, gitBranch }) {

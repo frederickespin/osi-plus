@@ -46,6 +46,8 @@ model User {
 }
 
 model Tenant {
+  userIdentityProfiles              TenantUserIdentity[]
+  userEnrollments                   UserEnrollment[]
   id                                String                                   @id @default(cuid())
   code                              String                                   @unique @db.VarChar(64)
   name                              String                                   @db.VarChar(160)
@@ -230,6 +232,9 @@ model Tenant {
 }
 
 model TenantMembership {
+  userIdentityProfile               TenantUserIdentity?
+  issuedUserEnrollments             UserEnrollment[] @relation("UserEnrollmentIssuer")
+  activatedUserEnrollments          UserEnrollment[] @relation("UserEnrollmentActivated")
   id                                                                                                                                            String                             @id @default(cuid())
   publicRef                                                                                                                                     String                             @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
   tenantId                                                                                                                                      String                             @map("tenant_id")
@@ -8875,4 +8880,66 @@ enum ClientSurveyDocumentType {
 enum ClientTemporaryQrResult {
   VERIFIED
   REJECTED
+}
+
+// Company-specific identity/contact information. Global login data remains on User.
+model TenantUserIdentity {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String           @map("tenant_id")
+  membershipId   String           @map("membership_id")
+  userId         String           @map("user_id")
+  fullName       String           @map("full_name") @db.VarChar(160)
+  contactPhone   String           @default("") @map("contact_phone") @db.VarChar(40)
+  contactEmail   String?          @map("contact_email") @db.VarChar(320)
+  documentType   String           @default("CEDULA") @map("document_type") @db.VarChar(16)
+  documentNumber String?          @map("document_number") @db.VarChar(40)
+  photoBytes     Bytes?           @map("photo_bytes")
+  photoSha256    String?          @map("photo_sha256") @db.Char(64)
+  photoVersion   Int              @default(0) @map("photo_version")
+  version        Int              @default(1)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "tenant_user_identities_tenant_fkey")
+  membership     TenantMembership @relation(fields: [tenantId, membershipId, userId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "tenant_user_identities_membership_fkey")
+
+  @@unique([tenantId, membershipId], map: "tenant_user_identities_membership_key")
+  @@unique([tenantId, membershipId, userId], map: "tenant_user_identities_membership_user_key")
+  @@unique([tenantId, documentType, documentNumber], map: "tenant_user_identities_document_key")
+  @@map("tenant_user_identities")
+}
+
+model UserEnrollment {
+  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  enrollmentRef           String            @default(dbgenerated("gen_random_uuid()")) @map("enrollment_ref") @db.Uuid
+  tenantId                String            @map("tenant_id")
+  normalizedEmail         String            @map("normalized_email") @db.VarChar(320)
+  fullName                String            @map("full_name") @db.VarChar(160)
+  contactPhone            String            @default("") @map("contact_phone") @db.VarChar(40)
+  contactEmail            String?           @map("contact_email") @db.VarChar(320)
+  documentType            String            @default("CEDULA") @map("document_type") @db.VarChar(16)
+  documentNumber          String?           @map("document_number") @db.VarChar(40)
+  intendedRole            TenantMembershipRole @map("intended_role")
+  photoBytes              Bytes?            @map("photo_bytes")
+  photoSha256             String?           @map("photo_sha256") @db.Char(64)
+  tokenHash               String            @unique(map: "user_enrollments_token_key") @map("token_hash") @db.Char(64)
+  status                  String            @default("PENDING") @db.VarChar(16)
+  expiresAt               DateTime          @map("expires_at") @db.Timestamptz(6)
+  issuedByMembershipId    String            @map("issued_by_membership_id")
+  issuedByUserId          String            @map("issued_by_user_id")
+  activatedMembershipId   String?           @map("activated_membership_id")
+  activatedUserId         String?           @map("activated_user_id")
+  requestId               String            @map("request_id") @db.Uuid
+  payloadHash             String            @map("payload_hash") @db.Char(64)
+  activatedAt             DateTime?         @map("activated_at") @db.Timestamptz(6)
+  revokedAt               DateTime?         @map("revoked_at") @db.Timestamptz(6)
+  createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+  tenant                  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "user_enrollments_tenant_fkey")
+  issuer                  TenantMembership  @relation("UserEnrollmentIssuer", fields: [tenantId, issuedByMembershipId, issuedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "user_enrollments_issuer_fkey")
+  activatedMembership     TenantMembership? @relation("UserEnrollmentActivated", fields: [tenantId, activatedMembershipId, activatedUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "user_enrollments_activated_fkey")
+
+  @@unique([tenantId, enrollmentRef], map: "user_enrollments_ref_key")
+  @@unique([tenantId, requestId], map: "user_enrollments_request_key")
+  @@index([tenantId, createdAt(sort: Desc)], map: "user_enrollments_tenant_created_idx")
+  @@map("user_enrollments")
 }

@@ -176,12 +176,12 @@ ORDER BY kind, object_name`;
 
 // Supplemental provenance only: the historical catalog/SQL-only queries above
 // remain unchanged. Cast to name just as their UNION does, so identity keys match.
-const EXTENSIONS_SQL = `
+export const EXTENSIONS_SQL = `
 SELECT e.extname AS extension_name, e.extversion AS version, n.nspname AS schema_name
 FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
 WHERE n.nspname = 'osi' ORDER BY e.extname`;
 
-const EXTENSION_MEMBERS_SQL = `
+export const EXTENSION_MEMBERS_SQL = `
 SELECT e.extname AS extension_name, e.extversion AS version,
        en.nspname AS extension_schema, 'function' AS kind,
        (p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')')::name::text AS object_name

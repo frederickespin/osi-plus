@@ -26,8 +26,8 @@ function reject(name, mutate, pattern = /CANONICAL_MIGRATIONS/) {
   });
 }
 
-scenario("closed inventory contains the 35 named canonical migrations", (root) => {
-  assert.equal(names.length, 35);
+scenario("closed inventory contains the 36 named canonical migrations", (root) => {
+  assert.equal(names.length, 36);
   assert.deepEqual(validateMigrationFiles(root), names);
   assert.deepEqual(validateMigrationPaths(root, paths), paths);
 });
@@ -35,16 +35,16 @@ scenario("out-of-order file inventory is normalized without widening it", (root)
   assert.deepEqual(validateMigrationInventory(root, [...names].reverse()), names);
 });
 scenario("missing path rejected even when SQL remains on disk", (root) => {
-  assert.throws(() => validateMigrationPaths(root, paths.slice(1)), /35 migraciones canónicas/);
+  assert.throws(() => validateMigrationPaths(root, paths.slice(1)), /36 migraciones canónicas/);
 });
 scenario("duplicate and missing name rejected at unchanged cardinality", (root) => {
-  assert.throws(() => validateMigrationInventory(root, [names[1], ...names.slice(1)]), /35 migraciones canónicas/);
+  assert.throws(() => validateMigrationInventory(root, [names[1], ...names.slice(1)]), /36 migraciones canónicas/);
 });
 scenario("unknown replacement rejected at unchanged cardinality", (root) => {
-  assert.throws(() => validateMigrationInventory(root, ["20261001010000_unknown", ...names.slice(1)]), /35 migraciones canónicas/);
+  assert.throws(() => validateMigrationInventory(root, ["20261001010000_unknown", ...names.slice(1)]), /36 migraciones canónicas/);
 });
 scenario("additional path rejected without requiring it on disk", (root) => {
-  assert.throws(() => validateMigrationPaths(root, [...paths, "prisma/migrations/20261001010000_unknown/migration.sql"]), /35 migraciones canónicas/);
+  assert.throws(() => validateMigrationPaths(root, [...paths, "prisma/migrations/20261001010000_unknown/migration.sql"]), /36 migraciones canónicas/);
 });
 scenario("noncanonical path rejected", (root) => {
   assert.throws(() => validateMigrationPaths(root, paths.map((path) => path.replace("prisma/migrations/", "prisma/migrations/../"))), /rutas de migración inválido/);

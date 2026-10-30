@@ -159,7 +159,12 @@
     "preview": "vite preview",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:seed": "node prisma/seed.mjs"
+    "db:seed": "node prisma/seed.mjs",
+    "test:v17-admin-user-identity": "node scripts/v17-admin-user-identity-contract-test.mjs && node scripts/v17-admin-user-identity-transactions-test.mjs",
+    "test:v17-admin-user-identity:http": "node scripts/v17-admin-user-identity-http-test.mjs",
+    "test:v17-admin-user-identity:db": "node scripts/v17-admin-user-identity-db-test.mjs",
+    "test:v17-admin-user-identity:browser": "playwright test --config playwright.v17-user-identity.config.ts",
+    "typecheck:v17-admin-user-identity": "tsc --noEmit -p tsconfig.v17-user-identity.json"
   },
   "dependencies": {
     "22": "^0.0.0",

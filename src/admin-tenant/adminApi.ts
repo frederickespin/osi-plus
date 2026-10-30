@@ -68,7 +68,7 @@ function strings(value: unknown) {
   return Object.freeze([...new Set(value)]);
 }
 
-function membership(value: unknown): AdminMembership {
+export function parseAdminMembership(value: unknown): AdminMembership {
   const row = exactObject(value);
   exactKeys(row, MEMBERSHIP_KEYS);
   if (typeof row.membershipRef !== "string" || !UUID_V4.test(row.membershipRef)
@@ -92,7 +92,7 @@ function membership(value: unknown): AdminMembership {
   });
 }
 
-function catalog(value: unknown): AdminMembershipCatalog {
+export function parseAdminMembershipCatalog(value: unknown): AdminMembershipCatalog {
   const result = exactObject(value);
   exactKeys(result, ["permissions", "roles"]);
   if (!Array.isArray(result.roles) || !Array.isArray(result.permissions)
@@ -189,14 +189,14 @@ export class AdminTenantApi {
     if (body.ok !== true || !Array.isArray(body.data) || !Number.isInteger(body.total) || !Number.isInteger(body.page) || !Number.isInteger(body.pageSize)) {
       throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
     }
-    return Object.freeze({ data: Object.freeze(body.data.map(membership)), total: Number(body.total), page: Number(body.page), pageSize: Number(body.pageSize), catalog: catalog(body.catalog) });
+    return Object.freeze({ data: Object.freeze(body.data.map(parseAdminMembership)), total: Number(body.total), page: Number(body.page), pageSize: Number(body.pageSize), catalog: parseAdminMembershipCatalog(body.catalog) });
   }
 
   async get(ref: string, signal?: AbortSignal) {
     const body = await responseJson(await this.fetchImpl(`/api/admin/memberships/${encodeURIComponent(ref)}`, { headers: this.headers(), signal }));
     exactKeys(body, ["membership", "ok"]);
     if (body.ok !== true) throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
-    return membership(body.membership);
+    return parseAdminMembership(body.membership);
   }
 
   async update(ref: string, input: AdminMembershipChanges & Readonly<{ requestId: string; expectedVersion: number }>, signal?: AbortSignal) {
@@ -208,7 +208,7 @@ export class AdminTenantApi {
     }));
     exactKeys(body, ["membership", "ok"]);
     if (body.ok !== true) throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
-    return membership(body.membership);
+    return parseAdminMembership(body.membership);
   }
 
   async listInvitations(corporateRecipient = false, signal?: AbortSignal) {

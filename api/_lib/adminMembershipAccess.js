@@ -1,6 +1,10 @@
 import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
 import { PERMS } from "./rbac.js";
 import {
+  ADMIN_MEMBERSHIP_PREVIEW_MODE,
+  assertAdminMembershipPreviewEnvironment,
+} from "./adminMembershipPreview.js";
+import {
   V17_PRODUCTION_PILOT_GATES,
   V17_PRODUCTION_PILOT_MODE,
   requireV17ProductionPilotContext,
@@ -11,9 +15,15 @@ export const ADMIN_TENANT_MEMBERSHIP_MODES = Object.freeze({
   DISABLED: "DISABLED",
   LOCAL_ONLY: "LOCAL_ONLY",
   PRODUCTION_PILOT: V17_PRODUCTION_PILOT_MODE,
+  PREVIEW_REHEARSAL: ADMIN_MEMBERSHIP_PREVIEW_MODE,
 });
 
-export const ADMIN_IDENTITY_INVITATION_MODES = ADMIN_TENANT_MEMBERSHIP_MODES;
+// Membership Preview never activates invitation issuance or identity activation.
+export const ADMIN_IDENTITY_INVITATION_MODES = Object.freeze({
+  DISABLED: "DISABLED",
+  LOCAL_ONLY: "LOCAL_ONLY",
+  PRODUCTION_PILOT: V17_PRODUCTION_PILOT_MODE,
+});
 
 const ADMIN_PERMISSIONS = Object.freeze([
   PERMS.MEMBERSHIP_VIEW,
@@ -39,6 +49,10 @@ export function resolveAdminTenantMembershipMode(env = process.env) {
   const configured = env.ADMIN_TENANT_MEMBERSHIP_MODE;
   if (configured === undefined || configured === ADMIN_TENANT_MEMBERSHIP_MODES.DISABLED) {
     return ADMIN_TENANT_MEMBERSHIP_MODES.DISABLED;
+  }
+  if (configured === ADMIN_TENANT_MEMBERSHIP_MODES.PREVIEW_REHEARSAL) {
+    assertAdminMembershipPreviewEnvironment(env);
+    return ADMIN_TENANT_MEMBERSHIP_MODES.PREVIEW_REHEARSAL;
   }
   if (configured === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT) {
     try { resolveV17ProductionPilotActivation(env); } catch {

@@ -74,7 +74,7 @@ jobs:
           - group: relational
             cases: 210
           - group: hub
-            cases: 168
+            cases: 174
           - group: inbox
             cases: 114
           - group: icp-preview

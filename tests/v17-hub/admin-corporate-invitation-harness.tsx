@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import AdminTenantMembershipModule from "../../src/admin-tenant/AdminTenantMembershipModule";
 import { ADMIN_IDENTITY_INVITATION_MODES } from "../../src/admin-tenant/adminMode";
 import type { AdminTenantApi } from "../../src/admin-tenant/adminApi";
+import { ADMIN_BROWSER_CATALOG } from "./admin-membership-fixture";
 
 const ADMIN_PERMISSIONS = [
   "membership:view",
@@ -21,7 +22,7 @@ export function mountCorporateInvitationHarness() {
   let corporateCalls = 0;
   let localCalls = 0;
   const api = {
-    list: async () => ({ data: [], total: 0, page: 1, pageSize: 20 }),
+    list: async () => ({ data: [], total: 0, page: 1, pageSize: 20, catalog: ADMIN_BROWSER_CATALOG }),
     update: async () => { throw new Error("unexpected update"); },
     listInvitations: async () => [],
     issueInvitation: async () => { localCalls += 1; throw new Error("local contract used"); },

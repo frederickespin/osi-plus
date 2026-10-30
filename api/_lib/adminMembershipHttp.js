@@ -1,5 +1,5 @@
 import { prisma as defaultPrisma } from "./db.js";
-import { readJsonObject, withPrivateApiHeaders } from "./http.js";
+import { JsonBodyError, readJsonObject, withPrivateApiHeaders } from "./http.js";
 import { setCrmPrivateHeaders } from "./crmHttpHeaders.js";
 import { resolveCrmPipelineContext } from "./crmPipelineAccess.js";
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
@@ -13,10 +13,16 @@ import {
 } from "./adminMembershipAccess.js";
 import {
   AdminMembershipError,
+  adminMembershipCatalog,
   getTenantMembership,
   listTenantMemberships,
   updateTenantMembership,
 } from "./adminMembershipDomain.js";
+import {
+  AdminMembershipPreviewError,
+  assertAdminMembershipPreviewDatabase,
+  requireAdminMembershipPreviewContext,
+} from "./adminMembershipPreview.js";
 
 const PATCH_FIELDS = new Set(["requestId", "expectedVersion", "role", "status", "grantedPermissions", "deniedPermissions"]);
 
@@ -38,6 +44,8 @@ function assertSameOrigin(req) {
 function send(res, error, head = false) {
   const controlled = error instanceof AdminMembershipError
     || error instanceof AdminMembershipAccessError
+    || error instanceof AdminMembershipPreviewError
+    || error instanceof JsonBodyError
     || error instanceof CommercialTenancyError
     || error instanceof Mt01bAuthError;
   const status = controlled && Number.isInteger(error.status) ? error.status : 503;
@@ -89,13 +97,17 @@ export function createAdminMembershipCollectionHandler({
       const mode = requireAdminTenantMembershipAccess(req, env);
       if (!["GET", "HEAD"].includes(req.method)) return methodNotAllowed(res, ["GET", "HEAD"], head);
       assertSameOrigin(req);
+      await assertAdminMembershipPreviewDatabase(prisma, mode, env);
       const context = await resolveContext(req, { prisma, env });
+      if (mode === ADMIN_TENANT_MEMBERSHIP_MODES.PREVIEW_REHEARSAL) {
+        requireAdminMembershipPreviewContext(env, context);
+      }
       if (mode === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT) {
         requireAdminProductionPilotContext(env, context, V17_PRODUCTION_PILOT_GATES.ADMIN_MEMBERSHIPS);
       }
       const result = await list(prisma, context, queryFilters(req));
       if (head) return res.status(200).end();
-      return res.status(200).json({ ok: true, ...result });
+      return res.status(200).json({ ok: true, ...result, catalog: adminMembershipCatalog() });
     } catch (error) {
       return send(res, error, head);
     }
@@ -116,7 +128,11 @@ export function createAdminMembershipDetailHandler({
       const mode = requireAdminTenantMembershipAccess(req, env);
       if (!["GET", "HEAD", "PATCH"].includes(req.method)) return methodNotAllowed(res, ["GET", "HEAD", "PATCH"], head);
       assertSameOrigin(req);
+      await assertAdminMembershipPreviewDatabase(prisma, mode, env);
       const context = await resolveContext(req, { prisma, env });
+      if (mode === ADMIN_TENANT_MEMBERSHIP_MODES.PREVIEW_REHEARSAL) {
+        requireAdminMembershipPreviewContext(env, context);
+      }
       if (mode === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT) {
         requireAdminProductionPilotContext(env, context, V17_PRODUCTION_PILOT_GATES.ADMIN_MEMBERSHIPS);
       }

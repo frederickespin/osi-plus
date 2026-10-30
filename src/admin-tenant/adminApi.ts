@@ -1,13 +1,28 @@
+import { ADMIN_MEMBERSHIP_ROLE_OPTIONS, isAdminMembershipRole, type AdminMembershipRoleCode as AdminMembershipRole } from "../../shared/adminMembershipCatalog.js";
+import { getMembershipRef } from "@/lib/sessionStore";
+
 export type AdminMembership = Readonly<{
   membershipRef: string;
   name: string;
   email: string;
-  role: "A" | "V";
+  role: AdminMembershipRole;
   status: "ACTIVE" | "SUSPENDED" | "INACTIVE";
   grantedPermissions: readonly string[];
   deniedPermissions: readonly string[];
   authorizationVersion: number;
   updatedAt: string;
+}>;
+
+export type AdminMembershipCatalog = Readonly<{
+  roles: readonly Readonly<{ code: AdminMembershipRole; label: string; inheritedPermissions: readonly string[] }>[];
+  permissions: readonly Readonly<{ code: string; label: string; group: string }>[];
+}>;
+
+export type AdminMembershipChanges = Readonly<{
+  role?: AdminMembershipRole;
+  status?: AdminMembership["status"];
+  grantedPermissions?: readonly string[];
+  deniedPermissions?: readonly string[];
 }>;
 
 export type AdminIdentityInvitation = Readonly<{
@@ -58,7 +73,7 @@ function membership(value: unknown): AdminMembership {
   exactKeys(row, MEMBERSHIP_KEYS);
   if (typeof row.membershipRef !== "string" || !UUID_V4.test(row.membershipRef)
     || typeof row.name !== "string" || typeof row.email !== "string"
-    || !["A", "V"].includes(String(row.role))
+    || !isAdminMembershipRole(row.role)
     || !["ACTIVE", "SUSPENDED", "INACTIVE"].includes(String(row.status))
     || !Number.isInteger(row.authorizationVersion) || Number(row.authorizationVersion) < 1
     || typeof row.updatedAt !== "string" || !Number.isFinite(Date.parse(row.updatedAt))) {
@@ -68,13 +83,46 @@ function membership(value: unknown): AdminMembership {
     membershipRef: row.membershipRef,
     name: row.name,
     email: row.email,
-    role: row.role as "A" | "V",
+    role: row.role as AdminMembershipRole,
     status: row.status as AdminMembership["status"],
     grantedPermissions: strings(row.grantedPermissions),
     deniedPermissions: strings(row.deniedPermissions),
     authorizationVersion: Number(row.authorizationVersion),
     updatedAt: row.updatedAt,
   });
+}
+
+function catalog(value: unknown): AdminMembershipCatalog {
+  const result = exactObject(value);
+  exactKeys(result, ["permissions", "roles"]);
+  if (!Array.isArray(result.roles) || !Array.isArray(result.permissions)
+    || result.roles.length !== ADMIN_MEMBERSHIP_ROLE_OPTIONS.length || result.permissions.length > 1000) {
+    throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
+  }
+  const text = (field: unknown, maximum: number) => {
+    if (typeof field !== "string" || !field.trim() || field.length > maximum) throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
+    return field;
+  };
+  const permissionCodes = new Set<string>();
+  const permissions = result.permissions.map((value) => {
+    const row = exactObject(value);
+    exactKeys(row, ["code", "group", "label"]);
+    const code = text(row.code, 160);
+    if (permissionCodes.has(code)) throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
+    permissionCodes.add(code);
+    return Object.freeze({ code, label: text(row.label, 200), group: text(row.group, 100) });
+  });
+  const roleCodes = new Set<string>();
+  const roles = result.roles.map((value) => {
+    const row = exactObject(value);
+    exactKeys(row, ["code", "inheritedPermissions", "label"]);
+    if (!isAdminMembershipRole(row.code) || roleCodes.has(row.code as string)) throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
+    roleCodes.add(row.code as string);
+    const inheritedPermissions = strings(row.inheritedPermissions);
+    if (inheritedPermissions.some((code) => !permissionCodes.has(code))) throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
+    return Object.freeze({ code: row.code as AdminMembershipRole, label: text(row.label, 160), inheritedPermissions });
+  });
+  return Object.freeze({ roles: Object.freeze(roles), permissions: Object.freeze(permissions) });
 }
 
 function invitation(value: unknown, corporateRecipient = false): AdminIdentityInvitation {
@@ -137,14 +185,21 @@ export class AdminTenantApi {
     query.set("page", String(filters.page || 1));
     query.set("pageSize", String(filters.pageSize || 20));
     const body = await responseJson(await this.fetchImpl(`/api/admin/memberships?${query}`, { headers: this.headers(), signal }));
-    exactKeys(body, ["data", "ok", "page", "pageSize", "total"]);
+    exactKeys(body, ["catalog", "data", "ok", "page", "pageSize", "total"]);
     if (body.ok !== true || !Array.isArray(body.data) || !Number.isInteger(body.total) || !Number.isInteger(body.page) || !Number.isInteger(body.pageSize)) {
       throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
     }
-    return Object.freeze({ data: Object.freeze(body.data.map(membership)), total: Number(body.total), page: Number(body.page), pageSize: Number(body.pageSize) });
+    return Object.freeze({ data: Object.freeze(body.data.map(membership)), total: Number(body.total), page: Number(body.page), pageSize: Number(body.pageSize), catalog: catalog(body.catalog) });
   }
 
-  async update(ref: string, input: Readonly<{ requestId: string; expectedVersion: number; role?: string; status?: string; grantedPermissions?: readonly string[]; deniedPermissions?: readonly string[] }>, signal?: AbortSignal) {
+  async get(ref: string, signal?: AbortSignal) {
+    const body = await responseJson(await this.fetchImpl(`/api/admin/memberships/${encodeURIComponent(ref)}`, { headers: this.headers(), signal }));
+    exactKeys(body, ["membership", "ok"]);
+    if (body.ok !== true) throw new AdminApiError("ADMIN_MEMBERSHIP_RESPONSE_INVALID", 503);
+    return membership(body.membership);
+  }
+
+  async update(ref: string, input: AdminMembershipChanges & Readonly<{ requestId: string; expectedVersion: number }>, signal?: AbortSignal) {
     const body = await responseJson(await this.fetchImpl(`/api/admin/memberships/${encodeURIComponent(ref)}`, {
       method: "PATCH",
       headers: this.headers(true),
@@ -196,4 +251,3 @@ export class AdminTenantApi {
     return invitation(body.invitation, corporateRecipient);
   }
 }
-import { getMembershipRef } from "@/lib/sessionStore";

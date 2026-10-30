@@ -36,7 +36,17 @@ test("Administración presenta y versiona reglas compactas por familia", async (
   await page.route("**/api/admin/memberships**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: [], total: 0, page: 1, pageSize: 20 }) }));
   let versioned = false;
   await page.route("**/api/logistics/rules", async (route) => { if (route.request().method() === "POST") { versioned = true; return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, data: { ruleRef: "938f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", version: 3 } }) }); } return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: [{ ruleRef: "738f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", seriesRef: "838f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", family: "TRANSPORT", code: "TRUCK_BY_VOLUME", name: "Camión por volumen", priority: 100, specificity: 20, conditions: { modes: ["LOCAL"] }, result: { kind: "TRUCK", label: "Camión", quantity: 1 }, state: "ACTIVE", version: 2 }] }) }); });
-  await page.goto("/administration"); await expect(page.getByRole("link", { name: "Motor Logístico" })).toBeVisible(); await expect(page.getByTestId("logistics-rules-admin")).toBeVisible(); await page.getByLabel("Familia logística").selectOption("TRANSPORT"); await expect(page.getByText("TRUCK_BY_VOLUME")).toBeVisible(); await page.getByRole("button", { name: "Nueva versión" }).click(); await page.getByRole("button", { name: "Crear nueva versión" }).click(); await expect.poll(() => versioned).toBe(true);
+  await page.goto("/administration/logistics");
+  await expect(page.getByTestId("logistics-rules-admin")).toBeVisible();
+  const sectionSelector = page.getByLabel("Sección de Administración", { exact: true });
+  if (await sectionSelector.isVisible()) {
+    await expect(sectionSelector).toHaveValue("/administration/logistics");
+  } else {
+    const logisticsLink = page.getByRole("link", { name: "Motor Logístico", exact: true });
+    await expect(logisticsLink).toBeVisible();
+    await expect(logisticsLink).toHaveAttribute("aria-current", "page");
+  }
+  await page.getByLabel("Familia logística").selectOption("TRANSPORT"); await expect(page.getByText("TRUCK_BY_VOLUME")).toBeVisible(); await page.getByRole("button", { name: "Nueva versión" }).click(); await page.getByRole("button", { name: "Crear nueva versión" }).click(); await expect.poll(() => versioned).toBe(true);
 });
 
 test("deny no monta el Motor ni solicita APIs logísticas", async ({ page }) => {
@@ -46,5 +56,5 @@ test("deny no monta el Motor ni solicita APIs logísticas", async ({ page }) => 
 
 test("administrador sin logistics rules no descarga ni consulta el workspace", async ({ page }) => {
   await session(page, { admin: true, withoutRules: true }); await page.route("**/api/admin/memberships**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: [], total: 0, page: 1, pageSize: 20 }) })); let requests = 0; page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/logistics/")) requests += 1; });
-  await page.goto("/administration"); await expect(page.getByRole("link", { name: "Motor Logístico" })).toHaveCount(0); expect(requests).toBe(0); const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => name.includes("LogisticsRulesAdmin"))); expect(chunks).toHaveLength(0);
+  await page.goto("/administration"); await expect(page.locator('a[href="/administration/logistics"]')).toHaveCount(0); await expect(page.locator('option[value="/administration/logistics"]')).toHaveCount(0); expect(requests).toBe(0); const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => name.includes("LogisticsRulesAdmin"))); expect(chunks).toHaveLength(0);
 });

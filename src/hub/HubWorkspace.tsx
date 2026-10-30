@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState, type ElementType, type ReactNode } from "react";
+import { Suspense, lazy, useMemo, useState, type ElementType } from "react";
 import { ArrowLeft, BriefcaseBusiness, Calculator, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Smartphone, Truck, Users, Warehouse } from "lucide-react";
 import { ENV_LABELS, getAppEnv } from "@/lib/env";
 import { HUB_APPLICATIONS, applicationsForHubSuite, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
@@ -9,6 +9,8 @@ import ExternalApplication from "./ExternalApplication";
 import type { OsiHubMode } from "./hubMode";
 import { resolveCrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 import { resolveCrmServicesUiAccess } from "@/crm-services/access";
+import { isCrmServicesUiEnabled } from "@/crm-services/mode";
+import { availableAdministrationSections } from "@/administration/administrationSections";
 import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resolveAdminIdentityInvitationMode } from "@/admin-tenant/adminMode";
 import { isSurveyUiEnabled } from "@/survey/mode";
 import { resolveSurveySchedulingUiAccess } from "@/survey/schedulingAccess";
@@ -30,14 +32,11 @@ import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 import { resolveClientTemporaryAccessUi } from "@/client-portal/access";
 import { resolveClientTemporaryPortalMode } from "@/client-portal/mode";
 
+const AdministrationWorkspace = lazy(() => import("@/administration/AdministrationWorkspace"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
-const AdminTenantMembershipModule = lazy(() => import("@/admin-tenant/AdminTenantMembershipModule"));
-const LogisticsRulesAdmin = lazy(() => import("@/logistics-engine/LogisticsRulesAdmin"));
-const CommunicationTemplatesAdmin = lazy(() => import("@/communications/CommunicationTemplatesAdmin"));
 const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
-const PersonnelPoliciesAdmin = lazy(() => import("@/personnel-policies/PersonnelPoliciesAdmin"));
 
 const ICONS: Record<HubIconId, ElementType> = {
   briefcase: BriefcaseBusiness,
@@ -126,10 +125,6 @@ function RegisteredApplication({ application, onNavigate }: { application: HubAp
   return <section className="mx-auto max-w-3xl px-5 py-12"><div className="rounded-3xl border bg-white p-8 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Icon className="h-7 w-7" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-indigo-600">Pendiente de habilitación</p><h1 className="mt-2 text-3xl font-black">{application.name}</h1><p className="mt-3 text-sm leading-6 text-slate-600">Esta aplicación todavía no está disponible en este entorno. Puedes continuar en las aplicaciones disponibles del Hub.</p><button type="button" onClick={() => onNavigate("/hub")} className="mt-6 flex min-h-11 items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"><ArrowLeft className="h-4 w-4" />Volver al Hub</button></div></section>;
 }
 
-function AdministrationWorkspace({ children, onBack }: { children: ReactNode; onBack: () => void }) {
-  return <div className="min-h-screen bg-slate-50"><div className="border-b border-slate-200 bg-white px-4 py-2"><button type="button" onClick={onBack} className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" />Volver al Hub</button></div>{children}</div>;
-}
-
 export default function HubWorkspace({ userName, authorization, accessContext, crmReadEnabled, mode, pathname, onNavigate, onLogout }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
@@ -157,7 +152,19 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const personnelPoliciesAccess = resolvePersonnelPoliciesAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   const personnelPoliciesEnabled = isPersonnelPoliciesUiEnabled();
   const personnelPoliciesAvailable = personnelPoliciesEnabled && personnelPoliciesAccess.canView;
-  const administrationAvailable = adminMembershipAvailable || logisticsAdminAvailable || communicationsAdminAvailable || personnelPoliciesAvailable;
+  const servicesAccess = resolveCrmServicesUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
+  const servicesAdminAvailable = isCrmServicesUiEnabled() && (servicesAccess.canCatalogView || servicesAccess.canPackagesView || servicesAccess.canMaterialsView);
+  const costingAccess = resolveCostingUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
+  const costingAdminAvailable = isCostingUiEnabled() && costingAccess.canRulesView;
+  const administrationSections = availableAdministrationSections({
+    access: adminMembershipAvailable,
+    services: servicesAdminAvailable,
+    logistics: logisticsAdminAvailable,
+    costing: costingAdminAvailable,
+    communications: communicationsAdminAvailable,
+    policies: personnelPoliciesAvailable,
+  }, accessContext.effectivePermissions, accessContext.deniedPermissions);
+  const administrationAvailable = administrationSections.length > 0;
   const commercialRelationshipsEnabled = isCommercialRelationshipsUiEnabled();
   const commercialRelationshipsAccess = resolveCommercialRelationshipsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   const available = availableHubApplications(visible, {
@@ -215,46 +222,24 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       />
     </Suspense>;
   }
-  if (selected?.appId === "administration" && adminMembershipAvailable) {
+  if (selected?.appId === "administration" && administrationAvailable) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Administración…</div>}>
-      <AdministrationWorkspace onBack={() => onNavigate("/hub")}>
-      <AdminTenantMembershipModule
+      <AdministrationWorkspace
         authorization={authorization}
+        pathname={pathname}
+        sections={administrationSections}
         effectivePermissions={accessContext.effectivePermissions || []}
         deniedPermissions={accessContext.deniedPermissions}
-        servicesAccess={resolveCrmServicesUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
-        costingAccess={resolveCostingUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions)}
-        costingEnabled={isCostingUiEnabled()}
+        servicesAccess={servicesAccess}
+        logisticsAccess={logisticsAccess}
+        costingAccess={costingAccess}
+        communicationsAccess={communicationsAccess}
+        personnelPoliciesAccess={personnelPoliciesAccess}
         invitationEnabled={adminInvitationsEnabled}
         invitationMode={adminInvitationMode}
-        communicationsEnabled={communicationsEnabled}
-        communicationsAccess={communicationsAccess}
-        personnelPoliciesEnabled={personnelPoliciesEnabled}
-        personnelPoliciesAccess={personnelPoliciesAccess}
+        onNavigate={onNavigate}
         onUnauthorized={onLogout}
       />
-      </AdministrationWorkspace>
-    </Suspense>;
-  }
-  if (selected?.appId === "administration" && personnelPoliciesAvailable) {
-    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Personal y Políticas…</div>}><AdministrationWorkspace onBack={() => onNavigate("/hub")}><main className="p-4 sm:p-7"><div className="mx-auto max-w-7xl"><PersonnelPoliciesAdmin authorization={authorization} access={personnelPoliciesAccess} onUnauthorized={onLogout} /></div></main></AdministrationWorkspace></Suspense>;
-  }
-  if (selected?.appId === "administration" && communicationsAdminAvailable) {
-    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Plantillas y Comunicaciones…</div>}><AdministrationWorkspace onBack={() => onNavigate("/hub")}><main className="p-4 sm:p-7"><div className="mx-auto max-w-7xl"><CommunicationTemplatesAdmin authorization={authorization} access={communicationsAccess} onUnauthorized={onLogout} /></div></main></AdministrationWorkspace></Suspense>;
-  }
-  if (selected?.appId === "administration" && logisticsAdminAvailable) {
-    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Motor Logístico…</div>}>
-      <AdministrationWorkspace onBack={() => onNavigate("/hub")}>
-      <main className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
-        <header className="mx-auto max-w-7xl border-b border-slate-200 pb-4">
-          <p className="text-[10px] font-bold uppercase tracking-[.2em] text-indigo-600">Administración</p>
-          <h1 className="mt-1 text-2xl font-black text-slate-950">Autoridades transversales</h1>
-          <p className="mt-1 text-sm text-slate-600">Configuración operativa autorizada para el tenant activo.</p>
-          <nav aria-label="Áreas de Administración" className="mt-3 flex flex-wrap gap-2 text-xs font-bold"><a href="#admin-logistics-engine" className="rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-indigo-900">Motor Logístico</a></nav>
-        </header>
-        <div className="mx-auto max-w-7xl"><LogisticsRulesAdmin authorization={authorization} access={logisticsAccess} onUnauthorized={onLogout} /></div>
-      </main>
-      </AdministrationWorkspace>
     </Suspense>;
   }
   if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {

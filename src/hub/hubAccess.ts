@@ -15,7 +15,7 @@ export type HubAccessDecision = Readonly<{
 
 export function evaluateHubAccess(application: HubApplication, context: HubAccessContext): HubAccessDecision {
   const denied = new Set(context.deniedPermissions);
-  if (application.requiredPermissions.some((permission) => denied.has(permission))) {
+  if (application.denyScope !== "PERMISSION" && application.requiredPermissions.some((permission) => denied.has(permission))) {
     return Object.freeze({ allowed: false, reason: "PERMISSION_DENIED" });
   }
 
@@ -36,12 +36,13 @@ export function evaluateHubAccess(application: HubApplication, context: HubAcces
   }
 
   const effective = new Set(context.effectivePermissions);
+  const can = (permission: string) => effective.has(permission) && !denied.has(permission);
   const permissionAllowed = application.permissionMode === "ALL"
-    ? application.requiredPermissions.every((permission) => effective.has(permission))
-    : application.requiredPermissions.some((permission) => effective.has(permission));
+    ? application.requiredPermissions.every(can)
+    : application.requiredPermissions.some(can);
   return Object.freeze({
     allowed: permissionAllowed,
-    reason: permissionAllowed ? "ALLOWED" : "PERMISSION_MISSING",
+    reason: permissionAllowed ? "ALLOWED" : application.requiredPermissions.some((permission) => denied.has(permission)) ? "PERMISSION_DENIED" : "PERMISSION_MISSING",
   });
 }
 export function visibleHubApplications(applications: readonly HubApplication[], context: HubAccessContext) {

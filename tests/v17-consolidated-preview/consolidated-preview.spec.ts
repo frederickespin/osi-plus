@@ -92,12 +92,29 @@ test("expone el Motor bajo Administración sin habilitar Memberships", async ({ 
     if (new URL(request.url()).pathname.startsWith("/api/admin/memberships")) membershipRequests += 1;
   });
   await page.route("**/api/logistics/rules", (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: [] }) }));
+  for (const resource of ["modes", "packages"]) {
+    await page.route(`**/api/crm/services/${resource}`, (route) => {
+      expect(route.request().method()).toBe("GET");
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: [] }) });
+    });
+  }
   await page.goto("/hub");
   const administration = page.getByRole("button").filter({ hasText: "Abrir Administración" });
   await expect(administration).toContainText("Abrir Administración");
   await administration.click();
   await expect(page).toHaveURL(/\/administration$/);
-  await expect(page.getByRole("link", { name: "Motor Logístico" })).toBeVisible();
+  await expect(page.getByTestId("administration-workspace")).toBeVisible();
+  const sectionSelector = page.getByLabel("Sección de Administración", { exact: true });
+  if (await sectionSelector.isVisible()) {
+    await sectionSelector.selectOption("/administration/logistics");
+    await expect(sectionSelector).toHaveValue("/administration/logistics");
+  } else {
+    const logisticsLink = page.getByRole("link", { name: "Motor Logístico", exact: true });
+    await expect(logisticsLink).toBeVisible();
+    await logisticsLink.click();
+    await expect(logisticsLink).toHaveAttribute("aria-current", "page");
+  }
+  await expect(page).toHaveURL(/\/administration\/logistics$/);
   await expect(page.getByTestId("logistics-rules-admin")).toBeVisible();
   expect(membershipRequests).toBe(0);
   const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name));

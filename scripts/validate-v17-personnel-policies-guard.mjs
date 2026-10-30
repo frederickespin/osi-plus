@@ -21,6 +21,7 @@ export function validatePersonnelPoliciesGuard(overrides = {}) {
     overrides,
   );
   const hub = read("src/hub/HubWorkspace.tsx", overrides);
+  const administration = read("src/administration/AdministrationWorkspace.tsx", overrides);
   const catalog = read("src/hub/appCatalog.ts", overrides);
   const inventory = JSON.parse(
     read("scripts/protected-cors-route-inventory.json", overrides),
@@ -134,8 +135,10 @@ export function validatePersonnelPoliciesGuard(overrides = {}) {
     );
   assert.ok(
     access.includes("blocked.has(permission)") &&
-      hub.indexOf("personnelPoliciesAvailable") <
-        hub.indexOf("<PersonnelPoliciesAdmin"),
+      hub.includes("policies: personnelPoliciesAvailable") &&
+      hub.indexOf("personnelPoliciesAvailable") < hub.indexOf("<AdministrationWorkspace") &&
+      administration.includes("if (!selected) return <CanonicalAccessDenied") &&
+      administration.indexOf("if (!selected)") < administration.indexOf("<PersonnelPoliciesAdmin"),
     "deny/lazy boundary alterado",
   );
   assert.ok(

@@ -18,8 +18,8 @@ rejects("src/logistics-engine/LogisticsVisitSummary.tsx", (value) => `${value}\n
 rejects("src/costing/CostingPanel.tsx", (value) => `${value}\nlogisticsApi.publish({});`);
 rejects("src/admin-tenant/AdminTenantMembershipModule.tsx", (value) => value.replace("isLogisticsUiEnabled() && logisticsRulesAccess.canRulesView", "isLogisticsUiEnabled()"));
 rejects("src/admin-tenant/AdminTenantMembershipModule.tsx", (value) => value.replace("logisticsAdminEnabled && <Suspense", "true && <Suspense"));
-rejects("src/hub/HubWorkspace.tsx", (value) => value.replace("adminMembershipAvailable || logisticsAdminAvailable", "adminMembershipAvailable"));
-rejects("src/hub/HubWorkspace.tsx", (value) => value.replace('selected?.appId === "administration" && logisticsAdminAvailable', 'selected?.appId === "administration"'));
+rejects("src/hub/HubWorkspace.tsx", (value) => value.replace("const administrationAvailable = administrationSections.length > 0", "const administrationAvailable = true"));
+rejects("src/hub/HubWorkspace.tsx", (value) => value.replace('logistics: logisticsAdminAvailable', 'logistics: true'));
 rejects("src/hub/appCatalog.ts", (value) =>
   value.replace(/\s*"logistics:rules:view",\r?\n/u, "\n"),
 );

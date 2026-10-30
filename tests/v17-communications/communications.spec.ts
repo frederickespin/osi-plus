@@ -25,15 +25,15 @@ test("catálogo compacto edita draft y genera preview sintético", async ({ page
   await page.route("**/api/communications/preview", async (route) => { previewCalls += 1; const body = await route.request().postDataJSON(); expect(body).not.toHaveProperty("tenantId"); return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { context: "SYNTHETIC", rendered: { subject: "Caso DEMO-001", bodyText: "Hola Cliente de demostración", bodyHtml: null } } }) }); });
   await page.goto("/administration");
   await expect(page.getByRole("heading", { name: "Plantillas y Comunicaciones" })).toBeVisible();
-  await expect(page.getByText("Transporte externo desactivado en Preview").first()).toBeVisible();
+  await expect(page.getByText("Envío externo desactivado en Preview").first()).toBeVisible();
   await expect(page.getByText("SURVEY.PIC")).toBeVisible();
   await page.getByRole("button", { name: "Editar" }).click();
   const variablesCatalog = page.getByRole("group", { name: "Variables disponibles · catálogo v1" });
   await expect(variablesCatalog).toContainText("Cliente");
   await expect(variablesCatalog).toContainText("Referencia del caso");
   await expect(variablesCatalog).not.toContainText("client.name");
-  await page.getByRole("button", { name: "Generar preview" }).click();
-  await expect(page.getByText("Mensaje renderizado · datos sintéticos")).toBeVisible();
+  await page.getByRole("button", { name: "Vista previa", exact: true }).click();
+  await expect(page.getByText("Vista previa · datos de ejemplo")).toBeVisible();
   await expect(page.getByText("Hola Cliente de demostración")).toBeVisible();
   expect(previewCalls).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);

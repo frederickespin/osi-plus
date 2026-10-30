@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import {
   CalendarClock,
   CheckCircle2,
@@ -154,41 +155,32 @@ export default function PersonnelPoliciesAdmin({
   return (
     <section
       id="admin-personnel-policies"
-      className="mt-7 overflow-hidden rounded-xl border bg-white shadow-sm"
+      className="mt-3 min-w-0"
       data-testid="personnel-policies-admin"
     >
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b bg-slate-50 p-4">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[.18em] text-indigo-600">
-            Administración tenant-first
-          </p>
-          <h2 className="mt-1 text-xl font-black text-slate-950">
-            Personal y Políticas
-          </h2>
-          <p className="mt-1 text-xs text-slate-600">
-            Capacidad operacional, agenda y excepciones. No sustituye RRHH ni
-            nómina.
-          </p>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+        <div className="flex items-center gap-1">
+          <h2 className="text-base font-semibold text-slate-950">Personal y Políticas</h2>
+          <AdministrationHelp title="Políticas operativas">
+            <p>Gestiona capacidades, horarios, zonas y excepciones para planificar las visitas y los servicios.</p>
+            <p>Las políticas definen duración, cupos y tiempos de preparación. El expediente laboral completo corresponde al área de Recursos Humanos.</p>
+          </AdministrationHelp>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="rounded-lg border bg-white px-3 py-2 text-xs font-bold"
-        >
-          <RefreshCw className="mr-1 inline h-3.5 w-3.5" />
-          Actualizar
-        </button>
+        <AdministrationIconAction label="Actualizar" mobileLabel="Actualizar" onClick={() => void load()}>
+          <RefreshCw aria-hidden="true" className="h-4 w-4" />
+        </AdministrationIconAction>
       </header>
       <nav
         aria-label="Personal y Políticas"
-        className="flex gap-1 overflow-x-auto border-b p-2"
+        className="flex gap-1 overflow-x-auto border-b py-2"
       >
         {TABS.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => setTab(item.id)}
-            className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold ${tab === item.id ? "bg-[#003366] text-white" : "text-slate-600 hover:bg-slate-100"}`}
+            aria-pressed={tab === item.id}
+            className={`whitespace-nowrap rounded px-3 py-2 text-xs font-semibold ${tab === item.id ? "bg-[#003366] text-white" : "text-slate-600 hover:bg-slate-100"}`}
           >
             {item.label}
           </button>
@@ -196,7 +188,7 @@ export default function PersonnelPoliciesAdmin({
       </nav>
       {loading && (
         <p role="status" className="p-8 text-center text-sm text-slate-500">
-          Consultando autoridad operacional…
+          Cargando personal y políticas…
         </p>
       )}
       {error && (
@@ -208,14 +200,14 @@ export default function PersonnelPoliciesAdmin({
         </p>
       )}
       {!loading && workspace && (
-        <div className="p-4">
+        <div className="py-3">
           {tab === "PERSONNEL" && (
             <div className="space-y-4">
-              <div className="grid gap-3 lg:grid-cols-2">
+              <div className="divide-y border-y border-slate-200">
                 {workspace.personnel.map((row) => (
                   <article
                     key={row.profileRef}
-                    className="rounded-lg border p-3"
+                    className="grid gap-2 py-3 md:grid-cols-[minmax(200px,.9fr)_1.5fr] md:items-center md:gap-4"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -230,7 +222,7 @@ export default function PersonnelPoliciesAdmin({
                         {row.availabilityStatus}
                       </span>
                     </div>
-                    <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <dl className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                       <div>
                         <dt className="text-slate-500">Capacidades</dt>
                         <dd className="font-bold">{row.capabilities.length}</dd>
@@ -259,11 +251,11 @@ export default function PersonnelPoliciesAdmin({
                   </article>
                 ))}
                 {workspace.personnel.length === 0 && (
-                  <Empty text="No existen perfiles operacionales vinculados a Membership activa." />
+                  <Empty text="No hay perfiles de personal vinculados a accesos activos." />
                 )}
               </div>
               {access.canManageProfiles && (
-                <fieldset className="grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-3">
+                <fieldset className="grid gap-2 border-y bg-slate-50 p-3 md:grid-cols-3">
                   <legend className="px-1 text-xs font-black">
                     Configurar perfil operacional
                   </legend>
@@ -377,7 +369,7 @@ export default function PersonnelPoliciesAdmin({
                         validTo: dateStart(profileEdit.validTo),
                       })
                     }
-                    className="rounded bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                    className="rounded bg-[#003366] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
                   >
                     Guardar perfil
                   </button>
@@ -404,7 +396,7 @@ export default function PersonnelPoliciesAdmin({
                 ))}
               </div>
               {access.canManageCapabilities && (
-                <div className="mt-4 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-3">
+                <div className="mt-4 grid gap-2 border-y bg-slate-50 p-3 sm:grid-cols-3">
                   <input
                     aria-label="Código de capacidad"
                     placeholder="CAN_PERFORM_…"
@@ -434,7 +426,7 @@ export default function PersonnelPoliciesAdmin({
                         description: capability.description || null,
                       })
                     }
-                    className="rounded bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                    className="rounded bg-[#003366] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
                   >
                     Crear capacidad
                   </button>
@@ -526,7 +518,7 @@ export default function PersonnelPoliciesAdmin({
                 <Empty text="No existe una política semanal publicada." />
               )}
               {access.canManagePolicies && (
-                <fieldset className="grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-4">
+                <fieldset className="grid gap-2 border-y bg-slate-50 p-3 md:grid-cols-4">
                   <legend className="px-1 text-xs font-black">
                     Excepción individual de horario
                   </legend>
@@ -626,7 +618,7 @@ export default function PersonnelPoliciesAdmin({
                         reason: override.reason,
                       })
                     }
-                    className="rounded bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                    className="rounded bg-[#003366] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
                   >
                     Registrar excepción
                   </button>
@@ -656,7 +648,7 @@ export default function PersonnelPoliciesAdmin({
                 )}
               </div>
               {access.canManageProfiles && workspace.zones.length > 0 && (
-                <div className="grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-3">
+                <div className="grid gap-2 border-y bg-slate-50 p-3 sm:grid-cols-3">
                   <select
                     aria-label="Personal para zona"
                     value={zoneAssignment.profileRef}
@@ -706,7 +698,7 @@ export default function PersonnelPoliciesAdmin({
                         validTo: null,
                       })
                     }
-                    className="rounded bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                    className="rounded bg-[#003366] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
                   >
                     Asignar zona
                   </button>
@@ -734,7 +726,7 @@ export default function PersonnelPoliciesAdmin({
             <div className="grid gap-4 lg:grid-cols-[1.4fr_.6fr]">
               <div className="space-y-3">
                 {workspace.activePolicy ? (
-                  <article className="rounded-lg border p-4">
+                  <article className="border-y border-slate-200 py-3">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="font-black">
@@ -746,7 +738,7 @@ export default function PersonnelPoliciesAdmin({
                       </div>
                       <ShieldCheck className="text-emerald-600" />
                     </div>
-                    <dl className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+                    <dl className="mt-3 grid grid-cols-3 gap-3 text-left text-xs">
                       <Metric
                         label="Visita"
                         value={`${workspace.activePolicy.defaultVisitMinutes} min`}
@@ -760,7 +752,7 @@ export default function PersonnelPoliciesAdmin({
                         value={`${workspace.activePolicy.virtualPreparationMinutes} min`}
                       />
                     </dl>
-                    <ul className="mt-3 divide-y rounded-lg border text-xs">
+                    <ul className="mt-3 divide-y border-y text-xs">
                       {workspace.activePolicy.windows.map((window) => (
                         <li
                           key={window.windowRef}
@@ -779,10 +771,10 @@ export default function PersonnelPoliciesAdmin({
                     </ul>
                   </article>
                 ) : (
-                  <Empty text="Sin política activa: Scheduling falla cerrado." />
+                  <Empty text="Sin política activa: no se pueden programar visitas." />
                 )}
                 {access.canManagePolicies && (
-                  <fieldset className="space-y-3 rounded-lg bg-slate-50 p-3">
+                  <fieldset className="space-y-3 border-y bg-slate-50 p-3">
                     <legend className="px-1 text-xs font-black">
                       Publicar siguiente política semanal
                     </legend>
@@ -1078,7 +1070,7 @@ export default function PersonnelPoliciesAdmin({
                             ),
                           )
                         }
-                        className="rounded bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                        className="rounded bg-[#003366] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
                       >
                         Publicar política
                       </button>
@@ -1147,7 +1139,7 @@ export default function PersonnelPoliciesAdmin({
                           visibleToEvaluator: true,
                         })
                       }
-                      className="rounded bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                      className="rounded bg-[#003366] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
                     >
                       Crear razón
                     </button>
@@ -1164,7 +1156,7 @@ export default function PersonnelPoliciesAdmin({
 
 function Empty({ text }: { text: string }) {
   return (
-    <p className="rounded-lg border border-dashed p-6 text-center text-sm text-slate-500">
+    <p className="border-b py-5 text-center text-sm text-slate-500">
       {text}
     </p>
   );
@@ -1215,7 +1207,7 @@ function policyPayload(
 }
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded bg-slate-50 p-2">
+    <div className="py-1">
       <dt className="text-slate-500">{label}</dt>
       <dd className="mt-1 font-black text-slate-900">{value}</dd>
     </div>
@@ -1223,9 +1215,9 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 function Precedence({ values }: { values: readonly string[] }) {
   return (
-    <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-950">
+    <div className="border-y border-slate-200 py-3 text-xs text-slate-600">
       <CalendarClock className="mr-2 inline h-4 w-4" />
-      <strong>Precedencia:</strong> {values.join(" → ")}
+      <strong>Orden de aplicación:</strong> {values.join(" → ")}
     </div>
   );
 }
@@ -1241,7 +1233,7 @@ function ExceptionRow({
   mutate(operation: string, payload: Record<string, unknown>): Promise<void>;
 }) {
   return (
-    <article className="grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_auto]">
+    <article className="grid gap-3 border-b py-3 md:grid-cols-[1fr_auto]">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <strong className="text-sm">
@@ -1294,7 +1286,7 @@ function ExceptionRow({
                     reason: "Aprobación administrativa registrada",
                   })
                 }
-                className="rounded bg-indigo-600 px-3 py-2 text-xs font-bold text-white"
+                className="rounded bg-[#003366] px-3 py-2 text-xs font-semibold text-white"
               >
                 Aprobar excepción
               </button>

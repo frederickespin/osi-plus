@@ -235,7 +235,8 @@ test("la ayuda se abre por teclado o toque y devuelve el foco sin cambiar la sec
   const help = page.getByRole("dialog", { name: "Costos y monedas", exact: true });
   await expect(help).toBeVisible();
   await expect(help.getByText(/Cada regla y tasa conserva su versión/)).toBeVisible();
-  await page.screenshot({ path: `/tmp/osi-administration-18a-help-${testInfo.project.name}.png`, fullPage: true });
+  await expect(help).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: `/tmp/osi-administration-18a-help-${testInfo.project.name}.png`, fullPage: true, animations: "disabled" });
   if (testInfo.project.name.includes("mobile")) await help.getByRole("button", { name: "Cerrar ayuda", exact: true }).tap();
   else await page.keyboard.press("Escape");
   await expect(help).toHaveCount(0);

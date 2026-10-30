@@ -205,7 +205,7 @@ try {
   const audits = await prisma.commercialAuditLog.findMany({ where: { tenant_id: tenant.id, source: "V17_USER_IDENTITY_19C" } });
   const auditText = JSON.stringify(audits);
   check("audits contain no names, emails, phone, cedula, photo or raw token", !["Nombre en empresa A", enrollmentInput.name, enrollmentInput.email, "+18095550181", "00000000001", "00000000002", photo, token, password].some((value) => auditText.includes(value)));
-  check("one issuance and activation event for a consumed enrollment", audits.filter((row) => row.entity_id === issued.enrollment.enrollmentRef && row.action === "USER_ENROLLMENT_ISSUED").length === 1 && audits.filter((row) => row.entity_id === issued.enrollment.enrollmentRef && row.action === "USER_ENROLLMENT_ACTIVATED").length === 1);
+  check("one issuance and activation event for a consumed enrollment", audits.filter((row) => row.entityId === issued.enrollment.enrollmentRef && row.action === "USER_ENROLLMENT_ISSUED").length === 1 && audits.filter((row) => row.entityId === issued.enrollment.enrollmentRef && row.action === "USER_ENROLLMENT_ACTIVATED").length === 1);
   process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);
 } finally {
   await prisma.$disconnect();

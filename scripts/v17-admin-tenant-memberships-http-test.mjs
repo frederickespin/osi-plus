@@ -74,7 +74,7 @@ const previewEnv = {
   ADMIN_MEMBERSHIP_PREVIEW_DATABASE: "admin_preview_test",
   ADMIN_MEMBERSHIP_PREVIEW_NEON_BRANCH_ID: "br-synthetic-admin",
   ADMIN_MEMBERSHIP_PREVIEW_TENANT_CODE: "ADMIN-PREVIEW-TEST",
-  DATABASE_URL: "postgresql://synthetic:synthetic@preview.example.invalid/admin_preview_test?schema=osi",
+  DATABASE_URL: "postgresql://127.0.0.1/admin_preview_test?schema=osi",
   VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/v17-consolidated-preview",
   MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false",
 };
@@ -117,10 +117,10 @@ for (const [name, mutation] of [
   ["auth diferente", { MT01B_AUTH_MODE: "MEMBERSHIP_ONLY" }],
   ["cambio empresa habilitado", { MT01B_TENANT_SWITCH_ENABLED: "true" }],
   ["cliente V2 habilitado", { VITE_MT01B2_CLIENT_ENABLED: "true" }],
-  ["URL de otra base", { DATABASE_URL: "postgresql://synthetic:synthetic@preview.example.invalid/other?schema=osi" }],
-  ["URL sin schema", { DATABASE_URL: "postgresql://synthetic:synthetic@preview.example.invalid/admin_preview_test" }],
-  ["schema diferente", { DATABASE_URL: "postgresql://synthetic:synthetic@preview.example.invalid/admin_preview_test?schema=public" }],
-  ["schema repetido", { DATABASE_URL: "postgresql://synthetic:synthetic@preview.example.invalid/admin_preview_test?schema=osi&schema=osi" }],
+  ["URL de otra base", { DATABASE_URL: "postgresql://127.0.0.1/other?schema=osi" }],
+  ["URL sin schema", { DATABASE_URL: "postgresql://127.0.0.1/admin_preview_test" }],
+  ["schema diferente", { DATABASE_URL: "postgresql://127.0.0.1/admin_preview_test?schema=public" }],
+  ["schema repetido", { DATABASE_URL: "postgresql://127.0.0.1/admin_preview_test?schema=osi&schema=osi" }],
 ]) {
   const before = { ...previewCalls };
   const result = await invoke(previewHandler({ env: { ...previewEnv, ...mutation }, detailRoute: true }), {

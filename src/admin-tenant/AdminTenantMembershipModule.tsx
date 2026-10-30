@@ -333,7 +333,7 @@ function AdminMembershipWorkspace({ authorization, membershipRef, effectivePermi
       </>}
     </div>
     <Dialog open={Boolean(draft && listReady)} onOpenChange={(openValue) => { if (!openValue) closeEditor(); }}>
-      <DialogContent className={`max-h-[92vh] p-4 sm:max-w-3xl sm:p-5 ${identityEnabled ? "flex flex-col overflow-hidden" : "overflow-y-auto"}`}>
+      <DialogContent className={`max-h-[92vh] p-4 sm:max-w-3xl sm:p-5 ${identityEnabled ? "flex h-[min(92vh,48rem)] flex-col overflow-hidden" : "overflow-y-auto"}`}>
         <DialogHeader className={identityEnabled ? "shrink-0" : undefined}><DialogTitle className="flex items-center gap-2"><UserCog aria-hidden="true" className="h-5 w-5" />{identityEnabled ? "Ficha de usuario" : "Acceso de usuario"}</DialogTitle><DialogDescription>{identityEnabled ? "Identidad y acceso de esta persona en la empresa activa." : "Actualice exclusivamente el acceso de esta persona dentro de la empresa activa."}</DialogDescription></DialogHeader>
         {draft && catalog && <div className={identityEnabled ? "flex min-h-0 flex-1 flex-col gap-3" : "space-y-3"}>
           <div className="shrink-0 border-b border-slate-200 pb-2"><strong className="block text-sm">{draft.name}</strong><span className="break-all text-xs text-slate-500">{draft.email}</span></div>

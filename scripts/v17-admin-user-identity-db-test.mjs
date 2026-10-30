@@ -192,12 +192,12 @@ try {
   check("concurrent profile/enrollment share one document reservation", crossTableRace.filter((row) => row.status === "fulfilled").length === 1 && Number(documentOwners.total) === 1);
 
   const blockedIssued = await issueUserEnrollment(prisma, ctx, inputFor("blockedissuer"));
-  await prisma.tenantMembership.update({ where: { id: actor.id }, data: { deniedPermissions: ["users:create"] } });
+  await prisma.tenantMembership.update({ where: { id: actor.id }, data: { grantedPermissions: permissions.filter((permission) => permission !== "users:create"), deniedPermissions: ["users:create"] } });
   await rejects("issuer privilege revocation invalidates outstanding activation", () => activateUserEnrollment(prisma, { token: tokenFrom(blockedIssued), password }), "ADMIN_MEMBERSHIP_FORBIDDEN");
   await rejects("creation revalidates issuer permissions in DB", () => issueUserEnrollment(prisma, ctx, inputFor("revokedcreate")), "ADMIN_MEMBERSHIP_FORBIDDEN");
-  await prisma.tenantMembership.update({ where: { id: actor.id }, data: { deniedPermissions: ["users:edit"] } });
+  await prisma.tenantMembership.update({ where: { id: actor.id }, data: { grantedPermissions: permissions.filter((permission) => permission !== "users:edit"), deniedPermissions: ["users:edit"] } });
   await rejects("editing revalidates revoked actor permission", () => updateUserIdentity(prisma, ctx, sharedMember.publicRef, { requestId: randomUUID(), expectedVersion: saved.version, name: "Denied write" }), "ADMIN_MEMBERSHIP_FORBIDDEN");
-  await prisma.tenantMembership.update({ where: { id: actor.id }, data: { deniedPermissions: [] } });
+  await prisma.tenantMembership.update({ where: { id: actor.id }, data: { grantedPermissions: permissions, deniedPermissions: [] } });
   await rejects("effective deny blocks reading personal data", () => getUserIdentity(prisma, { ...ctx, deniedPermissions: ["users:view"] }, sharedMember.publicRef), "ADMIN_MEMBERSHIP_FORBIDDEN");
   const viewerCtx = { tenantId: tenant.id, membershipId: secondMember.id, userId: secondUser.id, role: "V", effectivePermissions: permissions, deniedPermissions: [] };
   await rejects("a non-administrator cannot read identity even with supplied grants", () => getUserIdentity(prisma, viewerCtx, sharedMember.publicRef), "ADMIN_MEMBERSHIP_FORBIDDEN");

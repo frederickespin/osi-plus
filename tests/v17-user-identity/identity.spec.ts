@@ -114,15 +114,15 @@ test("ficha separa identidad y acceso, guarda sólo el dato cambiado y conserva 
   await expect(dialog.getByRole("button", { name: "Guardar identidad", exact: true })).toBeDisabled();
   const contact = dialog.getByLabel(/Correo de contacto/);
   await contact.scrollIntoViewIfNeeded();
-  const contactBox = await contact.boundingBox();
-  const dialogBox = await dialog.boundingBox();
-  const footerBox = await dialog.getByRole("button", { name: "Guardar identidad", exact: true }).evaluate((button) => {
-    const bounds = button.parentElement!.getBoundingClientRect();
-    return { top: bounds.top, bottom: bounds.bottom };
-  });
-  expect(contactBox).not.toBeNull(); expect(dialogBox).not.toBeNull();
-  expect(contactBox!.y + contactBox!.height).toBeLessThanOrEqual(footerBox.top + 1);
-  expect(footerBox.bottom).toBeLessThanOrEqual(dialogBox!.y + dialogBox!.height + 1);
+  const layoutElements = { contact: await contact.elementHandle(), save: await dialog.getByRole("button", { name: "Guardar identidad", exact: true }).elementHandle() };
+  // Read all bounds in one frame; wait for dialog animation without allowing
+  // either the last field or the action bar to be covered or clipped.
+  await expect.poll(() => dialog.evaluate((panel, elements) => {
+    const field = elements.contact!.getBoundingClientRect();
+    const footer = elements.save!.parentElement!.getBoundingClientRect();
+    const content = panel.getBoundingClientRect();
+    return { contactClear: field.height > 0 && field.bottom <= footer.top + 1, footerInside: footer.height > 0 && footer.bottom <= content.bottom + 1 };
+  }, layoutElements)).toEqual({ contactClear: true, footerInside: true });
   await dialog.getByLabel("Nombre completo", { exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: `/tmp/osi-user-identity-19c-${info.project.name}-identity.png`, fullPage: true, animations: "disabled" });
   await dialog.getByRole("tab", { name: "Acceso", exact: true }).click();

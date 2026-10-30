@@ -75,6 +75,18 @@ test("Administrador revisa Personal, capacidades, horarios, políticas y excepci
   await page
     .getByRole("button", { name: /Disponible Administración/u })
     .click();
+  await expect(page.getByTestId("administration-workspace")).toBeVisible();
+  const sectionSelector = page.getByLabel("Sección de Administración", { exact: true });
+  if (await sectionSelector.isVisible()) {
+    await sectionSelector.selectOption("/administration/policies");
+    await expect(sectionSelector).toHaveValue("/administration/policies");
+  } else {
+    const policiesLink = page.getByRole("link", { name: "Políticas operativas", exact: true });
+    await expect(policiesLink).toBeVisible();
+    await policiesLink.click();
+    await expect(policiesLink).toHaveAttribute("aria-current", "page");
+  }
+  await expect(page).toHaveURL(/\/administration\/policies$/);
   await expect(
     page.getByRole("heading", { name: "Personal y Políticas" }),
   ).toBeVisible();

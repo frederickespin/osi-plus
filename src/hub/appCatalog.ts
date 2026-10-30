@@ -47,6 +47,8 @@ export type HubApplication = Readonly<{
   status: HubAppStatus;
   requiredPermissions: readonly string[];
   permissionMode: "ANY" | "ALL";
+  /** Independent administrative entry permissions; other applications deny as a whole. */
+  denyScope?: "PERMISSION";
   requiresExplicitPermissions?: boolean;
   baselineRoles: readonly UserRole[];
   mobileAvailability: HubMobileAvailability;
@@ -164,9 +166,14 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
       "Acceso, membresías, personal, agenda, plantillas y reglas transversales del tenant.",
     icon: "settings",
     route: "/administration",
+    routeAliases: ["/administration/access", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"],
     status: "REGISTERED_INACTIVE",
     requiredPermissions: [
       "membership:view",
+      "services:catalog:view",
+      "services:packages:view",
+      "services:materials:view",
+      "costing:rules:view",
       "logistics:rules:view",
       "communications:templates:view",
       "personnel:profiles:view",
@@ -177,6 +184,7 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
       "scheduling:exceptions:respond",
     ],
     permissionMode: "ANY",
+    denyScope: "PERMISSION",
     requiresExplicitPermissions: true,
     baselineRoles: [],
     mobileAvailability: "RESPONSIVE",

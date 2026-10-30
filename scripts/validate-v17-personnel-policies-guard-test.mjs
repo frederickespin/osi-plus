@@ -104,6 +104,12 @@ negative(
   (text) =>
     text.replace('"scheduling:exceptions:respond"', '"removed:respond"'),
 );
+negative("políticas publicadas sin su compuerta", "src/hub/HubWorkspace.tsx", (text) =>
+  text.replace("policies: personnelPoliciesAvailable", "policies: true"),
+);
+negative("sección montada sin autorización", "src/administration/AdministrationWorkspace.tsx", (text) =>
+  text.replace("if (!selected) return <CanonicalAccessDenied", "if (false) return <CanonicalAccessDenied"),
+);
 assert.equal(validatePersonnelPoliciesGuard().productionApiEnabled, false);
 checks += 1;
 console.log(`V17-PERSONNEL-POLICIES-GUARD-NEGATIVE ${checks}/${checks}`);

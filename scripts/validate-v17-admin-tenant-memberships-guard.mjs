@@ -13,6 +13,7 @@ export function validateAdminTenantMembershipGuard(overrides = {}) {
   const http = source("api/_lib/adminMembershipHttp.js");
   const catalog = source("src/hub/appCatalog.ts");
   const hub = source("src/hub/HubWorkspace.tsx");
+  const workspace = source("src/administration/AdministrationWorkspace.tsx");
   const ui = `${source("src/admin-tenant/adminApi.ts")}\n${source("src/admin-tenant/AdminTenantMembershipModule.tsx")}`;
   const bootstrap = source("scripts/v17-admin-membership-bootstrap.mjs");
 
@@ -36,9 +37,13 @@ export function validateAdminTenantMembershipGuard(overrides = {}) {
   invariant(/beforeAdmins >= 2[\s\S]*afterAdmins < 2/u.test(domain) && /ADMIN_MEMBERSHIP_SELF_PROTECTION/u.test(domain), "protección de administradores ausente");
   invariant(/auth_sessions/u.test(domain) && /auth_refresh_tokens/u.test(domain) && /appendCommercialAudit/u.test(domain), "revocación o auditoría ausente");
   invariant(/membership:view[\s\S]*requiresExplicitPermissions: true/u.test(catalog), "catálogo concede Administración sin permiso explícito");
-  invariant(/const AdminTenantMembershipModule = lazy/u.test(hub)
+  invariant(/const AdminTenantMembershipModule = lazy/u.test(workspace)
     && /const adminMembershipAvailable = adminEnabled && effectivePermissions\.has\("membership:view"\) && !deniedPermissions\.has\("membership:view"\)/u.test(hub)
-    && /selected\?\.appId === "administration" && adminMembershipAvailable/u.test(hub), "Administración no está lazy y gated");
+    && /access: adminMembershipAvailable/u.test(hub)
+    && /sections=\{administrationSections\}/u.test(hub)
+    && /if \(!selected\) return <CanonicalAccessDenied/u.test(workspace)
+    && /case "access": return <AdminTenantMembershipModule/u.test(workspace)
+    && /includeConfiguration=\{false\}/u.test(workspace), "Administración no está lazy y gated");
   invariant(!/\/api\/users|mockUsers|localStorage|sessionStorage|indexedDB/u.test(ui), "UI usa autoridad histórica o storage");
   invariant(!/\b(?:tenantId|membershipId|userId|publicRef|clientId)\b/u.test(ui), "UI expone identidad interna");
   invariant(/--apply[\s\S]*AUTHORIZATION_FILE_REQUIRED[\s\S]*TARGET_USER_NOT_AUTHENTICABLE_OR_UNIQUE/u.test(bootstrap), "bootstrap no exige dry-run/autorización/User autenticable");

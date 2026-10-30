@@ -40,7 +40,7 @@ const CONTRACTS = Object.freeze([
   { appId: "materials-equipment", route: "/materials", permissions: ["inventory:catalog:view", "inventory:stock:view"], mode: "ALL", roles: [], explicit: true },
   { appId: "tools-equipment", route: "/assets", permissions: ["assets:instance:view"], mode: "ALL", roles: [], explicit: true },
   { appId: "workshop", route: "/workshop", permissions: ["wms:view", "fleet:view", "osi:view"], mode: "ANY", roles: ["A", "PA", "PB", "PC", "PD", "PF"] },
-  { appId: "administration", route: "/administration", permissions: ["membership:view", "logistics:rules:view", "communications:templates:view", "personnel:profiles:view", "personnel:capabilities:view", "scheduling:policies:view", "scheduling:exceptions:request", "scheduling:exceptions:approve", "scheduling:exceptions:respond"], mode: "ANY", roles: [], explicit: true },
+  { appId: "administration", route: "/administration", aliases: ["/administration/access", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"], permissions: ["membership:view", "services:catalog:view", "services:packages:view", "services:materials:view", "costing:rules:view", "logistics:rules:view", "communications:templates:view", "personnel:profiles:view", "personnel:capabilities:view", "scheduling:policies:view", "scheduling:exceptions:request", "scheduling:exceptions:approve", "scheduling:exceptions:respond"], mode: "ANY", roles: [], explicit: true, denyScope: "PERMISSION" },
   { appId: "human-resources", route: "/hr", permissions: ["hr:view"], mode: "ALL", roles: ["A", "I"] },
   { appId: "osi-survey", route: "/mobile/survey", aliases: ["/survey"], permissions: ["survey:assignment:view"], mode: "ALL", roles: [], explicit: true, suite: "osi-plus-mobile" },
   { appId: "packing-calculator", route: "/mobile/packing", permissions: ["pipeline:view"], mode: "ALL", roles: [], explicit: true, suite: "osi-plus-mobile", external: "https://ip-suite-inventario-empaquee.vercel.app/empaque/index.html" },
@@ -74,6 +74,7 @@ export function validateHubCatalog(source) {
     invariant(sameMembers(application.requiredPermissions, contract.permissions) && application.permissionMode === contract.mode
       && sameMembers(application.baselineRoles, contract.roles) && (application.requiresExplicitPermissions === true) === Boolean(contract.explicit), `autoridad alterada:${contract.appId}`);
     invariant(application.suiteId === contract.suite && application.externalHref === contract.external, `suite o destino externo alterado:${contract.appId}`);
+    invariant(application.denyScope === contract.denyScope, `alcance de denegación alterado:${contract.appId}`);
     invariant(application.lazy === true && application.directAccessAllowed === true, `contrato lazy/ruta directa alterado:${contract.appId}`);
     for (const route of [application.route, ...(application.routeAliases || [])]) {
       invariant(/^\/[a-z][a-z-]*(?:\/[a-z][a-z-]*)*$/.test(route) && !routes.has(route), `ruta insegura o duplicada:${route}`);

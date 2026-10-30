@@ -11,6 +11,7 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   const summary = source("src/logistics-engine/LogisticsVisitSummary.tsx");
   const admin = source("src/admin-tenant/AdminTenantMembershipModule.tsx");
   const hub = source("src/hub/HubWorkspace.tsx");
+  const workspace = source("src/administration/AdministrationWorkspace.tsx");
   const catalog = source("src/hub/appCatalog.ts");
   const rules = source("src/logistics-engine/LogisticsRulesAdmin.tsx");
   const costing = source("src/costing/CostingPanel.tsx");
@@ -29,10 +30,12 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.match(admin, /const LogisticsRulesAdmin = lazy/);
   assert.match(admin, /const logisticsAdminEnabled = isLogisticsUiEnabled\(\) && logisticsRulesAccess\.canRulesView/);
   assert.match(admin, /logisticsAdminEnabled && <Suspense/);
-  assert.match(hub, /const LogisticsRulesAdmin = lazy/);
+  assert.match(workspace, /const LogisticsRulesAdmin = lazy/);
   assert.match(hub, /const logisticsAdminAvailable = isLogisticsUiEnabled\(\) && logisticsAccess\.canRulesView/);
-  assert.match(hub, /selected\?\.appId === "administration" && logisticsAdminAvailable/);
-  assert.match(hub, /adminMembershipAvailable \|\| logisticsAdminAvailable/);
+  assert.match(hub, /logistics: logisticsAdminAvailable/);
+  assert.match(workspace, /if \(!selected\) return <CanonicalAccessDenied/);
+  assert.match(workspace, /case "logistics": return <LogisticsRulesAdmin/);
+  assert.match(hub, /const administrationAvailable = administrationSections\.length > 0/);
   const administrationCatalog = catalog.slice(catalog.indexOf('appId: "administration"'), catalog.indexOf('appId: "human-resources"'));
   assert.match(administrationCatalog, /requiredPermissions: \[[^\]]*"membership:view"[^\]]*"logistics:rules:view"[^\]]*\]/);
   assert.match(administrationCatalog, /permissionMode: "ANY"/);

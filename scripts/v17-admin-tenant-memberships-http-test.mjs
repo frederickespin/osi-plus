@@ -119,7 +119,7 @@ for (const [name, mutation] of [
   ["cliente V2 habilitado", { VITE_MT01B2_CLIENT_ENABLED: "true" }],
   ["URL de otra base", { DATABASE_URL: "postgresql://127.0.0.1/other?schema=osi" }],
   ["URL sin schema", { DATABASE_URL: "postgresql://127.0.0.1/admin_preview_test" }],
-  ["schema diferente", { DATABASE_URL: "postgresql://127.0.0.1/admin_preview_test?schema=public" }],
+  ["schema diferente", { DATABASE_URL: "postgresql://127.0.0.1/admin_preview_test?schema=other_schema" }],
   ["schema repetido", { DATABASE_URL: "postgresql://127.0.0.1/admin_preview_test?schema=osi&schema=osi" }],
 ]) {
   const before = { ...previewCalls };

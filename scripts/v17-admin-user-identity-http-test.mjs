@@ -42,7 +42,8 @@ const previewEnv = {
   ADMIN_USER_IDENTITY_MODE: "PREVIEW_REHEARSAL", ADMIN_USER_IDENTITY_BATCH,
   ADMIN_TENANT_MEMBERSHIP_MODE: "PREVIEW_REHEARSAL", ADMIN_MEMBERSHIP_PREVIEW_BATCH,
   ADMIN_MEMBERSHIP_PREVIEW_DATABASE: "identity_test_preview", ADMIN_MEMBERSHIP_PREVIEW_NEON_BRANCH_ID: "br-synthetic-only", ADMIN_MEMBERSHIP_PREVIEW_TENANT_CODE: "SYNTHETIC-19C",
-  DATABASE_URL: "postgresql://synthetic:synthetic@example.invalid/identity_test_preview?schema=osi",
+  // Destination-only fixture: this suite injects Prisma and never connects.
+  DATABASE_URL: "postgresql://example.invalid/identity_test_preview?schema=osi",
   VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/v17-administration-identity-19c",
   MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false",
 };
@@ -65,7 +66,7 @@ for (const [name, env, req] of [
   ["missing batch", { ...previewEnv, ADMIN_USER_IDENTITY_BATCH: undefined }, request()],
   ["wrong batch", { ...previewEnv, ADMIN_USER_IDENTITY_BATCH: "other" }, request()],
   ["wrong branch", { ...previewEnv, VERCEL_GIT_COMMIT_REF: "main" }, request()],
-  ["wrong DB", { ...previewEnv, DATABASE_URL: "postgresql://x:y@example.invalid/other?schema=osi" }, request()],
+  ["wrong DB", { ...previewEnv, DATABASE_URL: "postgresql://example.invalid/other?schema=osi" }, request()],
   ["missing memberships mode", { ADMIN_USER_IDENTITY_MODE: "LOCAL_ONLY" }, request()],
   ["local mode in Vercel", { ...localEnv, VERCEL: "1" }, request()],
   ["fake loopback host on a remote connection", localEnv, request({ remoteAddress: "203.0.113.10" })],

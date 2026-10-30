@@ -34,6 +34,26 @@ La función tiene una activación propia, cerrada por defecto, para ejecución l
 
 El historial del Preview debe verificarse por separado del catálogo canónico de CI. El antecedente compartido por el usuario incluye una extensión histórica de Ingeniería cuyo SQL no pertenece a esta rama; no debe reconstruirse, ejecutarse ni darse por revisado a partir de su checksum. Cualquier diferencia distinta del manifiesto revisado detiene la adopción.
 
+### Comprobación del Preview
+
+El destino de este incremento es exclusivamente la base `v17_consolidated_preview_10b`, rama Neon `br-mute-credit-ahxnvfx0`, esquema `osi` y empresa `V17-CONSOLIDATED-PREVIEW-10B`.
+
+El comprobador operativo `v17-admin-user-identity-preview-check.mjs` se entrega por separado y no forma parte del código de la aplicación ni de CI. Desde una copia del commit revisado, con las dependencias bloqueadas ya instaladas, ejecutar en una terminal privada indicando la ruta del archivo descargado:
+
+```powershell
+node "$env:USERPROFILE\Downloads\v17-admin-user-identity-preview-check.mjs" --check
+```
+
+El comprobador solicita la conexión sin mostrarla. No acepta secretos como argumentos ni lee la conexión de archivos o variables. Contrasta los archivos de migración con sus checksums fijados, el destino real, la empresa, el historial aplicado y la presencia o ausencia de las nuevas tablas. No escribe en la base.
+
+- `VERIFICADO_19C_PENDIENTE_SIN_CAMBIOS`: historial previo y ausencia de tablas 19C compatibles con la adopción pendiente.
+- `VERIFICADO_19C_APLICADA_SIN_CAMBIOS`: historial 19C presente y catálogo estructural comprobado. La comprobación de columnas, nombres y tipos de restricciones e índices no compara todas sus definiciones SQL.
+- Cualquier otro resultado requiere revisar la diferencia antes de aplicar cambios.
+
+La aplicación debe utilizar Prisma 6.19.2 del proyecto y únicamente la migración pendiente 19C, después de verificar el plan. El historial esperado de este Preview pasa de 36 a 37 registros, porque incluye la extensión histórica de Ingeniería además de las migraciones del repositorio. No se reconstruye esa extensión ni se modifica su registro.
+
+Después de la aplicación, repetir el comprobador y habilitar sólo en la rama Preview `feature/v17-consolidated-preview` las variables `ADMIN_USER_IDENTITY_MODE` y `VITE_ADMIN_USER_IDENTITY_MODE` con valor `PREVIEW_REHEARSAL`, y `ADMIN_USER_IDENTITY_BATCH` y `VITE_ADMIN_USER_IDENTITY_BATCH` con valor `V17-ADMINISTRATION-IDENTITY-19C`. Las compuertas de membresías 19B y la autenticación existente siguen siendo requisitos. Verificar finalmente guardar/recargar una ficha, su foto privada y el recorrido de activación.
+
 ## Evidencia requerida
 
 - Compilación, tipos y análisis focal.

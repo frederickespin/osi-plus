@@ -160,10 +160,11 @@ try {
   check("company name is materialized without global account mutation", (await getUserIdentity(prisma, ctx, acceptedMembership.publicRef)).name === "Company specific existing name");
 
   const staleEmailUser = await user("staleemail");
-  const staleEmailIssued = await issueUserEnrollment(prisma, ctx, inputFor("stale-email", { email: staleEmailUser.email }));
-  await prisma.user.update({ where: { id: staleEmailUser.id }, data: { email: `${suffix}-changed-email@example.invalid` } });
-  await rejects("stale normalized email cannot expose a renamed global login", () => resolveUserEnrollment(prisma, tokenFrom(staleEmailIssued)), "ADMIN_USER_IDENTITY_ACTIVATION_INVALID");
-  await rejects("old JWT email cannot accept for a login whose real email changed", () => activateUserEnrollment(prisma, { token: tokenFrom(staleEmailIssued) }, { sub: staleEmailUser.id, email: staleEmailUser.email }), "ADMIN_USER_IDENTITY_ACTIVATION_INVALID");
+  await assert.rejects(() => prisma.$executeRaw(Prisma.sql`
+    UPDATE "osi"."osi_users" SET "email"=${`${suffix}-changed-email@example.invalid`} WHERE "id"=${staleEmailUser.id}
+  `), (error) => error.code === "P2010" && error.meta?.code === "23514");
+  results.push({ name: "canonical database rejects a login email inconsistent with normalized identity", passed: true });
+  check("rejected inconsistent rename leaves the global account unchanged", (await prisma.user.findUnique({ where: { id: staleEmailUser.id } })).email === staleEmailUser.email);
 
   const issuanceRaceInput = inputFor("issuerace");
   const issuanceRace = await Promise.all(Array.from({ length: 3 }, () => issueUserEnrollment(prisma, ctx, issuanceRaceInput)));

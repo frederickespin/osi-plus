@@ -12,7 +12,7 @@ export default function AdminUserIdentityEditor({ editor, onClose }: { editor: R
     {editor.error && <p role="alert" className="rounded bg-red-50 p-2 text-xs text-red-800">{editor.error}</p>}
     {editor.mustReload && <p className="text-xs text-slate-600">Recargue la identidad para confirmar su estado antes de realizar otro cambio.</p>}
     {editor.saved && <p role="status" className="text-xs font-medium text-emerald-700">Identidad guardada.</p>}
-    <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-3">
+    <div className="sticky bottom-0 z-10 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white pb-2 pt-3">
       {(editor.mustReload || editor.error && !editor.identity) && <button type="button" disabled={editor.loading || editor.saving} onClick={editor.reload} className="inline-flex min-h-9 items-center gap-1.5 rounded border border-slate-300 px-3 text-xs font-medium text-slate-700 disabled:opacity-50"><RefreshCw aria-hidden="true" className={`h-4 w-4 ${editor.loading ? "animate-spin" : ""}`} />Recargar identidad</button>}
       <button type="button" onClick={onClose} className="min-h-9 rounded border border-slate-300 px-3 text-xs font-medium text-slate-600">Cerrar</button>
       <button type="button" onClick={() => void editor.save()} disabled={!editor.identity?.canEdit || editor.loading || editor.saving || editor.mustReload || !editor.hasChanges} className="inline-flex min-h-9 items-center gap-1.5 rounded bg-[#003366] px-3 text-xs font-semibold text-white disabled:opacity-50"><Save aria-hidden="true" className="h-4 w-4" />{editor.saving ? "Guardando…" : "Guardar identidad"}</button>

@@ -112,6 +112,18 @@ test("ficha separa identidad y acceso, guarda sólo el dato cambiado y conserva 
   expect(seen.identityPatches).toEqual([{ requestId: expect.any(String), expectedVersion: 1, name: "Coordinadora Renombrada" }]);
   expect(seen.membershipPatches).toEqual([]);
   await expect(dialog.getByRole("button", { name: "Guardar identidad", exact: true })).toBeDisabled();
+  const contact = dialog.getByLabel(/Correo de contacto/);
+  await contact.scrollIntoViewIfNeeded();
+  const contactBox = await contact.boundingBox();
+  const dialogBox = await dialog.boundingBox();
+  const footerBox = await dialog.getByRole("button", { name: "Guardar identidad", exact: true }).evaluate((button) => {
+    const bounds = button.parentElement!.getBoundingClientRect();
+    return { top: bounds.top, bottom: bounds.bottom };
+  });
+  expect(contactBox).not.toBeNull(); expect(dialogBox).not.toBeNull();
+  expect(contactBox!.y + contactBox!.height).toBeLessThanOrEqual(footerBox.top + 1);
+  expect(footerBox.bottom).toBeLessThanOrEqual(dialogBox!.y + dialogBox!.height + 1);
+  await dialog.getByLabel("Nombre completo", { exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: `/tmp/osi-user-identity-19c-${info.project.name}-identity.png`, fullPage: true, animations: "disabled" });
   await dialog.getByRole("tab", { name: "Acceso", exact: true }).click();
   await dialog.getByLabel("Rol", { exact: true }).selectOption("PC");

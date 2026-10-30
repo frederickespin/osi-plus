@@ -8,6 +8,20 @@ Se atiende la secuencia indicada por el usuario: Administración primero y Almac
 
 Base revisada: `9fb3a1a73a76b2c96598ba74a8d438c3f4dec29e`, árbol equivalente al merge `1234f3660ec638f6427c894261c4b95a3a9d03c3` de la rama consolidada. Rama de trabajo: `feature/v17-administration-hub-18a`.
 
+## Preferencias de interfaz para OSI Plus
+
+El usuario reiteró el 29 de octubre de 2026 que desea interfaces minimalistas y el máximo uso posible de iconos. Estos criterios se aplican a Administración y a los módulos siguientes:
+
+- Usar listas y tablas compactas como vista principal; evitar tarjetas repetidas, cabeceras grandes y espacios decorativos que reduzcan el área de trabajo.
+- Priorizar iconos consistentes en acciones frecuentes: buscar, filtrar, añadir, editar, guardar, recargar, exportar y volver. Mantener textos breves cuando ayuden a distinguir el destino o una acción de negocio.
+- Cada control de solo icono debe tener nombre accesible y una ayuda identificable con ratón y teclado. En móvil, la comprensión no puede depender de pasar el cursor.
+- Mostrar los campos y acciones necesarios para la tarea actual; abrir los detalles y opciones secundarias cuando se soliciten.
+- Colocar las explicaciones extensas en ayuda contextual mediante el icono de interrogación. Conservar visibles estados, errores, campos obligatorios y confirmaciones necesarias para la operación.
+- Mantener filas de una o dos líneas cuando el contenido lo permita, jerarquía visual sobria y un único patrón de navegación y acciones entre módulos.
+- Conservar controles cómodos para uso táctil, foco visible y acceso por teclado al compactar la presentación.
+
+La estructura inicial de Administración ya utiliza una lista con iconos, una sección activa y selector en móvil. Esta anotación fija los criterios para revisar progresivamente sus consumidores existentes; no afirma que todos sus formularios heredados hayan sido rediseñados.
+
 ## Secciones implementadas
 
 | Sección | Ruta | Implementación reutilizada |
@@ -70,7 +84,18 @@ Referencia indicada por el usuario:
 C:\Users\espin\OneDrive - International Packers\aplicaciones ip\IP_Almacen_v0121_organizacion_simple.html
 ```
 
-El archivo no está disponible en este entorno y no ha sido leído. Se necesita adjuntar esa versión exacta antes de afirmar qué contiene o decidir qué recuperar. No se sustituyó por una versión anterior ni se inició implementación de Almacenes.
+El usuario adjuntó la versión exacta `IP_Almacen_v0121_organizacion_simple.html`, cuyo título es «IP · Almacén 0.12.1 · Organización simplificada». Se revisó su código como referencia, sin modificar ni ejecutar el archivo y sin iniciar la implementación de Almacenes.
+
+Patrones confirmados en esa versión:
+
+- Navegación agrupada y plegable, tablas compactas y acciones con iconos SVG.
+- Almacenes principales y ubicaciones interiores, creación explícita del recorrido, reglas de codificación y conservación de la identidad interna y del QR.
+- Clasificación del uso del área separada de su estado operativo y de las reglas de disponibilidad.
+- Ayuda contextual que reúne orientación extensa y mantiene visibles advertencias, errores y confirmaciones.
+
+El campo «Capacidad / características» del HTML es texto informativo; no demuestra un cálculo general de capacidad u ocupación del almacén.
+
+La aplicación guarda su estado en `localStorage` con la clave `ip_warehouse_v0121` y ofrece respaldos JSON. Sus perfiles simulan responsabilidades; no constituyen autenticación del servidor ni sincronización entre dispositivos. El propio HTML declara pendiente la gestión de artículos de clientes, bultos, cajas de almacenaje, contenedores y salidas por expediente. Su catálogo de usos es una guía para esas funciones, no prueba de que ya estén implementadas. Al integrarlo se conservarán los contratos de sesión, empresa, permisos y persistencia del Hub.
 
 ## Verificación
 
@@ -80,7 +105,7 @@ El archivo no está disponible en este entorno y no ha sido leído. Se necesita 
 - Pruebas puras de rutas, permisos y catálogo de Administración: 12 correctas.
 - Guards existentes de Hub, autorización previa, membresías y composición administrativa: comprobados tras ajustar sólo las ubicaciones y rutas afectadas.
 - Servicios: contratos y HTTP existentes comprobados; sin conexión a Neon.
-- Se prepararon pruebas de navegador de navegación, permisos, carga por sección, historial y móvil. Su ejecución local está pendiente porque el navegador requerido no está instalado y su descarga devolvió un archivo inválido. La detección de casos no cuenta como ejecución aprobada.
+- Las 22 pruebas de navegador de navegación, permisos, carga por sección, historial y móvil pasaron en el workflow [Administration Hub, ejecución 40991600736](https://github.com/frederickespin/osi-plus/actions/runs/40991600736), sobre los cambios del commit `2b5746887348abced76fc8b4386709d51d498b0f`. Usaron APIs interceptadas y datos sintéticos. La descarga local de Chromium falló; no se atribuye ese resultado a una ejecución local.
 - No se ha probado persistencia real en el Preview con estas modificaciones.
 
 Comandos focales:

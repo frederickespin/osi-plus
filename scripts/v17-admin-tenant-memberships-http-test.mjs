@@ -3,6 +3,7 @@ import { createAdminMembershipCollectionHandler, createAdminMembershipDetailHand
 import { AdminMembershipError } from "../api/_lib/adminMembershipDomain.js";
 import { ADMIN_IDENTITY_INVITATION_MODES, resolveAdminIdentityInvitationMode } from "../api/_lib/adminMembershipAccess.js";
 import { ADMIN_MEMBERSHIP_PREVIEW_BATCH } from "../api/_lib/adminMembershipPreview.js";
+import { effectivePermissionsFor } from "../api/_lib/rbac.js";
 
 const localEnv = { ADMIN_TENANT_MEMBERSHIP_MODE: "LOCAL_ONLY" };
 const context = { tenantId: "tenant-test", membershipId: "member-actor", userId: "user-actor", role: "A", effectivePermissions: ["membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status"], deniedPermissions: [] };
@@ -67,6 +68,42 @@ check("campos de autoridad rechazados", extra.statusCode === 400 && extra.body?.
 
 const incomplete = createAdminMembershipCollectionHandler({ env: localEnv, prisma: {}, resolveContext: async () => { throw new AdminMembershipError("ADMIN_MEMBERSHIP_FORBIDDEN", 403); }, list: async () => { throw new Error("must not list"); } });
 check("contexto incompleto falla cerrado", (await invoke(incomplete, {})).statusCode === 403);
+
+// Canonical PostgreSQL forbids grant/deny overlap. This mock checks defensive
+// reading and no-op handling only; it does not claim that such a row can persist.
+const historicalRow = {
+  id: "member-historical", public_ref: ref, user_id: "user-historical", role: "PC", status: "ACTIVE",
+  granted_permissions: ["pipeline:view", "ops:view", "legacy:retained"], denied_permissions: ["ops:view", "legacy:blocked"],
+  authorization_version: 4, updated_at: new Date("2026-10-01T00:00:00.000Z"),
+  user_name: "Persona sintética", user_email: "historical@example.invalid", user_status: "ACTIVE",
+};
+const historicalActor = {
+  id: context.membershipId, user_id: context.userId, role: "A", status: "ACTIVE", user_status: "ACTIVE", tenant_status: "ACTIVE",
+  granted_permissions: [...context.effectivePermissions], denied_permissions: [], authorization_version: 1,
+};
+const historicalCalls = { actorReads: 0, tenantLocks: 0, writes: 0 };
+const historicalDb = {
+  async $queryRaw(query) {
+    if (query.sql.includes('FROM "osi"."tenants"')) { historicalCalls.tenantLocks += 1; return [{ id: context.tenantId }]; }
+    if (query.sql.includes("FOR SHARE OF tm, u, t")) { historicalCalls.actorReads += 1; return [historicalActor]; }
+    if (query.sql.includes('tm."public_ref"=CAST')) return [historicalRow];
+    historicalCalls.writes += 1;
+    throw new Error("unexpected persistence in historical no-op");
+  },
+  async $executeRaw() { historicalCalls.writes += 1; throw new Error("unexpected persistence in historical no-op"); },
+  async $transaction(callback) { return callback(historicalDb); },
+};
+const historicalHandler = createAdminMembershipDetailHandler({ env: localEnv, prisma: historicalDb, resolveContext: async () => context });
+const historicalRead = await invoke(historicalHandler, { query: { membershipRef: ref } });
+check("lectura defensiva de mock conserva solapamiento", historicalRead.statusCode === 200
+  && historicalRead.body.membership.grantedPermissions.includes("ops:view") && historicalRead.body.membership.deniedPermissions.includes("ops:view"));
+const historicalNoop = await invoke(historicalHandler, { method: "PATCH", query: { membershipRef: ref }, body: {
+  requestId: randomUUID(), expectedVersion: 4, grantedPermissions: [...historicalRow.granted_permissions].reverse(), deniedPermissions: [...historicalRow.denied_permissions],
+} });
+check("no-op defensivo de mock revalida y no persiste solapamiento", historicalNoop.statusCode === 200
+  && historicalNoop.body.membership.authorizationVersion === 4 && historicalNoop.body.membership.updatedAt === historicalRow.updated_at.toISOString()
+  && historicalCalls.actorReads === 2 && historicalCalls.tenantLocks === 1 && historicalCalls.writes === 0);
+check("deny prevalece en mock histórico leído", !effectivePermissionsFor(historicalRow.role, historicalRow.granted_permissions, historicalRow.denied_permissions).includes("ops:view"));
 
 const previewEnv = {
   ADMIN_TENANT_MEMBERSHIP_MODE: "PREVIEW_REHEARSAL",

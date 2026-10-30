@@ -140,7 +140,7 @@ test("un lector sólo de políticas de materiales no solicita maestros de otras 
   const seen = await session(page, ["services:materials:view"]);
   await page.goto("/administration/services");
   await expect(page.getByTestId("service-configuration-admin")).toBeVisible();
-  await expect(page.getByText("No hay políticas publicadas ni inferidas.")).toBeVisible();
+  await expect(page.getByText("No hay políticas de materiales registradas.")).toBeVisible();
   expect(new Set(nonAuth(seen.apiRequests))).toEqual(new Set(["/api/crm/services/material-policies"]));
   expect(seen.unexpected).toEqual([]);
 });
@@ -222,5 +222,26 @@ test("las políticas pobladas conservan el desplazamiento dentro de su tabla", a
   await page.goto("/administration/services");
   await expect(page.getByText("Política sintética de materiales", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  expect(seen.unexpected).toEqual([]);
+});
+
+test("la ayuda se abre por teclado o toque y devuelve el foco sin cambiar la sección", async ({ page }, testInfo) => {
+  const seen = await session(page, ["costing:rules:view"]);
+  await page.goto("/administration/costing");
+  await expect(page.getByTestId("costing-rules-admin")).toBeVisible();
+  const trigger = page.getByRole("button", { name: "Ayuda de Costos y monedas", exact: true });
+  if (testInfo.project.name.includes("mobile")) await trigger.tap();
+  else await trigger.press("Enter");
+  const help = page.getByRole("dialog", { name: "Costos y monedas", exact: true });
+  await expect(help).toBeVisible();
+  await expect(help.getByText(/Cada regla y tasa conserva su versión/)).toBeVisible();
+  await page.screenshot({ path: `/tmp/osi-administration-18a-help-${testInfo.project.name}.png`, fullPage: true });
+  if (testInfo.project.name.includes("mobile")) await help.getByRole("button", { name: "Cerrar ayuda", exact: true }).tap();
+  else await page.keyboard.press("Escape");
+  await expect(help).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(page).toHaveURL(/\/administration\/costing$/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  await expect.poll(() => new Set(nonAuth(seen.apiRequests))).toEqual(new Set(["/api/costing/rules", "/api/costing/exchange-rates"]));
   expect(seen.unexpected).toEqual([]);
 });

@@ -20,7 +20,7 @@ El usuario reiteró el 29 de octubre de 2026 que desea interfaces minimalistas y
 - Mantener filas de una o dos líneas cuando el contenido lo permita, jerarquía visual sobria y un único patrón de navegación y acciones entre módulos.
 - Conservar controles cómodos para uso táctil, foco visible y acceso por teclado al compactar la presentación.
 
-La estructura inicial de Administración ya utiliza una lista con iconos, una sección activa y selector en móvil. Esta anotación fija los criterios para revisar progresivamente sus consumidores existentes; no afirma que todos sus formularios heredados hayan sido rediseñados.
+La estructura de Administración utiliza una lista con iconos, una sección activa y selector en móvil. Se revisó la presentación de las seis secciones: cabeceras compactas, tablas y listas, ayudas contextuales con cierre por teclado o toque y acciones frecuentes con iconos accesibles. Se conservan textos breves en acciones de negocio y en controles móviles que los necesitan. Esta revisión mantiene los formularios y las reglas existentes; quedan para su propio alcance los campos manuales de referencias de catálogo y algunos estados técnicos heredados.
 
 ## Secciones implementadas
 
@@ -67,6 +67,8 @@ La pantalla histórica `SettingsModule` contiene General, Notificaciones, Seguri
 
 Por ello, Empresa y preferencias requiere un incremento propio con persistencia y contrato definidos. Los parámetros de seguridad necesitan una integración real con autenticación. No se habilita el formulario histórico como si ya guardara cambios.
 
+El contrato propuesto se documenta en `V17-ADMINISTRATION-COMPANY-PREFERENCES-19A-PLAN.md`. El repositorio conserva 35 migraciones y el historial de Neon aportado por el usuario incluye una extensión 36 de Ingeniería cuyo SQL aún no se recuperó. Antes de ampliar la persistencia es necesario recuperar y revisar ese archivo exacto, conciliar el esquema y verificar la nueva migración sobre la cadena completa. No se alteró la base de datos ni se relajó el inventario canónico.
+
 ## Siguiente módulo: Almacenes
 
 El usuario amplió el alcance: un área Almacenes debe organizar tanto recursos propios como bienes de clientes, con estas responsabilidades:
@@ -107,6 +109,8 @@ La aplicación guarda su estado en `localStorage` con la clave `ip_warehouse_v01
 - Servicios: contratos y HTTP existentes comprobados; sin conexión a Neon.
 - Las 22 pruebas de navegador de navegación, permisos, carga por sección, historial y móvil pasaron en el workflow [Administration Hub, ejecución 40991600736](https://github.com/frederickespin/osi-plus/actions/runs/40991600736), sobre los cambios del commit `2b5746887348abced76fc8b4386709d51d498b0f`. Usaron APIs interceptadas y datos sintéticos. La descarga local de Chromium falló; no se atribuye ese resultado a una ejecución local.
 - No se ha probado persistencia real en el Preview con estas modificaciones.
+
+La prueba negativa de denegación de permisos del guard de CRM se corrigió sin cambiar el guard ni la autorización: se distinguen la eliminación de todas las comprobaciones y la pérdida de precedencia respecto del rol. Las 29 comprobaciones locales de ese guard pasan. El acabado visual añade un escenario de ayuda y restauración del foco en escritorio y móvil; su resultado remoto debe revisarse en el commit que se integre.
 
 Comandos focales:
 

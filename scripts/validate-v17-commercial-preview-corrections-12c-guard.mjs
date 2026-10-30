@@ -40,7 +40,7 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.match(administrationCatalog, /requiredPermissions: \[[^\]]*"membership:view"[^\]]*"logistics:rules:view"[^\]]*\]/);
   assert.match(administrationCatalog, /permissionMode: "ANY"/);
   assert.match(rules, /id="admin-logistics-engine"/);
-  assert.match(rules, /Administración · Motor Logístico/);
+  assert.match(rules, /<AdministrationHelp title="Motor Logístico">/);
   assert.doesNotMatch(http, /PRODUCTION_(?:READ|WRITE|PILOT)/, "12C no activa Production");
   const migrationCount = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
   assert.ok(migrationCount === 34 || migrationCount === 35 && existsSync("prisma/migrations/20260916010000_v17_client_temporary_portal/migration.sql"), "linaje consolidado debe conservar 34 migraciones o la extensión 16A exacta");

@@ -84,7 +84,7 @@ test("A con permisos explícitos usa Administración tenant-first sin identidade
   await expect(page.locator("body")).not.toContainText(MEMBERSHIP_REF);
   await page.getByRole("button", { name: /Persona Administrativa/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByText("Actualice exclusivamente el acceso de esta persona dentro del tenant activo.")).toBeVisible();
+  await expect(page.getByText("Actualice exclusivamente el acceso de esta persona dentro de la empresa activa.")).toBeVisible();
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect.poll(() => patches).toBe(1);
   await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();

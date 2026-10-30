@@ -72,6 +72,16 @@ test("Costos funciona con su permiso lector y sin membership:view", () => {
   assert.deepEqual(sectionsFor(access.effectivePermissions), ["costing"]);
 });
 
+test("Usuarios y roles exige administrador sin bloquear otras secciones autorizadas", () => {
+  for (const role of ["V", "K", "I"]) {
+    const access = context(["membership:view", "logistics:rules:view"], [], role);
+    assert.equal(evaluateHubRouteAccess("/administration/access", access).allowed, false, role);
+    assert.equal(evaluateHubRouteAccess("/administration/logistics", access).allowed, true, role);
+    assert.equal(evaluateHubRouteAccess("/administration", access).allowed, true, role);
+  }
+  assert.equal(evaluateHubRouteAccess("/administration/access", context(["membership:view"])).allowed, true);
+});
+
 test("Servicios admite cada permiso lector independiente y no concede otras secciones", () => {
   for (const permission of ["services:catalog:view", "services:packages:view", "services:materials:view"]) {
     const access = context([permission]);

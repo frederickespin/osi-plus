@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { effectivePermissionsFor, permsForRole } from "../api/_lib/rbac.js";
 import {
   ADMIN_MEMBERSHIP_PERMISSIONS,
   AdminMembershipError,
@@ -74,6 +75,58 @@ try {
   check("un A permite operación que mantiene conteo", maintained.authorizationVersion === 2);
   const promoted = await updateTenantMembership(prisma, soloContext, soloSeller.publicRef, { requestId: `increase-${suffix}`, expectedVersion: 2, role: "A", grantedPermissions: [...ADMIN_MEMBERSHIP_PERMISSIONS] });
   check("un A permite aumentar a dos", promoted.role === "A" && promoted.authorizationVersion === 3);
+
+  const coordinatorUser = await user("coordinator", "K");
+  const coordinator = await membership(tenant.id, coordinatorUser.id, "K", ["pipeline:view", "legacy:retained"]);
+  await prisma.tenantMembership.update({ where: { id: coordinator.id }, data: { deniedPermissions: ["legacy:blocked", "osi:view"] } });
+  const coordinators = await listTenantMemberships(prisma, context, { role: "K" });
+  check("filtro admite rol K con DTO público", coordinators.total === 1 && coordinators.data[0].role === "K" && coordinators.data[0].membershipRef === coordinator.publicRef);
+  let operational = await updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `role-pc-${suffix}`, expectedVersion: 1, role: "PC" });
+  check("rol operativo PC se guarda y conserva permisos históricos", operational.role === "PC" && operational.authorizationVersion === 2
+    && operational.grantedPermissions.includes("legacy:retained") && operational.deniedPermissions.includes("legacy:blocked"));
+  await expectCode("rol fuera del enum rechazado", () => updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `role-invalid-${suffix}`, expectedVersion: 2, role: "RB" }), "ADMIN_MEMBERSHIP_INPUT_INVALID");
+  await expectCode("grant desconocido nuevo rechazado", () => updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `unknown-${suffix}`, expectedVersion: 2, grantedPermissions: [...operational.grantedPermissions, "unknown:new"] }), "ADMIN_MEMBERSHIP_PERMISSION_UNKNOWN");
+  await expectCode("deny desconocido nuevo rechazado", () => updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `unknown-deny-${suffix}`, expectedVersion: 2, deniedPermissions: [...operational.deniedPermissions, "unknown:new"] }), "ADMIN_MEMBERSHIP_PERMISSION_UNKNOWN");
+  await expectCode("desconocido no cambia de deny a grant", () => updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `move-unknown-${suffix}`, expectedVersion: 2, grantedPermissions: [...operational.grantedPermissions, "legacy:blocked"], deniedPermissions: [] }), "ADMIN_MEMBERSHIP_PERMISSION_UNKNOWN");
+  await expectCode("array de permisos exige strings", () => updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `object-permission-${suffix}`, expectedVersion: 2, grantedPermissions: [{}] }), "ADMIN_MEMBERSHIP_INPUT_INVALID");
+  await expectCode("intersección nueva grant/deny rechazada", () => updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `new-overlap-${suffix}`, expectedVersion: 2, deniedPermissions: [...operational.deniedPermissions, "pipeline:view"] }), "ADMIN_MEMBERSHIP_INPUT_INVALID");
+  const permissionsUpdated = await updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `known-with-legacy-${suffix}`, expectedVersion: 2, grantedPermissions: [...operational.grantedPermissions, "logistics:plan:view"] });
+  check("editar permiso conocido conserva desconocidos existentes", permissionsUpdated.authorizationVersion === 3
+    && permissionsUpdated.grantedPermissions.includes("logistics:plan:view") && permissionsUpdated.grantedPermissions.includes("legacy:retained")
+    && permissionsUpdated.deniedPermissions.includes("legacy:blocked"));
+  operational = permissionsUpdated;
+
+  const partialUser = await user("partial-admin");
+  const partial = await membership(tenant.id, partialUser.id, "A", ["membership:view", "membership:update:status"]);
+  const partialContext = { ...context, membershipId: partial.id, userId: partialUser.id, effectivePermissions: ["membership:view", "membership:update:status"], permissions: ["membership:view", "membership:update:status"] };
+  operational = await updateTenantMembership(prisma, partialContext, coordinator.publicRef, { requestId: `partial-status-${suffix}`, expectedVersion: operational.authorizationVersion, status: "SUSPENDED" });
+  check("administrador parcial cambia sólo estado", operational.status === "SUSPENDED" && operational.role === "PC"
+    && operational.grantedPermissions.includes("legacy:retained") && operational.deniedPermissions.includes("legacy:blocked"));
+  check("cambiar estado conserva denegación sobre permiso heredado", permsForRole(operational.role).includes("osi:view")
+    && operational.deniedPermissions.includes("osi:view") && !effectivePermissionsFor(operational.role, operational.grantedPermissions, operational.deniedPermissions).includes("osi:view"));
+  await expectCode("administrador parcial no cambia rol", () => updateTenantMembership(prisma, partialContext, coordinator.publicRef, { requestId: `partial-role-${suffix}`, expectedVersion: operational.authorizationVersion, role: "K" }), "ADMIN_MEMBERSHIP_FORBIDDEN");
+  await expectCode("PATCH exige consulta además de mutación", () => updateTenantMembership(prisma, { ...partialContext, effectivePermissions: ["membership:update:status"], permissions: ["membership:update:status"] }, coordinator.publicRef, { requestId: `no-read-${suffix}`, expectedVersion: operational.authorizationVersion, status: "ACTIVE" }), "ADMIN_MEMBERSHIP_FORBIDDEN");
+  await prisma.tenantMembership.update({ where: { id: partial.id }, data: { grantedPermissions: ["membership:update:status"] } });
+  await expectCode("PATCH revalida lectura revocada del actor", () => updateTenantMembership(prisma, partialContext, coordinator.publicRef, { requestId: `revoked-read-${suffix}`, expectedVersion: operational.authorizationVersion, status: "ACTIVE" }), "ADMIN_MEMBERSHIP_FORBIDDEN");
+  await prisma.tenantMembership.update({ where: { id: partial.id }, data: { grantedPermissions: ["membership:view", "membership:update:status"] } });
+  operational = await updateTenantMembership(prisma, partialContext, coordinator.publicRef, { requestId: `partial-reactivate-${suffix}`, expectedVersion: operational.authorizationVersion, status: "ACTIVE" });
+
+  const noopSession = await prisma.authSession.create({ data: { id: randomUUID(), tenantId: tenant.id, membershipId: coordinator.id, userId: coordinatorUser.id, authorizationVersionSnapshot: operational.authorizationVersion, currentRefreshVersion: 0, fingerprintHash: "b".repeat(64), expiresAt: new Date(Date.now() + 86_400_000) } });
+  await prisma.authRefreshToken.create({ data: { id: randomUUID(), tenantId: tenant.id, sessionId: noopSession.id, version: 0, tokenHash: Buffer.from(`admin-noop-${suffix}`).toString("hex").padEnd(64, "0").slice(0, 64), fingerprintHash: "b".repeat(64), expiresAt: new Date(Date.now() + 86_400_000) } });
+  const noopRequestId = `noop-${suffix}`;
+  const noop = await updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: noopRequestId, expectedVersion: operational.authorizationVersion, grantedPermissions: [...operational.grantedPermissions].reverse(), deniedPermissions: [...operational.deniedPermissions] });
+  check("no-op conserva versión y fecha", noop.authorizationVersion === operational.authorizationVersion && noop.updatedAt === operational.updatedAt);
+  check("no-op conserva denegación sobre permiso heredado", permsForRole(noop.role).includes("osi:view") && noop.deniedPermissions.includes("osi:view")
+    && !effectivePermissionsFor(noop.role, noop.grantedPermissions, noop.deniedPermissions).includes("osi:view"));
+  check("no-op conserva sesión y refresh activos", (await prisma.authSession.findUnique({ where: { id: noopSession.id } }))?.status === "ACTIVE"
+    && (await prisma.authRefreshToken.findFirst({ where: { sessionId: noopSession.id } }))?.status === "ACTIVE");
+  check("no-op no inventa auditoría", await prisma.commercialAuditLog.count({ where: { tenant_id: tenant.id, request_id: noopRequestId } }) === 0);
+  const legacyRemoved = await updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `remove-legacy-${suffix}`, expectedVersion: operational.authorizationVersion, grantedPermissions: ["pipeline:view", "logistics:plan:view"], deniedPermissions: [] });
+  check("puede retirar permisos históricos desconocidos", !legacyRemoved.grantedPermissions.includes("legacy:retained") && legacyRemoved.deniedPermissions.length === 0);
+  const rollbackVersion = legacyRemoved.authorizationVersion;
+  await expectFailure("fallo de auditoría revierte cambio", () => updateTenantMembership(prisma, context, coordinator.publicRef, { requestId: `audit-failure-${suffix}`, expectedVersion: rollbackVersion, status: "SUSPENDED" }, { auditWriter: async () => { throw new Error("synthetic audit failure"); } }));
+  const afterFailedAudit = await getTenantMembership(prisma, context, coordinator.publicRef);
+  check("estado y versión conservados tras rollback de auditoría", afterFailedAudit.status === "ACTIVE" && afterFailedAudit.authorizationVersion === rollbackVersion);
 
   await expectFailure("publicRef inmutable", () => prisma.tenantMembership.update({ where: { id: seller.id }, data: { publicRef: randomUUID() } }));
   const failed = results.filter((item) => !item.passed);

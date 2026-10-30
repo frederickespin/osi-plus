@@ -6,6 +6,7 @@ const cases = [
   ["gate de membresías omitido", "src/hub/HubWorkspace.tsx", (s) => s.replace('access: adminMembershipAvailable', 'access: true')],
   ["selección administrativa no autorizada", "src/administration/AdministrationWorkspace.tsx", (s) => s.replace('if (!selected) return <CanonicalAccessDenied', 'if (false) return <CanonicalAccessDenied')],
   ["deny UI omitido", "src/hub/HubWorkspace.tsx", (s) => s.replace(' && !deniedPermissions.has("membership:view")', '')],
+  ["rol A UI omitido", "src/hub/HubWorkspace.tsx", (s) => s.replace(' && accessContext.role === "A"', '')],
   ["tenant ausente", "api/_lib/adminMembershipDomain.js", (s) => s.replace('WHERE tm."tenant_id"=${tenantId} AND tm."public_ref"=CAST(${ref} AS uuid)', 'WHERE tm."public_ref"=CAST(${ref} AS uuid)')],
   ["publicRef ausente", "api/_lib/adminMembershipDomain.js", (s) => s.replace('WHERE tm."tenant_id"=${tenantId} AND tm."public_ref"=CAST(${ref} AS uuid)', 'WHERE tm."tenant_id"=${tenantId}')],
   ["actor no revalidado", "api/_lib/adminMembershipDomain.js", (s) => s.replace('const actor = await revalidateAdminActor(tx, context);', 'const actor = { membershipId: context.membershipId, effective: new Set(context.permissions), row: { denied_permissions: [] } };')],
@@ -18,6 +19,19 @@ const cases = [
   ["publicRef mutable", "prisma/migrations/20260827010000_v17_tenant_membership_public_ref/migration.sql", (s) => s.replace('BEFORE UPDATE OF "public_ref"', 'AFTER INSERT')],
   ["UI histórica", "src/admin-tenant/AdminTenantMembershipModule.tsx", (s) => `${s}\nconst unsafe = localStorage.getItem("users");`],
   ["bootstrap crea hash", "scripts/v17-admin-membership-bootstrap.mjs", (s) => `${s}\nconst passwordHash = await hashPassword("unsafe");`],
+  ["invitaciones heredan Preview", "api/_lib/adminMembershipAccess.js", (s) => s.replace('ADMIN_IDENTITY_INVITATION_MODES = Object.freeze', 'ADMIN_IDENTITY_INVITATION_MODES = ADMIN_TENANT_MEMBERSHIP_MODES || Object.freeze')],
+  ["Preview acepta Production", "api/_lib/adminMembershipPreview.js", (s) => s.replace('env.VERCEL_ENV !== "preview"', 'false')],
+  ["Preview sin rama exacta", "api/_lib/adminMembershipPreview.js", (s) => s.replace('!isAdminMembershipPreviewBranch(env.VERCEL_GIT_COMMIT_REF)', 'false')],
+  ["Preview sin batch", "api/_lib/adminMembershipPreview.js", (s) => s.replace('env.ADMIN_MEMBERSHIP_PREVIEW_BATCH !== ADMIN_MEMBERSHIP_PREVIEW_BATCH', 'false')],
+  ["Preview sin identidad real de base", "api/_lib/adminMembershipPreview.js", (s) => s.replace('identity?.database !== expected.database', 'false')],
+  ["Preview sin rama Neon real", "api/_lib/adminMembershipPreview.js", (s) => s.replace('identity?.branch !== expected.neonBranch', 'false')],
+  ["Preview sin empresa de contexto", "api/_lib/adminMembershipPreview.js", (s) => s.replace('context?.tenantCode !== expected.tenantCode', 'false')],
+  ["detalle omite destino Preview", "api/_lib/adminMembershipHttp.js", (s) => s.replace('await assertAdminMembershipPreviewDatabase(prisma, mode, env);', '')],
+  ["catálogo desconectado de RBAC servidor", "api/_lib/adminMembershipDomain.js", (s) => s.replace('new Set(permsForRole(code))', 'new Set([])')],
+  ["roles limitados a A/V", "api/_lib/adminMembershipDomain.js", (s) => s.replace('new Set(ADMIN_MEMBERSHIP_ROLE_OPTIONS.map(({ code }) => code))', 'new Set(["A", "V"])')],
+  ["PATCH omite lectura", "api/_lib/adminMembershipDomain.js", (s) => s.replace('export async function updateTenantMembership(prisma, context, membershipRef, input, { auditWriter = appendCommercialAudit } = {}) {\n  requireAdminPermission(context, PERMS.MEMBERSHIP_VIEW);', 'export async function updateTenantMembership(prisma, context, membershipRef, input, { auditWriter = appendCommercialAudit } = {}) {')],
+  ["permisos desconocidos admitidos", "api/_lib/adminMembershipDomain.js", (s) => s.replace('!KNOWN_PERMISSIONS.has(permission) && !existing.has(permission)', 'false')],
+  ["intersección nueva de permisos admitida", "api/_lib/adminMembershipDomain.js", (s) => s.replace('next.denied_permissions.includes(permission) && !existingOverlap.has(permission)', 'false')],
 ];
 
 let assertions = 0;

@@ -1,10 +1,9 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { ADMIN_BROWSER_CATALOG, ADMIN_MEMBERSHIP_PERMISSIONS, adminPermissionLabel } from "./admin-membership-fixture";
 
-const ADMIN_PERMISSIONS = [
-  "membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status",
-];
+const ADMIN_PERMISSIONS = ADMIN_MEMBERSHIP_PERMISSIONS;
 const MEMBERSHIP_REF = "22222222-2222-4222-8222-222222222222";
 const SECOND_MEMBERSHIP_REF = "44444444-4444-4444-8444-444444444444";
 
@@ -30,7 +29,7 @@ function listBody(version = 1) {
     membershipRef: MEMBERSHIP_REF, name: "Persona Administrativa", email: "persona@example.invalid",
     role: "A", status: "ACTIVE", grantedPermissions: ADMIN_PERMISSIONS, deniedPermissions: [],
     authorizationVersion: version, updatedAt: "2026-08-27T12:00:00.000Z",
-  }], total: 1, page: 1, pageSize: 20 });
+  }], total: 1, page: 1, pageSize: 20, catalog: ADMIN_BROWSER_CATALOG });
 }
 
 function twoMembershipsBody() {
@@ -51,6 +50,7 @@ function twoMembershipsBody() {
     total: 2,
     page: 1,
     pageSize: 20,
+    catalog: ADMIN_BROWSER_CATALOG,
   });
 }
 
@@ -79,12 +79,14 @@ test("A con permisos explícitos usa Administración tenant-first sin identidade
   });
   await page.goto("/administration");
   await expect(page.getByTestId("admin-tenant-memberships")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Acceso y membresías" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Usuarios y roles", exact: true })).toBeVisible();
   await expect(page.getByText("Persona Administrativa")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(MEMBERSHIP_REF);
   await page.getByRole("button", { name: /Persona Administrativa/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByText("Actualice exclusivamente el acceso de esta persona dentro de la empresa activa.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Guardar cambios", exact: true })).toBeDisabled();
+  await page.getByLabel(`Excepción de ${adminPermissionLabel("logistics:rules:view")}`, { exact: true }).selectOption("ALLOW");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect.poll(() => patches).toBe(1);
   await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
@@ -158,7 +160,7 @@ test("CTA administrativo disponible abre el workspace lazy con dos membresías e
 
   await expect(page).toHaveURL(/\/administration$/);
   await expect(page.getByTestId("admin-tenant-memberships")).toBeVisible();
-  await expect(page.getByText("2 membresía(s)")).toBeVisible();
+  await expect(page.getByText("2 usuario(s)", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Invitar administrador" })).toBeVisible();
   expect(resources.some((path) => /AdminTenantMembershipModule/i.test(path))).toBe(true);
 });
@@ -256,4 +258,37 @@ test("compuertas UI productivas son focales, independientes y metadata-first", a
     };
   });
   expect(result).toEqual({ memberships: true, invitations: true, previewRejected: true, branchRejected: true, oneDoesNotEnableOther: true, alteredRejected: true });
+});
+
+test("Preview de Usuarios y roles exige su contrato y conserva invitaciones independientes", async ({ page }) => {
+  await page.goto("/tests/v17-hub/mode-harness.html");
+  const result = await page.evaluate(async () => {
+    const mode = await import("/src/admin-tenant/adminMode.ts");
+    const environment = {
+      VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "PREVIEW_REHEARSAL",
+      VITE_ADMIN_MEMBERSHIP_PREVIEW_BATCH: "V17-ADMINISTRATION-USERS-ROLES-19B",
+      VITE_MT01B2_CLIENT_ENABLED: "false",
+    };
+    const runtime = { hostname: "users-preview.example.vercel.app", vercelEnvironment: "preview", gitBranch: "feature/v17-administration-users-roles-19b" };
+    const resolve = (env = environment, metadata = runtime) => mode.resolveAdminTenantMembershipMode(env, metadata.hostname, metadata);
+    return {
+      featureEnabled: resolve(),
+      consolidatedEnabled: resolve(environment, { ...runtime, gitBranch: "feature/v17-consolidated-preview" }),
+      productionClosed: resolve(environment, { ...runtime, vercelEnvironment: "production", gitBranch: "main" }),
+      wrongBranchClosed: resolve(environment, { ...runtime, gitBranch: "feature/unrelated" }),
+      wrongHostnameClosed: resolve(environment, { ...runtime, hostname: "users.vercel.app.untrusted.invalid" }),
+      localHostClosed: resolve(environment, { ...runtime, hostname: "localhost" }),
+      wrongBatchClosed: resolve({ ...environment, VITE_ADMIN_MEMBERSHIP_PREVIEW_BATCH: "other" }),
+      transitionClientClosed: resolve({ ...environment, VITE_MT01B2_CLIENT_ENABLED: "true" }),
+      missingMetadataClosed: resolve(environment, { ...runtime, gitBranch: "", vercelEnvironment: "" }),
+      invitationNotEnabledByMembership: mode.isAdminIdentityInvitationEnabled(environment, runtime.hostname, runtime),
+      invitationPreviewRejected: mode.isAdminIdentityInvitationEnabled({ ...environment, VITE_ADMIN_IDENTITY_INVITATION_MODE: "PREVIEW_REHEARSAL" }, runtime.hostname, runtime),
+    };
+  });
+  expect(result).toEqual({
+    featureEnabled: "PREVIEW_REHEARSAL", consolidatedEnabled: "PREVIEW_REHEARSAL",
+    productionClosed: "DISABLED", wrongBranchClosed: "DISABLED", wrongHostnameClosed: "DISABLED",
+    localHostClosed: "DISABLED", wrongBatchClosed: "DISABLED", transitionClientClosed: "DISABLED", missingMetadataClosed: "DISABLED",
+    invitationNotEnabledByMembership: false, invitationPreviewRejected: false,
+  });
 });

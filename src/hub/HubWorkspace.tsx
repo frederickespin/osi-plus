@@ -133,7 +133,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const adminEnabled = isAdminTenantMembershipEnabled();
   const effectivePermissions = new Set(accessContext.effectivePermissions || []);
   const deniedPermissions = new Set(accessContext.deniedPermissions);
-  const adminMembershipAvailable = adminEnabled && effectivePermissions.has("membership:view") && !deniedPermissions.has("membership:view");
+  const adminMembershipAvailable = adminEnabled && accessContext.role === "A" && effectivePermissions.has("membership:view") && !deniedPermissions.has("membership:view");
   const adminInvitationsEnabled = isAdminIdentityInvitationEnabled();
   const adminInvitationMode = resolveAdminIdentityInvitationMode();
   const surveyEnabled = isSurveyUiEnabled();

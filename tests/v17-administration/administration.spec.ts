@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { ADMIN_BROWSER_CATALOG } from "../v17-hub/admin-membership-fixture";
 
 const MEMBERSHIP_REF = "22222222-2222-4222-8222-222222222222";
 const ALL_SECTIONS = [
@@ -14,21 +15,21 @@ const ALL_SECTIONS = [
 
 // All API requests are intercepted. These tests exercise navigation and
 // permission boundaries; they never connect to a deployment or a database.
-async function session(page: Page, initialPermissions: string[], initialDenied: string[] = [], materialPolicies: readonly unknown[] = []) {
+async function session(page: Page, initialPermissions: string[], initialDenied: string[] = [], materialPolicies: readonly unknown[] = [], actorRole = "A") {
   let permissions = initialPermissions;
   let deniedPermissions = initialDenied;
   const apiRequests: string[] = [];
   const resources: string[] = [];
   const unexpected: string[] = [];
-  await page.addInitScript(({ membershipRef }) => {
+  await page.addInitScript(({ membershipRef, role }) => {
     localStorage.setItem("osi-plus.token", "synthetic.administration.test.token");
     localStorage.setItem("osi-plus.session", JSON.stringify({
       name: "Administración sintética",
-      role: "A",
+      role,
       membershipRef,
-      memberships: [{ membershipRef, tenantName: "Empresa sintética", role: "A", preferred: true }],
+      memberships: [{ membershipRef, tenantName: "Empresa sintética", role, preferred: true }],
     }));
-  }, { membershipRef: MEMBERSHIP_REF });
+  }, { membershipRef: MEMBERSHIP_REF, role: actorRole });
   page.on("request", (request) => resources.push(new URL(request.url()).pathname));
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -44,12 +45,12 @@ async function session(page: Page, initialPermissions: string[], initialDenied: 
       return fulfill({ ok: false, error: "UNEXPECTED_TEST_MUTATION" }, 405);
     }
     if (path === "/api/auth/me") return fulfill({ ok: true, user: {
-      name: "Administración sintética", role: "A", status: "ACTIVE", permissions, deniedPermissions,
-      membership: { membershipRef: MEMBERSHIP_REF, tenantName: "Empresa sintética", role: "A" },
-      memberships: [{ membershipRef: MEMBERSHIP_REF, tenantName: "Empresa sintética", role: "A", preferred: true }],
+      name: "Administración sintética", role: actorRole, status: "ACTIVE", permissions, deniedPermissions,
+      membership: { membershipRef: MEMBERSHIP_REF, tenantName: "Empresa sintética", role: actorRole },
+      memberships: [{ membershipRef: MEMBERSHIP_REF, tenantName: "Empresa sintética", role: actorRole, preferred: true }],
     } });
     expect(route.request().headers().authorization).toBe("Bearer synthetic.administration.test.token");
-    if (path === "/api/admin/memberships") return fulfill({ ok: true, data: [], total: 0, page: 1, pageSize: 20 });
+    if (path === "/api/admin/memberships") return fulfill({ ok: true, data: [], total: 0, page: 1, pageSize: 20, catalog: ADMIN_BROWSER_CATALOG });
     if (path === "/api/communications/variables") return fulfill({ ok: true, data: { catalogVersion: 1, variables: [] } });
     if (path === "/api/crm/services/material-policies") return fulfill({ ok: true, data: materialPolicies });
     if ([
@@ -83,7 +84,7 @@ test("la entrada general carga sólo Accesos aunque las seis secciones estén au
   await page.goto("/administration");
   await expect(page.getByRole("heading", { name: "Administración", exact: true })).toBeVisible();
   await expect(page.getByTestId("admin-tenant-memberships")).toBeVisible();
-  await expect(page.getByText("No hay membresías para estos filtros.")).toBeVisible();
+  await expect(page.getByText("No hay usuarios para estos filtros.")).toBeVisible();
   expect(new Set(nonAuth(seen.apiRequests))).toEqual(new Set(["/api/admin/memberships"]));
   expect(seen.resources.some((path) => /\/(?:ServiceConfigurationAdmin|LogisticsRulesAdmin|CostingRulesAdmin|CommunicationTemplatesAdmin|PersonnelPoliciesAdmin)\.tsx$/.test(path))).toBe(false);
   expect(seen.unexpected).toEqual([]);
@@ -104,6 +105,26 @@ test("logística y comunicaciones se abren por separado sin permiso de membresí
   await expect.poll(() => seen.apiRequests.includes("/api/communications/templates")).toBe(true);
   expect(seen.apiRequests.some((path) => path.startsWith("/api/admin/"))).toBe(false);
   expect(seen.resources.some((path) => /AdminTenantMembershipModule\.tsx$/.test(path))).toBe(false);
+  expect(seen.unexpected).toEqual([]);
+});
+
+test("rol K conserva Logística y no accede a Usuarios y roles aunque tenga membership:view", async ({ page }) => {
+  const seen = await session(page, ["membership:view", "logistics:rules:view"], [], [], "K");
+  await page.goto("/hub");
+  await page.getByRole("button", { name: /Abrir Administración/ }).click();
+  await expect(page.getByTestId("logistics-rules-admin")).toBeVisible();
+  await expect.poll(() => seen.apiRequests.includes("/api/logistics/rules")).toBe(true);
+  await expect(page.getByRole("heading", { name: "Usuarios y roles", exact: true })).toHaveCount(0);
+  await expect(page.locator('nav[aria-label="Secciones de Administración"] a[href="/administration/access"]')).toHaveCount(0);
+  await expect(page.getByLabel("Sección de Administración", { exact: true }).locator('option[value="/administration/access"]')).toHaveCount(0);
+  expect(nonAuth(seen.apiRequests)).not.toContain("/api/admin/memberships");
+
+  await page.goto("/administration/access");
+  await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  expect(nonAuth(seen.apiRequests)).not.toContain("/api/admin/memberships");
+  expect(seen.resources.some((path) => /AdminTenantMembershipModule\.tsx$/.test(path))).toBe(false);
+  await page.goto("/administration/logistics");
+  await expect(page.getByTestId("logistics-rules-admin")).toBeVisible();
   expect(seen.unexpected).toEqual([]);
 });
 

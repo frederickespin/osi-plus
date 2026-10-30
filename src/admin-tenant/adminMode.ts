@@ -1,12 +1,19 @@
 import { V17_PRODUCTION_PILOT_MODE, isV17ProductionPilotClientEnvironment } from "../../shared/v17ProductionPilot.js";
+import { ADMIN_MEMBERSHIP_PREVIEW_BATCH, isAdminMembershipPreviewClientEnvironment } from "../../shared/adminMembershipPreview.js";
 
 export const ADMIN_TENANT_MEMBERSHIP_MODES = Object.freeze({
   DISABLED: "DISABLED",
   LOCAL_ONLY: "LOCAL_ONLY",
   PRODUCTION_PILOT: V17_PRODUCTION_PILOT_MODE,
+  PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL",
 } as const);
 
-export const ADMIN_IDENTITY_INVITATION_MODES = ADMIN_TENANT_MEMBERSHIP_MODES;
+// Membership administration and invitations have independent activation contracts.
+export const ADMIN_IDENTITY_INVITATION_MODES = Object.freeze({
+  DISABLED: "DISABLED",
+  LOCAL_ONLY: "LOCAL_ONLY",
+  PRODUCTION_PILOT: V17_PRODUCTION_PILOT_MODE,
+} as const);
 
 export type AdminTenantMembershipMode = typeof ADMIN_TENANT_MEMBERSHIP_MODES[keyof typeof ADMIN_TENANT_MEMBERSHIP_MODES];
 type AdminPilotClientRuntime = Readonly<{
@@ -26,6 +33,17 @@ export function resolveAdminTenantMembershipMode(
 ): AdminTenantMembershipMode {
   const value = environment.VITE_ADMIN_TENANT_MEMBERSHIP_MODE;
   if (value === undefined || value === ADMIN_TENANT_MEMBERSHIP_MODES.DISABLED) return ADMIN_TENANT_MEMBERSHIP_MODES.DISABLED;
+  if (value === ADMIN_TENANT_MEMBERSHIP_MODES.PREVIEW_REHEARSAL) {
+    return environment.VITE_ADMIN_MEMBERSHIP_PREVIEW_BATCH === ADMIN_MEMBERSHIP_PREVIEW_BATCH
+      && environment.VITE_MT01B2_CLIENT_ENABLED === "false"
+      && isAdminMembershipPreviewClientEnvironment({
+        hostname: runtime.hostname ?? hostname,
+        vercelEnvironment: runtime.vercelEnvironment ?? null,
+        gitBranch: runtime.gitBranch ?? null,
+      })
+      ? ADMIN_TENANT_MEMBERSHIP_MODES.PREVIEW_REHEARSAL
+      : ADMIN_TENANT_MEMBERSHIP_MODES.DISABLED;
+  }
   if (value === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT) {
     return isV17ProductionPilotClientEnvironment({
       hostname: runtime.hostname ?? hostname,
@@ -44,7 +62,9 @@ export function resolveAdminTenantMembershipMode(
 
 export function isAdminTenantMembershipEnabled(environment?: Readonly<Record<string, unknown>>, hostname?: string, runtime?: AdminPilotClientRuntime) {
   const mode = resolveAdminTenantMembershipMode(environment, hostname, runtime);
-  return mode === ADMIN_TENANT_MEMBERSHIP_MODES.LOCAL_ONLY || mode === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT;
+  return mode === ADMIN_TENANT_MEMBERSHIP_MODES.LOCAL_ONLY
+    || mode === ADMIN_TENANT_MEMBERSHIP_MODES.PRODUCTION_PILOT
+    || mode === ADMIN_TENANT_MEMBERSHIP_MODES.PREVIEW_REHEARSAL;
 }
 
 export function resolveAdminIdentityInvitationMode(
@@ -56,6 +76,9 @@ export function resolveAdminIdentityInvitationMode(
     gitBranch: typeof __V17_VERCEL_GIT_COMMIT_REF__ === "undefined" ? null : __V17_VERCEL_GIT_COMMIT_REF__,
   },
 ): AdminTenantMembershipMode {
+  if (environment.VITE_ADMIN_IDENTITY_INVITATION_MODE === ADMIN_TENANT_MEMBERSHIP_MODES.PREVIEW_REHEARSAL) {
+    return ADMIN_IDENTITY_INVITATION_MODES.DISABLED;
+  }
   return resolveAdminTenantMembershipMode(
     { ...environment, VITE_ADMIN_TENANT_MEMBERSHIP_MODE: environment.VITE_ADMIN_IDENTITY_INVITATION_MODE },
     hostname,

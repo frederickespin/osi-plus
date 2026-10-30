@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import { PERMS, permsForRole } from "./rbac.js";
+import {
+  ADMIN_MEMBERSHIP_ROLE_OPTIONS,
+  adminMembershipPermissionPresentation,
+} from "../../shared/adminMembershipCatalog.js";
 
 export const ADMIN_MEMBERSHIP_PERMISSIONS = Object.freeze([
   PERMS.MEMBERSHIP_VIEW,
@@ -9,7 +13,8 @@ export const ADMIN_MEMBERSHIP_PERMISSIONS = Object.freeze([
   PERMS.MEMBERSHIP_UPDATE_STATUS,
 ]);
 
-const ROLES = new Set(["A", "V"]);
+const ROLES = new Set(ADMIN_MEMBERSHIP_ROLE_OPTIONS.map(({ code }) => code));
+const KNOWN_PERMISSIONS = new Set(Object.values(PERMS));
 const STATUSES = new Set(["ACTIVE", "SUSPENDED", "INACTIVE"]);
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -36,10 +41,39 @@ export function canonicalMembershipRef(value) {
 
 function normalizePermissions(value, field) {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value)) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
-  const normalized = [...new Set(value.map((item) => String(item ?? "").trim()).filter(Boolean))].sort();
-  if (normalized.some((permission) => permission.length > 160)) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
+  if (!Array.isArray(value) || value.length > 512
+    || value.some((item) => typeof item !== "string" || !item.trim() || item !== item.trim() || item.length > 160)) {
+    throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
+  }
+  const normalized = [...new Set(value)].sort();
   return normalized;
+}
+
+export function adminMembershipCatalog() {
+  return Object.freeze({
+    roles: Object.freeze(ADMIN_MEMBERSHIP_ROLE_OPTIONS.map(({ code, label }) => Object.freeze({
+      code,
+      label,
+      inheritedPermissions: Object.freeze([...new Set(permsForRole(code))].sort()),
+    }))),
+    permissions: Object.freeze([...KNOWN_PERMISSIONS].sort().map((code) => Object.freeze({
+      code,
+      ...adminMembershipPermissionPresentation(code),
+    }))),
+  });
+}
+
+function samePermissions(left = [], right = []) {
+  const a = new Set(left);
+  const b = new Set(right);
+  return a.size === b.size && [...a].every((permission) => b.has(permission));
+}
+
+function preserveUnknownPermissions(before = [], next = []) {
+  const existing = new Set(before);
+  if (next.some((permission) => !KNOWN_PERMISSIONS.has(permission) && !existing.has(permission))) {
+    throw new AdminMembershipError("ADMIN_MEMBERSHIP_PERMISSION_UNKNOWN", 400);
+  }
 }
 
 function effectivePermissions(row) {
@@ -158,6 +192,7 @@ function operationalAdmin(row) {
 }
 
 export async function updateTenantMembership(prisma, context, membershipRef, input, { auditWriter = appendCommercialAudit } = {}) {
+  requireAdminPermission(context, PERMS.MEMBERSHIP_VIEW);
   const ref = canonicalMembershipRef(membershipRef);
   const requestId = requiredAdminText(input?.requestId, "requestId");
   const expectedVersion = Number(input?.expectedVersion);
@@ -169,7 +204,6 @@ export async function updateTenantMembership(prisma, context, membershipRef, inp
   if (role !== undefined && !ROLES.has(role)) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
   if (status !== undefined && !STATUSES.has(status)) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
   if (role === undefined && status === undefined && granted === undefined && denied === undefined) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
-  if (granted && denied && granted.some((permission) => denied.includes(permission))) throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
 
   if (role !== undefined) requireAdminPermission(context, PERMS.MEMBERSHIP_UPDATE_ROLE);
   if (status !== undefined) requireAdminPermission(context, PERMS.MEMBERSHIP_UPDATE_STATUS);
@@ -179,6 +213,7 @@ export async function updateTenantMembership(prisma, context, membershipRef, inp
     const tenantId = requiredAdminText(context?.tenantId, "tenantId");
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "osi"."tenants" WHERE "id"=${tenantId} FOR UPDATE`);
     const actor = await revalidateAdminActor(tx, context);
+    assertAdminActorPermission(actor, PERMS.MEMBERSHIP_VIEW);
     if (role !== undefined) assertAdminActorPermission(actor, PERMS.MEMBERSHIP_UPDATE_ROLE);
     if (status !== undefined) assertAdminActorPermission(actor, PERMS.MEMBERSHIP_UPDATE_STATUS);
     if (granted !== undefined || denied !== undefined) assertAdminActorPermission(actor, PERMS.MEMBERSHIP_UPDATE_PERMISSIONS);
@@ -202,13 +237,20 @@ export async function updateTenantMembership(prisma, context, membershipRef, inp
       granted_permissions: granted ?? before.granted_permissions,
       denied_permissions: denied ?? before.denied_permissions,
     };
-    if (next.granted_permissions.some((permission) => next.denied_permissions.includes(permission))) {
+    preserveUnknownPermissions(before.granted_permissions, next.granted_permissions);
+    preserveUnknownPermissions(before.denied_permissions, next.denied_permissions);
+    const existingOverlap = new Set(before.granted_permissions.filter((permission) => before.denied_permissions.includes(permission)));
+    if (next.granted_permissions.some((permission) => next.denied_permissions.includes(permission) && !existingOverlap.has(permission))) {
       throw new AdminMembershipError("ADMIN_MEMBERSHIP_INPUT_INVALID", 400);
     }
     const self = String(before.id) === actor.membershipId;
     if (self && (next.role !== "A" || next.status !== "ACTIVE")) {
       throw new AdminMembershipError("ADMIN_MEMBERSHIP_SELF_PROTECTION", 409);
     }
+
+    if (next.role === before.role && next.status === before.status
+      && samePermissions(next.granted_permissions, before.granted_permissions)
+      && samePermissions(next.denied_permissions, before.denied_permissions)) return publicDto(before);
 
     const others = await tx.$queryRaw(Prisma.sql`
       SELECT COUNT(*)::integer AS "count"

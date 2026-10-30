@@ -10,7 +10,7 @@ export type AdministrationSection = Readonly<{
 // These are independent entry points. A deny still removes that permission;
 // it does not remove access to an unrelated administrative section.
 export const ADMINISTRATION_SECTIONS: readonly AdministrationSection[] = Object.freeze([
-  { id: "access", label: "Usuarios y accesos", route: "/administration/access", permissions: ["membership:view"] },
+  { id: "access", label: "Usuarios y roles", route: "/administration/access", permissions: ["membership:view"] },
   { id: "services", label: "Servicios y paquetes", route: "/administration/services", permissions: ["services:catalog:view", "services:packages:view", "services:materials:view"] },
   { id: "logistics", label: "Motor Logístico", route: "/administration/logistics", permissions: ["logistics:rules:view"] },
   { id: "costing", label: "Costos y monedas", route: "/administration/costing", permissions: ["costing:rules:view"] },

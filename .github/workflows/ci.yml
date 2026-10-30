@@ -602,9 +602,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Verify 19C identity and enrollment against PostgreSQL 18
-        run: node scripts/v17-admin-user-identity-db-test.mjs
-
       - name: Verify explicit SQL-only catalog baseline
         run: node scripts/crm-01b1-sql-drift-baseline.mjs
 
@@ -674,6 +671,11 @@ jobs:
         env:
           V17_COMMERCIAL_RELATIONSHIPS_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: npm run test:v17-commercial-relationships:db
+
+      # The canonical bootstrap requires an empty user table. 19C uses its own
+      # tenant-scoped fixtures and must run after the existing database suites.
+      - name: Verify 19C identity and enrollment against PostgreSQL 18
+        run: node scripts/v17-admin-user-identity-db-test.mjs
 
       - name: Build
         run: npm run build

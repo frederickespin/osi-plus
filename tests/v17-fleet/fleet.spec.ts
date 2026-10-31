@@ -13,8 +13,8 @@ export const vehicleFixture = (index = 1): FleetVehicle => ({
   updatedAt: "2026-10-31T12:00:00.000Z", retiredAt: null, calculationLocked: false,
 });
 
-async function fixture(page: Page, options: { count?: number; permissions?: string[]; denied?: string[]; role?: string; locked?: boolean; listFailure?: boolean } = {}) {
-  let rows = Array.from({ length: options.count || 2 }, (_, index) => ({ ...vehicleFixture(index + 1), calculationLocked: Boolean(options.locked) }));
+async function fixture(page: Page, options: { count?: number; permissions?: string[]; denied?: string[]; role?: string; locked?: boolean; listFailure?: boolean; vehicles?: Partial<FleetVehicle>[] } = {}) {
+  let rows = Array.from({ length: options.count || 2 }, (_, index) => ({ ...vehicleFixture(index + 1), calculationLocked: Boolean(options.locked), ...options.vehicles?.[index] }));
   let nextPatch: { code: string; status: number } | null = null;
   let listFailure = Boolean(options.listFailure);
   let malformedDetail = false;
@@ -89,6 +89,13 @@ async function openVehicle(page: Page) {
   await expect(dialog.getByLabel("Código *", { exact: true })).toHaveValue("IP-001");
   return dialog;
 }
+async function openAvailability(page: Page) {
+  await page.getByRole("button", { name: "Acciones de IP-001", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Disponibilidad", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Disponibilidad del vehículo", exact: true });
+  await expect(dialog.getByLabel("Estado operativo", { exact: true })).toBeVisible();
+  return dialog;
+}
 
 test("tabla persistente muestra unidades, filtra y pagina; Hub conserva navegación", async ({ page }) => {
   const seen = await fixture(page, { count: 23 });
@@ -119,6 +126,10 @@ test("alta incluye unidades elegidas y edición envía sólo campos cambiados", 
   await openFleet(page);
   await page.getByRole("button", { name: "Nuevo vehículo", exact: true }).click();
   let dialog = page.getByRole("dialog", { name: "Nuevo vehículo", exact: true });
+  await expect(dialog.getByLabel("Estado operativo")).toHaveCount(0);
+  await expect(dialog.getByLabel("Vigencia desde")).toHaveCount(0);
+  await expect(dialog.getByLabel("Sede habitual", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Se crea inactivo. Puede activarlo después desde el listado.", { exact: true })).toBeVisible();
   await dialog.getByLabel("Código *", { exact: true }).fill("IP-100");
   await dialog.getByLabel("Tipo de vehículo *", { exact: true }).fill("Furgón");
   await dialog.getByLabel("Matrícula", { exact: true }).fill("l555555");
@@ -131,23 +142,28 @@ test("alta incluye unidades elegidas y edición envía sólo campos cambiados", 
   await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "Ficha de vehículo", exact: true });
   await expect(dialog.getByText("Vehículo guardado.", { exact: true })).toBeVisible();
-  expect(seen.writes[0]).toMatchObject({ method: "POST", body: { requestId: expect.stringMatching(/^[0-9a-f-]{36}$/), businessCode: "IP-100", vehicleType: "Furgón", capacityWeight: 8000, weightUnit: "LB", capacityVolume: 1500, volumeUnit: "CFT", usableLength: 20, dimensionUnit: "FT", availableForCalculation: true } });
+  expect(seen.writes[0]).toMatchObject({ method: "POST", body: { requestId: expect.stringMatching(/^[0-9a-f-]{36}$/), businessCode: "IP-100", vehicleType: "Furgón", capacityWeight: 8000, weightUnit: "LB", capacityVolume: 1500, volumeUnit: "CFT", usableLength: 20, dimensionUnit: "FT", operationalStatus: "UNAVAILABLE", availableForCalculation: false } });
   await expect(dialog.getByLabel("Matrícula", { exact: true })).toHaveValue("L555555");
   await dialog.getByLabel("Modelo", { exact: true }).fill("Nuevo modelo");
   await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
   await expect(dialog.getByText("Vehículo guardado.", { exact: true })).toBeVisible();
   expect(seen.writes[1]).toEqual({ method: "PATCH", body: { requestId: expect.any(String), expectedVersion: 1, changes: { model: "Nuevo modelo" } } });
-  const lastField = dialog.getByLabel("Vigencia hasta", { exact: true });
+  const lastField = dialog.getByLabel("Unidad de dimensiones", { exact: true });
   await lastField.scrollIntoViewIfNeeded();
   await expect.poll(() => dialog.evaluate((element) => {
     const footer = element.querySelector('[data-testid="fleet-editor-footer"]')!.getBoundingClientRect();
-    const field = element.querySelector('[aria-label="Vigencia hasta"]')!.getBoundingClientRect();
+    const field = element.querySelector('[aria-label="Unidad de dimensiones"]')!.getBoundingClientRect();
     const box = element.getBoundingClientRect();
     return { clear: field.bottom <= footer.top + 1, footerInside: footer.bottom <= box.bottom + 1, viewport: box.bottom <= innerHeight + 1 && box.top >= 0 };
   })).toEqual({ clear: true, footerInside: true, viewport: true });
+  for (const label of ["Capacidad de peso (lb)", "Capacidad de volumen (pie³)", "Largo útil (pie)", "Unidad de peso", "Unidad de volumen", "Unidad de dimensiones"]) {
+    const width = await dialog.getByLabel(label, { exact: true }).evaluate((element) => element.getBoundingClientRect().width);
+    expect(width).toBeLessThanOrEqual(110);
+    expect(width).toBeGreaterThanOrEqual(60);
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   await dialog.getByLabel("Código *", { exact: true }).scrollIntoViewIfNeeded();
-  await page.screenshot({ path: `/tmp/osi-fleet-19d-${info.project.name}.png`, fullPage: true, animations: "disabled" });
+  await page.screenshot({ path: `/tmp/osi-fleet-19e-${info.project.name}.png`, fullPage: true, animations: "disabled" });
   expect(seen.unexpected).toEqual([]);
 });
 
@@ -178,7 +194,7 @@ test("matrícula y VIN normalizados sin cambios aceptan la misma versión del se
   await expect(dialog.getByText("Vehículo guardado.", { exact: true })).toBeVisible();
   await expect(dialog.getByLabel("Matrícula", { exact: true })).toHaveValue("L000001");
   await expect(dialog.getByLabel("VIN / chasis", { exact: true })).toHaveValue("VIN00001");
-  await expect(dialog.getByText("IP-001 · versión 1", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("IP-001 · L000001", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Guardar vehículo", exact: true })).toBeDisabled();
   expect(seen.writes).toHaveLength(1);
@@ -186,12 +202,15 @@ test("matrícula y VIN normalizados sin cambios aceptan la misma versión del se
 
 test("características usadas se bloquean; estado y retiro preservan el vehículo", async ({ page }) => {
   const seen = await fixture(page, { locked: true });
-  const dialog = await openVehicle(page);
+  let dialog = await openVehicle(page);
   await expect(dialog.getByLabel("Capacidad de peso (kg)", { exact: true })).toBeDisabled();
   await expect(dialog.getByLabel("Tipo de vehículo *", { exact: true })).toBeDisabled();
   await expect(dialog.getByLabel("Unidad de volumen")).toBeDisabled();
+  await expect(dialog.getByLabel("Estado operativo")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  dialog = await openAvailability(page);
   await dialog.getByLabel("Estado operativo").selectOption("UNAVAILABLE");
-  await expect(dialog.getByLabel("Disponible para cálculos")).not.toBeChecked();
+  await expect(dialog.getByLabel("Activo en planificación")).not.toBeChecked();
   await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
   await expect(dialog.getByText("Vehículo guardado.", { exact: true })).toBeVisible();
   expect(seen.writes[0].body).toMatchObject({ expectedVersion: 1, changes: { operationalStatus: "UNAVAILABLE", availableForCalculation: false } });
@@ -212,7 +231,97 @@ test("consulta sin edición y denegaciones explícitas no emiten escrituras", as
   await expect(dialog.getByLabel("Código *", { exact: true })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: "Guardar vehículo", exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Retirar vehículo", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "Activo IP-001", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Acciones de IP-001", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Consultar disponibilidad", exact: true }).click();
+  await expect(page.getByLabel("Activo en planificación", { exact: true })).toBeDisabled();
   expect(seen.writes).toEqual([]);
+});
+
+test("la casilla Activo cambia sólo la habilitación y el estado disponible", async ({ page }) => {
+  const seen = await fixture(page);
+  await openFleet(page);
+  const original = { ...seen.rows()[0] };
+  const active = page.getByRole("checkbox", { name: "Activo IP-001", exact: true });
+  await expect(active).toBeChecked();
+  await active.click();
+  await expect(active).not.toBeChecked();
+  await expect(active).toBeEnabled();
+  expect(seen.writes[0].body).toEqual({ requestId: expect.any(String), expectedVersion: 1, changes: { availableForCalculation: false, operationalStatus: "UNAVAILABLE" } });
+  expect(seen.rows()[0]).toMatchObject({ vehicleRef: original.vehicleRef, capacityWeight: original.capacityWeight, effectiveFrom: original.effectiveFrom, effectiveTo: original.effectiveTo });
+  await active.click();
+  await expect(active).toBeChecked();
+  await expect(active).toBeEnabled();
+  expect(seen.writes[1].body).toEqual({ requestId: expect.any(String), expectedVersion: 2, changes: { availableForCalculation: true, operationalStatus: "AVAILABLE" } });
+  expect(seen.writes).toHaveLength(2);
+  expect(seen.unexpected).toEqual([]);
+});
+
+test("Activo conserva En uso y la vigencia; los retirados no se reactivan", async ({ page }) => {
+  const seen = await fixture(page, { vehicles: [
+    { operationalStatus: "IN_USE", effectiveFrom: "2020-10-01T00:00:00.000Z", effectiveTo: "2020-10-20T00:00:00.000Z" },
+    { operationalStatus: "RETIRED", availableForCalculation: false, retiredAt: "2026-10-20T00:00:00.000Z" },
+  ] });
+  await openFleet(page);
+  await expect(page.getByText("Fuera de vigencia", { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Activo IP-002", exact: true })).toBeDisabled();
+  const active = page.getByRole("checkbox", { name: "Activo IP-001", exact: true });
+  await active.click();
+  await expect(active).not.toBeChecked();
+  await expect(active).toBeEnabled();
+  expect(seen.writes[0].body).toEqual({ requestId: expect.any(String), expectedVersion: 1, changes: { availableForCalculation: false } });
+  expect(seen.rows()[0]).toMatchObject({ operationalStatus: "IN_USE", effectiveFrom: "2020-10-01T00:00:00.000Z", effectiveTo: "2020-10-20T00:00:00.000Z" });
+  await active.click();
+  await expect(active).toBeChecked();
+  await expect(active).toBeEnabled();
+  expect(seen.writes[1].body).toEqual({ requestId: expect.any(String), expectedVersion: 2, changes: { availableForCalculation: true } });
+  await expect(page.getByText("Fuera de vigencia", { exact: true })).toBeVisible();
+});
+
+test("el aviso de vigencia cambia al vencer sin escribir ni recargar el listado", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-10-31T12:00:00.000Z") });
+  const seen = await fixture(page, { vehicles: [{ effectiveTo: "2026-10-31T12:00:05.000Z" }] });
+  await openFleet(page);
+  await expect(page.getByText("Fuera de vigencia", { exact: true })).toHaveCount(0);
+  const reads = seen.reads.length;
+  await page.clock.fastForward(6000);
+  await expect(page.getByText("Fuera de vigencia", { exact: true })).toBeVisible();
+  expect(seen.reads).toHaveLength(reads);
+  expect(seen.writes).toEqual([]);
+});
+
+for (const failure of [{ code: "ADMIN_FLEET_VERSION_CONFLICT", status: 409, nextVersion: 2 }, { code: "ADMIN_FLEET_UNAVAILABLE", status: 503, nextVersion: 1 }]) {
+  test(`fallo en Activo exige actualizar antes de volver a escribir: ${failure.status}`, async ({ page }) => {
+    const seen = await fixture(page);
+    await openFleet(page);
+    seen.failNextPatch(failure.code, failure.status);
+    const active = page.getByRole("checkbox", { name: "Activo IP-001", exact: true });
+    await active.click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(active).toBeChecked();
+    await expect(active).toBeDisabled();
+    expect(seen.writes).toHaveLength(1);
+    await page.getByRole("button", { name: "Actualizar listado", exact: true }).click();
+    await expect(active).toBeEnabled();
+    await active.click();
+    await expect(active).not.toBeChecked();
+    expect(seen.writes[1].body).toEqual({ requestId: expect.any(String), expectedVersion: failure.nextVersion, changes: { availableForCalculation: false, operationalStatus: "UNAVAILABLE" } });
+    expect(seen.writes).toHaveLength(2);
+  });
+}
+
+test("Disponibilidad permite ajustar la vigencia sin modificar la ficha técnica", async ({ page }, info) => {
+  const seen = await fixture(page);
+  await openFleet(page);
+  const dialog = await openAvailability(page);
+  await expect(dialog.getByLabel("Capacidad de peso (kg)", { exact: true })).toHaveCount(0);
+  await dialog.getByLabel("Vigencia hasta", { exact: true }).fill("2027-01-31");
+  await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
+  await expect(dialog.getByText("Vehículo guardado.", { exact: true })).toBeVisible();
+  expect(seen.writes[0].body).toEqual({ requestId: expect.any(String), expectedVersion: 1, changes: { effectiveTo: "2027-01-31T00:00:00.000Z" } });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `/tmp/osi-fleet-availability-19e-${info.project.name}.png`, fullPage: true, animations: "disabled" });
 });
 
 for (const scenario of [{ role: "K" }, { denied: ["fleet:view"] }, { permissions: ["fleet:edit"] }]) {

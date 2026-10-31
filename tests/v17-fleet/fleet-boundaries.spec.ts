@@ -30,6 +30,23 @@ test("cambio de empresa aborta escritura y descarta la respuesta de la empresa a
   expect(await page.evaluate(() => window.v17FleetHarness?.snapshot().patchAborted)).toBe(true);
 });
 
+test("cambio de empresa aborta activación pendiente y descarta su respuesta tardía", async ({ page }) => {
+  await page.goto("/tests/v17-fleet/harness.html");
+  await page.evaluate(async () => { const module = await import("/tests/v17-fleet/fleet-context-harness.tsx"); module.mountFleetHarness(); });
+  const active = page.getByRole("checkbox", { name: "Activo VEHICULO-A", exact: true });
+  await active.click();
+  await expect.poll(() => page.evaluate(() => window.v17FleetHarness?.snapshot().writes)).toBe(1);
+  await expect(active).toBeDisabled();
+  await expect(active).toBeChecked();
+  await page.evaluate(() => window.v17FleetHarness?.switchContext());
+  await expect(page.getByRole("button", { name: "VEHICULO-B", exact: true })).toBeVisible();
+  await page.evaluate(async () => { window.v17FleetHarness?.resolveOriginalPatch(); await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+  await expect(page.getByRole("checkbox", { name: "Activo VEHICULO-A", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "Activo VEHICULO-B", exact: true })).toBeChecked();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(await page.evaluate(() => window.v17FleetHarness?.snapshot().patchAborted)).toBe(true);
+});
+
 test("gate cerrado por defecto y prerequisitos incompletos ocultan la sección", async ({ page }) => {
   await page.goto("/tests/v17-fleet/harness.html");
   const results = await page.evaluate(async () => {

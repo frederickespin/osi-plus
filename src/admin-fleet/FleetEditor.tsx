@@ -4,13 +4,15 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { FleetApi, FleetApiError, fleetErrorText } from "./api";
 import FleetFields from "./FleetFields";
+import FleetAvailabilityFields from "./FleetAvailabilityFields";
 import type { FleetVehicle, VehicleValues } from "./types";
 import { hasVehicleChanges, vehicleChanges, vehicleDraft, vehicleValues, type VehicleDraft } from "./vehicleForm";
 
-export default function FleetEditor({ api, vehicleRef, canEdit, onClose, onSaved, onUnauthorized }: {
+export default function FleetEditor({ api, vehicleRef, canEdit, section = "details", onClose, onSaved, onUnauthorized }: {
   api: FleetApi;
   vehicleRef: string | null;
   canEdit: boolean;
+  section?: "details" | "availability";
   onClose(): void;
   onSaved(vehicle: FleetVehicle): void;
   onUnauthorized(): void;
@@ -50,6 +52,7 @@ export default function FleetEditor({ api, vehicleRef, canEdit, onClose, onSaved
   }, [api, vehicleRef, readRef, reload]);
 
   const retired = vehicle?.operationalStatus === "RETIRED";
+  const availability = section === "availability" && Boolean(vehicleRef || vehicle);
   const editable = canEdit && !retired && !loading && !saving && !mustReload;
   const dirty = hasVehicleChanges(vehicle, draft);
   const save = async (retire = false) => {
@@ -85,15 +88,18 @@ export default function FleetEditor({ api, vehicleRef, canEdit, onClose, onSaved
   const close = () => { if (!writing.current) onClose(); };
 
   return <Dialog open onOpenChange={(open) => { if (!open) close(); }}>
-    <DialogContent showCloseButton={false} className="flex h-[min(780px,calc(100dvh-1.5rem))] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[660px]"
+    <DialogContent showCloseButton={false} className="flex max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[600px]"
       onEscapeKeyDown={(event) => { if (writing.current) event.preventDefault(); }} onInteractOutside={(event) => event.preventDefault()}>
       <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
-        <div><DialogTitle className="text-base text-[#003366]">{vehicle || vehicleRef ? "Ficha de vehículo" : "Nuevo vehículo"}</DialogTitle><DialogDescription className="mt-1 text-xs">{vehicle ? `${vehicle.businessCode} · versión ${vehicle.rowVersion}` : "Código y tipo son obligatorios."}</DialogDescription></div>
-        <div className="flex shrink-0 items-center gap-1"><AdministrationHelp title="Ficha de vehículo"><p>Registre la matrícula, las capacidades y las dimensiones en sus unidades reales. Los campos vacíos conservan el dato como desconocido.</p><p>La vigencia se registra a medianoche UTC. El retiro es definitivo y conserva la ficha para consulta.</p></AdministrationHelp><AdministrationIconAction label="Cerrar ficha" disabled={saving} onClick={close}><X aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction></div>
+        <div><DialogTitle className="text-base text-[#003366]">{availability ? "Disponibilidad del vehículo" : vehicle || vehicleRef ? "Ficha de vehículo" : "Nuevo vehículo"}</DialogTitle><DialogDescription className="mt-1 text-xs">{vehicle ? [vehicle.businessCode, vehicle.plate].filter(Boolean).join(" · ") : vehicleRef ? "Consultando la ficha guardada." : "Código y tipo son obligatorios."}</DialogDescription></div>
+        <div className="flex shrink-0 items-center gap-1"><AdministrationHelp title="Ficha de vehículo"><p>Registre la matrícula, las capacidades y las dimensiones en sus unidades reales. Los campos vacíos conservan el dato como desconocido.</p><p>Una ficha nueva se crea inactiva para planificación. Actívela desde la casilla Activo del listado; el menú de cada vehículo permite gestionar su disponibilidad.</p><p>El retiro es definitivo y conserva la ficha para consulta.</p></AdministrationHelp><AdministrationIconAction label="Cerrar ficha" disabled={saving} onClick={close}><X aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction></div>
       </header>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4" data-testid="fleet-editor-body">
         {loading && <p role="status" className="py-6 text-center text-sm text-slate-500">Cargando vehículo…</p>}
-        {draft && <FleetFields draft={draft} onChange={(value) => { setDraft(value); setSaved(false); setError(null); setConfirmRetirement(false); }} disabled={!editable} technicalLocked={Boolean(vehicle?.calculationLocked)} />}
+        {draft && (availability
+          ? <FleetAvailabilityFields draft={draft} onChange={(value) => { setDraft(value); setSaved(false); setError(null); setConfirmRetirement(false); }} disabled={!editable} />
+          : <FleetFields draft={draft} onChange={(value) => { setDraft(value); setSaved(false); setError(null); setConfirmRetirement(false); }} disabled={!editable} technicalLocked={Boolean(vehicle?.calculationLocked)} />)}
+        {!vehicle && !vehicleRef && <p className="text-xs text-slate-500">Se crea inactivo. Puede activarlo después desde el listado.</p>}
         {!canEdit && <p className="text-xs text-slate-500">Acceso de consulta a la flota.</p>}
         {retired && <p className="rounded bg-slate-100 p-2 text-xs text-slate-600">Vehículo retirado{vehicle?.retiredAt ? ` el ${new Date(vehicle.retiredAt).toLocaleDateString("es")}` : ""}. La ficha se conserva para consulta.</p>}
         {vehicle && <p className="text-xs text-slate-500">Última actualización: {new Date(vehicle.updatedAt).toLocaleString("es")}</p>}

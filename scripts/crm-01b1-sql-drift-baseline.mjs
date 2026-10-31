@@ -16,6 +16,7 @@ export const LOCAL_21_CATALOG_SHA256 = "a1a4da277070269bbad2452471717ef588c6c58c
 export const LOCAL_22_CATALOG_SHA256 = "ddf3e8851410807ce123160010ef727ff8c1e757f545b299a871f5bc9ab7427e";
 export const LOCAL_35_CATALOG_SHA256 = "2edda06f3606ce0546fcf4ed7435153e5b77986e0cc2d54c3d661785f06002a3";
 export const LOCAL_36_USER_IDENTITY_CATALOG_SHA256 = "481649e8c88db832d1f313f7e3a4a785f28a1d49c4277dc21eac179fef16cb54";
+export const LOCAL_37_FLEET_DRIVERS_CATALOG_SHA256 = "0431dfd8810a8ef68895b1b40c5e38ae1c06550249dff9b7f07c0a41b5951371";
 export const RESTORED_NEON_15_CATALOG_SHA256 = "4d5959dc99b03a7866bc3e038fcaea611fe665a5412cb235522cc05ab5e011d3";
 
 export const HISTORICAL_22_CATALOG = Object.freeze({
@@ -117,6 +118,29 @@ export const CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS = Object.freeze({
   "20261030010000_v17_user_identity_enrollment": Object.freeze({ check: 16, special_index: 2 }),
 });
 
+// Measured on disposable local PostgreSQL 18.6 after reproducing the frozen
+// 36-migration profile. Removing only the two 19F tables and their two trigger
+// functions reproduces every prior hash; query/normalization remain unchanged.
+// See docs/V17-SQL-CATALOG-BASELINE-37-FLEET-19F.md for measurement provenance.
+export const CANONICAL_37_FLEET_DRIVERS_CATALOG = Object.freeze({
+  count: 10679,
+  sha256: LOCAL_37_FLEET_DRIVERS_CATALOG_SHA256,
+  categories: Object.freeze({
+    check: Object.freeze({ count: 416, sha256: "0260b09b54cae0193f32788cc5cae658c15dddbe22a2cd3e319c642cddd2400f" }),
+    column: Object.freeze({ count: 3812, sha256: "b0f56d1776ec95433a3134ac49c52f52a9a4951d5f82dd3c10f6f356a5a4c3ef" }),
+    constraint: Object.freeze({ count: 3060, sha256: "9096cde62504e915ebef7741829457428b88d1fee31f19f38f88c039b24e4848" }),
+    enum: Object.freeze({ count: 1102, sha256: "229714a4280acac482aa12e074cfe34585a4b51f658ae6922216039b92b7bbaf" }),
+    foreign_key: Object.freeze({ count: 672, sha256: "4b503da6d52c4ae156c9db6225fda53b939cfe22a5b1aebd277028c04d3debe7" }),
+    function: Object.freeze({ count: 301, sha256: "5c0bd83ba528c9b31991731c4270421c56aea8303377784b4b041d5ab983e820" }),
+    index: Object.freeze({ count: 1131, sha256: "d89b6cb1687dddb788e2d85838b3ab55829d97b72e81007500e8c3fd41308139" }),
+    trigger: Object.freeze({ count: 185, sha256: "d43bbfb8192a5c755cc870d0fc01d813be2a92b32e3bacc28c585418dbd15a28" }),
+  }),
+});
+export const CANONICAL_37_FLEET_DRIVERS_SQL_ONLY_COUNTS = Object.freeze({
+  ...CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS,
+  "20261031010000_v17_fleet_driver_authority": Object.freeze({ check: 10, function: 2, special_index: 2, trigger: 2 }),
+});
+
 const BTREE_GIST_MIGRATION = "20260907010000_v17_tools_equipment";
 const HISTORICAL_22_PROFILE = Object.freeze({
   id: "historical-22", migrations: 22,
@@ -142,6 +166,18 @@ const CANONICAL_36_USER_IDENTITY_PROFILE = Object.freeze({
   extensionMembers: CANONICAL_35_PROFILE.extensionMembers,
   approvedMigrationChecksums: Object.freeze({
     "20261030010000_v17_user_identity_enrollment": "328529a4c68c8203d279c148c33bb70562c1b9fb6024b0d9f09c390976d3ca50",
+  }),
+});
+
+const CANONICAL_37_FLEET_DRIVERS_PROFILE = Object.freeze({
+  id: "canonical-37-fleet-drivers-19f", migrations: 37,
+  catalog: CANONICAL_37_FLEET_DRIVERS_CATALOG,
+  sqlOnlyCounts: CANONICAL_37_FLEET_DRIVERS_SQL_ONLY_COUNTS,
+  extensions: CANONICAL_36_USER_IDENTITY_PROFILE.extensions,
+  extensionMembers: CANONICAL_36_USER_IDENTITY_PROFILE.extensionMembers,
+  approvedMigrationChecksums: Object.freeze({
+    ...CANONICAL_36_USER_IDENTITY_PROFILE.approvedMigrationChecksums,
+    "20261031010000_v17_fleet_driver_authority": "3a6db22d52441aa1614e13c0bd619ef4bba84230f9af91a3c794f31496d2bd14",
   }),
 });
 
@@ -242,7 +278,7 @@ function normalizeDefinition(value) {
 }
 
 export function sqlDriftProfileForDatabase(database) {
-  if (database === "osi_db01n_ci") return CANONICAL_36_USER_IDENTITY_PROFILE;
+  if (database === "osi_db01n_ci") return CANONICAL_37_FLEET_DRIVERS_PROFILE;
   if (["osi_crm01b_local", "osi_v17_case_client_local", "osi_v17_case_public_ref_local"].includes(database)) {
     return HISTORICAL_22_PROFILE;
   }

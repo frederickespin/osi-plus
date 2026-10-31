@@ -9,6 +9,11 @@ import ts from "typescript";
 const FACTORY_GROUPS = [
   ["TENANT", "adminFleetHttp.js", "createAdminFleetCollectionHandler", ["api/admin/fleet/vehicles/index.js"]],
   ["TENANT", "adminFleetHttp.js", "createAdminFleetDetailHandler", ["api/admin/fleet/vehicles/[vehicleRef]/index.js"]],
+  ["TENANT", "fleetDriversHttp.js", "createFleetDriverOptionsHandler", ["api/admin/fleet/drivers/options.js"]],
+  ["TENANT", "fleetDriversHttp.js", "createFleetDriversHandler", ["api/admin/fleet/vehicles/[vehicleRef]/drivers/index.js"]],
+  ["TENANT", "fleetDriversHttp.js", "createFleetPrimaryDriverHandler", ["api/admin/fleet/vehicles/[vehicleRef]/drivers/primary.js"]],
+  ["TENANT", "fleetDriversHttp.js", "createFleetDriverAuthorizationHandler", ["api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/index.js"]],
+  ["TENANT", "fleetDriversHttp.js", "createFleetDriverDecisionHandler", ["api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/[authorizationRef].js"]],
   ["TENANT", "adminMembershipHttp.js", "createAdminMembershipCollectionHandler", ["api/admin/memberships/index.js"]],
   ["TENANT", "adminMembershipHttp.js", "createAdminMembershipDetailHandler", ["api/admin/memberships/[membershipRef]/index.js"]],
   ["TENANT", "adminIdentityInvitationHttp.js", "createAdminIdentityInvitationCollectionHandler", ["api/admin/identity-invitations/index.js"]],

@@ -190,6 +190,9 @@ const LABELS = Object.freeze({
   "hr:badges": "Consultar reconocimientos",
   "fleet:view": "Consultar flota",
   "fleet:edit": "Editar flota",
+  "fleet:drivers:assign": "Asignar chofer habitual de un vehículo",
+  "fleet:drivers:request": "Solicitar autorización temporal para un chofer",
+  "fleet:drivers:authorize": "Responsable de Flota/Logística: autorizar choferes temporales",
   "security:view": "Consultar control de acceso",
   "security:scan": "Escanear en portería",
 });

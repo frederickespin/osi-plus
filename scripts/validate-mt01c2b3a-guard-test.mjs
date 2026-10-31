@@ -25,7 +25,7 @@ try {
   rejected("HYBRID rechazado", { env: { MT01B_AUTH_MODE: "HYBRID" } }, /HYBRID/);
   rejected("tenant switch rechazado", { env: { MT01B_TENANT_SWITCH_ENABLED: "true" } }, /tenant switch/);
   rejected("cliente V2 rechazado", { env: { VITE_MT01B2_CLIENT_ENABLED: "true" } }, /cliente V2/);
-  rejected("migración adicional rechazada", { migrations: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /36 migraciones canónicas/);
+  rejected("migración adicional rechazada", { migrations: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /37 migraciones canónicas/);
   rejected("consumidor runtime nuevo rechazado", { extraRuntimeSources: { "api/new-endpoint.js": 'await createTenantClient(prisma, {});' } }, /consumidores preparados/);
   rejected("creación PipelineCase sin puente rechazada", { extraRuntimeSources: { "api/pipeline/new.js": "await prisma.pipelineCase.create({data:{}});" } }, /creadores runtime/);
   const clientSource = readFileSync(resolve(root, "api/clients/index.js"), "utf8");

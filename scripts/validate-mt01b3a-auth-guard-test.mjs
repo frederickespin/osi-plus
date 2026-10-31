@@ -84,6 +84,29 @@ rejectRoute("activación por invitación no usa el handler administrativo", "api
 rejectRoute("foto19C no puede usar una ruta de identidad sin su adaptador privado", "api/admin/user-identities/[membershipRef]/photo/index.js", (s) => s.replaceAll("createAdminUserIdentityPhotoHandler", "createAdminUserIdentityDetailHandler"));
 rejectRoute("activación19C no usa un handler administrativo", "api/admin/user-enrollments/activate/index.js", (s) => s.replaceAll("createAdminUserEnrollmentActivationHandler", "createAdminUserEnrollmentCollectionHandler"));
 rejectRoute("alta19C no puede inyectar permisos ni contexto", "api/admin/user-enrollments/index.js", (s) => s.replace("createAdminUserEnrollmentCollectionHandler()", "createAdminUserEnrollmentCollectionHandler({ resolveContext: async () => ({ role: 'A' }) })"), /autoridad alternativa/);
+const fleetDriverRoutes = [
+  ["api/admin/fleet/drivers/options.js", "createFleetDriverOptionsHandler"],
+  ["api/admin/fleet/vehicles/[vehicleRef]/drivers/index.js", "createFleetDriversHandler"],
+  ["api/admin/fleet/vehicles/[vehicleRef]/drivers/primary.js", "createFleetPrimaryDriverHandler"],
+  ["api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/index.js", "createFleetDriverAuthorizationHandler"],
+  ["api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/[authorizationRef].js", "createFleetDriverDecisionHandler"],
+];
+for (const [route, factory] of fleetDriverRoutes) {
+  rejectRoute("Choferes conserva su adaptador exacto: " + route, route, (s) => s.replace("fleetDriversHttp.js", "otherHttp.js"));
+  rejectRoute("Choferes no inyecta autoridad: " + route, route,
+    (s) => s.replace(`${factory}()`, `${factory}({ resolveContext: async () => ({ role: 'A' }) })`), /autoridad alternativa/);
+}
+rejectRoute("decidir Choferes no se convierte en una ruta de lectura", fleetDriverRoutes[4][0],
+  (s) => s.replaceAll("createFleetDriverDecisionHandler", "createFleetDriversHandler"));
+rejectRoute("Choferes no sustituye el dominio desde la ruta", fleetDriverRoutes[2][0],
+  (s) => s.replace("createFleetPrimaryDriverHandler()", "createFleetPrimaryDriverHandler({ setPrimary: async () => ({ ok: true }) })"), /sobrescribe la autoridad/);
+rejected("una sexta ruta Choferes no hereda la clasificación", {
+  routeSources: new Map([...routeSources, ["api/admin/fleet/drivers/extra.js", routeSources.get(fleetDriverRoutes[0][0])]]),
+}, /ruta nueva sin clasificación/);
+rejectAdapter("Choferes conserva resolución de contexto canónico", "api/_lib/fleetDriversHttp.js",
+  (s) => s.replace("resolveContext = resolveCrmPipelineContext", "resolveContext = fakeContext"), /omite el contexto empresarial canónico/);
+rejectAdapter("Choferes no omite resolución autenticada", "api/_lib/fleetDriversHttp.js",
+  (s) => s.replace("await resolveContext(req, { prisma, env })", "({ role: 'A' })"), /omite el contexto empresarial canónico/);
 rejectAdapter("activación19C no cambia a GET", "api/_lib/adminUserIdentityHttp.js", (s) => s.replace('req.method !== "POST"', 'req.method !== "GET"'), /activación19C requiere POST/);
 rejectAdapter("activación19C no acepta identidad sin firma", "api/_lib/adminUserIdentityHttp.js", (s) => s.replace("options.verifyIdentity ?? verifyStrictLegacyAccessToken", "options.verifyIdentity ?? decodeUnsignedToken"), /activación19C requiere POST/);
 rejectAdapter("activación19C no omite resolución de token", "api/_lib/adminUserIdentityHttp.js", (s) => s.replace("await resolve(prisma, body.token, configuration)", "({ mode: 'NEW_IDENTITY' })"), /activación19C requiere POST/);

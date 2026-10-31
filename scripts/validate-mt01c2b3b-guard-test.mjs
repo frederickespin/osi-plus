@@ -28,7 +28,7 @@ try {
   rejected("TENANT_READ en CI rechazado", { env: { COMMERCIAL_TENANCY_READ_MODE: "TENANT_READ" } }, /TENANT_READ/);
   rejected("TENANT_WRITE en CI rechazado", { env: { COMMERCIAL_TENANCY_WRITE_MODE: "TENANT_WRITE" } }, /TENANT_WRITE/);
   rejected("read con espacio rechazado", { env: { COMMERCIAL_TENANCY_READ_MODE: "LEGACY_ONLY " } }, /TENANT_READ/);
-  rejected("migración adicional rechazada", { migrationNames: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /36 migraciones canónicas/);
+  rejected("migración adicional rechazada", { migrationNames: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /37 migraciones canónicas/);
   const service = read("api/_lib/commercialTenancyRead.js");
   rejected("filtro tenant eliminado rechazado", { overrides: { "api/_lib/commercialTenancyRead.js": service.replaceAll("tenantId: String(tenantId)", "id: { not: '' }") } }, /filtran todas/);
   rejected("owner interno expuesto rechazado", { overrides: { "api/_lib/commercialTenancyRead.js": service.replace("ownerMembershipId: true, ownerUserId: true", "") } }, /autoridad interna/);

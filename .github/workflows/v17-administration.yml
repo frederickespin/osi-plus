@@ -17,6 +17,8 @@ on:
       - "api/_lib/adminUserIdentity*"
       - "api/_lib/adminUserEnrollment*"
       - "api/_lib/adminFleet*"
+      - "api/_lib/fleetDrivers*"
+      - "api/_lib/fleetActor.js"
       - "api/_lib/logisticsEngineDomain.js"
       - "api/_lib/rbac.js"
       - "src/crm-services/ServiceConfigurationAdmin.tsx"
@@ -33,6 +35,8 @@ on:
       - "scripts/v17-admin-tenant-memberships*-test.mjs"
       - "scripts/v17-admin-user-identity*-test.mjs"
       - "scripts/v17-admin-fleet*-test.mjs"
+      - "scripts/v17-fleet-drivers*-test.mjs"
+      - "shared/adminFleetDrivers*"
       - "scripts/fixtures/v17-user-identity-photo.mjs"
       - "scripts/validate-v17-admin-tenant-memberships-guard*.mjs"
       - "playwright.v17-administration.config.ts"
@@ -70,6 +74,8 @@ jobs:
           npm run test:v17-admin-user-identity:http
           npm run test:v17-admin-fleet
           npm run test:v17-admin-fleet:http
+          npm run test:v17-fleet-drivers
+          npm run test:v17-fleet-drivers:http
           npm run guard:v17-admin-tenant-memberships
           npm run guard:v17-hub-auth-lazy
           npx eslint src/administration src/admin-tenant src/admin-fleet src/crm-services/ServiceConfigurationAdmin.tsx tests/v17-administration tests/v17-user-identity tests/v17-fleet playwright.v17-administration.config.ts playwright.v17-user-identity.config.ts playwright.v17-fleet.config.ts
@@ -79,7 +85,7 @@ jobs:
         run: npm run test:v17-administration:browser
       - name: Verify company identity, private photos and enrollment
         run: npm run test:v17-admin-user-identity:browser
-      - name: Verify fleet registration, edits and retirement
+      - name: Verify fleet registration, availability and driver authorizations
         run: npm run test:v17-admin-fleet:browser
       - name: Upload synthetic administration screenshots
         if: always()
@@ -91,5 +97,7 @@ jobs:
             /tmp/osi-users-roles-19b-*.png
             /tmp/osi-user-identity-19c-*.png
             /tmp/osi-fleet-19d-*.png
+            /tmp/osi-fleet-19e-*.png
+            /tmp/osi-fleet-19f-*.png
           if-no-files-found: ignore
           retention-days: 7

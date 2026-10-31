@@ -4,11 +4,13 @@ import {
   adminFleetTransaction, createAdminFleetVehicle, getAdminFleetVehicle, listAdminFleetVehicles, updateAdminFleetVehicle,
 } from "../api/_lib/adminFleetDomain.js";
 import { parseAdminFleetCreate } from "../api/_lib/adminFleetContract.js";
+import { authorizeFleetContext, revalidateFleetActor } from "../api/_lib/fleetActor.js";
 
 const results = [];
 const check = (name, value) => { assert.ok(value, name); results.push({ name, passed: true }); };
 const context = { tenantId: "synthetic-tenant", membershipId: "synthetic-member", userId: "synthetic-user", role: "A", effectivePermissions: ["fleet:view", "fleet:edit"], deniedPermissions: [] };
-const actor = { role: "A", status: "ACTIVE", user_status: "active", tenant_status: "ACTIVE", granted_permissions: [], denied_permissions: [], authorization_version: 1 };
+const actor = { id: context.membershipId, public_ref: "11111111-1111-4111-8111-111111111111", tenant_id: context.tenantId, user_id: context.userId,
+  role: "A", status: "ACTIVE", user_status: "active", tenant_status: "ACTIVE", granted_permissions: [], denied_permissions: [], authorization_version: 1 };
 const baseRow = {
   id: "synthetic-vehicle-cuid", tenant_id: context.tenantId, business_code: "TR-1", normalized_code: "TR-1", plate: "A-123", normalized_plate: "A123", vin: "VIN12345", normalized_vin: "VIN12345",
   vehicle_type: "TRUCK", brand: null, model: null, model_year: null, capacity_weight: 1000, capacity_volume: null,
@@ -24,7 +26,7 @@ function fixture({ currentActor = actor, row = baseRow, existing = [], usedReque
     const sql = query.sql;
     // This is a query-spy fixture, not a SQL engine. The separate PostgreSQL suite verifies actual constraints/rollback.
     if (sql.includes('FROM "osi"."tenants"') && sql.includes("FOR UPDATE")) return [{ id: context.tenantId }];
-    if (sql.includes('FROM "osi"."tenant_memberships" tm')) return currentActor ? [currentActor] : [];
+    if (sql.includes('FROM "osi"."tenant_memberships" m')) return currentActor ? [currentActor] : [];
     if (sql.includes("UNION ALL")) return usedRequest ? [{ id: "prior-request" }] : [];
     if (sql.includes('SELECT * FROM "osi"."osi_vehicles"') && sql.includes('"request_id"=')) return existing;
     if (sql.includes('SELECT "id" FROM "osi"."osi_vehicles"') && sql.includes('"normalized_code"=')) return duplicate ? [{ id: "duplicate" }] : [];
@@ -107,7 +109,7 @@ for (const operation of [listAdminFleetVehicles, (db, ctx) => getAdminFleetVehic
 {
   const f = fixture();
   const list = await listAdminFleetVehicles(f.prisma, context, { search: "%_\\", operationalStatus: "AVAILABLE", page: "2", pageSize: "10" });
-  check("list uses authoritative transaction and explicit pagination", list.total === 1 && list.page === 2 && list.pageSize === 10 && f.queries[0].sql.includes("FOR SHARE OF tm, u, t"));
+  check("list uses authoritative transaction and explicit pagination", list.total === 1 && list.page === 2 && list.pageSize === 10 && f.queries[0].sql.includes("FOR SHARE OF m, u, t"));
   const fleetQueries = f.queries.filter((q) => q.sql.includes('FROM "osi"."osi_vehicles"'));
   check("list queries bind tenant and escape wildcard search literals", fleetQueries.every((q) => q.values.includes(context.tenantId) && q.values.includes("%\\%\\_\\\\%")));
 }
@@ -120,7 +122,64 @@ for (const operation of [listAdminFleetVehicles, (db, ctx) => getAdminFleetVehic
   const f = fixture();
   const same = await updateAdminFleetVehicle(f.prisma, context, baseRow.id, patch({ brand: null }), { auditWriter: f.auditWriter });
   check("no-op does not write, audit or increment version", same.rowVersion === 1 && f.writes() === 0 && f.audits.length === 0);
-  check("write lock order is tenant then actor then target", f.queries[0].sql.includes('"tenants"') && f.queries[0].sql.includes("FOR UPDATE") && f.queries[1].sql.includes("FOR SHARE OF tm, u, t") && f.queries[2].sql.includes('"osi_vehicles"') && f.queries[2].sql.includes("FOR UPDATE"));
+  check("write lock order is tenant then actor then target", f.queries[0].sql.includes('"tenants"') && f.queries[0].sql.includes("FOR UPDATE") && f.queries[1].sql.includes("FOR SHARE OF m, u, t") && f.queries[2].sql.includes('"osi_vehicles"') && f.queries[2].sql.includes("FOR UPDATE"));
+}
+
+const driverPermissions = ["fleet:drivers:assign", "fleet:drivers:request", "fleet:drivers:authorize"];
+for (const permission of driverPermissions) {
+  const permissions = ["fleet:view", permission];
+  const operationsContext = { ...context, role: "B", effectivePermissions: permissions, grantedPermissions: permissions };
+  const operationsActor = { ...actor, role: "B", granted_permissions: permissions };
+  const f = fixture({ currentActor: operationsActor });
+  const list = await listAdminFleetVehicles(f.prisma, operationsContext);
+  const detail = await getAdminFleetVehicle(f.prisma, operationsContext, baseRow.id);
+  check(`designated operations can read fleet with ${permission}`, list.total === 1 && detail.vehicleRef === baseRow.id && f.writes() === 0);
+  for (const operation of [
+    (db, ctx) => createAdminFleetVehicle(db, ctx, { requestId: randomUUID(), businessCode: "B-NEW", vehicleType: "TRUCK" }),
+    (db, ctx) => updateAdminFleetVehicle(db, ctx, baseRow.id, patch({ brand: "Changed" })),
+    (db, ctx) => updateAdminFleetVehicle(db, ctx, baseRow.id, patch({ operationalStatus: "RETIRED", availableForCalculation: false })),
+  ]) {
+    const denied = fixture({ currentActor: { ...operationsActor, granted_permissions: [...permissions, "fleet:edit"] } });
+    await rejects(() => operation(denied.prisma, { ...operationsContext, effectivePermissions: [...permissions, "fleet:edit"] }), "FORBIDDEN");
+    check(`operations ${permission} never enables technical writes`, denied.queries.length === 0 && denied.writes() === 0);
+  }
+  for (const state of [
+    { granted_permissions: ["fleet:view"] },
+    { denied_permissions: [permission] },
+    { denied_permissions: ["fleet:view"] },
+    { status: "SUSPENDED" }, { user_status: "INACTIVE" }, { tenant_status: "SUSPENDED" },
+    { role: "V" }, { tenant_id: "other-tenant" }, { user_id: "other-user" }, { id: "other-membership" },
+  ]) {
+    const revoked = fixture({ currentActor: { ...operationsActor, ...state } });
+    await rejects(() => listAdminFleetVehicles(revoked.prisma, operationsContext), "FORBIDDEN");
+    check(`persisted ${Object.keys(state)[0]} blocks stale operations ${permission}`, !revoked.queries.some((query) => query.sql.includes('FROM "osi"."osi_vehicles"')));
+  }
+}
+for (const candidate of [
+  { ...context, role: "B", effectivePermissions: ["fleet:view", "fleet:edit"] },
+  { ...context, role: "B", effectivePermissions: ["fleet:drivers:authorize"] },
+  { ...context, role: "B", effectivePermissions: ["fleet:view", "fleet:drivers:authorize"], grantedPermissions: [] },
+  { ...context, role: "B", effectivePermissions: ["fleet:view", "fleet:drivers:authorize"], deniedPermissions: ["fleet:drivers:authorize"] },
+]) {
+  const f = fixture();
+  await rejects(() => listAdminFleetVehicles(f.prisma, candidate), "FORBIDDEN");
+  check("operations without an effective explicit driver designation stops before the transaction", f.queries.length === 0);
+}
+for (const permission of driverPermissions) {
+  assert.throws(() => authorizeFleetContext(context, { permission }), (error) => error.code === "ADMIN_FLEET_FORBIDDEN");
+  const grantedContext = { ...context, effectivePermissions: [...context.effectivePermissions, permission] };
+  const queries = [];
+  const db = { async $queryRaw(query) { queries.push(query); return [{ ...actor, granted_permissions: [permission] }]; } };
+  const who = await revalidateFleetActor(db, grantedContext, { permission });
+  check(`specific driver permission ${permission} uses current actor identity`, who.membershipRef === actor.public_ref && who.role === "A" && who.effective.has(permission)
+    && queries[0].sql.includes("FOR SHARE OF m, u, t") && [context.tenantId, context.membershipId, context.userId].every((value) => queries[0].values.includes(value)));
+  await rejects(() => revalidateFleetActor({ $queryRaw: async () => [actor] }, grantedContext, { permission }), "FORBIDDEN");
+  await rejects(() => revalidateFleetActor({ $queryRaw: async () => [{ ...actor, granted_permissions: [permission], denied_permissions: [permission] }] }, grantedContext, { permission }), "FORBIDDEN");
+  check(`administrator cannot inherit or retain revoked ${permission}`, true);
+}
+for (const field of ["effectivePermissions", "permissions", "grantedPermissions"]) {
+  authorizeFleetContext({ role: "B", [field]: ["fleet:view", "fleet:drivers:request"] });
+  check(`trusted context supports canonical ${field}`, true);
 }
 for (const [name, fixtureOptions, changes, version, code] of [
   ["stale version", {}, { brand: "Changed" }, 2, "VERSION_CONFLICT"],

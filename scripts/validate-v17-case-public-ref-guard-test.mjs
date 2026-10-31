@@ -38,11 +38,13 @@ function changeConsumer(path, before, after) {
 
 check("baseline publicRef aprobada", baseline.ok);
 check("inventario distingue casos y clientes de membresías e invitaciones",
-  baseline.runtimeConsumers === 25
+  baseline.runtimeConsumers === 27
   && baseline.consumerContracts["api/_lib/crmIcpV2ApiDomain.js"].kinds.join(",") === "CASE,CLIENT"
   && baseline.consumerContracts["api/_lib/authContext.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminUserIdentityDomain.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminUserEnrollmentDomain.js"].kinds.join(",") === "MEMBERSHIP"
+  && baseline.consumerContracts["api/_lib/fleetActor.js"].kinds.join(",") === "MEMBERSHIP"
+  && baseline.consumerContracts["api/_lib/fleetDriversDomain.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminIdentityInvitationDomain.js"].kinds.join(",") === "INVITATION,MEMBERSHIP");
 check("todos los consumidores persistentes tienen consultas verificadas",
   Object.entries(baseline.consumerContracts).every(([path, contract]) =>
@@ -152,6 +154,33 @@ rejected("SQL CLIENT pierde tenant", changeConsumer("api/_lib/crmCaseMutationDom
   'WHERE "tenant_id"=${tenantId} AND "public_ref"', 'WHERE "public_ref"'), /contrato tenant-first/);
 rejected("SQL MEMBERSHIP pierde tenant", changeConsumer("api/_lib/adminMembershipDomain.js",
   'WHERE tm."tenant_id"=${actor.tenantId} AND tm."public_ref"', 'WHERE tm."public_ref"'), /contrato tenant-first/);
+check("Choferes verifica actor, historial, opción, ficha y conteo empresarial",
+  baseline.consumerContracts["api/_lib/fleetActor.js"].sqlQueries === 1
+  && baseline.consumerContracts["api/_lib/fleetDriversDomain.js"].sqlQueries === 4);
+rejected("actor de Flota no puede perder empresa", changeConsumer("api/_lib/fleetActor.js",
+  'WHERE m."tenant_id"=${tenantId} AND m."id"', 'WHERE m."id"'), /contrato tenant-first/);
+rejected("actor de Flota no obtiene empresa de input", changeConsumer("api/_lib/fleetActor.js",
+  'WHERE m."tenant_id"=${tenantId}', 'WHERE m."tenant_id"=${input.tenantId}'), /contrato tenant-first/);
+rejected("historial de personas no puede perder empresa", changeConsumer("api/_lib/fleetDriversDomain.js",
+  'WHERE m."tenant_id"=${tenantId} AND m."id" IN', 'WHERE m."id" IN'), /contrato tenant-first/);
+rejected("ficha de chofer no puede perder empresa", changeConsumer("api/_lib/fleetDriversDomain.js",
+  'WHERE m."tenant_id"=${tenantId} AND ${byId', 'WHERE ${byId'), /contrato tenant-first/);
+rejected("selector de choferes no obtiene empresa de filtros", changeConsumer("api/_lib/fleetDriversDomain.js",
+  'const condition = Prisma.sql`m."tenant_id"=${actor.tenantId}', 'const condition = Prisma.sql`m."tenant_id"=${input.tenantId}'), /contrato tenant-first/);
+rejected("selector de choferes no permite OR fuera del alcance empresarial", changeConsumer("api/_lib/fleetDriversDomain.js",
+  'AND COALESCE(NULLIF(BTRIM(i."full_name"), \'\'), u."name") ILIKE', 'OR COALESCE(NULLIF(BTRIM(i."full_name"), \'\'), u."name") ILIKE'), /contrato tenant-first/);
+rejected("conteo de choferes no pierde empresa por omitir la proyección", changeConsumer("api/_lib/fleetDriversDomain.js",
+  'AS "total" ${personJoins()} WHERE ${condition}', 'AS "total" ${personJoins()} WHERE true'), /contrato tenant-first/);
+rejected("fragmentos de choferes no autorizan una consulta adicional sin empresa", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/fleetDriversDomain.js": canonicalRuntime["api/_lib/fleetDriversDomain.js"]
+    + '\nasync function unscoped(tx) { return tx.$queryRaw(Prisma.sql`SELECT ${personColumns()} ${personJoins()} WHERE m."id"=${reference}`); }\n' },
+}, /contrato tenant-first/);
+rejected("fragmentos de choferes no pueden convertirse en input arbitrario", changeConsumer("api/_lib/fleetDriversDomain.js",
+  'function personColumns() {', 'function personColumns(input) {'), /contrato tenant-first/);
+rejected("clasificar membresías de Flota no autoriza leer casos", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/fleetDriversDomain.js": canonicalRuntime["api/_lib/fleetDriversDomain.js"]
+    + '\ntx.pipelineCase.findFirst({ where: { tenantId: actor.tenantId, publicRef: caseRef } });\n' },
+}, /modelo de referencia sin clasificar/);
 rejected("SQL lista de membresías cambia AND por OR", changeConsumer("api/_lib/adminMembershipDomain.js",
   'Prisma.join(conditions, " AND ")', 'Prisma.join(conditions, " OR ")'), /contrato tenant-first/);
 rejected("SQL ficha de identidad pierde empresa", changeConsumer("api/_lib/adminUserIdentityDomain.js",

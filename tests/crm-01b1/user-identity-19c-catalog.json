@@ -1,0 +1,884 @@
+{
+  "provenance": {
+    "workflowRun": 41059351747,
+    "head": "6db6c366f5bb61b9f11cd8cfe0d2336b75df7324",
+    "artifact": 12978656029,
+    "zipSha256": "4f6093b29d4c05291e0655f8d7f3c86b1dc07985508a8b05c4fadd709d62d04b",
+    "server": {
+      "version_number": "180006",
+      "version": "18.6 (Debian 18.6-1.pgdg13+2)",
+      "collation": "en_US.utf8",
+      "character_type": "en_US.utf8"
+    }
+  },
+  "migration": {
+    "name": "20261030010000_v17_user_identity_enrollment",
+    "sha256": "328529a4c68c8203d279c148c33bb70562c1b9fb6024b0d9f09c390976d3ca50"
+  },
+  "catalog": {
+    "count": 10569,
+    "sha256": "481649e8c88db832d1f313f7e3a4a785f28a1d49c4277dc21eac179fef16cb54",
+    "categories": {
+      "check": {
+        "count": 406,
+        "sha256": "4782f94ffb2053b76e26284ea39cc109d24b9270968382d4dd8332ca03a34d08"
+      },
+      "column": {
+        "count": 3772,
+        "sha256": "e1547a3956c42a98dea95f6dc70e8c6d0700762ecc22ef08074ec94fd30f6198"
+      },
+      "constraint": {
+        "count": 3032,
+        "sha256": "7c6aad78623912ffb109a61ed6daa4a4e0b7f9c59cc0aeaf5b4f15a480e3dd27"
+      },
+      "enum": {
+        "count": 1102,
+        "sha256": "229714a4280acac482aa12e074cfe34585a4b51f658ae6922216039b92b7bbaf"
+      },
+      "foreign_key": {
+        "count": 661,
+        "sha256": "dafe8a1869adc492c54470edd78cf8a047994752b157e11a2ceee42ecb0a65c6"
+      },
+      "function": {
+        "count": 299,
+        "sha256": "b8a66bf6c666c819e0170e71400b15a31c50ede5229afde94d76b6f4432d25a9"
+      },
+      "index": {
+        "count": 1114,
+        "sha256": "78ef61c51409718fe718d1dc6a1a25be1b484414f10e6e28105990f05efa72b3"
+      },
+      "trigger": {
+        "count": 183,
+        "sha256": "9c328fd35c079ae79a83ccd8551ab184c849ab776d6c8f87990a50297edcbf7f"
+      }
+    }
+  },
+  "previousCatalog": {
+    "count": 10461,
+    "sha256": "2edda06f3606ce0546fcf4ed7435153e5b77986e0cc2d54c3d661785f06002a3",
+    "categories": {
+      "check": {
+        "count": 390,
+        "sha256": "5765e81c0268f9b36286ec41acb5b6e01da5c8cef93e0a9ae3745ff87f50597a"
+      },
+      "column": {
+        "count": 3732,
+        "sha256": "bce9eaf7e7b6a89e95d18abd1bb326b6119e09f353c0cf638e014386c568c01c"
+      },
+      "constraint": {
+        "count": 2996,
+        "sha256": "9dbaec28b4dac9d6c4182d298c868b54dca01b5239c2a88083494ace0a1faec4"
+      },
+      "enum": {
+        "count": 1102,
+        "sha256": "229714a4280acac482aa12e074cfe34585a4b51f658ae6922216039b92b7bbaf"
+      },
+      "foreign_key": {
+        "count": 656,
+        "sha256": "d8b50b8a3717197567b8f6326cb042a5ef3d0049864675b9541c0eb3fb34e554"
+      },
+      "function": {
+        "count": 299,
+        "sha256": "b8a66bf6c666c819e0170e71400b15a31c50ede5229afde94d76b6f4432d25a9"
+      },
+      "index": {
+        "count": 1103,
+        "sha256": "16a8727f4b576c35b8f75fab982ce691800f3c0c07e474b3985f08a5469fb733"
+      },
+      "trigger": {
+        "count": 183,
+        "sha256": "9c328fd35c079ae79a83ccd8551ab184c849ab776d6c8f87990a50297edcbf7f"
+      }
+    }
+  },
+  "delta": {
+    "tables": [
+      "tenant_user_identities",
+      "user_enrollments"
+    ],
+    "catalog": {
+      "count": 108,
+      "sha256": "1f77f56bbc10594a8bff00154b7029baf7c87e9072ec28d0057f7bfa1c34d3b9",
+      "categories": {
+        "check": {
+          "count": 16,
+          "sha256": "9d9d8e93236bcaf3b4fea57a1268069e1afff6550127e6a91b8c5581a41a72e4"
+        },
+        "column": {
+          "count": 40,
+          "sha256": "f1c54a910158ede1ea10b01079b04862ceeb990fa69c8be49e922e123de7bddc"
+        },
+        "constraint": {
+          "count": 36,
+          "sha256": "196fc59862dd30243989cbb5dcd8b26631373d96c0f0b57d55adc4991dbad700"
+        },
+        "foreign_key": {
+          "count": 5,
+          "sha256": "03559086014b92c30703c9b97c4b10002f8d00246d35ccae6eb64b343209938a"
+        },
+        "index": {
+          "count": 11,
+          "sha256": "ec0fee63e8f67a593e1831fa9d58c6ae54ea827dca8429b6eea043ce0d8c0b41"
+        }
+      }
+    },
+    "rows": [
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_document_check",
+        "definition": "CHECK ((document_type::text = ANY (ARRAY['CEDULA'::character varying, 'PASSPORT'::character varying, 'OTHER'::character varying]::text[])) AND (document_number IS NULL OR document_number::text = upper(btrim(document_number::text)) AND (document_type::text = 'CEDULA'::text AND document_number::text ~ '^[0-9]{11}$'::text OR document_type::text <> 'CEDULA'::text AND document_number::text ~ '^[A-Z0-9][A-Z0-9-]{2,39}$'::text)))"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_email_check",
+        "definition": "CHECK (contact_email IS NULL OR contact_email::text = lower(btrim(contact_email::text)) AND contact_email::text ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_name_check",
+        "definition": "CHECK (full_name::text = btrim(full_name::text) AND length(full_name::text) >= 2 AND length(full_name::text) <= 160)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_phone_check",
+        "definition": "CHECK (contact_phone::text = ''::text OR contact_phone::text ~ '^\\+[1-9][0-9]{6,14}$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_photo_check",
+        "definition": "CHECK (photo_bytes IS NULL AND photo_sha256 IS NULL OR photo_bytes IS NOT NULL AND photo_sha256 IS NOT NULL AND octet_length(photo_bytes) >= 45 AND octet_length(photo_bytes) <= 262144 AND photo_sha256 ~ '^[0-9a-f]{64}$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_version_check",
+        "definition": "CHECK (version >= 1 AND photo_version >= 0)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_contact_email_check",
+        "definition": "CHECK (contact_email IS NULL OR contact_email::text = lower(btrim(contact_email::text)) AND contact_email::text ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_document_check",
+        "definition": "CHECK ((document_type::text = ANY (ARRAY['CEDULA'::character varying, 'PASSPORT'::character varying, 'OTHER'::character varying]::text[])) AND (document_number IS NULL OR document_number::text = upper(btrim(document_number::text)) AND (document_type::text = 'CEDULA'::text AND document_number::text ~ '^[0-9]{11}$'::text OR document_type::text <> 'CEDULA'::text AND document_number::text ~ '^[A-Z0-9][A-Z0-9-]{2,39}$'::text)))"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_email_check",
+        "definition": "CHECK (normalized_email::text = lower(btrim(normalized_email::text)) AND normalized_email::text ~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_expiry_check",
+        "definition": "CHECK (expires_at > created_at)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_hash_check",
+        "definition": "CHECK (token_hash ~ '^[0-9a-f]{64}$'::text AND payload_hash ~ '^[0-9a-f]{64}$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_name_check",
+        "definition": "CHECK (full_name::text = btrim(full_name::text) AND length(full_name::text) >= 2 AND length(full_name::text) <= 160)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_phone_check",
+        "definition": "CHECK (contact_phone::text = ''::text OR contact_phone::text ~ '^\\+[1-9][0-9]{6,14}$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_photo_check",
+        "definition": "CHECK (photo_bytes IS NULL AND photo_sha256 IS NULL OR photo_bytes IS NOT NULL AND photo_sha256 IS NOT NULL AND octet_length(photo_bytes) >= 45 AND octet_length(photo_bytes) <= 262144 AND photo_sha256 ~ '^[0-9a-f]{64}$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_role_check",
+        "definition": "CHECK (intended_role <> 'A'::\"TenantMembershipRole\")"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_state_check",
+        "definition": "CHECK (status::text = 'PENDING'::text AND activated_at IS NULL AND revoked_at IS NULL AND activated_membership_id IS NULL AND activated_user_id IS NULL OR status::text = 'ACTIVATED'::text AND activated_at IS NOT NULL AND revoked_at IS NULL AND activated_membership_id IS NOT NULL AND activated_user_id IS NOT NULL OR status::text = 'REVOKED'::text AND activated_at IS NULL AND revoked_at IS NOT NULL AND activated_membership_id IS NULL AND activated_user_id IS NULL)"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "contact_email",
+        "definition": "7|character varying(320)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "contact_phone",
+        "definition": "6|character varying(40)|t|''::character varying||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "created_at",
+        "definition": "14|timestamp(6) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "document_number",
+        "definition": "9|character varying(40)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "document_type",
+        "definition": "8|character varying(16)|t|'CEDULA'::character varying||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "full_name",
+        "definition": "5|character varying(160)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "id",
+        "definition": "1|uuid|t|gen_random_uuid()||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "membership_id",
+        "definition": "3|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "photo_bytes",
+        "definition": "10|bytea|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "photo_sha256",
+        "definition": "11|character(64)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "photo_version",
+        "definition": "12|integer|t|0||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_id",
+        "definition": "2|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "updated_at",
+        "definition": "15|timestamp(6) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "user_id",
+        "definition": "4|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "version",
+        "definition": "13|integer|t|1||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "activated_at",
+        "definition": "22|timestamp(6) with time zone|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "activated_membership_id",
+        "definition": "18|text|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "activated_user_id",
+        "definition": "19|text|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "contact_email",
+        "definition": "7|character varying(320)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "contact_phone",
+        "definition": "6|character varying(40)|t|''::character varying||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "created_at",
+        "definition": "24|timestamp(6) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "document_number",
+        "definition": "9|character varying(40)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "document_type",
+        "definition": "8|character varying(16)|t|'CEDULA'::character varying||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "enrollment_ref",
+        "definition": "2|uuid|t|gen_random_uuid()||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "expires_at",
+        "definition": "15|timestamp(6) with time zone|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "full_name",
+        "definition": "5|character varying(160)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "id",
+        "definition": "1|uuid|t|gen_random_uuid()||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "intended_role",
+        "definition": "10|\"TenantMembershipRole\"|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "issued_by_membership_id",
+        "definition": "16|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "issued_by_user_id",
+        "definition": "17|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "normalized_email",
+        "definition": "4|character varying(320)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "payload_hash",
+        "definition": "21|character(64)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "photo_bytes",
+        "definition": "11|bytea|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "photo_sha256",
+        "definition": "12|character(64)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "request_id",
+        "definition": "20|uuid|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "revoked_at",
+        "definition": "23|timestamp(6) with time zone|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "status",
+        "definition": "14|character varying(16)|t|'PENDING'::character varying||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "tenant_id",
+        "definition": "3|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "token_hash",
+        "definition": "13|character(64)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "updated_at",
+        "definition": "25|timestamp(6) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_contact_phone_not_null",
+        "definition": "NOT NULL contact_phone"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_created_at_not_null",
+        "definition": "NOT NULL created_at"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_document_key",
+        "definition": "UNIQUE (tenant_id, document_type, document_number)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_document_type_not_null",
+        "definition": "NOT NULL document_type"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_full_name_not_null",
+        "definition": "NOT NULL full_name"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_id_not_null",
+        "definition": "NOT NULL id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_membership_id_not_null",
+        "definition": "NOT NULL membership_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_membership_key",
+        "definition": "UNIQUE (tenant_id, membership_id)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_membership_user_key",
+        "definition": "UNIQUE (tenant_id, membership_id, user_id)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_photo_version_not_null",
+        "definition": "NOT NULL photo_version"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_tenant_id_not_null",
+        "definition": "NOT NULL tenant_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_updated_at_not_null",
+        "definition": "NOT NULL updated_at"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_user_id_not_null",
+        "definition": "NOT NULL user_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_version_not_null",
+        "definition": "NOT NULL version"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_contact_phone_not_null",
+        "definition": "NOT NULL contact_phone"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_created_at_not_null",
+        "definition": "NOT NULL created_at"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_document_type_not_null",
+        "definition": "NOT NULL document_type"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_enrollment_ref_not_null",
+        "definition": "NOT NULL enrollment_ref"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_expires_at_not_null",
+        "definition": "NOT NULL expires_at"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_full_name_not_null",
+        "definition": "NOT NULL full_name"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_id_not_null",
+        "definition": "NOT NULL id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_intended_role_not_null",
+        "definition": "NOT NULL intended_role"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_issued_by_membership_id_not_null",
+        "definition": "NOT NULL issued_by_membership_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_issued_by_user_id_not_null",
+        "definition": "NOT NULL issued_by_user_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_normalized_email_not_null",
+        "definition": "NOT NULL normalized_email"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_payload_hash_not_null",
+        "definition": "NOT NULL payload_hash"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_ref_key",
+        "definition": "UNIQUE (tenant_id, enrollment_ref)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_request_id_not_null",
+        "definition": "NOT NULL request_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_request_key",
+        "definition": "UNIQUE (tenant_id, request_id)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_status_not_null",
+        "definition": "NOT NULL status"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_tenant_id_not_null",
+        "definition": "NOT NULL tenant_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_token_hash_not_null",
+        "definition": "NOT NULL token_hash"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_token_key",
+        "definition": "UNIQUE (token_hash)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_updated_at_not_null",
+        "definition": "NOT NULL updated_at"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_membership_fkey",
+        "definition": "FOREIGN KEY (tenant_id, membership_id, user_id) REFERENCES tenant_memberships(tenant_id, id, user_id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_tenant_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_activated_fkey",
+        "definition": "FOREIGN KEY (tenant_id, activated_membership_id, activated_user_id) REFERENCES tenant_memberships(tenant_id, id, user_id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_issuer_fkey",
+        "definition": "FOREIGN KEY (tenant_id, issued_by_membership_id, issued_by_user_id) REFERENCES tenant_memberships(tenant_id, id, user_id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_tenant_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_document_key",
+        "definition": "CREATE UNIQUE INDEX tenant_user_identities_document_key ON osi.tenant_user_identities USING btree (tenant_id, document_type, document_number)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_membership_key",
+        "definition": "CREATE UNIQUE INDEX tenant_user_identities_membership_key ON osi.tenant_user_identities USING btree (tenant_id, membership_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_membership_user_key",
+        "definition": "CREATE UNIQUE INDEX tenant_user_identities_membership_user_key ON osi.tenant_user_identities USING btree (tenant_id, membership_id, user_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "tenant_user_identities",
+        "object_name": "tenant_user_identities_pkey",
+        "definition": "CREATE UNIQUE INDEX tenant_user_identities_pkey ON osi.tenant_user_identities USING btree (id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_pending_document_key",
+        "definition": "CREATE UNIQUE INDEX user_enrollments_pending_document_key ON osi.user_enrollments USING btree (tenant_id, document_type, document_number) WHERE (((status)::text = 'PENDING'::text) AND (document_number IS NOT NULL))"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_pending_email_key",
+        "definition": "CREATE UNIQUE INDEX user_enrollments_pending_email_key ON osi.user_enrollments USING btree (tenant_id, normalized_email) WHERE ((status)::text = 'PENDING'::text)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_pkey",
+        "definition": "CREATE UNIQUE INDEX user_enrollments_pkey ON osi.user_enrollments USING btree (id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_ref_key",
+        "definition": "CREATE UNIQUE INDEX user_enrollments_ref_key ON osi.user_enrollments USING btree (tenant_id, enrollment_ref)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_request_key",
+        "definition": "CREATE UNIQUE INDEX user_enrollments_request_key ON osi.user_enrollments USING btree (tenant_id, request_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_tenant_created_idx",
+        "definition": "CREATE INDEX user_enrollments_tenant_created_idx ON osi.user_enrollments USING btree (tenant_id, created_at DESC)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "user_enrollments",
+        "object_name": "user_enrollments_token_key",
+        "definition": "CREATE UNIQUE INDEX user_enrollments_token_key ON osi.user_enrollments USING btree (token_hash)"
+      }
+    ]
+  }
+}

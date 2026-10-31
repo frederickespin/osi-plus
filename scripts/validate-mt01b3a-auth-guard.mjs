@@ -12,6 +12,12 @@ const FACTORY_GROUPS = [
   ["TENANT", "adminIdentityInvitationHttp.js", "createAdminIdentityInvitationCollectionHandler", ["api/admin/identity-invitations/index.js"]],
   ["TENANT", "adminIdentityInvitationHttp.js", "createAdminIdentityInvitationDetailHandler", ["api/admin/identity-invitations/[invitationRef]/index.js"]],
   ["INVITATION_TOKEN", "adminIdentityInvitationHttp.js", "createAdminIdentityActivationHandler", ["api/auth/admin-invitations/activate.js"]],
+  ["TENANT", "adminUserIdentityHttp.js", "createAdminUserIdentityCollectionHandler", ["api/admin/user-identities/index.js"]],
+  ["TENANT", "adminUserIdentityHttp.js", "createAdminUserIdentityDetailHandler", ["api/admin/user-identities/[membershipRef]/index.js"]],
+  ["TENANT", "adminUserIdentityHttp.js", "createAdminUserIdentityPhotoHandler", ["api/admin/user-identities/[membershipRef]/photo/index.js"]],
+  ["TENANT", "adminUserIdentityHttp.js", "createAdminUserEnrollmentCollectionHandler", ["api/admin/user-enrollments/index.js"]],
+  ["TENANT", "adminUserIdentityHttp.js", "createAdminUserEnrollmentDetailHandler", ["api/admin/user-enrollments/[enrollmentRef]/index.js"]],
+  ["INVITATION_TOKEN", "adminUserIdentityHttp.js", "createAdminUserEnrollmentActivationHandler", ["api/admin/user-enrollments/activate/index.js"]],
   ["TENANT", "toolsEquipmentHttp.js", "createToolsEquipmentHandler", [
     "api/assets/assignments/handout/index.js", "api/assets/assignments/index.js", "api/assets/assignments/return/index.js",
     "api/assets/costs/index.js", "api/assets/external/offers/index.js", "api/assets/external/reservations/index.js",
@@ -294,6 +300,15 @@ function validateAdapters(adapterSources) {
   const transport = adapterSources.get("api/_lib/communicationsHttp.js") || "";
   invariant(/function createTransportDisabledHandler\(\)[\s\S]*status\(409\)[\s\S]*COMMUNICATION_TRANSPORT_DISABLED/.test(transport),
     "el transporte externo debe permanecer deshabilitado");
+  const identity = adapterSources.get("api/_lib/adminUserIdentityHttp.js") || "";
+  const activation = identity.slice(identity.indexOf("export function createAdminUserEnrollmentActivationHandler"));
+  invariant(/req\.method !== "POST"/.test(activation)
+    && /requireUserIdentityAccess\(req, env\)/.test(activation) && /sameOrigin\(req\)/.test(activation)
+    && /await resolve\(prisma, body\.token, configuration\)/.test(activation)
+    && /verifyIdentity\(getBearerToken\(req\)\)/.test(activation)
+    && /options\.verifyIdentity \?\? verifyStrictLegacyAccessToken/.test(activation)
+    && /await activate\(prisma, input, identity, configuration\)/.test(activation),
+  "la activación19C requiere POST, token validado y sesión verificada para identidad existente");
 }
 
 export function validateMt01b3aSources({ routeSources, envExample, authContextSource, adapterSources, canonicalInventory }) {

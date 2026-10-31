@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.v17-user-identity.tsbuildinfo"
+  },
+  "include": [
+    "src/v17-preview-env.d.ts",
+    "src/admin-tenant/**/*.ts",
+    "src/admin-tenant/**/*.tsx"
+  ]
+}

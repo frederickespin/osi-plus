@@ -45,6 +45,9 @@ jobs:
           node --test tests/prisma-schema-target/validate-prisma-schema-target.test.mjs
           node scripts/validate-canonical-migration-inventory-test.mjs
           node scripts/crm-01b1-sql-drift-baseline-test.mjs
+          node scripts/v17-admin-user-identity-contract-test.mjs
+          node scripts/v17-admin-user-identity-transactions-test.mjs
+          node scripts/v17-admin-user-identity-http-test.mjs
           node scripts/v17-quote-local-target-test.mjs
           node scripts/v17-services-local-target-test.mjs
           node scripts/validate-mt01c1b2a-guard-test.mjs
@@ -585,6 +588,20 @@ jobs:
           test "$diff_status" -eq 0
           grep -Fxq -- "-- This is an empty migration." "$RUNNER_TEMP/canonical-drift.sql"
 
+      - name: Capture read-only 19C SQL catalog evidence
+        env:
+          V17_IDENTITY_CATALOG_EVIDENCE_PATH: ${{ runner.temp }}/v17-user-identity-catalog-evidence.json
+        run: node scripts/capture-v17-user-identity-catalog.mjs
+
+      - name: Publish candidate catalog without accepting a baseline
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: v17-user-identity-catalog-evidence
+          path: ${{ runner.temp }}/v17-user-identity-catalog-evidence.json
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify explicit SQL-only catalog baseline
         run: node scripts/crm-01b1-sql-drift-baseline.mjs
 
@@ -654,6 +671,11 @@ jobs:
         env:
           V17_COMMERCIAL_RELATIONSHIPS_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: npm run test:v17-commercial-relationships:db
+
+      # The canonical bootstrap requires an empty user table. 19C uses its own
+      # tenant-scoped fixtures and must run after the existing database suites.
+      - name: Verify 19C identity and enrollment against PostgreSQL 18
+        run: node scripts/v17-admin-user-identity-db-test.mjs
 
       - name: Build
         run: npm run build

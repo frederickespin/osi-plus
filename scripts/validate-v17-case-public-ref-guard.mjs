@@ -66,6 +66,8 @@ function containsLegacyFrontendIdentifier(source) {
 export const PUBLIC_REFERENCE_CONTRACTS = Object.freeze({
   "api/_lib/adminIdentityInvitationDomain.js": ["INVITATION", "MEMBERSHIP"],
   "api/_lib/adminMembershipDomain.js": ["MEMBERSHIP"],
+  "api/_lib/adminUserEnrollmentDomain.js": ["MEMBERSHIP"],
+  "api/_lib/adminUserIdentityDomain.js": ["MEMBERSHIP"],
   "api/_lib/authContext.js": ["MEMBERSHIP"],
   "api/_lib/authorizationContext.js": ["MEMBERSHIP"],
   "api/_lib/clientTemporaryAccessDomain.js": ["CASE"],
@@ -223,6 +225,35 @@ function validateReferenceConsumer(path, content, kinds) {
     }
     return false;
   }
+  function enrollmentTenant(node, value) {
+    // Activation obtains its company from the pending, unexpired token row.
+    // This exception is specific to that immutable binding and lookup, never
+    // to every query in an enrollment file or to a caller-supplied tenant.
+    if (path !== "api/_lib/adminUserEnrollmentDomain.js" || enclosingFunction(node) !== "activateUserEnrollment"
+      || !value || !ts.isPropertyAccessExpression(value) || value.getText(source) !== "row.tenant_id") return false;
+    const bound = constInitializer(value.expression);
+    const call = bound && ts.isAwaitExpression(bound) ? bound.expression : null;
+    if (!call || !ts.isCallExpression(call) || call.expression.getText(source) !== "activationRow"
+      || call.arguments[0]?.getText(source) !== "tx" || call.arguments[1]?.getText(source) !== "tokenHash"
+      || propertyValue(call.arguments[2], "lock")?.kind !== ts.SyntaxKind.TrueKeyword) return false;
+    const tokenHash = constInitializer(call.arguments[1]);
+    if (!tokenHash || !ts.isCallExpression(tokenHash) || tokenHash.expression.getText(source) !== "hashUserEnrollmentToken"
+      || tokenHash.arguments.length !== 1 || tokenHash.arguments[0].getText(source) !== "input.token") return false;
+    const lookup = definitions.get("activationRow");
+    if (!lookup) return false;
+    const lookupCode = ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Unspecified, lookup, source).replace(/\s+/g, "");
+    if (!lookupCode.includes("constrow=rows[0];") || !lookupCode.includes("returnrow;")
+      || !lookupCode.includes('!row||row.status!=="PENDING"||row.tenant_status!=="ACTIVE"||newDate(row.expires_at)<=now')
+      || !lookupCode.includes('(expectedTenantCode&&row.tenant_code!==expectedTenantCode))identityFail("ACTIVATION_INVALID")')) return false;
+    let lookups = 0;
+    visitNodes(lookup, (query) => {
+      if (!ts.isTaggedTemplateExpression(query) || query.tag.getText(source) !== "Prisma.sql") return;
+      const parts = sqlParts(query);
+      if (parts.sql.replace(/\s+/g, "").includes('FROM"osi"."user_enrollments"eJOIN"osi"."tenants"tONt."id"=e."tenant_id"WHEREe."token_hash"=<0>')
+        && parts.values[0]?.getText(source) === "tokenHash" && !/\bOR\b/.test(parts.sql)) lookups += 1;
+    });
+    return lookups === 1;
+  }
   let prismaQueries = 0, sqlQueries = 0;
   visitNodes(source, (node) => {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
@@ -261,14 +292,16 @@ function validateReferenceConsumer(path, content, kinds) {
         const value = token ? values[Number(token[1])] : null;
         const invitationTenant = path === "api/_lib/adminIdentityInvitationDomain.js" && value?.getText(source) === "invitation.tenant_id"
           && ["activateNewAdminIdentity", "acceptExistingAdminIdentity"].includes(enclosingFunction(node));
-        scoped = column >= 0 && (trustedTenantValue(value, source) || invitationTenant);
+        scoped = column >= 0 && (trustedTenantValue(value, source) || invitationTenant || enrollmentTenant(node, value));
       }
     } else {
       const tenant = sql.match(/\bWHERE\s+(?:[a-z]+\.)?"tenant_id"\s*=\s*<(\d+)>/);
       if (tenant && trustedTenantValue(values[Number(tenant[1])], source) && !/\bOR\b/.test(sql)) scoped = true;
       // The membership list composes AND predicates; its first term is the
       // revalidated actor's tenant, not a request-supplied identifier.
-      if (path === "api/_lib/adminMembershipDomain.js" && enclosingFunction(node) === "listTenantMemberships" && /\bWHERE\s+<0>/.test(sql)) {
+      const directoryConsumer = (path === "api/_lib/adminMembershipDomain.js" && enclosingFunction(node) === "listTenantMemberships")
+        || (path === "api/_lib/adminUserIdentityDomain.js" && enclosingFunction(node) === "listUserIdentityDirectory");
+      if (directoryConsumer && /\bWHERE\s+<0>/.test(sql)) {
         const where = constInitializer(values[0]);
         const conditions = where && ts.isCallExpression(where) && where.expression.getText(source) === "Prisma.join"
           && ts.isStringLiteral(where.arguments[1]) && where.arguments[1].text === " AND " ? constInitializer(where.arguments[0]) : null;

@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
+import { CANONICAL_MIGRATIONS, validateAppliedMigrationHistory } from "./canonical-migrations.mjs";
 import {
-  CANONICAL_35_CATALOG, CANONICAL_35_SQL_ONLY_COUNTS,
+  CANONICAL_35_CATALOG, CANONICAL_35_SQL_ONLY_COUNTS, CANONICAL_35_PROFILE,
+  CANONICAL_36_USER_IDENTITY_CATALOG, CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS,
   HISTORICAL_22_CATALOG, HISTORICAL_22_SQL_ONLY_COUNTS,
   inspectCrm01b1SqlDriftBaseline, mapSqlOnlyObjects, sqlDriftProfileForDatabase,
   summarizeCrm01b1Catalog, validateCrm01b1CatalogSummary,
@@ -45,14 +46,23 @@ const extensionEvidence = {
 const canonicalDatabase = "osi_db01n_ci";
 const historicalDatabase = "osi_crm01b_local";
 const canonicalInventory = { counts: CANONICAL_35_SQL_ONLY_COUNTS, unmapped: [] };
+const identityInventory = { counts: CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS, unmapped: [] };
+const identityFixture = JSON.parse(readFileSync(resolve(root, "tests/crm-01b1/user-identity-19c-catalog.json"), "utf8"));
 
 try {
-  check("CI selecciona perfil35 por destino aprobado", () => {
+  check("CI selecciona perfil36 de identidad por destino aprobado", () => {
     const profile = sqlDriftProfileForDatabase(canonicalDatabase);
-    assert.equal(profile.id, "canonical-35");
-    assert.equal(profile.migrations, 35);
-    assert.equal(profile.catalog, CANONICAL_35_CATALOG);
+    assert.equal(profile.id, "canonical-36-user-identity-19c");
+    assert.equal(profile.migrations, 36);
+    assert.equal(profile.catalog, CANONICAL_36_USER_IDENTITY_CATALOG);
+    assert.equal(profile.approvedMigrationChecksums[identityFixture.migration.name], identityFixture.migration.sha256);
     assert.ok(Object.isFrozen(profile) && Object.isFrozen(profile.catalog.categories));
+  });
+  check("perfil35 conserva su checkpoint y catálogo congelado", () => {
+    assert.equal(CANONICAL_35_PROFILE.migrations, 35);
+    assert.equal(CANONICAL_35_PROFILE.throughMigration, "20260916010000_v17_client_temporary_portal");
+    assert.equal(CANONICAL_35_PROFILE.catalog, CANONICAL_35_CATALOG);
+    assert.equal(validateAppliedMigrationHistory(history.slice(0, 35), { throughMigration: CANONICAL_35_PROFILE.throughMigration }).length, 35);
   });
   for (const database of [historicalDatabase, "osi_v17_case_client_local", "osi_v17_case_public_ref_local"]) {
     check(`destino histórico ${database} exige22`, () => {
@@ -66,20 +76,21 @@ try {
     rejected(`destino sin perfil rechazado: ${database}`, () => sqlDriftProfileForDatabase(database), /destino sin perfil/);
   }
 
-  check("historial35 exacto y checksums fuente aceptados", () => {
-    assert.equal(validateCrm01b1MigrationHistory(history, migrations, canonicalDatabase).complete, 35);
+  check("historial36 exacto y checksums fuente aceptados", () => {
+    assert.equal(validateCrm01b1MigrationHistory(history, migrations, canonicalDatabase).complete, 36);
   });
   check("historial22 exacto conserva checkpoint histórico", () => {
     assert.equal(validateCrm01b1MigrationHistory(history.slice(0, 22), migrations, historicalDatabase).complete, 22);
   });
-  rejected("CI no selecciona22 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 22), migrations, canonicalDatabase), /35 migraciones/);
-  rejected("fixture histórico no asciende a35 por conteo observado", () => validateCrm01b1MigrationHistory(history, migrations, historicalDatabase), /22 migraciones/);
+  rejected("CI no selecciona22 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 22), migrations, canonicalDatabase), /36 migraciones/);
+  rejected("CI no retrocede a35 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 35), migrations, canonicalDatabase), /36 migraciones/);
+  rejected("fixture histórico no asciende a36 por conteo observado", () => validateCrm01b1MigrationHistory(history, migrations, historicalDatabase), /22 migraciones/);
   const duplicate = clone(history);
   duplicate[34] = clone(history[33]);
-  rejected("duplicado con conteo35 rechazado", () => validateCrm01b1MigrationHistory(duplicate, migrations, canonicalDatabase), /35 migraciones/);
+  rejected("duplicado con conteo36 rechazado", () => validateCrm01b1MigrationHistory(duplicate, migrations, canonicalDatabase), /36 migraciones/);
   const renamed = clone(history);
   renamed[20].migration_name = "20260827020000_unapproved_same_count";
-  rejected("nombre sustituido con conteo35 rechazado", () => validateCrm01b1MigrationHistory(renamed, migrations, canonicalDatabase), /35 migraciones/);
+  rejected("nombre sustituido con conteo36 rechazado", () => validateCrm01b1MigrationHistory(renamed, migrations, canonicalDatabase), /36 migraciones/);
   for (const [property, value] of [["finished_at", null], ["rolled_back_at", new Date()], ["applied_steps_count", 0], ["applied_steps_count", 2]]) {
     const altered = clone(history);
     altered[5][property] = value;
@@ -94,6 +105,11 @@ try {
   changedSources[6][1] += "\n-- changed SQL source\n";
   rejected("checksum aplicado debe coincidir con bytes de fuente", () => validateCrm01b1MigrationHistory(history, changedSources, canonicalDatabase), /checksum aplicado/);
   rejected("fuente de migración ausente rechazada", () => validateCrm01b1MigrationHistory(history, migrations.slice(1), canonicalDatabase), /checksum aplicado/);
+  const changedIdentitySources = clone(migrations);
+  changedIdentitySources[35][1] += "\n-- unreviewed identity source\n";
+  const changedIdentityHistory = clone(history);
+  changedIdentityHistory[35].checksum = createHash("sha256").update(changedIdentitySources[35][1]).digest("hex");
+  rejected("19C no acepta SQL nuevo aunque coincida con su historial aplicado", () => validateCrm01b1MigrationHistory(changedIdentityHistory, changedIdentitySources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
 
   check("hash histórico22 conservado", () => {
     assert.equal(validateCrm01b1CatalogSummary(HISTORICAL_22_CATALOG).sha256,
@@ -121,6 +137,45 @@ try {
     else altered.categories.unknown = { count: 1, sha256: "0".repeat(64) };
     rejected(`categoría ${mutation} rechazada`, () => validateCrm01b1CatalogSummary(altered, CANONICAL_35_CATALOG), /categorias/);
   }
+  check("catálogo36 y delta provienen del artifact revisado", () => {
+    assert.equal(identityFixture.provenance.workflowRun, 41059351747);
+    assert.equal(identityFixture.provenance.head, "6db6c366f5bb61b9f11cd8cfe0d2336b75df7324");
+    assert.deepEqual(identityFixture.catalog, CANONICAL_36_USER_IDENTITY_CATALOG);
+    assert.deepEqual(identityFixture.previousCatalog, CANONICAL_35_CATALOG);
+    assert.equal(validateCrm01b1CatalogSummary(identityFixture.catalog, CANONICAL_36_USER_IDENTITY_CATALOG).count, 10569);
+    assert.equal(identityFixture.migration.sha256, history[35].checksum);
+    assert.deepEqual(summarizeCrm01b1Catalog(identityFixture.delta.rows), identityFixture.delta.catalog);
+    assert.equal(identityFixture.delta.catalog.count, 108);
+    assert.ok(identityFixture.delta.rows.every((row) => row.schema_name === "osi" && identityFixture.delta.tables.includes(row.table_name)));
+    for (const [kind, summary] of Object.entries(CANONICAL_36_USER_IDENTITY_CATALOG.categories)) {
+      assert.equal(summary.count, CANONICAL_35_CATALOG.categories[kind].count + (identityFixture.delta.catalog.categories[kind]?.count || 0));
+    }
+  });
+  rejected("catálogo35 no reemplaza catálogo36", () => validateCrm01b1CatalogSummary(CANONICAL_35_CATALOG, CANONICAL_36_USER_IDENTITY_CATALOG), /conteo total/);
+  for (const kind of Object.keys(CANONICAL_36_USER_IDENTITY_CATALOG.categories)) {
+    for (const field of ["count", "sha256"]) {
+      const altered = clone(CANONICAL_36_USER_IDENTITY_CATALOG);
+      altered.categories[kind][field] = field === "count" ? altered.categories[kind].count + 1 : "0".repeat(64);
+      rejected(`perfil36 rechaza cambio ${kind}.${field} aunque total coincida`, () => validateCrm01b1CatalogSummary(altered, CANONICAL_36_USER_IDENTITY_CATALOG), /conteo .* cambio|definiciones .* cambiaron/);
+    }
+  }
+  const deltaRows = identityFixture.delta.rows;
+  const removedPhotoCheck = deltaRows.filter((row) => row.object_name !== "tenant_user_identities_photo_check");
+  check("mutante elimina exactamente un CHECK de fotografía", () => assert.equal(removedPhotoCheck.length, deltaRows.length - 1));
+  rejected("catálogo medido rechaza eliminar CHECK de fotografía", () => validateCrm01b1CatalogSummary(summarizeCrm01b1Catalog(removedPhotoCheck), identityFixture.delta.catalog), /conteo total/);
+  for (const [kind, name, before, after] of [
+    ["check", "user_enrollments_role_check", "<> 'A'", "= 'A'"],
+    ["check", "tenant_user_identities_photo_check", "262144", "262145"],
+    ["foreign_key", "tenant_user_identities_membership_fkey", "membership_id", "unknown_membership_id"],
+    ["index", "user_enrollments_pending_email_key", "PENDING", "REVOKED"],
+    ["column", "photo_bytes", "bytea", "text"],
+  ]) {
+    const altered = clone(deltaRows);
+    const row = altered.find((item) => item.kind === kind && item.object_name === name);
+    assert.ok(row?.definition.includes(before), `mutation must change measured ${kind}:${name}`);
+    row.definition = row.definition.replace(before, after);
+    rejected(`catálogo medido rechaza cambiar ${kind}:${name} sin alterar conteo`, () => validateCrm01b1CatalogSummary(summarizeCrm01b1Catalog(altered), identityFixture.delta.catalog), /firma total/);
+  }
   check("normalización histórica preserva espacios y definiciones", () => {
     const row = { kind: "function", schema_name: "osi", table_name: "", object_name: "fixture()", definition: " SELECT\n  1; " };
     assert.deepEqual(summarizeCrm01b1Catalog([row]), summarizeCrm01b1Catalog([{ ...row, definition: "SELECT 1;" }]));
@@ -134,7 +189,7 @@ try {
     assert.equal(validateCrm01b1SqlExtensions(extensionEvidence, canonicalDatabase).functionMembers, 212);
   });
   rejected("extensión posterior rechazada en histórico22", () => validateCrm01b1SqlExtensions(extensionEvidence, historicalDatabase), /extensiones, versiones o esquemas/);
-  rejected("canonical35 sin btree_gist rechazada", () => validateCrm01b1SqlExtensions({ extensions: [], members: [] }, canonicalDatabase), /extensiones, versiones o esquemas/);
+  rejected("canonical36 sin btree_gist rechazada", () => validateCrm01b1SqlExtensions({ extensions: [], members: [] }, canonicalDatabase), /extensiones, versiones o esquemas/);
   for (const [field, value] of [["extension_name", "unexpected_extension"], ["version", "1.7"], ["schema_name", "public"]]) {
     const altered = clone(extensionEvidence);
     altered.extensions[0][field] = value;
@@ -181,6 +236,13 @@ try {
   check("inventario canonical927 en35 migraciones aceptado", () => {
     assert.deepEqual(validateSqlOnlyInventory(canonicalInventory, CANONICAL_35_SQL_ONLY_COUNTS), { total: 927, migrations: 35 });
   });
+  check("inventario36 exige945 objetos SQL-only con16checks y2índices19C", () => {
+    assert.deepEqual(validateSqlOnlyInventory(identityInventory, CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS), { total: 945, migrations: 36 });
+  });
+  rejected("inventario35 no sustituye inventario36", () => validateSqlOnlyInventory(canonicalInventory, CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS), /inventario SQL-only cambio/);
+  const missingIdentityIndex = clone(identityInventory);
+  missingIdentityIndex.counts[identityFixture.migration.name].special_index--;
+  rejected("perfil36 detecta índice parcial de altas ausente", () => validateSqlOnlyInventory(missingIdentityIndex, CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS), /inventario SQL-only cambio/);
   rejected("SQL-only desconocido rechazado", () => validateSqlOnlyInventory({ ...canonicalInventory, unmapped: ["function:unexpected()"] }, CANONICAL_35_SQL_ONLY_COUNTS), /sin migracion/);
   const movedCount = clone(canonicalInventory);
   movedCount.counts["20260907010000_v17_tools_equipment"].function--;

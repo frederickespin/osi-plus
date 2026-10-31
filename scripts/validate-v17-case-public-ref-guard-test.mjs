@@ -38,9 +38,11 @@ function changeConsumer(path, before, after) {
 
 check("baseline publicRef aprobada", baseline.ok);
 check("inventario distingue casos y clientes de membresías e invitaciones",
-  baseline.runtimeConsumers === 23
+  baseline.runtimeConsumers === 25
   && baseline.consumerContracts["api/_lib/crmIcpV2ApiDomain.js"].kinds.join(",") === "CASE,CLIENT"
   && baseline.consumerContracts["api/_lib/authContext.js"].kinds.join(",") === "MEMBERSHIP"
+  && baseline.consumerContracts["api/_lib/adminUserIdentityDomain.js"].kinds.join(",") === "MEMBERSHIP"
+  && baseline.consumerContracts["api/_lib/adminUserEnrollmentDomain.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminIdentityInvitationDomain.js"].kinds.join(",") === "INVITATION,MEMBERSHIP");
 check("todos los consumidores persistentes tienen consultas verificadas",
   Object.entries(baseline.consumerContracts).every(([path, contract]) =>
@@ -152,6 +154,26 @@ rejected("SQL MEMBERSHIP pierde tenant", changeConsumer("api/_lib/adminMembershi
   'WHERE tm."tenant_id"=${actor.tenantId} AND tm."public_ref"', 'WHERE tm."public_ref"'), /contrato tenant-first/);
 rejected("SQL lista de membresías cambia AND por OR", changeConsumer("api/_lib/adminMembershipDomain.js",
   'Prisma.join(conditions, " AND ")', 'Prisma.join(conditions, " OR ")'), /contrato tenant-first/);
+rejected("SQL ficha de identidad pierde empresa", changeConsumer("api/_lib/adminUserIdentityDomain.js",
+  'WHERE tm."tenant_id"=${tenantId} AND tm."public_ref"', 'WHERE tm."public_ref"'), /contrato tenant-first/);
+rejected("SQL resúmenes de identidad pierde empresa", changeConsumer("api/_lib/adminUserIdentityDomain.js",
+  'WHERE tm."tenant_id"=${actor.tenantId} AND tm."public_ref"', 'WHERE tm."public_ref"'), /contrato tenant-first/);
+rejected("directorio de identidad no acepta tenant de filtros", changeConsumer("api/_lib/adminUserIdentityDomain.js",
+  'const conditions = [Prisma.sql`tm."tenant_id"=${actor.tenantId}`]', 'const conditions = [Prisma.sql`tm."tenant_id"=${filters.tenantId}`]'), /contrato tenant-first/);
+rejected("directorio de identidad no une el tenant con OR", changeConsumer("api/_lib/adminUserIdentityDomain.js",
+  'Prisma.join(conditions, " AND ")', 'Prisma.join(conditions, " OR ")'), /contrato tenant-first/);
+rejected("alta no recibe empresa desde el destinatario", changeConsumer("api/_lib/adminUserEnrollmentDomain.js",
+  'VALUES (${membershipId},${row.tenant_id},${userId}', 'VALUES (${membershipId},${input.tenantId},${userId}'), /contrato tenant-first/);
+rejected("alta conserva vínculo de hash de token", changeConsumer("api/_lib/adminUserEnrollmentDomain.js",
+  'WHERE e."token_hash"=${tokenHash}', 'WHERE true'), /contrato tenant-first/);
+rejected("alta no usa token sin hash como identidad", changeConsumer("api/_lib/adminUserEnrollmentDomain.js",
+  'const tokenHash = hashUserEnrollmentToken(input.token);', 'const tokenHash = input.token;'), /contrato tenant-first/);
+rejected("alta no acepta fila de empresa de input", changeConsumer("api/_lib/adminUserEnrollmentDomain.js",
+  'const row = await activationRow(tx, tokenHash, { now, expectedTenantCode, lock: true });', 'const row = input;'), /contrato tenant-first/);
+rejected("alta no omite expiración de la identidad del token", changeConsumer("api/_lib/adminUserEnrollmentDomain.js",
+  ' || new Date(row.expires_at) <= now', ''), /contrato tenant-first/);
+rejected("alta no desacopla empresa del token", changeConsumer("api/_lib/adminUserEnrollmentDomain.js",
+  't."id"=e."tenant_id"', 'true'), /contrato tenant-first/);
 rejected("SQL invitación pierde tenant", changeConsumer("api/_lib/adminIdentityInvitationDomain.js",
   'WHERE "tenant_id"=${actor.tenantId} AND "public_ref"', 'WHERE "public_ref"'), /contrato tenant-first/);
 rejected("SQL invitación no acepta tenant de una entrada", changeConsumer("api/_lib/adminIdentityInvitationDomain.js",

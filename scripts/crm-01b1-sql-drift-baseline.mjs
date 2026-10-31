@@ -15,6 +15,7 @@ export const LOCAL_20_CATALOG_SHA256 = "c8301cc67acb2cd4993c3dc10565e6933e45b006
 export const LOCAL_21_CATALOG_SHA256 = "a1a4da277070269bbad2452471717ef588c6c58cc2bc0cf55203835abb0cd930";
 export const LOCAL_22_CATALOG_SHA256 = "ddf3e8851410807ce123160010ef727ff8c1e757f545b299a871f5bc9ab7427e";
 export const LOCAL_35_CATALOG_SHA256 = "2edda06f3606ce0546fcf4ed7435153e5b77986e0cc2d54c3d661785f06002a3";
+export const LOCAL_36_USER_IDENTITY_CATALOG_SHA256 = "481649e8c88db832d1f313f7e3a4a785f28a1d49c4277dc21eac179fef16cb54";
 export const RESTORED_NEON_15_CATALOG_SHA256 = "4d5959dc99b03a7866bc3e038fcaea611fe665a5412cb235522cc05ab5e011d3";
 
 export const HISTORICAL_22_CATALOG = Object.freeze({
@@ -93,6 +94,29 @@ export const CANONICAL_35_SQL_ONLY_COUNTS = Object.freeze({
   "20260916010000_v17_client_temporary_portal": Object.freeze({ check: 8, function: 3, trigger: 8 }),
 });
 
+// Measured on PostgreSQL 18.6 in CI run 41059351747, artifact 12978656029.
+// Removing only the two 19C tables from the captured rows reproduces every
+// frozen 35-migration hash exactly. No catalog query/normalization changed.
+// See docs/V17-SQL-CATALOG-BASELINE-36-IDENTITY-19C.md for full provenance.
+export const CANONICAL_36_USER_IDENTITY_CATALOG = Object.freeze({
+  count: 10569,
+  sha256: LOCAL_36_USER_IDENTITY_CATALOG_SHA256,
+  categories: Object.freeze({
+    check: Object.freeze({ count: 406, sha256: "4782f94ffb2053b76e26284ea39cc109d24b9270968382d4dd8332ca03a34d08" }),
+    column: Object.freeze({ count: 3772, sha256: "e1547a3956c42a98dea95f6dc70e8c6d0700762ecc22ef08074ec94fd30f6198" }),
+    constraint: Object.freeze({ count: 3032, sha256: "7c6aad78623912ffb109a61ed6daa4a4e0b7f9c59cc0aeaf5b4f15a480e3dd27" }),
+    enum: Object.freeze({ count: 1102, sha256: "229714a4280acac482aa12e074cfe34585a4b51f658ae6922216039b92b7bbaf" }),
+    foreign_key: Object.freeze({ count: 661, sha256: "dafe8a1869adc492c54470edd78cf8a047994752b157e11a2ceee42ecb0a65c6" }),
+    function: Object.freeze({ count: 299, sha256: "b8a66bf6c666c819e0170e71400b15a31c50ede5229afde94d76b6f4432d25a9" }),
+    index: Object.freeze({ count: 1114, sha256: "78ef61c51409718fe718d1dc6a1a25be1b484414f10e6e28105990f05efa72b3" }),
+    trigger: Object.freeze({ count: 183, sha256: "9c328fd35c079ae79a83ccd8551ab184c849ab776d6c8f87990a50297edcbf7f" }),
+  }),
+});
+export const CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS = Object.freeze({
+  ...CANONICAL_35_SQL_ONLY_COUNTS,
+  "20261030010000_v17_user_identity_enrollment": Object.freeze({ check: 16, special_index: 2 }),
+});
+
 const BTREE_GIST_MIGRATION = "20260907010000_v17_tools_equipment";
 const HISTORICAL_22_PROFILE = Object.freeze({
   id: "historical-22", migrations: 22,
@@ -102,12 +126,23 @@ const HISTORICAL_22_PROFILE = Object.freeze({
   extensions: Object.freeze([]),
   extensionMembers: Object.freeze({ count: 0, sha256: "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945" }),
 });
-const CANONICAL_35_PROFILE = Object.freeze({
+export const CANONICAL_35_PROFILE = Object.freeze({
   id: "canonical-35", migrations: 35,
+  throughMigration: "20260916010000_v17_client_temporary_portal",
   catalog: CANONICAL_35_CATALOG,
   sqlOnlyCounts: CANONICAL_35_SQL_ONLY_COUNTS,
   extensions: Object.freeze([Object.freeze({ extension_name: "btree_gist", version: "1.8", schema_name: "osi" })]),
   extensionMembers: Object.freeze({ count: 212, sha256: "5768fa15ad9dc973614d90b162eeb87fbef323dc2b76e019e0f07a454623d5cc" }),
+});
+const CANONICAL_36_USER_IDENTITY_PROFILE = Object.freeze({
+  id: "canonical-36-user-identity-19c", migrations: 36,
+  catalog: CANONICAL_36_USER_IDENTITY_CATALOG,
+  sqlOnlyCounts: CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS,
+  extensions: CANONICAL_35_PROFILE.extensions,
+  extensionMembers: CANONICAL_35_PROFILE.extensionMembers,
+  approvedMigrationChecksums: Object.freeze({
+    "20261030010000_v17_user_identity_enrollment": "328529a4c68c8203d279c148c33bb70562c1b9fb6024b0d9f09c390976d3ca50",
+  }),
 });
 
 export const CATALOG_SQL = `
@@ -176,12 +211,12 @@ ORDER BY kind, object_name`;
 
 // Supplemental provenance only: the historical catalog/SQL-only queries above
 // remain unchanged. Cast to name just as their UNION does, so identity keys match.
-const EXTENSIONS_SQL = `
+export const EXTENSIONS_SQL = `
 SELECT e.extname AS extension_name, e.extversion AS version, n.nspname AS schema_name
 FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
 WHERE n.nspname = 'osi' ORDER BY e.extname`;
 
-const EXTENSION_MEMBERS_SQL = `
+export const EXTENSION_MEMBERS_SQL = `
 SELECT e.extname AS extension_name, e.extversion AS version,
        en.nspname AS extension_schema, 'function' AS kind,
        (p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')')::name::text AS object_name
@@ -207,7 +242,7 @@ function normalizeDefinition(value) {
 }
 
 export function sqlDriftProfileForDatabase(database) {
-  if (database === "osi_db01n_ci") return CANONICAL_35_PROFILE;
+  if (database === "osi_db01n_ci") return CANONICAL_36_USER_IDENTITY_PROFILE;
   if (["osi_crm01b_local", "osi_v17_case_client_local", "osi_v17_case_public_ref_local"].includes(database)) {
     return HISTORICAL_22_PROFILE;
   }
@@ -219,6 +254,8 @@ export function validateCrm01b1MigrationHistory(history, migrations, database) {
   const names = validateAppliedMigrationHistory(history, { throughMigration: profile.throughMigration });
   invariant(names.length === profile.migrations, "perfil requiere una actualización explícita de migraciones");
   const checksums = new Map(migrations.map(([name, sql]) => [name, createHash("sha256").update(sql).digest("hex")]));
+  invariant(Object.entries(profile.approvedMigrationChecksums || {}).every(([name, checksum]) => checksums.get(name) === checksum),
+    "checksum fuente fuera de la medición aprobada del perfil");
   invariant(history.every((row) => typeof row.checksum === "string" && /^[0-9a-f]{64}$/.test(row.checksum)
     && checksums.has(row.migration_name) && row.checksum === checksums.get(row.migration_name)),
     "checksum aplicado no coincide con la fuente de migración");

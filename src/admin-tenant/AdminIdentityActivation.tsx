@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
 import { loadSession } from "@/lib/sessionStore";
 import { clearAdminIdentityActivationToken, readAdminIdentityActivationToken } from "./adminIdentityActivationRoute";

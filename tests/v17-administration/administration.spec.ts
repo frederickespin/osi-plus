@@ -157,7 +157,7 @@ test("un lector sólo del catálogo de Servicios no consulta paquetes ni materia
 test("un lector sólo de paquetes abre su pestaña y no consulta el catálogo", async ({ page }) => {
   const seen = await session(page, ["services:packages:view"]);
   await page.goto("/administration/services");
-  await expect(page.getByRole("heading", { name: "Paquetes reutilizables", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Combinaciones reutilizables", exact: true })).toBeVisible();
   await expect.poll(() => seen.apiRequests.includes("/api/crm/services/packages")).toBe(true);
   expect(new Set(nonAuth(seen.apiRequests))).toEqual(new Set(["/api/crm/services/packages", "/api/crm/services/modes"]));
   expect(seen.unexpected).toEqual([]);

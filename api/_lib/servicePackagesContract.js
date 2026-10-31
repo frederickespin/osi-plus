@@ -6,6 +6,7 @@ const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,190}$/;
 const HASH = /^[0-9a-f]{64}$/;
 const CODE = /^[A-Z][A-Z0-9_-]{1,63}$/;
 const STATES = new Set(["DRAFT", "PUBLISHED", "INACTIVE"]);
+const MODE_SCOPES = new Set(["LOCAL", "EXPORT", "IMPORT"]);
 const SERVICE_KINDS = new Set(["PRIMARY", "COMPLEMENTARY"]);
 const REQUIREMENT_KINDS = new Set(["PERSONNEL", "MATERIAL", "ASSET", "VEHICLE", "TRANSPORT", "DURATION", "CRATING"]);
 const DISPOSITIONS = new Set(["CONSUMED", "RENTED", "RETURNABLE", "USAGE_CHARGE"]);
@@ -34,12 +35,13 @@ export function serviceConfigurationPayloadHash(value) { return createHash("sha2
 function signed(input, payload) { if (typeof input.payloadHash !== "string" || !HASH.test(input.payloadHash) || input.payloadHash !== serviceConfigurationPayloadHash(payload)) fail("SERVICE_PACKAGES_PAYLOAD_HASH_INVALID"); return Object.freeze({ ...payload, payloadHash: input.payloadHash }); }
 function requestId(value) { const result = text(value, 191, 8); if (!REQUEST_ID.test(result)) fail("SERVICE_PACKAGES_INPUT_INVALID"); return result; }
 function code(value) { const result = text(value, 64, 2); if (!CODE.test(result)) fail("SERVICE_PACKAGES_INPUT_INVALID"); return result; }
+function identityCode(value) { return value === null ? null : code(value); }
 function optionalRule(value) { if (!value || typeof value !== "object" || Array.isArray(value) || JSON.stringify(value).length > 2_000) fail("SERVICE_PACKAGES_INPUT_INVALID"); return Object.freeze({ ...value }); }
 
 function requirement(value) {
   exact(value, ["kind", "code", "name", "quantity", "unitCode", "hours", "days", "phaseCode", "materialRef", "assetModelRef", "capabilityRef", "disposition", "chargeType", "configuration"]);
   const kind = choice(value.kind, REQUIREMENT_KINDS);
-  const result = Object.freeze({ kind, code: text(value.code, 80), name: text(value.name, 160), quantity: decimal(value.quantity), unitCode: nullableText(value.unitCode, 32), hours: decimal(value.hours, { max: 100_000 }), days: decimal(value.days, { max: 10_000 }), phaseCode: nullableText(value.phaseCode, 64), materialRef: ref(value.materialRef, true), assetModelRef: ref(value.assetModelRef, true), capabilityRef: ref(value.capabilityRef, true), disposition: value.disposition === null ? null : choice(value.disposition, DISPOSITIONS), chargeType: value.chargeType === null ? null : choice(value.chargeType, CHARGES), configuration: optionalRule(value.configuration) });
+  const result = Object.freeze({ kind, code: value.code === null ? null : text(value.code, 80), name: text(value.name, 160), quantity: decimal(value.quantity), unitCode: nullableText(value.unitCode, 32), hours: decimal(value.hours, { max: 100_000 }), days: decimal(value.days, { max: 10_000 }), phaseCode: nullableText(value.phaseCode, 64), materialRef: ref(value.materialRef, true), assetModelRef: ref(value.assetModelRef, true), capabilityRef: ref(value.capabilityRef, true), disposition: value.disposition === null ? null : choice(value.disposition, DISPOSITIONS), chargeType: value.chargeType === null ? null : choice(value.chargeType, CHARGES), configuration: optionalRule(value.configuration) });
   const authorities = [result.materialRef, result.assetModelRef, result.capabilityRef].filter(Boolean).length;
   if ((kind === "PERSONNEL" && (!result.capabilityRef || authorities !== 1)) || (kind === "MATERIAL" && (!result.materialRef || authorities !== 1)) || (kind === "ASSET" && (!result.assetModelRef || authorities !== 1)) || (!["PERSONNEL", "MATERIAL", "ASSET"].includes(kind) && authorities !== 0)) fail("SERVICE_PACKAGES_REQUIREMENT_AUTHORITY_INVALID", 409);
   return result;
@@ -48,15 +50,16 @@ function requirement(value) {
 export function normalizePackageSave(input) {
   exact(input, ["requestId", "payloadHash", "packageRef", "expectedVersion", "code", "name", "description", "category", "tags", "modeRefs", "primaryServiceRef", "complementaryRefs", "requirements", "state", "validFrom", "validTo"]);
   if (!Array.isArray(input.requirements) || input.requirements.length > 100) fail("SERVICE_PACKAGES_INPUT_INVALID");
-  const payload = Object.freeze({ operation: "PACKAGE_SAVE", requestId: requestId(input.requestId), packageRef: ref(input.packageRef, true), expectedVersion: input.expectedVersion === null ? null : integer(input.expectedVersion, 1), code: code(input.code), name: text(input.name, 160), description: nullableText(input.description, 1000), category: nullableText(input.category, 80), tags: texts(input.tags), modeRefs: refs(input.modeRefs), primaryServiceRef: ref(input.primaryServiceRef), complementaryRefs: refs(input.complementaryRefs), requirements: Object.freeze(input.requirements.map(requirement)), state: choice(input.state, STATES), validFrom: nullableText(input.validFrom, 40), validTo: nullableText(input.validTo, 40) });
+  const payload = Object.freeze({ operation: "PACKAGE_SAVE", requestId: requestId(input.requestId), packageRef: ref(input.packageRef, true), expectedVersion: input.expectedVersion === null ? null : integer(input.expectedVersion, 1), code: identityCode(input.code), name: text(input.name, 160), description: nullableText(input.description, 1000), category: nullableText(input.category, 80), tags: texts(input.tags), modeRefs: refs(input.modeRefs), primaryServiceRef: ref(input.primaryServiceRef), complementaryRefs: refs(input.complementaryRefs), requirements: Object.freeze(input.requirements.map(requirement)), state: choice(input.state, STATES), validFrom: nullableText(input.validFrom, 40), validTo: nullableText(input.validTo, 40) });
   if (!payload.modeRefs.length) fail("SERVICE_PACKAGES_MODE_REQUIRED", 409);
   if (payload.packageRef === null !== (payload.expectedVersion === null)) fail("SERVICE_PACKAGES_INPUT_INVALID");
   return signed(input, payload);
 }
 
 export function normalizeModeSave(input) {
-  exact(input, ["requestId", "payloadHash", "modeRef", "expectedVersion", "code", "name", "description", "state", "sortOrder"]);
-  const payload = Object.freeze({ operation: "MODE_SAVE", requestId: requestId(input.requestId), modeRef: ref(input.modeRef, true), expectedVersion: input.expectedVersion === null ? null : integer(input.expectedVersion, 1), code: code(input.code), name: text(input.name, 160), description: nullableText(input.description, 500), state: choice(input.state, STATES), sortOrder: integer(input.sortOrder) });
+  const automaticCreate = input?.modeRef === null && input?.code === null;
+  exact(input, ["requestId", "payloadHash", "modeRef", "expectedVersion", "code", "name", "description", "state", "sortOrder", ...(automaticCreate ? ["scope"] : [])]);
+  const payload = Object.freeze({ operation: "MODE_SAVE", requestId: requestId(input.requestId), modeRef: ref(input.modeRef, true), expectedVersion: input.expectedVersion === null ? null : integer(input.expectedVersion, 1), code: identityCode(input.code), name: text(input.name, 160), description: nullableText(input.description, 500), state: choice(input.state, STATES), sortOrder: integer(input.sortOrder), ...(automaticCreate ? { scope: choice(input.scope, MODE_SCOPES) } : {}) });
   if (payload.modeRef === null !== (payload.expectedVersion === null)) fail("SERVICE_PACKAGES_INPUT_INVALID");
   return signed(input, payload);
 }
@@ -79,7 +82,7 @@ function policyLine(value) {
 export function normalizeMaterialPolicySave(input) {
   exact(input, ["requestId", "payloadHash", "policyRef", "expectedVersion", "code", "name", "packageVersionRef", "serviceRef", "modeRef", "preferenceCode", "standardCode", "state", "validFrom", "validTo", "lines"]);
   if (!Array.isArray(input.lines) || input.lines.length > 100) fail("SERVICE_PACKAGES_INPUT_INVALID");
-  const payload = Object.freeze({ operation: "MATERIAL_POLICY_SAVE", requestId: requestId(input.requestId), policyRef: ref(input.policyRef, true), expectedVersion: input.expectedVersion === null ? null : integer(input.expectedVersion, 1), code: code(input.code), name: text(input.name, 160), packageVersionRef: ref(input.packageVersionRef, true), serviceRef: ref(input.serviceRef, true), modeRef: ref(input.modeRef, true), preferenceCode: nullableText(input.preferenceCode, 80), standardCode: text(input.standardCode, 80), state: choice(input.state, STATES), validFrom: nullableText(input.validFrom, 40), validTo: nullableText(input.validTo, 40), lines: Object.freeze(input.lines.map(policyLine)) });
+  const payload = Object.freeze({ operation: "MATERIAL_POLICY_SAVE", requestId: requestId(input.requestId), policyRef: ref(input.policyRef, true), expectedVersion: input.expectedVersion === null ? null : integer(input.expectedVersion, 1), code: identityCode(input.code), name: text(input.name, 160), packageVersionRef: ref(input.packageVersionRef, true), serviceRef: ref(input.serviceRef, true), modeRef: ref(input.modeRef, true), preferenceCode: nullableText(input.preferenceCode, 80), standardCode: text(input.standardCode, 80), state: choice(input.state, STATES), validFrom: nullableText(input.validFrom, 40), validTo: nullableText(input.validTo, 40), lines: Object.freeze(input.lines.map(policyLine)) });
   if (![payload.packageVersionRef, payload.serviceRef, payload.modeRef].some(Boolean)) fail("SERVICE_PACKAGES_POLICY_SCOPE_REQUIRED", 409);
   if (payload.policyRef === null !== (payload.expectedVersion === null)) fail("SERVICE_PACKAGES_INPUT_INVALID");
   return signed(input, payload);

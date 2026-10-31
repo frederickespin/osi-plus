@@ -21,7 +21,7 @@ on:
       - "api/_lib/fleetActor.js"
       - "api/_lib/logisticsEngineDomain.js"
       - "api/_lib/rbac.js"
-      - "src/crm-services/ServiceConfigurationAdmin.tsx"
+      - "src/crm-services/**"
       - "src/logistics-engine/LogisticsRulesAdmin.tsx"
       - "src/logistics-engine/Transport*.tsx"
       - "src/logistics-engine/transport*.ts"
@@ -83,7 +83,7 @@ jobs:
           npm run test:v17-fleet-drivers:http
           npm run guard:v17-admin-tenant-memberships
           npm run guard:v17-hub-auth-lazy
-          npx eslint src/administration src/admin-tenant src/admin-fleet src/crm-services/ServiceConfigurationAdmin.tsx tests/v17-administration tests/v17-user-identity tests/v17-fleet playwright.v17-administration.config.ts playwright.v17-user-identity.config.ts playwright.v17-fleet.config.ts
+          npx eslint src/administration src/admin-tenant src/admin-fleet src/crm-services/ServiceConfigurationAdmin.tsx src/crm-services/ServiceCatalogAdmin.tsx src/crm-services/MaterialPolicySheet.tsx src/crm-services/materialPolicyDraft.ts tests/v17-administration tests/v17-user-identity tests/v17-fleet playwright.v17-administration.config.ts playwright.v17-user-identity.config.ts playwright.v17-fleet.config.ts
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Verify administration navigation and permissions

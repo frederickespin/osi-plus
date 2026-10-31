@@ -61,7 +61,7 @@ export function normalizeServiceCatalogCreate(input) {
   const usage = oneOf(input.usage, USAGES);
   const compatibleModes = [...new Set((Array.isArray(input.compatibleModes) ? input.compatibleModes : []).map((mode) => oneOf(mode, MODES)))].sort();
   if (usage !== "COMPLEMENTARY" && compatibleModes.length === 0) serviceFail("CRM_SERVICES_MODE_REQUIRED");
-  const payload = Object.freeze({ operation: "CATALOG_CREATE", requestId: serviceRequestId(input.requestId), code: oneOf(input.code, { has: (v) => CODE.test(v) }), name: text(input.name, 160), category: nullableText(input.category, 80), usage, compatibleModes: Object.freeze(compatibleModes), sortOrder: integer(input.sortOrder), allowedComplementaryRefs: refs(input.allowedComplementaryRefs) });
+  const payload = Object.freeze({ operation: "CATALOG_CREATE", requestId: serviceRequestId(input.requestId), code: input.code === null ? null : oneOf(input.code, { has: (v) => CODE.test(v) }), name: text(input.name, 160), category: nullableText(input.category, 80), usage, compatibleModes: Object.freeze(compatibleModes), sortOrder: integer(input.sortOrder), allowedComplementaryRefs: refs(input.allowedComplementaryRefs) });
   return signed(input, payload);
 }
 
@@ -76,7 +76,7 @@ export function normalizeServiceCatalogUpdate(input) {
 
 export function normalizeServiceDefaults(input) {
   exact(input, ["requestId", "payloadHash", "primaryServiceRef", "combinationRef", "code", "name", "isDefault", "status", "expectedVersion", "complementaryRefs"]);
-  const payload = Object.freeze({ operation: "DEFAULTS_SAVE", requestId: serviceRequestId(input.requestId), primaryServiceRef: serviceRef(input.primaryServiceRef), combinationRef: input.combinationRef === null ? null : serviceRef(input.combinationRef), code: oneOf(input.code, { has: (v) => CODE.test(v) }), name: text(input.name, 160), isDefault: bool(input.isDefault), status: oneOf(input.status, STATUSES), expectedVersion: input.expectedVersion === null ? null : integer(input.expectedVersion, 1), complementaryRefs: refs(input.complementaryRefs) });
+  const payload = Object.freeze({ operation: "DEFAULTS_SAVE", requestId: serviceRequestId(input.requestId), primaryServiceRef: serviceRef(input.primaryServiceRef), combinationRef: input.combinationRef === null ? null : serviceRef(input.combinationRef), code: input.code === null ? null : oneOf(input.code, { has: (v) => CODE.test(v) }), name: text(input.name, 160), isDefault: bool(input.isDefault), status: oneOf(input.status, STATUSES), expectedVersion: input.expectedVersion === null ? null : integer(input.expectedVersion, 1), complementaryRefs: refs(input.complementaryRefs) });
   return signed(input, payload);
 }
 

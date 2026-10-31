@@ -180,3 +180,8 @@ Se actualizará la rama consolidada existente mediante push normal. No se crea m
 ## AK. Recomendación visual
 
 Revisar especialmente en la URL inmutable: alerta INTERIOR del escenario B, método Mini del escenario E, pestaña Servicios del escenario C y override 100% nuevo del escenario D. Detener el siguiente módulo hasta aprobación visual.
+
+
+## Actualización de Configuración de servicios
+
+La evolución del 31 de octubre de 2026 presenta Servicios y combinaciones, códigos automáticos y una tabla editable de políticas. Consulte [el alcance y la verificación de esta actualización](V17-SERVICES-COMBINATIONS-MATERIAL-SHEET.md). Las referencias y permisos del contrato 15A/15B conservan su identidad.

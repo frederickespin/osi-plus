@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./db.js";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import { PERMS, permsForRole } from "./rbac.js";
+import { automaticServiceConfigurationCode } from "./serviceConfigurationCode.js";
 import {
   CrmServicesError,
   normalizeCaseServiceSelection,
@@ -142,7 +143,7 @@ export async function createServiceCatalogItem(context, input, database = prisma
       const who = await actor(tx, context, PERMS.SERVICES_CATALOG_MANAGE, { manage: true });
       const replay = await prior(tx, who.tenantId, command);
       if (replay) return Object.freeze({ item: await publicCatalogByRef(tx, who.tenantId, replay.targetRef), replayed: true });
-      const item = await tx.serviceCatalogItem.create({ data: { id: randomUUID(), tenantId: who.tenantId, code: command.code, name: command.name, category: command.category, usage: command.usage, compatibleModes: command.compatibleModes, sortOrder: command.sortOrder } });
+      const item = await tx.serviceCatalogItem.create({ data: { id: randomUUID(), tenantId: who.tenantId, code: command.code ?? automaticServiceConfigurationCode(who.tenantId, command), name: command.name, category: command.category, usage: command.usage, compatibleModes: command.compatibleModes, sortOrder: command.sortOrder } });
       if (["PRIMARY", "BOTH"].includes(item.usage)) await replaceCompatibility(tx, who, item, command.allowedComplementaryRefs);
       await journal(tx, who, command, item.serviceRef, 1, "SERVICE_CATALOG_CREATED", null, { code: item.code, usage: item.usage, modes: item.compatibleModes, status: item.status });
       return Object.freeze({ item: await publicCatalogByRef(tx, who.tenantId, item.serviceRef), replayed: false });
@@ -208,14 +209,14 @@ export async function saveServiceDefaults(context, input, database = prisma) {
       if (command.combinationRef) {
         const current = await tx.serviceDefaultCombination.findFirst({ where: { tenantId: who.tenantId, combinationRef: command.combinationRef, primaryServiceId: primary.id } });
         if (!current) serviceFail("CRM_SERVICES_RESOURCE_NOT_FOUND", 404);
-        if (current.code !== command.code) serviceFail("CRM_SERVICES_IDENTITY_IMMUTABLE", 409);
+        if (command.code !== null && current.code !== command.code) serviceFail("CRM_SERVICES_IDENTITY_IMMUTABLE", 409);
         if (current.version !== command.expectedVersion) serviceFail("CRM_SERVICES_VERSION_CONFLICT", 409);
         before = { version: current.version, status: current.status, isDefault: current.isDefault };
         row = await tx.serviceDefaultCombination.update({ where: { id: current.id }, data: { name: command.name, status: command.status, isDefault: command.isDefault, version: { increment: 1 } } });
         await tx.serviceDefaultCombinationItem.deleteMany({ where: { tenantId: who.tenantId, combinationId: current.id } });
       } else {
         if (command.expectedVersion !== null) serviceFail("CRM_SERVICES_INPUT_INVALID");
-        row = await tx.serviceDefaultCombination.create({ data: { id: randomUUID(), tenantId: who.tenantId, primaryServiceId: primary.id, code: command.code, name: command.name, status: command.status, isDefault: command.isDefault } });
+        row = await tx.serviceDefaultCombination.create({ data: { id: randomUUID(), tenantId: who.tenantId, primaryServiceId: primary.id, code: command.code ?? automaticServiceConfigurationCode(who.tenantId, command), name: command.name, status: command.status, isDefault: command.isDefault } });
       }
       if (items.length) await tx.serviceDefaultCombinationItem.createMany({ data: items.map((item, position) => ({ id: randomUUID(), tenantId: who.tenantId, combinationId: row.id, serviceId: item.id, position })) });
       await journal(tx, who, command, row.combinationRef, row.version, "SERVICE_DEFAULTS_CHANGED", before, { version: row.version, status: row.status, isDefault: row.isDefault, complementaryCodes: items.map((item) => item.code) });

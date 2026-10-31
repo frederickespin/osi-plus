@@ -58,6 +58,26 @@ export function validatePreviewCatalogPin(operation, previousCatalog) {
     && operation.previousCatalog?.count === previousCatalog.count, "CHECK_BASELINE_CHANGED");
 }
 
+export function validatePreviewDatabaseIdentity(identity) {
+  requireCondition(identity?.database === "v17_consolidated_preview_10b", "DATABASE_NAME_INVALID");
+  requireCondition(identity.branch === "br-mute-credit-ahxnvfx0", "NEON_BRANCH_INVALID");
+  requireCondition(Number(identity.server_version_num) >= 180000 && Number(identity.server_version_num) < 190000, "SERVER_VERSION_INVALID");
+}
+
+export async function normalizePreviewSnapshotSchema(tx) {
+  const [initial] = await tx.$queryRawUnsafe("SELECT current_setting('transaction_read_only') = 'on' AS read_only, to_regnamespace('osi') IS NOT NULL AS schema_exists, current_schemas(false) = ARRAY['osi']::name[] AS path_matches");
+  requireCondition(initial?.read_only === true, "SNAPSHOT_NOT_READ_ONLY");
+  requireCondition(initial.schema_exists === true, "SCHEMA_UNAVAILABLE");
+  // A connection can target Prisma's osi schema while its SQL search_path still
+  // starts at public. Normalize only this read-only transaction, including the
+  // catalog deparser's name visibility; never change a role/database setting.
+  await tx.$executeRawUnsafe("SET LOCAL search_path = osi");
+  const [selected] = await tx.$queryRawUnsafe("SELECT current_schema() AS schema, to_regnamespace('osi') IS NOT NULL AS schema_exists, to_regclass('_prisma_migrations') = to_regclass('osi._prisma_migrations') AS ledger_matches");
+  requireCondition(selected?.schema_exists === true && selected.schema === "osi", "SCHEMA_SELECTION_INVALID");
+  requireCondition(selected.ledger_matches === true, "LEDGER_SCOPE_INVALID");
+  return { searchPathNormalized: initial.path_matches !== true };
+}
+
 export function previewMigrationManifest(root = process.cwd()) {
   const names = validateMigrationFiles(root);
   requireCondition(names.length === 37 && names.at(-1) === FLEET_DRIVERS_MIGRATION, "SOURCE_INVENTORY_INVALID");
@@ -88,10 +108,9 @@ async function snapshot(prisma, manifest, expectedDelta) {
     await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
     await tx.$executeRawUnsafe("SET LOCAL statement_timeout = '30s'");
     await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
-    const [identity] = await tx.$queryRawUnsafe("SELECT current_database() AS database, current_schema() AS schema, current_setting('neon.branch_id', true) AS branch, current_setting('server_version_num') AS server_version_num");
-    requireCondition(identity?.database === "v17_consolidated_preview_10b" && identity.schema === "osi"
-      && identity.branch === "br-mute-credit-ahxnvfx0", "DATABASE_IDENTITY_INVALID");
-    requireCondition(Number(identity.server_version_num) >= 180000 && Number(identity.server_version_num) < 190000, "SERVER_VERSION_INVALID");
+    const [identity] = await tx.$queryRawUnsafe("SELECT current_database() AS database, current_setting('neon.branch_id', true) AS branch, current_setting('server_version_num') AS server_version_num");
+    validatePreviewDatabaseIdentity(identity);
+    const schema = await normalizePreviewSnapshotSchema(tx);
     const tenants = await tx.$queryRawUnsafe("SELECT status::text AS status FROM osi.tenants WHERE code = 'V17-CONSOLIDATED-PREVIEW-10B'");
     requireCondition(tenants.length === 1 && tenants[0].status === "ACTIVE", "TENANT_INVALID");
     const history = await tx.$queryRawUnsafe("SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name");
@@ -105,7 +124,7 @@ async function snapshot(prisma, manifest, expectedDelta) {
     requireCondition(plan.alreadyApplied
       ? delta.count === expectedDelta.count && delta.sha256 === expectedDelta.sha256
       : deltaRows.length === 0, "CATALOG_INVALID");
-    return { plan, previousCatalog, delta, previousHistory: history.filter((row) => row.migration_name !== FLEET_DRIVERS_MIGRATION) };
+    return { plan, previousCatalog, delta, previousHistory: history.filter((row) => row.migration_name !== FLEET_DRIVERS_MIGRATION), ...schema };
   }, { maxWait: 5000, timeout: 35000, isolationLevel: "RepeatableRead" });
 }
 
@@ -128,6 +147,7 @@ export async function runFleetDriverPreviewMigration({ env = process.env, root =
       return { operation: operation.mode, commit: operation.commit,
         status: before.plan.alreadyApplied ? "VERIFIED_19F_APPLIED" : "VERIFIED_19F_PENDING",
         applied: before.plan.applied, pending: before.plan.pending,
+        searchPathNormalized: before.searchPathNormalized,
         previousCatalog: { sha256: before.previousCatalog.sha256, count: before.previousCatalog.count },
         retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name, historicalExtensionSourceReviewed: false };
     }
@@ -146,6 +166,7 @@ export async function runFleetDriverPreviewMigration({ env = process.env, root =
       && after.previousCatalog.sha256 === before.previousCatalog.sha256, "PREVIOUS_STATE_CHANGED");
     return { operation: operation.mode, commit: operation.commit, status: "VERIFIED_19F_APPLIED",
       applied: after.plan.applied, pending: [], previousCatalogPreserved: true,
+      searchPathNormalized: before.searchPathNormalized || after.searchPathNormalized,
       driverCatalog: after.delta.sha256, retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name,
       historicalExtensionSourceReviewed: false };
   } finally { await prisma.$disconnect(); }

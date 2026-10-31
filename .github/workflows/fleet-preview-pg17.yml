@@ -1,0 +1,132 @@
+name: Fleet Preview PostgreSQL 17
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/fleet-preview-pg17.yml"
+      - "scripts/v17-fleet-drivers*.mjs"
+      - "scripts/capture-v17-fleet-drivers*.mjs"
+      - "scripts/crm-01b1-sql-drift-baseline.mjs"
+      - "tests/crm-01b1/fleet-drivers-19f*.json"
+      - "prisma/**"
+      - "api/_lib/fleet*"
+      - "api/_lib/adminFleet*"
+      - "api/_lib/approvalRequest.js"
+      - "shared/adminFleet*"
+      - "package.json"
+      - "package-lock.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fleet-preview-pg17-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fleet-pg17-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      V17_FLEET_DRIVERS_LOCAL_COMPAT: PG17
+      V17_FLEET_DRIVERS_PG17_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55433/osi_fleet_17_compat?schema=osi
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55433/osi_fleet_17_compat?schema=osi
+      DIRECT_URL: postgresql://postgres:postgres@127.0.0.1:55433/osi_fleet_17_compat?schema=osi
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Start PostgreSQL 17.11 on host loopback
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name osi-fleet-postgres-17 --network host \
+            -e POSTGRES_DB=osi_fleet_17_compat \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_INITDB_ARGS='--encoding=UTF8 --locale=C.UTF-8' \
+            -e TZ=UTC \
+            postgres:17.11@sha256:31ba9c94a03ada9988f2bb493a22a75eef3a185884533e5cdbcd498ea835b08f \
+            -c listen_addresses=127.0.0.1 \
+            -c port=55433 \
+            -c timezone=UTC \
+            -c log_timezone=UTC
+          for attempt in {1..30}; do
+            if docker exec osi-fleet-postgres-17 pg_isready -h 127.0.0.1 -p 55433 -U postgres -d osi_fleet_17_compat >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs --tail 40 osi-fleet-postgres-17
+          exit 1
+      - name: Install locked dependencies and verify guards
+        run: |
+          npm ci
+          node scripts/validate-prisma-schema-target.mjs
+          node scripts/v17-fleet-drivers-pg17-local-target-test.mjs
+          node scripts/v17-fleet-drivers-preview-migrate-test.mjs
+      - name: Verify empty isolated target before migrations
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { PrismaClient } from '@prisma/client';
+          const expected = 'postgresql://postgres:postgres@127.0.0.1:55433/osi_fleet_17_compat?schema=osi';
+          assert.equal(process.env.V17_FLEET_DRIVERS_PG17_DATABASE_URL, expected);
+          assert.equal(process.env.DATABASE_URL, expected);
+          assert.equal(process.env.DIRECT_URL, expected);
+          const prisma = new PrismaClient({ datasources: { db: { url: expected } }, log: [] });
+          try {
+            const [identity] = await prisma.$queryRawUnsafe("SELECT current_database() AS database, current_setting('neon.branch_id', true) AS branch, current_setting('server_version_num')::integer AS version, inet_server_addr()::text AS address, inet_server_port() AS port, to_regclass('osi._prisma_migrations') IS NULL AS ledger_absent");
+            assert.equal(identity.database, 'osi_fleet_17_compat');
+            assert.equal(identity.branch, null);
+            assert.equal(identity.version, 170011);
+            assert.equal(identity.address?.split('/')[0], '127.0.0.1');
+            assert.equal(identity.port, 55433);
+            assert.equal(identity.ledger_absent, true);
+          } finally { await prisma.$disconnect(); }
+          NODE
+      - name: Prepare exact 36-migration staging directory
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { mkdirSync, copyFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
+          const names = validateMigrationFiles();
+          assert.equal(names.length, 37);
+          assert.equal(names.at(-1), '20261031010000_v17_fleet_driver_authority');
+          const stage = join(process.env.RUNNER_TEMP, 'fleet-pg17-36');
+          mkdirSync(join(stage, 'migrations'), { recursive: true });
+          copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
+          copyFileSync('prisma/migrations/migration_lock.toml', join(stage, 'migrations/migration_lock.toml'));
+          for (const name of names.slice(0, -1)) {
+            mkdirSync(join(stage, 'migrations', name));
+            copyFileSync(join('prisma/migrations', name, 'migration.sql'), join(stage, 'migrations', name, 'migration.sql'));
+          }
+          NODE
+      - name: Apply 36 and capture PostgreSQL 17 baseline
+        run: |
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/fleet-pg17-36/schema.prisma"
+          node scripts/capture-v17-fleet-drivers-pg17-catalog.mjs --before "$RUNNER_TEMP/fleet-pg17-before.json"
+      - name: Upgrade 36 to 37 and verify preserved catalog and measured delta
+        run: |
+          npx prisma migrate deploy --schema prisma/schema.prisma
+          node scripts/capture-v17-fleet-drivers-pg17-catalog.mjs --after "$RUNNER_TEMP/fleet-pg17-after.json" --previous "$RUNNER_TEMP/fleet-pg17-before.json"
+      - name: Verify idempotent deploy and replayed catalog
+        run: |
+          npx prisma migrate deploy --schema prisma/schema.prisma
+          node scripts/capture-v17-fleet-drivers-pg17-catalog.mjs --after "$RUNNER_TEMP/fleet-pg17-replay.json" --previous "$RUNNER_TEMP/fleet-pg17-before.json"
+      - name: Verify driver assignments and authorizations on PostgreSQL 17
+        run: npm run test:v17-fleet-drivers:db
+      - name: Upload synthetic compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fleet-pg17-compatibility-evidence
+          path: ${{ runner.temp }}/fleet-pg17-*.json
+          if-no-files-found: error
+          retention-days: 7

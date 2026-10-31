@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { createCrm01b1LocalPrisma, validateCrm01b1LocalUrl } from "./crm-01b1-local-target.mjs";
+import { createFleetDriversPg17LocalPrisma } from "./v17-fleet-drivers-pg17-local-target.mjs";
 import { CATALOG_SQL, CANONICAL_37_FLEET_DRIVERS_CATALOG, summarizeCrm01b1Catalog } from "./crm-01b1-sql-drift-baseline.mjs";
-import { normalizePreviewSnapshotSchema } from "./v17-fleet-drivers-preview-migrate.mjs";
+import { normalizePreviewSnapshotSchema, selectPreviewDriverCatalogProfile } from "./v17-fleet-drivers-preview-migrate.mjs";
 import { createAdminFleetVehicle, getAdminFleetVehicle, updateAdminFleetVehicle } from "../api/_lib/adminFleetDomain.js";
 import { APPROVAL_PERMISSIONS, decideApprovalRequest } from "../api/_lib/approvalRequest.js";
 import {
@@ -12,11 +14,23 @@ import {
   decideFleetDriverAuthorization, resolveVehicleDriverAuthority,
 } from "../api/_lib/fleetDriversDomain.js";
 
-// This suite can write only to the disposable canonical CI database. No dotenv,
-// DATABASE_URL fallback, Preview identity, migrations, or production connection.
-assert.equal(process.env.CANONICAL_DB_VALIDATION, "true", "19F DB suite requires disposable canonical CI");
-assert.equal(validateCrm01b1LocalUrl(process.env.CRM01B1_TEST_DATABASE_URL).database, "osi_db01n_ci");
-const { prisma } = await createCrm01b1LocalPrisma(process.env.CRM01B1_TEST_DATABASE_URL);
+// Both modes are disposable local databases with independent strict guards.
+// No dotenv, DATABASE_URL fallback, Preview identity, migrations or remote data.
+const compatibilityMode = process.env.V17_FLEET_DRIVERS_LOCAL_COMPAT;
+assert.ok(compatibilityMode === undefined || compatibilityMode === "PG17", "unsupported fleet compatibility mode");
+const pg17Compatibility = compatibilityMode === "PG17";
+const rawLocalUrl = pg17Compatibility ? process.env.V17_FLEET_DRIVERS_PG17_DATABASE_URL : process.env.CRM01B1_TEST_DATABASE_URL;
+const createLocalPrisma = pg17Compatibility ? createFleetDriversPg17LocalPrisma : createCrm01b1LocalPrisma;
+let expectedCatalog = CANONICAL_37_FLEET_DRIVERS_CATALOG;
+if (pg17Compatibility) {
+  const fixture = JSON.parse(readFileSync(new URL("../tests/crm-01b1/fleet-drivers-19f-pg17-catalog.json", import.meta.url), "utf8"));
+  selectPreviewDriverCatalogProfile("170011", { 17: fixture });
+  expectedCatalog = fixture.catalog;
+} else {
+  assert.equal(process.env.CANONICAL_DB_VALIDATION, "true", "19F DB suite requires disposable canonical CI");
+  assert.equal(validateCrm01b1LocalUrl(rawLocalUrl).database, "osi_db01n_ci");
+}
+const { prisma } = await createLocalPrisma(rawLocalUrl);
 const suffix = randomUUID().slice(0, 8);
 const SOURCE = "V17_FLEET_DRIVER_AUTHORITY_19F";
 const FULL = ["fleet:view", "fleet:edit", "fleet:drivers:assign", "fleet:drivers:request", "fleet:drivers:authorize"];
@@ -83,9 +97,9 @@ async function request(actor, vehicle, driver, extra = {}, options = {}) {
 }
 
 async function verifyPreviewSnapshotSchema() {
-  const localUrl = new URL(process.env.CRM01B1_TEST_DATABASE_URL);
+  const localUrl = new URL(rawLocalUrl);
   localUrl.searchParams.set("connection_limit", "1");
-  const { prisma: schemaPrisma } = await createCrm01b1LocalPrisma(localUrl.toString());
+  const { prisma: schemaPrisma } = await createLocalPrisma(localUrl.toString());
   const sessionState = async (client) => (await client.$queryRawUnsafe("SELECT pg_backend_pid() AS pid, current_database() AS database, current_setting('neon.branch_id', true) AS branch, current_setting('search_path') AS path, current_schema() AS schema, current_setting('transaction_read_only') = 'on' AS read_only"))[0];
   try {
     const original = await sessionState(schemaPrisma);
@@ -101,8 +115,8 @@ async function verifyPreviewSnapshotSchema() {
       check("snapshot selects osi and reports normalization while staying read-only", normalized.searchPathNormalized === true && selected.schema === "osi" && selected.read_only);
       check("schema normalization preserves the actual database, branch and connection", [initial, selected].every((state) => state.database === original.database && state.branch === original.branch && state.pid === original.pid));
       const catalog = summarizeCrm01b1Catalog(await tx.$queryRawUnsafe(CATALOG_SQL));
-      assert.deepEqual(catalog, CANONICAL_37_FLEET_DRIVERS_CATALOG);
-      check("normalized snapshot preserves the exact canonical 37 catalog", true);
+      assert.deepEqual(catalog, expectedCatalog);
+      check(`normalized snapshot preserves the exact ${pg17Compatibility ? "PG17 compatibility" : "canonical 37"} catalog`, true);
     }, { isolationLevel: "RepeatableRead", timeout: 35000 });
     assert.deepEqual(await sessionState(schemaPrisma), original);
     check("schema selection restores the same connection state after commit", true);

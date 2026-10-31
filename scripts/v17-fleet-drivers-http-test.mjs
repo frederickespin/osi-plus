@@ -58,6 +58,58 @@ for (const factory of factories) {
     for (const suffix of ["?tenantId=other", "?page=1&page=2"]) assert.equal((await invoke(handler, { method: factory.method, query: factory.query, url: `/api/admin/fleet/drivers/options${suffix}` })).statusCode, 400);
     assert.equal(called, 1);
   });
+  if (factory.query.vehicleRef) {
+    test(`${factory.create.name}: Vercel route metadata stays separate from domain filters`, async () => {
+      const filters = factory.key === "get" ? { page: "2", pageSize: "10" } : {};
+      const params = new URLSearchParams({ ...factory.query, ...filters });
+      const url = `/api/admin/fleet/vehicles/[vehicleRef]/drivers?${params}`;
+      const runtimeQuery = Object.fromEntries(params);
+      const body = { requestId: randomUUID() };
+      let calls = 0;
+      const handler = factory.create({ env: local, prisma: {}, resolveContext: async () => context, checkDatabase: async () => {}, [factory.key]: async (_db, actor, ...args) => {
+        calls++; assert.equal(actor, context); assert.equal(args[0], ref);
+        if (factory.key === "get") assert.deepEqual(args[1], filters);
+        else if (factory.key === "decide") { assert.equal(args[1], auth); assert.deepEqual(args[2], body); }
+        else assert.deepEqual(args[1], body);
+        return factory.result;
+      } });
+      for (const method of factory.method === "GET" ? ["GET", "HEAD"] : [factory.method]) {
+        const response = await invoke(handler, { method, url, query: runtimeQuery, body });
+        assert.equal(response.statusCode, 200);
+        assert.deepEqual(response.body, method === "HEAD" ? undefined : { ok: true, ...factory.result });
+        privateResponse(response);
+      }
+      const successfulCalls = calls;
+      let bodyReads = 0;
+      const ambiguous = [
+        { url: `${url}&tenantId=other` },
+        { url: `${url}&vehicleRef=${ref}` },
+        { url: `${url}&vehicleRef=other` },
+        { query: { ...runtimeQuery, vehicleRef: "different-vehicle" } },
+        { query: { ...runtimeQuery, vehicleRef: [ref] } },
+        ...(factory.key === "decide" ? [
+          { url: `${url}&authorizationRef=${auth}` },
+          { query: { ...runtimeQuery, authorizationRef: randomUUID() } },
+          { query: { ...runtimeQuery, authorizationRef: [auth] } },
+        ] : [{ url: `${url}&authorizationRef=${auth}` }]),
+      ];
+      for (const input of ambiguous) {
+        const response = await invoke(handler, { method: factory.method, url, query: runtimeQuery, bodyGetter: () => { bodyReads++; return body; }, ...input });
+        assert.ok([400, 404].includes(response.statusCode)); privateResponse(response);
+      }
+      assert.equal(calls, successfulCalls); assert.equal(bodyReads, 0);
+    });
+  } else {
+    test("driver options rejects dynamic route metadata", async () => {
+      let calls = 0;
+      const handler = factory.create({ env: local, prisma: {}, resolveContext: async () => context, checkDatabase: async () => {}, list: async () => { calls++; return factory.result; } });
+      for (const key of ["vehicleRef", "authorizationRef"]) {
+        const response = await invoke(handler, { url: `/api/admin/fleet/drivers/options?${key}=${ref}`, query: { [key]: ref } });
+        assert.equal(response.statusCode, 400); privateResponse(response);
+      }
+      assert.equal(calls, 0);
+    });
+  }
   if (factory.permission) {
     test(`${factory.create.name}: actual operation permission precedes body and schema`, async () => {
       let reached = 0; const forbidden = () => { reached++; throw Error("unreachable"); };

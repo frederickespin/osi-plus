@@ -19,10 +19,20 @@ function sameOrigin(req) {
   const protocol = header(req, "x-forwarded-proto") ?? (req.socket?.encrypted ? "https" : "http");
   if (origin !== `${protocol}://${header(req, "host")}`) fleetDriverFail("ORIGIN_FORBIDDEN", 403);
 }
-function query(req, accepted) {
+function query(req, accepted, routeKeys = []) {
   const params = new URL(req.url || "/", "http://fleet.local").searchParams;
-  for (const key of params.keys()) if (!accepted.includes(key) || params.getAll(key).length !== 1) fleetDriverFail("INPUT_INVALID");
-  return Object.fromEntries(params.entries());
+  const filters = {};
+  for (const [key, value] of params) {
+    if (params.getAll(key).length !== 1) fleetDriverFail("INPUT_INVALID");
+    if (routeKeys.includes(key)) {
+      // Vercel supplies dynamic path references in both req.url and req.query.
+      if (typeof req.query?.[key] !== "string" || req.query[key] !== value) fleetDriverFail("INPUT_INVALID");
+    } else {
+      if (!accepted.includes(key)) fleetDriverFail("INPUT_INVALID");
+      filters[key] = value;
+    }
+  }
+  return filters;
 }
 function path(req, key) { const value = req.query?.[key]; return key === "vehicleRef" ? fleetDriverVehicleRef(value) : fleetDriverReference(value); }
 function body(req) { return readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 8 * 1024 }); }
@@ -60,20 +70,20 @@ export function createFleetDriverOptionsHandler(options = {}) {
 }
 export function createFleetDriversHandler(options = {}) {
   return handler(options, ["GET", "HEAD"], null, (req, context, prisma) =>
-    (options.get ?? getFleetDrivers)(prisma, context, path(req, "vehicleRef"), query(req, ["historyKind", "page", "pageSize"])));
+    (options.get ?? getFleetDrivers)(prisma, context, path(req, "vehicleRef"), query(req, ["historyKind", "page", "pageSize"], ["vehicleRef"])));
 }
 export function createFleetPrimaryDriverHandler(options = {}) {
   return handler(options, ["PUT"], "fleet:drivers:assign", async (req, context, prisma) => {
-    query(req, []); return (options.setPrimary ?? setFleetPrimaryDriver)(prisma, context, path(req, "vehicleRef"), await body(req));
+    query(req, [], ["vehicleRef"]); return (options.setPrimary ?? setFleetPrimaryDriver)(prisma, context, path(req, "vehicleRef"), await body(req));
   });
 }
 export function createFleetDriverAuthorizationHandler(options = {}) {
   return handler(options, ["POST"], "fleet:drivers:request", async (req, context, prisma) => {
-    query(req, []); return (options.request ?? requestFleetDriverAuthorization)(prisma, context, path(req, "vehicleRef"), await body(req));
+    query(req, [], ["vehicleRef"]); return (options.request ?? requestFleetDriverAuthorization)(prisma, context, path(req, "vehicleRef"), await body(req));
   });
 }
 export function createFleetDriverDecisionHandler(options = {}) {
   return handler(options, ["PATCH"], "fleet:drivers:authorize", async (req, context, prisma) => {
-    query(req, []); return (options.decide ?? decideFleetDriverAuthorization)(prisma, context, path(req, "vehicleRef"), path(req, "authorizationRef"), await body(req));
+    query(req, [], ["vehicleRef", "authorizationRef"]); return (options.decide ?? decideFleetDriverAuthorization)(prisma, context, path(req, "vehicleRef"), path(req, "authorizationRef"), await body(req));
   });
 }

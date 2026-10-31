@@ -93,13 +93,18 @@ export class FleetApi {
   }
 }
 
-export function fleetErrorText(error: unknown) {
+export function fleetErrorText(error: unknown, context: "request" | "details" | "availability" | "active" = "request") {
   const code = error instanceof FleetApiError ? error.code : "";
+  if (code === "ADMIN_FLEET_INPUT_INVALID") return ({
+    request: "No se pudo validar la solicitud.",
+    details: "No se pudo guardar la ficha. Revise los datos ingresados.",
+    availability: "No se pudo guardar la disponibilidad. Revise el estado y la vigencia.",
+    active: "No se pudo cambiar el estado Activo del vehículo.",
+  })[context];
   return ({
     ADMIN_FLEET_DISABLED: "La flota no está habilitada en este entorno.",
     ADMIN_FLEET_FORBIDDEN: "No tiene permiso para esta operación.",
     ADMIN_FLEET_NOT_FOUND: "El vehículo ya no está disponible en esta empresa.",
-    ADMIN_FLEET_INPUT_INVALID: "Revise los campos, las unidades y las fechas de la ficha.",
     ADMIN_FLEET_VERSION_CONFLICT: "La ficha cambió desde que la abrió. Recárguela para revisar la versión actual.",
     ADMIN_FLEET_DUPLICATE: "El código, la matrícula o el VIN ya pertenecen a otro vehículo.",
     ADMIN_FLEET_REQUEST_CONFLICT: "La solicitud ya cambió. Recargue para confirmar el estado del vehículo.",

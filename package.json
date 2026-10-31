@@ -122,7 +122,7 @@
     "guard:v17-personnel-policies": "node scripts/validate-v17-personnel-policies-guard.mjs && node scripts/validate-v17-personnel-policies-guard-test.mjs",
     "rollback:v17-personnel-policies:local": "node scripts/v17-personnel-policies-rollback.mjs",
     "test:v17-personnel-policies:browser": "playwright test -c playwright.v17-personnel-policies.config.ts",
-    "test:v17-service-packages": "node scripts/v17-service-packages-contract-test.mjs && node scripts/v17-service-packages-http-test.mjs",
+    "test:v17-service-packages": "node scripts/v17-service-packages-contract-test.mjs && node scripts/v17-service-packages-http-test.mjs && node scripts/v17-service-material-resources-test.mjs && node scripts/v17-service-configuration-client-test.mjs && node scripts/v17-material-policy-sheet-test.mjs",
     "test:v17-service-packages:db": "node scripts/v17-service-packages-db-test.mjs",
     "guard:v17-service-packages": "node scripts/validate-v17-service-packages-guard.mjs && node scripts/validate-v17-service-packages-guard-test.mjs",
     "test:v17-service-packages:browser": "playwright test -c playwright.v17-services.config.ts",

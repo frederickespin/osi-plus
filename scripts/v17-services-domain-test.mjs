@@ -8,15 +8,22 @@ const createPayload = { operation: "CATALOG_CREATE", requestId: "services-create
 assert.equal(normalizeServiceCatalogCreate(sign(createPayload)).code, "MOV_LOCAL");
 assert.throws(() => normalizeServiceCatalogCreate(sign({ ...createPayload, compatibleModes: [] })), /CRM_SERVICES_MODE_REQUIRED/);
 assert.throws(() => normalizeServiceCatalogCreate({ ...sign(createPayload), payloadHash: "0".repeat(64) }), /CRM_SERVICES_PAYLOAD_HASH_INVALID/);
+assert.equal(normalizeServiceCatalogCreate(sign({ ...createPayload, code: null })).code, null);
+assert.throws(() => normalizeServiceCatalogCreate(sign({ ...createPayload, code: "" })), /CRM_SERVICES_INPUT_INVALID/);
+assert.throws(() => normalizeServiceCatalogCreate({ ...sign(createPayload), code: null }), /CRM_SERVICES_PAYLOAD_HASH_INVALID/);
+const { code: _code, ...withoutCode } = sign(createPayload);
+assert.throws(() => normalizeServiceCatalogCreate(withoutCode), /CRM_SERVICES_INPUT_INVALID/);
 
 const primaryRef = id(); const complementaryRef = id();
 const defaultsPayload = { operation: "DEFAULTS_SAVE", requestId: "services-default-001", primaryServiceRef: primaryRef, combinationRef: null, code: "MOV_LOCAL_DEFAULT", name: "Mudanza local estándar", isDefault: true, status: "ACTIVE", expectedVersion: null, complementaryRefs: [complementaryRef] };
 assert.deepEqual(normalizeServiceDefaults(sign(defaultsPayload)).complementaryRefs, [complementaryRef]);
 assert.throws(() => normalizeServiceDefaults(sign({ ...defaultsPayload, complementaryRefs: [complementaryRef, complementaryRef] })), /CRM_SERVICES_DUPLICATE_SELECTION/);
+assert.equal(normalizeServiceDefaults(sign({ ...defaultsPayload, code: null })).code, null);
+assert.equal(normalizeServiceDefaults(sign({ ...defaultsPayload, combinationRef: id(), expectedVersion: 1, code: null })).code, null);
 
 const selectionPayload = { operation: "CASE_SELECTION_SAVE", requestId: "services-case-0001", expectedRevision: 0, primaryServiceRef: primaryRef, complementaryRefs: [complementaryRef], defaultCombinationRef: null, otherServices: [{ description: "Permiso especializado" }] };
 const selection = normalizeCaseServiceSelection(sign(selectionPayload));
 assert.equal(selection.otherServices[0].description, "Permiso especializado");
 assert.throws(() => normalizeCaseServiceSelection(sign({ ...selectionPayload, otherServices: [{ description: "x" }] })), /CRM_SERVICES_INPUT_INVALID/);
 assert.throws(() => normalizeCaseServiceSelection(sign({ ...selectionPayload, tenantId: "forbidden" })), /CRM_SERVICES_INPUT_INVALID/);
-process.stdout.write(`${JSON.stringify({ ok: true, assertions: 8 }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ ok: true, assertions: 14 }, null, 2)}\n`);

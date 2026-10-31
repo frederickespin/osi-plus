@@ -12,7 +12,7 @@ export type AdministrationSection = Readonly<{
 export const ADMINISTRATION_SECTIONS: readonly AdministrationSection[] = Object.freeze([
   { id: "access", label: "Usuarios y roles", route: "/administration/access", permissions: ["membership:view"] },
   { id: "fleet", label: "Flota vehicular", route: "/administration/fleet", permissions: ["fleet:view"] },
-  { id: "services", label: "Servicios y paquetes", route: "/administration/services", permissions: ["services:catalog:view", "services:packages:view", "services:materials:view"] },
+  { id: "services", label: "Servicios y combinaciones", route: "/administration/services", permissions: ["services:catalog:view", "services:packages:view", "services:materials:view"] },
   { id: "logistics", label: "Motor Logístico", route: "/administration/logistics", permissions: ["logistics:rules:view"] },
   { id: "costing", label: "Costos y monedas", route: "/administration/costing", permissions: ["costing:rules:view"] },
   { id: "communications", label: "Plantillas y comunicaciones", route: "/administration/communications", permissions: ["communications:templates:view"] },

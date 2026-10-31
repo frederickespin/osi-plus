@@ -150,6 +150,34 @@ try {
   ]);
   check("concurrencia optimista produce un ganador", concurrency.filter((item) => item.status === "fulfilled").length === 1 && concurrency.filter((item) => item.status === "rejected").length === 1);
   check("revisiones siguen append-only y consecutivas", (await prisma.pipelineCaseServiceRevision.findMany({ where: { tenantId, pipelineCaseId: caseId }, orderBy: { revision: "asc" }, select: { revision: true } })).map((item) => item.revision).join(",") === "1,2");
+  const automaticInput = signed("CATALOG_CREATE", { ...compInput, requestId: request("auto-catalog"), code: null, name: "Servicio de código automático" });
+  const automatic = await createServiceCatalogItem(admin, automaticInput, prisma);
+  const automaticReplay = await createServiceCatalogItem(admin, automaticInput, prisma);
+  check("alta sin código manual asigna código público y replay conserva identidad", /^SER_[A-F0-9]{16}$/.test(automatic.item.code)
+    && automaticReplay.replayed && automaticReplay.item.serviceRef === automatic.item.serviceRef && automaticReplay.item.code === automatic.item.code
+    && await prisma.serviceMutationCommand.count({ where: { tenantId, requestId: automaticInput.requestId } }) === 1);
+  await rejects("código automático no evita control de payload al reintentar", "CRM_SERVICES_IDEMPOTENCY_CONFLICT", () => createServiceCatalogItem(admin, signed("CATALOG_CREATE", { ...automaticInput, name: "Alterado" }), prisma));
+  const automaticRace = await Promise.all([
+    createServiceCatalogItem(admin, signed("CATALOG_CREATE", { ...automaticInput, requestId: request("auto-race-a") }), prisma),
+    createServiceCatalogItem(admin, signed("CATALOG_CREATE", { ...automaticInput, requestId: request("auto-race-b") }), prisma),
+  ]);
+  check("dos altas simultáneas generan códigos distintos", automaticRace[0].item.code !== automaticRace[1].item.code
+    && automaticRace.every((result) => /^SER_[A-F0-9]{16}$/.test(result.item.code)));
+  const automaticRenamed = await updateServiceCatalogItem(admin, automatic.item.serviceRef, signed("CATALOG_UPDATE", {
+    requestId: request("auto-rename"), expectedVersion: 1, name: "Servicio automático renombrado", category: null,
+    usage: "COMPLEMENTARY", compatibleModes: [], status: "ACTIVE", sortOrder: 20, allowedComplementaryRefs: [],
+  }), prisma);
+  check("renombrar conserva código automático", automaticRenamed.item.code === automatic.item.code && automaticRenamed.item.version === 2);
+  const automaticDefaultInput = signed("DEFAULTS_SAVE", { ...defaultsInput, requestId: request("auto-default"), code: null, name: "Combinación automática", isDefault: false });
+  const automaticDefault = await saveServiceDefaults(admin, automaticDefaultInput, prisma);
+  const automaticDefaultReplay = await saveServiceDefaults(admin, automaticDefaultInput, prisma);
+  const automaticDefaultRow = (await listServiceDefaults(admin, primary.item.serviceRef, prisma)).find((row) => row.combinationRef === automaticDefault.combinationRef);
+  check("combinación predeterminada puede asignar código y reutilizar el resultado", /^PRE_[A-F0-9]{16}$/.test(automaticDefaultRow.code)
+    && automaticDefaultReplay.replayed && automaticDefaultReplay.combinationRef === automaticDefault.combinationRef);
+  await saveServiceDefaults(admin, signed("DEFAULTS_SAVE", { ...automaticDefaultInput, requestId: request("auto-default-edit"), combinationRef: automaticDefault.combinationRef, expectedVersion: 1, name: "Combinación renombrada" }), prisma);
+  const automaticDefaultUpdated = (await listServiceDefaults(admin, primary.item.serviceRef, prisma)).find((row) => row.combinationRef === automaticDefault.combinationRef);
+  check("versión con código null conserva el código original", automaticDefaultUpdated.code === automaticDefaultRow.code && automaticDefaultUpdated.version === 2);
+  await rejects("edición no puede reemplazar código automático", "CRM_SERVICES_IDENTITY_IMMUTABLE", () => saveServiceDefaults(admin, signed("DEFAULTS_SAVE", { ...automaticDefaultInput, requestId: request("auto-default-spoof"), combinationRef: automaticDefault.combinationRef, expectedVersion: 2, code: "REPLACEMENT" }), prisma));
   const packingRow = await prisma.serviceCatalogItem.findFirstOrThrow({ where: { tenantId, code: "PACKING" }, select: { id: true } });
   await throws("trigger impide cambiar publicRef", () => prisma.$executeRawUnsafe(`UPDATE "osi"."service_catalog_items" SET "service_ref"=gen_random_uuid() WHERE "tenant_id"=$1 AND "id"=$2`, tenantId, packingRow.id));
 } finally {

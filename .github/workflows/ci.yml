@@ -667,6 +667,14 @@ jobs:
           V17_CRM_ICP_API_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: npm run test:v17-crm-icp-api:db
 
+      - name: Validate service codes, combinations and material policies against PostgreSQL 18
+        env:
+          V17_SERVICE_PACKAGES_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          npm run guard:v17-service-packages
+          npm run test:v17-service-packages
+          npm run test:v17-service-packages:db
+
       - name: Validate V17 Costing against PostgreSQL 18
         env:
           V17_COSTING_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}

@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { createCrm01b1LocalPrisma, validateCrm01b1LocalUrl } from "./crm-01b1-local-target.mjs";
+import { CATALOG_SQL, CANONICAL_37_FLEET_DRIVERS_CATALOG, summarizeCrm01b1Catalog } from "./crm-01b1-sql-drift-baseline.mjs";
+import { normalizePreviewSnapshotSchema } from "./v17-fleet-drivers-preview-migrate.mjs";
 import { createAdminFleetVehicle, getAdminFleetVehicle, updateAdminFleetVehicle } from "../api/_lib/adminFleetDomain.js";
 import { APPROVAL_PERMISSIONS, decideApprovalRequest } from "../api/_lib/approvalRequest.js";
 import {
@@ -80,7 +82,44 @@ async function request(actor, vehicle, driver, extra = {}, options = {}) {
   return { command, result: await requestFleetDriverAuthorization(prisma, actor.context, vehicle.vehicleRef, command, options) };
 }
 
+async function verifyPreviewSnapshotSchema() {
+  const localUrl = new URL(process.env.CRM01B1_TEST_DATABASE_URL);
+  localUrl.searchParams.set("connection_limit", "1");
+  const { prisma: schemaPrisma } = await createCrm01b1LocalPrisma(localUrl.toString());
+  const sessionState = async (client) => (await client.$queryRawUnsafe("SELECT pg_backend_pid() AS pid, current_database() AS database, current_setting('neon.branch_id', true) AS branch, current_setting('search_path') AS path, current_schema() AS schema, current_setting('transaction_read_only') = 'on' AS read_only"))[0];
+  try {
+    const original = await sessionState(schemaPrisma);
+    await schemaPrisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+      // Start outside osi using only the built-in catalog, without changing the guarded URL,
+      // role/database defaults, or any setting outside this test transaction.
+      await tx.$executeRawUnsafe("SET LOCAL search_path = pg_catalog");
+      const initial = await sessionState(tx);
+      check("schema regression begins outside osi inside a read-only transaction", initial.schema === "pg_catalog" && initial.read_only);
+      const normalized = await normalizePreviewSnapshotSchema(tx);
+      const selected = await sessionState(tx);
+      check("snapshot selects osi and reports normalization while staying read-only", normalized.searchPathNormalized === true && selected.schema === "osi" && selected.read_only);
+      check("schema normalization preserves the actual database, branch and connection", [initial, selected].every((state) => state.database === original.database && state.branch === original.branch && state.pid === original.pid));
+      const catalog = summarizeCrm01b1Catalog(await tx.$queryRawUnsafe(CATALOG_SQL));
+      assert.deepEqual(catalog, CANONICAL_37_FLEET_DRIVERS_CATALOG);
+      check("normalized snapshot preserves the exact canonical 37 catalog", true);
+    }, { isolationLevel: "RepeatableRead", timeout: 35000 });
+    assert.deepEqual(await sessionState(schemaPrisma), original);
+    check("schema selection restores the same connection state after commit", true);
+    const rollback = new Error("synthetic schema snapshot rollback");
+    await assert.rejects(() => schemaPrisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
+      await tx.$executeRawUnsafe("SET LOCAL search_path = pg_catalog");
+      await normalizePreviewSnapshotSchema(tx);
+      throw rollback;
+    }), (error) => error === rollback);
+    assert.deepEqual(await sessionState(schemaPrisma), original);
+    check("schema selection restores the same connection state after rollback", true);
+  } finally { await schemaPrisma.$disconnect(); }
+}
+
 try {
+  await verifyPreviewSnapshotSchema();
   const tenant = await prisma.tenant.create({ data: { id: randomUUID(), code: `F19F-${suffix}`.toUpperCase(), name: "Fleet driver QA" } });
   const foreignTenant = await prisma.tenant.create({ data: { id: randomUUID(), code: `F19FX-${suffix}`.toUpperCase(), name: "Foreign fleet driver QA" } });
   const manager = await account(tenant, "manager"); const operations = await account(tenant, "operations", "B");

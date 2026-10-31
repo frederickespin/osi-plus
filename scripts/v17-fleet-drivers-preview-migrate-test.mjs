@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { ADMIN_FLEET_BATCH } from "../shared/adminFleet.js";
 import { ADMIN_MEMBERSHIP_PREVIEW_BATCH } from "../shared/adminMembershipPreview.js";
 import { FLEET_DRIVERS_MIGRATION, FLEET_DRIVERS_MIGRATION_CHECKSUM } from "../shared/adminFleetDrivers.js";
-import { FLEET_PREVIEW_MIGRATION_OPERATION, RETAINED_PREVIEW_EXTENSION, previewMigrationOperation, previewMigrationManifest, validatePreviewDriverHistory, validatePreviewCatalogPin, runFleetDriverPreviewMigration } from "./v17-fleet-drivers-preview-migrate.mjs";
+import { FLEET_PREVIEW_MIGRATION_OPERATION, RETAINED_PREVIEW_EXTENSION, previewMigrationOperation, previewMigrationManifest, validatePreviewDriverHistory, validatePreviewCatalogPin, validatePreviewDatabaseIdentity, normalizePreviewSnapshotSchema, runFleetDriverPreviewMigration } from "./v17-fleet-drivers-preview-migrate.mjs";
 
 const commit = "a".repeat(40);
 const preview = {
@@ -49,6 +49,50 @@ test("APPLY and applied replays require the catalog independently observed in CH
   assert.throws(() => validatePreviewCatalogPin(operation, { ...previousCatalog, count: 10570 }));
   assert.throws(() => validatePreviewCatalogPin(operation, { ...previousCatalog, sha256: "c".repeat(64) }));
   assert.throws(() => validatePreviewCatalogPin({ mode: "APPLY", commit }, previousCatalog));
+});
+test("database, Neon branch and PostgreSQL version retain separate strict identity errors", () => {
+  const identity = { database: "v17_consolidated_preview_10b", branch: "br-mute-credit-ahxnvfx0", server_version_num: "180006" };
+  validatePreviewDatabaseIdentity(identity);
+  for (const [override, code] of [
+    [{ database: "unexpected_database" }, "DATABASE_NAME_INVALID"],
+    [{ database: null }, "DATABASE_NAME_INVALID"],
+    [{ branch: "br-unexpected" }, "NEON_BRANCH_INVALID"],
+    [{ branch: null }, "NEON_BRANCH_INVALID"],
+    [{ server_version_num: "170006" }, "SERVER_VERSION_INVALID"],
+    [{ server_version_num: "190000" }, "SERVER_VERSION_INVALID"],
+    [{ server_version_num: null }, "SERVER_VERSION_INVALID"],
+  ]) assert.throws(() => validatePreviewDatabaseIdentity({ ...identity, ...override }), { message: `FLEET_PREVIEW_MIGRATION_${code}` });
+});
+function schemaTransaction(initial, selected) {
+  const statements = [];
+  let reads = 0;
+  return { statements, tx: {
+    async $queryRawUnsafe(sql) { statements.push(sql); return [reads++ === 0 ? initial : selected]; },
+    async $executeRawUnsafe(sql) { statements.push(sql); return 0; },
+  } };
+}
+test("snapshot normalizes only its local read-only path and reports a safe boolean", async () => {
+  for (const path_matches of [false, true]) {
+    const { tx, statements } = schemaTransaction({ read_only: true, schema_exists: true, path_matches }, { schema: "osi", schema_exists: true, ledger_matches: true });
+    assert.deepEqual(await normalizePreviewSnapshotSchema(tx), { searchPathNormalized: !path_matches });
+    assert.equal(statements.length, 3);
+    assert.equal(statements[1], "SET LOCAL search_path = osi");
+    assert.ok(statements[0].includes("transaction_read_only"));
+    assert.ok(statements[2].includes("current_schema()"));
+  }
+});
+test("snapshot rejects absent schema, non-read-only transactions and incorrect effective selection", async () => {
+  for (const [initial, selected, code, executed] of [
+    [{ read_only: false, schema_exists: true }, {}, "SNAPSHOT_NOT_READ_ONLY", false],
+    [{ read_only: true, schema_exists: false }, {}, "SCHEMA_UNAVAILABLE", false],
+    [{ read_only: true, schema_exists: true }, { schema: "public", schema_exists: true, ledger_matches: true }, "SCHEMA_SELECTION_INVALID", true],
+    [{ read_only: true, schema_exists: true }, { schema: "osi", schema_exists: false, ledger_matches: true }, "SCHEMA_SELECTION_INVALID", true],
+    [{ read_only: true, schema_exists: true }, { schema: "osi", schema_exists: true, ledger_matches: false }, "LEDGER_SCOPE_INVALID", true],
+  ]) {
+    const { tx, statements } = schemaTransaction(initial, selected);
+    await assert.rejects(() => normalizePreviewSnapshotSchema(tx), { message: `FLEET_PREVIEW_MIGRATION_${code}` });
+    assert.equal(statements.includes("SET LOCAL search_path = osi"), executed);
+  }
 });
 test("source manifest fixes the new checksum and the exact 37 named migrations", () => {
   const manifest = previewMigrationManifest();

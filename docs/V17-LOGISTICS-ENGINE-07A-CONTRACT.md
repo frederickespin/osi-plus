@@ -1,5 +1,11 @@
 # V17-LOGISTICS-ENGINE-07A — Contrato canónico
 
+## Aclaración funcional del 31 de octubre de 2026
+
+El alcance esperado del producto incluye geocercas y costos de transporte por zona para cotizaciones, ejecución de servicios y visitas presenciales fuera de zona metro, mediante factores o renglones de combustible, peajes, dietas y viáticos. La definición se registra en [Motor Logístico: geocercas y costos de transporte](V17-LOGISTICS-GEOFENCES-TRANSPORT-COSTS.md).
+
+Este contrato documenta las capacidades implementadas en el lote 07A. Sus límites económicos no sustituyen la aclaración funcional del usuario: el nuevo alcance requiere una integración explícita con Geografía y Costos que alimente Cotización y Agenda. Todavía no está implementado por completo y no se habilita modificando una etiqueta o agregando precios al JSON de reglas vigente.
+
 ## Propósito y límites
 
 El Motor Logístico transforma hechos publicados y configuración administrativa en necesidades operativas reproducibles. No es autoridad de Cliente, ruta, Servicios, Survey, inventario, activos, vehículos, proveedores, Costing ni Cotización. No calcula margen, precio de venta ni importe de proveedor inexistente.

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { ADMIN_FLEET_BATCH } from "../shared/adminFleet.js";
 import { ADMIN_MEMBERSHIP_PREVIEW_BATCH } from "../shared/adminMembershipPreview.js";
 import { FLEET_DRIVERS_MIGRATION, FLEET_DRIVERS_MIGRATION_CHECKSUM } from "../shared/adminFleetDrivers.js";
-import { FLEET_PREVIEW_MIGRATION_OPERATION, RETAINED_PREVIEW_EXTENSION, previewMigrationOperation, previewMigrationManifest, validatePreviewDriverHistory, validatePreviewCatalogPin, validatePreviewDatabaseIdentity, normalizePreviewSnapshotSchema, runFleetDriverPreviewMigration } from "./v17-fleet-drivers-preview-migrate.mjs";
+import { FLEET_PREVIEW_MIGRATION_OPERATION, RETAINED_PREVIEW_EXTENSION, previewMigrationOperation, previewMigrationManifest, validatePreviewDriverHistory, validatePreviewCatalogPin, validatePreviewDatabaseIdentity, selectPreviewDriverCatalogProfile, normalizePreviewSnapshotSchema, runFleetDriverPreviewMigration } from "./v17-fleet-drivers-preview-migrate.mjs";
 
 const commit = "a".repeat(40);
 const preview = {
@@ -53,15 +54,54 @@ test("APPLY and applied replays require the catalog independently observed in CH
 test("database, Neon branch and PostgreSQL version retain separate strict identity errors", () => {
   const identity = { database: "v17_consolidated_preview_10b", branch: "br-mute-credit-ahxnvfx0", server_version_num: "180006" };
   validatePreviewDatabaseIdentity(identity);
+  validatePreviewDatabaseIdentity({ ...identity, server_version_num: "170011" });
   for (const [override, code] of [
     [{ database: "unexpected_database" }, "DATABASE_NAME_INVALID"],
     [{ database: null }, "DATABASE_NAME_INVALID"],
     [{ branch: "br-unexpected" }, "NEON_BRANCH_INVALID"],
     [{ branch: null }, "NEON_BRANCH_INVALID"],
-    [{ server_version_num: "170006" }, "SERVER_VERSION_INVALID"],
+    [{ server_version_num: "160011" }, "SERVER_VERSION_INVALID"],
     [{ server_version_num: "190000" }, "SERVER_VERSION_INVALID"],
     [{ server_version_num: null }, "SERVER_VERSION_INVALID"],
+    [{ server_version_num: "170011.5" }, "SERVER_VERSION_INVALID"],
+    [{ server_version_num: "unknown" }, "SERVER_VERSION_INVALID"],
   ]) assert.throws(() => validatePreviewDatabaseIdentity({ ...identity, ...override }), { message: `FLEET_PREVIEW_MIGRATION_${code}` });
+});
+const catalogFixtures = () => ({
+  17: JSON.parse(readFileSync(new URL("../tests/crm-01b1/fleet-drivers-19f-pg17-catalog.json", import.meta.url), "utf8")),
+  18: JSON.parse(readFileSync(new URL("../tests/crm-01b1/fleet-drivers-19f-catalog.json", import.meta.url), "utf8")),
+});
+test("Preview selects independently measured PG17 and PG18 deltas without a fallback", () => {
+  const fixtures = catalogFixtures();
+  for (const [version, serverMajor] of [["170011", 17], ["180006", 18]]) {
+    assert.deepEqual(selectPreviewDriverCatalogProfile(version, fixtures), { serverMajor, expectedDelta: fixtures[serverMajor].delta.catalog });
+  }
+  assert.notEqual(fixtures[17].delta.catalog.sha256, fixtures[18].delta.catalog.sha256);
+  assert.throws(() => selectPreviewDriverCatalogProfile("170011", { 18: fixtures[18] }), { message: "FLEET_PREVIEW_MIGRATION_CATALOG_SOURCE_INVALID" });
+  assert.throws(() => selectPreviewDriverCatalogProfile("170011", { 17: fixtures[18] }), { message: "FLEET_PREVIEW_MIGRATION_CATALOG_SOURCE_INVALID" });
+  for (const version of ["160011", "190000", null]) {
+    assert.throws(() => selectPreviewDriverCatalogProfile(version, fixtures), { message: "FLEET_PREVIEW_MIGRATION_SERVER_VERSION_INVALID" });
+  }
+});
+test("catalog profiles reject altered provenance, SQL sources, measured rows and hashes", () => {
+  for (const serverMajor of [17, 18]) {
+    for (const alter of [
+      (fixture) => { fixture.migration.sha256 = "0".repeat(64); },
+      (fixture) => { fixture.provenance.kind = "UNREVIEWED"; },
+      (fixture) => { fixture.provenance.server.version_number = "160011"; },
+      (fixture) => { fixture.provenance.catalogQuerySha256 = "0".repeat(64); },
+      (fixture) => { fixture.provenance.previousObjectsUnchangedAfterMigration = false; },
+      (fixture) => { fixture.delta.rows.pop(); },
+      (fixture) => { fixture.delta.rows[0].schema_name = "wrong_schema"; },
+      (fixture) => { fixture.delta.rows[0].definition += " altered"; },
+      (fixture) => { fixture.delta.catalog.count += 1; },
+      (fixture) => { fixture.delta.catalog.sha256 = "0".repeat(64); },
+    ]) {
+      const fixtures = catalogFixtures();
+      alter(fixtures[serverMajor]);
+      assert.throws(() => selectPreviewDriverCatalogProfile(String(serverMajor * 10000 + 11), fixtures), { message: "FLEET_PREVIEW_MIGRATION_CATALOG_SOURCE_INVALID" });
+    }
+  }
 });
 function schemaTransaction(initial, selected) {
   const statements = [];

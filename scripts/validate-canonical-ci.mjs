@@ -61,8 +61,27 @@ function trackedFiles() {
   return result.stdout.split("\0").filter(Boolean);
 }
 
-function validateTrackedSecrets(root = process.cwd()) {
-  const files = trackedFiles();
+const PG17_SYNTHETIC_URL_FILES = new Set([
+  ".github/workflows/fleet-preview-pg17.yml",
+  "scripts/v17-fleet-drivers-pg17-local-target-test.mjs",
+]);
+
+function allowedTrackedCredentialUrl(file, raw) {
+  let url;
+  try { url = new URL(raw); } catch { return false; }
+  if (file === ".github/workflows/ci.yml") {
+    return new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname);
+  }
+  // Only this known, disposable PG17 fixture is allowed in its two source files.
+  return PG17_SYNTHETIC_URL_FILES.has(file)
+    && raw === url.href && !raw.includes("#")
+    && url.protocol === "postgresql:"
+    && url.username === "postgres" && url.password === "postgres"
+    && url.hostname === "127.0.0.1" && url.port === "55433"
+    && url.pathname === "/osi_fleet_17_compat" && url.search === "?schema=osi";
+}
+
+export function validateTrackedSecrets(root = process.cwd(), files = trackedFiles()) {
   const forbiddenEnvironmentFiles = files.filter((file) => {
     const name = basename(file);
     return (name === ".env" || name.startsWith(".env.")) && name !== ".env.example";
@@ -89,11 +108,7 @@ function validateTrackedSecrets(root = process.cwd()) {
     const contents = bytes.toString("utf8");
     if (contents.includes(privateKeyMarker) || contents.toLowerCase().includes(neonMarker)) findings.push(file);
     for (const match of contents.matchAll(credentialUrl)) {
-      if (file !== ".github/workflows/ci.yml") findings.push(file);
-      else {
-        const url = new URL(match[0]);
-        if (!new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname)) findings.push(file);
-      }
+      if (!allowedTrackedCredentialUrl(file, match[0])) findings.push(file);
     }
   }
   invariant(findings.length === 0, `Posibles secretos o conexiones externas: ${[...new Set(findings)].join(", ")}`);

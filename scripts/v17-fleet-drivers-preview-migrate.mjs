@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { isDeepStrictEqual, promisify } from "node:util";
 import { PrismaClient } from "@prisma/client";
 import { assertAdminFleetPreviewEnvironment } from "../api/_lib/adminFleetAccess.js";
 import { FLEET_DRIVERS_MIGRATION, FLEET_DRIVERS_MIGRATION_CHECKSUM } from "../shared/adminFleetDrivers.js";
@@ -61,7 +61,30 @@ export function validatePreviewCatalogPin(operation, previousCatalog) {
 export function validatePreviewDatabaseIdentity(identity) {
   requireCondition(identity?.database === "v17_consolidated_preview_10b", "DATABASE_NAME_INVALID");
   requireCondition(identity.branch === "br-mute-credit-ahxnvfx0", "NEON_BRANCH_INVALID");
-  requireCondition(Number(identity.server_version_num) >= 180000 && Number(identity.server_version_num) < 190000, "SERVER_VERSION_INVALID");
+  previewServerMajor(identity.server_version_num);
+}
+
+function previewServerMajor(version) {
+  const value = Number(version);
+  const major = Math.floor(value / 10000);
+  requireCondition(Number.isSafeInteger(value) && [17, 18].includes(major), "SERVER_VERSION_INVALID");
+  return major;
+}
+
+export function selectPreviewDriverCatalogProfile(version, fixtures) {
+  const serverMajor = previewServerMajor(version);
+  const fixture = fixtures?.[serverMajor];
+  requireCondition(fixture?.migration?.name === FLEET_DRIVERS_MIGRATION
+    && fixture.migration.sha256 === FLEET_DRIVERS_MIGRATION_CHECKSUM
+    && fixture.provenance?.kind === "LOCAL_DISPOSABLE_POSTGRESQL"
+    && Math.floor(Number(fixture.provenance.server?.version_number) / 10000) === serverMajor
+    && fixture.provenance.catalogQuerySha256 === sha256(CATALOG_SQL)
+    && fixture.provenance.previousObjectsUnchangedAfterMigration === true
+    && Array.isArray(fixture.delta?.rows) && fixture.delta.rows.length > 0, "CATALOG_SOURCE_INVALID");
+  const { previousRows, deltaRows } = partitionFleetDriverCatalog(fixture.delta.rows);
+  const expectedDelta = summarizeCrm01b1Catalog(deltaRows);
+  requireCondition(previousRows.length === 0 && isDeepStrictEqual(expectedDelta, fixture.delta.catalog), "CATALOG_SOURCE_INVALID");
+  return { serverMajor, expectedDelta };
 }
 
 export async function normalizePreviewSnapshotSchema(tx) {
@@ -103,13 +126,14 @@ export function validatePreviewDriverHistory(history, manifest) {
   return { applied: names.size, pending, alreadyApplied: pending.length === 0 };
 }
 
-async function snapshot(prisma, manifest, expectedDelta) {
+async function snapshot(prisma, manifest, fixtures) {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
     await tx.$executeRawUnsafe("SET LOCAL statement_timeout = '30s'");
     await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
     const [identity] = await tx.$queryRawUnsafe("SELECT current_database() AS database, current_setting('neon.branch_id', true) AS branch, current_setting('server_version_num') AS server_version_num");
     validatePreviewDatabaseIdentity(identity);
+    const { serverMajor, expectedDelta } = selectPreviewDriverCatalogProfile(identity.server_version_num, fixtures);
     const schema = await normalizePreviewSnapshotSchema(tx);
     const tenants = await tx.$queryRawUnsafe("SELECT status::text AS status FROM osi.tenants WHERE code = 'V17-CONSOLIDATED-PREVIEW-10B'");
     requireCondition(tenants.length === 1 && tenants[0].status === "ACTIVE", "TENANT_INVALID");
@@ -124,7 +148,7 @@ async function snapshot(prisma, manifest, expectedDelta) {
     requireCondition(plan.alreadyApplied
       ? delta.count === expectedDelta.count && delta.sha256 === expectedDelta.sha256
       : deltaRows.length === 0, "CATALOG_INVALID");
-    return { plan, previousCatalog, delta, previousHistory: history.filter((row) => row.migration_name !== FLEET_DRIVERS_MIGRATION), ...schema };
+    return { plan, previousCatalog, delta, serverMajor, serverVersionNum: Number(identity.server_version_num), previousHistory: history.filter((row) => row.migration_name !== FLEET_DRIVERS_MIGRATION), ...schema };
   }, { maxWait: 5000, timeout: 35000, isolationLevel: "RepeatableRead" });
 }
 
@@ -132,14 +156,18 @@ export async function runFleetDriverPreviewMigration({ env = process.env, root =
   const operation = previewMigrationOperation(env);
   if (!operation) return null;
   const manifest = previewMigrationManifest(root);
-  const fixture = JSON.parse(readFileSync(resolve(root, "tests/crm-01b1/fleet-drivers-19f-catalog.json"), "utf8"));
-  requireCondition(fixture.migration.name === FLEET_DRIVERS_MIGRATION
-    && fixture.migration.sha256 === FLEET_DRIVERS_MIGRATION_CHECKSUM, "CATALOG_SOURCE_INVALID");
+  // These are independent measured deltas. PG17 does not expose table NOT NULL
+  // constraints in pg_constraint, so the frozen canonical PG18 fixture remains
+  // intact and is never filtered or used as a fallback for another major.
+  const fixtures = {
+    17: JSON.parse(readFileSync(resolve(root, "tests/crm-01b1/fleet-drivers-19f-pg17-catalog.json"), "utf8")),
+    18: JSON.parse(readFileSync(resolve(root, "tests/crm-01b1/fleet-drivers-19f-catalog.json"), "utf8")),
+  };
   const prismaVersion = JSON.parse(readFileSync(resolve(root, "node_modules/prisma/package.json"), "utf8")).version;
   requireCondition(prismaVersion === "6.19.2", "PRISMA_VERSION_INVALID");
   const prisma = new PrismaClient({ datasources: { db: { url: env.DIRECT_URL } }, log: [] });
   try {
-    const before = await snapshot(prisma, manifest, fixture.delta.catalog);
+    const before = await snapshot(prisma, manifest, fixtures);
     // APPLY, including an already-applied retry, is bound to the independently
     // reviewed CHECK evidence. It cannot silently accept a changed old catalog.
     validatePreviewCatalogPin(operation, before.previousCatalog);
@@ -147,6 +175,7 @@ export async function runFleetDriverPreviewMigration({ env = process.env, root =
       return { operation: operation.mode, commit: operation.commit,
         status: before.plan.alreadyApplied ? "VERIFIED_19F_APPLIED" : "VERIFIED_19F_PENDING",
         applied: before.plan.applied, pending: before.plan.pending,
+        serverMajor: before.serverMajor, serverVersionNum: before.serverVersionNum,
         searchPathNormalized: before.searchPathNormalized,
         previousCatalog: { sha256: before.previousCatalog.sha256, count: before.previousCatalog.count },
         retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name, historicalExtensionSourceReviewed: false };
@@ -159,13 +188,15 @@ export async function runFleetDriverPreviewMigration({ env = process.env, root =
         timeout: 120000, maxBuffer: 1024 * 1024, windowsHide: true,
       });
     } catch { requireCondition(false, "PRISMA_DEPLOY_FAILED"); }
-    const after = await snapshot(prisma, manifest, fixture.delta.catalog);
-    requireCondition(after.plan.alreadyApplied && after.plan.applied === before.plan.applied + 1
+    const after = await snapshot(prisma, manifest, fixtures);
+    requireCondition(after.serverMajor === before.serverMajor
+      && after.plan.alreadyApplied && after.plan.applied === before.plan.applied + 1
       && JSON.stringify(after.previousHistory) === JSON.stringify(before.previousHistory)
       && after.previousCatalog.count === before.previousCatalog.count
       && after.previousCatalog.sha256 === before.previousCatalog.sha256, "PREVIOUS_STATE_CHANGED");
     return { operation: operation.mode, commit: operation.commit, status: "VERIFIED_19F_APPLIED",
       applied: after.plan.applied, pending: [], previousCatalogPreserved: true,
+      serverMajor: after.serverMajor, serverVersionNum: after.serverVersionNum,
       searchPathNormalized: before.searchPathNormalized || after.searchPathNormalized,
       driverCatalog: after.delta.sha256, retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name,
       historicalExtensionSourceReviewed: false };

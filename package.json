@@ -164,7 +164,12 @@
     "test:v17-admin-user-identity:http": "node scripts/v17-admin-user-identity-http-test.mjs",
     "test:v17-admin-user-identity:db": "node scripts/v17-admin-user-identity-db-test.mjs",
     "test:v17-admin-user-identity:browser": "playwright test --config playwright.v17-user-identity.config.ts",
-    "typecheck:v17-admin-user-identity": "tsc --noEmit -p tsconfig.v17-user-identity.json"
+    "typecheck:v17-admin-user-identity": "tsc --noEmit -p tsconfig.v17-user-identity.json",
+    "test:v17-admin-fleet": "node scripts/v17-admin-fleet-contract-test.mjs && node scripts/v17-admin-fleet-transactions-test.mjs && node scripts/v17-admin-fleet-logistics-units-test.mjs",
+    "test:v17-admin-fleet:http": "node scripts/v17-admin-fleet-http-test.mjs",
+    "test:v17-admin-fleet:db": "node scripts/v17-admin-fleet-db-test.mjs",
+    "test:v17-admin-fleet:browser": "playwright test --config playwright.v17-fleet.config.ts",
+    "typecheck:v17-admin-fleet": "tsc --noEmit -p tsconfig.v17-fleet.json"
   },
   "dependencies": {
     "22": "^0.0.0",

@@ -1,4 +1,4 @@
-export type AdministrationSectionId = "access" | "services" | "logistics" | "costing" | "communications" | "policies";
+export type AdministrationSectionId = "access" | "fleet" | "services" | "logistics" | "costing" | "communications" | "policies";
 
 export type AdministrationSection = Readonly<{
   id: AdministrationSectionId;
@@ -11,6 +11,7 @@ export type AdministrationSection = Readonly<{
 // it does not remove access to an unrelated administrative section.
 export const ADMINISTRATION_SECTIONS: readonly AdministrationSection[] = Object.freeze([
   { id: "access", label: "Usuarios y roles", route: "/administration/access", permissions: ["membership:view"] },
+  { id: "fleet", label: "Flota vehicular", route: "/administration/fleet", permissions: ["fleet:view"] },
   { id: "services", label: "Servicios y paquetes", route: "/administration/services", permissions: ["services:catalog:view", "services:packages:view", "services:materials:view"] },
   { id: "logistics", label: "Motor Logístico", route: "/administration/logistics", permissions: ["logistics:rules:view"] },
   { id: "costing", label: "Costos y monedas", route: "/administration/costing", permissions: ["costing:rules:view"] },

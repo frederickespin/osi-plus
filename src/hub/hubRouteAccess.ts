@@ -26,7 +26,7 @@ export function evaluateHubRouteAccess(pathname: string, context: HubAccessConte
     const section = application.appId === "administration" ? administrationSectionFromRoute(normalizedPath) : null;
     const applicationDecision = evaluateHubAccess(application, context);
     const decision = applicationDecision.allowed && section
-      ? evaluateHubAccess({ ...application, requiredPermissions: section.permissions, ...(section.id === "access" ? { baselineRoles: ["A"] as const } : {}) }, context)
+      ? evaluateHubAccess({ ...application, requiredPermissions: section.permissions, ...(["access", "fleet"].includes(section.id) ? { baselineRoles: ["A"] as const } : {}) }, context)
       : applicationDecision;
     return Object.freeze({
       allowed: decision.allowed,

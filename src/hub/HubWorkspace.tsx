@@ -11,6 +11,8 @@ import { resolveCrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess"
 import { resolveCrmServicesUiAccess } from "@/crm-services/access";
 import { isCrmServicesUiEnabled } from "@/crm-services/mode";
 import { availableAdministrationSections } from "@/administration/administrationSections";
+import { isAdminFleetEnabled } from "@/admin-fleet/mode";
+import { resolveFleetAccess } from "@/admin-fleet/access";
 import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resolveAdminIdentityInvitationMode } from "@/admin-tenant/adminMode";
 import { isSurveyUiEnabled } from "@/survey/mode";
 import { resolveSurveySchedulingUiAccess } from "@/survey/schedulingAccess";
@@ -158,6 +160,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const costingAdminAvailable = isCostingUiEnabled() && costingAccess.canRulesView;
   const administrationSections = availableAdministrationSections({
     access: adminMembershipAvailable,
+    fleet: isAdminFleetEnabled() && resolveFleetAccess(accessContext.role, accessContext.effectivePermissions, accessContext.deniedPermissions).canView,
     services: servicesAdminAvailable,
     logistics: logisticsAdminAvailable,
     costing: costingAdminAvailable,
@@ -226,6 +229,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Administración…</div>}>
       <AdministrationWorkspace
         authorization={authorization}
+        role={accessContext.role}
         pathname={pathname}
         sections={administrationSections}
         effectivePermissions={accessContext.effectivePermissions || []}

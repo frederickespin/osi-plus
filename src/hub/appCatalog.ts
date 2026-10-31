@@ -163,13 +163,14 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     appId: "administration",
     name: "Administración",
     description:
-      "Acceso, membresías, personal, agenda, plantillas y reglas transversales del tenant.",
+      "Acceso, flota, personal, agenda, plantillas y reglas transversales de la empresa.",
     icon: "settings",
     route: "/administration",
-    routeAliases: ["/administration/access", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"],
+    routeAliases: ["/administration/access", "/administration/fleet", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"],
     status: "REGISTERED_INACTIVE",
     requiredPermissions: [
       "membership:view",
+      "fleet:view",
       "services:catalog:view",
       "services:packages:view",
       "services:materials:view",

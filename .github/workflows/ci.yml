@@ -48,6 +48,10 @@ jobs:
           node scripts/v17-admin-user-identity-contract-test.mjs
           node scripts/v17-admin-user-identity-transactions-test.mjs
           node scripts/v17-admin-user-identity-http-test.mjs
+          node scripts/v17-admin-fleet-contract-test.mjs
+          node scripts/v17-admin-fleet-transactions-test.mjs
+          node scripts/v17-admin-fleet-http-test.mjs
+          node scripts/v17-admin-fleet-logistics-units-test.mjs
           node scripts/v17-quote-local-target-test.mjs
           node scripts/v17-services-local-target-test.mjs
           node scripts/validate-mt01c1b2a-guard-test.mjs
@@ -676,6 +680,9 @@ jobs:
       # tenant-scoped fixtures and must run after the existing database suites.
       - name: Verify 19C identity and enrollment against PostgreSQL 18
         run: node scripts/v17-admin-user-identity-db-test.mjs
+
+      - name: Verify 19D persistent fleet against PostgreSQL 18
+        run: node scripts/v17-admin-fleet-db-test.mjs
 
       - name: Build
         run: npm run build

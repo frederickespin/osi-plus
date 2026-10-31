@@ -7,6 +7,8 @@ import ts from "typescript";
 // Factories preserve the approved HTTP adapter; external credentials are classified
 // separately from employee AuthorizationContext, public metadata, and retired APIs.
 const FACTORY_GROUPS = [
+  ["TENANT", "adminFleetHttp.js", "createAdminFleetCollectionHandler", ["api/admin/fleet/vehicles/index.js"]],
+  ["TENANT", "adminFleetHttp.js", "createAdminFleetDetailHandler", ["api/admin/fleet/vehicles/[vehicleRef]/index.js"]],
   ["TENANT", "adminMembershipHttp.js", "createAdminMembershipCollectionHandler", ["api/admin/memberships/index.js"]],
   ["TENANT", "adminMembershipHttp.js", "createAdminMembershipDetailHandler", ["api/admin/memberships/[membershipRef]/index.js"]],
   ["TENANT", "adminIdentityInvitationHttp.js", "createAdminIdentityInvitationCollectionHandler", ["api/admin/identity-invitations/index.js"]],

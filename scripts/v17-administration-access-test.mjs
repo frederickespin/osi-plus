@@ -39,7 +39,7 @@ const {
 } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
 
 const administration = HUB_APPLICATIONS.find((application) => application.appId === "administration");
-const enabled = Object.freeze({ access: true, services: true, logistics: true, costing: true, communications: true, policies: true });
+const enabled = Object.freeze({ access: true, fleet: true, services: true, logistics: true, costing: true, communications: true, policies: true });
 const context = (permissions, denied = [], role = "A") => ({
   role,
   effectivePermissions: permissions,
@@ -80,6 +80,22 @@ test("Usuarios y roles exige administrador sin bloquear otras secciones autoriza
     assert.equal(evaluateHubRouteAccess("/administration", access).allowed, true, role);
   }
   assert.equal(evaluateHubRouteAccess("/administration/access", context(["membership:view"])).allowed, true);
+});
+
+test("Flota exige administrador y fleet:view con denegaciones efectivas", () => {
+  const permission = "fleet:view";
+  assert.equal(evaluateHubRouteAccess("/administration/fleet", context([permission])).allowed, true);
+  assert.deepEqual(sectionsFor([permission]), ["fleet"]);
+  assert.deepEqual(sectionsFor([permission], [], { ...enabled, fleet: false }), []);
+  assert.deepEqual(sectionsFor([permission], [permission]), []);
+  assert.equal(evaluateHubRouteAccess("/administration/fleet", context([permission], [permission])).allowed, false);
+  for (const role of ["V", "K", "I", "PA"]) {
+    assert.equal(evaluateHubRouteAccess("/administration/fleet", context([permission], [], role)).allowed, false, role);
+  }
+  for (const permissions of [["fleet:edit"], ["vehicle:view"], ["vehicle:manage"]]) {
+    assert.equal(evaluateHubRouteAccess("/administration/fleet", context(permissions)).allowed, false);
+    assert.deepEqual(sectionsFor(permissions), []);
+  }
 });
 
 test("Servicios admite cada permiso lector independiente y no concede otras secciones", () => {
@@ -156,7 +172,7 @@ test("otras aplicaciones conservan la denegación global, incluso para permisos 
 
 test("catálogo y secciones coinciden en rutas y permisos explícitos", () => {
   const routes = ADMINISTRATION_SECTIONS.map((section) => section.route);
-  assert.equal(new Set(routes).size, 6);
+  assert.equal(new Set(routes).size, 7);
   assert.deepEqual(new Set(administration.routeAliases), new Set(routes));
   assert.deepEqual(new Set(administration.requiredPermissions), new Set(ADMINISTRATION_SECTIONS.flatMap((section) => section.permissions)));
   assert.equal(administration.requiresExplicitPermissions, true);

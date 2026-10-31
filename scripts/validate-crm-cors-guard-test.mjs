@@ -7,11 +7,20 @@ import {
 } from "./validate-crm-cors-guard.mjs";
 
 const read = (path) => readFileSync(path, "utf8");
+const fleetDriverRoutes = [
+  ["/api/admin/fleet/drivers/options", "api/admin/fleet/drivers/options.js"],
+  ["/api/admin/fleet/vehicles/[vehicleRef]/drivers", "api/admin/fleet/vehicles/[vehicleRef]/drivers/index.js"],
+  ["/api/admin/fleet/vehicles/[vehicleRef]/drivers/primary", "api/admin/fleet/vehicles/[vehicleRef]/drivers/primary.js"],
+  ["/api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations", "api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/index.js"],
+  ["/api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/[authorizationRef]", "api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/[authorizationRef].js"],
+];
 const baseline = new Map([
   ["vercel.json", read("vercel.json")], ["api/_lib/http.js", read("api/_lib/http.js")],
   ["scripts/protected-cors-route-inventory.json", read("scripts/protected-cors-route-inventory.json")],
   ["api/_lib/adminIdentityInvitationHttp.js", read("api/_lib/adminIdentityInvitationHttp.js")],
   ["api/_lib/adminFleetHttp.js", read("api/_lib/adminFleetHttp.js")],
+  ["api/_lib/fleetDriversHttp.js", read("api/_lib/fleetDriversHttp.js")],
+  ...fleetDriverRoutes.map(([, path]) => [path, read(path)]),
   ["api/_lib/adminMembershipHttp.js", read("api/_lib/adminMembershipHttp.js")], ["api/_lib/authHttp.js", read("api/_lib/authHttp.js")],
   ["api/_lib/authOrigin.js", read("api/_lib/authOrigin.js")], ["api/_lib/crmCaseMutationHttp.js", read("api/_lib/crmCaseMutationHttp.js")],
   ["api/_lib/crmIcpV2ApiHttp.js", read("api/_lib/crmIcpV2ApiHttp.js")],
@@ -60,6 +69,8 @@ check("tres rutas Identity protegidas", [
 check("Scheduling protegido same-origin", inventory.categories.protectedSameOrigin.includes("/api/crm/survey/scheduling"));
 check("Flota mantiene ambas rutas privadas same-origin", ["/api/admin/fleet/vehicles", "/api/admin/fleet/vehicles/[vehicleRef]"]
   .every((route) => inventory.categories.protectedSameOrigin.includes(route)));
+check("Choferes mantiene exactamente sus cinco rutas privadas same-origin", fleetDriverRoutes.length === 5
+  && fleetDriverRoutes.every(([route]) => inventory.categories.protectedSameOrigin.includes(route)));
 check("resumen coincide con manifiesto", validateCrmCorsInventoryReport(current, expectedCrmCorsInventoryReport({ overrides: baseline })));
 check("sin headers API de plataforma", current.platformApiHeaderRules === 0);
 rejected("ruta Identity ausente", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
@@ -70,6 +81,17 @@ rejected("ruta protegida reclasificada como pública", "scripts/protected-cors-r
   categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);
   categories.publicDeliberate.push(route);
 }));
+for (const [route, relativePath] of fleetDriverRoutes) {
+  rejected("ruta Choferes ausente: " + route, "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+    categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);
+  }), /clasificación incompleta/);
+  rejected("ruta Choferes no puede reclasificarse como pública: " + route, "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+    categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);
+    categories.publicDeliberate.push(route);
+  }), /wrapper público allowlisted/);
+  rejected("ruta Choferes no puede declarar wildcard: " + route, relativePath,
+    (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`, /declara wildcard/);
+}
 rejected("ruta duplicada en manifiesto", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
   categories.protectedSameOrigin.push("/api/admin/memberships");
 }), /duplicadas/);
@@ -83,6 +105,9 @@ rejected("wildcard Projects con casing", "api/projects/index.js", (value) => `${
 rejected("wildcard Admin", "api/_lib/adminMembershipHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard Flota", "api/_lib/adminFleetHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("reflejo de Origin Flota", "api/_lib/adminFleetHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", req.headers.origin);`);
+rejected("wildcard wrapper Choferes", "api/_lib/fleetDriversHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`, /declara wildcard/);
+rejected("reflejo de Origin wrapper Choferes", "api/_lib/fleetDriversHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", req.headers.origin);`, /refleja Origin/);
+rejected("credentials permisivo wrapper Choferes", "api/_lib/fleetDriversHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Credentials", "true");`, /declara credentials permisivo/);
 rejected("wildcard CRM", "api/_lib/crmPipelineReadHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard wrapper compartido", "api/_lib/http.js", (value) => value.replace("applyHeaders: setPrivateNoStore", "applyHeaders: setPublicReadCors"));
 rejected("wildcard wrapper activos", "api/_lib/toolsEquipmentHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);

@@ -28,6 +28,7 @@ const baseline = new Map([
   ["api/_lib/materialsInventoryHttp.js", read("api/_lib/materialsInventoryHttp.js")],
   ["api/_lib/toolsEquipmentHttp.js", read("api/_lib/toolsEquipmentHttp.js")],
   ["api/_lib/logisticsEngineHttp.js", read("api/_lib/logisticsEngineHttp.js")],
+  ["api/_lib/logisticsTransportHttp.js", read("api/_lib/logisticsTransportHttp.js")],
   ["api/_lib/costingHttp.js", read("api/_lib/costingHttp.js")],
   ["api/_lib/quoteHttp.js", read("api/_lib/quoteHttp.js")],
   ["api/_lib/personnelPoliciesHttp.js", read("api/_lib/personnelPoliciesHttp.js")],
@@ -54,6 +55,14 @@ function mutateManifest(mutator) {
 }
 
 const current = validateCrmCorsGuard({ overrides: baseline });
+for (const endpoint of ["zones", "calculate", "publish", "plans", "context"]) {
+  const route = `/api/logistics/transport/${endpoint}`;
+  rejected("transporte sin clasificación: " + route, "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+    categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);
+  }), /clasificación incompleta/);
+}
+rejected("transporte no omite gate logístico", "api/_lib/logisticsTransportHttp.js", (value) => value.replace("if (!prepareLogisticsRequest(req, res, env)) return;", "if (false) return;"), /omitió gate logístico/);
+rejected("transporte no omite gate económico", "api/_lib/logisticsTransportHttp.js", (value) => value.replace("if (!prepareCostingRequest(req, res, env)) return;", "if (false) return;"), /omitió gate monetario/);
 const inventory = loadProtectedCorsInventory({ overrides: baseline });
 const inventoryTotal = Object.values(inventory.categories).reduce((total, routes) => total + routes.length, 0);
 check("inventario completo coincide con manifiesto", current.ok && current.routes === inventoryTotal && current.classifiedRoutes === inventoryTotal);

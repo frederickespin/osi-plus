@@ -5,6 +5,7 @@ import {
   resolveCrmPipelineModes,
 } from "./crmPipelineAccess.js";
 import { PERMS } from "./rbac.js";
+import { latestLogisticsRevisionsByPlan, QUOTE_TRANSPORT_CONTEXT } from "./logisticsTransportContext.js";
 
 export const CRM_PIPELINE_RUNTIME_MODES = CRM_PIPELINE_READ_MODES;
 
@@ -68,21 +69,7 @@ const ROUTE_SELECT = Object.freeze({
   streetAndNumber: true,
 });
 
-const LOGISTICS_ZONE_SELECT = Object.freeze({
-  revisions: {
-    where: { status: "PUBLISHED" },
-    orderBy: { revision: "desc" },
-    take: 1,
-    select: {
-      items: {
-        where: { family: "TRANSPORT", kind: "VISIT_ZONE" },
-        orderBy: { position: "asc" },
-        take: 1,
-        select: { snapshot: true },
-      },
-    },
-  },
-});
+const LOGISTICS_ZONE_SELECT = Object.freeze({ id: true });
 
 const CASE_SELECT = Object.freeze({
   publicRef: true,
@@ -296,10 +283,11 @@ function publishedRoute(row) {
   const current = row.routeSnapshots.filter((entry) => Number(entry.routeVersion) === revision);
   const origin = current.find((entry) => entry.role === "ORIGIN" && Number(entry.stopOrder) === 0) || null;
   const destination = current.find((entry) => entry.role === "DESTINATION" && Number(entry.stopOrder) === 0) || null;
-  const zoneSnapshot = row.logisticsPlans?.[0]?.revisions?.[0]?.items?.[0]?.snapshot;
+  const logistics = row.publishedLogisticsZone;
+  const snapshots = Number(logistics?.inputSnapshot?.route?.version) === revision ? logistics.items.map((item) => item.snapshot) : [];
   const areaFor = (side) => {
-    const candidate = side === "origin" ? zoneSnapshot?.originZoneType : zoneSnapshot?.destinationZoneType;
-    return candidate === "METRO" || candidate === "INTERIOR" ? candidate : "UNAVAILABLE";
+    const candidates = new Set(snapshots.map((snapshot) => side === "origin" ? snapshot?.originZoneType : snapshot?.destinationZoneType).filter((value) => value === "METRO" || value === "INTERIOR"));
+    return candidates.size === 1 ? [...candidates][0] : "UNAVAILABLE";
   };
   const endpoint = (value, side) => value ? Object.freeze({
     compactAddress: compactRouteAddress(value),
@@ -307,6 +295,16 @@ function publishedRoute(row) {
     areaSource: areaFor(side) === "UNAVAILABLE" ? "UNAVAILABLE" : "PUBLISHED_LOGISTICS",
   }) : null;
   return Object.freeze({ revision, origin: endpoint(origin, "origin"), destination: endpoint(destination, "destination") });
+}
+
+async function withPublishedLogisticsZones(prisma, tenantId, rows) {
+  const revisions = await latestLogisticsRevisionsByPlan(prisma, {
+    tenantId,
+    planIds: rows.flatMap((row) => row.logisticsPlans?.map((plan) => plan.id) || []),
+    context: QUOTE_TRANSPORT_CONTEXT,
+    select: { inputSnapshot: true, items: { where: { family: { in: ["TRANSPORT", "TRAVEL"] } }, orderBy: { position: "asc" }, select: { snapshot: true } } },
+  });
+  return rows.map((row) => ({ ...row, publishedLogisticsZone: revisions.get(row.logisticsPlans?.[0]?.id) || null }));
 }
 
 function safeCase(row) {
@@ -375,11 +373,12 @@ export async function listCrmPipelineCases(prisma, { tenantId, role, membershipI
         take: filters.pageSize,
       }),
     ]);
+    const cases = await withPublishedLogisticsZones(prisma, tenantId, rows);
     return Object.freeze({
       total,
       page: filters.page,
       pageSize: filters.pageSize,
-      data: Object.freeze(rows.map(safeCase)),
+      data: Object.freeze(cases.map(safeCase)),
     });
   } catch (cause) {
     if (cause instanceof CommercialTenancyError) throw cause;
@@ -396,7 +395,8 @@ export async function findCrmPipelineCase(prisma, { tenantId, role, membershipId
       select: CASE_DETAIL_SELECT,
     });
     if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
-    return safeCaseDetail(row, String(membershipId));
+    const [value] = await withPublishedLogisticsZones(prisma, tenantId, [row]);
+    return safeCaseDetail(value, String(membershipId));
   } catch (cause) {
     if (cause instanceof CommercialTenancyError) throw cause;
     throw commercialDatabaseUnavailable(cause);

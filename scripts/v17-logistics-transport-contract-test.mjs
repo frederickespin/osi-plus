@@ -1,0 +1,87 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { canonicalHash, normalizeRuleCreate, ruleMatches } from "../api/_lib/logisticsEngineContract.js";
+import { calculateTransportResult, normalizeTransportCalculate, normalizeTransportPolygon, normalizeTransportZone, pointInTransportPolygon, selectTransportZone, TRANSPORT_CONTRACT } from "../api/_lib/logisticsTransportContract.js";
+
+let assertions = 0;
+function equal(actual, expected) { assert.deepEqual(actual, expected); assertions++; }
+function rejects(work, code) { assert.throws(work, new RegExp(code)); assertions++; }
+function signed(operation, payload) { const requestId = randomUUID(); return { ...payload, requestId, payloadHash: canonicalHash({ operation, requestId, ...payload }) }; }
+const polygon = { type: "Polygon", coordinates: [[[-70, 18], [-69, 18], [-69, 19], [-70, 19], [-70, 18]]] };
+const tariff = (code, kind, basis, unitCost, extra = {}) => ({ code, label: code, kind, basis, unitCost, classification: "DE", minimumMarginBps: null, recommendedMarginBps: null, includedConcepts: [], ...extra });
+const payload = { seriesRef: null, expectedVersion: null, code: "TEST_ZONE", name: "Synthetic isolated zone", zoneType: "INTERIOR", priority: 10, vehicleType: null, purposes: ["QUOTE", "SERVICE", "VISIT"], geometry: polygon, mode: "ITEMIZED", factor: null, currency: "DOP", kmPerGallon: "9", gallonUnit: "US", fuelType: "Synthetic", includedConcepts: [], components: [tariff("FUEL", "FUEL", "GALLON", "10"), tariff("TOLL", "TOLL", "PASS", "5"), tariff("DIET", "PER_DIEM", "PERSON_DAY", "20")], state: "ACTIVE" };
+function zoneFrom(value = payload) { return { ...value, ruleRef: randomUUID(), seriesRef: randomUUID(), version: 1, validFrom: null, validTo: null, components: value.components.map((row) => ({ ...row, costRuleRef: randomUUID(), costRuleVersion: 1 })) }; }
+const zone = zoneFrom();
+const journey = { journeyRef: randomUUID(), label: "Synthetic trip", vehicleType: "Synthetic truck", vehicleRef: null, origin: [-69.8, 18.2], destination: [-69.5, 18.5], distanceKm: "72", distanceSource: "Synthetic road distance", returnToOrigin: true, trips: 2, people: 2, days: "1.5", quantities: { TOLL: "4" } };
+const input = { caseRef: randomUUID(), purpose: "QUOTE", contextRef: null, intervalStart: "2026-11-02T12:00:00.000Z", intervalEnd: "2026-11-02T20:00:00.000Z", journeys: [journey] };
+const zoneCommand = normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", payload));
+equal(zoneCommand.operation, "TRANSPORT_ZONE_VERSION");
+equal(normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", input)).journeys[0], journey);
+equal(normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, journeys: [{ ...journey, vehicleRef: "cmrealopaquevehicle" }] })).journeys[0].vehicleRef, "cmrealopaquevehicle");
+rejects(() => normalizeTransportZone({ ...signed("TRANSPORT_ZONE_VERSION", payload), tenantId: "cross-tenant" }), "PAYLOAD_INVALID");
+rejects(() => normalizeTransportCalculate({ ...signed("TRANSPORT_CALCULATE", input), purpose: "SERVICE" }), "HASH_MISMATCH");
+rejects(() => normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, purpose: "VISIT" })), "CONTEXT_INVALID");
+rejects(() => normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, contextRef: randomUUID() })), "CONTEXT_INVALID");
+rejects(() => normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, journeys: [{ ...journey, distanceKm: "1e3" }] })), "NUMBER_INVALID");
+rejects(() => normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, journeys: [{ ...journey, trips: 0 }] })), "PAYLOAD_INVALID");
+rejects(() => normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, journeys: [{ ...journey, distanceKm: "1.00001" }] })), "NUMBER_INVALID");
+equal(normalizeTransportPolygon(polygon), polygon);
+equal(pointInTransportPolygon([-69.5, 18.5], polygon), true);
+equal(pointInTransportPolygon([-70, 18.5], polygon), true);
+equal(pointInTransportPolygon([-70, 18], polygon), true);
+equal(pointInTransportPolygon([-70.01, 18.5], polygon), false);
+rejects(() => normalizeTransportPolygon({ type: "Polygon", coordinates: [[[-70, 18], [-69, 19], [-70, 19], [-69, 18], [-70, 18]]] }), "SELF_INTERSECTION");
+rejects(() => normalizeTransportPolygon({ ...polygon, coordinates: [polygon.coordinates[0], polygon.coordinates[0]] }), "GEOMETRY_INVALID");
+rejects(() => normalizeTransportPolygon({ type: "Polygon", coordinates: [[[-70, 18], [-69, 18], [-68, 18], [-70, 18]]] }), "GEOMETRY_INVALID");
+rejects(() => normalizeTransportPolygon({ type: "Polygon", coordinates: [[[-70, 18], [-69, 18], [-69, 19], [-69, 18], [-70, 18]]] }), "GEOMETRY_INVALID");
+equal(selectTransportZone([zone], journey, "QUOTE").zone.ruleRef, zone.ruleRef);
+equal(selectTransportZone([{ ...zone, purposes: ["VISIT"] }], journey, "QUOTE").reason, "TRANSPORT_ZONE_NOT_CONFIGURED");
+const specific = { ...zoneFrom(), vehicleType: journey.vehicleType, priority: 1 };
+equal(selectTransportZone([zone, specific], journey, "QUOTE").zone.ruleRef, specific.ruleRef);
+equal(selectTransportZone([zone, zoneFrom()], journey, "QUOTE").reason, "TRANSPORT_ZONE_CONFLICT");
+equal(selectTransportZone([zone, { ...zoneFrom(), priority: 2 }], journey, "QUOTE").zone.ruleRef, zone.ruleRef);
+const result = calculateTransportResult(input, [zone]);
+equal(result.complete, true);
+equal(result.context, { contract: TRANSPORT_CONTRACT, purpose: "QUOTE", contextRef: null });
+equal(result.lines.map((row) => [row.kind, row.quantity, row.totalCost]), [["FUEL", "32.0000", "320.000000"], ["TOLL", "4.0000", "20.000000"], ["PER_DIEM", "3.0000", "60.000000"]]);
+equal(result.totals, [{ currency: "DOP", amount: "400.000000" }]);
+const oneWay = calculateTransportResult({ ...input, journeys: [{ ...journey, returnToOrigin: false, trips: 1 }] }, [zone]);
+equal(oneWay.lines[0].quantity, "8.0000");
+equal(oneWay.lines[1].quantity, "4.0000"); // Explicit total is never doubled implicitly.
+equal(oneWay.lines[2].quantity, "3.0000"); // Crew-days do not multiply by vehicle trips.
+const rounded = calculateTransportResult({ ...input, journeys: [{ ...journey, distanceKm: "1", trips: 1, returnToOrigin: false }] }, [zone]);
+equal(rounded.lines[0].quantity, "0.1111");
+equal(rounded.lines[0].totalCost, "1.111000");
+const factorZone = zoneFrom({ ...payload, mode: "FACTOR", factor: "1.234567", components: [tariff("BASE", "BASE", "TRIP", "100.123456")] });
+const factorResult = calculateTransportResult({ ...input, journeys: [{ ...journey, quantities: {} }] }, [factorZone]);
+equal(factorResult.lines[0].unitCost, "123.609115");
+equal(factorResult.lines[0].quantity, "2.0000");
+equal(factorResult.lines[0].totalCost, "247.218230");
+const missing = calculateTransportResult(input, [{ ...zone, components: zone.components.map((row) => row.kind === "TOLL" ? { ...row, unitCost: null } : row) }]);
+equal(missing.complete, false); equal(missing.lines[1].totalCost, null); equal(missing.totals[0].amount, null);
+const missingDistance = calculateTransportResult({ ...input, journeys: [{ ...journey, distanceKm: null, distanceSource: "" }] }, [zone]);
+equal(missingDistance.lines[0].quantity, null); equal(missingDistance.complete, false);
+const missingFuel = calculateTransportResult(input, [{ ...zone, fuelType: null }]);
+equal(missingFuel.complete, false); equal(missingFuel.issues.some((row) => row.code === "TRANSPORT_FUEL_TYPE_PENDING"), true);
+const noSource = calculateTransportResult({ ...input, journeys: [{ ...journey, distanceSource: "" }] }, [zone]);
+equal(noSource.complete, false); equal(noSource.issues.some((row) => row.code === "TRANSPORT_DISTANCE_PENDING"), true);
+const noTolls = calculateTransportResult({ ...input, journeys: [{ ...journey, quantities: { TOLL: "0" } }] }, [zone]);
+equal(noTolls.complete, true); equal(noTolls.lines[1].totalCost, "0.000000");
+const missingTolls = calculateTransportResult({ ...input, journeys: [{ ...journey, quantities: {} }] }, [zone]);
+equal(missingTolls.lines[1].totalCost, null); equal(missingTolls.complete, false);
+const noZone = calculateTransportResult(input, []); equal(noZone.complete, false); equal(noZone.totals, []);
+const noLines = calculateTransportResult({ ...input, journeys: [{ ...journey, quantities: {} }] }, [{ ...zone, components: [] }]);
+equal(noLines.complete, false); equal(noLines.totals[0].amount, null);
+const included = { ...payload, mode: "FACTOR", factor: "1.2", includedConcepts: ["FUEL"], components: [tariff("BASE", "BASE", "TRIP", "100"), tariff("FUEL", "FUEL", "GALLON", "10")] };
+rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", included)), "CONCEPT_DUPLICATED");
+rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...payload, components: [tariff("DIET", "PER_DIEM", "PERSON_DAY", "10"), tariff("TRAVEL", "ALLOWANCE", "PERSON_DAY", "20", { includedConcepts: ["PER_DIEM"] })] })), "CONCEPT_DUPLICATED");
+rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...payload, kmPerGallon: "0" })), "NUMBER_INVALID");
+rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...payload, components: [tariff("FUEL", "FUEL", "TRIP", "10")] })), "PAYLOAD_INVALID");
+rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...payload, components: [tariff("TOLL", "TOLL", "PASS", "1", { minimumMarginBps: 2000, recommendedMarginBps: 1000 })] })), "MARGIN_INVALID");
+const operational = { seriesRef: null, family: "ZONE", code: "ZONE", name: "Protected", priority: 1, specificity: 1, conditions: { transportContract: TRANSPORT_CONTRACT }, result: {}, state: "ACTIVE", validFrom: null, validTo: null };
+rejects(() => normalizeRuleCreate(signed("LOGISTICS_RULE_VERSION", operational)), "CANONICAL_PATH_REQUIRED");
+equal(ruleMatches({ conditions: { transportContract: TRANSPORT_CONTRACT } }, {}), false);
+const secondCurrency = { ...zoneFrom(), geometry: { type: "Polygon", coordinates: [[[-68, 18], [-67, 18], [-67, 19], [-68, 19], [-68, 18]]] }, currency: "USD" };
+const multiple = calculateTransportResult({ ...input, journeys: [journey, { ...journey, journeyRef: randomUUID(), destination: [-67.5, 18.5] }] }, [zone, secondCurrency]);
+equal(multiple.totals, [{ currency: "DOP", amount: "400.000000" }, { currency: "USD", amount: "400.000000" }]);
+process.stdout.write(JSON.stringify({ ok: true, assertions, geometry: true, decimals: true, contexts: true, missingValuesStayPending: true, noDoubleCounting: true }) + "\n");

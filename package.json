@@ -172,7 +172,10 @@
     "typecheck:v17-admin-fleet": "tsc --noEmit -p tsconfig.v17-fleet.json",
     "test:v17-fleet-drivers": "node scripts/v17-fleet-drivers-contract-test.mjs && node scripts/v17-fleet-drivers-transactions-test.mjs && node scripts/v17-fleet-drivers-preview-migrate-test.mjs",
     "test:v17-fleet-drivers:http": "node scripts/v17-fleet-drivers-http-test.mjs",
-    "test:v17-fleet-drivers:db": "node scripts/v17-fleet-drivers-db-test.mjs"
+    "test:v17-fleet-drivers:db": "node scripts/v17-fleet-drivers-db-test.mjs",
+    "test:v17-logistics-transport": "node scripts/v17-logistics-transport-contract-test.mjs && node scripts/v17-logistics-transport-zones-test.mjs && node scripts/v17-logistics-transport-http-test.mjs && node scripts/v17-logistics-transport-integration-test.mjs",
+    "test:v17-logistics-transport:db": "node scripts/v17-logistics-transport-db-test.mjs",
+    "test:v17-logistics-transport:browser": "playwright test -c playwright.v17-transport.config.ts"
   },
   "dependencies": {
     "22": "^0.0.0",
@@ -214,6 +217,7 @@
     "html5-qrcode": "^2.3.8",
     "input-otp": "^1.4.2",
     "jsonwebtoken": "^9.0.3",
+    "leaflet": "1.9.4",
     "lucide-react": "^0.562.0",
     "next-themes": "^0.4.6",
     "qrcode.react": "^4.2.0",
@@ -232,6 +236,7 @@
     "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.62.1",
     "@types/dompurify": "^3.0.5",
+    "@types/leaflet": "1.9.21",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

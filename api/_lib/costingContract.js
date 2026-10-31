@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { TRANSPORT_CONTEXT_CONTRACT } from "./logisticsTransportContext.js";
 
 export class CostingError extends Error {
   constructor(code, status = 400) {
@@ -146,9 +147,17 @@ export function normalizeCostingIssueResolution(raw) {
   });
 }
 
+export function isProtectedTransportCostingRule(rule) {
+  return typeof rule?.code === "string" && rule.code.startsWith("TZ_")
+    || !!rule?.conditions && Object.hasOwn(rule.conditions, "transportContract")
+    || !!rule?.result && Object.hasOwn(rule.result, "transportContract")
+    || rule?.result?.contract === TRANSPORT_CONTEXT_CONTRACT;
+}
+
 export function normalizeCostingRule(raw) {
   const value = asObject(raw);
   exactKeys(value, ["requestId", "payloadHash", "seriesRef", "family", "code", "name", "classification", "source", "priority", "specificity", "conditions", "unitCost", "currency", "minimumMarginBps", "recommendedMarginBps", "result", "state", "validFrom", "validTo"]);
+  if (isProtectedTransportCostingRule(value)) costingFail("COSTING_TRANSPORT_RULE_PROTECTED", 409);
   const payload = {
     seriesRef: value.seriesRef ? asUuid(value.seriesRef) : null,
     family: asEnum(value.family, FAMILIES),
@@ -267,7 +276,8 @@ export function calculateCostingSnapshot({ baseCurrency, logisticsRevision, auth
     const classification = authority.classification;
     const minimumMarginBps = classification === "PR" ? authority.minimumMarginBps : null;
     const recommendedMarginBps = classification === "PR" ? authority.recommendedMarginBps : null;
-    if (classification === "PR" && (minimumMarginBps == null || recommendedMarginBps == null)) {
+    const zeroTransportQuantity = authority.source === "MOTOR" && item.quantity != null && item.snapshot?.transport?.contract === TRANSPORT_CONTEXT_CONTRACT && scaled(quantity, 4) === 0n;
+    if (classification === "PR" && !zeroTransportQuantity && (minimumMarginBps == null || recommendedMarginBps == null)) {
       issues.push(issue("MARGIN_POLICY_MISSING", family, "El costo propio no tiene una política de margen completa.", "ADMIN", { sourceRef: authority.sourceRef, sourceVersion: authority.sourceVersion }));
     }
     const suggested = classification === "PR" && recommendedMarginBps != null ? suggestedFor(totalCost, recommendedMarginBps) : totalCost;

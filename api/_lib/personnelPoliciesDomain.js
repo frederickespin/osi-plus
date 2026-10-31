@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { latestLogisticsRevision, QUOTE_TRANSPORT_CONTEXT, SERVICE_TRANSPORT_CONTEXT } from "./logisticsTransportContext.js";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import {
   renderCommunicationTemplate,
@@ -690,7 +691,7 @@ export async function resolvePersonnelScheduleAuthority(
 }
 
 async function latestLogistics(tx, who, pipelineCaseId) {
-  return tx.logisticsPlanRevision.findFirst({
+  return latestLogisticsRevision(tx, {
     where: {
       tenantId: who.tenantId,
       status: "PUBLISHED",
@@ -700,7 +701,8 @@ async function latestLogistics(tx, who, pipelineCaseId) {
       items: { orderBy: { position: "asc" } },
       issues: { where: { status: "OPEN" } },
     },
-    orderBy: { revision: "desc" },
+    context: SERVICE_TRANSPORT_CONTEXT,
+    fallbackContext: QUOTE_TRANSPORT_CONTEXT,
   });
 }
 function logisticsSnapshot(revision) {

@@ -121,6 +121,11 @@
       "/api/logistics/plans/overrides",
       "/api/logistics/plans/publish",
       "/api/logistics/rules",
+      "/api/logistics/transport/context",
+      "/api/logistics/transport/plans",
+      "/api/logistics/transport/publish",
+      "/api/logistics/transport/calculate",
+      "/api/logistics/transport/zones",
       "/api/materials/catalog",
       "/api/materials/catalog/[materialRef]",
       "/api/materials/conversions",
@@ -148,7 +153,10 @@
       "/api/quote/proposals/revise",
       "/api/quote/proposals/send"
     ],
-    "publicDeliberate": ["/api/health", "/api/info"],
+    "publicDeliberate": [
+      "/api/health",
+      "/api/info"
+    ],
     "legacyPendingClosed": [
       "/api/_disabled/modules",
       "/api/_disabled/pgd/apply",

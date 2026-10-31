@@ -53,7 +53,7 @@ export default function AdministrationWorkspace(props: Props) {
       case "access": return <AdminTenantMembershipModule authorization={authorization} effectivePermissions={props.effectivePermissions} deniedPermissions={props.deniedPermissions} invitationEnabled={props.invitationEnabled} invitationMode={props.invitationMode} includeConfiguration={false} onUnauthorized={onUnauthorized} />;
       case "fleet": return <FleetModule authorization={authorization} role={props.role} effectivePermissions={props.effectivePermissions} deniedPermissions={props.deniedPermissions} onUnauthorized={onUnauthorized} onReturnToHub={() => onNavigate("/hub")} />;
       case "services": return <ServiceConfigurationAdmin authorization={authorization} access={props.servicesAccess} onUnauthorized={onUnauthorized} />;
-      case "logistics": return <LogisticsRulesAdmin authorization={authorization} access={props.logisticsAccess} onUnauthorized={onUnauthorized} />;
+      case "logistics": return <LogisticsRulesAdmin authorization={authorization} access={props.logisticsAccess} costingAccess={props.costingAccess} onUnauthorized={onUnauthorized} />;
       case "costing": return <CostingRulesAdmin authorization={authorization} access={props.costingAccess} onUnauthorized={onUnauthorized} />;
       case "communications": return <CommunicationTemplatesAdmin authorization={authorization} access={props.communicationsAccess} onUnauthorized={onUnauthorized} />;
       case "policies": return <PersonnelPoliciesAdmin authorization={authorization} access={props.personnelPoliciesAccess} onUnauthorized={onUnauthorized} />;

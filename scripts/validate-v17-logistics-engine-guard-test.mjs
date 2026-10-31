@@ -17,4 +17,5 @@ rejects("src/commercial-crm/CommercialCaseDetail.tsx", (v) => `${v}\nconst Logis
 rejects("src/survey/SurveyCasePanel.tsx", (v) => `${v}\nlogisticsApi.calculate({});`);
 rejects("src/admin-tenant/AdminTenantMembershipModule.tsx", (v) => v.replace("isLogisticsUiEnabled() && logisticsRulesAccess.canRulesView", "isLogisticsUiEnabled()"));
 rejects("scripts/protected-cors-route-inventory.json", (v) => v.replace('      "/api/logistics/rules",\r\n', "").replace('      "/api/logistics/rules",\n', ""));
+rejects("src/survey/SurveyCasePanel.tsx", (v) => v.replace('purpose: "VISIT", contextRef: nextWorkspace.decision.decisionRef', 'purpose: "QUOTE", contextRef: null'));
 process.stdout.write(JSON.stringify({ ok: true, negatives: passed }) + "\n");

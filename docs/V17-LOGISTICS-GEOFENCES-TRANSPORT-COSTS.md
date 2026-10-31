@@ -1,6 +1,6 @@
 # Motor Logístico: geocercas y costos de transporte
 
-**Alcance funcional aclarado por el usuario el 31 de octubre de 2026. Implementación pendiente.** Este documento registra la función esperada del producto y los criterios propuestos para desarrollarla; no declara que esas capacidades estén disponibles en la aplicación actual.
+**Alcance funcional aclarado y actualización solicitada por el usuario el 31 de octubre de 2026.** La implementación descrita en la sección «Entrega de zonas y transporte» incorpora este alcance al Preview consolidado. La configuración empresarial real sigue pendiente de los límites, tarifas y políticas que indique la empresa.
 
 ## Propósito confirmado
 
@@ -62,7 +62,7 @@ El costo interno de la visita debe distinguirse del importe que se decide cobrar
 
 El alcance confirmado incluye el cálculo durante el servicio. Una rendición completa de gastos reales, comprobantes y liquidaciones requeriría un alcance adicional; no se presupone como consecuencia de esta aclaración.
 
-## Integración con lo existente
+## Base revisada antes de esta entrega
 
 La configuración y el resultado que ve el usuario deben estar articulados desde Motor Logístico. Internamente pueden seguir colaborando Geografía, Logística, Costos, Cotización y Agenda, conservando sus autoridades y versiones.
 
@@ -75,6 +75,47 @@ La configuración y el resultado que ve el usuario deben estar articulados desde
 | Agenda con resumen logístico y cobro de visita. | Mostrar el costo interno completo del desplazamiento y mantenerlo diferenciado del cobro. |
 
 El contrato vigente de 07A rechaza claves monetarias en sus reglas y redondea hacia arriba las cantidades calculadas. Agregar precios o fórmulas de combustible a su JSON actual no sería una integración válida. El adaptador geográfico histórico se declara experimental y no está importado por rutas activas. La incorporación debe coordinar un contrato nuevo o una extensión versionada con Costos, sin presentar componentes históricos como funcionalidad ya habilitada.
+
+## Entrega de zonas y transporte
+
+El contrato `V17_TRANSPORT_ZONES_V1` incorpora un editor de zonas con mapa, geocercas poligonales, prioridad, perfil vehicular y propósitos aplicables. La administración mantiene reglas generales como configuración secundaria. No se migran ni se activan automáticamente los registros geográficos experimentales anteriores.
+
+La política operativa se versiona en `LogisticsRule` y referencia tarifas exactas de `CostingRule`. La activación de una zona y sus tarifas ocurre en una sola transacción; un borrador conserva la configuración activa anterior. Los editores genéricos no pueden crear ni modificar este espacio de configuración. No hay cambios de esquema ni nuevas migraciones.
+
+### Uso en la aplicación
+
+1. En **Administración → Motor Logístico → Zonas**, crear el perímetro, identificarlo como Metro o Interior y definir su prioridad y perfil vehicular. Un perímetro admite un anillo exterior de hasta 200 vértices, sin cruces.
+2. Elegir **Renglones** o **Factor**. Registrar la moneda y las tarifas; en combustible, rendimiento, tipo de galón y combustible. Registrar los conceptos incluidos en la base o en otros paquetes para impedir duplicados.
+3. Guardar como borrador o activar la configuración. Las tarifas vacías permanecen pendientes, incluso si la zona está activa.
+4. En **Transporte**, elegir un caso real y el propósito Cotización, Servicio o Visita presencial. Las visitas se vinculan a una decisión presencial vigente. Introducir salida, destino, kilómetros de carretera y su fuente, viajes, regreso y cantidades complementarias.
+5. Calcular, revisar el desglose y publicar cuando no haya pendientes. Para cotizar, continuar con Costos y Cotización. La pestaña Costos incluye el cálculo de transporte de la cotización; Agenda incluye el de su visita.
+
+El mapa permite trazar zonas y localizar puntos. **No hay proveedor de rutas, geocodificación automática ni seguimiento GPS en esta entrega.** Los kilómetros deben confirmarse manualmente con su fuente. Los tramos o desplazamientos adicionales se registran como recorridos separados; el motor no infiere paradas, peajes ni cantidades de personas.
+
+### Reglas de cálculo y trazabilidad
+
+| Concepto | Regla implementada |
+|---|---|
+| Zona | Destino dentro del polígono, incluyendo su límite; perfil vehicular exacto antes del genérico y luego prioridad. Un empate bloquea el cálculo. |
+| Distancia total | Kilómetros introducidos × 2 si regresa al origen × viajes. El número introducido representa el recorrido de salida. |
+| Combustible | Distancia total ÷ km/galón, conservando cuatro decimales de cantidad; precio del mismo tipo de galón. |
+| Factor | Tarifa base × factor, redondeada a seis decimales; cantidad = viajes. Sólo afecta el renglón base. |
+| Dietas | Personas × jornadas, sin multiplicación adicional por viajes. |
+| Peajes y cantidades fijas | Cantidad total explícita por renglón; ya debe incluir regreso y viajes. El motor no vuelve a multiplicarla. |
+| Importes | Cantidad con cuatro decimales × tarifa con seis decimales; subtotal con seis decimales. |
+| Datos faltantes | Cantidad, tarifa o total pendiente; se bloquea la publicación, sin sustituirlos por cero. Un cero explícito de cantidad sigue siendo válido. |
+
+Las monedas se totalizan por separado. Los márgenes y la conversión monetaria siguen siendo autoridad de Costos; el cálculo interno no inventa márgenes ni implica cobro al cliente. El resultado muestra la tarifa base, el factor aplicado y el rendimiento/unidad de combustible capturados.
+
+Cada cálculo conserva el caso, la versión de ruta, la revisión real de Servicios y su propósito. Una visita puede calcularse antes del levantamiento; requiere un caso con revisión de Servicios, sin inventar referencias. Cotización, Servicio y cada decisión de visita mantienen publicaciones independientes aunque compartan la secuencia histórica del plan. Los registros previos sin contexto explícito siguen siendo de Cotización.
+
+La publicación revalida las entradas, el actor, los vehículos seleccionados y las zonas/tarifas vigentes. Si cambiaron, exige recalcular. Costos vuelve a verificarlo antes de publicar su revisión. Las cotizaciones ya publicadas conservan sus snapshots. Las reglas generales antiguas de transporte que también apliquen producen una incidencia que debe resolverse antes de sumar los nuevos renglones.
+
+### Permisos y verificación
+
+La configuración económica requiere conjuntamente los permisos de reglas de Logística y Costos. Leer, calcular y publicar transporte exige los permisos correspondientes de ambos módulos. Ambos gates deben estar habilitados en el entorno permitido; el alcance por empresa y propietario de caso se verifica en servidor y los permisos del actor se releen en la misma transacción.
+
+La entrega incorpora pruebas de geometría, aritmética decimal, coberturas, contratos cerrados, autorización, concurrencia, rollback y separación de contextos. El circuito local con PostgreSQL17 comprueba guardar → calcular → publicar → valorar en Costos, con 37 migraciones existentes y sin Survey obligatorio. CI añade la misma integración a PostgreSQL18. Las pruebas de navegador cubren escritorio y móvil con datos sintéticos aislados; ningún ejemplo se carga como configuración empresarial en Preview.
 
 ## Configuración empresarial por definir
 

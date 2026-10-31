@@ -1,6 +1,7 @@
 import { HUB_APPLICATIONS, findHubApplicationByRoute, findHubSuiteByRoute } from "./appCatalog";
 import { evaluateHubAccess, evaluateHubSuiteAccess, visibleHubApplications, type HubAccessContext } from "./hubAccess";
 import { administrationSectionFromRoute } from "@/administration/administrationSections";
+import { resolveFleetAccess } from "@/admin-fleet/access";
 
 export type HubRouteAccessDecision = Readonly<{
   allowed: boolean;
@@ -26,7 +27,9 @@ export function evaluateHubRouteAccess(pathname: string, context: HubAccessConte
     const section = application.appId === "administration" ? administrationSectionFromRoute(normalizedPath) : null;
     const applicationDecision = evaluateHubAccess(application, context);
     const decision = applicationDecision.allowed && section
-      ? evaluateHubAccess({ ...application, requiredPermissions: section.permissions, ...(["access", "fleet"].includes(section.id) ? { baselineRoles: ["A"] as const } : {}) }, context)
+      ? section.id === "fleet"
+        ? { allowed: resolveFleetAccess(context.role, context.effectivePermissions, context.deniedPermissions).canView }
+        : evaluateHubAccess({ ...application, requiredPermissions: section.permissions, ...(section.id === "access" ? { baselineRoles: ["A"] as const } : {}) }, context)
       : applicationDecision;
     return Object.freeze({
       allowed: decision.allowed,

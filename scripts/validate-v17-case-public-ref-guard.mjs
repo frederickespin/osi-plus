@@ -82,6 +82,8 @@ export const PUBLIC_REFERENCE_CONTRACTS = Object.freeze({
   "api/_lib/crmPipelineRead.js": ["CASE", "CLIENT"],
   "api/_lib/crmServicesApiDomain.js": ["CASE"],
   "api/_lib/crmSurveyDomain.js": ["CASE", "MEMBERSHIP"],
+  "api/_lib/fleetActor.js": ["MEMBERSHIP"],
+  "api/_lib/fleetDriversDomain.js": ["MEMBERSHIP"],
   "api/_lib/logisticsEngineDomain.js": ["CASE"],
   "api/_lib/materialsInventoryDomain.js": ["CASE"],
   "api/_lib/personnelPoliciesDomain.js": ["CASE", "CLIENT", "MEMBERSHIP"],
@@ -254,7 +256,83 @@ function validateReferenceConsumer(path, content, kinds) {
     });
     return lookups === 1;
   }
-  let prismaQueries = 0, sqlQueries = 0;
+  function fleetMembershipSql() {
+    const handled = new Set(); let queries = 0;
+    if (path !== "api/_lib/fleetDriversDomain.js") return { handled, queries };
+    // This consumer shares a projection and joins across three read helpers.
+    // Validate the expanded SQL at every database call, including both branches
+    // of an optional predicate. Registering a projection never exempts its use.
+    const helpers = new Set(["personColumns", "personJoins"]);
+    function joined(left, right) {
+      return { sql: left.sql + right.sql.replace(/<(\d+)>/g, (_, index) => `<${Number(index) + left.values.length}>`),
+        values: [...left.values, ...right.values], templates: new Set([...left.templates, ...right.templates]) };
+    }
+    const literal = (sql) => ({ sql, values: [], templates: new Set() });
+    function expand(node, ancestors = new Set()) {
+      if (!node || ancestors.has(node)) fail("fragmento SQL circular o ausente");
+      const seen = new Set(ancestors).add(node);
+      if (ts.isParenthesizedExpression(node)) return expand(node.expression, seen);
+      if (node.getText(source) === "Prisma.empty") return [literal("")];
+      if (ts.isConditionalExpression(node)) return [...expand(node.whenTrue, seen), ...expand(node.whenFalse, seen)];
+      if (ts.isIdentifier(node)) {
+        const value = constInitializer(node);
+        if (value && ts.isTaggedTemplateExpression(value) && value.tag.getText(source) === "Prisma.sql") return expand(value, seen);
+      }
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && helpers.has(node.expression.text)) {
+        const definition = definitions.get(node.expression.text);
+        const statements = definition?.body?.statements;
+        if (node.arguments.length || definition?.parameters.length || statements?.length !== 1
+          || !ts.isReturnStatement(statements[0]) || !statements[0].expression
+          || !ts.isTaggedTemplateExpression(statements[0].expression)
+          || statements[0].expression.tag.getText(source) !== "Prisma.sql") fail("fragmento de membresía no es una proyección SQL local verificable");
+        return expand(statements[0].expression, seen);
+      }
+      if (!ts.isTaggedTemplateExpression(node) || node.tag.getText(source) !== "Prisma.sql") {
+        return [{ sql: "<0>", values: [node], templates: new Set() }];
+      }
+      const template = node.template;
+      if (ts.isNoSubstitutionTemplateLiteral(template)) return [{ ...literal(template.text), templates: new Set([node]) }];
+      let variants = [{ ...literal(template.head.text), templates: new Set([node]) }];
+      for (const span of template.templateSpans) {
+        const additions = expand(span.expression, seen);
+        variants = variants.flatMap((prefix) => additions.map((addition) => joined(joined(prefix, addition), literal(span.literal.text))));
+        if (variants.length > 32) fail("demasiadas variantes SQL para verificar el alcance");
+      }
+      return variants;
+    }
+    function topLevelOr(sql) {
+      let depth = 0;
+      const unquoted = sql.replace(/'(?:''|[^'])*'|"(?:""|[^"])*"/g, (value) => " ".repeat(value.length));
+      for (const token of unquoted.matchAll(/\(|\)|\bOR\b/giu)) {
+        if (token[0] === "(") depth += 1;
+        else if (token[0] === ")") depth -= 1;
+        else if (depth === 0) return true;
+        if (depth < 0) return true;
+      }
+      return depth !== 0;
+    }
+    visitNodes(source, (node) => {
+      if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)
+        || !/^\$(?:queryRaw|executeRaw)$/.test(node.expression.name.text) || node.arguments.length !== 1
+        || !ts.isTaggedTemplateExpression(node.arguments[0]) || node.arguments[0].tag.getText(source) !== "Prisma.sql") return;
+      const variants = expand(node.arguments[0]);
+      if (!variants.some(({ sql }) => /\bpublic_ref\b|\bFROM\s+"osi"\."tenant_memberships"\s+m\b/.test(sql))) return;
+      for (const { sql: template, values, templates } of variants) {
+        const sql = template.replace(/--[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
+        const from = /\bFROM\s+"osi"\."tenant_memberships"\s+m\b/.test(sql);
+        const where = sql.match(/\bWHERE\s+m\."tenant_id"\s*=\s*<(\d+)>(?=\s+AND\b)/);
+        if (!from || !where || !trustedTenantValue(values[Number(where[1])], source)
+          || topLevelOr(sql.slice(where.index)) || /\b(?:UNION|INTERSECT|EXCEPT)\b/i.test(sql)) {
+          fail("SQL público compuesto perdió el predicado obligatorio de empresa en " + enclosingFunction(node));
+        }
+        for (const fragment of templates) handled.add(fragment);
+      }
+      queries += 1;
+    });
+    return { handled, queries };
+  }
+  const fleetSql = fleetMembershipSql();
+  let prismaQueries = 0, sqlQueries = fleetSql.queries;
   visitNodes(source, (node) => {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
       && ts.isPropertyAccessExpression(node.left) && node.left.name.text === "tenantId") fail("no admite reasignar tenantId");
@@ -277,7 +355,7 @@ function validateReferenceConsumer(path, content, kinds) {
       if (tenantState(propertyValue(args, field)) !== 1) fail("ausente o dinámico en " + target.getText(source) + "." + node.expression.name.text);
       prismaQueries += 1;
     }
-    if (!ts.isTaggedTemplateExpression(node) || node.tag.getText(source) !== "Prisma.sql" || !/\bpublic_ref\b/.test(node.template.getText(source))) return;
+    if (!ts.isTaggedTemplateExpression(node) || node.tag.getText(source) !== "Prisma.sql" || !/\bpublic_ref\b/.test(node.template.getText(source)) || fleetSql.handled.has(node)) return;
     const parts = sqlParts(node);
     const sql = parts.sql.replace(/--[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
     const values = parts.values;

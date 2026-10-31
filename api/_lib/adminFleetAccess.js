@@ -3,6 +3,7 @@ import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
 import { ADMIN_MEMBERSHIP_PREVIEW_BATCH } from "../../shared/adminMembershipPreview.js";
 import { ADMIN_FLEET_BATCH, ADMIN_FLEET_MODES } from "../../shared/adminFleet.js";
 import { fleetFail } from "./adminFleetContract.js";
+import { authorizeFleetContext } from "./fleetActor.js";
 
 const PREVIEW = Object.freeze({ database: "v17_consolidated_preview_10b", neonBranch: "br-mute-credit-ahxnvfx0", tenantCode: "V17-CONSOLIDATED-PREVIEW-10B" });
 const BRANCHES = Object.freeze(["feature/v17-administration-fleet-19d", "feature/v17-consolidated-preview"]);
@@ -49,5 +50,6 @@ export function requireAdminFleetContext(env, mode, context) {
   const expected = assertAdminFleetPreviewEnvironment(env);
   if (context?.tenantCode !== expected.tenantCode || context?.tenant?.code !== expected.tenantCode
     || context?.tenantStatus !== "ACTIVE" || context?.membershipStatus !== "ACTIVE" || context?.userStatus !== "ACTIVE"
-    || context?.role !== "A" || context?.sessionKind !== "LEGACY") fleetFail("FORBIDDEN", 403);
+    || context?.sessionKind !== "LEGACY") fleetFail("FORBIDDEN", 403);
+  authorizeFleetContext(context);
 }

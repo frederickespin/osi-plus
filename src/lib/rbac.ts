@@ -80,6 +80,9 @@ export const PERMS = {
   // Fleet
   FLEET_VIEW: "fleet:view",
   FLEET_EDIT: "fleet:edit",
+  FLEET_DRIVERS_ASSIGN: "fleet:drivers:assign",
+  FLEET_DRIVERS_REQUEST: "fleet:drivers:request",
+  FLEET_DRIVERS_AUTHORIZE: "fleet:drivers:authorize",
 
   // Settings
   SETTINGS_VIEW: "settings:view",
@@ -106,6 +109,10 @@ const EXPLICIT_CLIENT_ACCESS_PERMISSIONS = new Set<Perm>([
   PERMS.CLIENT_ACCESS_REVOKE, PERMS.CLIENT_ACCESS_MANAGE,
 ]);
 
+const EXPLICIT_FLEET_DRIVER_PERMISSIONS = new Set<Perm>([
+  PERMS.FLEET_DRIVERS_ASSIGN, PERMS.FLEET_DRIVERS_REQUEST, PERMS.FLEET_DRIVERS_AUTHORIZE,
+]);
+
 export type RoleCode =
   | "A"
   | "V"
@@ -127,7 +134,8 @@ export type RoleCode =
   | "RB";
 export function permsForRole(role: RoleCode): Perm[] {
   const rolePerms: Record<RoleCode, Perm[]> = {
-    A: Object.values(PERMS).filter((permission) => !EXPLICIT_MATERIALS_PERMISSIONS.has(permission) && !EXPLICIT_CLIENT_ACCESS_PERMISSIONS.has(permission)),
+    A: Object.values(PERMS).filter((permission) => !EXPLICIT_MATERIALS_PERMISSIONS.has(permission)
+      && !EXPLICIT_CLIENT_ACCESS_PERMISSIONS.has(permission) && !EXPLICIT_FLEET_DRIVER_PERMISSIONS.has(permission)),
     V: [
       PERMS.TEMPLATES_VIEW,
       PERMS.TEMPLATES_CREATE,

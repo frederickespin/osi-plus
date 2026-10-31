@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
-import { AdminMembershipError, assertAdminActorPermission, requiredAdminText, requireAdminPermission, revalidateAdminActor } from "./adminMembershipDomain.js";
+import { requiredAdminText } from "./adminMembershipDomain.js";
+import { authorizeFleetContext, revalidateFleetActor } from "./fleetActor.js";
 import {
   ADMIN_FLEET_EDITABLE_FIELDS, ADMIN_FLEET_TECHNICAL_FIELDS, adminFleetEditableDto, adminFleetVehicleDto,
   adminFleetVehicleRef, fleetFail, normalizeAdminFleetVehicle, parseAdminFleetCreate, parseAdminFleetFilters, parseAdminFleetPatch,
@@ -9,25 +10,10 @@ import {
 
 const SOURCE = "V17_ADMINISTRATION_FLEET_19D";
 function authorizeContext(context, write = false) {
-  if (context?.role !== "A") fleetFail("FORBIDDEN", 403);
-  try {
-    requireAdminPermission(context, "fleet:view");
-    if (write) requireAdminPermission(context, "fleet:edit");
-  } catch (error) {
-    if (error instanceof AdminMembershipError) fleetFail("FORBIDDEN", 403);
-    throw error;
-  }
+  authorizeFleetContext(context, { write });
 }
 async function actorFor(tx, context, write = false) {
-  try {
-    const actor = await revalidateAdminActor(tx, context);
-    assertAdminActorPermission(actor, "fleet:view");
-    if (write) assertAdminActorPermission(actor, "fleet:edit");
-    return actor;
-  } catch (error) {
-    if (error instanceof AdminMembershipError) fleetFail("FORBIDDEN", 403);
-    throw error;
-  }
+  return revalidateFleetActor(tx, context, { write });
 }
 function sqlState(error) { return String(error?.meta?.code || error?.cause?.code || ""); }
 export async function adminFleetTransaction(prisma, work, { retryUnique = false } = {}) {

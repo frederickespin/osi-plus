@@ -52,6 +52,8 @@ jobs:
           node scripts/v17-admin-fleet-transactions-test.mjs
           node scripts/v17-admin-fleet-http-test.mjs
           node scripts/v17-admin-fleet-logistics-units-test.mjs
+          npm run test:v17-fleet-drivers
+          npm run test:v17-fleet-drivers:http
           node scripts/v17-quote-local-target-test.mjs
           node scripts/v17-services-local-target-test.mjs
           node scripts/validate-mt01c1b2a-guard-test.mjs
@@ -592,17 +594,17 @@ jobs:
           test "$diff_status" -eq 0
           grep -Fxq -- "-- This is an empty migration." "$RUNNER_TEMP/canonical-drift.sql"
 
-      - name: Capture read-only 19C SQL catalog evidence
+      - name: Capture read-only 19F SQL catalog evidence
         env:
-          V17_IDENTITY_CATALOG_EVIDENCE_PATH: ${{ runner.temp }}/v17-user-identity-catalog-evidence.json
-        run: node scripts/capture-v17-user-identity-catalog.mjs
+          V17_FLEET_DRIVERS_CATALOG_EVIDENCE_PATH: ${{ runner.temp }}/v17-fleet-drivers-catalog-evidence.json
+        run: node scripts/capture-v17-fleet-drivers-catalog.mjs
 
       - name: Publish candidate catalog without accepting a baseline
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: v17-user-identity-catalog-evidence
-          path: ${{ runner.temp }}/v17-user-identity-catalog-evidence.json
+          name: v17-fleet-drivers-catalog-evidence
+          path: ${{ runner.temp }}/v17-fleet-drivers-catalog-evidence.json
           if-no-files-found: ignore
           retention-days: 7
 
@@ -683,6 +685,9 @@ jobs:
 
       - name: Verify 19D persistent fleet against PostgreSQL 18
         run: node scripts/v17-admin-fleet-db-test.mjs
+
+      - name: Verify 19F driver assignment and temporary authority against PostgreSQL 18
+        run: npm run test:v17-fleet-drivers:db
 
       - name: Build
         run: npm run build

@@ -41,7 +41,7 @@ try {
   write("api/_lib/employeeProvisioningDomain.js", 'const MT01C1B2B_PAYLOAD_HASH_PEPPER = true; createHmac("sha256", "synthetic"); async function unsafe(tx){ return tx.user.create({data:{}}); }\n');
   expectFailure("creación de identidad rechazada", safeFiles, {}, /no puede crear User/);
   base();
-  expectFailure("migración adicional rechazada", [...safeFiles, "prisma/migrations/20260901010000_future/migration.sql"], {}, /36 migraciones canónicas/);
+  expectFailure("migración adicional rechazada", [...safeFiles, "prisma/migrations/20260901010000_future/migration.sql"], {}, /37 migraciones canónicas/);
   base();
   write("scripts/mt-01c1b2b-database-guard.mjs", "const raw = process.env.MT01C1B2B_TEST_DATABASE_URL || process.env.DATABASE_URL;\n");
   expectFailure("fallback DATABASE_URL rechazado", safeFiles, {}, /no puede usar DATABASE_URL/);

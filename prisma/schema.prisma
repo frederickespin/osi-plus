@@ -46,6 +46,8 @@ model User {
 }
 
 model Tenant {
+  fleetDriverPrimaryEvents          FleetDriverPrimaryEvent[]
+  fleetDriverAuthorizations         FleetDriverAuthorization[]
   userIdentityProfiles              TenantUserIdentity[]
   userEnrollments                   UserEnrollment[]
   id                                String                                   @id @default(cuid())
@@ -232,6 +234,12 @@ model Tenant {
 }
 
 model TenantMembership {
+  fleetPrimaryDriverEvents          FleetDriverPrimaryEvent[]  @relation("FleetPrimaryDriver")
+  fleetPrimaryAssignedEvents        FleetDriverPrimaryEvent[]  @relation("FleetPrimaryAssigner")
+  fleetTemporaryDriverAuthorizations FleetDriverAuthorization[] @relation("FleetTemporaryDriver")
+  fleetTemporaryRequests            FleetDriverAuthorization[] @relation("FleetTemporaryRequester")
+  fleetTemporaryAuthorizations      FleetDriverAuthorization[] @relation("FleetTemporaryAuthorizer")
+  fleetTemporaryRevocations         FleetDriverAuthorization[] @relation("FleetTemporaryRevoker")
   userIdentityProfile               TenantUserIdentity?
   issuedUserEnrollments             UserEnrollment[] @relation("UserEnrollmentIssuer")
   activatedUserEnrollments          UserEnrollment[] @relation("UserEnrollmentActivated")
@@ -3020,6 +3028,8 @@ model TransportZoneRule {
 }
 
 model Vehicle {
+  fleetDriverPrimaryEvents  FleetDriverPrimaryEvent[]
+  fleetDriverAuthorizations FleetDriverAuthorization[]
   id                        String                   @id @default(cuid())
   tenant_id                 String
   business_code             String                   @db.VarChar(80)
@@ -3609,6 +3619,7 @@ model LogisticOverrideApproval {
 }
 
 model ApprovalRequest {
+  fleetDriverAuthorization                                                                                                    FleetDriverAuthorization?
   id                                                                                                                           String                       @id @default(uuid())
   tenant_id                                                                                                                    String
   approval_type                                                                                                                String                       @db.VarChar(120)
@@ -8883,6 +8894,80 @@ enum ClientTemporaryQrResult {
 }
 
 // Company-specific identity/contact information. Global login data remains on User.
+model FleetDriverPrimaryEvent {
+  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String           @map("tenant_id")
+  vehicleId              String           @map("vehicle_id")
+  revision               Int
+  driverMembershipId     String?          @map("driver_membership_id")
+  driverUserId           String?          @map("driver_user_id")
+  assignedByMembershipId String           @map("assigned_by_membership_id")
+  assignedByUserId       String           @map("assigned_by_user_id")
+  reason                 String           @db.VarChar(500)
+  assignedAt             DateTime         @default(now()) @map("assigned_at") @db.Timestamptz(3)
+  requestId              String           @map("request_id") @db.Uuid
+  payloadHash            String           @map("payload_hash") @db.Char(64)
+  tenant                 Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_tenant_fkey")
+  vehicle                Vehicle          @relation(fields: [tenantId, vehicleId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_vehicle_fkey")
+  driver                 TenantMembership? @relation("FleetPrimaryDriver", fields: [tenantId, driverMembershipId, driverUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_driver_fkey")
+  assignedBy             TenantMembership @relation("FleetPrimaryAssigner", fields: [tenantId, assignedByMembershipId, assignedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_actor_fkey")
+
+  @@unique([tenantId, id], map: "fleet_driver_primary_tenant_id_key")
+  @@unique([tenantId, requestId], map: "fleet_driver_primary_request_key")
+  @@unique([tenantId, vehicleId, revision], map: "fleet_driver_primary_revision_key")
+  @@index([tenantId, driverMembershipId, assignedAt(sort: Desc)], map: "fleet_driver_primary_driver_idx")
+  @@index([tenantId, assignedByMembershipId, assignedAt(sort: Desc)], map: "fleet_driver_primary_actor_idx")
+  @@map("fleet_driver_primary_events")
+}
+
+model FleetDriverAuthorization {
+  id                         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                   String            @map("tenant_id")
+  vehicleId                  String            @map("vehicle_id")
+  driverMembershipId         String            @map("driver_membership_id")
+  driverUserId               String            @map("driver_user_id")
+  approvalRequestId          String            @map("approval_request_id")
+  startsAt                   DateTime          @map("starts_at") @db.Timestamptz(3)
+  endsAt                     DateTime          @map("ends_at") @db.Timestamptz(3)
+  scopeHash                  String            @map("scope_hash") @db.Char(64)
+  requestedByMembershipId    String            @map("requested_by_membership_id")
+  requestedByUserId          String            @map("requested_by_user_id")
+  requestId                  String            @map("request_id") @db.Uuid
+  payloadHash                String            @map("payload_hash") @db.Char(64)
+  decisionAction             String?           @map("decision_action") @db.VarChar(12)
+  decisionRequestId          String?           @map("decision_request_id") @db.Uuid
+  decisionPayloadHash        String?           @map("decision_payload_hash") @db.Char(64)
+  authorizedAt               DateTime?         @map("authorized_at") @db.Timestamptz(3)
+  authorizedByMembershipId   String?           @map("authorized_by_membership_id")
+  authorizedByUserId         String?           @map("authorized_by_user_id")
+  revokedAt                  DateTime?         @map("revoked_at") @db.Timestamptz(3)
+  revokedByMembershipId      String?           @map("revoked_by_membership_id")
+  revokedByUserId            String?           @map("revoked_by_user_id")
+  revocationReason           String?           @map("revocation_reason") @db.VarChar(500)
+  revocationRequestId        String?           @map("revocation_request_id") @db.Uuid
+  revocationPayloadHash      String?           @map("revocation_payload_hash") @db.Char(64)
+  rowVersion                 Int               @default(1) @map("row_version")
+  createdAt                  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime          @default(now()) @map("updated_at") @db.Timestamptz(3)
+  tenant                     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_tenant_fkey")
+  vehicle                    Vehicle           @relation(fields: [tenantId, vehicleId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_vehicle_fkey")
+  driver                     TenantMembership  @relation("FleetTemporaryDriver", fields: [tenantId, driverMembershipId, driverUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_driver_fkey")
+  approvalRequest            ApprovalRequest   @relation(fields: [tenantId, approvalRequestId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_approval_fkey")
+  requestedBy                TenantMembership  @relation("FleetTemporaryRequester", fields: [tenantId, requestedByMembershipId, requestedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_requester_fkey")
+  authorizedBy               TenantMembership? @relation("FleetTemporaryAuthorizer", fields: [tenantId, authorizedByMembershipId, authorizedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_authorizer_fkey")
+  revokedBy                  TenantMembership? @relation("FleetTemporaryRevoker", fields: [tenantId, revokedByMembershipId, revokedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_revoker_fkey")
+
+  @@unique([tenantId, id], map: "fleet_driver_authorization_tenant_id_key")
+  @@unique([tenantId, requestId], map: "fleet_driver_authorization_request_key")
+  @@unique([tenantId, approvalRequestId], map: "fleet_driver_authorization_approval_key")
+  @@index([tenantId, vehicleId, createdAt(sort: Desc), id(sort: Desc)], map: "fleet_driver_authorization_vehicle_idx")
+  @@index([tenantId, driverMembershipId, startsAt, endsAt], map: "fleet_driver_authorization_driver_idx")
+  @@index([tenantId, requestedByMembershipId], map: "fleet_driver_authorization_requester_idx")
+  @@index([tenantId, authorizedByMembershipId], map: "fleet_driver_authorization_authorizer_idx")
+  @@index([tenantId, revokedByMembershipId], map: "fleet_driver_authorization_revoker_idx")
+  @@map("fleet_driver_authorizations")
+}
+
 model TenantUserIdentity {
   id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId       String           @map("tenant_id")

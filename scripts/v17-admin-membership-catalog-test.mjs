@@ -56,6 +56,7 @@ check("Administrador no hereda las capacidades que exigen concesión explícita"
     "services:catalog:manage", "survey:publish", "inventory:stock:adjust", "assets:instance:manage",
     "logistics:rules:manage", "costing:rules:manage", "quote:publish", "communications:send",
     "personnel:profiles:manage", "client-access:manage",
+    "fleet:drivers:assign", "fleet:drivers:request", "fleet:drivers:authorize",
   ]) assert.equal(inherited.includes(permission), false, `${permission} requires an explicit grant`);
 });
 
@@ -66,6 +67,18 @@ check("denegar prevalece sobre rol y concesión adicional", () => {
   const effective = effectivePermissionsFor("V", ["pipeline:view", "logistics:rules:view"], ["pipeline:view"]);
   assert.equal(effective.includes("pipeline:view"), false);
   assert.equal(effective.includes("logistics:rules:view"), true);
+});
+
+check("autoridad de choferes requiere designación explícita en cualquier rol", () => {
+  for (const role of catalog.roles) {
+    for (const permission of ["fleet:drivers:assign", "fleet:drivers:request", "fleet:drivers:authorize"]) {
+      assert.equal(role.inheritedPermissions.includes(permission), false, `${role.code} must not inherit ${permission}`);
+      assert.equal(effectivePermissionsFor(role.code, [permission]).includes(permission), true);
+      assert.equal(effectivePermissionsFor(role.code, [permission], [permission]).includes(permission), false);
+    }
+  }
+  assert.equal(catalog.permissions.find(({ code }) => code === "fleet:drivers:authorize").label,
+    "Responsable de Flota/Logística: autorizar choferes temporales");
 });
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, roles: catalog.roles.length, permissions: catalog.permissions.length, results }, null, 2)}\n`);

@@ -15,6 +15,8 @@ const bundled = await build({
       'export * from "./src/hub/appCatalog.ts";',
       'export * from "./src/hub/hubAccess.ts";',
       'export * from "./src/hub/hubRouteAccess.ts";',
+      'export * from "./src/admin-fleet/access.ts";',
+      'export { permsForRole as legacyPermsForRole } from "./src/lib/rbac.ts";',
     ].join("\n"),
     resolveDir: root,
     sourcefile: "administration-access-entry.ts",
@@ -36,6 +38,8 @@ const {
   findHubApplicationByRoute,
   evaluateHubAccess,
   evaluateHubRouteAccess,
+  resolveFleetAccess,
+  legacyPermsForRole,
 } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
 
 const administration = HUB_APPLICATIONS.find((application) => application.appId === "administration");
@@ -82,20 +86,65 @@ test("Usuarios y roles exige administrador sin bloquear otras secciones autoriza
   assert.equal(evaluateHubRouteAccess("/administration/access", context(["membership:view"])).allowed, true);
 });
 
-test("Flota exige administrador y fleet:view con denegaciones efectivas", () => {
+test("Flota conserva acceso administrativo con fleet:view y denegaciones efectivas", () => {
   const permission = "fleet:view";
   assert.equal(evaluateHubRouteAccess("/administration/fleet", context([permission])).allowed, true);
   assert.deepEqual(sectionsFor([permission]), ["fleet"]);
   assert.deepEqual(sectionsFor([permission], [], { ...enabled, fleet: false }), []);
   assert.deepEqual(sectionsFor([permission], [permission]), []);
   assert.equal(evaluateHubRouteAccess("/administration/fleet", context([permission], [permission])).allowed, false);
-  for (const role of ["V", "K", "I", "PA"]) {
+  for (const role of ["B", "V", "K", "I", "PA"]) {
     assert.equal(evaluateHubRouteAccess("/administration/fleet", context([permission], [], role)).allowed, false, role);
   }
   for (const permissions of [["fleet:edit"], ["vehicle:view"], ["vehicle:manage"]]) {
     assert.equal(evaluateHubRouteAccess("/administration/fleet", context(permissions)).allowed, false);
     assert.deepEqual(sectionsFor(permissions), []);
   }
+});
+
+test("sólo Operaciones designado puede consultar Flota y ejercer su facultad de choferes", () => {
+  const permissions = ["fleet:drivers:assign", "fleet:drivers:request", "fleet:drivers:authorize"];
+  const flags = ["canAssignDrivers", "canRequestDrivers", "canAuthorizeDrivers"];
+  for (const [index, permission] of permissions.entries()) {
+    const effective = ["fleet:view", "fleet:edit", permission];
+    const actor = context(effective, [], "B");
+    const access = resolveFleetAccess(actor.role, actor.effectivePermissions, actor.deniedPermissions);
+    assert.equal(access.canView, true);
+    assert.equal(access.canEdit, false, "a technical edit grant does not turn operations into an administrator");
+    assert.equal(evaluateHubRouteAccess("/administration/fleet", actor).allowed, true);
+    assert.equal(evaluateHubRouteAccess("/administration", actor).allowed, true);
+    for (const [flagIndex, flag] of flags.entries()) assert.equal(access[flag], flagIndex === index);
+    for (const section of ADMINISTRATION_SECTIONS.filter(({ id }) => id !== "fleet")) {
+      assert.equal(evaluateHubRouteAccess(section.route, actor).allowed, false, section.route);
+    }
+    for (const denied of [[permission], ["fleet:view"]]) {
+      const blocked = resolveFleetAccess("B", effective, denied);
+      assert.equal(blocked.canView, false);
+      assert.ok(Object.values(blocked).every((allowed) => allowed === false));
+      assert.equal(evaluateHubRouteAccess("/administration/fleet", context(effective, denied, "B")).allowed, false);
+    }
+    for (const role of ["V", "K", "I", "E", "PB", "PD"]) {
+      assert.equal(resolveFleetAccess(role, effective, []).canView, false, role);
+      assert.equal(evaluateHubRouteAccess("/administration/fleet", context(effective, [], role)).allowed, false, role);
+    }
+    assert.equal(resolveFleetAccess("B", [permission], []).canView, false);
+    assert.equal(evaluateHubRouteAccess("/administration/access", context([...effective, "membership:view"], [], "B")).allowed, false);
+  }
+});
+
+test("el RBAC anterior tampoco hereda autoridad sobre choferes ni sustituye permisos efectivos", () => {
+  for (const role of ["A", "B"]) {
+    assert.ok(!legacyPermsForRole(role).some((permission) => permission.startsWith("fleet:drivers:")));
+    const access = resolveFleetAccess(role, null, []);
+    assert.ok(Object.values(access).every((allowed) => allowed === false));
+  }
+  assert.deepEqual(resolveFleetAccess("A", ["fleet:view", "fleet:edit"], []), {
+    canView: true, canEdit: true, canAssignDrivers: false, canRequestDrivers: false, canAuthorizeDrivers: false,
+  });
+  const access = resolveFleetAccess("B", ["fleet:view", "fleet:drivers:assign", "fleet:drivers:authorize"], ["fleet:drivers:authorize"]);
+  assert.equal(access.canView, true);
+  assert.equal(access.canAssignDrivers, true);
+  assert.equal(access.canAuthorizeDrivers, false);
 });
 
 test("Servicios admite cada permiso lector independiente y no concede otras secciones", () => {

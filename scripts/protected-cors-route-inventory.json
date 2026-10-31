@@ -2,8 +2,13 @@
   "version": "V17-PROTECTED-CORS-INVENTORY-1",
   "categories": {
     "protectedSameOrigin": [
+      "/api/admin/fleet/drivers/options",
       "/api/admin/fleet/vehicles",
       "/api/admin/fleet/vehicles/[vehicleRef]",
+      "/api/admin/fleet/vehicles/[vehicleRef]/drivers",
+      "/api/admin/fleet/vehicles/[vehicleRef]/drivers/primary",
+      "/api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations",
+      "/api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/[authorizationRef]",
       "/api/admin/identity-invitations",
       "/api/admin/identity-invitations/[invitationRef]",
       "/api/admin/memberships",

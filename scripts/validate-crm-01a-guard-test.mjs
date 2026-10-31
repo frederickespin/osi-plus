@@ -23,7 +23,7 @@ try {
   check("adaptadores frontend relacionales gobernados", baseline.frontendConsumers === 4 && baseline.writeEndpoints === 2 && baseline.isolatedApiRoutes === 3);
   check("pipeline:view limitado a A y V", baseline.permission === "pipeline:view" && JSON.stringify(baseline.baseRoles) === JSON.stringify(["A", "V"]));
   rejected("READ_ONLY en CI rechazado", { env: { CRM_PIPELINE_RUNTIME_MODE: "READ_ONLY" } }, /READ_ONLY/);
-  rejected("migración adicional rechazada", { migrations: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /36 migraciones canónicas/);
+  rejected("migración adicional rechazada", { migrations: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /37 migraciones canónicas/);
   const service = read("api/_lib/crmPipelineRead.js");
   rejected("clients:view como autoridad rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("PERMS.PIPELINE_VIEW", '"clients:view"') } }, /pipeline:view/);
   const rbac = read("api/_lib/rbac.js");

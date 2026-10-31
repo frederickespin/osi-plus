@@ -1,0 +1,940 @@
+{
+  "provenance": {
+    "kind": "LOCAL_DISPOSABLE_POSTGRESQL",
+    "capturedAt": "2026-10-31T03:31:58.199Z",
+    "baseCommit": "66193dcf2388f01acf572a157a79af94e6898f74",
+    "server": {
+      "version_number": "180006",
+      "version": "18.6 (Ubuntu 18.6-1.pgdg24.04+2)",
+      "collation": "C.UTF-8",
+      "character_type": "C.UTF-8"
+    },
+    "target": {
+      "database": "osi_db01n_ci",
+      "schema": "osi",
+      "address": "127.0.0.1",
+      "port": 55432
+    },
+    "evidenceSha256": "47c75468b99b062ac9e22d75913fd3debdcc6e7f3bc6d6f87c6836cfae63bbd6",
+    "previousEvidenceSha256": "4787992d99bb74507ac61c24c56203313a66f9a02b361cba84c6b38bf52317bd",
+    "catalogQuerySha256": "04aea6b13957570b4939bf9362cfb7d64e6891da94f2ba6b2f3f1c48fd6ae0c4",
+    "sqlOnlyQuerySha256": "b0b5e65a1baa8098c2cbe50bb369e836d2446cdfac34ef0fb0e0ab4f8505dcfe",
+    "prismaDiffSha256": "0983c8c2474f18152b093842104ef9aef25f03fb78861c9e681da2249a64a385",
+    "prismaDiffRawSha256": "e69c9f21be2b53770b13ea52bf6c4f304a9fc86b41f1e932729ec2de45574341",
+    "previousProfileReproducedBeforeMigration": true,
+    "previousObjectsUnchangedAfterMigration": true
+  },
+  "migration": {
+    "name": "20261031010000_v17_fleet_driver_authority",
+    "sha256": "3a6db22d52441aa1614e13c0bd619ef4bba84230f9af91a3c794f31496d2bd14"
+  },
+  "catalog": {
+    "count": 10679,
+    "sha256": "0431dfd8810a8ef68895b1b40c5e38ae1c06550249dff9b7f07c0a41b5951371",
+    "categories": {
+      "check": {
+        "count": 416,
+        "sha256": "0260b09b54cae0193f32788cc5cae658c15dddbe22a2cd3e319c642cddd2400f"
+      },
+      "column": {
+        "count": 3812,
+        "sha256": "b0f56d1776ec95433a3134ac49c52f52a9a4951d5f82dd3c10f6f356a5a4c3ef"
+      },
+      "constraint": {
+        "count": 3060,
+        "sha256": "9096cde62504e915ebef7741829457428b88d1fee31f19f38f88c039b24e4848"
+      },
+      "enum": {
+        "count": 1102,
+        "sha256": "229714a4280acac482aa12e074cfe34585a4b51f658ae6922216039b92b7bbaf"
+      },
+      "foreign_key": {
+        "count": 672,
+        "sha256": "4b503da6d52c4ae156c9db6225fda53b939cfe22a5b1aebd277028c04d3debe7"
+      },
+      "function": {
+        "count": 301,
+        "sha256": "5c0bd83ba528c9b31991731c4270421c56aea8303377784b4b041d5ab983e820"
+      },
+      "index": {
+        "count": 1131,
+        "sha256": "d89b6cb1687dddb788e2d85838b3ab55829d97b72e81007500e8c3fd41308139"
+      },
+      "trigger": {
+        "count": 185,
+        "sha256": "d43bbfb8192a5c755cc870d0fc01d813be2a92b32e3bacc28c585418dbd15a28"
+      }
+    }
+  },
+  "previousCatalog": {
+    "count": 10569,
+    "sha256": "481649e8c88db832d1f313f7e3a4a785f28a1d49c4277dc21eac179fef16cb54",
+    "categories": {
+      "check": {
+        "count": 406,
+        "sha256": "4782f94ffb2053b76e26284ea39cc109d24b9270968382d4dd8332ca03a34d08"
+      },
+      "column": {
+        "count": 3772,
+        "sha256": "e1547a3956c42a98dea95f6dc70e8c6d0700762ecc22ef08074ec94fd30f6198"
+      },
+      "constraint": {
+        "count": 3032,
+        "sha256": "7c6aad78623912ffb109a61ed6daa4a4e0b7f9c59cc0aeaf5b4f15a480e3dd27"
+      },
+      "enum": {
+        "count": 1102,
+        "sha256": "229714a4280acac482aa12e074cfe34585a4b51f658ae6922216039b92b7bbaf"
+      },
+      "foreign_key": {
+        "count": 661,
+        "sha256": "dafe8a1869adc492c54470edd78cf8a047994752b157e11a2ceee42ecb0a65c6"
+      },
+      "function": {
+        "count": 299,
+        "sha256": "b8a66bf6c666c819e0170e71400b15a31c50ede5229afde94d76b6f4432d25a9"
+      },
+      "index": {
+        "count": 1114,
+        "sha256": "78ef61c51409718fe718d1dc6a1a25be1b484414f10e6e28105990f05efa72b3"
+      },
+      "trigger": {
+        "count": 183,
+        "sha256": "9c328fd35c079ae79a83ccd8551ab184c849ab776d6c8f87990a50297edcbf7f"
+      }
+    }
+  },
+  "extensions": [
+    {
+      "extension_name": "btree_gist",
+      "version": "1.8",
+      "schema_name": "osi"
+    }
+  ],
+  "extensionMembers": {
+    "count": 212,
+    "sha256": "5768fa15ad9dc973614d90b162eeb87fbef323dc2b76e019e0f07a454623d5cc"
+  },
+  "delta": {
+    "tables": [
+      "fleet_driver_primary_events",
+      "fleet_driver_authorizations"
+    ],
+    "functions": [
+      "fleet_driver_primary_immutable()",
+      "fleet_driver_authorization_guard()"
+    ],
+    "catalog": {
+      "count": 110,
+      "sha256": "e0adc18f825d2be5781a23bbe44cbb61a62c9e8e0560b49aa0a388130a6bdb8c",
+      "categories": {
+        "check": {
+          "count": 10,
+          "sha256": "c41a249d8373835902940e1727f86e52a555cf079896e942ffee22d99c158190"
+        },
+        "column": {
+          "count": 40,
+          "sha256": "d8c84affa28f40842ed6db9d81b1e10a883314ca3061cf1b0333ca8d516e139c"
+        },
+        "constraint": {
+          "count": 28,
+          "sha256": "703658caeac442277b1ae6652247f7cd8ec534524a74ae08c0b9478b0adfe6d3"
+        },
+        "foreign_key": {
+          "count": 11,
+          "sha256": "6f5e82180c510859a84ac778d973856a1dfad6882afe9de3fe9d51ba910d7453"
+        },
+        "function": {
+          "count": 2,
+          "sha256": "625e98ecf4a4415e7f1e26b2e6216b990a9b853a80762d087186b4f98bdfae8a"
+        },
+        "index": {
+          "count": 17,
+          "sha256": "0570a1211844c10ef3f7ef0b224ee98e5276ca19457b7414fc1847c7a980520a"
+        },
+        "trigger": {
+          "count": 2,
+          "sha256": "9b4f024560ee33dcd3986361327e87a45da6a83a4c3db5a42623fa3c9dcaa6d5"
+        }
+      }
+    },
+    "rows": [
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_decision_check",
+        "definition": "CHECK (decision_action IS NULL AND decision_request_id IS NULL AND decision_payload_hash IS NULL OR decision_action IS NOT NULL AND (decision_action::text = ANY (ARRAY['APPROVE'::character varying, 'REJECT'::character varying]::text[])) AND decision_request_id IS NOT NULL AND decision_payload_hash IS NOT NULL)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_hashes_check",
+        "definition": "CHECK (scope_hash ~ '^[0-9a-f]{64}$'::text AND payload_hash ~ '^[0-9a-f]{64}$'::text AND (decision_payload_hash IS NULL OR decision_payload_hash ~ '^[0-9a-f]{64}$'::text) AND (revocation_payload_hash IS NULL OR revocation_payload_hash ~ '^[0-9a-f]{64}$'::text))"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_interval_check",
+        "definition": "CHECK (ends_at > starts_at)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_revocation_check",
+        "definition": "CHECK (revoked_at IS NULL AND revoked_by_membership_id IS NULL AND revoked_by_user_id IS NULL AND revocation_reason IS NULL AND revocation_request_id IS NULL AND revocation_payload_hash IS NULL OR revoked_at IS NOT NULL AND revoked_by_membership_id IS NOT NULL AND revoked_by_user_id IS NOT NULL AND btrim(COALESCE(revocation_reason, ''::character varying)::text) <> ''::text AND revocation_request_id IS NOT NULL AND revocation_payload_hash IS NOT NULL AND authorized_at IS NOT NULL AND revoked_at >= authorized_at)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_seal_check",
+        "definition": "CHECK (authorized_at IS NULL AND authorized_by_membership_id IS NULL AND authorized_by_user_id IS NULL AND decision_action::text IS DISTINCT FROM 'APPROVE'::text OR authorized_at IS NOT NULL AND authorized_by_membership_id IS NOT NULL AND authorized_by_user_id IS NOT NULL AND decision_action IS NOT NULL AND decision_action::text = 'APPROVE'::text AND authorized_by_user_id <> driver_user_id AND authorized_at < ends_at)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_version_check",
+        "definition": "CHECK (row_version = (1 +\nCASE\n    WHEN decision_action IS NULL THEN 0\n    ELSE 1\nEND +\nCASE\n    WHEN revoked_at IS NULL THEN 0\n    ELSE 1\nEND))"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_driver_pair_check",
+        "definition": "CHECK ((driver_membership_id IS NULL) = (driver_user_id IS NULL))"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_hash_check",
+        "definition": "CHECK (payload_hash ~ '^[0-9a-f]{64}$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_reason_check",
+        "definition": "CHECK (btrim(reason::text) <> ''::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_revision_check",
+        "definition": "CHECK (revision >= 1)"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "approval_request_id",
+        "definition": "6|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "authorized_at",
+        "definition": "17|timestamp(3) with time zone|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "authorized_by_membership_id",
+        "definition": "18|text|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "authorized_by_user_id",
+        "definition": "19|text|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "created_at",
+        "definition": "27|timestamp(3) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "decision_action",
+        "definition": "14|character varying(12)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "decision_payload_hash",
+        "definition": "16|character(64)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "decision_request_id",
+        "definition": "15|uuid|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "driver_membership_id",
+        "definition": "4|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "driver_user_id",
+        "definition": "5|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "ends_at",
+        "definition": "8|timestamp(3) with time zone|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "id",
+        "definition": "1|uuid|t|gen_random_uuid()||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "payload_hash",
+        "definition": "13|character(64)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "request_id",
+        "definition": "12|uuid|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "requested_by_membership_id",
+        "definition": "10|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "requested_by_user_id",
+        "definition": "11|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "revocation_payload_hash",
+        "definition": "25|character(64)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "revocation_reason",
+        "definition": "23|character varying(500)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "revocation_request_id",
+        "definition": "24|uuid|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "revoked_at",
+        "definition": "20|timestamp(3) with time zone|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "revoked_by_membership_id",
+        "definition": "21|text|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "revoked_by_user_id",
+        "definition": "22|text|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "row_version",
+        "definition": "26|integer|t|1||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "scope_hash",
+        "definition": "9|character(64)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "starts_at",
+        "definition": "7|timestamp(3) with time zone|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "tenant_id",
+        "definition": "2|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "updated_at",
+        "definition": "28|timestamp(3) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "vehicle_id",
+        "definition": "3|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "assigned_at",
+        "definition": "10|timestamp(3) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "assigned_by_membership_id",
+        "definition": "7|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "assigned_by_user_id",
+        "definition": "8|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "driver_membership_id",
+        "definition": "5|text|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "driver_user_id",
+        "definition": "6|text|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "id",
+        "definition": "1|uuid|t|gen_random_uuid()||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "payload_hash",
+        "definition": "12|character(64)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "reason",
+        "definition": "9|character varying(500)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "request_id",
+        "definition": "11|uuid|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "revision",
+        "definition": "4|integer|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "tenant_id",
+        "definition": "2|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "vehicle_id",
+        "definition": "3|text|t|||"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_approval_request_id_not_null",
+        "definition": "NOT NULL approval_request_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_created_at_not_null",
+        "definition": "NOT NULL created_at"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_driver_membership_id_not_null",
+        "definition": "NOT NULL driver_membership_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_driver_user_id_not_null",
+        "definition": "NOT NULL driver_user_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_ends_at_not_null",
+        "definition": "NOT NULL ends_at"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_id_not_null",
+        "definition": "NOT NULL id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_payload_hash_not_null",
+        "definition": "NOT NULL payload_hash"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_request_id_not_null",
+        "definition": "NOT NULL request_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_requested_by_membership_id_not_null",
+        "definition": "NOT NULL requested_by_membership_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_requested_by_user_id_not_null",
+        "definition": "NOT NULL requested_by_user_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_row_version_not_null",
+        "definition": "NOT NULL row_version"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_scope_hash_not_null",
+        "definition": "NOT NULL scope_hash"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_starts_at_not_null",
+        "definition": "NOT NULL starts_at"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_tenant_id_not_null",
+        "definition": "NOT NULL tenant_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_updated_at_not_null",
+        "definition": "NOT NULL updated_at"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_vehicle_id_not_null",
+        "definition": "NOT NULL vehicle_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_assigned_at_not_null",
+        "definition": "NOT NULL assigned_at"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_assigned_by_membership_id_not_null",
+        "definition": "NOT NULL assigned_by_membership_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_assigned_by_user_id_not_null",
+        "definition": "NOT NULL assigned_by_user_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_id_not_null",
+        "definition": "NOT NULL id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_payload_hash_not_null",
+        "definition": "NOT NULL payload_hash"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_reason_not_null",
+        "definition": "NOT NULL reason"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_request_id_not_null",
+        "definition": "NOT NULL request_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_revision_not_null",
+        "definition": "NOT NULL revision"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_tenant_id_not_null",
+        "definition": "NOT NULL tenant_id"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_vehicle_id_not_null",
+        "definition": "NOT NULL vehicle_id"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_approval_fkey",
+        "definition": "FOREIGN KEY (tenant_id, approval_request_id) REFERENCES approval_requests(tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_authorizer_fkey",
+        "definition": "FOREIGN KEY (tenant_id, authorized_by_membership_id, authorized_by_user_id) REFERENCES tenant_memberships(tenant_id, id, user_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_driver_fkey",
+        "definition": "FOREIGN KEY (tenant_id, driver_membership_id, driver_user_id) REFERENCES tenant_memberships(tenant_id, id, user_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_requester_fkey",
+        "definition": "FOREIGN KEY (tenant_id, requested_by_membership_id, requested_by_user_id) REFERENCES tenant_memberships(tenant_id, id, user_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_revoker_fkey",
+        "definition": "FOREIGN KEY (tenant_id, revoked_by_membership_id, revoked_by_user_id) REFERENCES tenant_memberships(tenant_id, id, user_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_tenant_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_vehicle_fkey",
+        "definition": "FOREIGN KEY (tenant_id, vehicle_id) REFERENCES osi_vehicles(tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_actor_fkey",
+        "definition": "FOREIGN KEY (tenant_id, assigned_by_membership_id, assigned_by_user_id) REFERENCES tenant_memberships(tenant_id, id, user_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_driver_fkey",
+        "definition": "FOREIGN KEY (tenant_id, driver_membership_id, driver_user_id) REFERENCES tenant_memberships(tenant_id, id, user_id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_tenant_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_vehicle_fkey",
+        "definition": "FOREIGN KEY (tenant_id, vehicle_id) REFERENCES osi_vehicles(tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT"
+      },
+      {
+        "kind": "function",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "fleet_driver_authorization_guard()",
+        "definition": "CREATE OR REPLACE FUNCTION osi.fleet_driver_authorization_guard()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nDECLARE approval_row \"osi\".\"approval_requests\"%ROWTYPE;\nBEGIN\n  IF TG_OP = 'DELETE' THEN\n    RAISE EXCEPTION 'temporary driver authorization history cannot be deleted' USING ERRCODE = '55000';\n  END IF;\n  SELECT * INTO approval_row FROM \"osi\".\"approval_requests\"\n    WHERE \"tenant_id\" = NEW.\"tenant_id\" AND \"id\" = NEW.\"approval_request_id\";\n  IF NOT FOUND OR approval_row.\"approval_type\" IS DISTINCT FROM 'FLEET_DRIVER_TEMPORARY'\n    OR approval_row.\"entity\" IS DISTINCT FROM 'FLEET_DRIVER_AUTHORIZATION' OR approval_row.\"entity_id\" IS DISTINCT FROM NEW.\"id\"::text\n    OR approval_row.\"request_id\" IS DISTINCT FROM NEW.\"request_id\"::text\n    OR approval_row.\"requester_membership_id\" IS DISTINCT FROM NEW.\"requested_by_membership_id\"\n    OR approval_row.\"requester_user_id\" IS DISTINCT FROM NEW.\"requested_by_user_id\"\n    OR approval_row.\"evaluation_snapshot_json\"->>'fleetDriverScopeHash' IS DISTINCT FROM NEW.\"scope_hash\"::text\n  THEN\n    RAISE EXCEPTION 'temporary driver approval scope mismatch' USING ERRCODE = '23514';\n  END IF;\n  IF TG_OP = 'INSERT' THEN\n    IF NEW.\"row_version\" <> 1 OR NEW.\"decision_action\" IS NOT NULL OR NEW.\"authorized_at\" IS NOT NULL\n      OR NEW.\"revoked_at\" IS NOT NULL OR approval_row.\"status\" <> 'PENDING' THEN\n      RAISE EXCEPTION 'temporary driver authorization must start pending and unsealed' USING ERRCODE = '23514';\n    END IF;\n    RETURN NEW;\n  END IF;\n  IF ROW(NEW.\"id\", NEW.\"tenant_id\", NEW.\"vehicle_id\", NEW.\"driver_membership_id\", NEW.\"driver_user_id\",\n      NEW.\"approval_request_id\", NEW.\"starts_at\", NEW.\"ends_at\", NEW.\"scope_hash\", NEW.\"requested_by_membership_id\",\n      NEW.\"requested_by_user_id\", NEW.\"request_id\", NEW.\"payload_hash\", NEW.\"created_at\")\n    IS DISTINCT FROM ROW(OLD.\"id\", OLD.\"tenant_id\", OLD.\"vehicle_id\", OLD.\"driver_membership_id\", OLD.\"driver_user_id\",\n      OLD.\"approval_request_id\", OLD.\"starts_at\", OLD.\"ends_at\", OLD.\"scope_hash\", OLD.\"requested_by_membership_id\",\n      OLD.\"requested_by_user_id\", OLD.\"request_id\", OLD.\"payload_hash\", OLD.\"created_at\") THEN\n    RAISE EXCEPTION 'temporary driver scope is immutable' USING ERRCODE = '55000';\n  END IF;\n  IF NEW.\"row_version\" <> OLD.\"row_version\" + 1 THEN\n    RAISE EXCEPTION 'temporary driver version must increment by one' USING ERRCODE = '40001';\n  END IF;\n  IF OLD.\"decision_action\" IS NULL AND NEW.\"decision_action\" IS NOT NULL THEN\n    IF NEW.\"revoked_at\" IS NOT NULL\n      OR approval_row.\"decision_request_id\" IS DISTINCT FROM NEW.\"decision_request_id\"::text\n      OR (NEW.\"decision_action\" = 'APPROVE' AND (approval_row.\"status\" <> 'APPROVED'\n        OR NEW.\"authorized_by_membership_id\" IS DISTINCT FROM approval_row.\"decider_membership_id\"\n        OR NEW.\"authorized_by_user_id\" IS DISTINCT FROM approval_row.\"decider_user_id\"\n        OR approval_row.\"decided_at\" IS NULL OR NEW.\"authorized_at\" < (approval_row.\"decided_at\" AT TIME ZONE 'UTC')))\n      OR (NEW.\"decision_action\" = 'REJECT' AND approval_row.\"status\" <> 'REJECTED') THEN\n      RAISE EXCEPTION 'temporary driver decision is not bound to its approval' USING ERRCODE = '23514';\n    END IF;\n  ELSIF OLD.\"decision_action\" = 'APPROVE' AND OLD.\"revoked_at\" IS NULL AND NEW.\"revoked_at\" IS NOT NULL THEN\n    IF ROW(NEW.\"decision_action\", NEW.\"decision_request_id\", NEW.\"decision_payload_hash\", NEW.\"authorized_at\",\n        NEW.\"authorized_by_membership_id\", NEW.\"authorized_by_user_id\")\n      IS DISTINCT FROM ROW(OLD.\"decision_action\", OLD.\"decision_request_id\", OLD.\"decision_payload_hash\", OLD.\"authorized_at\",\n        OLD.\"authorized_by_membership_id\", OLD.\"authorized_by_user_id\") THEN\n      RAISE EXCEPTION 'temporary driver approval seal is immutable' USING ERRCODE = '55000';\n    END IF;\n  ELSE\n    RAISE EXCEPTION 'temporary driver authorization transition is final or invalid' USING ERRCODE = '55000';\n  END IF;\n  RETURN NEW;\nEND;\n$function$\n"
+      },
+      {
+        "kind": "function",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "fleet_driver_primary_immutable()",
+        "definition": "CREATE OR REPLACE FUNCTION osi.fleet_driver_primary_immutable()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nBEGIN\n  RAISE EXCEPTION 'habitual driver events are immutable' USING ERRCODE = '55000';\nEND;\n$function$\n"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_approval_key",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_authorization_approval_key ON osi.fleet_driver_authorizations USING btree (tenant_id, approval_request_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_authorizer_idx",
+        "definition": "CREATE INDEX fleet_driver_authorization_authorizer_idx ON osi.fleet_driver_authorizations USING btree (tenant_id, authorized_by_membership_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_decision_request_key",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_authorization_decision_request_key ON osi.fleet_driver_authorizations USING btree (tenant_id, decision_request_id) WHERE (decision_request_id IS NOT NULL)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_driver_idx",
+        "definition": "CREATE INDEX fleet_driver_authorization_driver_idx ON osi.fleet_driver_authorizations USING btree (tenant_id, driver_membership_id, starts_at, ends_at)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_request_key",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_authorization_request_key ON osi.fleet_driver_authorizations USING btree (tenant_id, request_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_requester_idx",
+        "definition": "CREATE INDEX fleet_driver_authorization_requester_idx ON osi.fleet_driver_authorizations USING btree (tenant_id, requested_by_membership_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_revocation_request_key",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_authorization_revocation_request_key ON osi.fleet_driver_authorizations USING btree (tenant_id, revocation_request_id) WHERE (revocation_request_id IS NOT NULL)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_revoker_idx",
+        "definition": "CREATE INDEX fleet_driver_authorization_revoker_idx ON osi.fleet_driver_authorizations USING btree (tenant_id, revoked_by_membership_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_tenant_id_key",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_authorization_tenant_id_key ON osi.fleet_driver_authorizations USING btree (tenant_id, id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_vehicle_idx",
+        "definition": "CREATE INDEX fleet_driver_authorization_vehicle_idx ON osi.fleet_driver_authorizations USING btree (tenant_id, vehicle_id, created_at DESC, id DESC)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorizations_pkey",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_authorizations_pkey ON osi.fleet_driver_authorizations USING btree (id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_actor_idx",
+        "definition": "CREATE INDEX fleet_driver_primary_actor_idx ON osi.fleet_driver_primary_events USING btree (tenant_id, assigned_by_membership_id, assigned_at DESC)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_driver_idx",
+        "definition": "CREATE INDEX fleet_driver_primary_driver_idx ON osi.fleet_driver_primary_events USING btree (tenant_id, driver_membership_id, assigned_at DESC)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_events_pkey",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_primary_events_pkey ON osi.fleet_driver_primary_events USING btree (id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_request_key",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_primary_request_key ON osi.fleet_driver_primary_events USING btree (tenant_id, request_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_revision_key",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_primary_revision_key ON osi.fleet_driver_primary_events USING btree (tenant_id, vehicle_id, revision)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_tenant_id_key",
+        "definition": "CREATE UNIQUE INDEX fleet_driver_primary_tenant_id_key ON osi.fleet_driver_primary_events USING btree (tenant_id, id)"
+      },
+      {
+        "kind": "trigger",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_authorizations",
+        "object_name": "fleet_driver_authorization_guard",
+        "definition": "CREATE TRIGGER fleet_driver_authorization_guard BEFORE INSERT OR DELETE OR UPDATE ON fleet_driver_authorizations FOR EACH ROW EXECUTE FUNCTION fleet_driver_authorization_guard()"
+      },
+      {
+        "kind": "trigger",
+        "schema_name": "osi",
+        "table_name": "fleet_driver_primary_events",
+        "object_name": "fleet_driver_primary_immutable",
+        "definition": "CREATE TRIGGER fleet_driver_primary_immutable BEFORE DELETE OR UPDATE ON fleet_driver_primary_events FOR EACH ROW EXECUTE FUNCTION fleet_driver_primary_immutable()"
+      }
+    ],
+    "sqlOnlyCounts": {
+      "check": 10,
+      "function": 2,
+      "special_index": 2,
+      "trigger": 2
+    }
+  }
+}

@@ -197,6 +197,9 @@ export const PERMS = Object.freeze({
   // Fleet
   FLEET_VIEW: "fleet:view",
   FLEET_EDIT: "fleet:edit",
+  FLEET_DRIVERS_ASSIGN: "fleet:drivers:assign",
+  FLEET_DRIVERS_REQUEST: "fleet:drivers:request",
+  FLEET_DRIVERS_AUTHORIZE: "fleet:drivers:authorize",
 
   // Security / Gate
   SECURITY_VIEW: "security:view",
@@ -346,6 +349,14 @@ const EXPLICIT_CLIENT_ACCESS_PERMISSIONS = new Set([
   PERMS.CLIENT_ACCESS_MANAGE,
 ]);
 
+// Driver assignment and temporary-use authority require a designated membership.
+// Neither administrator nor operations roles inherit these permissions.
+const EXPLICIT_FLEET_DRIVER_PERMISSIONS = new Set([
+  PERMS.FLEET_DRIVERS_ASSIGN,
+  PERMS.FLEET_DRIVERS_REQUEST,
+  PERMS.FLEET_DRIVERS_AUTHORIZE,
+]);
+
 const ROLE_PERMS = {
   A: Object.values(PERMS).filter((permission) =>
     !EXPLICIT_PIPELINE_MUTATION_PERMISSIONS.has(permission)
@@ -360,7 +371,8 @@ const ROLE_PERMS = {
     && !EXPLICIT_COMMERCIAL_RELATIONSHIP_PERMISSIONS.has(permission)
     && !EXPLICIT_COMMUNICATION_PERMISSIONS.has(permission)
     && !EXPLICIT_PERSONNEL_POLICY_PERMISSIONS.has(permission)
-    && !EXPLICIT_CLIENT_ACCESS_PERMISSIONS.has(permission)),
+    && !EXPLICIT_CLIENT_ACCESS_PERMISSIONS.has(permission)
+    && !EXPLICIT_FLEET_DRIVER_PERMISSIONS.has(permission)),
   V: [
     PERMS.TEMPLATES_VIEW,
     PERMS.TEMPLATES_CREATE,

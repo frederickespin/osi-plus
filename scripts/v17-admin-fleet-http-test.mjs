@@ -82,6 +82,17 @@ for (const overrides of [{ database: "other" }, { branch: "br-other" }, { schema
   results.push({ name: `database refuses mismatched ${Object.keys(overrides)[0]}`, passed: true });
 }
 requireAdminFleetContext(previewEnv, "PREVIEW_REHEARSAL", previewContext);
+for (const permission of ["fleet:drivers:assign", "fleet:drivers:request", "fleet:drivers:authorize"]) {
+  const operationsContext = { ...previewContext, role: "B", effectivePermissions: ["fleet:view", permission], grantedPermissions: ["fleet:view", permission] };
+  requireAdminFleetContext(previewEnv, "PREVIEW_REHEARSAL", operationsContext);
+  check(`Preview accepts designated operations with ${permission}`, true);
+  for (const change of [{ deniedPermissions: [permission] }, { deniedPermissions: ["fleet:view"] }, { grantedPermissions: ["fleet:view"] }]) {
+    assert.throws(() => requireAdminFleetContext(previewEnv, "PREVIEW_REHEARSAL", { ...operationsContext, ...change }), (error) => error.code === "ADMIN_FLEET_FORBIDDEN");
+    check(`Preview rejects ${Object.keys(change)[0]} for ${permission}`, true);
+  }
+}
+assert.throws(() => requireAdminFleetContext(previewEnv, "PREVIEW_REHEARSAL", { ...previewContext, role: "B" }), (error) => error.code === "ADMIN_FLEET_FORBIDDEN");
+check("Preview does not broaden fleet access to undesignated operations", true);
 for (const overrides of [{ tenantCode: "OTHER" }, { tenant: { code: "OTHER" } }, { role: "V" }, { userStatus: "INACTIVE" }, { membershipStatus: "SUSPENDED" }, { tenantStatus: "SUSPENDED" }, { sessionKind: "MEMBERSHIP" }]) {
   assert.throws(() => requireAdminFleetContext(previewEnv, "PREVIEW_REHEARSAL", { ...previewContext, ...overrides }), (error) => error.code === "ADMIN_FLEET_FORBIDDEN");
   results.push({ name: `Preview context refuses ${Object.keys(overrides)[0]}`, passed: true });

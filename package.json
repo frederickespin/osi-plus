@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "prisma generate && vite build",
+    "build": "prisma generate && node scripts/v17-fleet-drivers-preview-migrate.mjs --build-hook && vite build",
     "postinstall": "prisma generate",
     "lint": "eslint .",
     "test:auth-null:browser": "playwright test -c playwright.auth-null.config.ts",
@@ -169,7 +169,10 @@
     "test:v17-admin-fleet:http": "node scripts/v17-admin-fleet-http-test.mjs",
     "test:v17-admin-fleet:db": "node scripts/v17-admin-fleet-db-test.mjs",
     "test:v17-admin-fleet:browser": "playwright test --config playwright.v17-fleet.config.ts",
-    "typecheck:v17-admin-fleet": "tsc --noEmit -p tsconfig.v17-fleet.json"
+    "typecheck:v17-admin-fleet": "tsc --noEmit -p tsconfig.v17-fleet.json",
+    "test:v17-fleet-drivers": "node scripts/v17-fleet-drivers-contract-test.mjs && node scripts/v17-fleet-drivers-transactions-test.mjs && node scripts/v17-fleet-drivers-preview-migrate-test.mjs",
+    "test:v17-fleet-drivers:http": "node scripts/v17-fleet-drivers-http-test.mjs",
+    "test:v17-fleet-drivers:db": "node scripts/v17-fleet-drivers-db-test.mjs"
   },
   "dependencies": {
     "22": "^0.0.0",

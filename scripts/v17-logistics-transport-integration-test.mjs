@@ -88,17 +88,23 @@ assert.equal(batch.size, 51, "Composite metadata cursor keeps revisions tied at 
 assert.equal(batchQueries.length, 3, "Inbox uses two metadata pages and one full batch, not one query per case");
 assert.ok([...batch.values()].every((value) => value.revision === 1));
 let routeVersion = 3;
-const readPrisma = { logisticsPlanRevision: batchModel, pipelineCase: { async findFirst({ where }) {
+const readPrisma = { logisticsPlanRevision: batchModel, logisticsPlan: { async findMany({ where, select }) {
+  assert.deepEqual(where, { tenantId: "tenant-a", planRef: { in: [ref(5002)] } });
+  assert.deepEqual(select, { id: true, planRef: true });
+  return [{ id: batchPlanIds[0], planRef: ref(5002) }];
+} }, pipelineCase: { async findFirst({ where, select }) {
   assert.equal(where.tenantId, "tenant-a");
+  assert.deepEqual(select.logisticsPlans.select, { planRef: true }, "Public case projection never selects the private plan key");
   return { publicRef: ref(5001), caseCode: "SYNTHETIC", version: 1, routeRevision: routeVersion, routeSnapshots: [
     { routeVersion, role: "ORIGIN", stopOrder: 0, countryCode: "DO", cityMunicipality: "Synthetic origin" },
     { routeVersion, role: "DESTINATION", stopOrder: 0, countryCode: "DO", cityMunicipality: "Synthetic destination" },
-  ], logisticsPlans: [{ id: batchPlanIds[0] }], _count: {} };
+  ], logisticsPlans: [{ planRef: ref(5002) }], _count: {} };
 } } };
 const routeCase = await findCrmPipelineCase(readPrisma, { tenantId: "tenant-a", role: "A", caseRef: ref(5001) });
 assert.equal(routeCase.route.origin.area, "METRO");
 assert.equal(routeCase.route.destination.area, "INTERIOR", "New transport component snapshots preserve destination classification without VISIT_ZONE items");
 assert.equal(routeCase.route.destination.areaSource, "PUBLISHED_LOGISTICS");
+assert.equal(JSON.stringify(routeCase).includes(batchPlanIds[0]), false, "Private grouping key is not serialized into the case DTO");
 routeVersion = 4;
 const changedRouteCase = await findCrmPipelineCase(readPrisma, { tenantId: "tenant-a", role: "A", caseRef: ref(5001) });
 assert.equal(changedRouteCase.route.destination.area, "UNAVAILABLE", "A new route cannot inherit the previous route's geographic classification");

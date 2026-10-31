@@ -38,13 +38,15 @@ function changeConsumer(path, before, after) {
 
 check("baseline publicRef aprobada", baseline.ok);
 check("inventario distingue casos y clientes de membresías e invitaciones",
-  baseline.runtimeConsumers === 27
+  baseline.runtimeConsumers === 29
   && baseline.consumerContracts["api/_lib/crmIcpV2ApiDomain.js"].kinds.join(",") === "CASE,CLIENT"
   && baseline.consumerContracts["api/_lib/authContext.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminUserIdentityDomain.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminUserEnrollmentDomain.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/fleetActor.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/fleetDriversDomain.js"].kinds.join(",") === "MEMBERSHIP"
+  && baseline.consumerContracts["api/_lib/logisticsTransportDomain.js"].kinds.join(",") === "CASE"
+  && baseline.consumerContracts["api/_lib/logisticsTransportZones.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminIdentityInvitationDomain.js"].kinds.join(",") === "INVITATION,MEMBERSHIP");
 check("todos los consumidores persistentes tienen consultas verificadas",
   Object.entries(baseline.consumerContracts).every(([path, contract]) =>
@@ -87,8 +89,9 @@ rejected("alcance previo a Prisma eliminado rechazado", withCanonicalRead(canoni
   .replace("const scope = resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId });", "const scope = Object.freeze({});")), /alcance server-side|UUID y alcance/);
 rejected("404 sanitizado eliminado rechazado", withCanonicalRead(canonicalRead
   .replace('if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);', 'if (!row) invalid("CRM_PIPELINE_FORBIDDEN", 403);')), /404 indistinguible/);
-rejected("fallback a PK interna rechazado", withCanonicalRead(canonicalRead
-  .replace("return safeCaseDetail(row, String(membershipId));", "if (!row) return prisma.pipelineCase.findUnique({ where: { id: caseRef } });\n    return safeCaseDetail(row, String(membershipId));")), /fallback|segunda consulta|PK interna/);
+rejected("fallback a PK interna rechazado", changeConsumer("api/_lib/crmPipelineRead.js",
+  'if (!row) invalid("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);',
+  "if (!row) return prisma.pipelineCase.findUnique({ where: { id: caseRef } });"), /fallback|segunda consulta|PK interna/);
 rejected("findFirst genérico sin alcance rechazado", withCanonicalRead(canonicalRead
   .replace("where: { ...scope, publicRef },", "where: { publicRef },")), /predicados tenant-first|únicamente por publicRef/);
 rejected("alcance de ruta desde query rechazado", { extraRuntimeSources: { ...canonicalRuntime, "api/crm/pipeline-cases/[caseKey]/index.js": canonicalRuntime["api/crm/pipeline-cases/[caseKey]/index.js"].replace("tenantId: context.tenantId", "tenantId: req.query.tenantId") } }, /contexto revalidado|query/);
@@ -126,6 +129,9 @@ const scopedConsumers = [
   ["Survey caso", "api/_lib/crmSurveyDomain.js", "tenantId: who.tenantId, publicRef: command.caseRef", "publicRef: command.caseRef"],
   ["Survey evaluador", "api/_lib/crmSurveyDomain.js", "tenantId: who.tenantId,\n          publicRef: command.evaluatorMembershipRef", "publicRef: command.evaluatorMembershipRef"],
   ["Logística", "api/_lib/logisticsEngineDomain.js", "tenantId: context.tenantId, publicRef: caseRef", "publicRef: caseRef"],
+  ["Transporte caso", "api/_lib/logisticsTransportDomain.js", "tenantId: context.tenantId, publicRef: transportRef(caseRef)", "publicRef: transportRef(caseRef)"],
+  ["Transporte listado de casos", "api/_lib/logisticsTransportDomain.js", "tenantId: actor.tenantId, ...caseScope(actor)", "...caseScope(actor)"],
+  ["Transporte publicación", "api/_lib/logisticsTransportDomain.js", "tenantId: actor.tenantId, calculationRef: command.calculationRef", "calculationRef: command.calculationRef"],
   ["Materiales", "api/_lib/materialsInventoryDomain.js", "tenantId: context.tenantId, publicRef: input.caseRef", "publicRef: input.caseRef"],
   ["Personal", "api/_lib/personnelPoliciesDomain.js", "tenantId: who.tenantId, publicRef: command.caseRef", "publicRef: command.caseRef"],
   ["Cotización", "api/_lib/quoteDomain.js", "tenantId: context.tenantId, publicRef: caseRef", "publicRef: caseRef"],
@@ -161,6 +167,21 @@ rejected("actor de Flota no puede perder empresa", changeConsumer("api/_lib/flee
   'WHERE m."tenant_id"=${tenantId} AND m."id"', 'WHERE m."id"'), /contrato tenant-first/);
 rejected("actor de Flota no obtiene empresa de input", changeConsumer("api/_lib/fleetActor.js",
   'WHERE m."tenant_id"=${tenantId}', 'WHERE m."tenant_id"=${input.tenantId}'), /contrato tenant-first/);
+check("Transporte verifica casos y membresía con contratos separados",
+  baseline.consumerContracts["api/_lib/logisticsTransportDomain.js"].prismaQueries === 3
+  && baseline.consumerContracts["api/_lib/logisticsTransportZones.js"].sqlQueries === 1);
+rejected("actor de Transporte no puede perder empresa", changeConsumer("api/_lib/logisticsTransportZones.js",
+  'WHERE m."tenant_id"=${context.tenantId} AND m."id"', 'WHERE m."id"'), /contrato tenant-first/);
+rejected("actor de Transporte no obtiene empresa de input", changeConsumer("api/_lib/logisticsTransportZones.js",
+  'WHERE m."tenant_id"=${context.tenantId}', 'WHERE m."tenant_id"=${input.tenantId}'), /contrato tenant-first/);
+rejected("clasificar casos de Transporte no autoriza leer membresías", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/logisticsTransportDomain.js": canonicalRuntime["api/_lib/logisticsTransportDomain.js"]
+    + '\ntx.tenantMembership.findFirst({ where: { tenantId: context.tenantId, publicRef: reference } });\n' },
+}, /modelo de referencia sin clasificar/);
+rejected("clasificar actor de Transporte no autoriza leer casos", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/logisticsTransportZones.js": canonicalRuntime["api/_lib/logisticsTransportZones.js"]
+    + '\ntx.pipelineCase.findFirst({ where: { tenantId: context.tenantId, publicRef: caseRef } });\n' },
+}, /modelo de referencia sin clasificar/);
 rejected("historial de personas no puede perder empresa", changeConsumer("api/_lib/fleetDriversDomain.js",
   'WHERE m."tenant_id"=${tenantId} AND m."id" IN', 'WHERE m."id" IN'), /contrato tenant-first/);
 rejected("ficha de chofer no puede perder empresa", changeConsumer("api/_lib/fleetDriversDomain.js",

@@ -5,7 +5,7 @@ import {
   resolveCrmPipelineModes,
 } from "./crmPipelineAccess.js";
 import { PERMS } from "./rbac.js";
-import { latestLogisticsRevisionsByPlan, QUOTE_TRANSPORT_CONTEXT } from "./logisticsTransportContext.js";
+import { latestLogisticsRevisionsByPlanRefs, QUOTE_TRANSPORT_CONTEXT } from "./logisticsTransportContext.js";
 
 export const CRM_PIPELINE_RUNTIME_MODES = CRM_PIPELINE_READ_MODES;
 
@@ -69,7 +69,7 @@ const ROUTE_SELECT = Object.freeze({
   streetAndNumber: true,
 });
 
-const LOGISTICS_ZONE_SELECT = Object.freeze({ id: true });
+const LOGISTICS_ZONE_SELECT = Object.freeze({ planRef: true });
 
 const CASE_SELECT = Object.freeze({
   publicRef: true,
@@ -251,6 +251,16 @@ function pipelineWhere(scope, filters = {}) {
   return where;
 }
 
+async function withPublishedLogisticsZones(prisma, tenantId, rows) {
+  const revisions = await latestLogisticsRevisionsByPlanRefs(prisma, {
+    tenantId,
+    planRefs: rows.flatMap((row) => row.logisticsPlans?.map((plan) => plan.planRef) || []),
+    context: QUOTE_TRANSPORT_CONTEXT,
+    select: { inputSnapshot: true, items: { where: { family: { in: ["TRANSPORT", "TRAVEL"] } }, orderBy: { position: "asc" }, select: { snapshot: true } } },
+  });
+  return rows.map((row) => ({ ...row, publishedLogisticsZone: revisions.get(row.logisticsPlans?.[0]?.planRef) || null }));
+}
+
 function safeOwner(owner) {
   if (!owner) return null;
   return Object.freeze({
@@ -295,16 +305,6 @@ function publishedRoute(row) {
     areaSource: areaFor(side) === "UNAVAILABLE" ? "UNAVAILABLE" : "PUBLISHED_LOGISTICS",
   }) : null;
   return Object.freeze({ revision, origin: endpoint(origin, "origin"), destination: endpoint(destination, "destination") });
-}
-
-async function withPublishedLogisticsZones(prisma, tenantId, rows) {
-  const revisions = await latestLogisticsRevisionsByPlan(prisma, {
-    tenantId,
-    planIds: rows.flatMap((row) => row.logisticsPlans?.map((plan) => plan.id) || []),
-    context: QUOTE_TRANSPORT_CONTEXT,
-    select: { inputSnapshot: true, items: { where: { family: { in: ["TRANSPORT", "TRAVEL"] } }, orderBy: { position: "asc" }, select: { snapshot: true } } },
-  });
-  return rows.map((row) => ({ ...row, publishedLogisticsZone: revisions.get(row.logisticsPlans?.[0]?.id) || null }));
 }
 
 function safeCase(row) {

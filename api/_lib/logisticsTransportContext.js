@@ -100,3 +100,14 @@ export async function latestLogisticsRevisionsByPlan(tx, { tenantId, planIds, co
   const rows = await tx.logisticsPlanRevision.findMany({ where: { ...scope, id: { in: [...selected.values()] } }, ...(select ? { select: { ...select, planId: true } } : {}) });
   return new Map(rows.map((row) => [row.planId, row]));
 }
+
+// Public case readers carry only plan references. Resolve private grouping keys
+// inside this tenant-scoped repository boundary before using the batch selector.
+export async function latestLogisticsRevisionsByPlanRefs(tx, { tenantId, planRefs, context = QUOTE_TRANSPORT_CONTEXT, select }) {
+  if (!tenantId || !normalizeTransportContext(context) || !Array.isArray(planRefs) || planRefs.some((ref) => typeof ref !== "string" || !UUID.test(ref))) throw new TypeError("TRANSPORT_CONTEXT_SELECTOR_INVALID");
+  const refs = [...new Set(planRefs)];
+  if (!refs.length) return new Map();
+  const plans = await tx.logisticsPlan.findMany({ where: { tenantId, planRef: { in: refs } }, select: { id: true, planRef: true } });
+  const revisions = await latestLogisticsRevisionsByPlan(tx, { tenantId, planIds: plans.map((plan) => plan.id), context, select });
+  return new Map(plans.filter((plan) => revisions.has(plan.id)).map((plan) => [plan.planRef, revisions.get(plan.id)]));
+}

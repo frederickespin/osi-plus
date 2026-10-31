@@ -11,7 +11,7 @@ export function vehicleDraft(vehicle?: FleetVehicle): VehicleDraft {
     capacityVolume: vehicle?.capacityVolume?.toString() || "", usableLength: vehicle?.usableLength?.toString() || "",
     usableWidth: vehicle?.usableWidth?.toString() || "", usableHeight: vehicle?.usableHeight?.toString() || "",
     weightUnit: vehicle?.weightUnit || "KG", volumeUnit: vehicle?.volumeUnit || "CBM", dimensionUnit: vehicle?.dimensionUnit || "M",
-    operationalStatus: vehicle?.operationalStatus || "AVAILABLE", availableForCalculation: vehicle?.availableForCalculation ?? true,
+    operationalStatus: vehicle?.operationalStatus || "UNAVAILABLE", availableForCalculation: vehicle?.availableForCalculation ?? false,
     effectiveFrom: vehicle?.effectiveFrom.slice(0, 10) || new Date().toISOString().slice(0, 10), effectiveTo: vehicle?.effectiveTo?.slice(0, 10) || "",
     hubCode: vehicle?.hubCode || "",
   };

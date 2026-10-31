@@ -4,7 +4,7 @@
 
 La pantalla histórica de flota conserva vehículos en el navegador, mientras el motor logístico consulta la tabla compartida `osi.osi_vehicles`. Este incremento incorpora esa tabla a **OSI Plus Hub → Administración → Flota vehicular**, con alta, consulta, edición y retiro por empresa.
 
-La ruta es `/administration/fleet`. Usuarios y roles conserva la primera posición en Administración. La ficha incluye código, matrícula, VIN/chasis, tipo, marca, modelo, año, base operativa, capacidades y unidades, dimensiones útiles, estado y vigencia. La lista permite búsqueda, filtros y paginación. Los iconos tienen nombres accesibles y la ayuda se mantiene bajo demanda.
+La ruta es `/administration/fleet`. Usuarios y roles conserva la primera posición en Administración. La ficha incluye código, matrícula, VIN/chasis, tipo, marca, modelo, año, sede habitual, capacidades y unidades y dimensiones útiles. La disponibilidad se gestiona desde el listado y su menú de acciones. La lista permite búsqueda, filtros y paginación. Los iconos tienen nombres accesibles y la ayuda se mantiene bajo demanda.
 
 La integración no importa automáticamente los vehículos guardados en el navegador. No añade migraciones ni modifica SQL histórico. Usa el esquema de vehículos ya existente.
 
@@ -34,6 +34,23 @@ La auditoría conserva actor, acción, referencia, versiones, estados y nombres 
 | Retirado | Conserva la ficha y fecha de retiro; queda disponible para consulta. |
 
 El retiro es terminal en este incremento: la interfaz pide confirmarlo y no ofrece reactivación. No se elimina el registro. Los campos técnicos de vehículos protegidos por un cálculo anterior permanecen bloqueados, mientras los cambios operativos admitidos siguen disponibles.
+
+## Ajustes de uso 19E
+
+La ficha técnica se separa de la disponibilidad. Una ficha nueva se crea con `UNAVAILABLE` y `availableForCalculation=false`, sin exigir decisiones operativas durante el alta. La fecha inicial conserva el valor predeterminado del día UTC; la fecha final queda abierta. No se modifica la disponibilidad de registros anteriores.
+
+**Sede habitual** sustituye la etiqueta Base operativa. Es un dato opcional para identificar dónde se administra o despacha normalmente el vehículo; no representa su ubicación actual ni un chofer. Capacidades y dimensiones usan campos de ancho fijo de `10ch`, año de `7ch` y unidades de `5rem`. El ancho visual no impone un nuevo límite de cuatro dígitos a los datos. Las ayudas de unidades quedan bajo `?`.
+
+| Acción | Resultado |
+|---|---|
+| Casilla Activo | Habilita o deshabilita la planificación. Al activar cambia No disponible a Disponible; al desactivar cambia Disponible a No disponible. Conserva En uso y las fechas. |
+| Menú → Editar ficha | Abre identificación y características técnicas. El nombre cambia a Consultar ficha para acceso de lectura o vehículos retirados. |
+| Menú → Disponibilidad | Abre estado operativo, Activo en planificación y vigencia. La fecha Hasta es exclusiva y las fechas editadas se guardan a las 00:00 UTC. |
+| Fuera de vigencia | Indica que un vehículo marcado Activo queda fuera de las fechas vigentes. No se modifican esas fechas al marcar la casilla. |
+
+Activo no equivale a libre: Logística conserva sus condiciones de estado y vigencia. El cambio desde la casilla usa la versión leída, UUID y autoridad de edición ya existente. No hay cambios optimistas ni reintentos automáticos. Un fallo obliga a actualizar explícitamente el listado y leer la fila antes de permitir otra acción. Las solicitudes pendientes se cancelan al cambiar de contexto; una respuesta tardía no se aplica a otra empresa.
+
+La nueva interfaz mantiene los bloqueos técnicos, la consulta para usuarios sin edición y el retiro terminal. No agrega migraciones, permisos ni cambios al contrato del servidor. La comprobación de navegador cubre escritorio y móvil, creación inactiva, ancho de campos, acciones de disponibilidad, conflictos, resultados inciertos y cambio de empresa durante una activación.
 
 ## Unidades en Logística
 

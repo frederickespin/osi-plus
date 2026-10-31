@@ -45,7 +45,7 @@ async function fixture(page: Page, options: { count?: number; permissions?: stri
     }
     if (url.pathname === BASE && request.method() === "POST") {
       const body = request.postDataJSON() as Record<string, unknown>; writes.push({ method: "POST", body });
-      const { requestId: _, ...values } = body;
+      const values = { ...body }; delete values.requestId;
       const vehicle = { ...vehicleFixture(100), ...values, plate: values.plate ? String(values.plate).toUpperCase() : null } as FleetVehicle;
       rows = [...rows, vehicle]; return json({ ok: true, vehicle, created: true, idempotent: false }, 201);
     }

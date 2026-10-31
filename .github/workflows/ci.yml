@@ -44,6 +44,7 @@ jobs:
         run: |
           node --test tests/prisma-schema-target/validate-prisma-schema-target.test.mjs
           node scripts/validate-canonical-migration-inventory-test.mjs
+          node scripts/validate-canonical-secret-guard-test.mjs
           node scripts/crm-01b1-sql-drift-baseline-test.mjs
           node scripts/v17-admin-user-identity-contract-test.mjs
           node scripts/v17-admin-user-identity-transactions-test.mjs

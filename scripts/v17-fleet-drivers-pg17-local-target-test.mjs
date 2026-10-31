@@ -24,7 +24,7 @@ for (const [name, raw] of [
   ["ambiguous localhost", local.replace("127.0.0.1", "localhost")],
   ["external address", local.replace("127.0.0.1", "192.0.2.1")],
   ["IPv6 address", local.replace("127.0.0.1", "[::1]")],
-  ["managed database", local.replace("127.0.0.1", "ep-test.neon.tech")],
+  ["managed database marker", local.replace("127.0.0.1", "ep-test.neon.invalid")],
   ["pooler", local.replace("127.0.0.1", "synthetic-pooler.example.invalid")],
   ["canonical PG18 port", local.replace(":55433/", ":55432/")],
   ["default PostgreSQL port", local.replace(":55433/", ":5432/")],

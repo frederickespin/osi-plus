@@ -93,7 +93,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          import { mkdirSync, copyFileSync } from 'node:fs';
+          import { mkdirSync, copyFileSync, writeFileSync } from 'node:fs';
           import { join } from 'node:path';
           import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
           const names = validateMigrationFiles();
@@ -102,7 +102,7 @@ jobs:
           const stage = join(process.env.RUNNER_TEMP, 'fleet-pg17-36');
           mkdirSync(join(stage, 'migrations'), { recursive: true });
           copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
-          copyFileSync('prisma/migrations/migration_lock.toml', join(stage, 'migrations/migration_lock.toml'));
+          writeFileSync(join(stage, 'migrations/migration_lock.toml'), 'provider = "postgresql"\n');
           for (const name of names.slice(0, -1)) {
             mkdirSync(join(stage, 'migrations', name));
             copyFileSync(join('prisma/migrations', name, 'migration.sql'), join(stage, 'migrations', name, 'migration.sql'));

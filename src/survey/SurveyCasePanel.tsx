@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
   ClipboardCheck,
@@ -33,11 +33,14 @@ import {
 } from "@/commercial-relationships/api";
 import { isCommercialRelationshipsUiEnabled } from "@/commercial-relationships/mode";
 import LogisticsVisitSummary from "@/logistics-engine/LogisticsVisitSummary";
-import type { LogisticsRevision } from "@/logistics-engine/api";
+import type { TransportUiAccess } from "@/logistics-engine/transportAccess";
+import { isTransportUnauthorized, transportApi, type TransportPublication } from "@/logistics-engine/transportApi";
 import type { CommunicationsAccess } from "@/communications/access";
 import { createPersonnelPoliciesApi } from "@/personnel-policies/api";
 import type { ClientTemporaryAccessUi } from "@/client-portal/access";
 import ClientTemporaryAccessPanel from "@/client-portal/ClientTemporaryAccessPanel";
+
+const TransportCalculationPanel = lazy(() => import("@/logistics-engine/TransportCalculationPanel"));
 
 type Props = Readonly<{
   caseRef: string;
@@ -46,6 +49,7 @@ type Props = Readonly<{
   communicationsEnabled?: boolean;
   communicationsAccess?: CommunicationsAccess;
   logisticsSummaryEnabled?: boolean;
+  transportAccess?: TransportUiAccess;
   clientTemporaryAccessEnabled?: boolean;
   clientTemporaryAccess?: ClientTemporaryAccessUi;
   onOpenCommunications?(surveyAssignmentRef: string): void;
@@ -110,6 +114,7 @@ export default function SurveyCasePanel({
   communicationsEnabled = false,
   communicationsAccess,
   logisticsSummaryEnabled = false,
+  transportAccess,
   clientTemporaryAccessEnabled = false,
   clientTemporaryAccess,
   onOpenCommunications,
@@ -131,8 +136,9 @@ export default function SurveyCasePanel({
   const [workspace, setWorkspace] = useState<SchedulingWorkspace | null>(null);
   const [commercialContext, setCommercialContext] =
     useState<CommercialCaseSnapshot | null>(null);
-  const [logisticsRevision, setLogisticsRevision] =
-    useState<LogisticsRevision | null>(null);
+  const [transportPublication, setTransportPublication] =
+    useState<TransportPublication | null>(null);
+  const [transportError, setTransportError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,34 +153,46 @@ export default function SurveyCasePanel({
   const [editingSchedule, setEditingSchedule] = useState(false);
   const [editingEvaluator, setEditingEvaluator] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const loadVersion = useRef(0);
 
   const load = useCallback(
     async (availabilityDate?: string) => {
+      const version = ++loadVersion.current;
       setLoading(true);
       setError(null);
       try {
-        const [nextWorkspace, nextCommercial, nextLogistics] =
+        const [nextWorkspace, nextCommercial] =
           await Promise.all([
             api.workspace(caseRef, availabilityDate),
             isCommercialRelationshipsUiEnabled()
               ? commercialApi.caseContext(caseRef)
               : Promise.resolve(null),
-            logisticsSummaryEnabled
-              ? import("@/logistics-engine/api").then(({ logisticsApi }) =>
-                  logisticsApi.plan(authorization, caseRef),
-                )
-              : Promise.resolve(null),
           ]);
+        if (version !== loadVersion.current) return;
         setWorkspace(nextWorkspace);
         setCommercialContext(nextCommercial);
-        setLogisticsRevision(nextLogistics);
+        setTransportPublication(null);
+        setTransportError(null);
+        if (logisticsSummaryEnabled && transportAccess?.canView && nextWorkspace.decision?.method === "IN_PERSON") {
+          try {
+            const publication = await transportApi.publication(authorization, { caseRef, purpose: "VISIT", contextRef: nextWorkspace.decision.decisionRef });
+            if (version !== loadVersion.current) return;
+            setTransportPublication(publication);
+          } catch (cause) {
+            if (version !== loadVersion.current) return;
+            const code = cause instanceof Error ? cause.message : "TRANSPORT_REQUEST_FAILED";
+            if (isTransportUnauthorized(cause) || /UNAUTHORIZED|AUTH_REQUIRED/.test(code)) onUnauthorized();
+            else setTransportError("No se pudo consultar el transporte de esta visita. Actualice para intentarlo nuevamente.");
+          }
+        }
       } catch (cause) {
+        if (version !== loadVersion.current) return;
         const code =
           cause instanceof Error ? cause.message : "CRM_SURVEY_REQUEST_FAILED";
         if (/UNAUTHORIZED|AUTH_REQUIRED/.test(code)) onUnauthorized();
         else setError(code);
       } finally {
-        setLoading(false);
+        if (version === loadVersion.current) setLoading(false);
       }
     },
     [
@@ -183,11 +201,13 @@ export default function SurveyCasePanel({
       caseRef,
       commercialApi,
       logisticsSummaryEnabled,
+      transportAccess?.canView,
       onUnauthorized,
     ],
   );
   useEffect(() => {
     void load();
+    return () => { loadVersion.current += 1; };
   }, [load]);
 
   const slots = useMemo(
@@ -733,12 +753,17 @@ export default function SurveyCasePanel({
 
             {workspace.decision?.method === "IN_PERSON" &&
               logisticsSummaryEnabled && (
-                <LogisticsVisitSummary
-                  revision={logisticsRevision}
-                  schedulingContext={workspace.schedulingContext}
-                  visitFee={workspace.visitFee}
-                  commercialContext={commercialContext}
-                />
+                <>
+                  {transportAccess?.canView && <div className="p-4"><Suspense fallback={<p className="text-sm text-slate-500">Cargando transporte de la visita…</p>}><TransportCalculationPanel caseRef={caseRef} purpose="VISIT" contextRef={workspace.decision.decisionRef} authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized} onPublished={() => { void load(date || undefined); }} /></Suspense></div>}
+                  {transportError && <p role="alert" className="mx-4 mb-3 text-sm text-red-700">{transportError}</p>}
+                  <LogisticsVisitSummary
+                    publication={transportAccess?.canView && transportPublication?.context.contextRef === workspace.decision.decisionRef ? transportPublication : null}
+                    schedulingContext={workspace.schedulingContext}
+                    visitFee={access.canViewFee ? workspace.visitFee : null}
+                    canViewFee={access.canViewFee}
+                    commercialContext={commercialContext}
+                  />
+                </>
               )}
 
             <section className="grid gap-4 p-4 sm:grid-cols-2">
@@ -755,7 +780,7 @@ export default function SurveyCasePanel({
                   <div className="mt-2 space-y-1 text-sm">
                     <p className="font-bold text-slate-900">
                       {workspace.visitFee.disposition === "FREE"
-                        ? "Sin costo"
+                        ? "Sin cobro al cliente"
                         : workspace.visitFee.disposition === "WAIVED"
                           ? "Exonerada"
                           : workspace.visitFee.suggestedAmount == null

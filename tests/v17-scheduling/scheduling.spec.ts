@@ -729,7 +729,14 @@ test("fuera de horario ofrece solicitud excepcional tenant-first", async ({
   });
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Survey" }).click();
+  const availabilityResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET" && url.pathname === "/api/crm/survey/scheduling" && url.searchParams.get("date") === "2030-09-16";
+  });
   await page.getByLabel("Fecha").fill("2030-09-16");
+  await (await availabilityResponse).finished();
+  await expect(page.getByText("Consultando decisión, agenda e historial…", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("survey-schedule-editor")).toBeVisible();
   await page.getByLabel("Slot").click();
   await page.getByRole("option", { name: /Tarde/ }).click();
   await page.getByLabel("Evaluador").click();

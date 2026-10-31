@@ -12,7 +12,7 @@ function uuid(value) { const result = text(value, 36); if (!UUID.test(result)) l
 function integer(value, min = 0) { if (!Number.isInteger(value) || value < min) logisticsFail("LOGISTICS_PAYLOAD_INVALID"); return value; }
 function timestamp(value) { const parsed = Date.parse(text(value, 40)); if (!Number.isFinite(parsed)) logisticsFail("LOGISTICS_PAYLOAD_INVALID"); return new Date(parsed).toISOString(); }
 function enumValue(value, allowed) { const result = text(value, 40); if (!allowed.includes(result)) logisticsFail("LOGISTICS_PAYLOAD_INVALID"); return result; }
-function operationalObject(value) { const result = object(value); const visit = (node) => { if (!node || typeof node !== "object") return; for (const [key, child] of Object.entries(node)) { if (/^(?:cost|costAmount|margin|markup|salePrice|quote|quotedAmount|providerPrice)$/i.test(key)) logisticsFail("LOGISTICS_COMMERCIAL_VALUE_FORBIDDEN"); visit(child); } }; visit(result); return result; }
+function operationalObject(value) { const result = object(value); const visit = (node) => { if (!node || typeof node !== "object") return; for (const [key, child] of Object.entries(node)) { if (/^(?:cost|costAmount|margin|markup|salePrice|quote|quotedAmount|providerPrice)$/i.test(key)) logisticsFail("LOGISTICS_COMMERCIAL_VALUE_FORBIDDEN"); if (key === "transportContract" || key === "contract" && child === "V17_TRANSPORT_ZONES_V1" || key === "kind" && child === "TRANSPORT_ZONE_POLICY") logisticsFail("LOGISTICS_TRANSPORT_CANONICAL_PATH_REQUIRED", 409); visit(child); } }; visit(result); return result; }
 function command(raw, operation, payload) { const value = object(raw); const requestId = uuid(value.requestId); const payloadHash = text(value.payloadHash, 64); const calculated = canonicalHash({ operation, requestId, ...payload }); if (payloadHash !== calculated) logisticsFail("LOGISTICS_PAYLOAD_HASH_MISMATCH"); return Object.freeze({ operation, requestId, payloadHash, ...payload }); }
 
 export function normalizeCalculate(raw) { const value = object(raw); exact(value, ["requestId", "payloadHash", "caseRef", "intervalStart", "intervalEnd"]); const payload = { caseRef: uuid(value.caseRef), intervalStart: timestamp(value.intervalStart), intervalEnd: timestamp(value.intervalEnd) }; if (payload.intervalEnd <= payload.intervalStart) logisticsFail("LOGISTICS_INTERVAL_INVALID"); return command(value, "LOGISTICS_CALCULATE", payload); }
@@ -22,7 +22,9 @@ export function normalizeOverride(raw) { const value = object(raw); exact(value,
 export function normalizeIssueResolution(raw) { const value = object(raw); exact(value, ["requestId", "payloadHash", "revisionRef", "issueRef", "expectedVersion", "reason"]); return command(value, "LOGISTICS_ISSUE_RESOLVE", { revisionRef: uuid(value.revisionRef), issueRef: uuid(value.issueRef), expectedVersion: integer(value.expectedVersion, 1), reason: text(value.reason, 1000) }); }
 
 function includesAll(actual = [], required = []) { const set = new Set(actual); return required.every((value) => set.has(value)); }
+export function isTransportPolicy(rule) { return !!rule?.conditions && Object.hasOwn(rule.conditions, "transportContract") || rule?.result?.contract === "V17_TRANSPORT_ZONES_V1" || rule?.result?.kind === "TRANSPORT_ZONE_POLICY"; }
 export function ruleMatches(rule, facts) {
+  if (isTransportPolicy(rule)) return false;
   const c = rule.conditions || {};
   if (c.modes && !c.modes.includes(facts.mode)) return false;
   if (c.serviceCodes && !includesAll(facts.services.codes, c.serviceCodes)) return false;

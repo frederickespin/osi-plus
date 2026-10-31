@@ -1,12 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Calculator, CheckCircle2, CircleDollarSign, RefreshCw, ShieldAlert, SlidersHorizontal, TrendingDown, TrendingUp } from "lucide-react";
 import type { CostingUiAccess } from "./access";
 import { costingApi, type CostingCalculation, type CostingLine, type CostingRevision } from "./api";
+import type { TransportUiAccess } from "@/logistics-engine/transportAccess";
+
+const TransportCalculationPanel = lazy(() => import("@/logistics-engine/TransportCalculationPanel"));
 
 const FAMILY_LABELS: Record<string, string> = { LABOR: "Personal", TRANSPORT: "Transporte", MATERIAL: "Materiales", CRATING: "Cajas de madera", ASSET: "Herramientas y equipos", TRAVEL: "Dietas y viáticos", THIRD_PARTY: "Terceros", FREIGHT: "Fletes", CUSTOMS: "Aduanas", PERMIT: "Permisos y gestiones", ADDITIONAL: "Cargos adicionales", RISK: "Riesgos", CURRENCY_COMPENSATION: "Compensación por moneda" };
 const CLASS_LABELS: Record<string, string> = { PR: "Pr · propio", EX: "Ex · externo", DE: "De · desembolso" };
+const ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  COSTING_INPUT_STALE: "Cambió el plan o una tarifa. Recalcule antes de publicar.",
+  LOGISTICS_INPUT_STALE: "Cambió la zona, el trayecto o una tarifa de transporte. Recalcule y publique el transporte antes de actualizar los costos.",
+  COSTING_BLOCKERS_PRESENT: "Hay datos económicos pendientes. Revise las advertencias antes de publicar.",
+  COSTING_LOGISTICS_REVISION_REQUIRED: "Primero publique una revisión del Motor Logístico para esta cotización.",
+  COSTING_TRANSPORT_CONTEXT_INVALID: "La revisión de transporte no corresponde a un contexto válido. Recalcule el transporte de esta cotización.",
+  COSTING_TRANSPORT_AUTHORITY_INVALID: "No se pudo verificar la tarifa asociada al transporte. Revise la zona y publique un nuevo cálculo.",
+  COSTING_TRANSPORT_DUPLICATE_ITEM: "La revisión contiene un gasto de transporte repetido. Recalcule el transporte antes de continuar.",
+};
 
-type Props = Readonly<{ caseRef: string; authorization?: string; access: CostingUiAccess; onUnauthorized(): void }>;
+type Props = Readonly<{ caseRef: string; authorization?: string; access: CostingUiAccess; transportAccess?: TransportUiAccess; onUnauthorized(): void }>;
 
 function money(value: string | number | null, currency: string) {
   if (value == null) return "Pendiente";
@@ -22,7 +34,7 @@ function Totals({ value, currency }: { value: CostingRevision["totals"]; currenc
   return <aside className="border bg-white p-3"><h3 className="text-xs font-black uppercase tracking-wide text-[#003366]">Resumen económico</h3><dl className="mt-2 divide-y">{rows.map(([label, amount]) => <div key={label} className="flex items-center justify-between gap-4 py-2 text-xs"><dt className="text-slate-600">{label}</dt><dd className="font-bold tabular-nums">{money(amount, currency)}</dd></div>)}<div className="flex items-center justify-between gap-4 py-2 text-xs"><dt className="text-slate-600">Margen esperado propio</dt><dd className="font-bold">{value.expectedMarginBps == null ? "Sin política" : `${(value.expectedMarginBps / 100).toFixed(2)}%`}</dd></div></dl></aside>;
 }
 
-export default function CostingPanel({ caseRef, authorization, access, onUnauthorized }: Props) {
+export default function CostingPanel({ caseRef, authorization, access, transportAccess, onUnauthorized }: Props) {
   const [revision, setRevision] = useState<CostingRevision | null>(null);
   const [calculation, setCalculation] = useState<CostingCalculation | null>(null);
   const [family, setFamily] = useState("ALL");
@@ -33,6 +45,7 @@ export default function CostingPanel({ caseRef, authorization, access, onUnautho
   const [overrideLine, setOverrideLine] = useState<CostingLine | null>(null);
   const [overrideAmount, setOverrideAmount] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
+  const [transportChanged, setTransportChanged] = useState(false);
   const current = calculation?.result || revision;
   const currency = calculation?.baseCurrency || revision?.baseCurrency || "DOP";
   const load = useCallback(async () => {
@@ -48,6 +61,7 @@ export default function CostingPanel({ caseRef, authorization, access, onUnautho
       const logistics = await costingApi.currentLogistics(authorization, caseRef);
       if (!logistics) throw new Error("COSTING_LOGISTICS_REVISION_REQUIRED");
       setCalculation(await costingApi.calculate(authorization, { caseRef, logisticsPlanRevisionRef: logistics.revisionRef, baseCurrency: currency }));
+      setTransportChanged(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "COSTING_REQUEST_FAILED"); }
     finally { setBusy(false); }
   };
@@ -77,8 +91,10 @@ export default function CostingPanel({ caseRef, authorization, access, onUnautho
   const rows = useMemo(() => (current?.lines || []).filter((line) => (family === "ALL" || line.family === family) && (classification === "ALL" || line.classification === classification)), [classification, current, family]);
   if (!access.canView) return <div role="tabpanel" className="border border-dashed p-8 text-center text-sm text-slate-600">No tiene acceso a Costos.</div>;
   return <section role="tabpanel" aria-label="Costos" data-testid="costing-panel" className="space-y-3"><header className="flex flex-wrap items-center justify-between gap-3 border bg-slate-50 p-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-indigo-600">Después del Motor Logístico</p><h2 className="font-black text-[#003366]">Costos</h2><p className="text-xs text-slate-600">Costos, fuentes, versiones, moneda y margen. No es una Cotización comercial.</p></div><div className="flex gap-2">{access.canCalculate && <button type="button" disabled={busy} onClick={() => void calculate()} className="rounded border bg-white px-3 py-2 text-xs font-bold"><Calculator className="mr-1 inline h-4 w-4" />{current ? "Recalcular" : "Calcular"}</button>}{access.canPublish && calculation && <button type="button" disabled={busy} onClick={() => void publish()} className="rounded bg-[#003366] px-3 py-2 text-xs font-bold text-white"><CheckCircle2 className="mr-1 inline h-4 w-4" />Publicar revisión</button>}<button type="button" aria-label="Actualizar Costos" disabled={busy} onClick={() => void load()} className="rounded border bg-white p-2"><RefreshCw className="h-4 w-4" /></button></div></header>
+    {transportAccess?.canView && <Suspense fallback={<p className="p-3 text-sm text-slate-500">Cargando transporte de la cotización…</p>}><TransportCalculationPanel caseRef={caseRef} purpose="QUOTE" contextRef={null} authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized} onPublished={() => { setCalculation(null); setTransportChanged(true); void load(); }} /></Suspense>}
+    {transportChanged && <p role="status" className="border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">Transporte actualizado. Recalcule los costos para incorporarlo al resumen económico de esta cotización.</p>}
     {loading && <p className="p-8 text-center text-sm text-slate-500">Cargando Costos…</p>}
-    {error && <p role="alert" className="border border-red-200 bg-red-50 p-3 text-sm text-red-800">{({ COSTING_INPUT_STALE: "Cambió el plan o una autoridad económica. Recalcule antes de publicar.", COSTING_BLOCKERS_PRESENT: "Existen blockers económicos; resuélvalos antes de publicar.", COSTING_LOGISTICS_REVISION_REQUIRED: "Primero publique una revisión del Motor Logístico." } as Record<string, string>)[error] || error}</p>}
+    {error && <p role="alert" className="border border-red-200 bg-red-50 p-3 text-sm text-red-800">{ERROR_MESSAGES[error] || error}</p>}
     {calculation && <p className="border border-sky-200 bg-sky-50 p-3 text-xs font-semibold text-sky-900">Cálculo preview reproducible · aún no publicado.</p>}
     {revision && !calculation && <p className="border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-900">Revisión económica {revision.revision} publicada · snapshot inmutable.</p>}
     {revision?.overrides?.length ? <section className="border bg-white p-3" aria-label="Overrides económicos"><h3 className="text-xs font-black uppercase tracking-wide text-[#003366]">Overrides y autorizaciones</h3><div className="mt-2 divide-y">{revision.overrides.map((row) => <div key={row.overrideRef} className="flex flex-wrap items-center gap-2 py-2 text-xs"><span className="font-bold">{row.kind}</span><span className="text-slate-600">{row.reason}</span><span className={`rounded px-2 py-1 text-[10px] font-bold ${row.authorization?.decision === "AUTHORIZED" ? "bg-emerald-100 text-emerald-800" : row.authorization?.decision === "REJECTED" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>{row.authorization?.decision || row.status}</span>{row.status === "AUTHORIZATION_REQUIRED" && !row.authorization && access.canAuthorizeMargin && <span className="ml-auto flex gap-2"><button type="button" disabled={busy} onClick={() => void authorize(row.overrideRef, "REJECTED")} className="rounded border px-2 py-1 font-bold">Rechazar margen</button><button type="button" disabled={busy} onClick={() => void authorize(row.overrideRef, "AUTHORIZED")} className="rounded bg-[#003366] px-2 py-1 font-bold text-white">Autorizar margen</button></span>}</div>)}</div></section> : null}

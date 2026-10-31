@@ -55,6 +55,8 @@ jobs:
           node scripts/v17-admin-fleet-logistics-units-test.mjs
           npm run test:v17-fleet-drivers
           npm run test:v17-fleet-drivers:http
+          npm run test:v17-logistics-transport
+          npm run guard:v17-logistics-engine
           node scripts/v17-quote-local-target-test.mjs
           node scripts/v17-services-local-target-test.mjs
           node scripts/validate-mt01c1b2a-guard-test.mjs
@@ -669,6 +671,9 @@ jobs:
         env:
           V17_COSTING_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: npm run test:v17-costing:db
+
+      - name: Validate transport zones, costs and context isolation against PostgreSQL 18
+        run: npm run test:v17-logistics-transport:db
 
       - name: Validate V17 Quote against PostgreSQL 18
         env:

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { isLegacyTransportContext, latestLogisticsRevision, QUOTE_TRANSPORT_CONTEXT, sameTransportContext, TRANSPORT_CONTEXT_CONTRACT, transportContextOf } from "./logisticsTransportContext.js";
 
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import { PERMS, permsForRole } from "./rbac.js";
@@ -304,10 +305,13 @@ function evaluatorContext(
     },
   });
 }
-async function latestMotor(tx, tenantId, pipelineCaseId) {
-  return tx.logisticsPlanRevision.findFirst({
-    where: { tenantId, plan: { pipelineCaseId }, status: "PUBLISHED" },
-    orderBy: { revision: "desc" },
+async function latestMotor(tx, tenantId, pipelineCaseId, decisionRef) {
+  if (!decisionRef) return null;
+  return latestLogisticsRevision(tx, {
+    where: { tenantId, plan: { pipelineCaseId } },
+    context: { contract: TRANSPORT_CONTEXT_CONTRACT, purpose: "VISIT", contextRef: decisionRef },
+    fallbackContext: QUOTE_TRANSPORT_CONTEXT,
+    fallbackLegacyOnly: true,
   });
 }
 async function evaluator(tx, who, policy, membershipRef, method, profile) {
@@ -532,7 +536,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
           accessSnapshots: true,
         },
       }),
-      latestMotor(tx, who.tenantId, pipelineCase.id),
+      latestMotor(tx, who.tenantId, pipelineCase.id, decision?.decisionRef),
     ]);
     let schedulingContext = null;
     let availability = null;
@@ -966,7 +970,7 @@ async function schedule(tx, who, command) {
   });
   if (!serviceRevision) schedulingFail("CRM_SURVEY_RESOURCE_NOT_FOUND", 404);
   const policy = await activePolicy(tx, who.tenantId);
-  const motor = await latestMotor(tx, who.tenantId, pipelineCase.id);
+  const motor = await latestMotor(tx, who.tenantId, pipelineCase.id, decision.decisionRef);
   const physical = decision.method === "IN_PERSON";
   const fallbackProfile = policy.configuration.profiles[0];
   const zone = physical
@@ -1309,7 +1313,7 @@ async function changeAssignment(tx, who, command) {
       );
       const physical = current.decision.method === "IN_PERSON";
       const motor = physical
-        ? await latestMotor(tx, who.tenantId, current.pipelineCase.id)
+        ? await latestMotor(tx, who.tenantId, current.pipelineCase.id, current.decision.decisionRef)
         : null;
       const motorTravel = physical
         ? Number(
@@ -1476,6 +1480,7 @@ async function visitFee(tx, who, command) {
         revisionRef: command.costingRevisionRef,
         pipelineCaseId: pipelineCase.id,
         logisticsRevisionId: logistics?.id || "",
+        status: "PUBLISHED",
       },
     });
     const line = costing
@@ -1491,7 +1496,9 @@ async function visitFee(tx, who, command) {
       : null;
     if (
       !logistics ||
+      !(isLegacyTransportContext(logistics.inputSnapshot) || sameTransportContext(transportContextOf(logistics.inputSnapshot), { contract: TRANSPORT_CONTEXT_CONTRACT, purpose: "VISIT", contextRef: decision.decisionRef })) ||
       !costing ||
+      !sameTransportContext(transportContextOf(costing.inputSnapshot), transportContextOf(logistics.inputSnapshot)) ||
       !line ||
       line.suggestedPrice == null ||
       Number(line.suggestedPrice) !== command.suggestedAmount ||

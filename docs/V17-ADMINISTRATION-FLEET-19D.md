@@ -106,4 +106,6 @@ Las pruebas de contrato, HTTP y transacciones simuladas no sustituyen la suite P
 
 El orden acordado es Usuarios y roles → Flota vehicular → zonas y costos por distancia fuera de zona metro en Logística. Después se continúa con Almacenes. Configuración de empresa y preferencias sigue pendiente según su plan propio.
 
+La aclaración del 31 de octubre de 2026 precisa ese siguiente tramo: geocercas para operaciones y cotizaciones, costos por zona mediante factores o renglones de combustible según km/galón, peajes, dietas y viáticos, utilizados al cotizar, durante el servicio y en visitas presenciales fuera de zona metro. El alcance confirmado, las brechas actuales y los criterios propuestos se documentan en [Motor Logístico: geocercas y costos de transporte](V17-LOGISTICS-GEOFENCES-TRANSPORT-COSTS.md).
+
 Conductores, sustituciones, combustible, mantenimiento y reservas de vehículos quedan fuera de 19D. Crating se tratará más adelante con la calculadora de madera en OSI Plus Mobile.

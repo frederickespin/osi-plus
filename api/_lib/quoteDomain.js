@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { latestCostingRevision, QUOTE_TRANSPORT_CONTEXT, sameTransportContext, transportContextOf } from "./logisticsTransportContext.js";
 import { resolveCommercialQuoteAuthority } from "./commercialRelationshipsDomain.js";
 import {
   QuoteError,
@@ -120,6 +121,8 @@ async function resolvePublishedCosting(tx, context, pipelineCaseId, revisionRef)
     },
   });
   if (!row) quoteFail("QUOTE_COSTING_REVISION_NOT_FOUND", 404);
+  if (!sameTransportContext(transportContextOf(row.logisticsRevision?.inputSnapshot), QUOTE_TRANSPORT_CONTEXT)
+    || !sameTransportContext(transportContextOf(row.inputSnapshot), QUOTE_TRANSPORT_CONTEXT)) quoteFail("QUOTE_COSTING_CONTEXT_INVALID", 409);
   return row;
 }
 
@@ -431,7 +434,7 @@ async function assertReadyForExternal(tx, context, proposal, revision, { accepta
     const accepted = await tx.quoteProposal.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: proposal.pipelineCaseId, state: "ACCEPTED", id: { not: proposal.id } }, select: { proposalRef: true } });
     if (accepted) quoteFail("QUOTE_ALREADY_ACCEPTED", 409);
   } else {
-    const latest = await tx.costingRevision.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: proposal.pipelineCaseId, status: "PUBLISHED" }, orderBy: { revision: "desc" }, select: { id: true } });
+    const latest = await latestCostingRevision(tx, { where: { tenantId: context.tenantId, pipelineCaseId: proposal.pipelineCaseId }, context: QUOTE_TRANSPORT_CONTEXT, select: { id: true } });
     if (latest?.id !== costing.id) quoteFail("QUOTE_COSTING_INPUT_STALE", 409);
   }
   return costing;

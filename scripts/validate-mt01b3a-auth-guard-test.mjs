@@ -107,6 +107,23 @@ rejectAdapter("Choferes conserva resolución de contexto canónico", "api/_lib/f
   (s) => s.replace("resolveContext = resolveCrmPipelineContext", "resolveContext = fakeContext"), /omite el contexto empresarial canónico/);
 rejectAdapter("Choferes no omite resolución autenticada", "api/_lib/fleetDriversHttp.js",
   (s) => s.replace("await resolveContext(req, { prisma, env })", "({ role: 'A' })"), /omite el contexto empresarial canónico/);
+const transportRoutes = [
+  "api/logistics/transport/calculate.js", "api/logistics/transport/context.js", "api/logistics/transport/plans.js",
+  "api/logistics/transport/publish.js", "api/logistics/transport/zones/index.js",
+];
+for (const route of transportRoutes) {
+  rejectRoute("Transporte conserva su adaptador exacto: " + route, route,
+    (s) => s.replace("logisticsTransportHttp.js", "otherHttp.js"));
+  rejectRoute("Transporte no inyecta autoridad: " + route, route,
+    (s) => s.replace("prismaClient: prisma", "resolveContext: async () => ({ role: 'A' }), prismaClient: prisma"), /autoridad alternativa/);
+}
+rejected("una sexta ruta de transporte no hereda la clasificación", {
+  routeSources: new Map([...routeSources, ["api/logistics/transport/extra.js", routeSources.get(transportRoutes[0])]]),
+}, /ruta nueva sin clasificación/);
+rejectAdapter("Transporte conserva resolución de contexto canónico", "api/_lib/logisticsTransportHttp.js",
+  (s) => s.replace("resolveContext = resolveCrmPipelineContext", "resolveContext = fakeContext"), /omite el contexto empresarial canónico/);
+rejectAdapter("Transporte no omite resolución autenticada", "api/_lib/logisticsTransportHttp.js",
+  (s) => s.replace("await resolveContext(req, { env, prisma: prismaClient })", "({ role: 'A' })"), /omite el contexto empresarial canónico/);
 rejectAdapter("activación19C no cambia a GET", "api/_lib/adminUserIdentityHttp.js", (s) => s.replace('req.method !== "POST"', 'req.method !== "GET"'), /activación19C requiere POST/);
 rejectAdapter("activación19C no acepta identidad sin firma", "api/_lib/adminUserIdentityHttp.js", (s) => s.replace("options.verifyIdentity ?? verifyStrictLegacyAccessToken", "options.verifyIdentity ?? decodeUnsignedToken"), /activación19C requiere POST/);
 rejectAdapter("activación19C no omite resolución de token", "api/_lib/adminUserIdentityHttp.js", (s) => s.replace("await resolve(prisma, body.token, configuration)", "({ mode: 'NEW_IDENTITY' })"), /activación19C requiere POST/);

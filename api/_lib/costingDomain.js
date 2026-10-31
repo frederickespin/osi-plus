@@ -1,11 +1,15 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { latestCostingRevision, latestLogisticsRevision, QUOTE_TRANSPORT_CONTEXT, transportContextOf } from "./logisticsTransportContext.js";
+import { hasTransportCostingAuthority, resolveTransportCostingAuthority, transportCostingItemKey } from "./costingTransportAuthority.js";
+import { assertTransportRevisionCurrent } from "./logisticsTransportDomain.js";
 import {
   CostingError,
   calculateCostingSnapshot,
   canonicalCostingJson,
   costingFail,
   costingHash,
+  isProtectedTransportCostingRule,
   normalizeCostingAuthorization,
   normalizeCostingCalculate,
   normalizeCostingExchangeRate,
@@ -65,6 +69,7 @@ async function resolveCase(tx, context, caseRef) {
 }
 
 function ruleMatchesItem(rule, item, logisticsInput) {
+  if (isProtectedTransportCostingRule(rule)) return false;
   const conditions = rule.conditions || {};
   const serviceCodes = logisticsInput?.services?.codes || [];
   if (conditions.logisticsFamilies && !conditions.logisticsFamilies.includes(item.family)) return false;
@@ -155,9 +160,20 @@ async function loadCalculationInput(tx, context, caseRef, logisticsRevisionRef, 
     include: { items: { orderBy: { position: "asc" } }, issues: true, plan: { select: { id: true, planRef: true } } },
   });
   if (!logisticsRevision) costingFail("COSTING_LOGISTICS_REVISION_NOT_FOUND", 404);
-  const rules = await currentRules(tx, context.tenantId);
+  const transportContext = transportContextOf(logisticsRevision.inputSnapshot);
+  if (!transportContext) costingFail("COSTING_TRANSPORT_CONTEXT_INVALID", 409);
+  const rules = (await currentRules(tx, context.tenantId)).filter((rule) => !isProtectedTransportCostingRule(rule));
   const authorities = [];
+  const transportKeys = new Set();
   for (const item of logisticsRevision.items) {
+    if (hasTransportCostingAuthority(item)) {
+      const key = transportCostingItemKey(item);
+      if (transportKeys.has(key)) costingFail("COSTING_TRANSPORT_DUPLICATE_ITEM", 409);
+      transportKeys.add(key);
+      const authority = await resolveTransportCostingAuthority(tx, context, item, logisticsRevision);
+      if (authority) authorities.push(authority);
+      continue;
+    }
     const matching = rules.filter((rule) => ruleMatchesItem(rule, item, logisticsRevision.inputSnapshot));
     if (matching.length > 1 && matching[0].priority === matching[1].priority && matching[0].specificity === matching[1].specificity) costingFail("COSTING_RULE_CONFLICT", 409);
     const rule = matching[0] || null;
@@ -185,7 +201,7 @@ async function loadCalculationInput(tx, context, caseRef, logisticsRevisionRef, 
   };
   const result = calculateCostingSnapshot({ baseCurrency, logisticsRevision: logistics, authorities, rates, compensationRules });
   const snapshots = {
-    input: { caseRef: pipelineCase.publicRef, logistics, authorities: authorities.map((row) => ({ ...row })) },
+    input: { caseRef: pipelineCase.publicRef, transportContext, logistics, authorities: authorities.map((row) => ({ ...row })) },
     rules: rules.map((rule) => ({ ruleRef: rule.ruleRef, seriesRef: rule.seriesRef, family: rule.family, version: rule.version, conditionHash: rule.conditionHash, unitCost: rule.unitCost == null ? null : String(rule.unitCost), currency: rule.currency, minimumMarginBps: rule.minimumMarginBps, recommendedMarginBps: rule.recommendedMarginBps, resultHash: costingHash(rule.result) })),
     rates: rates.map((rate) => ({ rateRef: rate.rateRef, seriesRef: rate.seriesRef, baseCurrency: rate.baseCurrency, quoteCurrency: rate.quoteCurrency, rate: String(rate.rate), source: rate.source, version: rate.version, effectiveAt: rate.effectiveAt.toISOString(), logicalSha256: rate.logicalSha256 })),
   };
@@ -234,12 +250,15 @@ export async function publishCosting(prisma, context, raw) {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${input.calculationRef}:costing-publish`}, 0))`);
-    const calculation = await tx.costingCalculation.findFirst({ where: { tenantId: context.tenantId, calculationRef: input.calculationRef }, include: { pipelineCase: { select: { publicRef: true } }, logisticsRevision: { select: { revisionRef: true, planId: true } }, publishedRevision: true } });
+    const calculation = await tx.costingCalculation.findFirst({ where: { tenantId: context.tenantId, calculationRef: input.calculationRef }, include: { pipelineCase: { select: { publicRef: true } }, logisticsRevision: { select: { revisionRef: true, planId: true, inputSnapshot: true } }, publishedRevision: true } });
     if (!calculation) costingFail("COSTING_CALCULATION_NOT_FOUND", 404);
     if (calculation.publishedRevision) costingFail("COSTING_CALCULATION_ALREADY_PUBLISHED", 409);
     await resolveCase(tx, context, calculation.pipelineCase.publicRef);
-    const latestLogistics = await tx.logisticsPlanRevision.findFirst({ where: { tenantId: context.tenantId, planId: calculation.logisticsRevision.planId, status: "PUBLISHED" }, orderBy: { revision: "desc" }, select: { revisionRef: true } });
+    const calculationContext = transportContextOf(calculation.logisticsRevision.inputSnapshot);
+    if (!calculationContext) costingFail("COSTING_TRANSPORT_CONTEXT_INVALID", 409);
+    const latestLogistics = await latestLogisticsRevision(tx, { where: { tenantId: context.tenantId, planId: calculation.logisticsRevision.planId }, context: calculationContext, select: { revisionRef: true } });
     const loaded = await loadCalculationInput(tx, context, calculation.pipelineCase.publicRef, calculation.logisticsRevision.revisionRef, calculation.baseCurrency);
+    await assertTransportRevisionCurrent(tx, context, loaded.logisticsRevision);
     if ((latestLogistics && latestLogistics.revisionRef !== calculation.logisticsRevision.revisionRef) || loaded.inputHash !== calculation.inputHash) costingFail("COSTING_INPUT_STALE", 409);
     const blockers = (calculation.resultSnapshot?.issues || []).filter((row) => row.severity === "BLOCKER" && row.status === "OPEN");
     if (blockers.length) costingFail("COSTING_BLOCKERS_PRESENT", 409);
@@ -260,6 +279,7 @@ function mapRevision(row) {
     baseCurrency: row.baseCurrency,
     logicalSha256: row.logicalSha256,
     publishedAt: row.publishedAt.toISOString(),
+    transportContext: transportContextOf(row.inputSnapshot),
     totals: row.totalsSnapshot,
     lines: row.lines.map(({ lineRef, logisticsItemRef, family, concept, classification, source, sourceRef, sourceVersion, quantity, unit, originalCurrency, originalUnitCost, exchangeRateRef, exchangeRateVersion, exchangeRate, baseCurrency, baseUnitCost, totalCost, minimumMarginBps, recommendedMarginBps, suggestedPrice, priceStatus, snapshot, position }) => ({ lineRef, logisticsItemRef, family, concept, classification, source, sourceRef, sourceVersion, quantity: String(quantity), unit, originalCurrency, originalUnitCost: String(originalUnitCost), exchangeRateRef, exchangeRateVersion, exchangeRate: String(exchangeRate), baseCurrency, baseUnitCost: String(baseUnitCost), totalCost: String(totalCost), minimumMarginBps, recommendedMarginBps, suggestedPrice: suggestedPrice == null ? null : String(suggestedPrice), priceStatus, snapshot, position })),
     issues: row.issues.map(({ issueRef, code, severity, family, message, source, sourceSnapshot, status, resolvedReason, resolvedAt, version }) => ({ issueRef, code, severity, family, message, source, sourceSnapshot, status, resolvedReason, resolvedAt: resolvedAt?.toISOString() || null, version })),
@@ -267,17 +287,17 @@ function mapRevision(row) {
   };
 }
 
-export async function getCosting(prisma, context, caseRef) {
+export async function getCosting(prisma, context, caseRef, transportContext = QUOTE_TRANSPORT_CONTEXT) {
   requirePermission(context, COSTING_PERMISSIONS.VIEW);
   const pipelineCase = await resolveCase(prisma, context, caseRef);
-  const row = await prisma.costingRevision.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id }, orderBy: { revision: "desc" }, include: { lines: { orderBy: { position: "asc" } }, issues: true, overrides: { include: { authorizations: true } } } });
+  const row = await latestCostingRevision(prisma, { where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id }, context: transportContext, include: { lines: { orderBy: { position: "asc" } }, issues: true, overrides: { include: { authorizations: true } } } });
   return row ? mapRevision(row) : null;
 }
 
 export async function listCostingRules(prisma, context, query = {}) {
   requirePermission(context, COSTING_PERMISSIONS.RULES_VIEW);
   const rows = await prisma.costingRule.findMany({ where: { tenantId: context.tenantId, ...(query.family ? { family: String(query.family) } : {}), ...(query.state ? { state: String(query.state) } : {}) }, orderBy: [{ family: "asc" }, { priority: "desc" }, { specificity: "desc" }, { version: "desc" }] });
-  return rows.map(({ ruleRef, seriesRef, family, code, name, classification, source, priority, specificity, conditions, unitCost, currency, minimumMarginBps, recommendedMarginBps, result, state, version, validFrom, validTo }) => ({ ruleRef, seriesRef, family, code, name, classification, source, priority, specificity, conditions, unitCost: unitCost == null ? null : String(unitCost), currency, minimumMarginBps, recommendedMarginBps, result, state, version, validFrom: validFrom?.toISOString() || null, validTo: validTo?.toISOString() || null }));
+  return rows.filter((row) => !isProtectedTransportCostingRule(row)).map(({ ruleRef, seriesRef, family, code, name, classification, source, priority, specificity, conditions, unitCost, currency, minimumMarginBps, recommendedMarginBps, result, state, version, validFrom, validTo }) => ({ ruleRef, seriesRef, family, code, name, classification, source, priority, specificity, conditions, unitCost: unitCost == null ? null : String(unitCost), currency, minimumMarginBps, recommendedMarginBps, result, state, version, validFrom: validFrom?.toISOString() || null, validTo: validTo?.toISOString() || null }));
 }
 
 export async function versionCostingRule(prisma, context, raw) {
@@ -289,6 +309,7 @@ export async function versionCostingRule(prisma, context, raw) {
     const seriesRef = input.seriesRef || randomUUID();
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${seriesRef}:costing-rule`}, 0))`);
     const current = await tx.costingRule.findFirst({ where: { tenantId: context.tenantId, seriesRef }, orderBy: { version: "desc" } });
+    if (current && isProtectedTransportCostingRule(current)) costingFail("COSTING_TRANSPORT_RULE_PROTECTED", 409);
     if (current) await tx.costingRule.update({ where: { id: current.id }, data: { state: "SUPERSEDED", validTo: input.validFrom ? new Date(input.validFrom) : new Date() } });
     const row = await tx.costingRule.create({ data: { tenantId: context.tenantId, seriesRef, family: input.family, code: input.code, name: input.name, classification: input.classification, source: input.source, priority: input.priority, specificity: input.specificity, conditions: input.conditions, conditionHash: costingHash(input.conditions), unitCost: input.unitCost, currency: input.currency, minimumMarginBps: input.minimumMarginBps, recommendedMarginBps: input.recommendedMarginBps, result: input.result, state: input.state, version: (current?.version || 0) + 1, validFrom: input.validFrom ? new Date(input.validFrom) : null, validTo: input.validTo ? new Date(input.validTo) : null, replacesRuleId: current?.id, requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
     const result = { ruleRef: row.ruleRef, seriesRef: row.seriesRef, family: row.family, classification: row.classification, state: row.state, version: row.version, conditionHash: row.conditionHash };

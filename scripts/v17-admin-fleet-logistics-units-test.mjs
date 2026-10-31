@@ -3,6 +3,7 @@ import test from "node:test";
 import { Prisma } from "@prisma/client";
 import { getLogisticsPlan, loadCanonicalLogisticsFacts, LOGISTICS_PERMISSIONS, publishLogistics } from "../api/_lib/logisticsEngineDomain.js";
 import { calculateLogisticsPlan, canonicalHash, LogisticsEngineError } from "../api/_lib/logisticsEngineContract.js";
+import { SERVICE_TRANSPORT_CONTEXT } from "../api/_lib/logisticsTransportContext.js";
 
 const ref = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const start = "2026-11-01T12:00:00.000Z";
@@ -13,7 +14,7 @@ function vehicle(overrides = {}) {
   return Object.freeze({ vehicle_type: "TRUCK", capacity_weight: new Prisma.Decimal("1000"), capacity_volume: new Prisma.Decimal("20"), weight_unit: "KG", volume_unit: "CBM", row_version: 1, ...overrides });
 }
 function fixture(rows) {
-  const calls = { vehicles: [] };
+  const calls = { vehicles: [], logisticsRevisions: [] };
   const tx = {
     pipelineCase: { findFirst: async () => ({ id: "test-case", publicRef: ref(1), mode: "LOCAL", routeContractVersion: 2, routeRevision: 3, destinationStatus: "CONFIRMED" }) },
     pipelineCaseRouteSnapshot: { findMany: async () => [] },
@@ -22,6 +23,13 @@ function fixture(rows) {
     materialRequirementSnapshot: { findFirst: async () => null },
     assetModel: { findMany: async () => [] },
     externalResourceOffer: { findMany: async () => [] },
+    logisticsPlanRevision: { findMany: async (query) => {
+      calls.logisticsRevisions.push(query);
+      assert.equal(query.where.tenantId, context.tenantId);
+      assert.equal(query.where.status, "PUBLISHED");
+      assert.deepEqual(query.select, { id: true, revision: true, inputSnapshot: true });
+      return [];
+    } },
     vehicle: { findMany: async (query) => {
       calls.vehicles.push(query);
       // Honour Prisma's projection: omitting source units must fail this test.
@@ -103,14 +111,32 @@ test("an empty fleet stays empty", async () => {
 
 test("reading a published plan preserves its historical snapshot without consulting current fleet", async () => {
   const snapshot = Object.freeze({ sourceCapacityWeight: 2000, weightUnit: "LB", sourceCapacityVolume: 1000, volumeUnit: "CFT" });
-  const row = Object.freeze({ revisionRef: ref(31), revision: 2, status: "PUBLISHED", logicalSha256: "a".repeat(64), publishedAt: new Date(start), items: [Object.freeze({ id: "historical-item", itemRef: ref(32), family: "TRANSPORT", kind: "TRUCK", label: "Camión", quantity: 1, unit: "unidad", estimatedHours: null, trips: 1, requiredQuantity: 1, availableQuantity: 1, reservedQuantity: 0, shortageQuantity: 0, availability: "AVAILABLE", priceStatus: "NOT_APPLICABLE", source: "VEHICLE", sourceRef: null, sourceVersion: 3, snapshot, position: 0 })], issues: [], overrides: [] });
+  const row = Object.freeze({ id: "historical-revision", revisionRef: ref(31), revision: 2, inputSnapshot: Object.freeze({}), status: "PUBLISHED", logicalSha256: "a".repeat(64), publishedAt: new Date(start), items: [Object.freeze({ id: "historical-item", itemRef: ref(32), family: "TRANSPORT", kind: "TRUCK", label: "Camión", quantity: 1, unit: "unidad", estimatedHours: null, trips: 1, requiredQuantity: 1, availableQuantity: 1, reservedQuantity: 0, shortageQuantity: 0, availability: "AVAILABLE", priceStatus: "NOT_APPLICABLE", source: "VEHICLE", sourceRef: null, sourceVersion: 3, snapshot, position: 0 })], issues: [], overrides: [] });
   const f = fixture([]);
-  f.tx.logisticsPlan = { findFirst: async () => ({ planRef: ref(30), revisions: [row] }) };
+  const scope = { tenantId: context.tenantId, planId: "historical-plan", status: "PUBLISHED" };
+  f.tx.logisticsPlan = { findFirst: async () => ({ id: "historical-plan", planRef: ref(30) }) };
+  f.tx.logisticsPlanRevision = {
+    findMany: async (query) => {
+      f.calls.logisticsRevisions.push(query);
+      assert.deepEqual(query.where, scope);
+      assert.deepEqual(query.select, { id: true, revision: true, inputSnapshot: true });
+      return [
+        { id: "newer-service-revision", revision: 3, inputSnapshot: { transportContext: SERVICE_TRANSPORT_CONTEXT } },
+        { id: row.id, revision: row.revision, inputSnapshot: row.inputSnapshot },
+      ];
+    },
+    findFirst: async (query) => {
+      assert.deepEqual(query.where, { AND: [scope, { id: row.id }] });
+      assert.deepEqual(query.include, { items: { orderBy: { position: "asc" } }, issues: true, overrides: true });
+      return row;
+    },
+  };
   const result = await getLogisticsPlan(f.tx, context, ref(1));
   assert.deepEqual(result.items[0].snapshot, snapshot);
   assert.equal(result.items[0].sourceVersion, 3);
   assert.equal(result.revision, 2);
   assert.equal(f.calls.vehicles.length, 0);
+  assert.equal(f.calls.logisticsRevisions.length, 1);
   assert.equal(row.items[0].snapshot.sourceCapacityWeight, 2000);
 });
 
@@ -129,5 +155,7 @@ test("a pending calculation using unconverted imperial facts must be recalculate
   const prisma = { $transaction: (run) => run(f.tx) };
   await assert.rejects(publishLogistics(prisma, context, { requestId, calculationRef, payloadHash: canonicalHash({ operation: "LOGISTICS_PUBLISH", requestId, calculationRef }) }), (error) => error instanceof LogisticsEngineError && error.code === "LOGISTICS_INPUT_STALE" && error.status === 409);
   assert.equal(publicationWrites, 0);
+  assert.equal(f.calls.logisticsRevisions.length, 1);
+  assert.deepEqual(f.calls.logisticsRevisions[0].where.plan, { pipelineCaseId: "test-case" });
   assert.equal(calculation.inputHash, canonicalHash({ facts: oldFacts, rules: [] }));
 });

@@ -51,6 +51,12 @@ async function session(page: Page, initialPermissions: string[], initialDenied: 
     } });
     expect(route.request().headers().authorization).toBe("Bearer synthetic.administration.test.token");
     if (path === "/api/admin/memberships") return fulfill({ ok: true, data: [], total: 0, page: 1, pageSize: 20, catalog: ADMIN_BROWSER_CATALOG });
+    if (path === "/api/logistics/transport/zones") {
+      const authorized = ["logistics:rules:view", "costing:rules:view"].every((permission) => permissions.includes(permission) && !deniedPermissions.includes(permission));
+      return authorized
+        ? fulfill({ ok: true, data: [] })
+        : fulfill({ ok: false, error: "LOGISTICS_TRANSPORT_FORBIDDEN" }, 403);
+    }
     if (path === "/api/communications/variables") return fulfill({ ok: true, data: { catalogVersion: 1, variables: [] } });
     if (path === "/api/crm/services/material-policies") return fulfill({ ok: true, data: materialPolicies });
     if ([

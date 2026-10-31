@@ -33,6 +33,18 @@ try {
   rejected("intersección unassigned de V eliminada rechazada", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("where.AND = [{ ownerMembershipId: null, ownerUserId: null }];", "where.ownerMembershipId = null; where.ownerUserId = null;") } }, /sobrescribir/);
   rejected("ownerId heredado rechazado", { overrides: { "api/_lib/crmPipelineRead.js": `${service}\nconst authority = row.ownerId;` } }, /ownerId/);
   rejected("campo interno expuesto rechazado", { overrides: { "api/_lib/crmPipelineRead.js": service.replace("publicRef: true,", "tenantId: true,\n  publicRef: true,") } }, /campos internos/);
+  for (const [field, value] of [
+    ["membershipId", "owner.id"],
+    ["userId", "owner.user?.id"],
+    ["tenantId", "owner.tenantId"],
+    ["email", "owner.user?.email"],
+    ["phone", "owner.user?.phone"],
+    ["userStatus", "owner.user?.status"],
+    ["grantedPermissions", "owner.grantedPermissions"],
+    ["deniedPermissions", "owner.deniedPermissions"],
+  ]) {
+    rejected(`owner expone ${field} rechazado`, { overrides: { "api/_lib/crmPipelineRead.js": service.replace('displayName: String(owner.user?.name || ""),', `displayName: String(owner.user?.name || ""),\n    ${field}: ${value},`) } }, /owner expone identidad o estado global/);
+  }
   const list = read("api/crm/pipeline-cases/index.js");
   rejected("autoridad por headers heredados rechazada", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("return createCrmPipelineReadHandler({", 'const unsafeRole = req.headers["x-osi-role"]; return createCrmPipelineReadHandler({') } }, /autoridad del navegador/);
   rejected("adaptador de lectura omitido rechazado", { overrides: { "api/crm/pipeline-cases/index.js": list.replace("createCrmPipelineReadHandler({", "({") } }, /adaptador HTTP canónico/);

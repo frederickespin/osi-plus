@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 import {
   LogisticsEngineError, calculateLogisticsPlan, canonicalHash, canonicalJson,
   logisticsFail, normalizeCalculate, normalizeIssueResolution, normalizeOverride,
-  normalizePublish, normalizeRuleCreate,
+  normalizePublish, normalizeRuleCreate, isTransportPolicy,
 } from "./logisticsEngineContract.js";
+import { latestLogisticsRevision, QUOTE_TRANSPORT_CONTEXT } from "./logisticsTransportContext.js";
 
 export const LOGISTICS_PERMISSIONS = Object.freeze({
   PLAN_VIEW: "logistics:plan:view",
@@ -67,7 +68,8 @@ function surveyMetrics(publication) {
   };
 }
 async function currentRules(tx, tenantId, at) {
-  return tx.logisticsRule.findMany({ where: { tenantId, state: "ACTIVE", AND: [{ OR: [{ validFrom: null }, { validFrom: { lte: at } }] }, { OR: [{ validTo: null }, { validTo: { gt: at } }] }] }, orderBy: [{ priority: "desc" }, { specificity: "desc" }, { version: "desc" }, { ruleRef: "asc" }] });
+  const rows = await tx.logisticsRule.findMany({ where: { tenantId, state: "ACTIVE", AND: [{ OR: [{ validFrom: null }, { validFrom: { lte: at } }] }, { OR: [{ validTo: null }, { validTo: { gt: at } }] }] }, orderBy: [{ priority: "desc" }, { specificity: "desc" }, { version: "desc" }, { ruleRef: "asc" }] });
+  return rows.filter((row) => !isTransportPolicy(row));
 }
 function inputFingerprint(facts, rules) {
   const { availabilityObservedAt: _observedAt, ...stableFacts } = facts;
@@ -147,8 +149,11 @@ export async function publishLogistics(prisma, context, raw) {
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${input.calculationRef}:logistics-publish`}, 0))`);
     const calculation = await tx.logisticsCalculation.findFirst({ where: { tenantId: context.tenantId, calculationRef: input.calculationRef }, include: { pipelineCase: { select: { publicRef: true } }, publishedRevision: true } });
     if (!calculation) logisticsFail("LOGISTICS_CALCULATION_NOT_FOUND", 404);
+    if (Object.hasOwn(calculation.inputSnapshot || {}, "transportContext") || Object.hasOwn(calculation.resultSnapshot || {}, "transport")) logisticsFail("LOGISTICS_TRANSPORT_CANONICAL_PATH_REQUIRED", 409);
     if (calculation.publishedRevision) logisticsFail("LOGISTICS_CALCULATION_ALREADY_PUBLISHED", 409);
     await resolveCase(tx, context, calculation.pipelineCase.publicRef);
+    const previousQuote = await latestLogisticsRevision(tx, { where: { tenantId: context.tenantId, plan: { pipelineCaseId: calculation.pipelineCaseId } }, context: QUOTE_TRANSPORT_CONTEXT, select: { inputSnapshot: true } });
+    if (previousQuote?.inputSnapshot?.transportInput) logisticsFail("LOGISTICS_TRANSPORT_CANONICAL_PATH_REQUIRED", 409);
     const facts = await loadCanonicalLogisticsFacts(tx, context, calculation.pipelineCase.publicRef, calculation.intervalStart.toISOString(), calculation.intervalEnd.toISOString());
     const rules = await currentRules(tx, context.tenantId, calculation.intervalStart);
     const currentHash = inputFingerprint(facts, rules);
@@ -167,14 +172,16 @@ function mapRevision(planRef, row) { return { planRef, revisionRef: row.revision
 
 export async function getLogisticsPlan(prisma, context, caseRef) {
   requirePermission(context, LOGISTICS_PERMISSIONS.PLAN_VIEW); const pipelineCase = await resolveCase(prisma, context, caseRef);
-  const plan = await prisma.logisticsPlan.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id }, include: { revisions: { orderBy: { revision: "desc" }, take: 1, include: { items: { orderBy: { position: "asc" } }, issues: true, overrides: true } } } });
-  return plan?.revisions[0] ? mapRevision(plan.planRef, plan.revisions[0]) : null;
+  const plan = await prisma.logisticsPlan.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id }, select: { id: true, planRef: true } });
+  if (!plan) return null;
+  const revision = await latestLogisticsRevision(prisma, { where: { tenantId: context.tenantId, planId: plan.id }, context: QUOTE_TRANSPORT_CONTEXT, include: { items: { orderBy: { position: "asc" } }, issues: true, overrides: true } });
+  return revision ? mapRevision(plan.planRef, revision) : null;
 }
 
 export async function listLogisticsRules(prisma, context, query = {}) {
   requirePermission(context, LOGISTICS_PERMISSIONS.RULES_VIEW);
   const rows = await prisma.logisticsRule.findMany({ where: { tenantId: context.tenantId, ...(query.family ? { family: String(query.family) } : {}), ...(query.state ? { state: String(query.state) } : {}) }, orderBy: [{ family: "asc" }, { priority: "desc" }, { specificity: "desc" }, { version: "desc" }] });
-  return rows.map(({ ruleRef, seriesRef, family, code, name, priority, specificity, conditions, result, state, version, validFrom, validTo }) => ({ ruleRef, seriesRef, family, code, name, priority, specificity, conditions, result, state, version, validFrom: validFrom?.toISOString() || null, validTo: validTo?.toISOString() || null }));
+  return rows.filter((row) => !isTransportPolicy(row)).map(({ ruleRef, seriesRef, family, code, name, priority, specificity, conditions, result, state, version, validFrom, validTo }) => ({ ruleRef, seriesRef, family, code, name, priority, specificity, conditions, result, state, version, validFrom: validFrom?.toISOString() || null, validTo: validTo?.toISOString() || null }));
 }
 
 export async function versionLogisticsRule(prisma, context, raw) {
@@ -184,6 +191,7 @@ export async function versionLogisticsRule(prisma, context, raw) {
     const seriesRef = input.seriesRef || randomUUID();
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${seriesRef}:logistics-rule`}, 0))`);
     const current = await tx.logisticsRule.findFirst({ where: { tenantId: context.tenantId, seriesRef }, orderBy: { version: "desc" } });
+    if (current && isTransportPolicy(current)) logisticsFail("LOGISTICS_TRANSPORT_CANONICAL_PATH_REQUIRED", 409);
     if (current) await tx.logisticsRule.update({ where: { id: current.id }, data: { state: "SUPERSEDED", validTo: input.validFrom ? new Date(input.validFrom) : new Date() } });
     const row = await tx.logisticsRule.create({ data: { tenantId: context.tenantId, seriesRef, family: input.family, code: input.code, name: input.name, priority: input.priority, specificity: input.specificity, conditions: input.conditions, conditionHash: canonicalHash(input.conditions), result: input.result, state: input.state, version: (current?.version || 0) + 1, validFrom: input.validFrom ? new Date(input.validFrom) : null, validTo: input.validTo ? new Date(input.validTo) : null, replacesRuleId: current?.id, requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
     const result = { ruleRef: row.ruleRef, seriesRef: row.seriesRef, family: row.family, code: row.code, name: row.name, priority: row.priority, specificity: row.specificity, state: row.state, version: row.version, conditionHash: row.conditionHash };
@@ -198,6 +206,7 @@ export async function createLogisticsOverride(prisma, context, raw) {
     const revision = await tx.logisticsPlanRevision.findFirst({ where: { tenantId: context.tenantId, revisionRef: input.revisionRef }, include: { plan: { include: { pipelineCase: { select: { publicRef: true } } } }, items: { where: { itemRef: input.itemRef } } } });
     if (!revision || revision.items.length !== 1) logisticsFail("LOGISTICS_PLAN_NOT_FOUND", 404); await resolveCase(tx, context, revision.plan.pipelineCase.publicRef);
     const item = revision.items[0]; const suggested = { quantity: item.quantity == null ? null : Number(item.quantity), estimatedHours: item.estimatedHours == null ? null : Number(item.estimatedHours), trips: item.trips };
+    if (Object.hasOwn(item.snapshot || {}, "transport")) logisticsFail("LOGISTICS_TRANSPORT_CANONICAL_PATH_REQUIRED", 409);
     if (canonicalJson(suggested) !== canonicalJson(input.expectedSuggested)) logisticsFail("LOGISTICS_OVERRIDE_CONFLICT", 409);
     const row = await tx.logisticsPlanOverride.create({ data: { tenantId: context.tenantId, revisionId: revision.id, itemId: item.id, suggestedValue: suggested, finalValue: input.finalValue, reason: input.reason, ...actor(context) } });
     const result = { overrideRef: row.overrideRef, revisionRef: revision.revisionRef, itemRef: item.itemRef, suggestedValue: row.suggestedValue, finalValue: row.finalValue, reason: row.reason };

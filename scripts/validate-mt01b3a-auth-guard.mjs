@@ -42,6 +42,10 @@ const FACTORY_GROUPS = [
     "api/logistics/plans/[caseRef].js", "api/logistics/plans/calculate.js", "api/logistics/plans/issues/resolve.js",
     "api/logistics/plans/overrides.js", "api/logistics/plans/publish.js", "api/logistics/rules/index.js",
   ]],
+  ["TENANT", "logisticsTransportHttp.js", "createLogisticsTransportHandler", [
+    "api/logistics/transport/calculate.js", "api/logistics/transport/context.js", "api/logistics/transport/plans.js",
+    "api/logistics/transport/publish.js", "api/logistics/transport/zones/index.js",
+  ]],
   ["TENANT", "costingHttp.js", "createCostingHandler", [
     "api/costing/authorizations.js", "api/costing/calculate.js", "api/costing/exchange-rates/index.js", "api/costing/issues/resolve.js",
     "api/costing/overrides.js", "api/costing/publish.js", "api/costing/revisions/[caseRef].js", "api/costing/rules/index.js",

@@ -291,7 +291,7 @@ test("el aviso de vigencia cambia al vencer sin escribir ni recargar el listado"
   expect(seen.writes).toEqual([]);
 });
 
-for (const failure of [{ code: "ADMIN_FLEET_VERSION_CONFLICT", status: 409, nextVersion: 2 }, { code: "ADMIN_FLEET_UNAVAILABLE", status: 503, nextVersion: 1 }]) {
+for (const failure of [{ code: "ADMIN_FLEET_INPUT_INVALID", status: 400, nextVersion: 1 }, { code: "ADMIN_FLEET_VERSION_CONFLICT", status: 409, nextVersion: 2 }, { code: "ADMIN_FLEET_UNAVAILABLE", status: 503, nextVersion: 1 }]) {
   test(`fallo en Activo exige actualizar antes de volver a escribir: ${failure.status}`, async ({ page }) => {
     const seen = await fixture(page);
     await openFleet(page);
@@ -299,6 +299,10 @@ for (const failure of [{ code: "ADMIN_FLEET_VERSION_CONFLICT", status: 409, next
     const active = page.getByRole("checkbox", { name: "Activo IP-001", exact: true });
     await active.click();
     await expect(page.getByRole("alert")).toBeVisible();
+    if (failure.status === 400) {
+      await expect(page.getByRole("alert")).toContainText("No se pudo cambiar el estado Activo del vehículo.");
+      await expect(page.getByRole("alert")).not.toContainText(/fechas|unidades/iu);
+    }
     await expect(active).toBeChecked();
     await expect(active).toBeDisabled();
     expect(seen.writes).toHaveLength(1);

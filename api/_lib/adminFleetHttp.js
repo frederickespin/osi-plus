@@ -70,8 +70,10 @@ export function createAdminFleetDetailHandler(options = {}) {
   const get = options.get ?? getAdminFleetVehicle;
   const update = options.update ?? updateAdminFleetVehicle;
   return protectedHandler(options, ["GET", "HEAD", "PATCH"], async (req, res, context, prisma, head) => {
-    queryParams(req, []);
-    const ref = Array.isArray(req.query?.vehicleRef) ? null : req.query?.vehicleRef;
+    // Vercel carries dynamic route parameters in req.url and derives req.query from it.
+    const params = queryParams(req, ["vehicleRef"]);
+    const ref = req.query?.vehicleRef;
+    if (Array.isArray(ref) || (params.vehicleRef !== undefined && params.vehicleRef !== ref)) fleetFail("INPUT_INVALID");
     const vehicle = req.method === "PATCH"
       ? await update(prisma, context, ref, await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 16 * 1024 }))
       : await get(prisma, context, ref);

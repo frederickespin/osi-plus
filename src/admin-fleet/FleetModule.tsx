@@ -134,7 +134,7 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
       if (cause instanceof FleetApiError && cause.status === 401) callbacks.current.onUnauthorized();
       else {
         blockedUpdates.current.set(ref, manualRefreshVersion.current);
-        setUpdateErrors((current) => ({ ...current, [ref]: { code: vehicle.businessCode, message: fleetErrorText(cause) } }));
+        setUpdateErrors((current) => ({ ...current, [ref]: { code: vehicle.businessCode, message: fleetErrorText(cause, "active") } }));
       }
     } finally {
       pendingUpdates.current.delete(ref);

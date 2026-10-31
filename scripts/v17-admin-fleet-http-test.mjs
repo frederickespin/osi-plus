@@ -97,7 +97,7 @@ for (const overrides of [{ tenantCode: "OTHER" }, { tenant: { code: "OTHER" } },
   assert.throws(() => requireAdminFleetContext(previewEnv, "PREVIEW_REHEARSAL", { ...previewContext, ...overrides }), (error) => error.code === "ADMIN_FLEET_FORBIDDEN");
   results.push({ name: `Preview context refuses ${Object.keys(overrides)[0]}`, passed: true });
 }
-let listQuery; let creates = 0; let updates = 0;
+let listQuery; let updateInput; let creates = 0; let updates = 0;
 const collection = createAdminFleetCollectionHandler({ ...dependencies,
   list: async (_db, ctx, query) => { assert.equal(ctx, context); listQuery = query; return { data: [vehicle], total: 1, page: 1, pageSize: 20 }; },
   create: async (_db, ctx) => { assert.equal(ctx, context); creates += 1; return { vehicle, created: creates === 1, idempotent: creates !== 1 }; },
@@ -112,11 +112,42 @@ const body = { requestId: randomUUID(), businessCode: "TR-1", vehicleType: "TRUC
 check("create returns201 for a new vehicle", (await invoke(collection, { method: "POST", headers: jsonHeaders, body })).statusCode === 201);
 const replay = await invoke(collection, { method: "POST", headers: jsonHeaders, body });
 check("create replay returns200 and idempotent flag", replay.statusCode === 200 && replay.body.idempotent === true && isPrivate(replay));
-const detail = createAdminFleetDetailHandler({ ...dependencies, get: async (_db, _ctx, ref) => { assert.equal(ref, vehicleRef); return vehicle; }, update: async (_db, _ctx, ref) => { assert.equal(ref, vehicleRef); updates += 1; return { ...vehicle, rowVersion: 2 }; } });
+const detail = createAdminFleetDetailHandler({ ...dependencies, get: async (_db, _ctx, ref) => { assert.equal(ref, vehicleRef); return vehicle; }, update: async (_db, _ctx, ref, input) => { assert.equal(ref, vehicleRef); updateInput = input; updates += 1; return { ...vehicle, rowVersion: 2 }; } });
 check("detail uses opaque path reference", (await invoke(detail, { query: { vehicleRef } })).body.vehicle.vehicleRef === vehicleRef);
 const patch = { requestId: randomUUID(), expectedVersion: 1, changes: { brand: "Synthetic" } };
 const updated = await invoke(detail, { method: "PATCH", query: { vehicleRef }, headers: jsonHeaders, body: patch });
 check("PATCH returns the updated DTO privately", updated.statusCode === 200 && updated.body.vehicle.rowVersion === 2 && updates === 1 && isPrivate(updated));
+const routedUrl = `/api/admin/fleet/vehicles/${vehicleRef}?vehicleRef=${vehicleRef}`;
+const routedQuery = Object.fromEntries(new URL(routedUrl, "http://localhost:5173").searchParams);
+for (const method of ["GET", "HEAD"]) {
+  const res = await invoke(detail, { method, url: routedUrl, query: routedQuery });
+  check(`${method} accepts Vercel route metadata from the URL privately`, res.statusCode === 200 && isPrivate(res)
+    && (method === "HEAD" ? res.body === undefined : res.body.vehicle.vehicleRef === vehicleRef));
+}
+const activePatch = { requestId: randomUUID(), expectedVersion: 1, changes: { availableForCalculation: true, operationalStatus: "AVAILABLE" } };
+const beforeRoutedUpdate = updates;
+const routedUpdate = await invoke(detail, { method: "PATCH", url: routedUrl, query: routedQuery, headers: jsonHeaders, body: activePatch });
+check("PATCH Activo accepts Vercel route metadata without adding dates", routedUpdate.statusCode === 200 && updates === beforeRoutedUpdate + 1
+  && isPrivate(routedUpdate) && JSON.stringify(updateInput) === JSON.stringify(activePatch));
+for (const [name, url, query] of [
+  ["duplicate route parameter", `${routedUrl}&vehicleRef=${vehicleRef}`, { vehicleRef: [vehicleRef, vehicleRef] }],
+  ["conflicting route parameters", `${routedUrl}&vehicleRef=other`, { vehicleRef: [vehicleRef, "other"] }],
+  ["array route metadata", routedUrl, { vehicleRef: [vehicleRef] }],
+  ["array metadata without URL parameter", `/api/admin/fleet/vehicles/${vehicleRef}`, { vehicleRef: [vehicleRef] }],
+  ["mismatched route metadata", routedUrl, { vehicleRef: "other" }],
+  ["missing route metadata", routedUrl, {}],
+  ["empty route parameter", `/api/admin/fleet/vehicles/${vehicleRef}?vehicleRef=`, { vehicleRef }],
+  ["unknown parameter alongside route metadata", `${routedUrl}&extra=1`, routedQuery],
+  ["authority alongside route metadata", `${routedUrl}&tenantId=other`, routedQuery],
+]) {
+  const before = updates;
+  let reads = 0;
+  const res = await invoke(detail, { method: "PATCH", url, query, headers: jsonHeaders, bodyGetter: () => { reads += 1; return activePatch; } });
+  check(`Vercel-shaped PATCH rejects ${name} before body or mutation`, res.statusCode === 400 && res.body.error === "ADMIN_FLEET_INPUT_INVALID"
+    && updates === before && reads === 0 && isPrivate(res));
+}
+const collectionRouteMetadata = await invoke(collection, { url: `/api/admin/fleet/vehicles?vehicleRef=${vehicleRef}`, query: routedQuery });
+check("collection still rejects a dynamic route parameter", collectionRouteMetadata.statusCode === 400 && collectionRouteMetadata.body.error === "ADMIN_FLEET_INPUT_INVALID" && isPrivate(collectionRouteMetadata));
 for (const [name, options, status] of [
   ["external origin", { origin: "https://untrusted.invalid" }, 403], ["ambiguous origin", { headers: { ...jsonHeaders, origin: ["http://localhost:5173"] } }, 403],
   ["non-JSON type", { headers: { "content-type": "text/plain" } }, 415], ["malformed JSON", { body: "{" }, 400],

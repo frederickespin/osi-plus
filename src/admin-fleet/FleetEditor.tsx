@@ -78,7 +78,7 @@ export default function FleetEditor({ api, vehicleRef, canEdit, section = "detai
         const uncertain = !(cause instanceof FleetApiError) || cause.status >= 500
           || !["ADMIN_FLEET_INPUT_INVALID", "ADMIN_FLEET_DUPLICATE"].includes(cause.code);
         setMustReload(uncertain);
-        setError(fleetErrorText(cause));
+        setError(fleetErrorText(cause, retire ? "request" : availability ? "availability" : "details"));
       }
     } finally {
       pending.current.delete(controller);

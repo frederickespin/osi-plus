@@ -161,16 +161,29 @@ test("ownerRef expirado tiene contrato 409 exacto", async () => {
 
 test("catálogo devuelve sólo contrato público en una consulta acotada", async () => {
   let queries = 0;
-  const prisma = { async $queryRaw() { queries += 1; return [
+  const rows = [
     { membership_id: "m-1", user_id: "u-1", display_name: "Ana Vendedora", total: 2, ambiguous: false },
     { membership_id: "m-2", user_id: "u-2", display_name: "Zoë Vendedora", total: 2, ambiguous: false },
-  ]; } };
+  ];
+  const prisma = { async $queryRaw() { queries += 1; return rows; } };
   const result = await listCrmPipelineOwnerOptions(ADMIN, { page: "1", pageSize: "100" }, { prisma, env: ENV, now: () => 1_000_000 });
   assert.equal(queries, 1);
+  assert.deepEqual(Object.keys(result).sort(), ["data", "page", "pageSize", "total"]);
   assert.equal(result.total, 2);
-  assert.deepEqual(Object.keys(result.data[0]).sort(), ["displayName", "ownerRef", "role"]);
-  assert.equal(JSON.stringify(result).includes("m-1"), false);
-  assert.equal(JSON.stringify(result).includes("u-1"), false);
+  assert.equal(result.page, 1);
+  assert.equal(result.pageSize, 100);
+  assert.equal(result.data.length, rows.length);
+  // Random base64url ciphertext may contain a short fixture ID by chance.
+  // Assert the exact public shape and authenticated reference instead.
+  for (const [index, entry] of result.data.entries()) {
+    assert.deepEqual(Object.keys(entry).sort(), ["displayName", "ownerRef", "role"]);
+    assert.equal(entry.displayName, rows[index].display_name);
+    assert.equal(entry.role, "V");
+    assert.deepEqual(readCrmOwnerRef(entry.ownerRef, { env: ENV, now: () => 1_000_000 }), {
+      tenantId: ADMIN.tenantId, membershipId: rows[index].membership_id, userId: rows[index].user_id,
+      issuedAt: 1_000, expiresAt: 1_000 + CRM_OWNER_REF_TTL_SECONDS,
+    });
+  }
 });
 
 test("catálogo ambiguo bloquea todo el tenant antes de paginar", async () => {

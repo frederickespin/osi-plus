@@ -1,5 +1,5 @@
 import { lazy, Suspense, type MouseEvent } from "react";
-import { ArrowLeft, Banknote, Boxes, ClipboardList, Mail, Route, Users } from "lucide-react";
+import { ArrowLeft, Banknote, Boxes, ClipboardList, Mail, Route, Truck, Users } from "lucide-react";
 import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 import type { AdminTenantMembershipMode } from "@/admin-tenant/adminMode";
 import type { CrmServicesUiAccess } from "@/crm-services/access";
@@ -10,16 +10,18 @@ import type { PersonnelPoliciesAccess } from "@/personnel-policies/access";
 import { administrationSectionFromRoute, type AdministrationSection, type AdministrationSectionId } from "./administrationSections";
 
 const AdminTenantMembershipModule = lazy(() => import("@/admin-tenant/AdminTenantMembershipModule"));
+const FleetModule = lazy(() => import("@/admin-fleet/FleetModule"));
 const ServiceConfigurationAdmin = lazy(() => import("@/crm-services/ServiceConfigurationAdmin"));
 const LogisticsRulesAdmin = lazy(() => import("@/logistics-engine/LogisticsRulesAdmin"));
 const CostingRulesAdmin = lazy(() => import("@/costing/CostingRulesAdmin"));
 const CommunicationTemplatesAdmin = lazy(() => import("@/communications/CommunicationTemplatesAdmin"));
 const PersonnelPoliciesAdmin = lazy(() => import("@/personnel-policies/PersonnelPoliciesAdmin"));
 
-const ICONS = { access: Users, services: Boxes, logistics: Route, costing: Banknote, communications: Mail, policies: ClipboardList };
+const ICONS = { access: Users, fleet: Truck, services: Boxes, logistics: Route, costing: Banknote, communications: Mail, policies: ClipboardList };
 
 type Props = Readonly<{
   authorization?: string;
+  role: string;
   pathname: string;
   sections: readonly AdministrationSection[];
   effectivePermissions: readonly string[];
@@ -49,6 +51,7 @@ export default function AdministrationWorkspace(props: Props) {
   const renderSection = (id: AdministrationSectionId) => {
     switch (id) {
       case "access": return <AdminTenantMembershipModule authorization={authorization} effectivePermissions={props.effectivePermissions} deniedPermissions={props.deniedPermissions} invitationEnabled={props.invitationEnabled} invitationMode={props.invitationMode} includeConfiguration={false} onUnauthorized={onUnauthorized} />;
+      case "fleet": return <FleetModule authorization={authorization} role={props.role} effectivePermissions={props.effectivePermissions} deniedPermissions={props.deniedPermissions} onUnauthorized={onUnauthorized} onReturnToHub={() => onNavigate("/hub")} />;
       case "services": return <ServiceConfigurationAdmin authorization={authorization} access={props.servicesAccess} onUnauthorized={onUnauthorized} />;
       case "logistics": return <LogisticsRulesAdmin authorization={authorization} access={props.logisticsAccess} onUnauthorized={onUnauthorized} />;
       case "costing": return <CostingRulesAdmin authorization={authorization} access={props.costingAccess} onUnauthorized={onUnauthorized} />;

@@ -23,6 +23,18 @@ function requirePermission(context, permission) {
 function actor(context) { return { actorMembershipId: context.membershipId, actorUserId: context.userId }; }
 function audit(context, action, entity, entityId, requestId, after) { return { tenant_id: context.tenantId, actor_user_id: context.userId, actor_membership_id: context.membershipId, role_snapshot: context.role, action, entity, entityId: String(entityId), after_json: after, source: "V17_LOGISTICS_ENGINE", request_id: requestId, correlation_id: requestId, critical: true }; }
 function numeric(value, fallback = 0) { const result = Number(value); return Number.isFinite(result) && result >= 0 ? result : fallback; }
+const VEHICLE_WEIGHT_TO_KG = Object.freeze({ KG: "1", LB: "0.45359237" });
+const VEHICLE_VOLUME_TO_M3 = Object.freeze({ CBM: "1", CFT: "0.028316846592" });
+function metricVehicleCapacity(value, unit, factors) {
+  if (typeof unit !== "string" || !Object.hasOwn(factors, unit)) logisticsFail("LOGISTICS_VEHICLE_UNIT_INVALID", 409);
+  if (value == null) return null;
+  let amount;
+  try { amount = new Prisma.Decimal(value); } catch { logisticsFail("LOGISTICS_VEHICLE_CAPACITY_INVALID", 409); }
+  if (!amount.isFinite() || amount.lte(0)) logisticsFail("LOGISTICS_VEHICLE_CAPACITY_INVALID", 409);
+  const result = amount.mul(factors[unit]).toNumber();
+  if (!Number.isFinite(result) || result <= 0) logisticsFail("LOGISTICS_VEHICLE_CAPACITY_INVALID", 409);
+  return result;
+}
 function publicCaseScope(context) {
   const tenantWide = context.effectivePermissions?.includes(LOGISTICS_PERMISSIONS.PLAN_TENANT) && !context.deniedPermissions?.includes(LOGISTICS_PERMISSIONS.PLAN_TENANT);
   return tenantWide ? {} : { ownerMembershipId: context.membershipId, ownerUserId: context.userId };
@@ -71,7 +83,7 @@ export async function loadCanonicalLogisticsFacts(tx, context, caseRef, interval
     tx.surveyPublication.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, status: "CURRENT" }, orderBy: { publishedAt: "desc" }, include: { items: { orderBy: { position: "asc" } }, accessSnapshots: true } }),
     tx.materialRequirementSnapshot.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, status: "CURRENT" }, orderBy: { createdAt: "desc" }, include: { lines: { include: { material: { select: { id: true, materialRef: true, name: true, costs: { where: { validTo: null }, orderBy: { version: "desc" }, take: 1 } } }, unit: { select: { code: true } } }, orderBy: { position: "asc" } } } }),
     tx.assetModel.findMany({ where: { tenantId: context.tenantId, status: "ACTIVE" }, include: { instances: { where: { operationalStatus: { notIn: ["OUT_OF_SERVICE", "LOST", "RETIRED"] } }, include: { reservations: { where: { status: "ACTIVE", startsAt: { lt: end }, endsAt: { gt: start } } }, assignments: { where: { status: "ACTIVE" } }, maintenanceOrders: { where: { status: { in: ["SCHEDULED", "IN_PROGRESS"] }, scheduledStart: { lt: end }, scheduledEnd: { gt: start } } } } } } }),
-    tx.vehicle.findMany({ where: { tenant_id: context.tenantId, operational_status: "AVAILABLE", available_for_calculation: true, effective_from: { lte: start }, OR: [{ effective_to: null }, { effective_to: { gt: start } }] }, select: { vehicle_type: true, capacity_volume: true, capacity_weight: true, row_version: true } }),
+    tx.vehicle.findMany({ where: { tenant_id: context.tenantId, operational_status: "AVAILABLE", available_for_calculation: true, effective_from: { lte: start }, OR: [{ effective_to: null }, { effective_to: { gt: start } }] }, select: { vehicle_type: true, capacity_volume: true, capacity_weight: true, volume_unit: true, weight_unit: true, row_version: true } }),
     tx.externalResourceOffer.findMany({ where: { tenantId: context.tenantId, status: "ACTIVE", OR: [{ validFrom: null }, { validFrom: { lte: end } }], AND: [{ OR: [{ validTo: null }, { validTo: { gt: start } }] }] }, include: { reservations: { where: { status: { in: ["REQUESTED", "CONFIRMED"] }, startsAt: { lt: end }, endsAt: { gt: start } } } } }),
   ]);
   if (!service) logisticsFail("LOGISTICS_SERVICE_REVISION_REQUIRED", 409);
@@ -80,7 +92,18 @@ export async function loadCanonicalLogisticsFacts(tx, context, caseRef, interval
     tx.materialInventoryMovement.findMany({ where: { tenantId: context.tenantId, materialId: { in: materialIds }, occurredAt: { lte: observedAt } }, select: { materialId: true, movementType: true, quantityBase: true } }),
     tx.materialReservation.findMany({ where: { tenantId: context.tenantId, materialId: { in: materialIds }, status: { in: ["RESERVED", "ASSIGNED"] } }, select: { materialId: true, quantityBase: true } }),
   ]) : [[], []];
-  const byType = new Map(); for (const row of vehicles) { const current = byType.get(row.vehicle_type) || { vehicleType: row.vehicle_type, available: 0, maxVolumeM3: 0, maxWeightKg: 0, sourceVersion: 0 }; current.available += 1; current.maxVolumeM3 = Math.max(current.maxVolumeM3, numeric(row.capacity_volume)); current.maxWeightKg = Math.max(current.maxWeightKg, numeric(row.capacity_weight)); current.sourceVersion = Math.max(current.sourceVersion, row.row_version); byType.set(row.vehicle_type, current); }
+  const byType = new Map();
+  for (const row of vehicles) {
+    // Convert current facts only; source records and published snapshots retain their original values.
+    const volumeM3 = metricVehicleCapacity(row.capacity_volume, row.volume_unit, VEHICLE_VOLUME_TO_M3);
+    const weightKg = metricVehicleCapacity(row.capacity_weight, row.weight_unit, VEHICLE_WEIGHT_TO_KG);
+    const current = byType.get(row.vehicle_type) || { vehicleType: row.vehicle_type, available: 0, maxVolumeM3: null, maxWeightKg: null, sourceVersion: 0 };
+    current.available += 1;
+    if (volumeM3 !== null) current.maxVolumeM3 = Math.max(current.maxVolumeM3 ?? volumeM3, volumeM3);
+    if (weightKg !== null) current.maxWeightKg = Math.max(current.maxWeightKg ?? weightKg, weightKg);
+    current.sourceVersion = Math.max(current.sourceVersion, row.row_version);
+    byType.set(row.vehicle_type, current);
+  }
   const survey = surveyMetrics(publication);
   const distanceKm = numeric((publication?.contextSnapshot || {}).distanceKm, Number.NaN);
   const route = { contractVersion: pipelineCase.routeContractVersion, version: pipelineCase.routeRevision, destinationStatus: pipelineCase.destinationStatus || "CONFIRMED", distanceStatus: Number.isFinite(distanceKm) ? "KNOWN" : "PENDING", distanceKm: Number.isFinite(distanceKm) ? distanceKm : null, stops: routeRows.map((row) => ({ role: row.role, order: row.stopOrder, countryCode: row.countryCode, provinceState: row.provinceState, cityMunicipality: row.cityMunicipality })) };

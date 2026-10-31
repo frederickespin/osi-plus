@@ -11,6 +11,7 @@ const baseline = new Map([
   ["vercel.json", read("vercel.json")], ["api/_lib/http.js", read("api/_lib/http.js")],
   ["scripts/protected-cors-route-inventory.json", read("scripts/protected-cors-route-inventory.json")],
   ["api/_lib/adminIdentityInvitationHttp.js", read("api/_lib/adminIdentityInvitationHttp.js")],
+  ["api/_lib/adminFleetHttp.js", read("api/_lib/adminFleetHttp.js")],
   ["api/_lib/adminMembershipHttp.js", read("api/_lib/adminMembershipHttp.js")], ["api/_lib/authHttp.js", read("api/_lib/authHttp.js")],
   ["api/_lib/authOrigin.js", read("api/_lib/authOrigin.js")], ["api/_lib/crmCaseMutationHttp.js", read("api/_lib/crmCaseMutationHttp.js")],
   ["api/_lib/crmIcpV2ApiHttp.js", read("api/_lib/crmIcpV2ApiHttp.js")],
@@ -57,6 +58,8 @@ check("tres rutas Identity protegidas", [
   "/api/auth/admin-invitations/activate",
 ].every((route) => inventory.categories.protectedSameOrigin.includes(route)));
 check("Scheduling protegido same-origin", inventory.categories.protectedSameOrigin.includes("/api/crm/survey/scheduling"));
+check("Flota mantiene ambas rutas privadas same-origin", ["/api/admin/fleet/vehicles", "/api/admin/fleet/vehicles/[vehicleRef]"]
+  .every((route) => inventory.categories.protectedSameOrigin.includes(route)));
 check("resumen coincide con manifiesto", validateCrmCorsInventoryReport(current, expectedCrmCorsInventoryReport({ overrides: baseline })));
 check("sin headers API de plataforma", current.platformApiHeaderRules === 0);
 rejected("ruta Identity ausente", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
@@ -78,6 +81,8 @@ reportRejected("éxito incompleto no engaña al agregador", { ...current, routes
 rejected("wildcard Clients", "api/clients/index.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard Projects con casing", "api/projects/index.js", (value) => `${value}\nres.setHeader("aCcEsS-CoNtRoL-AlLoW-OrIgIn", "*");`);
 rejected("wildcard Admin", "api/_lib/adminMembershipHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
+rejected("wildcard Flota", "api/_lib/adminFleetHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
+rejected("reflejo de Origin Flota", "api/_lib/adminFleetHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", req.headers.origin);`);
 rejected("wildcard CRM", "api/_lib/crmPipelineReadHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);
 rejected("wildcard wrapper compartido", "api/_lib/http.js", (value) => value.replace("applyHeaders: setPrivateNoStore", "applyHeaders: setPublicReadCors"));
 rejected("wildcard wrapper activos", "api/_lib/toolsEquipmentHttp.js", (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`);

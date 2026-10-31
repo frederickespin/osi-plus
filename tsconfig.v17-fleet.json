@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": { "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.v17-fleet.tsbuildinfo" },
+  "include": ["src/v17-preview-env.d.ts", "src/admin-fleet/**/*.ts", "src/admin-fleet/**/*.tsx", "src/administration/administrationSections.ts"]
+}

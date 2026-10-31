@@ -29,7 +29,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes("node_modules")) {
-            if (id.includes("@radix-ui")) return "radix";
+            // Radix and its consumers (e.g. cmdk) must share the React chunk.
             if (id.includes("lucide-react")) return "icons";
             return "vendor";
           }

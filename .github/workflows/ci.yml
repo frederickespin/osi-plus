@@ -70,6 +70,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install Chromium for compiled application smoke test
+        run: npx playwright install --with-deps chromium --only-shell
+
+      - name: Verify compiled application starts without runtime errors
+        run: node scripts/v17-built-assets-smoke-test.mjs
+
   browser-suite-groups:
     name: browser-suites (${{ matrix.group }}, ${{ matrix.cases }} cases)
     runs-on: ubuntu-latest

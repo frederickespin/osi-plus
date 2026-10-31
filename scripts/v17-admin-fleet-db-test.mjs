@@ -124,11 +124,14 @@ try {
   check("a read-only context can list vehicles", (await listAdminFleetVehicles(prisma, readonlyContext)).total === 2);
   await rejects("read-only context cannot create", () => createAdminFleetVehicle(prisma, readonlyContext, input("007")), "ADMIN_FLEET_FORBIDDEN");
   await rejects("explicit context denials override supplied grants", () => listAdminFleetVehicles(prisma, { ...ctx, deniedPermissions: ["fleet:view"] }), "ADMIN_FLEET_FORBIDDEN");
-  await prisma.tenantMembership.update({ where: { id: member.id }, data: { deniedPermissions: ["fleet:edit"] } });
+  // Persist a valid revocation: database grants and denials must remain disjoint.
+  // The original context deliberately retains its stale grants for revalidation.
+  await prisma.tenantMembership.update({ where: { id: member.id }, data: { grantedPermissions: ["fleet:view"], deniedPermissions: ["fleet:edit"] } });
   await rejects("database permission revocation overrides a stale write context", () => updateAdminFleetVehicle(prisma, ctx, ref, patch(3, { brand: "Revoked" })), "ADMIN_FLEET_FORBIDDEN");
-  await prisma.tenantMembership.update({ where: { id: member.id }, data: { deniedPermissions: ["fleet:view"] } });
+  check("database edit denial preserves read access", (await listAdminFleetVehicles(prisma, ctx)).total === 2);
+  await prisma.tenantMembership.update({ where: { id: member.id }, data: { grantedPermissions: ["fleet:edit"], deniedPermissions: ["fleet:view"] } });
   await rejects("database read denial overrides a stale read context", () => listAdminFleetVehicles(prisma, ctx), "ADMIN_FLEET_FORBIDDEN");
-  await prisma.tenantMembership.update({ where: { id: member.id }, data: { deniedPermissions: [], status: "SUSPENDED" } });
+  await prisma.tenantMembership.update({ where: { id: member.id }, data: { grantedPermissions: permissions, deniedPermissions: [], status: "SUSPENDED" } });
   await rejects("suspended membership cannot read", () => getAdminFleetVehicle(prisma, ctx, ref), "ADMIN_FLEET_FORBIDDEN");
   await prisma.tenantMembership.update({ where: { id: member.id }, data: { status: "ACTIVE", role: "V" } });
   await rejects("changed database role overrides stale administrator context", () => listAdminFleetVehicles(prisma, ctx), "ADMIN_FLEET_FORBIDDEN");

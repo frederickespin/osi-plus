@@ -46,8 +46,7 @@ function canonicalJson(value: unknown): string {
   return `{${Object.keys(row).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(row[key])}`).join(",")}}`;
 }
 
-async function command<T>(authorization: string | undefined, path: string, operation: string, payload: object, signal?: AbortSignal): Promise<T> {
-  const requestId = crypto.randomUUID();
+async function command<T>(authorization: string | undefined, path: string, operation: string, payload: object, signal?: AbortSignal, requestId: string = crypto.randomUUID()): Promise<T> {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson({ operation, requestId, ...payload })));
   const payloadHash = [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   return request<T>(authorization, path, { method: "POST", body: JSON.stringify({ requestId, payloadHash, ...payload }), signal });
@@ -57,7 +56,7 @@ export type TransportPublicationQuery = Readonly<{ caseRef: string; purpose: Tra
 
 export const transportApi = Object.freeze({
   zones: (authorization?: string, signal?: AbortSignal) => request<readonly TransportZone[]>(authorization, "/api/logistics/transport/zones", { signal }),
-  versionZone: (authorization: string | undefined, input: TransportZoneInput, signal?: AbortSignal) => command<TransportZone>(authorization, "/api/logistics/transport/zones", "TRANSPORT_ZONE_VERSION", input, signal),
+  versionZone: (authorization: string | undefined, input: TransportZoneInput, signal?: AbortSignal, requestId?: string) => command<TransportZone>(authorization, "/api/logistics/transport/zones", "TRANSPORT_ZONE_VERSION", input, signal, requestId),
   context: (authorization: string | undefined, query: { search?: string; caseRef?: string } = {}, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (query.search) params.set("search", query.search);
@@ -79,11 +78,11 @@ export const transportApi = Object.freeze({
 export function transportErrorMessage(cause: unknown): string {
   const code = cause instanceof Error ? cause.message : "";
   if (cause instanceof TransportRequestError && cause.status === 403) return "Su acceso no permite esta operación de transporte.";
-  if (code === "LOGISTICS_TRANSPORT_ZONE_CODE_CONFLICT") return "Ese código pertenece a otra zona. Use un código diferente o abra la zona existente para crear su versión.";
+  if (code === "LOGISTICS_TRANSPORT_IDEMPOTENCY_CONFLICT") return "Esta solicitud ya guardó una versión con otros datos. Actualice el listado y abra la versión guardada antes de continuar.";
+  if (/ZONE_CODE_IMMUTABLE|ZONE_CODE_CONFLICT|COMPONENT_CODE_CONFLICT/.test(code)) return "No se pudo confirmar la referencia automática. Actualice el listado y abra la zona vigente antes de continuar.";
   if (code === "LOGISTICS_TRANSPORT_ZONE_LIMIT") return "Se alcanzó el límite de zonas de la empresa. Revise las zonas existentes antes de añadir otra.";
   if (/ZONE_INTEGRITY|TARIFF_INTEGRITY/.test(code)) return "La configuración guardada de esta zona necesita revisión. Actualice y consulte al responsable de Flota / Logística.";
-  if (code === "TRANSPORT_ZONE_CODE_INVALID") return "El código de zona debe comenzar con una letra y tener entre 2 y 64 letras, números o guiones bajos.";
-  if (code === "TRANSPORT_COMPONENT_CODE_INVALID") return "El código de cada renglón debe comenzar con una letra y usar hasta 48 letras, números o guiones bajos.";
+  if (/TRANSPORT_(?:ZONE|COMPONENT)_CODE_INVALID/.test(code)) return "La referencia del registro necesita actualizarse. Los códigos se generan automáticamente al guardar.";
   if (/CONCEPT_DUPLICATED|COMPONENT_DUPLICATED/.test(code)) return "Un concepto está repetido o ya está cubierto por la base o un viático. Revise los renglones y sus conceptos incluidos.";
   if (code === "TRANSPORT_MARGIN_INVALID") return "El margen recomendado debe ser igual o mayor que el margen mínimo.";
   if (code === "TRANSPORT_NUMBER_INVALID") return "Revise los valores numéricos: kilómetros, rendimiento y cantidades admiten hasta 4 decimales; las tarifas y el factor, hasta 6.";

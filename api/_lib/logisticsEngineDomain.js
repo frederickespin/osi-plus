@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { automaticLogisticsConfigurationCode } from "./logisticsConfigurationCode.js";
 import {
   LogisticsEngineError, calculateLogisticsPlan, canonicalHash, canonicalJson,
   logisticsFail, normalizeCalculate, normalizeIssueResolution, normalizeOverride,
@@ -184,19 +185,42 @@ export async function listLogisticsRules(prisma, context, query = {}) {
   return rows.filter((row) => !isTransportPolicy(row)).map(({ ruleRef, seriesRef, family, code, name, priority, specificity, conditions, result, state, version, validFrom, validTo }) => ({ ruleRef, seriesRef, family, code, name, priority, specificity, conditions, result, state, version, validFrom: validFrom?.toISOString() || null, validTo: validTo?.toISOString() || null }));
 }
 
+async function withRuleTransaction(prisma, work) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try { return await prisma.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }); }
+    catch (error) {
+      const code = error?.meta?.code ?? error?.cause?.code ?? error?.code;
+      const retryable = ["P2034", "P2002"].includes(error?.code) || ["40001", "40P01", "23505"].includes(code);
+      if (retryable && attempt < 2) continue;
+      if (retryable) logisticsFail("LOGISTICS_CONCURRENCY_CONFLICT", 409);
+      throw error;
+    }
+  }
+}
+
 export async function versionLogisticsRule(prisma, context, raw) {
   requirePermission(context, LOGISTICS_PERMISSIONS.RULES_MANAGE); const input = normalizeRuleCreate(raw);
-  return prisma.$transaction(async (tx) => {
+  const seriesRef = input.seriesRef || randomUUID();
+  let observedVersion;
+  return withRuleTransaction(prisma, async (tx) => {
+    await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${input.requestId}:logistics-rule-command`}, 0))`);
     const prior = await replay(tx, context, input); if (prior) return prior;
-    const seriesRef = input.seriesRef || randomUUID();
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${seriesRef}:logistics-rule`}, 0))`);
     const current = await tx.logisticsRule.findFirst({ where: { tenantId: context.tenantId, seriesRef }, orderBy: { version: "desc" } });
+    if (input.seriesRef && !current) logisticsFail("LOGISTICS_RULE_NOT_FOUND", 404);
     if (current && isTransportPolicy(current)) logisticsFail("LOGISTICS_TRANSPORT_CANONICAL_PATH_REQUIRED", 409);
+    // A serialization retry may replay its own committed command, but must not
+    // turn a concurrent edit into an unnoticed replacement of a newer version.
+    if (observedVersion !== undefined && observedVersion !== (current?.version ?? null)) logisticsFail("LOGISTICS_RULE_VERSION_CONFLICT", 409);
+    observedVersion = current?.version ?? null;
+    if (current && input.code !== null && input.code !== current.code) logisticsFail("LOGISTICS_RULE_CODE_IMMUTABLE", 409);
+    const code = current?.code ?? input.code ?? automaticLogisticsConfigurationCode(context.tenantId, input, "RULE");
+    if (!current && input.code === null && await tx.logisticsRule.findFirst({ where: { tenantId: context.tenantId, code } })) logisticsFail("LOGISTICS_RULE_CODE_CONFLICT", 409);
     if (current) await tx.logisticsRule.update({ where: { id: current.id }, data: { state: "SUPERSEDED", validTo: input.validFrom ? new Date(input.validFrom) : new Date() } });
-    const row = await tx.logisticsRule.create({ data: { tenantId: context.tenantId, seriesRef, family: input.family, code: input.code, name: input.name, priority: input.priority, specificity: input.specificity, conditions: input.conditions, conditionHash: canonicalHash(input.conditions), result: input.result, state: input.state, version: (current?.version || 0) + 1, validFrom: input.validFrom ? new Date(input.validFrom) : null, validTo: input.validTo ? new Date(input.validTo) : null, replacesRuleId: current?.id, requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
+    const row = await tx.logisticsRule.create({ data: { tenantId: context.tenantId, seriesRef, family: input.family, code, name: input.name, priority: input.priority, specificity: input.specificity, conditions: input.conditions, conditionHash: canonicalHash(input.conditions), result: input.result, state: input.state, version: (current?.version || 0) + 1, validFrom: input.validFrom ? new Date(input.validFrom) : null, validTo: input.validTo ? new Date(input.validTo) : null, replacesRuleId: current?.id, requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
     const result = { ruleRef: row.ruleRef, seriesRef: row.seriesRef, family: row.family, code: row.code, name: row.name, priority: row.priority, specificity: row.specificity, state: row.state, version: row.version, conditionHash: row.conditionHash };
     return persist(tx, context, input, row.ruleRef, result, current ? "LOGISTICS_RULE_VERSION" : "LOGISTICS_RULE_CREATE", "LogisticsRule");
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  });
 }
 
 export async function createLogisticsOverride(prisma, context, raw) {

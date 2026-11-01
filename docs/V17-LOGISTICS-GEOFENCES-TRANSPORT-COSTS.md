@@ -117,6 +117,30 @@ La configuración económica requiere conjuntamente los permisos de reglas de Lo
 
 La entrega incorpora pruebas de geometría, aritmética decimal, coberturas, contratos cerrados, autorización, concurrencia, rollback y separación de contextos. El circuito local con PostgreSQL17 comprueba guardar → calcular → publicar → valorar en Costos, con 37 migraciones existentes y sin Survey obligatorio. CI añade la misma integración a PostgreSQL18. Las pruebas de navegador cubren escritorio y móvil con datos sintéticos aislados; ningún ejemplo se carga como configuración empresarial en Preview.
 
+## Preferencias de llenado y ayudas numéricas
+
+Actualización solicitada el **1 de noviembre de 2026** para el Preview consolidado:
+
+- Los campos de una línea de zonas, costos, cálculo de recorridos y reglas operativas comparten la altura compacta aprobada: **28 px en escritorio y 32 px en pantallas pequeñas**. Los textos de transporte conservan su tamaño de 14 px; mapas, botones y casillas mantienen espacio para interactuar.
+- Las altas de zonas, renglones de costo y reglas operativas generan sus códigos en el servidor al guardar. El usuario completa nombres y conceptos; las referencias existentes se conservan al crear versiones. No se renumeran registros anteriores.
+- Los valores numéricos se editan sin flechas de incremento. El primer clic, toque o acceso con Tab selecciona el valor completo, sin cambios por la rueda del ratón. Se conservan límites, precisión decimal, coordenadas negativas y la diferencia entre vacío y cero.
+- Los borradores mantienen la identidad de la solicitud durante un reintento. La asignación de códigos y la comprobación de duplicados ocurren dentro de la transacción autorizada; los reenvíos de la misma operación conservan las referencias.
+- Las ayudas junto a los parámetros muestran ejemplos ilustrativos. Estos ejemplos no cargan tarifas ni configuran datos empresariales.
+
+| Parámetro | Efecto explicado en la ayuda |
+|---|---|
+| Prioridad de zona | Entre perfiles vehiculares equivalentes, 101 tiene precedencia sobre 100. El número ordena la selección; no multiplica el costo. |
+| Factor | Una base de 1,000 pasa a 1,250 con factor 1.25. Sólo se multiplica la base; los conceptos adicionales siguen su propio cálculo. |
+| Rendimiento | Para 160 km, subir de 8 a 10 km/gal reduce el consumo de 20 a 16 galones. |
+| Viajes y regreso | 100 km × 2 viajes = 200 km; al añadir regreso son 400 km. Los peajes se declaran como cantidad total por separado. |
+| Personas y días | Con tarifa ilustrativa de 500, 2 personas × 1 día cuestan 1,000; 3 personas × 2 días cuestan 3,000. |
+| Tarifa y cantidad | Con 2 pasos, subir una tarifa de 100 a 150 cambia el costo de 200 a 300. |
+| Margen objetivo | Con costo 1,000, 20 % propone venta de 1,250; 25 % propone 1,333.33. El costo de transporte permanece en 1,000. |
+| Margen mínimo | Se explica su efecto en la autorización de una venta por debajo del mínimo; no incrementa el costo del transporte. |
+| Reglas operativas | Prioridad y especificidad ordenan la evaluación. Las reglas independientes que cumplen sus condiciones siguen aplicándose; aumentar la cantidad de 2 a 3 añade una unidad. |
+
+Las comprobaciones de navegador cubren escritorio y móvil, selección y sustitución del valor, ausencia de incrementos por flechas/rueda, validaciones, códigos automáticos y conservación de referencias al versionar. Las pruebas de contrato y base de datos comprueban reintentos, concurrencia, aislamiento entre empresas y persistencia sin nuevas migraciones.
+
 ## Configuración empresarial por definir
 
 - Perímetro de zona metropolitana, demás zonas/localidades, cobertura y prioridad ante solapamientos.

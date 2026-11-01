@@ -217,6 +217,59 @@ try {
     && pending.result.lines.find((line) => line.kind === "FUEL").unitCost === null);
   await rejects("incomplete transport cannot be published", () => publish(a.context, pending.calculationRef), "TRANSPORT_CALCULATION_INCOMPLETE");
 
+  const automaticActor = await account("AUTOMATIC");
+  const automaticInput = zoneInput({ code: null, state: "DRAFT", components: zoneInput().components.map((row) => ({ ...row, code: null })) });
+  const automaticCommand = zoneCommand(automaticInput);
+  const automaticCreations = await Promise.all([
+    versionTransportZone(prisma, automaticActor.context, automaticCommand),
+    versionTransportZone(prisma, automaticActor.context, automaticCommand),
+  ]);
+  const automaticZone = automaticCreations[0];
+  check("concurrent code-free zone requests replay one saved identity", automaticCreations[1].ruleRef === automaticZone.ruleRef
+    && /^ZON_[A-F0-9]{24}$/.test(automaticZone.code)
+    && await prisma.logisticsRule.count({ where: { tenantId: automaticActor.tenant.id } }) === 1
+    && await prisma.costingRule.count({ where: { tenantId: automaticActor.tenant.id } }) === 3);
+  check("code-free rows have distinct generated references", automaticZone.components.every((row) => /^REN_[A-F0-9]{24}$/.test(row.code))
+    && new Set(automaticZone.components.map((row) => row.code)).size === 3);
+  await rejects("automatic zone retry with changed data is rejected", () => versionTransportZone(prisma, automaticActor.context,
+    signed("TRANSPORT_ZONE_VERSION", { ...automaticInput, name: "Changed automatic zone" }, automaticCommand.requestId)), "LOGISTICS_TRANSPORT_IDEMPOTENCY_CONFLICT");
+  const automaticVersion = await versionTransportZone(prisma, automaticActor.context, zoneCommand({ ...automaticInput,
+    seriesRef: automaticZone.seriesRef, expectedVersion: automaticZone.version,
+    components: automaticInput.components.map((row, index) => ({ ...row, code: automaticZone.components[index].code })) }));
+  check("zone and tariff references survive code-free zone versioning", automaticVersion.code === automaticZone.code
+    && automaticVersion.components.every((row, index) => row.code === automaticZone.components[index].code && row.costRuleVersion === 2));
+  await rejects("saved automatic zone code cannot be renamed", () => versionTransportZone(prisma, automaticActor.context,
+    zoneCommand({ ...automaticInput, seriesRef: automaticZone.seriesRef, expectedVersion: 2, code: "RENAMED_ZONE" })), "LOGISTICS_TRANSPORT_ZONE_CODE_IMMUTABLE");
+  const otherAutomaticZone = await versionTransportZone(prisma, automaticActor.context, zoneCommand(automaticInput));
+  check("a distinct create request receives distinct zone and row codes", otherAutomaticZone.code !== automaticZone.code
+    && otherAutomaticZone.components.every((row, index) => row.code !== automaticZone.components[index].code));
+  const tenantScopedZone = await versionTransportZone(prisma, b.context, automaticCommand);
+  check("same automatic zone request is isolated by tenant", tenantScopedZone.code !== automaticZone.code);
+
+  const automaticRuleInput = { seriesRef: null, family: "LABOR", code: null, name: "Regla sintética automática", priority: 10, specificity: 0,
+    conditions: {}, result: { kind: "SYNTHETIC_CREW", label: "Personal sintético", quantity: 1, unit: "persona" }, state: "DRAFT", validFrom: null, validTo: null };
+  const automaticRuleCommand = signed("LOGISTICS_RULE_VERSION", automaticRuleInput);
+  const automaticRules = await Promise.all([
+    versionLogisticsRule(prisma, automaticActor.context, automaticRuleCommand),
+    versionLogisticsRule(prisma, automaticActor.context, automaticRuleCommand),
+  ]);
+  const automaticRule = automaticRules[0];
+  check("concurrent code-free operational rules replay one identity", automaticRules[1].ruleRef === automaticRule.ruleRef
+    && /^RGL_[A-F0-9]{24}$/.test(automaticRule.code)
+    && await prisma.logisticsRule.count({ where: { tenantId: automaticActor.tenant.id, requestId: automaticRuleCommand.requestId } }) === 1
+    && await prisma.logisticsMutationCommand.count({ where: { tenantId: automaticActor.tenant.id, requestId: automaticRuleCommand.requestId } }) === 1);
+  await rejects("automatic operational rule retry rejects altered payload", () => versionLogisticsRule(prisma, automaticActor.context,
+    signed("LOGISTICS_RULE_VERSION", { ...automaticRuleInput, name: "Changed rule" }, automaticRuleCommand.requestId)), "LOGISTICS_IDEMPOTENCY_CONFLICT");
+  const automaticRuleVersion = await versionLogisticsRule(prisma, automaticActor.context,
+    signed("LOGISTICS_RULE_VERSION", { ...automaticRuleInput, seriesRef: automaticRule.seriesRef }));
+  check("operational rule versions preserve their generated reference", automaticRuleVersion.version === 2 && automaticRuleVersion.code === automaticRule.code);
+  await rejects("operational rule codes cannot be renamed", () => versionLogisticsRule(prisma, automaticActor.context,
+    signed("LOGISTICS_RULE_VERSION", { ...automaticRuleInput, seriesRef: automaticRule.seriesRef, code: "RENAMED_RULE" })), "LOGISTICS_RULE_CODE_IMMUTABLE");
+  await rejects("foreign operational rule series cannot be recreated in another tenant", () => versionLogisticsRule(prisma, b.context,
+    signed("LOGISTICS_RULE_VERSION", { ...automaticRuleInput, seriesRef: automaticRule.seriesRef })), "LOGISTICS_RULE_NOT_FOUND");
+  const tenantScopedRule = await versionLogisticsRule(prisma, b.context, automaticRuleCommand);
+  check("same operational request is isolated by tenant", tenantScopedRule.code !== automaticRule.code);
+
   process.stdout.write(JSON.stringify({ ok: true, assertions: results.length, migrations: migrationNames.length, isolatedDatabase: local.target.database,
     postgres17: compatibility === "PG17", remoteDatabaseAccess: false, schemaChanges: false, results }, null, 2) + "\n");
 } finally {

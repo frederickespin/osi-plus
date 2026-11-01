@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { canonicalHash, normalizeRuleCreate, ruleMatches } from "../api/_lib/logisticsEngineContract.js";
-import { calculateTransportResult, normalizeTransportCalculate, normalizeTransportPolygon, normalizeTransportZone, pointInTransportPolygon, selectTransportZone, TRANSPORT_CONTRACT } from "../api/_lib/logisticsTransportContract.js";
+import { calculateTransportResult, normalizeTransportCalculate, normalizeTransportPolygon, normalizeTransportZone, normalizeTransportZonePayload, pointInTransportPolygon, selectTransportZone, TRANSPORT_CONTRACT } from "../api/_lib/logisticsTransportContract.js";
 
 let assertions = 0;
 function equal(actual, expected) { assert.deepEqual(actual, expected); assertions++; }
@@ -16,6 +16,15 @@ const journey = { journeyRef: randomUUID(), label: "Synthetic trip", vehicleType
 const input = { caseRef: randomUUID(), purpose: "QUOTE", contextRef: null, intervalStart: "2026-11-02T12:00:00.000Z", intervalEnd: "2026-11-02T20:00:00.000Z", journeys: [journey] };
 const zoneCommand = normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", payload));
 equal(zoneCommand.operation, "TRANSPORT_ZONE_VERSION");
+const automaticPayload = { ...payload, code: null, components: payload.components.map((row) => ({ ...row, code: null })) };
+const automaticCommand = signed("TRANSPORT_ZONE_VERSION", automaticPayload);
+equal(normalizeTransportZone(automaticCommand).code, null);
+equal(normalizeTransportZone(automaticCommand).components.map((row) => row.code), [null, null, null]);
+rejects(() => normalizeTransportZonePayload(automaticPayload), "PAYLOAD_INVALID"); // Saved identities must never be null.
+rejects(() => normalizeTransportZone({ ...automaticCommand, code: "FORGED" }), "HASH_MISMATCH");
+rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...automaticPayload, code: "" })), "PAYLOAD_INVALID");
+rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...automaticPayload, components: [{ ...payload.components[0], code: "BAD-CODE" }] })), "COMPONENT_CODE_INVALID");
+rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...automaticPayload, components: [payload.components[0], payload.components[0]] })), "COMPONENT_DUPLICATED");
 equal(normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", input)).journeys[0], journey);
 equal(normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, journeys: [{ ...journey, vehicleRef: "cmrealopaquevehicle" }] })).journeys[0].vehicleRef, "cmrealopaquevehicle");
 rejects(() => normalizeTransportZone({ ...signed("TRANSPORT_ZONE_VERSION", payload), tenantId: "cross-tenant" }), "PAYLOAD_INVALID");

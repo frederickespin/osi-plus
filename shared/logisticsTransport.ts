@@ -6,14 +6,14 @@ export type TransportPolygon = Readonly<{ type: "Polygon"; coordinates: readonly
 export type TransportComponentKind = "BASE" | "FUEL" | "TOLL" | "PER_DIEM" | "ALLOWANCE" | "OTHER";
 export type TransportBasis = "TRIP" | "GALLON" | "PASS" | "PERSON_DAY" | "FIXED" | "KM";
 export type TransportComponentInput = Readonly<{
-  code: string; label: string; kind: TransportComponentKind; basis: TransportBasis;
+  code: string | null; label: string; kind: TransportComponentKind; basis: TransportBasis;
   unitCost: string | null; classification: "PR" | "EX" | "DE";
   minimumMarginBps: number | null; recommendedMarginBps: number | null;
   includedConcepts: readonly TransportComponentKind[];
 }>;
-export type TransportComponent = TransportComponentInput & Readonly<{ costRuleRef: string; costRuleVersion: number }>;
+export type TransportComponent = Omit<TransportComponentInput, "code"> & Readonly<{ code: string; costRuleRef: string; costRuleVersion: number }>;
 export type TransportZoneInput = Readonly<{
-  seriesRef: string | null; expectedVersion: number | null; code: string; name: string;
+  seriesRef: string | null; expectedVersion: number | null; code: string | null; name: string;
   zoneType: "METRO" | "INTERIOR"; priority: number; vehicleType: string | null;
   purposes: readonly TransportPurpose[]; geometry: TransportPolygon;
   mode: "ITEMIZED" | "FACTOR"; factor: string | null; currency: string;
@@ -21,8 +21,8 @@ export type TransportZoneInput = Readonly<{
   includedConcepts: readonly TransportComponentKind[]; components: readonly TransportComponentInput[];
   state: "DRAFT" | "ACTIVE" | "INACTIVE";
 }>;
-export type TransportZone = Omit<TransportZoneInput, "seriesRef" | "expectedVersion" | "components"> & Readonly<{
-  ruleRef: string; seriesRef: string; version: number; components: readonly TransportComponent[];
+export type TransportZone = Omit<TransportZoneInput, "seriesRef" | "expectedVersion" | "components" | "code"> & Readonly<{
+  ruleRef: string; seriesRef: string; code: string; version: number; components: readonly TransportComponent[];
   validFrom: string | null; validTo: string | null;
 }>;
 export type TransportJourney = Readonly<{

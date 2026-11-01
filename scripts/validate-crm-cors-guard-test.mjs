@@ -14,6 +14,12 @@ const fleetDriverRoutes = [
   ["/api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations", "api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/index.js"],
   ["/api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/[authorizationRef]", "api/admin/fleet/vehicles/[vehicleRef]/drivers/authorizations/[authorizationRef].js"],
 ];
+const warehouseConfigurationRoutes = [
+  ["/api/materials/warehouse-configuration", "api/materials/warehouse-configuration/index.js"],
+  ["/api/materials/warehouse-uses", "api/materials/warehouse-uses/index.js"],
+  ["/api/materials/warehouse-uses/[useRef]", "api/materials/warehouse-uses/[useRef].js"],
+  ["/api/materials/warehouses/locations/[locationRef]/configuration", "api/materials/warehouses/locations/[locationRef]/configuration.js"],
+];
 const baseline = new Map([
   ["vercel.json", read("vercel.json")], ["api/_lib/http.js", read("api/_lib/http.js")],
   ["scripts/protected-cors-route-inventory.json", read("scripts/protected-cors-route-inventory.json")],
@@ -21,11 +27,13 @@ const baseline = new Map([
   ["api/_lib/adminFleetHttp.js", read("api/_lib/adminFleetHttp.js")],
   ["api/_lib/fleetDriversHttp.js", read("api/_lib/fleetDriversHttp.js")],
   ...fleetDriverRoutes.map(([, path]) => [path, read(path)]),
+  ...warehouseConfigurationRoutes.map(([, path]) => [path, read(path)]),
   ["api/_lib/adminMembershipHttp.js", read("api/_lib/adminMembershipHttp.js")], ["api/_lib/authHttp.js", read("api/_lib/authHttp.js")],
   ["api/_lib/authOrigin.js", read("api/_lib/authOrigin.js")], ["api/_lib/crmCaseMutationHttp.js", read("api/_lib/crmCaseMutationHttp.js")],
   ["api/_lib/crmIcpV2ApiHttp.js", read("api/_lib/crmIcpV2ApiHttp.js")],
   ["api/_lib/crmOwnerCatalogHttp.js", read("api/_lib/crmOwnerCatalogHttp.js")], ["api/_lib/crmPipelineReadHttp.js", read("api/_lib/crmPipelineReadHttp.js")],
   ["api/_lib/materialsInventoryHttp.js", read("api/_lib/materialsInventoryHttp.js")],
+  ["api/_lib/warehouseConfigurationHttp.js", read("api/_lib/warehouseConfigurationHttp.js")],
   ["api/_lib/toolsEquipmentHttp.js", read("api/_lib/toolsEquipmentHttp.js")],
   ["api/_lib/logisticsEngineHttp.js", read("api/_lib/logisticsEngineHttp.js")],
   ["api/_lib/logisticsTransportHttp.js", read("api/_lib/logisticsTransportHttp.js")],
@@ -80,6 +88,14 @@ check("Flota mantiene ambas rutas privadas same-origin", ["/api/admin/fleet/vehi
   .every((route) => inventory.categories.protectedSameOrigin.includes(route)));
 check("Choferes mantiene exactamente sus cinco rutas privadas same-origin", fleetDriverRoutes.length === 5
   && fleetDriverRoutes.every(([route]) => inventory.categories.protectedSameOrigin.includes(route)));
+check("Configuración20B mantiene sus cuatro rutas privadas same-origin", warehouseConfigurationRoutes.length === 4
+  && warehouseConfigurationRoutes.every(([route]) => inventory.categories.protectedSameOrigin.includes(route)));
+const aliasedConfiguration = new Map(baseline);
+const configurationFile = warehouseConfigurationRoutes[0][1];
+aliasedConfiguration.set(configurationFile, baseline.get(configurationFile)
+  .replace("import { createWarehouseConfigurationHandler }", "import { createWarehouseConfigurationHandler as configurationHandler }")
+  .replace("export default createWarehouseConfigurationHandler(", "export default configurationHandler("));
+check("Configuración admite alias del adaptador importado real", validateCrmCorsGuard({ overrides: aliasedConfiguration }).ok);
 check("resumen coincide con manifiesto", validateCrmCorsInventoryReport(current, expectedCrmCorsInventoryReport({ overrides: baseline })));
 check("sin headers API de plataforma", current.platformApiHeaderRules === 0);
 rejected("ruta Identity ausente", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
@@ -101,6 +117,44 @@ for (const [route, relativePath] of fleetDriverRoutes) {
   rejected("ruta Choferes no puede declarar wildcard: " + route, relativePath,
     (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`, /declara wildcard/);
 }
+for (const [route, relativePath] of warehouseConfigurationRoutes) {
+  rejected("ruta20B ausente: " + route, "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+    categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);
+  }), /clasificación incompleta/);
+  rejected("ruta20B no puede ser pública: " + route, "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+    categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);
+    categories.publicDeliberate.push(route);
+  }), /wrapper público allowlisted/);
+  rejected("ruta20B no se reclasifica como legacy: " + route, "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
+    categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);
+    categories.legacyPendingClosed.push(route);
+  }), /clasificación privada same-origin/);
+  rejected("ruta20B no acepta el adaptador Materials sin su gate: " + route, relativePath,
+    (value) => value.replaceAll("warehouseConfigurationHttp.js", "materialsInventoryHttp.js").replaceAll("createWarehouseConfigurationHandler", "createMaterialsHandler"), /adaptador privado de configuración/);
+  rejected("ruta20B no puede declarar wildcard: " + route, relativePath,
+    (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`, /declara wildcard/);
+}
+rejected("Configuración no acepta un import desconectado del handler exportado", configurationFile,
+  (value) => value.replace("export default createWarehouseConfigurationHandler", "const unused = createWarehouseConfigurationHandler") + "\nexport default () => null;\n", /adaptador privado de configuración/);
+rejected("Configuración no admite un adaptador de otro módulo con igual nombre", configurationFile,
+  (value) => value.replace("warehouseConfigurationHttp.js", "otherHttp.js"), /adaptador privado de configuración/);
+rejected("Configuración no omite headers privados", "api/_lib/warehouseConfigurationHttp.js",
+  (value) => value.replace("return withPrivateApiHeaders(async", "return passthrough(async"), /no usa headers privados/);
+rejected("Configuración no omite el gate de materiales y origen", "api/_lib/warehouseConfigurationHttp.js",
+  (value) => value.replace("if (!prepareMaterialsRequest(req, res, env)) return;", "if (false) return;"), /omitió gate de materiales y origen/);
+rejected("Configuración no omite su gate específico", "api/_lib/warehouseConfigurationHttp.js",
+  (value) => value.replace("resolveWarehouseConfigurationApiMode(env, req);", "void env;"), /omitió su gate específico/);
+rejected("Configuración aplica gates antes de OPTIONS", "api/_lib/warehouseConfigurationHttp.js",
+  (value) => value.replace('    if (req.method === "OPTIONS") return res.status(204).end();\n', "")
+    .replace("    if (!prepareMaterialsRequest(req, res, env)) return;", '    if (req.method === "OPTIONS") return res.status(204).end();\n    if (!prepareMaterialsRequest(req, res, env)) return;'), /gates antes de OPTIONS y contexto/);
+rejected("Configuración no permite OPTIONS automático fuera de los gates", "api/_lib/warehouseConfigurationHttp.js",
+  (value) => value.replace("handleOptions: false", "handleOptions: true"), /gates antes de OPTIONS y contexto/);
+rejected("Configuración no declara wildcard compartido", "api/_lib/warehouseConfigurationHttp.js",
+  (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", "*");`, /declara wildcard/);
+rejected("Configuración no refleja Origin", "api/_lib/warehouseConfigurationHttp.js",
+  (value) => `${value}\nres.setHeader("Access-Control-Allow-Origin", req.headers.origin);`, /refleja Origin/);
+rejected("Configuración no habilita credentials CORS", "api/_lib/warehouseConfigurationHttp.js",
+  (value) => `${value}\nres.setHeader("Access-Control-Allow-Credentials", "true");`, /declara credentials permisivo/);
 rejected("ruta duplicada en manifiesto", "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
   categories.protectedSameOrigin.push("/api/admin/memberships");
 }), /duplicadas/);
@@ -132,4 +186,7 @@ rejected("public wrapper fuera de allowlist", "api/clients/index.js", (value) =>
 let newRouteError;
 try { validateCrmCorsGuard({ overrides: baseline, extraRoutes: [{ path: "/api/admin/future", relativePath: "api/admin/future.js", source: "export default withPrivateApiHeaders(async () => {});" }] }); } catch (error) { newRouteError = error; }
 check("ruta protegida nueva no inventariada", /clasificación incompleta/u.test(newRouteError?.message || ""));
+let newWarehouseRouteError;
+try { validateCrmCorsGuard({ overrides: baseline, extraRoutes: [{ path: "/api/materials/warehouse-uses/extra", relativePath: "api/materials/warehouse-uses/extra.js", source: baseline.get(warehouseConfigurationRoutes[1][1]) }] }); } catch (error) { newWarehouseRouteError = error; }
+check("ruta20B nueva no hereda clasificación por directorio", /clasificación incompleta/u.test(newWarehouseRouteError?.message || ""));
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

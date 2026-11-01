@@ -17,6 +17,20 @@ test("stock reader enters spaces without loading material or equipment consumers
   expect(seen.unexpected).toEqual([]);
 });
 
+test("disabled configuration keeps legacy spaces reads and blocks its direct route before consumer mount", async ({ page }) => {
+  const seen = await session(page, ALL_READERS);
+  await page.goto("/warehouses/spaces");
+  await expect(page.getByText("Todavía no hay almacenes registrados.", { exact: true })).toBeVisible();
+  await expect(page.locator('a[href="/warehouses/configuration"], option[value="/warehouses/configuration"]')).toHaveCount(0);
+  expect(new Set(nonAuth(seen.apiRequests))).toEqual(new Set(["/api/materials/warehouses"]));
+  const before = seen.apiRequests.length;
+  await page.goto("/warehouses/configuration");
+  await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+  expect(nonAuth(seen.apiRequests.slice(before))).toEqual([]);
+  expect(seen.resources.some((path) => /WarehouseConfiguration\.tsx$/.test(path))).toBe(false);
+  expect(seen.unexpected).toEqual([]);
+});
+
 test("equipment reader enters its authorized section without model or external requests", async ({ page }) => {
   const seen = await session(page, ["assets:instance:view"]);
   await page.goto("/warehouses");

@@ -90,3 +90,30 @@ test("un error de recepción conserva la cantidad y el formulario", async ({ pag
   await expect(quantity).toHaveValue("7.5");
   await expect(page.getByRole("button", { name: "Confirmar", exact: true })).toBeEnabled();
 });
+
+test("la disponibilidad excluye áreas bloqueadas y conserva visible toda la existencia física", async ({ page }) => {
+  await session(page, ["inventory:catalog:view", "inventory:stock:view"]);
+  const base = { description: null, family: "CAJAS", subfamily: null, baseUnit: { unitRef: membershipRef, code: "UND", name: "Unidad" }, status: "ACTIVE", version: 1, minimumStock: null, reorderPoint: 2, currentCost: null };
+  const items = [
+    { ...base, materialRef: "148f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", code: "RETENIDO", name: "Material en área bloqueada", inventory: { physical: 12, reserved: 2, assigned: 0, available: 10, dispatchable: 0, blockedAvailable: 10, blockedPhysical: 12, byWarehouse: [] } },
+    { ...base, materialRef: "248f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", code: "LIBRE", name: "Material despachable", inventory: { physical: 7, reserved: 0, assigned: 0, available: 7, dispatchable: 7, blockedAvailable: 0, blockedPhysical: 0, byWarehouse: [] } },
+  ];
+  await page.route("**/api/materials/catalog", (route) => route.fulfill({ json: { ok: true, data: { page: 1, pageSize: 25, total: items.length, items } } }));
+  await page.route("**/api/materials/warehouses", (route) => route.fulfill({ json: { ok: true, data: [] } }));
+  await page.goto("/warehouses/materials");
+  const blocked = page.getByRole("row").filter({ hasText: "RETENIDO" });
+  await expect(blocked.getByRole("cell").nth(3)).toHaveText("12");
+  await expect(blocked.getByRole("cell").nth(6)).toHaveText("0");
+  await expect(blocked.getByRole("cell").nth(7)).toHaveText("10");
+  await expect(page.getByText(/sigue incluida en la existencia física/)).toBeVisible();
+  await page.getByLabel("Filtrar por disponibilidad").selectOption("AVAILABLE");
+  await expect(blocked).toHaveCount(0);
+  await expect(page.getByRole("row").filter({ hasText: "LIBRE" })).toBeVisible();
+  await page.getByLabel("Filtrar por disponibilidad").selectOption("OUT");
+  await expect(blocked).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "LIBRE" })).toHaveCount(0);
+  await page.getByLabel("Filtrar por disponibilidad").selectOption("BLOCKED");
+  await blocked.click();
+  await expect(page.getByText("Bloqueado por almacén", { exact: true })).toBeVisible();
+  await expect(page.getByText(/contienen 12 UND de existencia física/)).toBeVisible();
+});

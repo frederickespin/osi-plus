@@ -1,19 +1,26 @@
 import type { HubApplication } from "@/hub/appCatalog";
 
-export type WarehouseSectionId = "spaces" | "materials" | "equipment";
+export type WarehouseSectionId = "spaces" | "configuration" | "materials" | "equipment";
+export type WarehouseSectionGroupId = "organization" | "inventory";
+export const WAREHOUSE_SECTION_GROUPS: readonly Readonly<{ id: WarehouseSectionGroupId; label: string }>[] = Object.freeze([
+  { id: "organization", label: "Organización y catálogo" },
+  { id: "inventory", label: "Control de inventario" },
+]);
 
 export type WarehouseSection = Readonly<{
   id: WarehouseSectionId;
   label: string;
   route: string;
   permissions: readonly string[];
+  group: WarehouseSectionGroupId;
 }>;
 
 // Every permission within a section is required. Sections are independent.
 export const WAREHOUSE_SECTIONS: readonly WarehouseSection[] = Object.freeze([
-  { id: "spaces", label: "Espacios y ubicaciones", route: "/warehouses/spaces", permissions: ["inventory:stock:view"] },
-  { id: "materials", label: "Materiales de embalaje", route: "/warehouses/materials", permissions: ["inventory:catalog:view", "inventory:stock:view"] },
-  { id: "equipment", label: "Herramientas y equipos", route: "/warehouses/equipment", permissions: ["assets:instance:view"] },
+  { id: "spaces", label: "Espacios y ubicaciones", route: "/warehouses/spaces", permissions: ["inventory:stock:view"], group: "organization" },
+  { id: "configuration", label: "Configuración", route: "/warehouses/configuration", permissions: ["inventory:stock:view"], group: "organization" },
+  { id: "materials", label: "Materiales de embalaje", route: "/warehouses/materials", permissions: ["inventory:catalog:view", "inventory:stock:view"], group: "inventory" },
+  { id: "equipment", label: "Herramientas y equipos", route: "/warehouses/equipment", permissions: ["assets:instance:view"], group: "inventory" },
 ]);
 
 export function warehouseSectionFromRoute(pathname: string) {

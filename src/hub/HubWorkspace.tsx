@@ -17,6 +17,7 @@ import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resol
 import { isSurveyUiEnabled } from "@/survey/mode";
 import { resolveSurveySchedulingUiAccess } from "@/survey/schedulingAccess";
 import { isMaterialsUiEnabled } from "@/materials-inventory/mode";
+import { isWarehouseConfigurationUiEnabled } from "@/warehouses/configurationMode";
 import { isToolsEquipmentUiEnabled } from "@/tools-equipment/mode";
 import { resolveLogisticsUiAccess } from "@/logistics-engine/access";
 import { isLogisticsUiEnabled } from "@/logistics-engine/mode";
@@ -149,7 +150,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const toolsAuthorized = visible.some((application) => application.appId === "tools-equipment");
   const materialsAvailable = materialsEnabled && materialsAuthorized;
   const toolsAvailable = toolsEnabled && Boolean(toolsAuthorized);
-  const warehouseSections = availableWarehouseSections({ spaces: materialsEnabled, materials: materialsEnabled, equipment: toolsEnabled }, accessContext.effectivePermissions, accessContext.deniedPermissions);
+  const warehouseSections = availableWarehouseSections({ spaces: materialsEnabled, configuration: materialsEnabled && isWarehouseConfigurationUiEnabled(), materials: materialsEnabled, equipment: toolsEnabled }, accessContext.effectivePermissions, accessContext.deniedPermissions);
   const warehousesAvailable = warehouseSections.length > 0;
   const logisticsAccess = resolveLogisticsUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   const logisticsAdminAvailable = isLogisticsUiEnabled() && logisticsAccess.canRulesView;

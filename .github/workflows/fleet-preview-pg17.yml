@@ -89,23 +89,26 @@ jobs:
             assert.equal(identity.ledger_absent, true);
           } finally { await prisma.$disconnect(); }
           NODE
-      - name: Prepare exact 36-migration staging directory
+      - name: Prepare exact36 and37 historical staging directories
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { mkdirSync, copyFileSync, writeFileSync } from 'node:fs';
           import { join } from 'node:path';
           import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
-          const names = validateMigrationFiles();
-          assert.equal(names.length, 37);
-          assert.equal(names.at(-1), '20261031010000_v17_fleet_driver_authority');
-          const stage = join(process.env.RUNNER_TEMP, 'fleet-pg17-36');
-          mkdirSync(join(stage, 'migrations'), { recursive: true });
-          copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
-          writeFileSync(join(stage, 'migrations/migration_lock.toml'), 'provider = "postgresql"\n');
-          for (const name of names.slice(0, -1)) {
-            mkdirSync(join(stage, 'migrations', name));
-            copyFileSync(join('prisma/migrations', name, 'migration.sql'), join(stage, 'migrations', name, 'migration.sql'));
+          const source = validateMigrationFiles();
+          assert.equal(source.length, 38);
+          assert.equal(source.at(-1), '20261101010000_v17_warehouse_configuration');
+          assert.equal(source[36], '20261031010000_v17_fleet_driver_authority');
+          for (const count of [36, 37]) {
+            const stage = join(process.env.RUNNER_TEMP, `fleet-pg17-${count}`);
+            mkdirSync(join(stage, 'migrations'), { recursive: true });
+            copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
+            writeFileSync(join(stage, 'migrations/migration_lock.toml'), 'provider = "postgresql"\n');
+            for (const name of source.slice(0, count)) {
+              mkdirSync(join(stage, 'migrations', name));
+              copyFileSync(join('prisma/migrations', name, 'migration.sql'), join(stage, 'migrations', name, 'migration.sql'));
+            }
           }
           NODE
       - name: Apply 36 and capture PostgreSQL 17 baseline
@@ -114,11 +117,11 @@ jobs:
           node scripts/capture-v17-fleet-drivers-pg17-catalog.mjs --before "$RUNNER_TEMP/fleet-pg17-before.json"
       - name: Upgrade 36 to 37 and verify preserved catalog and measured delta
         run: |
-          npx prisma migrate deploy --schema prisma/schema.prisma
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/fleet-pg17-37/schema.prisma"
           node scripts/capture-v17-fleet-drivers-pg17-catalog.mjs --after "$RUNNER_TEMP/fleet-pg17-after.json" --previous "$RUNNER_TEMP/fleet-pg17-before.json"
       - name: Verify idempotent deploy and replayed catalog
         run: |
-          npx prisma migrate deploy --schema prisma/schema.prisma
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/fleet-pg17-37/schema.prisma"
           node scripts/capture-v17-fleet-drivers-pg17-catalog.mjs --after "$RUNNER_TEMP/fleet-pg17-replay.json" --previous "$RUNNER_TEMP/fleet-pg17-before.json"
       - name: Verify driver assignments and authorizations on PostgreSQL 17
         run: npm run test:v17-fleet-drivers:db

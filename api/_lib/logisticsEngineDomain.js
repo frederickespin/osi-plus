@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { isWarehouseConfigurationEnabled } from "./warehouseConfigurationMode.js";
+import { loadWarehouseLocationPolicies, warehouseStockAvailability } from "./warehouseLocationPolicy.js";
 import { automaticLogisticsConfigurationCode } from "./logisticsConfigurationCode.js";
 import {
   LogisticsEngineError, calculateLogisticsPlan, canonicalHash, canonicalJson,
@@ -90,10 +92,11 @@ export async function loadCanonicalLogisticsFacts(tx, context, caseRef, interval
     tx.externalResourceOffer.findMany({ where: { tenantId: context.tenantId, status: "ACTIVE", OR: [{ validFrom: null }, { validFrom: { lte: end } }], AND: [{ OR: [{ validTo: null }, { validTo: { gt: start } }] }] }, include: { reservations: { where: { status: { in: ["REQUESTED", "CONFIRMED"] }, startsAt: { lt: end }, endsAt: { gt: start } } } } }),
   ]);
   if (!service) logisticsFail("LOGISTICS_SERVICE_REVISION_REQUIRED", 409);
+  const locationPolicies = isWarehouseConfigurationEnabled() ? await loadWarehouseLocationPolicies(tx, context.tenantId) : null;
   const materialIds = requirement?.lines.map((line) => line.material.id) || [];
   const [movements, reservations] = materialIds.length ? await Promise.all([
-    tx.materialInventoryMovement.findMany({ where: { tenantId: context.tenantId, materialId: { in: materialIds }, occurredAt: { lte: observedAt } }, select: { materialId: true, movementType: true, quantityBase: true } }),
-    tx.materialReservation.findMany({ where: { tenantId: context.tenantId, materialId: { in: materialIds }, status: { in: ["RESERVED", "ASSIGNED"] } }, select: { materialId: true, quantityBase: true } }),
+    tx.materialInventoryMovement.findMany({ where: { tenantId: context.tenantId, materialId: { in: materialIds }, occurredAt: { lte: observedAt } }, select: { materialId: true, locationId: true, movementType: true, quantityBase: true } }),
+    tx.materialReservation.findMany({ where: { tenantId: context.tenantId, materialId: { in: materialIds }, status: { in: ["RESERVED", "ASSIGNED"] } }, select: { materialId: true, locationId: true, quantityBase: true } }),
   ]) : [[], []];
   const byType = new Map();
   for (const row of vehicles) {
@@ -111,8 +114,30 @@ export async function loadCanonicalLogisticsFacts(tx, context, caseRef, interval
   const distanceKm = numeric((publication?.contextSnapshot || {}).distanceKm, Number.NaN);
   const route = { contractVersion: pipelineCase.routeContractVersion, version: pipelineCase.routeRevision, destinationStatus: pipelineCase.destinationStatus || "CONFIRMED", distanceStatus: Number.isFinite(distanceKm) ? "KNOWN" : "PENDING", distanceKm: Number.isFinite(distanceKm) ? distanceKm : null, stops: routeRows.map((row) => ({ role: row.role, order: row.stopOrder, countryCode: row.countryCode, provinceState: row.provinceState, cityMunicipality: row.cityMunicipality })) };
   const services = { selectionRef: service.selectionRef, revision: service.revision, mode: service.modeSnapshot, codes: service.items.map((item) => item.codeSnapshot), items: service.items.map((item) => ({ serviceRef: item.serviceRefSnapshot, code: item.codeSnapshot, kind: item.kind, catalogVersion: item.catalogVersionSnapshot })) };
-  const materials = { requirementRef: requirement?.requirementRef || null, logicalSha256: requirement?.logicalSha256 || null, lines: (requirement?.lines || []).map((line) => { const available = sumMovement(movements.filter((row) => row.materialId === line.material.id)); const reserved = reservations.filter((row) => row.materialId === line.material.id).reduce((sum, row) => sum + numeric(row.quantityBase), 0); return { materialRef: line.material.materialRef, name: line.material.name, unit: line.unit.code, required: numeric(line.requiredQuantity), available, reserved, costVersion: line.material.costs[0]?.version || null }; }) };
-  const assets = models.map((model) => ({ modelRef: model.modelRef, code: model.code, name: model.name, family: model.family, resourceType: model.resourceType, version: model.version, available: model.instances.filter((instance) => instance.operationalStatus === "AVAILABLE" && instance.reservations.length === 0 && instance.assignments.length === 0 && instance.maintenanceOrders.length === 0).length, observed: model.instances.length }));
+  const materials = { requirementRef: requirement?.requirementRef || null, logicalSha256: requirement?.logicalSha256 || null, lines: (requirement?.lines || []).map((line) => {
+    const materialMovements = movements.filter((row) => row.materialId === line.material.id);
+    const materialReservations = reservations.filter((row) => row.materialId === line.material.id);
+    const physical = sumMovement(materialMovements);
+    const committed = materialReservations.reduce((sum, row) => sum + numeric(row.quantityBase), 0);
+    let availability = { available: physical, reserved: committed };
+    if (locationPolicies) {
+      const balances = [...new Set([...materialMovements, ...materialReservations].map((row) => row.locationId))].map((locationId) => {
+        const localPhysical = sumMovement(materialMovements.filter((row) => row.locationId === locationId));
+        const reserved = materialReservations.filter((row) => row.locationId === locationId).reduce((sum, row) => sum + numeric(row.quantityBase), 0);
+        return { locationId, physical: localPhysical, reserved, assigned: 0, available: localPhysical - reserved };
+      });
+      const eligible = warehouseStockAvailability(balances, locationPolicies);
+      // The planner subtracts reserved from available. Retain that formula using
+      // only dispatchable locations, with the full physical balance as evidence.
+      availability = { available: eligible.eligiblePhysical, reserved: eligible.eligibleCommitted, physical, committed, dispatchable: eligible.dispatchable, blockedPhysical: eligible.blockedPhysical, blockedAvailable: eligible.blockedAvailable };
+    }
+    return { materialRef: line.material.materialRef, name: line.material.name, unit: line.unit.code, required: numeric(line.requiredQuantity), ...availability, costVersion: line.material.costs[0]?.version || null };
+  }) };
+  const assets = models.map((model) => {
+    const intrinsic = model.instances.filter((instance) => instance.operationalStatus === "AVAILABLE" && instance.reservations.length === 0 && instance.assignments.length === 0 && instance.maintenanceOrders.length === 0);
+    const eligible = locationPolicies ? intrinsic.filter((instance) => !instance.currentLocationId || locationPolicies.get(instance.currentLocationId)?.canDispatch) : intrinsic;
+    return { modelRef: model.modelRef, code: model.code, name: model.name, family: model.family, resourceType: model.resourceType, version: model.version, available: eligible.length, observed: model.instances.length, ...(locationPolicies ? { blockedByLocation: intrinsic.length - eligible.length } : {}) };
+  });
   const externalOffers = offers.map((offer) => { const capacity = numeric(offer.capacity?.quantity, 1); const reserved = offer.reservations.reduce((sum, row) => sum + row.quantity, 0); const free = Math.max(0, capacity - reserved); return { offerRef: offer.offerRef, kind: offer.assetModelId ? "EXTERNAL_ASSET" : "EXTERNAL_RESOURCE", label: offer.resourceDescription, providerName: offer.providerNameSnapshot, quantity: 1, unit: "unidad", availableQuantity: capacity, reservedQuantity: reserved, shortageQuantity: free > 0 ? 0 : 1, availability: offer.availabilityStatus === "AVAILABLE" && free > 0 ? "AVAILABLE" : offer.availabilityStatus === "UNAVAILABLE" ? "UNAVAILABLE" : "PENDING_CONFIRMATION", priceStatus: offer.rateAmount == null ? "PENDING" : "REFERENCED", version: offer.version }; });
   return Object.freeze({ caseRef: pipelineCase.publicRef, mode: pipelineCase.mode, route, services, survey, materials, assets, vehicles: [...byType.values()], externalOffers, availabilityObservedAt: observedAt.toISOString(), interval: { start: start.toISOString(), end: end.toISOString() } });
 }

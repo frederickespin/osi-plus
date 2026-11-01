@@ -28,7 +28,7 @@ try {
   check("fundación inactiva aprobada", baseline.ok && baseline.migrations === CANONICAL_MIGRATIONS.length && baseline.approved === "FROZEN_LEGACY_AMBIGUOUS");
   rejected("migración adicional rechazada", {
     migrations: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"],
-  }, /37 migraciones canónicas/);
+  }, /38 migraciones canónicas/);
   rejected("consumidor runtime rechazado", { extraSources: { "api/crm/mutate.js": "await prisma.pipelineCaseCommand.create({ data });" } }, /consumidores runtime/);
   rejected("mutación runtime rechazada", { extraSources: { "api/crm/mutate.js": "await prisma.pipelineCase.update({ where, data });" } }, /mutaciones PipelineCase/);
   const sqlPath = "prisma/migrations/20260801015000_crm01b_pipeline_mutation_authority/migration.sql";

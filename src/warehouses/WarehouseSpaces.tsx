@@ -1,24 +1,32 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Check, ChevronDown, ChevronRight, MapPin, Pencil, Plus, RefreshCw, Save, Search, Warehouse, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Check, ChevronDown, ChevronRight, MapPin, Pencil, Plus, RefreshCw, Save, Search, Settings, ShieldCheck, Warehouse, X } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { COMPACT_FORM_DIALOG, COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { getMembershipRef } from "@/lib/sessionStore";
 import type { WarehouseLocationRow, WarehouseRow } from "@/materials-inventory/api";
-import { WarehouseApi, WarehouseApiError, isWarehouseRejectionConfirmed, warehouseErrorText, type WarehouseChange } from "./api";
+import { WarehouseApi, WarehouseApiError, isWarehouseRejectionConfirmed, isWarehouseSpatialChange, warehouseErrorText, type WarehouseSpatialChange } from "./api";
+import { isWarehouseConfigurationUiEnabled } from "./configurationMode";
+import { OPERATIONAL_STATUS_LABELS, type WarehouseLocationConfiguration } from "./configurationTypes";
+import { findConfiguredLocation, locationConfigurationOrDefault, pendingWarehouseRoute } from "./configurationUi";
+import type { LocationConfigurationEditorState } from "./LocationConfigurationEditor";
 import { canAddInside, LOCATION_KIND_LABELS, locationNamePath, spaceTreeRows, type SpaceTreeRow } from "./locationTree";
 import { clearPendingWarehouseDraft, getPendingWarehouseDraft, setPendingWarehouseDraft, type PendingWarehouseDraft } from "./pendingDraft";
+import { useWarehouseConfiguration } from "./useWarehouseConfiguration";
+
+const LocationConfigurationEditor = lazy(() => import("./LocationConfigurationEditor"));
 
 type Props = Readonly<{
   authorization?: string;
   effectivePermissions: readonly string[];
   deniedPermissions: readonly string[];
+  onNavigate?(pathname: string): void;
   onUnauthorized(): void;
 }>;
-type Editor = Readonly<{ id: string; kind: "warehouse-create" | "location-create" | "warehouse-rename" | "location-rename"; warehouse?: WarehouseRow; location?: WarehouseLocationRow; recovery?: PendingWarehouseDraft }>;
+type Editor = Readonly<{ id: string; kind: "warehouse-create" | "location-create" | "warehouse-rename" | "location-rename"; warehouse?: WarehouseRow; location?: WarehouseLocationRow; recovery?: PendingWarehouseDraft<WarehouseSpatialChange> }>;
 const buttonClass = "inline-flex min-h-9 items-center justify-center gap-1.5 rounded border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40";
 
-function recoverEditor(draft: PendingWarehouseDraft, warehouses: readonly WarehouseRow[]): Editor {
+function recoverEditor(draft: PendingWarehouseDraft<WarehouseSpatialChange>, warehouses: readonly WarehouseRow[]): Editor {
   const change = draft.change;
   if (change.operation === "WAREHOUSE_CREATE") return { id: draft.requestId, kind: "warehouse-create", recovery: draft };
   const warehouse = warehouses.find((row) => "warehouseRef" in change ? row.warehouseRef === change.warehouseRef : row.locations.some((location) => location.locationRef === change.locationRef))
@@ -30,6 +38,20 @@ function recoverEditor(draft: PendingWarehouseDraft, warehouses: readonly Wareho
   return { id: draft.requestId, kind: change.operation === "WAREHOUSE_LOCATION_CREATE" ? "location-create" : "location-rename", warehouse, location, recovery: draft };
 }
 
+function recoverSpatialEditor(draft: PendingWarehouseDraft | null): Editor | null {
+  return draft && isWarehouseSpatialChange(draft.change) ? recoverEditor({ requestId: draft.requestId, change: draft.change }, []) : null;
+}
+
+function recoverConfigurationEditor(draft: PendingWarehouseDraft | null, warehouses: readonly WarehouseRow[], configurations: readonly WarehouseLocationConfiguration[]): LocationConfigurationEditorState | null {
+  if (draft?.change.operation !== "WAREHOUSE_LOCATION_CONFIGURATION_UPDATE") return null;
+  const change = draft.change;
+  const location = findConfiguredLocation(warehouses, change.locationRef) ?? {
+    warehouse: { warehouseRef: "", code: "—", name: "Guardado anterior", status: "", version: 1, locations: [] },
+    location: { locationRef: change.locationRef, parentLocationRef: null, code: "—", name: "Ubicación del guardado anterior", kind: "OTHER", depth: 0, path: "", status: "", version: 1 },
+  };
+  return { id: draft.requestId, kind: change.acknowledgeImpact || change.changeReason !== null ? "controls" : "details", ...location, configuration: locationConfigurationOrDefault(location.warehouse, location.location, configurations), recovery: { requestId: draft.requestId, change } };
+}
+
 export default function WarehouseSpaces(props: Props) {
   const can = (permission: string) => props.effectivePermissions.includes(permission) && !props.deniedPermissions.includes(permission);
   if (!can("inventory:stock:view")) return <p role="alert" className="py-6 text-sm">No tiene permiso para consultar las ubicaciones.</p>;
@@ -38,18 +60,21 @@ export default function WarehouseSpaces(props: Props) {
   return <SpacesContent key={scope} {...props} membershipRef={membershipRef} canManage={Boolean(membershipRef) && can("inventory:catalog:manage")} />;
 }
 
-function SpacesContent({ authorization, canManage, membershipRef, onUnauthorized }: Props & { canManage: boolean; membershipRef: string | null }) {
+function SpacesContent({ authorization, canManage, membershipRef, onNavigate, onUnauthorized }: Props & { canManage: boolean; membershipRef: string | null }) {
   const api = useMemo(() => new WarehouseApi(authorization), [authorization]);
   const [revision, setRevision] = useState(0);
+  const configurationEnabled = isWarehouseConfigurationUiEnabled();
+  const configurationResult = useWarehouseConfiguration(api, configurationEnabled, revision, onUnauthorized);
   const [result, setResult] = useState<{ revision: number; rows: readonly WarehouseRow[]; error: string | null } | null>(null);
   const [search, setSearch] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("");
   const [status, setStatus] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [recovered] = useState(() => membershipRef ? getPendingWarehouseDraft(membershipRef) : null);
-  const [editor, setEditor] = useState<Editor | null>(() => recovered ? recoverEditor(recovered, []) : null);
-  const [editorOpen, setEditorOpen] = useState(Boolean(recovered) && canManage);
-  const [pendingWrite, setPendingWrite] = useState(Boolean(recovered));
+  const [pendingDraft, setPendingDraft] = useState(() => membershipRef ? getPendingWarehouseDraft(membershipRef) : null);
+  const [editor, setEditor] = useState<Editor | null>(() => recoverSpatialEditor(pendingDraft));
+  const [configurationEditor, setConfigurationEditor] = useState<LocationConfigurationEditorState | null>(() => configurationEnabled ? recoverConfigurationEditor(pendingDraft, [], []) : null);
+  const [editorOpen, setEditorOpen] = useState(Boolean(editor || configurationEditor) && canManage);
+  const [pendingWrite, setPendingWrite] = useState(Boolean(pendingDraft));
   const [notice, setNotice] = useState("");
   const triggerRef = useRef<HTMLElement | null>(null);
   const callbacks = useRef({ onUnauthorized });
@@ -73,15 +98,24 @@ function SpacesContent({ authorization, canManage, membershipRef, onUnauthorized
   const warehouses = !loading && result && !result.error ? result.rows : [];
   const error = !loading ? result?.error : null;
   const filteredWarehouses = warehouses.filter((warehouse) => !warehouseFilter || warehouse.warehouseRef === warehouseFilter);
+  const configurations = configurationResult.data?.locations ?? [];
+  const resolvedConfigurationEditor = configurationEditor?.recovery ? recoverConfigurationEditor(configurationEditor.recovery, warehouses, configurations) : configurationEditor;
   const rows = spaceTreeRows(filteredWarehouses, search, status, collapsed);
   const filtering = Boolean(search.trim() || status);
   const refresh = () => { setRevision((current) => current + 1); };
   const openEditor = (value: Omit<Editor, "id">) => {
     if (pendingWrite) return;
     triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setNotice(""); setEditor({ ...value, id: crypto.randomUUID() }); setEditorOpen(true);
+    setNotice(""); setConfigurationEditor(null); setEditor({ ...value, id: crypto.randomUUID() }); setEditorOpen(true);
   };
-  const closeEditor = (retain: boolean) => { setEditorOpen(false); if (!retain) setEditor(null); };
+  const closeEditor = (retain: boolean) => { setEditorOpen(false); if (!retain) { setEditor(null); setConfigurationEditor(null); } };
+  const openConfigurationEditor = (row: SpaceTreeRow, kind: "details" | "controls") => {
+    if (pendingWrite || !configurationEnabled || !row.location) return;
+    const configuration = configurations.find((item) => item.locationRef === row.location!.locationRef);
+    if (!configuration) return;
+    triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setNotice(""); setEditor(null); setConfigurationEditor({ id: crypto.randomUUID(), kind, warehouse: row.warehouse, location: row.location, configuration }); setEditorOpen(true);
+  };
   const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
   const addLocation = (row: SpaceTreeRow) => {
     if (row.location) openEditor({ kind: "location-create", warehouse: row.warehouse, location: row.location });
@@ -95,7 +129,7 @@ function SpacesContent({ authorization, canManage, membershipRef, onUnauthorized
           <p>Registre un almacén principal y agregue las ubicaciones que existan físicamente dentro de él.</p>
           <p>Ejemplo: Almacén central → Zona de embalaje → Estante A → Posición superior. Puede omitir los niveles que no utilice; cada alta crea una sola ubicación.</p>
           <p>El código se asigna al guardar. Cambiar el nombre conserva el código y la identidad del lugar.</p>
-          <p>Activo describe el estado del registro. La capacidad y el espacio ocupado se incorporarán cuando se definan sus medidas y los bienes almacenados.</p>
+          <p>{configurationEnabled ? "El estado operativo controla las operaciones físicas. La regla de disponibilidad puede bloquear los despachos; los controles de ubicaciones superiores también se aplican." : "Activo describe el estado del registro."} La capacidad y el espacio ocupado se incorporarán cuando se definan sus medidas y los bienes almacenados.</p>
         </AdministrationHelp>
         <AdministrationIconAction label="Actualizar almacenes" disabled={loading || pendingWrite} onClick={refresh}><RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></AdministrationIconAction>
         {canManage && <button type="button" disabled={loading || Boolean(error) || pendingWrite} onClick={() => openEditor({ kind: "warehouse-create" })} className={`${buttonClass} border-[#003366] bg-[#003366] text-white hover:bg-[#00264d]`}><Plus aria-hidden="true" className="h-4 w-4" />Nuevo almacén</button>}
@@ -104,22 +138,25 @@ function SpacesContent({ authorization, canManage, membershipRef, onUnauthorized
     <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(180px,1fr)_minmax(160px,220px)_160px]">
       <label className="relative col-span-2 sm:col-span-1"><Search aria-hidden="true" className="pointer-events-none absolute left-2 top-2 h-4 w-4 text-slate-400 sm:top-1.5" /><input type="search" aria-label="Buscar almacenes y ubicaciones" placeholder="Nombre o código…" maxLength={160} value={search} onChange={(event) => setSearch(event.target.value)} className={`${COMPACT_FORM_FIELD} w-full pl-8`} /></label>
       <select aria-label="Filtrar por almacén" value={warehouseFilter} onChange={(event) => setWarehouseFilter(event.target.value)} disabled={loading} className={COMPACT_FORM_FIELD}><option value="">Todos los almacenes</option>{warehouses.map((warehouse) => <option key={warehouse.warehouseRef} value={warehouse.warehouseRef}>{warehouse.name}</option>)}</select>
-      <select aria-label="Estado de ubicaciones" value={status} onChange={(event) => setStatus(event.target.value)} className={COMPACT_FORM_FIELD}><option value="">Todos los estados</option><option value="ACTIVE">Activos</option><option value="INACTIVE">Inactivos</option></select>
+      <select aria-label={configurationEnabled ? "Estado del registro" : "Estado de ubicaciones"} value={status} onChange={(event) => setStatus(event.target.value)} className={COMPACT_FORM_FIELD}><option value="">{configurationEnabled ? "Todos los registros" : "Todos los estados"}</option><option value="ACTIVE">{configurationEnabled ? "Registros activos" : "Activos"}</option><option value="INACTIVE">{configurationEnabled ? "Registros inactivos" : "Inactivos"}</option></select>
     </div>
     {notice && <p role="status" className="mb-3 flex items-center gap-2 text-xs text-emerald-800"><Check aria-hidden="true" className="h-4 w-4" />{notice}</p>}
-    {pendingWrite && !editorOpen && <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-amber-900"><span>Hay un guardado sin confirmar. {canManage ? "Reabra el formulario para comprobar el mismo intento." : "Necesita permiso de gestión para comprobarlo."}</span>{canManage && <button type="button" onClick={() => setEditorOpen(true)} className={buttonClass}>Reabrir guardado</button>}</div>}
+    {pendingWrite && !editorOpen && <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-amber-900"><span>Hay un guardado sin confirmar. {canManage ? editor || configurationEditor ? "Reabra el formulario para comprobar el mismo intento." : configurationEnabled ? "Compruebe ese intento en Configuración antes de iniciar otro cambio." : "La configuración debe estar habilitada para comprobar ese intento." : "Necesita permiso de gestión para comprobarlo."}</span>{canManage && (editor || configurationEditor ? <button type="button" onClick={() => setEditorOpen(true)} className={buttonClass}>Reabrir guardado</button> : configurationEnabled && pendingDraft && onNavigate ? <button type="button" onClick={() => onNavigate(pendingWarehouseRoute(pendingDraft.change))} className={buttonClass}>Ir al guardado pendiente</button> : null)}</div>}
+    {configurationResult.error && <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-red-800"><span>No se pudieron consultar los usos y controles. {configurationResult.error}</span><button type="button" disabled={pendingWrite} onClick={refresh} className={buttonClass}>Actualizar configuración</button></div>}
     <div className="overflow-hidden rounded border border-slate-200 bg-white">
       <div tabIndex={0} role="region" aria-label="Árbol de almacenes y ubicaciones" className="overflow-x-auto">
         <table className="w-full min-w-[650px] border-collapse text-left text-xs">
-          <thead className="bg-slate-50 text-slate-500"><tr><th scope="col" className="px-3 py-2 font-semibold">Ubicación</th><th scope="col" className="px-3 py-2 font-semibold">Código</th><th scope="col" className="px-3 py-2 font-semibold">Tipo</th><th scope="col" className="px-3 py-2 font-semibold">Estado</th><th scope="col" className="w-24 px-3 py-2 text-center font-semibold">Acciones</th></tr></thead>
+          <thead className="bg-slate-50 text-slate-500"><tr><th scope="col" className="px-3 py-2 font-semibold">Ubicación</th><th scope="col" className="px-3 py-2 font-semibold">Código</th><th scope="col" className="px-3 py-2 font-semibold">Tipo</th>{configurationEnabled && <th scope="col" className="px-3 py-2 font-semibold">Uso</th>}<th scope="col" className="px-3 py-2 font-semibold">{configurationEnabled ? "Operación / despachos" : "Estado"}</th><th scope="col" className="w-24 px-3 py-2 text-center font-semibold">Acciones</th></tr></thead>
           <tbody>
-            {loading && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500"><span role="status">Cargando almacenes…</span></td></tr>}
-            {error && <tr><td colSpan={5} className="px-3 py-6 text-center"><p role="alert" className="mb-2 text-red-800">{error}</p><button type="button" onClick={refresh} className={buttonClass}>Reintentar consulta</button></td></tr>}
-            {!loading && !error && rows.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500">{search || warehouseFilter || status ? "No hay ubicaciones que coincidan con estos filtros." : "Todavía no hay almacenes registrados."}</td></tr>}
+            {loading && <tr><td colSpan={configurationEnabled ? 6 : 5} className="px-3 py-8 text-center text-slate-500"><span role="status">Cargando almacenes…</span></td></tr>}
+            {error && <tr><td colSpan={configurationEnabled ? 6 : 5} className="px-3 py-6 text-center"><p role="alert" className="mb-2 text-red-800">{error}</p><button type="button" onClick={refresh} className={buttonClass}>Reintentar consulta</button></td></tr>}
+            {!loading && !error && rows.length === 0 && <tr><td colSpan={configurationEnabled ? 6 : 5} className="px-3 py-8 text-center text-slate-500">{search || warehouseFilter || status ? "No hay ubicaciones que coincidan con estos filtros." : "Todavía no hay almacenes registrados."}</td></tr>}
             {!loading && !error && rows.map((row) => {
               const name = row.isWarehouse ? row.warehouse.name : row.location!.name;
               const active = (row.isWarehouse ? row.warehouse.status : row.location!.status) === "ACTIVE";
               const code = row.isWarehouse ? row.warehouse.code : row.location!.code;
+              const configuration = configurations.find((item) => item.locationRef === row.location?.locationRef);
+              const areaUse = configurationResult.data?.areaUses.find((use) => use.useRef === configuration?.areaUseRef);
               return <tr key={row.key} data-testid="warehouse-space-row" className={`border-t border-slate-100 ${row.isWarehouse ? "bg-slate-50/70" : "hover:bg-slate-50"}`}>
                 <td className={`max-w-[420px] py-1.5 pr-3 ${row.matches ? "text-slate-900" : "text-slate-500"}`} style={{ paddingLeft: `${12 + Math.min(row.indent, 5) * 18}px` }}>
                   <div className="flex items-center gap-1">
@@ -130,11 +167,15 @@ function SpacesContent({ authorization, canManage, membershipRef, onUnauthorized
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 font-mono text-[11px] text-slate-600">{code}</td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-slate-600">{row.isWarehouse ? "Almacén principal" : LOCATION_KIND_LABELS[row.location!.kind] ?? "Otra ubicación"}</td>
-                <td className="px-3 py-1.5"><span className={`inline-flex rounded px-2 py-0.5 ${active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{active ? "Activo" : "Inactivo"}</span></td>
+                {configurationEnabled && <td className="px-3 py-1.5 text-slate-600">{configuration ? areaUse?.name ?? (configuration.areaUseRef ? "Uso sin confirmar" : "Sin asignar") : "—"}</td>}
+                <td className="px-3 py-1.5">{configurationEnabled ? configuration ? <div className="space-y-1 whitespace-nowrap"><span className={`inline-flex rounded px-2 py-0.5 ${configuration.effective.operationalStatus === "ACTIVE" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>{OPERATIONAL_STATUS_LABELS[configuration.effective.operationalStatus]}</span><p className={`text-[11px] ${configuration.effective.canDispatch ? "text-slate-500" : "text-amber-900"}`}>{configuration.effective.canDispatch ? "Despachos permitidos" : "Despachos bloqueados"}{configuration.effective.inherited ? " · Heredado" : ""}</p>{!active && <p className="text-[11px] text-slate-500">Registro inactivo</p>}</div> : <span className="text-slate-400">{configurationResult.loading ? "Consultando…" : "Sin confirmar"}</span> : <span className={`inline-flex rounded px-2 py-0.5 ${active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{active ? "Activo" : "Inactivo"}</span>}</td>
                 <td className="px-2 py-1.5"><div className="flex justify-center gap-1">{canManage ? <>
                   <AdministrationIconAction label={`Cambiar nombre de ${name}`} disabled={pendingWrite} onClick={() => openEditor({ kind: row.isWarehouse ? "warehouse-rename" : "location-rename", warehouse: row.warehouse, location: row.location ?? undefined })}><Pencil aria-hidden="true" className="h-3.5 w-3.5" /></AdministrationIconAction>
                   <AdministrationIconAction label={`Agregar ubicación en ${name}`} disabled={pendingWrite || !row.location || !canAddInside(row.warehouse, row.location)} onClick={() => addLocation(row)}><Plus aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction>
-                </> : <span className="text-slate-400">—</span>}</div></td>
+                </> : !configurationEnabled && <span className="text-slate-400">—</span>}{configurationEnabled && <>
+                  <AdministrationIconAction label={`${canManage ? "Configurar" : "Ver configuración de"} ${name}`} disabled={pendingWrite || !configuration} onClick={() => openConfigurationEditor(row, "details")}><Settings className="h-3.5 w-3.5" aria-hidden="true" /></AdministrationIconAction>
+                  <AdministrationIconAction label={`Controles operativos de ${name}`} disabled={pendingWrite || !configuration} onClick={() => openConfigurationEditor(row, "controls")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /></AdministrationIconAction>
+                </>}</div></td>
               </tr>;
             })}
           </tbody>
@@ -142,7 +183,8 @@ function SpacesContent({ authorization, canManage, membershipRef, onUnauthorized
       </div>
       {!loading && !error && <p className="border-t border-slate-200 px-3 py-2 text-xs text-slate-500">{warehouses.length} {warehouses.length === 1 ? "almacén" : "almacenes"} · {warehouses.reduce((count, warehouse) => count + warehouse.locations.filter((location) => location.parentLocationRef !== null).length, 0)} ubicaciones interiores</p>}
     </div>
-    {editor && canManage && <WarehouseEditor key={editor.id} editor={editor} open={editorOpen} api={api} triggerRef={triggerRef} onClose={closeEditor} onPendingChange={setPendingWrite} onRemember={(draft) => { if (membershipRef) setPendingWarehouseDraft(membershipRef, draft); }} onResolved={() => { if (membershipRef) clearPendingWarehouseDraft(membershipRef); }} onUnauthorized={onUnauthorized} onSaved={(saved) => { setPendingWrite(false); setEditorOpen(false); setEditor(null); setWarehouseFilter(""); setSearch(""); setStatus(""); setCollapsed(new Set()); setNotice(`Guardado: ${saved.name} · ${saved.code}`); refresh(); }} onRefresh={() => { setPendingWrite(false); closeEditor(false); refresh(); }} />}
+    {editor && canManage && <WarehouseEditor key={editor.id} editor={editor} open={editorOpen} api={api} triggerRef={triggerRef} onClose={closeEditor} onPendingChange={setPendingWrite} onRemember={(draft) => { setPendingDraft(draft); if (membershipRef) setPendingWarehouseDraft(membershipRef, draft); }} onResolved={() => { setPendingDraft(null); if (membershipRef) clearPendingWarehouseDraft(membershipRef); }} onUnauthorized={onUnauthorized} onSaved={(saved) => { setPendingWrite(false); setEditorOpen(false); setEditor(null); setWarehouseFilter(""); setSearch(""); setStatus(""); setCollapsed(new Set()); setNotice(`Guardado: ${saved.name} · ${saved.code}`); refresh(); }} onRefresh={() => { setPendingWrite(false); closeEditor(false); refresh(); }} />}
+    {configurationEnabled && resolvedConfigurationEditor && <Suspense fallback={<p role="status" className="py-3 text-xs text-slate-500">Cargando ficha de ubicación…</p>}><LocationConfigurationEditor key={resolvedConfigurationEditor.id} editor={resolvedConfigurationEditor} open={editorOpen} api={api} membershipRef={membershipRef} canManage={canManage} areaUses={configurationResult.data?.areaUses ?? []} warehouses={warehouses} triggerRef={triggerRef} onClose={closeEditor} onPending={(draft) => { setPendingDraft(draft); setPendingWrite(Boolean(draft)); }} onSaved={() => { closeEditor(false); setNotice("Configuración de la ubicación guardada."); refresh(); }} onUnauthorized={onUnauthorized} onRefresh={() => { closeEditor(false); refresh(); }} /></Suspense>}
   </section>;
 }
 
@@ -175,7 +217,7 @@ function WarehouseEditor({ editor, open, api, triggerRef, onClose, onPendingChan
     if (pending.current || conflict) return;
     const cleanName = name.trim();
     if (!cleanName) { setError("Escriba el nombre del almacén o la ubicación."); return; }
-    const change: WarehouseChange = recovered ?? (creatingWarehouse ? { operation: "WAREHOUSE_CREATE", name: cleanName }
+    const change: WarehouseSpatialChange = uncertain && recovered ? recovered : (creatingWarehouse ? { operation: "WAREHOUSE_CREATE", name: cleanName }
       : creatingLocation ? { operation: "WAREHOUSE_LOCATION_CREATE", warehouseRef: editor.warehouse!.warehouseRef, parentLocationRef: parentRef, kind, name: cleanName }
       : editor.kind === "warehouse-rename" ? { operation: "WAREHOUSE_UPDATE", warehouseRef: editor.warehouse!.warehouseRef, expectedVersion: editor.warehouse!.version, name: cleanName }
       : { operation: "WAREHOUSE_LOCATION_UPDATE", locationRef: editor.location!.locationRef, expectedVersion: editor.location!.version, name: cleanName });

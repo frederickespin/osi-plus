@@ -1,6 +1,6 @@
 import type { WarehouseChange } from "./api";
 
-export type PendingWarehouseDraft = Readonly<{ requestId: string; change: WarehouseChange }>;
+export type PendingWarehouseDraft<T extends WarehouseChange = WarehouseChange> = Readonly<{ requestId: string; change: T }>;
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const STORAGE_PREFIX = "osi-plus.warehouses.pending.v1:";
@@ -21,34 +21,56 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[]) {
 function validRef(value: unknown): value is string { return typeof value === "string" && UUID_V4.test(value); }
 function validName(value: unknown): value is string { return typeof value === "string" && value === value.trim() && value.length > 0 && value.length <= 160; }
 function validVersion(value: unknown): value is number { return Number.isSafeInteger(value) && Number(value) > 0; }
+function validText(value: unknown, max: number): value is string | null { return value === null || typeof value === "string" && value === value.trim() && value.length > 0 && value.length <= max; }
+function oneOf<T extends string>(value: unknown, values: readonly T[]): value is T { return typeof value === "string" && values.includes(value as T); }
 
 // Reconstruct only exact command fields. A stored intent never supplies authority
 // or initiates a request; the editor must revalidate access and ask for a retry.
 function validateDraft(value: unknown): PendingWarehouseDraft | null {
   if (!record(value) || !exactKeys(value, ["requestId", "change"]) || !validRef(value.requestId) || !record(value.change)) return null;
   const input = value.change;
-  if (!validName(input.name)) return null;
   let change: WarehouseChange;
   switch (input.operation) {
     case "WAREHOUSE_CREATE":
-      if (!exactKeys(input, ["operation", "name"])) return null;
+      if (!exactKeys(input, ["operation", "name"]) || !validName(input.name)) return null;
       change = { operation: input.operation, name: input.name };
       break;
     case "WAREHOUSE_LOCATION_CREATE":
       if (!exactKeys(input, ["operation", "warehouseRef", "parentLocationRef", "name", "kind"])
         || !validRef(input.warehouseRef) || !validRef(input.parentLocationRef)
-        || typeof input.kind !== "string" || !LOCATION_KINDS.has(input.kind)) return null;
+        || !validName(input.name) || typeof input.kind !== "string" || !LOCATION_KINDS.has(input.kind)) return null;
       change = { operation: input.operation, warehouseRef: input.warehouseRef, parentLocationRef: input.parentLocationRef, name: input.name, kind: input.kind };
       break;
     case "WAREHOUSE_UPDATE":
       if (!exactKeys(input, ["operation", "warehouseRef", "expectedVersion", "name"])
-        || !validRef(input.warehouseRef) || !validVersion(input.expectedVersion)) return null;
+        || !validRef(input.warehouseRef) || !validVersion(input.expectedVersion) || !validName(input.name)) return null;
       change = { operation: input.operation, warehouseRef: input.warehouseRef, expectedVersion: input.expectedVersion, name: input.name };
       break;
     case "WAREHOUSE_LOCATION_UPDATE":
       if (!exactKeys(input, ["operation", "locationRef", "expectedVersion", "name"])
-        || !validRef(input.locationRef) || !validVersion(input.expectedVersion)) return null;
+        || !validRef(input.locationRef) || !validVersion(input.expectedVersion) || !validName(input.name)) return null;
       change = { operation: input.operation, locationRef: input.locationRef, expectedVersion: input.expectedVersion, name: input.name };
+      break;
+    case "WAREHOUSE_AREA_USE_CREATE":
+      if (!exactKeys(input, ["operation", "name", "description", "purpose"]) || !validName(input.name)
+        || !validText(input.description, 500) || !oneOf(input.purpose, ["INTERNAL", "CLIENT_STORAGE", "MIXED"])) return null;
+      change = { operation: input.operation, name: input.name, description: input.description, purpose: input.purpose };
+      break;
+    case "WAREHOUSE_AREA_USE_UPDATE":
+      if (!exactKeys(input, ["operation", "useRef", "expectedVersion", "name", "description", "purpose", "status"])
+        || !validRef(input.useRef) || !validVersion(input.expectedVersion) || input.expectedVersion > 1_000_000 || !validName(input.name)
+        || !validText(input.description, 500) || !oneOf(input.purpose, ["INTERNAL", "CLIENT_STORAGE", "MIXED"])
+        || !oneOf(input.status, ["ACTIVE", "INACTIVE"])) return null;
+      change = { operation: input.operation, useRef: input.useRef, expectedVersion: input.expectedVersion, name: input.name, description: input.description, purpose: input.purpose, status: input.status };
+      break;
+    case "WAREHOUSE_LOCATION_CONFIGURATION_UPDATE":
+      if (!exactKeys(input, ["operation", "locationRef", "expectedVersion", "areaUseRef", "characteristics", "notes", "operationalStatus", "availabilityRule", "changeReason", "acknowledgeImpact"])
+        || !validRef(input.locationRef) || !Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 0 || Number(input.expectedVersion) > 1_000_000
+        || input.areaUseRef !== null && !validRef(input.areaUseRef)
+        || !validText(input.characteristics, 180) || !validText(input.notes, 2000) || !validText(input.changeReason, 500)
+        || !oneOf(input.operationalStatus, ["ACTIVE", "RESTRICTED", "OUT_OF_SERVICE"])
+        || !oneOf(input.availabilityRule, ["CONDITION_BASED", "BLOCKED"]) || typeof input.acknowledgeImpact !== "boolean") return null;
+      change = { operation: input.operation, locationRef: input.locationRef, expectedVersion: Number(input.expectedVersion), areaUseRef: input.areaUseRef, characteristics: input.characteristics, notes: input.notes, operationalStatus: input.operationalStatus, availabilityRule: input.availabilityRule, changeReason: input.changeReason, acknowledgeImpact: input.acknowledgeImpact };
       break;
     default: return null;
   }
@@ -56,7 +78,7 @@ function validateDraft(value: unknown): PendingWarehouseDraft | null {
 }
 
 function readStoredDraft(raw: string): PendingWarehouseDraft | null {
-  if (raw.length > 4096) return null;
+  if (raw.length > 16384) return null;
   try {
     const wrapper: unknown = JSON.parse(raw);
     return record(wrapper) && exactKeys(wrapper, ["version", "draft"]) && wrapper.version === 1 ? validateDraft(wrapper.draft) : null;

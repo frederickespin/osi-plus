@@ -7,14 +7,17 @@ import { validateTrackedSecrets } from "./validate-canonical-ci.mjs";
 
 const root = mkdtempSync(join(tmpdir(), "canonical-secret-guard-"));
 after(() => rmSync(root, { recursive: true, force: true }));
-const allowedFiles = [
-  ".github/workflows/fleet-preview-pg17.yml",
-  "scripts/v17-fleet-drivers-pg17-local-target-test.mjs",
-];
-// Exercise the scanner with the actual synthetic fixture, without copying its URL.
-const source = readFileSync(new URL("./v17-fleet-drivers-pg17-local-target-test.mjs", import.meta.url), "utf8");
-const local = source.match(/const local = "([^"]+)";/)?.[1];
-assert.ok(local, "The PG17 local fixture must declare its synthetic URL");
+const fixtures = [
+  { name: "fleet", port: "55433", database: "osi_fleet_17_compat", files: [".github/workflows/fleet-preview-pg17.yml", "scripts/v17-fleet-drivers-pg17-local-target-test.mjs"] },
+  { name: "warehouse", port: "55434", database: "osi_warehouse_17_compat", files: [".github/workflows/warehouse-preview-pg17.yml", "scripts/v17-warehouse-configuration-pg17-local-target-test.mjs"] },
+].map((fixture) => {
+  // Exercise the actual synthetic fixtures without copying credential URLs
+  // into another source file or broadening the scanner's exact exceptions.
+  const source = readFileSync(new URL(`../${fixture.files[1]}`, import.meta.url), "utf8");
+  const local = source.match(/const local = "([^"]+)";/)?.[1];
+  assert.ok(local, `${fixture.name} PG17 fixture must declare its synthetic URL`);
+  return { ...fixture, local };
+});
 
 function scan(file, contents) {
   const path = join(root, file);
@@ -29,7 +32,9 @@ function rejected(file, contents) {
     && error.message.includes(file) && !error.message.includes(contents));
 }
 
-for (const file of allowedFiles) {
+for (const fixture of fixtures) {
+  const { local } = fixture;
+  for (const file of fixture.files) {
   test(`PG17 synthetic URL is allowed only with exact fields in ${file}`, () => {
     assert.equal(scan(file, `connection: ${local}\n`), 1);
   });
@@ -39,8 +44,8 @@ for (const file of allowedFiles) {
     ["username", local.replace("postgres:postgres@", "different:postgres@")],
     ["password", local.replace("postgres:postgres@", "postgres:different@")],
     ["protocol alias", local.replace("postgresql:", "postgres:")],
-    ["port", local.replace(":55433/", ":55432/")],
-    ["database", local.replace("osi_fleet_17_compat", "other_database")],
+    ["port", local.replace(`:${fixture.port}/`, ":55432/")],
+    ["database", local.replace(fixture.database, "other_database")],
     ["schema", local.replace("schema=osi", "schema=other_schema")],
     ["missing schema", local.replace("?schema=osi", "")],
     ["extra parameter", `${local}&host=192.0.2.1`],
@@ -54,11 +59,15 @@ for (const file of allowedFiles) {
     rejected(file, `${local}\n${["-----BEGIN ", "PRIVATE KEY-----"].join("")}`);
     rejected(file, `${local}\n${["ep-example", "neon", "tech"].join(".")}`);
   });
+  test(`PG17 file rejects the other approved fixture in ${file}`, () => {
+    for (const other of fixtures.filter((candidate) => candidate.name !== fixture.name)) rejected(file, other.local);
+  });
+  }
 }
 
 test("PG17 fixture remains rejected outside its exact source files", () => {
-  for (const file of ["api/example.js", ".github/workflows/other.yml", "scripts/other-test.mjs"]) {
-    rejected(file, local);
+  for (const { local } of fixtures) {
+    for (const file of ["api/example.js", ".github/workflows/other.yml", "scripts/other-test.mjs"]) rejected(file, local);
   }
 });
 

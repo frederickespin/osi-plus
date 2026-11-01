@@ -90,6 +90,10 @@ test("all command variants survive validation with unchanged request identity an
     { operation: "WAREHOUSE_LOCATION_CREATE", warehouseRef: WAREHOUSE, parentLocationRef: LOCATION, name: "Posición real", kind: "BIN" },
     { operation: "WAREHOUSE_UPDATE", warehouseRef: WAREHOUSE, expectedVersion: 7, name: "Nombre actualizado" },
     { operation: "WAREHOUSE_LOCATION_UPDATE", locationRef: LOCATION, expectedVersion: 2, name: "Posición actualizada" },
+    { operation: "WAREHOUSE_AREA_USE_CREATE", name: "Uso sintético", description: null, purpose: "INTERNAL" },
+    { operation: "WAREHOUSE_AREA_USE_UPDATE", useRef: LOCATION, expectedVersion: 3, name: "Uso actualizado", description: "Solo orientación", purpose: "MIXED", status: "INACTIVE" },
+    { operation: "WAREHOUSE_LOCATION_CONFIGURATION_UPDATE", locationRef: LOCATION, expectedVersion: 0, areaUseRef: null, characteristics: "Área techada", notes: null, operationalStatus: "ACTIVE", availabilityRule: "CONDITION_BASED", changeReason: null, acknowledgeImpact: false },
+    { operation: "WAREHOUSE_LOCATION_CONFIGURATION_UPDATE", locationRef: LOCATION, expectedVersion: 2, areaUseRef: WAREHOUSE, characteristics: null, notes: "n".repeat(2000), operationalStatus: "RESTRICTED", availabilityRule: "BLOCKED", changeReason: "Mantenimiento sintético", acknowledgeImpact: true },
   ]) {
     const intended = { requestId: REQUEST_A, change };
     api.setPendingWarehouseDraft(MEMBER_A, intended);
@@ -104,7 +108,7 @@ test("corrupt or authority-bearing storage is ignored without preserving stale m
   api.setPendingWarehouseDraft(MEMBER_A, draft());
   const key = [...items.keys()][0];
   for (const corrupt of [
-    "{", "null", "[]", "x".repeat(4097),
+    "{", "null", "[]", "x".repeat(16385),
     JSON.stringify({ version: 2, draft: draft() }),
     JSON.stringify({ version: 1, draft: draft(), tenantId: "injected" }),
     JSON.stringify({ version: 1, draft: { ...draft(), authorization: "Bearer injected" } }),
@@ -116,6 +120,29 @@ test("corrupt or authority-bearing storage is ignored without preserving stale m
     assert.equal(api.getPendingWarehouseDraft(MEMBER_A), null, corrupt.slice(0, 160));
     assert.equal((await freshModule()).getPendingWarehouseDraft(MEMBER_A), null);
   }
+});
+
+test("configuration intents reject authority, derived availability, writable codes and invalid control data", async () => {
+  const { items } = storageFixture();
+  const api = await freshModule();
+  const configuration = { operation: "WAREHOUSE_LOCATION_CONFIGURATION_UPDATE", locationRef: LOCATION, expectedVersion: 0, areaUseRef: null, characteristics: null, notes: null, operationalStatus: "ACTIVE", availabilityRule: "CONDITION_BASED", changeReason: null, acknowledgeImpact: false };
+  const use = { operation: "WAREHOUSE_AREA_USE_CREATE", name: "Uso", description: null, purpose: "INTERNAL" };
+  const invalid = [
+    ...["tenantId", "authorization", "permissions", "code", "effective", "lastControlReason"].map((key) => ({ ...configuration, [key]: "injected" })),
+    ...[-1, 1.5, "0", 1_000_001].map((expectedVersion) => ({ ...configuration, expectedVersion })),
+    ...["", "invalid", "/api/location"].map((locationRef) => ({ ...configuration, locationRef })),
+    { ...configuration, areaUseRef: "invalid" }, { ...configuration, characteristics: "x".repeat(181) },
+    { ...configuration, notes: "x".repeat(2001) }, { ...configuration, changeReason: "x".repeat(501) },
+    { ...configuration, notes: " untrimmed" }, { ...configuration, characteristics: "" },
+    { ...configuration, acknowledgeImpact: "true" }, { ...configuration, operationalStatus: "INACTIVE" },
+    { ...configuration, availabilityRule: "AVAILABLE" },
+    { ...use, purpose: "CLIENT_OWNER" }, { ...use, description: "x".repeat(501) }, { ...use, status: "ACTIVE" },
+    { ...use, operation: "WAREHOUSE_AREA_USE_UPDATE", useRef: LOCATION, expectedVersion: 0, status: "ACTIVE" },
+    { ...use, operation: "WAREHOUSE_AREA_USE_UPDATE", useRef: LOCATION, expectedVersion: 1_000_001, status: "ACTIVE" },
+  ];
+  for (const change of invalid) api.setPendingWarehouseDraft(MEMBER_A, { requestId: REQUEST_A, change });
+  assert.equal(items.size, 0);
+  assert.equal(api.getPendingWarehouseDraft(MEMBER_A), null);
 });
 
 test("invalid membership, UUIDs, names, versions and structural kinds never persist", async () => {

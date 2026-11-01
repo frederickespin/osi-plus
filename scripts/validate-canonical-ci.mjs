@@ -61,9 +61,11 @@ function trackedFiles() {
   return result.stdout.split("\0").filter(Boolean);
 }
 
-const PG17_SYNTHETIC_URL_FILES = new Set([
-  ".github/workflows/fleet-preview-pg17.yml",
-  "scripts/v17-fleet-drivers-pg17-local-target-test.mjs",
+const PG17_SYNTHETIC_URL_FILES = new Map([
+  [".github/workflows/fleet-preview-pg17.yml", { port: "55433", database: "osi_fleet_17_compat" }],
+  ["scripts/v17-fleet-drivers-pg17-local-target-test.mjs", { port: "55433", database: "osi_fleet_17_compat" }],
+  [".github/workflows/warehouse-preview-pg17.yml", { port: "55434", database: "osi_warehouse_17_compat" }],
+  ["scripts/v17-warehouse-configuration-pg17-local-target-test.mjs", { port: "55434", database: "osi_warehouse_17_compat" }],
 ]);
 
 function allowedTrackedCredentialUrl(file, raw) {
@@ -72,13 +74,15 @@ function allowedTrackedCredentialUrl(file, raw) {
   if (file === ".github/workflows/ci.yml") {
     return new Set(["127.0.0.1", "localhost", "::1"]).has(url.hostname);
   }
-  // Only this known, disposable PG17 fixture is allowed in its two source files.
-  return PG17_SYNTHETIC_URL_FILES.has(file)
+  // Each disposable PG17 fixture is bound to its own exact source files, port
+  // and database. Neither fixture grants a general loopback URL exception.
+  const fixture = PG17_SYNTHETIC_URL_FILES.get(file);
+  return Boolean(fixture)
     && raw === url.href && !raw.includes("#")
     && url.protocol === "postgresql:"
     && url.username === "postgres" && url.password === "postgres"
-    && url.hostname === "127.0.0.1" && url.port === "55433"
-    && url.pathname === "/osi_fleet_17_compat" && url.search === "?schema=osi";
+    && url.hostname === "127.0.0.1" && url.port === fixture.port
+    && url.pathname === `/${fixture.database}` && url.search === "?schema=osi";
 }
 
 export function validateTrackedSecrets(root = process.cwd(), files = trackedFiles()) {

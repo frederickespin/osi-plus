@@ -55,6 +55,7 @@ jobs:
           node scripts/v17-admin-fleet-logistics-units-test.mjs
           npm run test:v17-fleet-drivers
           npm run test:v17-fleet-drivers:http
+          npm run test:v17-warehouse-configuration
           npm run test:v17-logistics-transport
           npm run guard:v17-logistics-engine
           node scripts/v17-quote-local-target-test.mjs
@@ -603,17 +604,17 @@ jobs:
           test "$diff_status" -eq 0
           grep -Fxq -- "-- This is an empty migration." "$RUNNER_TEMP/canonical-drift.sql"
 
-      - name: Capture read-only 19F SQL catalog evidence
+      - name: Capture read-only20B SQL catalog evidence
         env:
-          V17_FLEET_DRIVERS_CATALOG_EVIDENCE_PATH: ${{ runner.temp }}/v17-fleet-drivers-catalog-evidence.json
-        run: node scripts/capture-v17-fleet-drivers-catalog.mjs
+          V17_WAREHOUSE_CONFIGURATION_CATALOG_EVIDENCE_PATH: ${{ runner.temp }}/v17-warehouse-configuration-catalog-evidence.json
+        run: node scripts/capture-v17-warehouse-configuration-catalog.mjs
 
       - name: Publish candidate catalog without accepting a baseline
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: v17-fleet-drivers-catalog-evidence
-          path: ${{ runner.temp }}/v17-fleet-drivers-catalog-evidence.json
+          name: v17-warehouse-configuration-catalog-evidence
+          path: ${{ runner.temp }}/v17-warehouse-configuration-catalog-evidence.json
           if-no-files-found: ignore
           retention-days: 7
 
@@ -681,7 +682,9 @@ jobs:
         run: npm run test:v17-costing:db
 
       - name: Validate warehouse identity, hierarchy and concurrent retries against PostgreSQL 18
-        run: npm run test:v17-warehouses:db
+        run: |
+          npm run test:v17-warehouses:db
+          npm run test:v17-warehouse-configuration:db
 
       - name: Validate transport zones, costs and context isolation against PostgreSQL 18
         run: npm run test:v17-logistics-transport:db

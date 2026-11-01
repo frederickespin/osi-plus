@@ -34,7 +34,7 @@ const {
 } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
 
 const warehouses = HUB_APPLICATIONS.find((application) => application.appId === "warehouses");
-const allEnabled = { spaces: true, materials: true, equipment: true };
+const allEnabled = { spaces: true, configuration: true, materials: true, equipment: true };
 const permissions = ["inventory:stock:view", "inventory:catalog:view", "assets:instance:view"];
 const context = (effective, denied = [], role = "A") => ({ role, effectivePermissions: effective, deniedPermissions: denied, source: effective === null ? "SERVER_VALIDATED_ROLE" : "SERVER_EFFECTIVE_PERMISSIONS" });
 const sectionIds = (effective, denied = [], enabled = allEnabled) => availableWarehouseSections(enabled, effective, denied).map((section) => section.id);
@@ -57,6 +57,7 @@ test("section authorization agrees with deep routes for every grant and deny com
       const can = (permission) => effective.includes(permission) && !denied.includes(permission);
       const expected = {
         spaces: can("inventory:stock:view"),
+        configuration: can("inventory:stock:view"),
         materials: can("inventory:catalog:view") && can("inventory:stock:view"),
         equipment: can("assets:instance:view"),
       };
@@ -72,13 +73,13 @@ test("section authorization agrees with deep routes for every grant and deny com
 });
 
 test("a catalog denial leaves spaces and independently authorized equipment available", () => {
-  assert.deepEqual(sectionIds(permissions, ["inventory:catalog:view"]), ["spaces", "equipment"]);
+  assert.deepEqual(sectionIds(permissions, ["inventory:catalog:view"]), ["spaces", "configuration", "equipment"]);
   assert.deepEqual(sectionIds(permissions, ["inventory:stock:view"]), ["equipment"]);
-  assert.deepEqual(sectionIds(permissions, ["assets:instance:view"]), ["spaces", "materials"]);
+  assert.deepEqual(sectionIds(permissions, ["assets:instance:view"]), ["spaces", "configuration", "materials"]);
 });
 
 test("feature availability only narrows authorized sections", () => {
-  for (let mask = 0; mask < 8; mask += 1) {
+  for (let mask = 0; mask < 16; mask += 1) {
     const enabled = Object.fromEntries(WAREHOUSE_SECTIONS.map((section, index) => [section.id, Boolean(mask & (1 << index))]));
     assert.deepEqual(sectionIds(permissions, [], enabled), WAREHOUSE_SECTIONS.filter((section) => enabled[section.id]).map((section) => section.id));
     assert.deepEqual(sectionIds([], [], enabled), []);

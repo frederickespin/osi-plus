@@ -14,6 +14,7 @@ on:
       - "scripts/v17-warehouse*"
       - "scripts/validate-v17-materials-inventory*"
       - "scripts/protected-cors-route-inventory.json"
+      - "scripts/validate-mt01b3a-auth-guard*"
       - "tests/v17-warehouses/**"
       - "tests/v17-materials-inventory/**"
       - "tests/v17-tools-equipment/**"
@@ -47,6 +48,8 @@ jobs:
           npm run guard:v17-materials-inventory
           npm run guard:v17-tools-equipment
           npm run guard:v17-hub-auth-lazy
+          node scripts/validate-mt01b3a-auth-guard.mjs
+          node scripts/validate-mt01b3a-auth-guard-test.mjs
           npx eslint src/warehouses src/materials-inventory src/tools-equipment tests/v17-warehouses tests/v17-materials-inventory/warehouse-consumer.spec.ts tests/v17-tools-equipment/warehouse-consumer.spec.ts playwright.v17-warehouses.config.ts
       - name: Install Chromium
         run: npx playwright install --with-deps chromium

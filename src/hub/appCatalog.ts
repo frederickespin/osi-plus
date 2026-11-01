@@ -120,7 +120,7 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     description: "Espacios, ubicaciones, materiales de embalaje y equipos.",
     icon: "warehouse",
     route: "/warehouses",
-    routeAliases: ["/warehouses/spaces", "/warehouses/materials", "/warehouses/equipment"],
+    routeAliases: ["/warehouses/spaces", "/warehouses/configuration", "/warehouses/materials", "/warehouses/equipment"],
     status: "REGISTERED_INACTIVE",
     requiredPermissions: ["inventory:stock:view", "assets:instance:view"],
     permissionMode: "ANY",

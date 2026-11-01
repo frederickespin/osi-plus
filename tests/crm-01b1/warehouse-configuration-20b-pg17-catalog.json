@@ -1,0 +1,990 @@
+{
+  "migration": {
+    "name": "20261101010000_v17_warehouse_configuration",
+    "sha256": "4fd765d2090163512be0f58d6eda3be59ad9b35fbfaf1e7b11a679f194d080d5"
+  },
+  "target": {
+    "database": "osi_warehouse_17_compat",
+    "schema": "osi",
+    "address": "127.0.0.1",
+    "port": 55434,
+    "serverVersion": 170011
+  },
+  "server": {
+    "version_number": "170011",
+    "version": "17.11 (Ubuntu 17.11-1.pgdg24.04+2)",
+    "collation": "C.UTF-8",
+    "character_type": "C.UTF-8"
+  },
+  "history": {
+    "complete": 38,
+    "migrations": [
+      "20260801000000_production_baseline",
+      "20260801001000_mt01a_tenant_memberships",
+      "20260801002000_commercial_audit_log",
+      "20260801003000_approval_requests",
+      "20260801004000_risk_engine_rules_evaluations",
+      "20260801005000_logistic_override_approvals",
+      "20260801006000_quote_change_orders",
+      "20260801007000_logistics_geography_zone_rules",
+      "20260801008000_vehicle_engine_settings",
+      "20260801009000_logistics_rate_metadata",
+      "20260801010000_crate_settings",
+      "20260801011000_mt01b_auth_sessions",
+      "20260801012000_mt01c1a_employee_profiles",
+      "20260801013000_mt01c1b1_provisioning_persistence",
+      "20260801014000_mt01c2b1_commercial_tenant_foundation",
+      "20260801015000_crm01b_pipeline_mutation_authority",
+      "20260801020000_v17_pipeline_case_client_authority",
+      "20260821010000_v17_pipeline_case_public_ref",
+      "20260824010000_v17_client_public_ref_case_mutations",
+      "20260827010000_v17_tenant_membership_public_ref",
+      "20260827020000_v17_admin_identity_invitation",
+      "20260831010000_v17_crm_icp_foundation",
+      "20260904010000_v17_services_tenant_first",
+      "20260905010000_v17_survey_foundation",
+      "20260906010000_v17_materials_inventory",
+      "20260907010000_v17_tools_equipment",
+      "20260908010000_v17_logistics_engine",
+      "20260909010000_v17_costing",
+      "20260910010000_v17_quote",
+      "20260911010000_v17_scheduling_desktop_convergence",
+      "20260912010000_v17_commercial_relationships",
+      "20260913010000_v17_communications_templates",
+      "20260914010000_v17_personnel_operational_policies",
+      "20260915010000_v17_service_packages_resources",
+      "20260916010000_v17_client_temporary_portal",
+      "20261030010000_v17_user_identity_enrollment",
+      "20261031010000_v17_fleet_driver_authority",
+      "20261101010000_v17_warehouse_configuration"
+    ],
+    "rows": [
+      {
+        "migration_name": "20260801000000_production_baseline",
+        "checksum": "59a6060c78107a73cf9793da65cc5fc1a35d9d3c5e60ae37e04e5f395812bb2c",
+        "finished_at": "2026-11-01T13:51:31.902Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801001000_mt01a_tenant_memberships",
+        "checksum": "015c8bd39f050f71fbe1bea0f94198091149296269fed77905bcefd23094cd44",
+        "finished_at": "2026-11-01T13:51:31.911Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801002000_commercial_audit_log",
+        "checksum": "b7f2a68d769b1d3564a042d282e98e84bed9b8ceb2c5c2369c96e8d66d346206",
+        "finished_at": "2026-11-01T13:51:31.919Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801003000_approval_requests",
+        "checksum": "5802a029f4e83aa4a76e8a1f753bb4ebd71449d2538d2ba20edaa37c225a782a",
+        "finished_at": "2026-11-01T13:51:31.941Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801004000_risk_engine_rules_evaluations",
+        "checksum": "2575855557b64ee46166e85c61768339f08770aa6af3f18d77b5d3b62da00b08",
+        "finished_at": "2026-11-01T13:51:31.957Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801005000_logistic_override_approvals",
+        "checksum": "15a864aa487a66457e39e459b4767871863c5798d76f1a607f96a628986385df",
+        "finished_at": "2026-11-01T13:51:31.966Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801006000_quote_change_orders",
+        "checksum": "91cccaf3f19cebb9880fcdec880ffa8ed0e6ece1975e4b38924b5794b86b1f6c",
+        "finished_at": "2026-11-01T13:51:31.988Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801007000_logistics_geography_zone_rules",
+        "checksum": "77c32308f74d6ceb9e6ef9f45856d2cfe7169f9b3162f32808208bc30adae04b",
+        "finished_at": "2026-11-01T13:51:32.015Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801008000_vehicle_engine_settings",
+        "checksum": "4f61d20698ec8e61f5324f436e8012e63dc29c1e883b6e3922cc3cc9696499b3",
+        "finished_at": "2026-11-01T13:51:32.035Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801009000_logistics_rate_metadata",
+        "checksum": "8852e835e027fc76d828d9a3ab2e1c40f251f817ab4f573296bb39224b425899",
+        "finished_at": "2026-11-01T13:51:32.040Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801010000_crate_settings",
+        "checksum": "d834b99fe7083e5d9907a7b0c49ac6d0d3ff1f577de638e098c04ea9513f5310",
+        "finished_at": "2026-11-01T13:51:32.055Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801011000_mt01b_auth_sessions",
+        "checksum": "8d707e9b93d1bd6c1d15a7feee54189bef2a55718a85fb50c57048383c37f57c",
+        "finished_at": "2026-11-01T13:51:32.067Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801012000_mt01c1a_employee_profiles",
+        "checksum": "8da805f6923e7b3ef30c8cf4cd46dfddfafefe39d758023102c9eaa1b5f53131",
+        "finished_at": "2026-11-01T13:51:32.078Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801013000_mt01c1b1_provisioning_persistence",
+        "checksum": "38585d10feca36a488bdee93c7056880545bf2c7fcea333736e6e36d90c46bae",
+        "finished_at": "2026-11-01T13:51:32.096Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801014000_mt01c2b1_commercial_tenant_foundation",
+        "checksum": "776e0c167cb0d7561537745cced0438299dea90af1e7bc010325822519d1811b",
+        "finished_at": "2026-11-01T13:51:32.111Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801015000_crm01b_pipeline_mutation_authority",
+        "checksum": "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8",
+        "finished_at": "2026-11-01T13:51:32.129Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260801020000_v17_pipeline_case_client_authority",
+        "checksum": "7ca9bb66584016879e00b9753da04521238ad164581ab6f755c73783a9feed1d",
+        "finished_at": "2026-11-01T13:51:32.141Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260821010000_v17_pipeline_case_public_ref",
+        "checksum": "4e1b55da969a567042e3eb780389ee46a6fa11be4932c8ce7ad66a490abfc893",
+        "finished_at": "2026-11-01T13:51:32.147Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260824010000_v17_client_public_ref_case_mutations",
+        "checksum": "dbb093f15eb2ee708328518dcf19e52fd8b0623fbc893cec1a001cf819a6da70",
+        "finished_at": "2026-11-01T13:51:32.160Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260827010000_v17_tenant_membership_public_ref",
+        "checksum": "b1284e443778ad1c7336d7703c9478ac09215b81a00f6b09bad48ceba6d5051c",
+        "finished_at": "2026-11-01T13:51:32.166Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260827020000_v17_admin_identity_invitation",
+        "checksum": "9ee56aaee53d5629db8dada22bcf86511d10c837c4ad61fb37fbd0b4caf53808",
+        "finished_at": "2026-11-01T13:51:32.176Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260831010000_v17_crm_icp_foundation",
+        "checksum": "d085a74f4be3bd7be727d182993598008f53f019c8f1d626863b987be6726f37",
+        "finished_at": "2026-11-01T13:51:32.191Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260904010000_v17_services_tenant_first",
+        "checksum": "3eaf8c7b3ff6b21b6223758ca292a9d8f4f898d6376eb1f027f563ac031c6e65",
+        "finished_at": "2026-11-01T13:51:32.218Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260905010000_v17_survey_foundation",
+        "checksum": "faeb0dee08b667b1ba042ab1756e683b4fb832fb47789e01c5d8be220694dde1",
+        "finished_at": "2026-11-01T13:51:32.279Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260906010000_v17_materials_inventory",
+        "checksum": "9d2f1eebb797e02a59343e166bbaaed3921347920d4c630b349f04709406bd21",
+        "finished_at": "2026-11-01T13:51:32.377Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260907010000_v17_tools_equipment",
+        "checksum": "81dd96e97a1b35446dd1a2fe8934f1fe2524b1c75d6ff5645b98e091ebf98a44",
+        "finished_at": "2026-11-01T13:51:32.459Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260908010000_v17_logistics_engine",
+        "checksum": "e8e073725b8075d6306e64d34dcf5c1b5fbc459ac1f3a808243747c28f78cb0e",
+        "finished_at": "2026-11-01T13:51:32.498Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260909010000_v17_costing",
+        "checksum": "d1484bb4380f7f8f8984cfd977503637f4c318357d05978599dc3374071b543a",
+        "finished_at": "2026-11-01T13:51:32.551Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260910010000_v17_quote",
+        "checksum": "75930bca82e4852c28bcc6a07b9509a10213e1f0573d5f54a56c0809fc17fbdd",
+        "finished_at": "2026-11-01T13:51:32.586Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260911010000_v17_scheduling_desktop_convergence",
+        "checksum": "8b4b507f57714586fc3bfd16a22b58979c4da50059ffbc2bb6397e9caab86896",
+        "finished_at": "2026-11-01T13:51:32.619Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260912010000_v17_commercial_relationships",
+        "checksum": "2cc93336058dcc3976c03b0a0c2d29bfadb08eb397980f25895b206b46616c23",
+        "finished_at": "2026-11-01T13:51:32.671Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260913010000_v17_communications_templates",
+        "checksum": "26b7c3552f067c737e651d0e95a5188a6b4641b512df6331136caf5bf1637320",
+        "finished_at": "2026-11-01T13:51:32.696Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260914010000_v17_personnel_operational_policies",
+        "checksum": "76690c0a5d464440f5924fb72905603e6d301ef8523f39ba3afc5a5cd6bc3bdb",
+        "finished_at": "2026-11-01T13:51:32.754Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260915010000_v17_service_packages_resources",
+        "checksum": "23bfcc3ad34e48ef9ff7cb774780d9ab3437d1dbdb2c828e3f522ee958097ace",
+        "finished_at": "2026-11-01T13:51:32.808Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20260916010000_v17_client_temporary_portal",
+        "checksum": "daaae1a2a3b5271c047bf1f0aaa089d7faa7231f1ee20286e5097e1ea1659a8b",
+        "finished_at": "2026-11-01T13:51:32.842Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20261030010000_v17_user_identity_enrollment",
+        "checksum": "328529a4c68c8203d279c148c33bb70562c1b9fb6024b0d9f09c390976d3ca50",
+        "finished_at": "2026-11-01T13:51:32.858Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20261031010000_v17_fleet_driver_authority",
+        "checksum": "3a6db22d52441aa1614e13c0bd619ef4bba84230f9af91a3c794f31496d2bd14",
+        "finished_at": "2026-11-01T13:51:32.875Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      },
+      {
+        "migration_name": "20261101010000_v17_warehouse_configuration",
+        "checksum": "4fd765d2090163512be0f58d6eda3be59ad9b35fbfaf1e7b11a679f194d080d5",
+        "finished_at": "2026-11-01T13:53:48.458Z",
+        "rolled_back_at": null,
+        "applied_steps_count": 1
+      }
+    ]
+  },
+  "migrationChecksums": {
+    "20260801000000_production_baseline": "59a6060c78107a73cf9793da65cc5fc1a35d9d3c5e60ae37e04e5f395812bb2c",
+    "20260801001000_mt01a_tenant_memberships": "015c8bd39f050f71fbe1bea0f94198091149296269fed77905bcefd23094cd44",
+    "20260801002000_commercial_audit_log": "b7f2a68d769b1d3564a042d282e98e84bed9b8ceb2c5c2369c96e8d66d346206",
+    "20260801003000_approval_requests": "5802a029f4e83aa4a76e8a1f753bb4ebd71449d2538d2ba20edaa37c225a782a",
+    "20260801004000_risk_engine_rules_evaluations": "2575855557b64ee46166e85c61768339f08770aa6af3f18d77b5d3b62da00b08",
+    "20260801005000_logistic_override_approvals": "15a864aa487a66457e39e459b4767871863c5798d76f1a607f96a628986385df",
+    "20260801006000_quote_change_orders": "91cccaf3f19cebb9880fcdec880ffa8ed0e6ece1975e4b38924b5794b86b1f6c",
+    "20260801007000_logistics_geography_zone_rules": "77c32308f74d6ceb9e6ef9f45856d2cfe7169f9b3162f32808208bc30adae04b",
+    "20260801008000_vehicle_engine_settings": "4f61d20698ec8e61f5324f436e8012e63dc29c1e883b6e3922cc3cc9696499b3",
+    "20260801009000_logistics_rate_metadata": "8852e835e027fc76d828d9a3ab2e1c40f251f817ab4f573296bb39224b425899",
+    "20260801010000_crate_settings": "d834b99fe7083e5d9907a7b0c49ac6d0d3ff1f577de638e098c04ea9513f5310",
+    "20260801011000_mt01b_auth_sessions": "8d707e9b93d1bd6c1d15a7feee54189bef2a55718a85fb50c57048383c37f57c",
+    "20260801012000_mt01c1a_employee_profiles": "8da805f6923e7b3ef30c8cf4cd46dfddfafefe39d758023102c9eaa1b5f53131",
+    "20260801013000_mt01c1b1_provisioning_persistence": "38585d10feca36a488bdee93c7056880545bf2c7fcea333736e6e36d90c46bae",
+    "20260801014000_mt01c2b1_commercial_tenant_foundation": "776e0c167cb0d7561537745cced0438299dea90af1e7bc010325822519d1811b",
+    "20260801015000_crm01b_pipeline_mutation_authority": "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8",
+    "20260801020000_v17_pipeline_case_client_authority": "7ca9bb66584016879e00b9753da04521238ad164581ab6f755c73783a9feed1d",
+    "20260821010000_v17_pipeline_case_public_ref": "4e1b55da969a567042e3eb780389ee46a6fa11be4932c8ce7ad66a490abfc893",
+    "20260824010000_v17_client_public_ref_case_mutations": "dbb093f15eb2ee708328518dcf19e52fd8b0623fbc893cec1a001cf819a6da70",
+    "20260827010000_v17_tenant_membership_public_ref": "b1284e443778ad1c7336d7703c9478ac09215b81a00f6b09bad48ceba6d5051c",
+    "20260827020000_v17_admin_identity_invitation": "9ee56aaee53d5629db8dada22bcf86511d10c837c4ad61fb37fbd0b4caf53808",
+    "20260831010000_v17_crm_icp_foundation": "d085a74f4be3bd7be727d182993598008f53f019c8f1d626863b987be6726f37",
+    "20260904010000_v17_services_tenant_first": "3eaf8c7b3ff6b21b6223758ca292a9d8f4f898d6376eb1f027f563ac031c6e65",
+    "20260905010000_v17_survey_foundation": "faeb0dee08b667b1ba042ab1756e683b4fb832fb47789e01c5d8be220694dde1",
+    "20260906010000_v17_materials_inventory": "9d2f1eebb797e02a59343e166bbaaed3921347920d4c630b349f04709406bd21",
+    "20260907010000_v17_tools_equipment": "81dd96e97a1b35446dd1a2fe8934f1fe2524b1c75d6ff5645b98e091ebf98a44",
+    "20260908010000_v17_logistics_engine": "e8e073725b8075d6306e64d34dcf5c1b5fbc459ac1f3a808243747c28f78cb0e",
+    "20260909010000_v17_costing": "d1484bb4380f7f8f8984cfd977503637f4c318357d05978599dc3374071b543a",
+    "20260910010000_v17_quote": "75930bca82e4852c28bcc6a07b9509a10213e1f0573d5f54a56c0809fc17fbdd",
+    "20260911010000_v17_scheduling_desktop_convergence": "8b4b507f57714586fc3bfd16a22b58979c4da50059ffbc2bb6397e9caab86896",
+    "20260912010000_v17_commercial_relationships": "2cc93336058dcc3976c03b0a0c2d29bfadb08eb397980f25895b206b46616c23",
+    "20260913010000_v17_communications_templates": "26b7c3552f067c737e651d0e95a5188a6b4641b512df6331136caf5bf1637320",
+    "20260914010000_v17_personnel_operational_policies": "76690c0a5d464440f5924fb72905603e6d301ef8523f39ba3afc5a5cd6bc3bdb",
+    "20260915010000_v17_service_packages_resources": "23bfcc3ad34e48ef9ff7cb774780d9ab3437d1dbdb2c828e3f522ee958097ace",
+    "20260916010000_v17_client_temporary_portal": "daaae1a2a3b5271c047bf1f0aaa089d7faa7231f1ee20286e5097e1ea1659a8b",
+    "20261030010000_v17_user_identity_enrollment": "328529a4c68c8203d279c148c33bb70562c1b9fb6024b0d9f09c390976d3ca50",
+    "20261031010000_v17_fleet_driver_authority": "3a6db22d52441aa1614e13c0bd619ef4bba84230f9af91a3c794f31496d2bd14",
+    "20261101010000_v17_warehouse_configuration": "4fd765d2090163512be0f58d6eda3be59ad9b35fbfaf1e7b11a679f194d080d5"
+  },
+  "catalog": {
+    "count": 7984,
+    "sha256": "605bf48da7cc19e8c2806587815ef08e37aeadf9912fa19a8c2402726a789b80",
+    "categories": {
+      "check": {
+        "count": 421,
+        "sha256": "be0278b9762709fab18f99679c09efc8d7bd5048b98283de67cc6df884a83afd"
+      },
+      "column": {
+        "count": 3839,
+        "sha256": "e198743cf5b692998c39c56cd4c388b6330cca4a7afd656f4180f0bd18475749"
+      },
+      "constraint": {
+        "count": 327,
+        "sha256": "33a3af0a2d73c347aba6bfd79389d1702560a3fa4fb8f1eff57a4b5bf242d80a"
+      },
+      "enum": {
+        "count": 1110,
+        "sha256": "5ebe8e1f975cb016ec35109a07d6271f0e71a204c52da9a6452e77819597948d"
+      },
+      "foreign_key": {
+        "count": 677,
+        "sha256": "84873092981a826dd006bf5ac4285a8abc914e1855a04dae30325103a44d626e"
+      },
+      "function": {
+        "count": 279,
+        "sha256": "106bcb13fc8df1f2c2ccfbb6b74cbc838ba58843cdf5c158bcdf099c4103d0c1"
+      },
+      "index": {
+        "count": 1143,
+        "sha256": "b72c63528e5e0d699bc12b2014c707ba5906bf6c69bf712cd8e2443a7efc0b41"
+      },
+      "trigger": {
+        "count": 188,
+        "sha256": "78b1fdb96cdf97ccc7906ab2595c4beec9ce78a24e9bd49c50a7af8523196644"
+      }
+    }
+  },
+  "previousCatalog": {
+    "count": 7919,
+    "sha256": "58bcc913ef4b0f19fda14ef3f3b2a88e00b47926d4c63996f4a78b749f72e1bc",
+    "categories": {
+      "check": {
+        "count": 416,
+        "sha256": "0260b09b54cae0193f32788cc5cae658c15dddbe22a2cd3e319c642cddd2400f"
+      },
+      "column": {
+        "count": 3812,
+        "sha256": "b0f56d1776ec95433a3134ac49c52f52a9a4951d5f82dd3c10f6f356a5a4c3ef"
+      },
+      "constraint": {
+        "count": 324,
+        "sha256": "2cc98b4b844342c28bd42a770bdb7ac1c02726c9b74f7cf7c87526b374640ffc"
+      },
+      "enum": {
+        "count": 1102,
+        "sha256": "229714a4280acac482aa12e074cfe34585a4b51f658ae6922216039b92b7bbaf"
+      },
+      "foreign_key": {
+        "count": 672,
+        "sha256": "4b503da6d52c4ae156c9db6225fda53b939cfe22a5b1aebd277028c04d3debe7"
+      },
+      "function": {
+        "count": 277,
+        "sha256": "adb3b399bb888397057eff8216740082ed55134bbc27aec368e0edab4918fc1c"
+      },
+      "index": {
+        "count": 1131,
+        "sha256": "d89b6cb1687dddb788e2d85838b3ab55829d97b72e81007500e8c3fd41308139"
+      },
+      "trigger": {
+        "count": 185,
+        "sha256": "d43bbfb8192a5c755cc870d0fc01d813be2a92b32e3bacc28c585418dbd15a28"
+      }
+    }
+  },
+  "extensions": [
+    {
+      "extension_name": "btree_gist",
+      "version": "1.7",
+      "schema_name": "osi"
+    }
+  ],
+  "extensionMembers": {
+    "count": 188,
+    "sha256": "ef3f5b7b3065e3c2c108127f2800644e859bede4eaccd0bb0bec975b596b8486"
+  },
+  "delta": {
+    "tables": [
+      "warehouse_area_uses",
+      "warehouse_location_configurations",
+      "warehouse_location_policy_epochs"
+    ],
+    "functions": [
+      "v17_warehouse_configuration_identity_guard()",
+      "v17_warehouse_location_policy_epoch_guard()"
+    ],
+    "enums": [
+      "WarehouseAreaUsePurpose",
+      "WarehouseLocationOperationalStatus",
+      "WarehouseLocationAvailabilityRule"
+    ],
+    "catalog": {
+      "count": 65,
+      "sha256": "aee44a0d5c03a6ee000b4e4767906100b42ac9e90ee0b4a50febeae628f9f95e",
+      "categories": {
+        "check": {
+          "count": 5,
+          "sha256": "5366583dc0542fc206b2593e257be5879de9d79eb70198e078d2da5cbe186d75"
+        },
+        "column": {
+          "count": 27,
+          "sha256": "6c911c8c5b349d2c989b4564245bebdfe08f055493d26779018f41e0ce1e4542"
+        },
+        "constraint": {
+          "count": 3,
+          "sha256": "65083d295a15a8eb86ae8ad1327adef792690483d39452f251919074baa95df2"
+        },
+        "enum": {
+          "count": 8,
+          "sha256": "51ecb2edc2e460161b9774f7b890e09f39701fa4a1716f3b05794a85350f345d"
+        },
+        "foreign_key": {
+          "count": 5,
+          "sha256": "074366aa2596fb1f1af1451a5028592f41846f02a9670dd034bfa46f998b3dfe"
+        },
+        "function": {
+          "count": 2,
+          "sha256": "bbd174534f06dfc10fb651fe26350acb5d6730728de83550aabdd1d25296b0c8"
+        },
+        "index": {
+          "count": 12,
+          "sha256": "bffa4d6e4de77f51eacd7f960ab1cb70c611b9ada2f3d7ab7d8affccdc0b7583"
+        },
+        "trigger": {
+          "count": 3,
+          "sha256": "46d6d15e3a1324dee2948b3f6ab299a309e14aa617fb515621cce538ce016dd4"
+        }
+      }
+    },
+    "rows": [
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_code_check",
+        "definition": "CHECK (code::text ~ '^[A-Z][A-Z0-9_-]{0,63}$'::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_name_check",
+        "definition": "CHECK (btrim(name::text) <> ''::text AND btrim(name_key::text) <> ''::text)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_version_check",
+        "definition": "CHECK (version >= 1)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configs_version_check",
+        "definition": "CHECK (version >= 1)"
+      },
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_policy_epochs",
+        "object_name": "warehouse_location_policy_epochs_revision_check",
+        "definition": "CHECK (revision >= 1)"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "code",
+        "definition": "4|character varying(64)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "created_at",
+        "definition": "11|timestamp(6) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "description",
+        "definition": "7|character varying(500)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "id",
+        "definition": "1|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "name",
+        "definition": "5|character varying(160)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "name_key",
+        "definition": "6|character varying(320)|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "purpose",
+        "definition": "8|\"WarehouseAreaUsePurpose\"|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "status",
+        "definition": "9|\"MaterialRecordStatus\"|t|'ACTIVE'::\"MaterialRecordStatus\"||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "tenant_id",
+        "definition": "3|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "updated_at",
+        "definition": "12|timestamp(6) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "use_ref",
+        "definition": "2|uuid|t|gen_random_uuid()||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "version",
+        "definition": "10|integer|t|1||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "area_use_id",
+        "definition": "5|text|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "availability_rule",
+        "definition": "9|\"WarehouseLocationAvailabilityRule\"|t|'CONDITION_BASED'::\"WarehouseLocationAvailabilityRule\"||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "characteristics",
+        "definition": "6|character varying(180)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "config_ref",
+        "definition": "2|uuid|t|gen_random_uuid()||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "control_reason",
+        "definition": "10|character varying(500)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "created_at",
+        "definition": "12|timestamp(6) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "id",
+        "definition": "1|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "location_id",
+        "definition": "4|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "notes",
+        "definition": "7|character varying(2000)|f|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "operational_status",
+        "definition": "8|\"WarehouseLocationOperationalStatus\"|t|'ACTIVE'::\"WarehouseLocationOperationalStatus\"||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "tenant_id",
+        "definition": "3|text|t|||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "updated_at",
+        "definition": "13|timestamp(6) with time zone|t|CURRENT_TIMESTAMP||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "version",
+        "definition": "11|integer|t|1||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_policy_epochs",
+        "object_name": "revision",
+        "definition": "2|bigint|t|1||"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_policy_epochs",
+        "object_name": "tenant_id",
+        "definition": "1|text|t|||"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configurations_pkey",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "kind": "constraint",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_policy_epochs",
+        "object_name": "warehouse_location_policy_epochs_pkey",
+        "definition": "PRIMARY KEY (tenant_id)"
+      },
+      {
+        "kind": "enum",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "WarehouseAreaUsePurpose:1",
+        "definition": "INTERNAL"
+      },
+      {
+        "kind": "enum",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "WarehouseAreaUsePurpose:2",
+        "definition": "CLIENT_STORAGE"
+      },
+      {
+        "kind": "enum",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "WarehouseAreaUsePurpose:3",
+        "definition": "MIXED"
+      },
+      {
+        "kind": "enum",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "WarehouseLocationAvailabilityRule:1",
+        "definition": "CONDITION_BASED"
+      },
+      {
+        "kind": "enum",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "WarehouseLocationAvailabilityRule:2",
+        "definition": "BLOCKED"
+      },
+      {
+        "kind": "enum",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "WarehouseLocationOperationalStatus:1",
+        "definition": "ACTIVE"
+      },
+      {
+        "kind": "enum",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "WarehouseLocationOperationalStatus:2",
+        "definition": "RESTRICTED"
+      },
+      {
+        "kind": "enum",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "WarehouseLocationOperationalStatus:3",
+        "definition": "OUT_OF_SERVICE"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_tenant_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configs_area_use_fkey",
+        "definition": "FOREIGN KEY (tenant_id, area_use_id) REFERENCES warehouse_area_uses(tenant_id, id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configs_location_fkey",
+        "definition": "FOREIGN KEY (tenant_id, location_id) REFERENCES material_locations(tenant_id, id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configs_tenant_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "foreign_key",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_policy_epochs",
+        "object_name": "warehouse_location_policy_epochs_tenant_fkey",
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE CASCADE ON DELETE RESTRICT"
+      },
+      {
+        "kind": "function",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "v17_warehouse_configuration_identity_guard()",
+        "definition": "CREATE OR REPLACE FUNCTION osi.v17_warehouse_configuration_identity_guard()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nDECLARE immutable_column TEXT;\nBEGIN\n  IF TG_OP = 'DELETE' THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_CONFIGURATION_DELETE_FORBIDDEN' USING ERRCODE = '55000';\n  END IF;\n  IF TG_OP = 'INSERT' THEN\n    IF NEW.\"version\" <> 1 THEN\n      RAISE EXCEPTION 'V17_WAREHOUSE_CONFIGURATION_INITIAL_VERSION_INVALID' USING ERRCODE = '23514';\n    END IF;\n    RETURN NEW;\n  END IF;\n  IF ROW(NEW.\"id\", NEW.\"tenant_id\", NEW.\"created_at\") IS DISTINCT FROM ROW(OLD.\"id\", OLD.\"tenant_id\", OLD.\"created_at\") THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_CONFIGURATION_IDENTITY_IMMUTABLE' USING ERRCODE = '55000';\n  END IF;\n  FOREACH immutable_column IN ARRAY TG_ARGV LOOP\n    IF to_jsonb(NEW)->immutable_column IS DISTINCT FROM to_jsonb(OLD)->immutable_column THEN\n      RAISE EXCEPTION 'V17_WAREHOUSE_CONFIGURATION_IDENTITY_IMMUTABLE' USING ERRCODE = '55000';\n    END IF;\n  END LOOP;\n  IF NEW.\"version\" <> OLD.\"version\" + 1 THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_CONFIGURATION_VERSION_INVALID' USING ERRCODE = '40001';\n  END IF;\n  RETURN NEW;\nEND;\n$function$\n"
+      },
+      {
+        "kind": "function",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "v17_warehouse_location_policy_epoch_guard()",
+        "definition": "CREATE OR REPLACE FUNCTION osi.v17_warehouse_location_policy_epoch_guard()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nBEGIN\n  IF TG_OP = 'DELETE' THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_POLICY_EPOCH_DELETE_FORBIDDEN' USING ERRCODE = '55000';\n  END IF;\n  IF TG_OP = 'INSERT' THEN\n    IF NEW.\"revision\" <> 1 THEN\n      RAISE EXCEPTION 'V17_WAREHOUSE_POLICY_EPOCH_INITIAL_REVISION_INVALID' USING ERRCODE = '23514';\n    END IF;\n    RETURN NEW;\n  END IF;\n  IF NEW.\"tenant_id\" IS DISTINCT FROM OLD.\"tenant_id\" THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_POLICY_EPOCH_TENANT_IMMUTABLE' USING ERRCODE = '55000';\n  END IF;\n  IF NEW.\"revision\" <> OLD.\"revision\" + 1 THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_POLICY_EPOCH_REVISION_INVALID' USING ERRCODE = '40001';\n  END IF;\n  RETURN NEW;\nEND;\n$function$\n"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_pkey",
+        "definition": "CREATE UNIQUE INDEX warehouse_area_uses_pkey ON osi.warehouse_area_uses USING btree (id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_status_idx",
+        "definition": "CREATE INDEX warehouse_area_uses_status_idx ON osi.warehouse_area_uses USING btree (tenant_id, status, name)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_tenant_code_key",
+        "definition": "CREATE UNIQUE INDEX warehouse_area_uses_tenant_code_key ON osi.warehouse_area_uses USING btree (tenant_id, code)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_tenant_id_key",
+        "definition": "CREATE UNIQUE INDEX warehouse_area_uses_tenant_id_key ON osi.warehouse_area_uses USING btree (tenant_id, id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_tenant_name_key",
+        "definition": "CREATE UNIQUE INDEX warehouse_area_uses_tenant_name_key ON osi.warehouse_area_uses USING btree (tenant_id, name_key)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_tenant_ref_key",
+        "definition": "CREATE UNIQUE INDEX warehouse_area_uses_tenant_ref_key ON osi.warehouse_area_uses USING btree (tenant_id, use_ref)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configs_area_use_idx",
+        "definition": "CREATE INDEX warehouse_location_configs_area_use_idx ON osi.warehouse_location_configurations USING btree (tenant_id, area_use_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configs_location_key",
+        "definition": "CREATE UNIQUE INDEX warehouse_location_configs_location_key ON osi.warehouse_location_configurations USING btree (tenant_id, location_id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configs_tenant_id_key",
+        "definition": "CREATE UNIQUE INDEX warehouse_location_configs_tenant_id_key ON osi.warehouse_location_configurations USING btree (tenant_id, id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configs_tenant_ref_key",
+        "definition": "CREATE UNIQUE INDEX warehouse_location_configs_tenant_ref_key ON osi.warehouse_location_configurations USING btree (tenant_id, config_ref)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configurations_pkey",
+        "definition": "CREATE UNIQUE INDEX warehouse_location_configurations_pkey ON osi.warehouse_location_configurations USING btree (id)"
+      },
+      {
+        "kind": "index",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_policy_epochs",
+        "object_name": "warehouse_location_policy_epochs_pkey",
+        "definition": "CREATE UNIQUE INDEX warehouse_location_policy_epochs_pkey ON osi.warehouse_location_policy_epochs USING btree (tenant_id)"
+      },
+      {
+        "kind": "trigger",
+        "schema_name": "osi",
+        "table_name": "warehouse_area_uses",
+        "object_name": "warehouse_area_uses_identity_guard",
+        "definition": "CREATE TRIGGER warehouse_area_uses_identity_guard BEFORE INSERT OR DELETE OR UPDATE ON warehouse_area_uses FOR EACH ROW EXECUTE FUNCTION v17_warehouse_configuration_identity_guard('use_ref', 'code')"
+      },
+      {
+        "kind": "trigger",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_configurations",
+        "object_name": "warehouse_location_configs_identity_guard",
+        "definition": "CREATE TRIGGER warehouse_location_configs_identity_guard BEFORE INSERT OR DELETE OR UPDATE ON warehouse_location_configurations FOR EACH ROW EXECUTE FUNCTION v17_warehouse_configuration_identity_guard('config_ref', 'location_id')"
+      },
+      {
+        "kind": "trigger",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_policy_epochs",
+        "object_name": "warehouse_location_policy_epochs_guard",
+        "definition": "CREATE TRIGGER warehouse_location_policy_epochs_guard BEFORE INSERT OR DELETE OR UPDATE ON warehouse_location_policy_epochs FOR EACH ROW EXECUTE FUNCTION v17_warehouse_location_policy_epoch_guard()"
+      }
+    ],
+    "sqlOnlyCounts": {
+      "check": 5,
+      "function": 2,
+      "trigger": 3
+    }
+  },
+  "provenance": {
+    "kind": "LOCAL_DISPOSABLE_POSTGRESQL",
+    "capturedAt": "2026-11-01T13:55:01.895Z",
+    "sourceCommit": "af00eff1a56dc5447665482d05f3cb425b432dbd",
+    "prismaVersion": "6.19.2",
+    "catalogQuerySha256": "04aea6b13957570b4939bf9362cfb7d64e6891da94f2ba6b2f3f1c48fd6ae0c4",
+    "sqlOnlyQuerySha256": "b0b5e65a1baa8098c2cbe50bb369e836d2446cdfac34ef0fb0e0ab4f8505dcfe",
+    "searchPath": "osi",
+    "readOnly": true,
+    "server": {
+      "version_number": "170011",
+      "version": "17.11 (Ubuntu 17.11-1.pgdg24.04+2)",
+      "collation": "C.UTF-8",
+      "character_type": "C.UTF-8"
+    },
+    "previousObjectsUnchangedAfterMigration": true
+  }
+}

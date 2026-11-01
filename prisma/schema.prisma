@@ -138,6 +138,9 @@ model Tenant {
   materialSupplierReferences        MaterialSupplierReference[]
   materialWarehouses                MaterialWarehouse[]
   materialLocations                 MaterialLocation[]
+  warehouseAreaUses                 WarehouseAreaUse[]
+  warehouseLocationConfigurations   WarehouseLocationConfiguration[]
+  warehouseLocationPolicyEpoch      WarehouseLocationPolicyEpoch?
   materialInventoryCommands         MaterialInventoryCommand[]
   materialInventoryMovements        MaterialInventoryMovement[]
   materialReservations              MaterialReservation[]
@@ -4167,12 +4170,87 @@ model MaterialLocation {
   assignmentOrigins      AssetAssignment[]           @relation("AssetAssignmentOrigin")
   assignmentDestinations AssetAssignment[]           @relation("AssetAssignmentDestination")
   inspectionLocations    AssetInspection[]           @relation("AssetInspectionLocation")
+  configuration          WarehouseLocationConfiguration?
 
   @@unique([tenantId, id], map: "material_locations_tenant_id_key")
   @@unique([tenantId, locationRef], map: "material_locations_tenant_ref_key")
   @@unique([tenantId, warehouseId, code], map: "material_locations_warehouse_code_key")
   @@index([tenantId, warehouseId, parentLocationId, status], map: "material_locations_tree_idx")
   @@map("material_locations")
+}
+
+model WarehouseAreaUse {
+  id          String                     @id @default(cuid())
+  useRef      String                     @default(dbgenerated("gen_random_uuid()")) @map("use_ref") @db.Uuid
+  tenantId    String                     @map("tenant_id")
+  code        String                     @db.VarChar(64)
+  name        String                     @db.VarChar(160)
+  nameKey     String                     @map("name_key") @db.VarChar(320)
+  description String?                    @db.VarChar(500)
+  purpose     WarehouseAreaUsePurpose
+  status      MaterialRecordStatus       @default(ACTIVE)
+  version     Int                        @default(1)
+  createdAt   DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant      Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_area_uses_tenant_fkey")
+  locations   WarehouseLocationConfiguration[]
+
+  @@unique([tenantId, id], map: "warehouse_area_uses_tenant_id_key")
+  @@unique([tenantId, useRef], map: "warehouse_area_uses_tenant_ref_key")
+  @@unique([tenantId, code], map: "warehouse_area_uses_tenant_code_key")
+  @@unique([tenantId, nameKey], map: "warehouse_area_uses_tenant_name_key")
+  @@index([tenantId, status, name], map: "warehouse_area_uses_status_idx")
+  @@map("warehouse_area_uses")
+}
+
+model WarehouseLocationConfiguration {
+  id                String                         @id @default(cuid())
+  configRef         String                         @default(dbgenerated("gen_random_uuid()")) @map("config_ref") @db.Uuid
+  tenantId          String                         @map("tenant_id")
+  locationId        String                         @map("location_id")
+  areaUseId         String?                        @map("area_use_id")
+  characteristics   String?                        @db.VarChar(180)
+  notes             String?                        @db.VarChar(2000)
+  operationalStatus WarehouseLocationOperationalStatus @default(ACTIVE) @map("operational_status")
+  availabilityRule  WarehouseLocationAvailabilityRule  @default(CONDITION_BASED) @map("availability_rule")
+  controlReason     String?                        @map("control_reason") @db.VarChar(500)
+  version           Int                            @default(1)
+  createdAt         DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_configs_tenant_fkey")
+  location          MaterialLocation               @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_configs_location_fkey")
+  areaUse           WarehouseAreaUse?               @relation(fields: [tenantId, areaUseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_configs_area_use_fkey")
+
+  @@unique([tenantId, id], map: "warehouse_location_configs_tenant_id_key")
+  @@unique([tenantId, configRef], map: "warehouse_location_configs_tenant_ref_key")
+  @@unique([tenantId, locationId], map: "warehouse_location_configs_location_key")
+  @@index([tenantId, areaUseId], map: "warehouse_location_configs_area_use_idx")
+  @@map("warehouse_location_configurations")
+}
+
+enum WarehouseAreaUsePurpose {
+  INTERNAL
+  CLIENT_STORAGE
+  MIXED
+}
+
+model WarehouseLocationPolicyEpoch {
+  tenantId String @id @map("tenant_id")
+  revision BigInt @default(1)
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_policy_epochs_tenant_fkey")
+
+  @@map("warehouse_location_policy_epochs")
+}
+
+enum WarehouseLocationOperationalStatus {
+  ACTIVE
+  RESTRICTED
+  OUT_OF_SERVICE
+}
+
+enum WarehouseLocationAvailabilityRule {
+  CONDITION_BASED
+  BLOCKED
 }
 
 model MaterialInventoryCommand {

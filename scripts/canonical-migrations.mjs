@@ -41,6 +41,7 @@ export const CANONICAL_MIGRATIONS = Object.freeze([
   "20260916010000_v17_client_temporary_portal",
   "20261030010000_v17_user_identity_enrollment",
   "20261031010000_v17_fleet_driver_authority",
+  "20261101010000_v17_warehouse_configuration",
 ]);
 
 function invariant(condition, message) {

@@ -37,7 +37,7 @@ const CONTRACTS = Object.freeze([
   { appId: "commercial-crm", route: "/commercial", aliases: ["/crm", "/sales/pipeline", "/commercial/relationships"], permissions: ["pipeline:view"], mode: "ALL", roles: ["A", "V"], explicit: true },
   { appId: "coordination", route: "/coordination", permissions: ["projects:view", "ops:view"], mode: "ANY", roles: ["A", "K"] },
   { appId: "operations", route: "/operations", permissions: ["ops:view", "osi:view", "security:view"], mode: "ANY", roles: ["A", "B", "C1", "D", "PE", "N", "E", "G"] },
-  { appId: "warehouses", route: "/warehouses", aliases: ["/warehouses/spaces", "/warehouses/materials", "/warehouses/equipment"], permissions: ["inventory:stock:view", "assets:instance:view"], mode: "ANY", roles: [], explicit: true, denyScope: "PERMISSION" },
+  { appId: "warehouses", route: "/warehouses", aliases: ["/warehouses/spaces", "/warehouses/configuration", "/warehouses/materials", "/warehouses/equipment"], permissions: ["inventory:stock:view", "assets:instance:view"], mode: "ANY", roles: [], explicit: true, denyScope: "PERMISSION" },
   { appId: "materials-equipment", route: "/materials", permissions: ["inventory:catalog:view", "inventory:stock:view"], mode: "ALL", roles: [], explicit: true },
   { appId: "tools-equipment", route: "/assets", permissions: ["assets:instance:view"], mode: "ALL", roles: [], explicit: true },
   { appId: "workshop", route: "/workshop", permissions: ["wms:view", "fleet:view", "osi:view"], mode: "ANY", roles: ["A", "PA", "PB", "PC", "PD", "PF"] },

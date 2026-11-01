@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { isWarehouseConfigurationEnabled } from "./warehouseConfigurationMode.js";
+import { advanceWarehouseLocationPolicyEpoch, assertWarehouseLocationPolicy, loadWarehouseLocationPolicies, warehouseStockAvailability, withWarehousePolicyTransaction } from "./warehouseLocationPolicy.js";
 import { MaterialsInventoryError, canonicalPayloadHash, inventoryAvailability, normalizeCostVersionCreate, normalizeMaterialCreate, normalizeMaterialUpdate, normalizeMovement, normalizePurchaseRequest, normalizePurchaseTransition, normalizeRecipeCreate, normalizeRecipeVersionCreate, normalizeRequirementResolution, normalizeReservation, normalizeReservationAssign, normalizeReservationRelease, normalizeUnitConversionCreate, normalizeUnitCreate, normalizeWarehouseCreate, normalizeWarehouseLocationCreate, normalizeWarehouseUpdate, normalizeWarehouseLocationUpdate, resolveRecipeQuantity } from "./materialsInventoryContract.js";
 
 function fail(code, status = 400) { throw new MaterialsInventoryError(code, status); }
@@ -38,19 +40,27 @@ async function resolveMaterialLocation(tx, tenantId, materialRef, locationRef) {
 }
 
 export async function listMaterials(prisma, context, query = {}) {
+  const policyEnabled = isWarehouseConfigurationEnabled();
+  const policies = policyEnabled ? await loadWarehouseLocationPolicies(prisma, context.tenantId) : null;
   const page = Math.max(1, Number(query.page) || 1); const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 25));
   const where = { tenantId: context.tenantId, ...(query.status ? { status: query.status } : {}), ...(query.family ? { family: String(query.family) } : {}), ...(query.search ? { OR: [{ code: { contains: String(query.search), mode: "insensitive" } }, { name: { contains: String(query.search), mode: "insensitive" } }] } : {}) };
   const [total, rows] = await Promise.all([prisma.materialCatalogItem.count({ where }), prisma.materialCatalogItem.findMany({ where, include: { baseUnit: true, purchaseUnit: true, consumptionUnit: true, costs: { where: { validTo: null }, include: { unit: true }, orderBy: { version: "desc" }, take: 1 } }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }], skip: (page - 1) * pageSize, take: pageSize })]);
   const result = [];
   for (const row of rows) {
     const [movements, reservations] = await Promise.all([
-      prisma.materialInventoryMovement.findMany({ where: { tenantId: context.tenantId, materialId: row.id }, select: { movementType: true, quantityBase: true, location: { select: { warehouse: { select: { warehouseRef: true } } } } } }),
-      prisma.materialReservation.findMany({ where: { tenantId: context.tenantId, materialId: row.id, status: { in: ["RESERVED", "ASSIGNED"] } }, select: { status: true, quantityBase: true, location: { select: { warehouse: { select: { warehouseRef: true } } } } } }),
+      prisma.materialInventoryMovement.findMany({ where: { tenantId: context.tenantId, materialId: row.id }, select: { movementType: true, quantityBase: true, locationId: true, location: { select: { warehouse: { select: { warehouseRef: true } } } } } }),
+      prisma.materialReservation.findMany({ where: { tenantId: context.tenantId, materialId: row.id, status: { in: ["RESERVED", "ASSIGNED"] } }, select: { status: true, quantityBase: true, locationId: true, location: { select: { warehouse: { select: { warehouseRef: true } } } } } }),
     ]);
     const balance = inventoryAvailability({ movements: movements.map((entry) => ({ movementType: entry.movementType, quantity: Number(entry.quantityBase) })), reservations: reservations.map((entry) => ({ status: entry.status, quantity: Number(entry.quantityBase) })) });
     const warehouseRefs = [...new Set([...movements.map((entry) => entry.location.warehouse.warehouseRef), ...reservations.map((entry) => entry.location.warehouse.warehouseRef)])];
-    const byWarehouse = warehouseRefs.map((warehouseRef) => ({ warehouseRef, ...inventoryAvailability({ movements: movements.filter((entry) => entry.location.warehouse.warehouseRef === warehouseRef).map((entry) => ({ movementType: entry.movementType, quantity: Number(entry.quantityBase) })), reservations: reservations.filter((entry) => entry.location.warehouse.warehouseRef === warehouseRef).map((entry) => ({ status: entry.status, quantity: Number(entry.quantityBase) })) }) }));
-    result.push(publicMaterial(row, { ...balance, byWarehouse }));
+    const locationBalances = policies ? [...new Set([...movements, ...reservations].map((entry) => entry.locationId))].map((locationId) => {
+      const locationMovements = movements.filter((entry) => entry.locationId === locationId);
+      const locationReservations = reservations.filter((entry) => entry.locationId === locationId);
+      return { locationId, warehouseRef: (locationMovements[0] || locationReservations[0]).location.warehouse.warehouseRef, ...inventoryAvailability({ movements: locationMovements.map((entry) => ({ movementType: entry.movementType, quantity: Number(entry.quantityBase) })), reservations: locationReservations.map((entry) => ({ status: entry.status, quantity: Number(entry.quantityBase) })) }) };
+    }) : [];
+    const publicAvailability = (balances) => { const { dispatchable, blockedAvailable, blockedPhysical } = warehouseStockAvailability(balances, policies); return { dispatchable, blockedAvailable, blockedPhysical }; };
+    const byWarehouse = warehouseRefs.map((warehouseRef) => ({ warehouseRef, ...inventoryAvailability({ movements: movements.filter((entry) => entry.location.warehouse.warehouseRef === warehouseRef).map((entry) => ({ movementType: entry.movementType, quantity: Number(entry.quantityBase) })), reservations: reservations.filter((entry) => entry.location.warehouse.warehouseRef === warehouseRef).map((entry) => ({ status: entry.status, quantity: Number(entry.quantityBase) })) }), ...(policies ? publicAvailability(locationBalances.filter((entry) => entry.warehouseRef === warehouseRef)) : {}) }));
+    result.push(publicMaterial(row, { ...balance, byWarehouse, ...(policies ? publicAvailability(locationBalances) : {}) }));
   }
   return Object.freeze({ page, pageSize, total, items: Object.freeze(result) });
 }
@@ -331,13 +341,20 @@ export async function recordMovement(prisma, context, raw) {
       : ["ISSUE", "CONSUMPTION", "RETURN"].includes(input.movementType) ? "inventory:stock:issue"
         : "inventory:stock:adjust";
   requirePermission(context, required);
-  return prisma.$transaction(async (tx) => {
+  return withWarehousePolicyTransaction(prisma, context.tenantId, async (tx, policyEnabled) => {
     const replay = await commandReplay(tx, context.tenantId, input.requestId, input.payloadHash); if (replay) return replay;
+    if (policyEnabled) await advanceWarehouseLocationPolicyEpoch(tx, context.tenantId);
     const { material, location } = await resolveMaterialLocation(tx, context.tenantId, input.materialRef, input.locationRef);
     if (material.lotTrackingEnabled && !input.lotCode) fail("MATERIALS_LOT_REQUIRED", 409);
     const counterpart = input.movementType.startsWith("TRANSFER_")
       ? await resolveMaterialLocation(tx, context.tenantId, input.materialRef, input.counterpartLocationRef)
       : null;
+    if (policyEnabled) {
+      const policies = await loadWarehouseLocationPolicies(tx, context.tenantId);
+      const dispatch = ["TRANSFER_OUT", "ISSUE", "CONSUMPTION"].includes(input.movementType);
+      assertWarehouseLocationPolicy(policies, location.id, dispatch ? "DISPATCH" : "RECEIVE");
+      if (counterpart) assertWarehouseLocationPolicy(policies, counterpart.location.id, "RECEIVE");
+    }
     const reservation = input.reservationRef ? await tx.materialReservation.findFirst({ where: { tenantId: context.tenantId, reservationRef: input.reservationRef }, select: { id: true, materialId: true, locationId: true, quantityBase: true, status: true, version: true } }) : null;
     if (input.reservationRef && (!reservation || reservation.materialId !== material.id || reservation.locationId !== location.id)) fail("MATERIALS_RESOURCE_NOT_FOUND", 404);
     if (reservation && input.movementType !== "ISSUE") fail("MATERIALS_RESERVATION_OPERATION_INVALID", 409);
@@ -363,15 +380,17 @@ export async function recordMovement(prisma, context, raw) {
     }
     await tx.commercialAuditLog.create({ data: audit(context, input.movementType, "MaterialInventoryMovement", transactionRef, input.requestId, result) });
     return Object.freeze(result);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 10_000 });
+  }, { enabled: isWarehouseConfigurationEnabled(), isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 10_000 });
 }
 
 export async function createReservation(prisma, context, raw) {
   requirePermission(context, "inventory:reservation:manage");
   const input = normalizeReservation(raw);
-  return prisma.$transaction(async (tx) => {
+  return withWarehousePolicyTransaction(prisma, context.tenantId, async (tx, policyEnabled) => {
     const replay = await commandReplay(tx, context.tenantId, input.requestId, input.payloadHash); if (replay) return replay;
+    if (policyEnabled) await advanceWarehouseLocationPolicyEpoch(tx, context.tenantId);
     const { material, location } = await resolveMaterialLocation(tx, context.tenantId, input.materialRef, input.locationRef);
+    if (policyEnabled) assertWarehouseLocationPolicy(await loadWarehouseLocationPolicies(tx, context.tenantId), location.id, "DISPATCH");
     await lockStock(tx, context.tenantId, material.id, location.id);
     const balance = await stockAt(tx, context.tenantId, material.id, location.id); if (balance.available < input.quantity) fail("MATERIALS_INSUFFICIENT_AVAILABILITY", 409);
     const pipelineCase = input.caseRef ? await tx.pipelineCase.findFirst({ where: { tenantId: context.tenantId, publicRef: input.caseRef }, select: { id: true } }) : null;
@@ -383,14 +402,15 @@ export async function createReservation(prisma, context, raw) {
     await tx.materialInventoryCommand.create({ data: { tenantId: context.tenantId, requestId: input.requestId, operation: input.operation, payloadHash: input.payloadHash, targetRef: row.reservationRef, resultJson: result, ...actor(context) } });
     await tx.commercialAuditLog.create({ data: audit(context, "RESERVATION_CREATE", "MaterialReservation", row.reservationRef, input.requestId, result) });
     return Object.freeze(result);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 10_000 });
+  }, { enabled: isWarehouseConfigurationEnabled(), isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 10_000 });
 }
 
 export async function releaseReservation(prisma, context, raw) {
   requirePermission(context, "inventory:reservation:manage");
   const input = normalizeReservationRelease(raw);
-  return prisma.$transaction(async (tx) => {
+  return withWarehousePolicyTransaction(prisma, context.tenantId, async (tx, policyEnabled) => {
     const replay = await commandReplay(tx, context.tenantId, input.requestId, input.payloadHash); if (replay) return replay;
+    if (policyEnabled) await advanceWarehouseLocationPolicyEpoch(tx, context.tenantId);
     const current = await tx.materialReservation.findFirst({ where: { tenantId: context.tenantId, reservationRef: input.reservationRef } });
     if (!current) fail("MATERIALS_RESOURCE_NOT_FOUND", 404); if (!["RESERVED", "ASSIGNED"].includes(current.status) || current.version !== input.expectedVersion) fail("MATERIALS_VERSION_CONFLICT", 409);
     const changed = await tx.materialReservation.updateMany({ where: { tenantId: context.tenantId, id: current.id, version: input.expectedVersion, status: current.status }, data: { status: "RELEASED", version: { increment: 1 } } });
@@ -400,15 +420,17 @@ export async function releaseReservation(prisma, context, raw) {
     await tx.materialInventoryCommand.create({ data: { tenantId: context.tenantId, requestId: input.requestId, operation: input.operation, payloadHash: input.payloadHash, targetRef: current.reservationRef, resultJson: result, ...actor(context) } });
     await tx.commercialAuditLog.create({ data: audit(context, "RESERVATION_RELEASE", "MaterialReservation", current.reservationRef, input.requestId, result) });
     return Object.freeze(result);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, { enabled: isWarehouseConfigurationEnabled(), isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function assignReservation(prisma, context, raw) {
   requirePermission(context, "inventory:reservation:manage"); const input = normalizeReservationAssign(raw);
-  return prisma.$transaction(async (tx) => {
+  return withWarehousePolicyTransaction(prisma, context.tenantId, async (tx, policyEnabled) => {
     const replay = await commandReplay(tx, context.tenantId, input.requestId, input.payloadHash); if (replay) return replay;
+    if (policyEnabled) await advanceWarehouseLocationPolicyEpoch(tx, context.tenantId);
     const current = await tx.materialReservation.findFirst({ where: { tenantId: context.tenantId, reservationRef: input.reservationRef } });
     if (!current) fail("MATERIALS_RESOURCE_NOT_FOUND", 404);
+    if (policyEnabled) assertWarehouseLocationPolicy(await loadWarehouseLocationPolicies(tx, context.tenantId), current.locationId, "DISPATCH");
     if (current.status !== "RESERVED" || current.version !== input.expectedVersion) fail("MATERIALS_VERSION_CONFLICT", 409);
     const changed = await tx.materialReservation.updateMany({ where: { tenantId: context.tenantId, id: current.id, version: input.expectedVersion, status: "RESERVED" }, data: { status: "ASSIGNED", version: { increment: 1 } } });
     if (changed.count !== 1) fail("MATERIALS_VERSION_CONFLICT", 409);
@@ -416,7 +438,7 @@ export async function assignReservation(prisma, context, raw) {
     const result = { reservationRef: current.reservationRef, status: "ASSIGNED", version: current.version + 1 };
     await tx.materialInventoryCommand.create({ data: { tenantId: context.tenantId, requestId: input.requestId, operation: input.operation, payloadHash: input.payloadHash, targetRef: current.reservationRef, resultJson: result, ...actor(context) } });
     await tx.commercialAuditLog.create({ data: audit(context, "RESERVATION_ASSIGN", "MaterialReservation", current.reservationRef, input.requestId, result) }); return Object.freeze(result);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }, { enabled: isWarehouseConfigurationEnabled(), isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
 export async function createPurchaseRequest(prisma, context, raw) {
@@ -443,8 +465,9 @@ export async function listPurchaseRequests(prisma, context) {
 
 export async function transitionPurchaseRequest(prisma, context, raw) {
   requirePermission(context, "inventory:purchase:approve"); const input = normalizePurchaseTransition(raw);
-  return prisma.$transaction(async (tx) => {
+  return withWarehousePolicyTransaction(prisma, context.tenantId, async (tx, policyEnabled) => {
     const replay = await commandReplay(tx, context.tenantId, input.requestId, input.payloadHash); if (replay) return replay;
+    if (policyEnabled) await advanceWarehouseLocationPolicyEpoch(tx, context.tenantId);
     const current = await tx.materialPurchaseRequest.findFirst({ where: { tenantId: context.tenantId, purchaseRequestRef: input.purchaseRequestRef }, include: { material: true, unit: true } });
     if (!current) fail("MATERIALS_RESOURCE_NOT_FOUND", 404);
     if (current.version !== input.expectedVersion) fail("MATERIALS_VERSION_CONFLICT", 409);
@@ -453,6 +476,7 @@ export async function transitionPurchaseRequest(prisma, context, raw) {
     const location = input.action === "RECEIVE" ? await tx.materialLocation.findFirst({ where: { tenantId: context.tenantId, locationRef: input.locationRef, status: "ACTIVE" } }) : null;
     if (input.action === "RECEIVE" && !location) fail("MATERIALS_RESOURCE_NOT_FOUND", 404);
     if (input.action === "RECEIVE" && current.material.lotTrackingEnabled && !input.lotCode) fail("MATERIALS_LOT_REQUIRED", 409);
+    if (policyEnabled && location) assertWarehouseLocationPolicy(await loadWarehouseLocationPolicies(tx, context.tenantId), location.id, "RECEIVE");
     if (location) await lockStock(tx, context.tenantId, current.materialId, location.id);
     const result = { purchaseRequestRef: current.purchaseRequestRef, status: nextStatus, version: current.version + 1, receiptTransactionRef: location ? randomUUID() : null };
     const command = await tx.materialInventoryCommand.create({ data: { tenantId: context.tenantId, requestId: input.requestId, operation: input.operation, payloadHash: input.payloadHash, targetRef: current.purchaseRequestRef, resultJson: result, ...actor(context) } });
@@ -460,7 +484,7 @@ export async function transitionPurchaseRequest(prisma, context, raw) {
     if (changed.count !== 1) fail("MATERIALS_VERSION_CONFLICT", 409);
     if (location) await tx.materialInventoryMovement.create({ data: { tenantId: context.tenantId, materialId: current.materialId, locationId: location.id, commandId: command.id, purchaseRequestId: current.id, transactionRef: result.receiptTransactionRef, movementType: "RECEIPT", quantityBase: current.requestedQuantity, lotCode: input.lotCode, reasonCode: input.reasonCode, ...actor(context) } });
     await tx.commercialAuditLog.create({ data: audit(context, `PURCHASE_REQUEST_${input.action}`, "MaterialPurchaseRequest", current.purchaseRequestRef, input.requestId, result) }); return Object.freeze(result);
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 10_000 });
+  }, { enabled: input.action === "RECEIVE" && isWarehouseConfigurationEnabled(), isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 10_000 });
 }
 
 export async function resolveSurveyRequirements(prisma, context, raw) {

@@ -17,6 +17,7 @@ export const LOCAL_22_CATALOG_SHA256 = "ddf3e8851410807ce123160010ef727ff8c1e757
 export const LOCAL_35_CATALOG_SHA256 = "2edda06f3606ce0546fcf4ed7435153e5b77986e0cc2d54c3d661785f06002a3";
 export const LOCAL_36_USER_IDENTITY_CATALOG_SHA256 = "481649e8c88db832d1f313f7e3a4a785f28a1d49c4277dc21eac179fef16cb54";
 export const LOCAL_37_FLEET_DRIVERS_CATALOG_SHA256 = "0431dfd8810a8ef68895b1b40c5e38ae1c06550249dff9b7f07c0a41b5951371";
+export const LOCAL_38_WAREHOUSE_CONFIGURATION_CATALOG_SHA256 = "10a5e45e358155d6e948f44b72b0e0840061703ec6a11085719b41767f89c642";
 export const RESTORED_NEON_15_CATALOG_SHA256 = "4d5959dc99b03a7866bc3e038fcaea611fe665a5412cb235522cc05ab5e011d3";
 
 export const HISTORICAL_22_CATALOG = Object.freeze({
@@ -141,6 +142,28 @@ export const CANONICAL_37_FLEET_DRIVERS_SQL_ONLY_COUNTS = Object.freeze({
   "20261031010000_v17_fleet_driver_authority": Object.freeze({ check: 10, function: 2, special_index: 2, trigger: 2 }),
 });
 
+// Measured independently on disposable PostgreSQL18.6. Removing only the
+// three20B tables, their two trigger functions and three new enums reproduces
+// every frozen37 hash. Historical SQL and catalog queries remain unchanged.
+export const CANONICAL_38_WAREHOUSE_CONFIGURATION_CATALOG = Object.freeze({
+  count: 10766,
+  sha256: LOCAL_38_WAREHOUSE_CONFIGURATION_CATALOG_SHA256,
+  categories: Object.freeze({
+    check: Object.freeze({ count: 421, sha256: "be0278b9762709fab18f99679c09efc8d7bd5048b98283de67cc6df884a83afd" }),
+    column: Object.freeze({ count: 3839, sha256: "e198743cf5b692998c39c56cd4c388b6330cca4a7afd656f4180f0bd18475749" }),
+    constraint: Object.freeze({ count: 3085, sha256: "a34439459761e5f099c178ab7e168638eb13957ecf57177c0bed9039079cf922" }),
+    enum: Object.freeze({ count: 1110, sha256: "5ebe8e1f975cb016ec35109a07d6271f0e71a204c52da9a6452e77819597948d" }),
+    foreign_key: Object.freeze({ count: 677, sha256: "84873092981a826dd006bf5ac4285a8abc914e1855a04dae30325103a44d626e" }),
+    function: Object.freeze({ count: 303, sha256: "56096502e6eeedc1fd84f061a6192b7bc9de6b3d067c08f761be05ad51d58999" }),
+    index: Object.freeze({ count: 1143, sha256: "b72c63528e5e0d699bc12b2014c707ba5906bf6c69bf712cd8e2443a7efc0b41" }),
+    trigger: Object.freeze({ count: 188, sha256: "78b1fdb96cdf97ccc7906ab2595c4beec9ce78a24e9bd49c50a7af8523196644" }),
+  }),
+});
+export const CANONICAL_38_WAREHOUSE_CONFIGURATION_SQL_ONLY_COUNTS = Object.freeze({
+  ...CANONICAL_37_FLEET_DRIVERS_SQL_ONLY_COUNTS,
+  "20261101010000_v17_warehouse_configuration": Object.freeze({ check: 5, function: 2, trigger: 3 }),
+});
+
 const BTREE_GIST_MIGRATION = "20260907010000_v17_tools_equipment";
 const HISTORICAL_22_PROFILE = Object.freeze({
   id: "historical-22", migrations: 22,
@@ -178,6 +201,18 @@ const CANONICAL_37_FLEET_DRIVERS_PROFILE = Object.freeze({
   approvedMigrationChecksums: Object.freeze({
     ...CANONICAL_36_USER_IDENTITY_PROFILE.approvedMigrationChecksums,
     "20261031010000_v17_fleet_driver_authority": "3a6db22d52441aa1614e13c0bd619ef4bba84230f9af91a3c794f31496d2bd14",
+  }),
+});
+
+const CANONICAL_38_WAREHOUSE_CONFIGURATION_PROFILE = Object.freeze({
+  id: "canonical-38-warehouse-configuration-20b", migrations: 38,
+  catalog: CANONICAL_38_WAREHOUSE_CONFIGURATION_CATALOG,
+  sqlOnlyCounts: CANONICAL_38_WAREHOUSE_CONFIGURATION_SQL_ONLY_COUNTS,
+  extensions: CANONICAL_37_FLEET_DRIVERS_PROFILE.extensions,
+  extensionMembers: CANONICAL_37_FLEET_DRIVERS_PROFILE.extensionMembers,
+  approvedMigrationChecksums: Object.freeze({
+    ...CANONICAL_37_FLEET_DRIVERS_PROFILE.approvedMigrationChecksums,
+    "20261101010000_v17_warehouse_configuration": "4fd765d2090163512be0f58d6eda3be59ad9b35fbfaf1e7b11a679f194d080d5",
   }),
 });
 
@@ -278,7 +313,7 @@ function normalizeDefinition(value) {
 }
 
 export function sqlDriftProfileForDatabase(database) {
-  if (database === "osi_db01n_ci") return CANONICAL_37_FLEET_DRIVERS_PROFILE;
+  if (database === "osi_db01n_ci") return CANONICAL_38_WAREHOUSE_CONFIGURATION_PROFILE;
   if (["osi_crm01b_local", "osi_v17_case_client_local", "osi_v17_case_public_ref_local"].includes(database)) {
     return HISTORICAL_22_PROFILE;
   }

@@ -27,7 +27,7 @@ positive("catálogo completo vigente", () => {
   const actual = validateHubCatalog(catalog);
   assert.equal(actual.applications.length, 11);
   assert.equal(actual.suites.length, 1);
-  assert.equal(actual.routes.length, 26);
+  assert.equal(actual.routes.length, 27);
   assert.equal(validateCommercialCatalog(catalog).appId, "commercial-crm");
 });
 positive("formato del catálogo no concede autoridad", () => {

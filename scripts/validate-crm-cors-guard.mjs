@@ -1,13 +1,18 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { basename, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const MANIFEST_PATH = "scripts/protected-cors-route-inventory.json";
 const CATEGORY_NAMES = Object.freeze(["protectedSameOrigin", "publicDeliberate", "legacyPendingClosed", "webhookOwnAuth"]);
 const WILDCARD_ORIGIN = /setHeader\(\s*["']access-control-allow-origin["']\s*,\s*["']\*["']/iu;
 const CREDENTIALS_TRUE = /setHeader\(\s*["']access-control-allow-credentials["']\s*,\s*["']true["']/iu;
 const ORIGIN_REFLECTION = /setHeader\(\s*["']access-control-allow-origin["']\s*,\s*(?:req(?:uest)?\.?headers|origin)\b/iu;
+const WAREHOUSE_CONFIGURATION_ROUTES = new Set([
+  "/api/materials/warehouse-configuration", "/api/materials/warehouse-uses",
+  "/api/materials/warehouse-uses/[useRef]", "/api/materials/warehouses/locations/[locationRef]/configuration",
+]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`PROTECTED_CORS_GUARD: ${message}`);
@@ -133,6 +138,39 @@ function validatePublicWrapper(httpSource) {
   invariant(/GET,HEAD,OPTIONS/u.test(httpSource), "wrapper público amplió métodos");
 }
 
+// These endpoints require their own gated adapter. A broad materials prefix or
+// an unused import must not admit a replacement handler without the 20B gate.
+function validateWarehouseConfigurationRoute(route) {
+  const file = ts.createSourceFile(route.relativePath, route.source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const bindings = new Set(); const exports = [];
+  for (const statement of file.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      const module = posix.normalize(posix.join(posix.dirname(route.relativePath), statement.moduleSpecifier.text));
+      const names = statement.importClause?.namedBindings;
+      if (module === "api/_lib/warehouseConfigurationHttp.js" && names && ts.isNamedImports(names)) {
+        for (const binding of names.elements) if ((binding.propertyName?.text ?? binding.name.text) === "createWarehouseConfigurationHandler") bindings.add(binding.name.text);
+      }
+    }
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) exports.push(statement.expression);
+    if (ts.isFunctionDeclaration(statement) && statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword)) exports.push(statement);
+  }
+  const handler = exports[0];
+  invariant(file.parseDiagnostics.length === 0 && exports.length === 1 && ts.isCallExpression(handler)
+    && ts.isIdentifier(handler.expression) && bindings.has(handler.expression.text), `${route.path} no usa su adaptador privado de configuración`);
+}
+
+function validateWarehouseConfigurationWrapper(wrapper) {
+  invariant(/return withPrivateApiHeaders\(async/u.test(wrapper), "configuración de almacenes no usa headers privados");
+  invariant(/if \(!prepareMaterialsRequest\(req, res, env\)\) return;/u.test(wrapper), "configuración de almacenes omitió gate de materiales y origen");
+  invariant(/try\s*\{\s*resolveWarehouseConfigurationApiMode\(env, req\);\s*\}/u.test(wrapper), "configuración de almacenes omitió su gate específico");
+  const baseGate = wrapper.indexOf("if (!prepareMaterialsRequest(req, res, env)) return;");
+  const configurationGate = wrapper.indexOf("resolveWarehouseConfigurationApiMode(env, req)");
+  const options = wrapper.indexOf('if (req.method === "OPTIONS")');
+  const context = wrapper.indexOf("await resolveContext(req,");
+  invariant(configurationGate > baseGate && options > configurationGate && context > options
+    && /handleOptions: false/u.test(wrapper), "configuración de almacenes debe aplicar los gates antes de OPTIONS y contexto");
+}
+
 export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map(), extraRoutes = [], vercelText = source(root, "vercel.json", overrides) } = {}) {
   const inventory = loadProtectedCorsInventory({ root, overrides });
   const protectedSameOriginRoutes = inventory.categories.protectedSameOrigin;
@@ -153,6 +191,7 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
   const httpSource = source(root, "api/_lib/http.js", overrides);
   validatePrivateWrapper(httpSource);
   validatePublicWrapper(httpSource);
+  validateWarehouseConfigurationWrapper(source(root, "api/_lib/warehouseConfigurationHttp.js", overrides));
 
   for (const route of routes) {
     invariant(!CREDENTIALS_TRUE.test(route.source), `${route.path} declara credentials permisivo`);
@@ -163,6 +202,11 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
     }
     invariant(!WILDCARD_ORIGIN.test(route.source), `${route.path} declara wildcard`);
     invariant(!route.source.includes("withPublicReadCorsHeaders"), `${route.path} usa CORS público fuera de allowlist`);
+    if (WAREHOUSE_CONFIGURATION_ROUTES.has(route.path)) {
+      invariant(protectedSameOriginRoutes.includes(route.path), `${route.path} debe conservar su clasificación privada same-origin`);
+      validateWarehouseConfigurationRoute(route);
+      continue;
+    }
     if (route.source.includes("withPrivateApiHeaders")) continue;
     if (route.path.startsWith("/api/materials/") && route.source.includes("createMaterialsHandler")) continue;
     if (route.path.startsWith("/api/assets/") && route.source.includes("createToolsEquipmentHandler")) continue;
@@ -187,7 +231,7 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
   for (const relativePath of [
     "api/_lib/adminIdentityInvitationHttp.js", "api/_lib/adminMembershipHttp.js", "api/_lib/adminUserIdentityHttp.js", "api/_lib/adminFleetHttp.js", "api/_lib/fleetDriversHttp.js", "api/_lib/authHttp.js", "api/_lib/authOrigin.js",
     "api/_lib/crmCaseMutationHttp.js", "api/_lib/crmIcpV2ApiHttp.js", "api/_lib/crmOwnerCatalogHttp.js", "api/_lib/crmPipelineReadHttp.js",
-    "api/_lib/crmServicesHttp.js", "api/_lib/crmSurveyHttp.js", "api/_lib/materialsInventoryHttp.js", "api/_lib/toolsEquipmentHttp.js", "api/_lib/logisticsEngineHttp.js", "api/_lib/logisticsTransportHttp.js", "api/_lib/costingHttp.js", "api/_lib/quoteHttp.js", "api/_lib/commercialRelationshipsHttp.js", "api/_lib/communicationsHttp.js", "api/_lib/personnelPoliciesHttp.js", "api/_lib/clientTemporaryAccessHttp.js", "api/_lib/pipelineCaseMutationHttp.js",
+    "api/_lib/crmServicesHttp.js", "api/_lib/crmSurveyHttp.js", "api/_lib/materialsInventoryHttp.js", "api/_lib/warehouseConfigurationHttp.js", "api/_lib/toolsEquipmentHttp.js", "api/_lib/logisticsEngineHttp.js", "api/_lib/logisticsTransportHttp.js", "api/_lib/costingHttp.js", "api/_lib/quoteHttp.js", "api/_lib/commercialRelationshipsHttp.js", "api/_lib/communicationsHttp.js", "api/_lib/personnelPoliciesHttp.js", "api/_lib/clientTemporaryAccessHttp.js", "api/_lib/pipelineCaseMutationHttp.js",
   ]) {
     const wrapper = source(root, relativePath, overrides);
     invariant(!WILDCARD_ORIGIN.test(wrapper), `${relativePath} declara wildcard`);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { B3B1_ACTIVATION_BLOCKERS, validateMt01b3aRepository, validateMt01b3aSources } from "./validate-mt01b3a-auth-guard.mjs";
+import { B3B1_ACTIVATION_BLOCKERS, MT01B3A_ROUTE_INVENTORY, validateMt01b3aRepository, validateMt01b3aSources } from "./validate-mt01b3a-auth-guard.mjs";
 
 const root = process.cwd();
 const current = validateMt01b3aRepository(root);
@@ -85,6 +85,37 @@ for (const route of warehouseRoutes) {
 rejected("una ubicación nueva no hereda autorización por su directorio", {
   routeSources: new Map([...routeSources, ["api/materials/warehouses/locations/extra.js", routeSources.get(warehouseRoutes[1])]]),
 }, /ruta nueva sin clasificación/);
+const warehouseConfigurationRoutes = [
+  "api/materials/warehouse-configuration/index.js", "api/materials/warehouse-uses/index.js",
+  "api/materials/warehouse-uses/[useRef].js", "api/materials/warehouses/locations/[locationRef]/configuration.js",
+];
+positive("las cuatro rutas20B usan exactamente su adaptador empresarial", () => {
+  for (const route of warehouseConfigurationRoutes) {
+    assert.equal(MT01B3A_ROUTE_INVENTORY[route].kind, "TENANT");
+    assert.deepEqual(MT01B3A_ROUTE_INVENTORY[route].calls, [{ module: "api/_lib/warehouseConfigurationHttp.js", name: "createWarehouseConfigurationHandler" }]);
+  }
+});
+for (const route of warehouseConfigurationRoutes) {
+  rejectRoute("Configuración conserva el adaptador con gate20B: " + route, route,
+    (source) => source.replaceAll("warehouseConfigurationHttp.js", "materialsInventoryHttp.js").replaceAll("createWarehouseConfigurationHandler", "createMaterialsHandler"));
+  rejectRoute("Configuración no permite contexto empresarial inyectado: " + route, route,
+    (source) => source.replace("prismaClient: prisma", "resolveContext: async () => ({ tenantId: 'forged', role: 'A' }), prismaClient: prisma"), /autoridad alternativa/);
+  rejectRoute("Configuración no permite cambiar el gate desde la ruta: " + route, route,
+    (source) => source.replace("prismaClient: prisma", "env: { WAREHOUSE_CONFIGURATION_API_MODE: 'LOCAL_ONLY' }, prismaClient: prisma"), /sobrescribe la autoridad/);
+  const missingConfigurationRoute = new Map(routeSources); missingConfigurationRoute.delete(route);
+  rejected("Configuración inventariada no puede desaparecer: " + route, { routeSources: missingConfigurationRoute }, /ruta inventariada ausente/);
+}
+rejectRoute("Configuración requiere el handler exportado, no solo un import", warehouseConfigurationRoutes[0],
+  (source) => source.replace("export default createWarehouseConfigurationHandler", "const unused = createWarehouseConfigurationHandler") + "\nexport default () => null;\n");
+rejectRoute("Configuración no admite opciones dinámicas de autoridad", warehouseConfigurationRoutes[1],
+  (source) => source.replace("prismaClient: prisma", "...options, prismaClient: prisma"), /opciones dinámicas/);
+rejected("un endpoint nuevo de usos no hereda autorización por prefijo", {
+  routeSources: new Map([...routeSources, ["api/materials/warehouse-uses/extra.js", routeSources.get(warehouseConfigurationRoutes[1])]]),
+}, /ruta nueva sin clasificación/);
+rejectAdapter("Configuración conserva el resolvedor empresarial predeterminado", "api/_lib/warehouseConfigurationHttp.js",
+  (source) => source.replace("resolveContext = resolveCrmPipelineContext", "resolveContext = fakeContext"), /omite el contexto empresarial canónico/);
+rejectAdapter("Configuración no omite autenticación antes del dominio", "api/_lib/warehouseConfigurationHttp.js",
+  (source) => source.replace("await resolveContext(req, { env, prisma: prismaClient })", "({ tenantId: 'forged', role: 'A' })"), /omite el contexto empresarial canónico/);
 rejectRoute("wrapper ICP no acepta un contexto sintético predeterminado", "api/crm/icp-v2/clients/search.js", (s) => s.replace("  resolveContext,", "  resolveContext = async () => ({ role: 'A' }),"), /MT-01B3A: .*sustituye el contexto predeterminado/);
 rejectRoute("wrapper CRM no permite inyectar permisos al exportar", "api/crm/pipeline-summary.js", (s) => s.replace("export default createPipelineSummaryHandler();", "export default createPipelineSummaryHandler({ resolveContext: () => ({}) });"), /MT-01B3A: .*autoridad alternativa|MT-01B3A: .*inyecta autoridad en el wrapper/);
 rejectRoute("lectura CRM no admite permiso sintético predeterminado", "api/crm/pipeline-summary.js", (s) => s.replace("requirePermission = requireCrmPipelinePermissionResponse", "requirePermission = async () => ({ role: 'A' })"), /MT-01B3A: .*sustituye el permiso canónico/);

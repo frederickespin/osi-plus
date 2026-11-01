@@ -2,6 +2,17 @@
 
 Actualización solicitada el 31 de octubre de 2026. Destino: Preview consolidado.
 
+## Preferencia visual aprobada
+
+El usuario aprobó el formato compacto de la hoja de materiales y pidió conservarlo como preferencia para las nuevas ventanas de configuración de servicios, combinaciones y modos.
+
+- Campos de una línea y selectores: **28 px de alto en escritorio y 32 px en pantallas pequeñas**.
+- Texto de los campos: **12 px**, con una línea de 16 px y espacio interior suficiente para leer el valor completo.
+- Ventanas y filas con espacio vertical reducido; botones compactos y ayudas accesibles.
+- Los controles táctiles, casillas y campos de varias líneas conservan el espacio que necesita su interacción.
+
+Este es el criterio de partida para nuevos formularios y para las pantallas que se renueven. `src/components/ui/compact-form.ts` reúne las clases compartidas para reproducirlo de forma consistente. Lo usan las políticas de materiales, el catálogo de servicios, los modos, las combinaciones y sus requerimientos; los formularios compartidos de edición mantienen la misma presentación.
+
 ## Cambios de uso
 
 La sección administrativa se presenta como **Servicios y combinaciones**. Sus pestañas conservan el catálogo y las modalidades, las combinaciones reutilizables y las políticas de materiales. El selector de la configuración del caso usa **Combinación publicada**. Las rutas, los permisos y las referencias persistidas mantienen su identidad.

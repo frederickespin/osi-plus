@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { Copy, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { Button } from "@/components/ui/button";
+import { COMPACT_FORM_FIELD as FIELD } from "@/components/ui/compact-form";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CrmServicesApi, CrmServicesApiError, type ServiceCatalogItem, type ServiceMaterialResource, type ServiceMode, type ServicePackage } from "./api";
 import { newPolicyLine, validatePolicyDraft, type PolicyDraft, type PolicyLineDraft } from "./materialPolicyDraft";
@@ -21,7 +22,6 @@ type Props = Readonly<{
   onUnauthorized(): void;
 }>;
 
-const FIELD = "h-8 min-w-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs leading-4 text-slate-900 focus:border-[#0070a8] focus:outline-none focus:ring-1 focus:ring-[#0070a8] disabled:bg-slate-50 disabled:text-slate-500 sm:h-7";
 const ERROR_FIELD = "border-red-500";
 const DISPOSITIONS = [
   ["CONSUMED", "Consumo"], ["RENTED", "Alquiler"], ["RETURNABLE", "Devolución"], ["USAGE_CHARGE", "Cargo por uso"],

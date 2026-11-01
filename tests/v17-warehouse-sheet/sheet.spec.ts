@@ -117,7 +117,26 @@ test("a lost success keeps the exact request across navigation, reload and a den
   await openNewSheet(page, "Almacén de respuesta perdida"); await page.getByRole("button", { name: "Agregar fila", exact: true }).click(); await page.getByLabel("Nombre, fila 1", { exact: true }).fill("Zona única");
   await page.getByRole("button", { name: "Guardar hoja", exact: true }).click(); await expect(page.getByRole("alert")).toContainText("No se pudo confirmar el guardado");
   await expect(page.getByLabel("Nombre del almacén", { exact: true })).toBeDisabled();
-  await selectSection(page, "/warehouses/configuration"); await selectSection(page, "/warehouses/spaces"); await page.reload();
+  await selectSection(page, "/warehouses/configuration");
+  await expect(page).toHaveURL(/\/warehouses\/configuration$/);
+  await expect(page.getByTestId("warehouse-configuration")).toBeVisible();
+  // A mobile selection completes before the authenticated SPA navigation does.
+  // Hold that response explicitly so a reload can only follow the real return
+  // to Spaces, rather than accidentally reloading the Configuration route.
+  let releaseNavigation!: () => void;
+  const navigationReleased = new Promise<void>((resolve) => { releaseNavigation = resolve; });
+  await page.route("**/api/auth/me", async (route) => {
+    await navigationReleased;
+    await route.fallback();
+  }, { times: 1 });
+  await selectSection(page, "/warehouses/spaces");
+  await expect(page.getByText("Verificando acceso…", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/warehouses\/configuration$/);
+  releaseNavigation();
+  await expect(page).toHaveURL(/\/warehouses\/spaces$/);
+  await expect(page.getByRole("button", { name: "Reintentar guardado", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Nombre, fila 1", { exact: true })).toHaveValue("Zona única");
+  await page.reload();
   await expect(page.getByRole("button", { name: "Reintentar guardado", exact: true })).toBeVisible(); expect(fixture.commands).toHaveLength(1);
   await page.getByRole("button", { name: "Reintentar guardado", exact: true }).click(); await expect(page.getByRole("alert")).toContainText("El guardado anterior sigue sin confirmar");
   await page.reload(); await expect(page.getByLabel("Nombre, fila 1", { exact: true })).toHaveValue("Zona única"); expect(fixture.commands).toHaveLength(2);

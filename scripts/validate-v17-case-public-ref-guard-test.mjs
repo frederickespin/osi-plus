@@ -38,7 +38,7 @@ function changeConsumer(path, before, after) {
 
 check("baseline publicRef aprobada", baseline.ok);
 check("inventario distingue casos y clientes de membresías e invitaciones",
-  baseline.runtimeConsumers === 29
+  baseline.runtimeConsumers === 30
   && baseline.consumerContracts["api/_lib/crmIcpV2ApiDomain.js"].kinds.join(",") === "CASE,CLIENT"
   && baseline.consumerContracts["api/_lib/authContext.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminUserIdentityDomain.js"].kinds.join(",") === "MEMBERSHIP"
@@ -47,6 +47,7 @@ check("inventario distingue casos y clientes de membresías e invitaciones",
   && baseline.consumerContracts["api/_lib/fleetDriversDomain.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/logisticsTransportDomain.js"].kinds.join(",") === "CASE"
   && baseline.consumerContracts["api/_lib/logisticsTransportZones.js"].kinds.join(",") === "MEMBERSHIP"
+  && baseline.consumerContracts["api/_lib/warehouseSheetDomain.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminIdentityInvitationDomain.js"].kinds.join(",") === "INVITATION,MEMBERSHIP");
 check("todos los consumidores persistentes tienen consultas verificadas",
   Object.entries(baseline.consumerContracts).every(([path, contract]) =>
@@ -201,6 +202,40 @@ rejected("fragmentos de choferes no pueden convertirse en input arbitrario", cha
 rejected("clasificar membresías de Flota no autoriza leer casos", {
   extraRuntimeSources: { ...canonicalRuntime, "api/_lib/fleetDriversDomain.js": canonicalRuntime["api/_lib/fleetDriversDomain.js"]
     + '\ntx.pipelineCase.findFirst({ where: { tenantId: actor.tenantId, publicRef: caseRef } });\n' },
+}, /modelo de referencia sin clasificar/);
+check("ficha de almacén verifica cada lectura de membresía expandida",
+  baseline.consumerContracts["api/_lib/warehouseSheetDomain.js"].sqlQueries === 5);
+rejected("encargados guardados no pueden perder empresa", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'WHERE m."tenant_id"=${tenantId} AND m."id" IN', 'WHERE m."id" IN'), /contrato tenant-first/);
+rejected("selección de encargado no puede perder empresa", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'WHERE m."tenant_id"=${tenantId} AND m."public_ref"', 'WHERE m."public_ref"'), /contrato tenant-first/);
+rejected("CTE de encargados exige empresa", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'WHERE m."tenant_id"=${context.tenantId})', 'WHERE true)'), /contrato tenant-first/);
+rejected("CTE de encargados no obtiene empresa del input", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'WHERE m."tenant_id"=${context.tenantId})', 'WHERE m."tenant_id"=${input.tenantId})'), /contrato tenant-first/);
+rejected("CTE de encargados no permite OR que evada empresa", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'WHERE m."tenant_id"=${context.tenantId})', 'WHERE m."tenant_id"=${context.tenantId} OR true)'), /contrato tenant-first/);
+rejected("CTE de encargados no permite UNION", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'WHERE m."tenant_id"=${context.tenantId})', 'WHERE m."tenant_id"=${context.tenantId} UNION SELECT * FROM "osi"."tenant_memberships")'), /contrato tenant-first/);
+rejected("conteo de encargados solo puede leer el CTE", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'AS "total" FROM e WHERE', 'AS "total" FROM "osi"."tenant_memberships" e WHERE'), /contrato tenant-first/);
+rejected("listado exterior de encargados no puede agregar tablas", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'SELECT * FROM e WHERE', 'SELECT * FROM e JOIN "osi"."tenant_memberships" outside ON true WHERE'), /contrato tenant-first/);
+rejected("búsqueda exterior de encargados conserva todas sus ramas", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'Prisma.sql`AND e."display_name" ILIKE', 'Prisma.sql`OR e."display_name" ILIKE'), /contrato tenant-first/);
+rejected("CTE de encargados no admite cierre ausente", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'WHERE m."tenant_id"=${context.tenantId})', 'WHERE m."tenant_id"=${context.tenantId}'), /contrato tenant-first/);
+rejected("fragmentos de encargados no pueden recibir input dinámico", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'function managerSelect() {', 'function managerSelect(input) {'), /contrato tenant-first/);
+rejected("fragmentos de encargados no pueden tener efectos adicionales", changeConsumer("api/_lib/warehouseSheetDomain.js",
+  'function managerFrom() {', 'function managerFrom() { mutateTenant();'), /contrato tenant-first/);
+rejected("fragmentos de encargados no autorizan otra consulta sin empresa", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/warehouseSheetDomain.js": canonicalRuntime["api/_lib/warehouseSheetDomain.js"]
+    + '\nasync function unscoped(tx) { return tx.$queryRaw(Prisma.sql`SELECT ${managerSelect()} ${managerFrom()} WHERE m."id"=${reference}`); }\n' },
+}, /contrato tenant-first/);
+rejected("clasificar encargados de almacén no autoriza leer casos", {
+  extraRuntimeSources: { ...canonicalRuntime, "api/_lib/warehouseSheetDomain.js": canonicalRuntime["api/_lib/warehouseSheetDomain.js"]
+    + '\ntx.pipelineCase.findFirst({ where: { tenantId: context.tenantId, publicRef: caseRef } });\n' },
 }, /modelo de referencia sin clasificar/);
 rejected("SQL lista de membresías cambia AND por OR", changeConsumer("api/_lib/adminMembershipDomain.js",
   'Prisma.join(conditions, " AND ")', 'Prisma.join(conditions, " OR ")'), /contrato tenant-first/);

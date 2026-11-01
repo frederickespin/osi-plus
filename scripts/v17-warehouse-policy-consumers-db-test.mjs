@@ -14,15 +14,30 @@ const pg17 = compatibility ? await createWarehouseConfigurationPg17LocalPrisma(p
 const target = compatibility ? null : validateV17ServicesTestUrl(process.env.DATABASE_URL);
 if (!compatibility) assert.equal(target.canonicalCi, true, "WAREHOUSE_POLICY_DB_REQUIRES_CANONICAL_LOCAL_FIXTURE");
 const prisma = pg17?.prisma ?? new PrismaClient({ datasourceUrl: target.raw });
-const previousMode = process.env.WAREHOUSE_CONFIGURATION_API_MODE;
+const simulationVariable = (name) => name === "WAREHOUSE_CONFIGURATION_API_MODE" || name.toUpperCase().startsWith("VERCEL");
+let inheritedSimulationEnvironment;
 const suffix = crypto.randomUUID().slice(0, 8); let sequence = 0;
 const permissions = ["inventory:catalog:view", "inventory:catalog:manage", "inventory:stock:view", "inventory:stock:receive", "inventory:stock:transfer", "inventory:stock:issue", "inventory:stock:adjust", "inventory:reservation:manage", "inventory:purchase:request", "inventory:purchase:approve", "assets:model:view", "assets:model:manage", "assets:instance:view", "assets:instance:manage", "assets:reservation:manage", "assets:assignment:manage", "assets:inspection:perform", "assets:incident:manage", "assets:maintenance:manage"];
 const t0 = "2026-11-01T12:00:00.000Z"; const t1 = "2026-11-01T14:00:00.000Z";
 const command = (operation, payload, scope = {}, hash = canonicalPayloadHash) => { const requestId = crypto.randomUUID(); return { requestId, payloadHash: hash({ operation, requestId, ...scope, ...payload }), ...payload }; };
 const assetCommand = (operation, payload, scope = {}) => command(operation, payload, scope, canonicalAssetPayloadHash);
 
-before(async () => { if (!compatibility) await verifyV17ServicesLocalDatabase(prisma, target); process.env.WAREHOUSE_CONFIGURATION_API_MODE = "LOCAL_ONLY"; });
-after(async () => { if (previousMode === undefined) delete process.env.WAREHOUSE_CONFIGURATION_API_MODE; else process.env.WAREHOUSE_CONFIGURATION_API_MODE = previousMode; await prisma.$disconnect(); });
+before(async () => {
+  // The PG17 factory already verifies its live server identity. For PG18,
+  // verify it here before simulating any runtime environment for the fixture.
+  if (!compatibility) await verifyV17ServicesLocalDatabase(prisma, target);
+  inheritedSimulationEnvironment = new Map(Object.entries(process.env).filter(([name]) => simulationVariable(name)));
+  for (const name of inheritedSimulationEnvironment.keys()) delete process.env[name];
+  process.env.WAREHOUSE_CONFIGURATION_API_MODE = "LOCAL_ONLY";
+});
+after(async () => {
+  try {
+    if (inheritedSimulationEnvironment) {
+      for (const name of Object.keys(process.env)) if (simulationVariable(name)) delete process.env[name];
+      for (const [name, value] of inheritedSimulationEnvironment) process.env[name] = value;
+    }
+  } finally { await prisma.$disconnect(); }
+});
 
 async function fixture() {
   const key = `${suffix}-${++sequence}`;

@@ -164,6 +164,27 @@ export const CANONICAL_38_WAREHOUSE_CONFIGURATION_SQL_ONLY_COUNTS = Object.freez
   "20261101010000_v17_warehouse_configuration": Object.freeze({ check: 5, function: 2, trigger: 3 }),
 });
 
+// Independently measured20C additive catalog; removing its two tables and two
+// functions reproduces every frozen38 object and category hash.
+export const CANONICAL_39_WAREHOUSE_SHEET_CATALOG = Object.freeze({
+  count: 10827,
+  sha256: "c9ec38f5e35c159bc23dfaa3a6a43aecdac90aeb1bc53183bdceaf73ba72c56c",
+  categories: Object.freeze({
+    check: Object.freeze({ count: 425, sha256: "536d4f4a45d2653fcdd777f00b852e1f57a9efa51c74db7571d709f4d5c73ddc" }),
+    column: Object.freeze({ count: 3859, sha256: "1166d67744275535be90d9c4636d62fe543875deb2a9b8d7f9b7af29182c6f9e" }),
+    constraint: Object.freeze({ count: 3104, sha256: "14aff416a17959c4609a97763ced9f1488b6ebe47275a839ec79ab855ad84cfa" }),
+    enum: Object.freeze({ count: 1110, sha256: "5ebe8e1f975cb016ec35109a07d6271f0e71a204c52da9a6452e77819597948d" }),
+    foreign_key: Object.freeze({ count: 683, sha256: "bb9c069961106d1499edfbb2086f59fe6f0651bd7f282a6614ad51e105ceb80c" }),
+    function: Object.freeze({ count: 305, sha256: "e79e404414fc47ff700f2c65e23fbc5a1e853aa88c2c5f081d7477715cfc5464" }),
+    index: Object.freeze({ count: 1151, sha256: "054cd5824aec06cb35ca6441ff56dd76c50ea8fe1d11f46f43c716516fc78ef8" }),
+    trigger: Object.freeze({ count: 190, sha256: "df09a0465410f21de390211d7c6b2db5ae1f363dc0cf1127d9921b5457dc907b" }),
+  }),
+});
+export const CANONICAL_39_WAREHOUSE_SHEET_SQL_ONLY_COUNTS = Object.freeze({
+  ...CANONICAL_38_WAREHOUSE_CONFIGURATION_SQL_ONLY_COUNTS,
+  "20261101020000_v17_warehouse_sheet": Object.freeze({ check: 4, function: 2, trigger: 2 }),
+});
+
 const BTREE_GIST_MIGRATION = "20260907010000_v17_tools_equipment";
 const HISTORICAL_22_PROFILE = Object.freeze({
   id: "historical-22", migrations: 22,
@@ -213,6 +234,18 @@ const CANONICAL_38_WAREHOUSE_CONFIGURATION_PROFILE = Object.freeze({
   approvedMigrationChecksums: Object.freeze({
     ...CANONICAL_37_FLEET_DRIVERS_PROFILE.approvedMigrationChecksums,
     "20261101010000_v17_warehouse_configuration": "4fd765d2090163512be0f58d6eda3be59ad9b35fbfaf1e7b11a679f194d080d5",
+  }),
+});
+
+const CANONICAL_39_WAREHOUSE_SHEET_PROFILE = Object.freeze({
+  id: "canonical-39-warehouse-sheet-20c", migrations: 39,
+  catalog: CANONICAL_39_WAREHOUSE_SHEET_CATALOG,
+  sqlOnlyCounts: CANONICAL_39_WAREHOUSE_SHEET_SQL_ONLY_COUNTS,
+  extensions: CANONICAL_38_WAREHOUSE_CONFIGURATION_PROFILE.extensions,
+  extensionMembers: CANONICAL_38_WAREHOUSE_CONFIGURATION_PROFILE.extensionMembers,
+  approvedMigrationChecksums: Object.freeze({
+    ...CANONICAL_38_WAREHOUSE_CONFIGURATION_PROFILE.approvedMigrationChecksums,
+    "20261101020000_v17_warehouse_sheet": "8acd3ee3669de51ad9064e3a97927257606035ea4fef1d64e481f96884244de3",
   }),
 });
 
@@ -313,7 +346,7 @@ function normalizeDefinition(value) {
 }
 
 export function sqlDriftProfileForDatabase(database) {
-  if (database === "osi_db01n_ci") return CANONICAL_38_WAREHOUSE_CONFIGURATION_PROFILE;
+  if (database === "osi_db01n_ci") return CANONICAL_39_WAREHOUSE_SHEET_PROFILE;
   if (["osi_crm01b_local", "osi_v17_case_client_local", "osi_v17_case_public_ref_local"].includes(database)) {
     return HISTORICAL_22_PROFILE;
   }

@@ -8,7 +8,7 @@ import { WarehouseApi, isWarehouseAreaUseChange, type WarehouseAreaUseChange } f
 import { isWarehouseConfigurationUiEnabled } from "./configurationMode";
 import { AREA_PURPOSE_LABELS, type WarehouseAreaPurpose, type WarehouseAreaUse } from "./configurationTypes";
 import { pendingWarehouseRoute, WAREHOUSE_BUTTON, WAREHOUSE_PRIMARY_BUTTON, WAREHOUSE_TEXTAREA } from "./configurationUi";
-import { ConfigurationDialog } from "./ConfigurationDialog";
+import { ConfigurationPanel } from "./ConfigurationPanel";
 import { getPendingWarehouseDraft, type PendingWarehouseDraft } from "./pendingDraft";
 import { useWarehouseConfiguration } from "./useWarehouseConfiguration";
 import { useWarehouseMutation } from "./useWarehouseMutation";
@@ -92,7 +92,7 @@ function AreaUseEditor({ row, recovery, open, api, membershipRef, triggerRef, on
     const change: WarehouseAreaUseChange = mutation.uncertain && recovered ? recovered : creating ? { operation: "WAREHOUSE_AREA_USE_CREATE", ...common } : { operation: "WAREHOUSE_AREA_USE_UPDATE", ...identity!, ...common, status };
     void mutation.submit(change);
   }
-  return <ConfigurationDialog open={open} title={creating ? "Nuevo uso de área" : "Editar uso de área"} description="El uso describe el destino de una ubicación. La asignación se realiza explícitamente en su ficha." {...mutation} canManage canSubmit={Boolean(name.trim() && purpose)} triggerRef={triggerRef} onClose={onClose} onRefresh={onRefresh} onSubmit={submit}>
+  return <ConfigurationPanel open={open} title={creating ? "Nuevo uso de área" : "Editar uso de área"} description="El uso describe el destino de una ubicación. La asignación se realiza explícitamente en su ficha." {...mutation} canManage canSubmit={Boolean(name.trim() && purpose)} triggerRef={triggerRef} onClose={onClose} onRefresh={onRefresh} onSubmit={submit}>
     <fieldset disabled={mutation.locked} className="space-y-3">
       <label className="block text-xs font-medium text-slate-700">Nombre del uso<input autoFocus required maxLength={160} value={name} onChange={(event) => setName(event.target.value)} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} placeholder="Ej.: Material de embalaje" /></label>
       <div><div className="flex items-center gap-1"><label htmlFor="warehouse-use-purpose" className="text-xs font-medium text-slate-700">Destino orientativo</label><AdministrationHelp title="Destino del uso"><p>Elija uso interno, almacenamiento de clientes o uso mixto según la organización del área.</p><p>Este dato es descriptivo. No asigna propietarios ni crea registros de custodia de clientes.</p></AdministrationHelp></div><select id="warehouse-use-purpose" required value={purpose} onChange={(event) => setPurpose(event.target.value as WarehouseAreaPurpose)} className={`${COMPACT_FORM_FIELD} w-full`}><option value="">Seleccione un destino</option>{Object.entries(AREA_PURPOSE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
@@ -101,5 +101,5 @@ function AreaUseEditor({ row, recovery, open, api, membershipRef, triggerRef, on
     </fieldset>
     <p className="text-xs text-slate-500">{creating ? "Código automático al guardar." : <>Código: <span className="font-mono">{row?.code ?? "Registro del guardado anterior"}</span>. Se conserva al cambiar el nombre.</>}</p>
     {!creating && status === "INACTIVE" && <p className="text-xs leading-5 text-amber-900">No podrá elegir este uso para nuevas asignaciones. Las ubicaciones que ya lo utilizan conservan su asignación.</p>}
-  </ConfigurationDialog>;
+  </ConfigurationPanel>;
 }

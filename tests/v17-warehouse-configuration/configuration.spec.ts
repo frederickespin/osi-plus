@@ -58,6 +58,8 @@ test("uses create and edit with automatic immutable codes, compact fields and he
   await page.getByRole("button", { name: "Nuevo uso", exact: true }).click();
   const name = page.getByLabel("Nombre del uso", { exact: true });
   await name.fill("Uso definido por el usuario");
+  await expect(page.getByRole("region", { name: "Nuevo uso de área", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText("Código automático al guardar.", { exact: true })).toBeVisible();
   await page.getByLabel("Destino orientativo", { exact: true }).selectOption("MIXED");
   await page.getByLabel("Descripción", { exact: true }).fill("Descripción informativa");
@@ -144,7 +146,7 @@ test("control changes in either direction need reason and acknowledgment and sur
   await expect(page.getByRole("alert")).toContainText("Hay reservas o préstamos pendientes");
   await expect(page.getByLabel("Regla de disponibilidad", { exact: true })).toBeEnabled();
   await save.click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
   await page.getByRole("button", { name: "Controles operativos de Zona sintética", exact: true }).click();
   await expect(page.getByText("Último motivo registrado: Revisión de despacho")).toBeVisible();
   await page.getByLabel("Regla de disponibilidad", { exact: true }).selectOption("CONDITION_BASED");
@@ -152,7 +154,7 @@ test("control changes in either direction need reason and acknowledgment and sur
   await expect(save).toBeDisabled();
   await page.getByLabel("Motivo del cambio", { exact: true }).fill("Revisión terminada");
   await page.getByRole("checkbox").check(); await save.click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
   expect(commands).toHaveLength(3); expect(commands[0].payloadHash).toBe(commands[1].payloadHash);
   expect(commands[2]).toMatchObject({ availabilityRule: "CONDITION_BASED", changeReason: "Revisión terminada", acknowledgeImpact: true, expectedVersion: 1 });
   expect(fixture.unexpected).toEqual([]);
@@ -222,7 +224,7 @@ test("an uncertain location change remains locked after pre-receipt denial and k
   await expect(page.getByRole("alert")).toContainText("El guardado anterior sigue sin confirmar");
   await expect(page.getByLabel("Características", { exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Reintentar guardado", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
   expect(commands).toHaveLength(3); expect(commands[1]).toEqual(commands[0]); expect(commands[2]).toEqual(commands[0]);
   expect(fixture.unexpected).toEqual([]);
 });

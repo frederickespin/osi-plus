@@ -1,8 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Check, ChevronDown, ChevronRight, MapPin, Pencil, Plus, RefreshCw, Save, Search, Settings, ShieldCheck, Warehouse, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronRight, MapPin, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Warehouse } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
-import { COMPACT_FORM_DIALOG, COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { getMembershipRef } from "@/lib/sessionStore";
 import type { WarehouseLocationRow, WarehouseRow } from "@/materials-inventory/api";
 import { WarehouseApi, WarehouseApiError, isWarehouseRejectionConfirmed, isWarehouseSpatialChange, warehouseErrorText, type WarehouseSpatialChange } from "./api";
@@ -13,8 +12,15 @@ import type { LocationConfigurationEditorState } from "./LocationConfigurationEd
 import { canAddInside, LOCATION_KIND_LABELS, locationNamePath, spaceTreeRows, type SpaceTreeRow } from "./locationTree";
 import { clearPendingWarehouseDraft, getPendingWarehouseDraft, setPendingWarehouseDraft, type PendingWarehouseDraft } from "./pendingDraft";
 import { useWarehouseConfiguration } from "./useWarehouseConfiguration";
+import { ConfigurationPanel } from "./ConfigurationPanel";
+import { isWarehouseSheetUiEnabled } from "./sheetMode";
+import type { WarehouseSheet, WarehouseSheetChange } from "./sheetTypes";
+import { clearWorkingWarehouseSheet, getWorkingWarehouseSheet } from "./workingSheet";
+import { SHEET_KINDS, sheetParentKinds, existingParentKey } from "./sheetDraft";
+import { canPlaceWarehouseAddressKind } from "../../shared/warehouseSheetAddress.js";
 
 const LocationConfigurationEditor = lazy(() => import("./LocationConfigurationEditor"));
+const WarehouseSheetEditor = lazy(() => import("./WarehouseSheetEditor"));
 
 type Props = Readonly<{
   authorization?: string;
@@ -24,6 +30,7 @@ type Props = Readonly<{
   onUnauthorized(): void;
 }>;
 type Editor = Readonly<{ id: string; kind: "warehouse-create" | "location-create" | "warehouse-rename" | "location-rename"; warehouse?: WarehouseRow; location?: WarehouseLocationRow; recovery?: PendingWarehouseDraft<WarehouseSpatialChange> }>;
+type SheetEditor = Readonly<{ id: string; warehouseRef: string | null; recovery?: PendingWarehouseDraft<WarehouseSheetChange>; working?: WarehouseSheetChange; initialParentRef?: string; initialFocusRef?: string }>;
 const buttonClass = "inline-flex min-h-9 items-center justify-center gap-1.5 rounded border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40";
 
 function recoverEditor(draft: PendingWarehouseDraft<WarehouseSpatialChange>, warehouses: readonly WarehouseRow[]): Editor {
@@ -63,14 +70,22 @@ export default function WarehouseSpaces(props: Props) {
 function SpacesContent({ authorization, canManage, membershipRef, onNavigate, onUnauthorized }: Props & { canManage: boolean; membershipRef: string | null }) {
   const api = useMemo(() => new WarehouseApi(authorization), [authorization]);
   const [revision, setRevision] = useState(0);
+  const [usesRevision, setUsesRevision] = useState(0);
   const configurationEnabled = isWarehouseConfigurationUiEnabled();
-  const configurationResult = useWarehouseConfiguration(api, configurationEnabled, revision, onUnauthorized);
+  const sheetEnabled = isWarehouseSheetUiEnabled();
+  const configurationResult = useWarehouseConfiguration(api, configurationEnabled, revision + usesRevision, onUnauthorized);
   const [result, setResult] = useState<{ revision: number; rows: readonly WarehouseRow[]; error: string | null } | null>(null);
   const [search, setSearch] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("");
   const [status, setStatus] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [pendingDraft, setPendingDraft] = useState(() => membershipRef ? getPendingWarehouseDraft(membershipRef) : null);
+  const [workingDraft, setWorkingDraft] = useState(() => sheetEnabled && membershipRef ? getWorkingWarehouseSheet(membershipRef) : null);
+  const [sheetEditor, setSheetEditor] = useState<SheetEditor | null>(() => {
+    if (!sheetEnabled || !canManage) return null;
+    if (pendingDraft?.change.operation === "WAREHOUSE_SHEET_SAVE") return { id: pendingDraft.requestId, warehouseRef: pendingDraft.change.warehouseRef, recovery: { requestId: pendingDraft.requestId, change: pendingDraft.change } };
+    return !pendingDraft && workingDraft ? { id: crypto.randomUUID(), warehouseRef: workingDraft.warehouseRef, working: workingDraft } : null;
+  });
   const [editor, setEditor] = useState<Editor | null>(() => recoverSpatialEditor(pendingDraft));
   const [configurationEditor, setConfigurationEditor] = useState<LocationConfigurationEditorState | null>(() => configurationEnabled ? recoverConfigurationEditor(pendingDraft, [], []) : null);
   const [editorOpen, setEditorOpen] = useState(Boolean(editor || configurationEditor) && canManage);
@@ -81,7 +96,7 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
   useEffect(() => { callbacks.current = { onUnauthorized }; }, [onUnauthorized]);
   useEffect(() => {
     const controller = new AbortController();
-    void api.list(controller.signal).then((rows) => {
+    void (sheetEnabled ? api.sheets(controller.signal) : api.list(controller.signal)).then((rows) => {
       if (!controller.signal.aborted) {
         setResult({ revision, rows, error: null });
         setEditor((current) => current?.recovery ? recoverEditor(current.recovery, rows) : current);
@@ -92,7 +107,7 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
       else setResult({ revision, rows: [], error: warehouseErrorText(error) });
     });
     return () => controller.abort();
-  }, [api, revision]);
+  }, [api, revision, sheetEnabled]);
 
   const loading = result?.revision !== revision;
   const warehouses = !loading && result && !result.error ? result.rows : [];
@@ -103,6 +118,11 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
   const rows = spaceTreeRows(filteredWarehouses, search, status, collapsed);
   const filtering = Boolean(search.trim() || status);
   const refresh = () => { setRevision((current) => current + 1); };
+  const openSheet = (warehouse?: WarehouseRow, options: Pick<SheetEditor, "initialParentRef" | "initialFocusRef"> = {}) => {
+    if (!sheetEnabled || !canManage || pendingWrite) return;
+    setNotice(""); setEditor(null); setConfigurationEditor(null); setEditorOpen(false);
+    setSheetEditor({ id: crypto.randomUUID(), warehouseRef: warehouse?.warehouseRef ?? null, ...options });
+  };
   const openEditor = (value: Omit<Editor, "id">) => {
     if (pendingWrite) return;
     triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -118,8 +138,24 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
   };
   const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; });
   const addLocation = (row: SpaceTreeRow) => {
-    if (row.location) openEditor({ kind: "location-create", warehouse: row.warehouse, location: row.location });
+    if (!row.location) return;
+    if (sheetEnabled) openSheet(row.warehouse, { initialParentRef: row.location.locationRef });
+    else openEditor({ kind: "location-create", warehouse: row.warehouse, location: row.location });
   };
+
+  if (sheetEnabled && sheetEditor && canManage && membershipRef) {
+    const sheet = warehouses.find((warehouse) => warehouse.warehouseRef === sheetEditor.warehouseRef) as WarehouseSheet | undefined;
+    if (loading) return <p role="status" className="py-6 text-xs text-slate-500">Cargando hoja de almacén…</p>;
+    if (sheetEditor.warehouseRef && !sheet && !sheetEditor.recovery) return <section className="mt-5 space-y-3"><p role="alert" className="text-xs text-red-800">{error ?? "El almacén del borrador ya no está disponible. Actualice el listado antes de continuar."}</p><div className="flex flex-wrap gap-2"><button type="button" className={buttonClass} onClick={refresh}>Reintentar consulta</button><button type="button" className={buttonClass} onClick={() => { clearWorkingWarehouseSheet(membershipRef); setWorkingDraft(null); setSheetEditor(null); }}>Descartar borrador</button></div></section>;
+    return <div className="mt-5 min-w-0"><Suspense fallback={<p role="status" className="py-3 text-xs text-slate-500">Preparando hoja de almacén…</p>}><WarehouseSheetEditor key={sheetEditor.id} api={api} membershipRef={membershipRef} sheet={sheet} recovery={sheetEditor.recovery} working={sheetEditor.working} initialParentRef={sheetEditor.initialParentRef} initialFocusRef={sheetEditor.initialFocusRef} uses={configurationResult.data?.areaUses ?? []} usesReady={Boolean(configurationResult.data) && !configurationResult.loading} usesError={configurationResult.error} onPending={(draft) => { setPendingDraft(draft); setPendingWrite(Boolean(draft)); }} onUnauthorized={onUnauthorized} onNavigate={(path) => onNavigate?.(path)} onReturn={(change) => { setSheetEditor(null); setWorkingDraft(change ?? getWorkingWarehouseSheet(membershipRef)); }} onRefresh={refresh} onRetryUses={() => setUsesRevision((value) => value + 1)} onSaved={(saved) => { setSheetEditor(null); setWorkingDraft(null); setPendingDraft(null); setPendingWrite(false); setWarehouseFilter(""); setSearch(""); setStatus(""); setCollapsed(new Set()); setNotice(`Guardado: ${saved.warehouse.name} · ${saved.warehouse.warehouseLabel ?? saved.warehouse.code}`); refresh(); }} /></Suspense></div>;
+  }
+
+  const reopenPending = () => {
+    if (pendingDraft?.change.operation === "WAREHOUSE_SHEET_SAVE" && sheetEnabled) setSheetEditor({ id: pendingDraft.requestId, warehouseRef: pendingDraft.change.warehouseRef, recovery: { requestId: pendingDraft.requestId, change: pendingDraft.change } });
+    else setEditorOpen(true);
+  };
+  const pendingSheet = pendingDraft?.change.operation === "WAREHOUSE_SHEET_SAVE";
+  const canReopenPending = Boolean(editor || configurationEditor || pendingSheet && sheetEnabled);
 
   return <section className="mt-5 min-w-0" data-testid="warehouse-spaces" aria-labelledby="warehouse-spaces-heading">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -127,12 +163,12 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
       <div className="flex items-center gap-1.5">
         <AdministrationHelp title="Espacios y ubicaciones">
           <p>Registre un almacén principal y agregue las ubicaciones que existan físicamente dentro de él.</p>
-          <p>Ejemplo: Almacén central → Zona de embalaje → Estante A → Posición superior. Puede omitir los niveles que no utilice; cada alta crea una sola ubicación.</p>
+          <p>{sheetEnabled ? "Abra la hoja del almacén para organizar zonas, pasillos, estanterías, niveles y posiciones. Puede agregar filas individualmente o generarlas por cantidades." : "Ejemplo: Almacén central → Zona de embalaje → Estante A → Posición superior. Puede omitir los niveles que no utilice; cada alta crea una sola ubicación."}</p>
           <p>El código se asigna al guardar. Cambiar el nombre conserva el código y la identidad del lugar.</p>
           <p>{configurationEnabled ? "El estado operativo controla las operaciones físicas. La regla de disponibilidad puede bloquear los despachos; los controles de ubicaciones superiores también se aplican." : "Activo describe el estado del registro."} La capacidad y el espacio ocupado se incorporarán cuando se definan sus medidas y los bienes almacenados.</p>
         </AdministrationHelp>
         <AdministrationIconAction label="Actualizar almacenes" disabled={loading || pendingWrite} onClick={refresh}><RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></AdministrationIconAction>
-        {canManage && <button type="button" disabled={loading || Boolean(error) || pendingWrite} onClick={() => openEditor({ kind: "warehouse-create" })} className={`${buttonClass} border-[#003366] bg-[#003366] text-white hover:bg-[#00264d]`}><Plus aria-hidden="true" className="h-4 w-4" />Nuevo almacén</button>}
+        {canManage && <button type="button" disabled={loading || Boolean(error) || pendingWrite || Boolean(workingDraft)} onClick={() => sheetEnabled ? openSheet() : openEditor({ kind: "warehouse-create" })} className={`${buttonClass} border-[#003366] bg-[#003366] text-white hover:bg-[#00264d]`}><Plus aria-hidden="true" className="h-4 w-4" />Nuevo almacén</button>}
       </div>
     </div>
     <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(180px,1fr)_minmax(160px,220px)_160px]">
@@ -141,7 +177,8 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
       <select aria-label={configurationEnabled ? "Estado del registro" : "Estado de ubicaciones"} value={status} onChange={(event) => setStatus(event.target.value)} className={COMPACT_FORM_FIELD}><option value="">{configurationEnabled ? "Todos los registros" : "Todos los estados"}</option><option value="ACTIVE">{configurationEnabled ? "Registros activos" : "Activos"}</option><option value="INACTIVE">{configurationEnabled ? "Registros inactivos" : "Inactivos"}</option></select>
     </div>
     {notice && <p role="status" className="mb-3 flex items-center gap-2 text-xs text-emerald-800"><Check aria-hidden="true" className="h-4 w-4" />{notice}</p>}
-    {pendingWrite && !editorOpen && <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-amber-900"><span>Hay un guardado sin confirmar. {canManage ? editor || configurationEditor ? "Reabra el formulario para comprobar el mismo intento." : configurationEnabled ? "Compruebe ese intento en Configuración antes de iniciar otro cambio." : "La configuración debe estar habilitada para comprobar ese intento." : "Necesita permiso de gestión para comprobarlo."}</span>{canManage && (editor || configurationEditor ? <button type="button" onClick={() => setEditorOpen(true)} className={buttonClass}>Reabrir guardado</button> : configurationEnabled && pendingDraft && onNavigate ? <button type="button" onClick={() => onNavigate(pendingWarehouseRoute(pendingDraft.change))} className={buttonClass}>Ir al guardado pendiente</button> : null)}</div>}
+    {pendingWrite && !editorOpen && <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-amber-900"><span>Hay un guardado sin confirmar. {canManage ? canReopenPending ? "Reabra el formulario para comprobar el mismo intento." : pendingSheet ? "La hoja de almacenes debe estar habilitada para comprobar ese intento." : configurationEnabled ? "Compruebe ese intento en Configuración antes de iniciar otro cambio." : "La configuración debe estar habilitada para comprobar ese intento." : "Necesita permiso de gestión para comprobarlo."}</span>{canManage && (canReopenPending ? <button type="button" onClick={reopenPending} className={buttonClass}>Reabrir guardado</button> : !pendingSheet && configurationEnabled && pendingDraft && onNavigate ? <button type="button" onClick={() => onNavigate(pendingWarehouseRoute(pendingDraft.change))} className={buttonClass}>Ir al guardado pendiente</button> : null)}</div>}
+    {sheetEnabled && workingDraft && !pendingWrite && canManage && <div role="status" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-700"><span>Hay una hoja sin guardar.</span><button type="button" disabled={loading || Boolean(error)} className={buttonClass} onClick={() => setSheetEditor({ id: crypto.randomUUID(), warehouseRef: workingDraft.warehouseRef, working: workingDraft })}>Continuar borrador</button><button type="button" className={buttonClass} onClick={() => { if (membershipRef) clearWorkingWarehouseSheet(membershipRef); setWorkingDraft(null); }}>Descartar borrador</button></div>}
     {configurationResult.error && <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-red-800"><span>No se pudieron consultar los usos y controles. {configurationResult.error}</span><button type="button" disabled={pendingWrite} onClick={refresh} className={buttonClass}>Actualizar configuración</button></div>}
     <div className="overflow-hidden rounded border border-slate-200 bg-white">
       <div tabIndex={0} role="region" aria-label="Árbol de almacenes y ubicaciones" className="overflow-x-auto">
@@ -154,7 +191,11 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
             {!loading && !error && rows.map((row) => {
               const name = row.isWarehouse ? row.warehouse.name : row.location!.name;
               const active = (row.isWarehouse ? row.warehouse.status : row.location!.status) === "ACTIVE";
-              const code = row.isWarehouse ? row.warehouse.code : row.location!.code;
+              const sheet = sheetEnabled ? row.warehouse as WarehouseSheet : undefined;
+              const sheetLocation = sheet?.locations.find((location) => location.locationRef === row.location?.locationRef);
+              const code = row.isWarehouse ? sheet?.warehouseLabel ?? row.warehouse.code : sheetLocation?.address?.label ?? row.location!.code;
+              const parentKinds = sheetEnabled && row.location ? sheetParentKinds(row.isWarehouse ? "" : existingParentKey(row.location.locationRef), [], sheet) : null;
+              const canAddSheetChild = !sheetEnabled || Boolean(parentKinds && SHEET_KINDS.some((kind) => canPlaceWarehouseAddressKind(kind, parentKinds)));
               const configuration = configurations.find((item) => item.locationRef === row.location?.locationRef);
               const areaUse = configurationResult.data?.areaUses.find((use) => use.useRef === configuration?.areaUseRef);
               return <tr key={row.key} data-testid="warehouse-space-row" className={`border-t border-slate-100 ${row.isWarehouse ? "bg-slate-50/70" : "hover:bg-slate-50"}`}>
@@ -164,14 +205,15 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
                     {row.isWarehouse ? <Warehouse aria-hidden="true" className="h-4 w-4 shrink-0 text-[#003366]" /> : <MapPin aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
                     <span title={row.location ? locationNamePath(row.warehouse, row.location) : name} className={`break-words ${row.isWarehouse ? "font-semibold" : ""}`}>{name}</span>
                   </div>
+                  {row.isWarehouse && sheet?.manager && <p className="ml-12 mt-1 text-[11px] text-slate-500">Encargado: {sheet.manager.displayName}{!sheet.manager.eligible ? " · Asignación conservada" : ""}</p>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 font-mono text-[11px] text-slate-600">{code}</td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-slate-600">{row.isWarehouse ? "Almacén principal" : LOCATION_KIND_LABELS[row.location!.kind] ?? "Otra ubicación"}</td>
                 {configurationEnabled && <td className="px-3 py-1.5 text-slate-600">{configuration ? areaUse?.name ?? (configuration.areaUseRef ? "Uso sin confirmar" : "Sin asignar") : "—"}</td>}
                 <td className="px-3 py-1.5">{configurationEnabled ? configuration ? <div className="space-y-1 whitespace-nowrap"><span className={`inline-flex rounded px-2 py-0.5 ${configuration.effective.operationalStatus === "ACTIVE" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>{OPERATIONAL_STATUS_LABELS[configuration.effective.operationalStatus]}</span><p className={`text-[11px] ${configuration.effective.canDispatch ? "text-slate-500" : "text-amber-900"}`}>{configuration.effective.canDispatch ? "Despachos permitidos" : "Despachos bloqueados"}{configuration.effective.inherited ? " · Heredado" : ""}</p>{!active && <p className="text-[11px] text-slate-500">Registro inactivo</p>}</div> : <span className="text-slate-400">{configurationResult.loading ? "Consultando…" : "Sin confirmar"}</span> : <span className={`inline-flex rounded px-2 py-0.5 ${active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{active ? "Activo" : "Inactivo"}</span>}</td>
                 <td className="px-2 py-1.5"><div className="flex justify-center gap-1">{canManage ? <>
-                  <AdministrationIconAction label={`Cambiar nombre de ${name}`} disabled={pendingWrite} onClick={() => openEditor({ kind: row.isWarehouse ? "warehouse-rename" : "location-rename", warehouse: row.warehouse, location: row.location ?? undefined })}><Pencil aria-hidden="true" className="h-3.5 w-3.5" /></AdministrationIconAction>
-                  <AdministrationIconAction label={`Agregar ubicación en ${name}`} disabled={pendingWrite || !row.location || !canAddInside(row.warehouse, row.location)} onClick={() => addLocation(row)}><Plus aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction>
+                  <AdministrationIconAction label={sheetEnabled ? `Editar ${name}` : `Cambiar nombre de ${name}`} disabled={pendingWrite || Boolean(workingDraft)} onClick={() => sheetEnabled ? openSheet(row.warehouse, { initialFocusRef: row.isWarehouse ? undefined : row.location?.locationRef }) : openEditor({ kind: row.isWarehouse ? "warehouse-rename" : "location-rename", warehouse: row.warehouse, location: row.location ?? undefined })}><Pencil aria-hidden="true" className="h-3.5 w-3.5" /></AdministrationIconAction>
+                  <AdministrationIconAction label={`Agregar ubicación en ${name}`} disabled={pendingWrite || Boolean(workingDraft) || !canAddSheetChild || !row.location || !canAddInside(row.warehouse, row.location)} onClick={() => addLocation(row)}><Plus aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction>
                 </> : !configurationEnabled && <span className="text-slate-400">—</span>}{configurationEnabled && <>
                   <AdministrationIconAction label={`${canManage ? "Configurar" : "Ver configuración de"} ${name}`} disabled={pendingWrite || !configuration} onClick={() => openConfigurationEditor(row, "details")}><Settings className="h-3.5 w-3.5" aria-hidden="true" /></AdministrationIconAction>
                   <AdministrationIconAction label={`Controles operativos de ${name}`} disabled={pendingWrite || !configuration} onClick={() => openConfigurationEditor(row, "controls")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /></AdministrationIconAction>
@@ -212,8 +254,7 @@ function WarehouseEditor({ editor, open, api, triggerRef, onClose, onPendingChan
   const title = creatingWarehouse ? "Nuevo almacén" : creatingLocation ? "Nueva ubicación" : "Cambiar nombre";
   const availableParents = editor.warehouse?.locations.filter((location) => canAddInside(editor.warehouse!, location)) ?? [];
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submit() {
     if (pending.current || conflict) return;
     const cleanName = name.trim();
     if (!cleanName) { setError("Escriba el nombre del almacén o la ubicación."); return; }
@@ -247,21 +288,14 @@ function WarehouseEditor({ editor, open, api, triggerRef, onClose, onPendingChan
     }
   }
 
-  return <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) onClose(uncertain); }}>
-    <DialogContent className={`${COMPACT_FORM_DIALOG} max-h-[90dvh] overflow-y-auto sm:max-w-lg`} showCloseButton={false} onEscapeKeyDown={(event) => { if (saving) event.preventDefault(); }} onInteractOutside={(event) => event.preventDefault()} onCloseAutoFocus={(event) => { event.preventDefault(); triggerRef.current?.focus(); }}>
-      <div className="flex items-start justify-between gap-3"><div><DialogTitle className="text-base text-[#003366]">{title}</DialogTitle><DialogDescription className="mt-1 text-xs">{creatingWarehouse ? "Registre el almacén principal y agregue después sus ubicaciones interiores." : creatingLocation ? "Se creará una ubicación dentro del lugar que seleccione." : "El código y la identidad del lugar se conservan."}</DialogDescription></div><button type="button" aria-label="Cerrar formulario" disabled={saving} onClick={() => onClose(uncertain)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-40"><X aria-hidden="true" className="h-4 w-4" /></button></div>
-      <form onSubmit={(event) => void submit(event)} className="space-y-3">
+  return <ConfigurationPanel open={open} title={title} description={creatingWarehouse ? "Registre el almacén principal y agregue después sus ubicaciones interiores." : creatingLocation ? "Se creará una ubicación dentro del lugar que seleccione." : "El código y la identidad del lugar se conservan."} saving={saving} uncertain={uncertain} conflict={conflict} error={error} canManage canSubmit={Boolean(name.trim()) && (!creatingLocation || Boolean(parentRef && kind))} saveLabel={creatingWarehouse ? "Guardar almacén" : creatingLocation ? "Guardar ubicación" : "Guardar nombre"} triggerRef={triggerRef} onClose={onClose} onRefresh={onRefresh} onSubmit={() => void submit()}>
         <fieldset disabled={saving || uncertain || conflict} className="space-y-3">
           <label className="block text-xs font-medium text-slate-700">{creatingWarehouse || editor.kind === "warehouse-rename" ? "Nombre del almacén" : "Nombre de la ubicación"}<input autoFocus required maxLength={160} value={name} onChange={(event) => setName(event.target.value)} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} placeholder={creatingWarehouse ? "Ej.: Almacén central" : creatingLocation ? "Ej.: Zona de embalaje" : undefined} /></label>
           {creatingLocation && <>
             <label className="block text-xs font-medium text-slate-700">Dentro de<select aria-label="Dentro de" required value={parentRef} onChange={(event) => setParentRef(event.target.value)} className={`${COMPACT_FORM_FIELD} mt-1 w-full`}>{uncertain && !availableParents.some((location) => location.locationRef === parentRef) && <option value={parentRef}>Ubicación del guardado anterior</option>}{availableParents.map((location) => <option key={location.locationRef} value={location.locationRef}>{locationNamePath(editor.warehouse!, location)} · {location.code}</option>)}</select></label>
-            <div><div className="flex items-center gap-1"><label htmlFor="warehouse-location-kind" className="text-xs font-medium text-slate-700">Tipo de ubicación</label><AdministrationHelp title="Tipo de ubicación"><p>Elija la estructura física: una zona agrupa áreas; un estante contiene niveles o posiciones.</p><p>Por ejemplo, si un estante tiene dos posiciones, cree cada una cuando la registre. Elegir Estante no genera niveles ni posiciones automáticamente.</p><p>Recepción, despacho y cuarentena identifican áreas de trabajo. El tipo no indica el propietario de los bienes ni el espacio disponible.</p></AdministrationHelp></div><select id="warehouse-location-kind" required value={kind} onChange={(event) => setKind(event.target.value)} className={`${COMPACT_FORM_FIELD} w-full`}><option value="">Seleccione el tipo</option>{Object.entries(LOCATION_KIND_LABELS).filter(([value]) => value !== "WAREHOUSE_ROOT").map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+            <div><div className="flex items-center gap-1"><label htmlFor="warehouse-location-kind" className="text-xs font-medium text-slate-700">Tipo de ubicación</label><AdministrationHelp title="Tipo de ubicación"><p>Elija la estructura física: una zona agrupa áreas; una estantería contiene niveles o posiciones.</p><p>Por ejemplo, si una estantería tiene dos posiciones, cree cada una cuando la registre. Elegir Estantería no genera niveles ni posiciones automáticamente.</p><p>Recepción, despacho y cuarentena identifican áreas de trabajo. El tipo no indica el propietario de los bienes ni el espacio disponible.</p></AdministrationHelp></div><select id="warehouse-location-kind" required value={kind} onChange={(event) => setKind(event.target.value)} className={`${COMPACT_FORM_FIELD} w-full`}><option value="">Seleccione el tipo</option>{Object.entries(LOCATION_KIND_LABELS).filter(([value]) => value !== "WAREHOUSE_ROOT").map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
           </>}
         </fieldset>
         {creating ? <p className="text-xs text-slate-500">Código automático al guardar.</p> : <p className="text-xs text-slate-500">Código: <span className="font-mono">{editor.kind === "warehouse-rename" ? editor.warehouse!.code : editor.location!.code}</span></p>}
-        {error && <p role="alert" className="text-xs leading-5 text-red-800">{error}</p>}
-        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-3"><button type="button" disabled={saving} onClick={() => onClose(uncertain)} className={buttonClass}>Cerrar</button>{conflict ? <button type="button" onClick={onRefresh} className={buttonClass}><RefreshCw aria-hidden="true" className="h-4 w-4" />Actualizar listado</button> : <button type="submit" disabled={saving || !name.trim() || creatingLocation && (!parentRef || !kind)} className={`${buttonClass} border-[#003366] bg-[#003366] text-white hover:bg-[#00264d]`}><Save aria-hidden="true" className="h-4 w-4" />{saving ? "Guardando…" : uncertain ? "Reintentar guardado" : creatingWarehouse ? "Guardar almacén" : creatingLocation ? "Guardar ubicación" : "Guardar nombre"}</button>}</div>
-      </form>
-    </DialogContent>
-  </Dialog>;
+  </ConfigurationPanel>;
 }

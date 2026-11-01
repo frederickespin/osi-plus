@@ -19,7 +19,7 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
-      VITE_API_PROXY: "http://127.0.0.1:59999",
+      VITE_WAREHOUSE_SHEET_UI_MODE: "DISABLED", VITE_API_PROXY: "http://127.0.0.1:59999",
       VITE_OSI_HUB_MODE: "LOCAL_ONLY",
       VITE_MT01B2_CLIENT_ENABLED: "false",
       VITE_CRM_PIPELINE_CLIENT_MODE: "DISABLED",

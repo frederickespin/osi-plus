@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "prisma generate && node scripts/v17-fleet-drivers-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-configuration-preview-migrate.mjs --build-hook && vite build",
+    "build": "prisma generate && node scripts/v17-fleet-drivers-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-configuration-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-sheet-preview-migrate.mjs --build-hook && vite build",
     "postinstall": "prisma generate",
     "lint": "eslint .",
     "test:auth-null:browser": "playwright test -c playwright.auth-null.config.ts",
@@ -181,7 +181,10 @@
     "test:v17-logistics-transport:browser": "playwright test -c playwright.v17-transport.config.ts",
     "test:v17-warehouse-configuration": "node scripts/v17-warehouse-configuration-contract-test.mjs && node scripts/v17-warehouse-configuration-http-test.mjs && node scripts/v17-warehouse-configuration-client-test.mjs && node scripts/v17-warehouse-location-policy-test.mjs && node scripts/v17-warehouse-configuration-preview-migrate-test.mjs",
     "test:v17-warehouse-configuration:db": "node scripts/v17-warehouse-configuration-db-test.mjs && node scripts/v17-warehouse-policy-consumers-db-test.mjs",
-    "test:v17-warehouse-configuration:browser": "playwright test -c playwright.v17-warehouse-configuration.config.ts"
+    "test:v17-warehouse-configuration:browser": "playwright test -c playwright.v17-warehouse-configuration.config.ts",
+    "test:v17-warehouse-sheet": "node scripts/v17-warehouse-sheet-address-test.mjs && node scripts/v17-warehouse-sheet-contract-test.mjs && node scripts/v17-warehouse-sheet-http-test.mjs && node scripts/v17-warehouse-sheet-client-test.mjs && node scripts/v17-warehouse-sheet-preview-migrate-test.mjs",
+    "test:v17-warehouse-sheet:db": "node scripts/v17-warehouse-sheet-db-test.mjs",
+    "test:v17-warehouse-sheet:browser": "playwright test -c playwright.v17-warehouse-sheet.config.ts"
   },
   "dependencies": {
     "22": "^0.0.0",

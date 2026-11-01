@@ -7,6 +7,7 @@ import {
 } from "./validate-crm-cors-guard.mjs";
 
 const read = (path) => readFileSync(path, "utf8");
+const warehouseSheetRoutes = [["/api/materials/warehouse-sheets", "api/materials/warehouse-sheets/index.js"], ["/api/materials/warehouse-sheets/manager-options", "api/materials/warehouse-sheets/manager-options.js"]];
 const fleetDriverRoutes = [
   ["/api/admin/fleet/drivers/options", "api/admin/fleet/drivers/options.js"],
   ["/api/admin/fleet/vehicles/[vehicleRef]/drivers", "api/admin/fleet/vehicles/[vehicleRef]/drivers/index.js"],
@@ -28,6 +29,8 @@ const baseline = new Map([
   ["api/_lib/fleetDriversHttp.js", read("api/_lib/fleetDriversHttp.js")],
   ...fleetDriverRoutes.map(([, path]) => [path, read(path)]),
   ...warehouseConfigurationRoutes.map(([, path]) => [path, read(path)]),
+  ...warehouseSheetRoutes.map(([, path]) => [path, read(path)]),
+  ["api/_lib/warehouseSheetHttp.js", read("api/_lib/warehouseSheetHttp.js")],
   ["api/_lib/adminMembershipHttp.js", read("api/_lib/adminMembershipHttp.js")], ["api/_lib/authHttp.js", read("api/_lib/authHttp.js")],
   ["api/_lib/authOrigin.js", read("api/_lib/authOrigin.js")], ["api/_lib/crmCaseMutationHttp.js", read("api/_lib/crmCaseMutationHttp.js")],
   ["api/_lib/crmIcpV2ApiHttp.js", read("api/_lib/crmIcpV2ApiHttp.js")],
@@ -189,4 +192,17 @@ check("ruta protegida nueva no inventariada", /clasificación incompleta/u.test(
 let newWarehouseRouteError;
 try { validateCrmCorsGuard({ overrides: baseline, extraRoutes: [{ path: "/api/materials/warehouse-uses/extra", relativePath: "api/materials/warehouse-uses/extra.js", source: baseline.get(warehouseConfigurationRoutes[1][1]) }] }); } catch (error) { newWarehouseRouteError = error; }
 check("ruta20B nueva no hereda clasificación por directorio", /clasificación incompleta/u.test(newWarehouseRouteError?.message || ""));
+for (const [route, file] of warehouseSheetRoutes) {
+  check("hoja20C privada same-origin: " + route, inventory.categories.protectedSameOrigin.includes(route));
+  rejected("hoja20C no usa adaptador sin su gate: " + route, file, (s) => s.replaceAll("warehouseSheetHttp.js", "warehouseConfigurationHttp.js").replaceAll("createWarehouseSheetHandler", "createWarehouseConfigurationHandler"), /adaptador privado de configuración/);
+  rejected("hoja20C no admite import desconectado: " + route, file, (s) => s.replace("export default createWarehouseSheetHandler", "const unused = createWarehouseSheetHandler") + "\nexport default () => null;\n", /adaptador privado de configuración/);
+  rejected("hoja20C no declara wildcard: " + route, file, (s) => s + '\nres.setHeader("Access-Control-Allow-Origin", "*");', /declara wildcard/);
+}
+rejected("hoja20C no omite gate específico", "api/_lib/warehouseSheetHttp.js", (s) => s.replace("resolveWarehouseSheetApiMode(env, req);", "void env;"), /omitió su gate específico/);
+rejected("hoja20C no omite origen y gate base", "api/_lib/warehouseSheetHttp.js", (s) => s.replace("if (!prepareMaterialsRequest(req, res, env)) return;", "void env;"), /omitió gate de materiales y origen/);
+rejected("hoja20C no adelanta OPTIONS fuera de gates", "api/_lib/warehouseSheetHttp.js", (s) => s.replace("handleOptions: false", "handleOptions: true"), /gates antes de OPTIONS y contexto/);
+rejected("hoja20C no declara headers permisivos compartidos", "api/_lib/warehouseSheetHttp.js", (s) => s + '\nres.setHeader("Access-Control-Allow-Origin", "*");', /declara wildcard/);
+let newSheetRouteError;
+try { validateCrmCorsGuard({ overrides: baseline, extraRoutes: [{ path: "/api/materials/warehouse-sheets/extra", relativePath: "api/materials/warehouse-sheets/extra.js", source: baseline.get(warehouseSheetRoutes[0][1]) }] }); } catch (error) { newSheetRouteError = error; }
+check("hoja20C nueva no hereda clasificación por prefijo", /clasificación incompleta/u.test(newSheetRouteError?.message || ""));
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

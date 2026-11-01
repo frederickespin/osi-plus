@@ -13,6 +13,7 @@ const WAREHOUSE_CONFIGURATION_ROUTES = new Set([
   "/api/materials/warehouse-configuration", "/api/materials/warehouse-uses",
   "/api/materials/warehouse-uses/[useRef]", "/api/materials/warehouses/locations/[locationRef]/configuration",
 ]);
+const WAREHOUSE_SHEET_ROUTES = new Set(["/api/materials/warehouse-sheets", "/api/materials/warehouse-sheets/manager-options"]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`PROTECTED_CORS_GUARD: ${message}`);
@@ -140,15 +141,15 @@ function validatePublicWrapper(httpSource) {
 
 // These endpoints require their own gated adapter. A broad materials prefix or
 // an unused import must not admit a replacement handler without the 20B gate.
-function validateWarehouseConfigurationRoute(route) {
+function validateWarehouseConfigurationRoute(route, moduleName = "warehouseConfigurationHttp.js", factoryName = "createWarehouseConfigurationHandler") {
   const file = ts.createSourceFile(route.relativePath, route.source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const bindings = new Set(); const exports = [];
   for (const statement of file.statements) {
     if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
       const module = posix.normalize(posix.join(posix.dirname(route.relativePath), statement.moduleSpecifier.text));
       const names = statement.importClause?.namedBindings;
-      if (module === "api/_lib/warehouseConfigurationHttp.js" && names && ts.isNamedImports(names)) {
-        for (const binding of names.elements) if ((binding.propertyName?.text ?? binding.name.text) === "createWarehouseConfigurationHandler") bindings.add(binding.name.text);
+      if (module === `api/_lib/${moduleName}` && names && ts.isNamedImports(names)) {
+        for (const binding of names.elements) if ((binding.propertyName?.text ?? binding.name.text) === factoryName) bindings.add(binding.name.text);
       }
     }
     if (ts.isExportAssignment(statement) && !statement.isExportEquals) exports.push(statement.expression);
@@ -169,6 +170,17 @@ function validateWarehouseConfigurationWrapper(wrapper) {
   const context = wrapper.indexOf("await resolveContext(req,");
   invariant(configurationGate > baseGate && options > configurationGate && context > options
     && /handleOptions: false/u.test(wrapper), "configuración de almacenes debe aplicar los gates antes de OPTIONS y contexto");
+}
+
+function validateWarehouseSheetWrapper(wrapper) {
+  invariant(/return withPrivateApiHeaders\(async/u.test(wrapper), "hoja de almacenes no usa headers privados");
+  invariant(/if \(!prepareMaterialsRequest\(req, res, env\)\) return;/u.test(wrapper), "hoja de almacenes omitió gate de materiales y origen");
+  invariant(/try\s*\{\s*resolveWarehouseSheetApiMode\(env, req\);\s*\}/u.test(wrapper), "hoja de almacenes omitió su gate específico");
+  const baseGate = wrapper.indexOf("if (!prepareMaterialsRequest(req, res, env)) return;");
+  const gate = wrapper.indexOf("resolveWarehouseSheetApiMode(env, req)");
+  const options = wrapper.indexOf('if (req.method === "OPTIONS")');
+  const context = wrapper.indexOf("await resolveContext(req,");
+  invariant(gate > baseGate && options > gate && context > options && /handleOptions: false/u.test(wrapper), "hoja de almacenes debe aplicar los gates antes de OPTIONS y contexto");
 }
 
 export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map(), extraRoutes = [], vercelText = source(root, "vercel.json", overrides) } = {}) {
@@ -192,6 +204,7 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
   validatePrivateWrapper(httpSource);
   validatePublicWrapper(httpSource);
   validateWarehouseConfigurationWrapper(source(root, "api/_lib/warehouseConfigurationHttp.js", overrides));
+  validateWarehouseSheetWrapper(source(root, "api/_lib/warehouseSheetHttp.js", overrides));
 
   for (const route of routes) {
     invariant(!CREDENTIALS_TRUE.test(route.source), `${route.path} declara credentials permisivo`);
@@ -205,6 +218,11 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
     if (WAREHOUSE_CONFIGURATION_ROUTES.has(route.path)) {
       invariant(protectedSameOriginRoutes.includes(route.path), `${route.path} debe conservar su clasificación privada same-origin`);
       validateWarehouseConfigurationRoute(route);
+      continue;
+    }
+    if (WAREHOUSE_SHEET_ROUTES.has(route.path)) {
+      invariant(protectedSameOriginRoutes.includes(route.path), `${route.path} debe conservar su clasificación privada same-origin`);
+      validateWarehouseConfigurationRoute(route, "warehouseSheetHttp.js", "createWarehouseSheetHandler");
       continue;
     }
     if (route.source.includes("withPrivateApiHeaders")) continue;
@@ -229,6 +247,7 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
   }
 
   for (const relativePath of [
+    "api/_lib/warehouseSheetHttp.js",
     "api/_lib/adminIdentityInvitationHttp.js", "api/_lib/adminMembershipHttp.js", "api/_lib/adminUserIdentityHttp.js", "api/_lib/adminFleetHttp.js", "api/_lib/fleetDriversHttp.js", "api/_lib/authHttp.js", "api/_lib/authOrigin.js",
     "api/_lib/crmCaseMutationHttp.js", "api/_lib/crmIcpV2ApiHttp.js", "api/_lib/crmOwnerCatalogHttp.js", "api/_lib/crmPipelineReadHttp.js",
     "api/_lib/crmServicesHttp.js", "api/_lib/crmSurveyHttp.js", "api/_lib/materialsInventoryHttp.js", "api/_lib/warehouseConfigurationHttp.js", "api/_lib/toolsEquipmentHttp.js", "api/_lib/logisticsEngineHttp.js", "api/_lib/logisticsTransportHttp.js", "api/_lib/costingHttp.js", "api/_lib/quoteHttp.js", "api/_lib/commercialRelationshipsHttp.js", "api/_lib/communicationsHttp.js", "api/_lib/personnelPoliciesHttp.js", "api/_lib/clientTemporaryAccessHttp.js", "api/_lib/pipelineCaseMutationHttp.js",

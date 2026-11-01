@@ -8,6 +8,7 @@ import {
   CANONICAL_36_USER_IDENTITY_CATALOG, CANONICAL_36_USER_IDENTITY_SQL_ONLY_COUNTS,
   CANONICAL_37_FLEET_DRIVERS_CATALOG, CANONICAL_37_FLEET_DRIVERS_SQL_ONLY_COUNTS,
   CANONICAL_38_WAREHOUSE_CONFIGURATION_CATALOG, CANONICAL_38_WAREHOUSE_CONFIGURATION_SQL_ONLY_COUNTS,
+  CANONICAL_39_WAREHOUSE_SHEET_CATALOG, CANONICAL_39_WAREHOUSE_SHEET_SQL_ONLY_COUNTS,
   CATALOG_SQL, SQL_ONLY_SQL, PRISMA_EMPTY_DIFF_SHA256,
   HISTORICAL_22_CATALOG, HISTORICAL_22_SQL_ONLY_COUNTS,
   inspectCrm01b1SqlDriftBaseline, mapSqlOnlyObjects, sqlDriftProfileForDatabase,
@@ -17,6 +18,8 @@ import {
 import { FLEET_DRIVER_MIGRATION, FLEET_DRIVER_CATALOG_TABLES, FLEET_DRIVER_CATALOG_FUNCTIONS, partitionFleetDriverCatalog } from "./capture-v17-fleet-drivers-catalog.mjs";
 
 import { WAREHOUSE_CONFIGURATION_MIGRATION, WAREHOUSE_CONFIGURATION_TABLES, WAREHOUSE_CONFIGURATION_FUNCTIONS, WAREHOUSE_CONFIGURATION_ENUMS, partitionWarehouseConfigurationCatalog } from "./capture-v17-warehouse-configuration-catalog.mjs";
+
+import { WAREHOUSE_SHEET_MIGRATION, WAREHOUSE_SHEET_TABLES, WAREHOUSE_SHEET_FUNCTIONS, WAREHOUSE_SHEET_ENUMS, partitionWarehouseSheetCatalog } from "./capture-v17-warehouse-sheet-catalog.mjs";
 
 const root = process.cwd();
 const results = [];
@@ -59,15 +62,18 @@ const fleetFixture = JSON.parse(readFileSync(resolve(root, "tests/crm-01b1/fleet
 
 const warehouseFixture = JSON.parse(readFileSync(resolve(root, "tests/crm-01b1/warehouse-configuration-20b-catalog.json"), "utf8"));
 
+const sheetFixture = JSON.parse(readFileSync(resolve(root, "tests/crm-01b1/warehouse-sheet-20c-catalog.json"), "utf8"));
+
 try {
-  check("CI selecciona perfil38 de almacenes por destino aprobado", () => {
+  check("CI selecciona perfil39 de hoja de almacenes por destino aprobado", () => {
     const profile = sqlDriftProfileForDatabase(canonicalDatabase);
-    assert.equal(profile.id, "canonical-38-warehouse-configuration-20b");
-    assert.equal(profile.migrations, 38);
-    assert.equal(profile.catalog, CANONICAL_38_WAREHOUSE_CONFIGURATION_CATALOG);
+    assert.equal(profile.id, "canonical-39-warehouse-sheet-20c");
+    assert.equal(profile.migrations, 39);
+    assert.equal(profile.catalog, CANONICAL_39_WAREHOUSE_SHEET_CATALOG);
     assert.equal(profile.approvedMigrationChecksums[identityFixture.migration.name], identityFixture.migration.sha256);
     assert.equal(profile.approvedMigrationChecksums[FLEET_DRIVER_MIGRATION], fleetFixture.migration.sha256);
     assert.equal(profile.approvedMigrationChecksums[WAREHOUSE_CONFIGURATION_MIGRATION], warehouseFixture.migration.sha256);
+    assert.equal(profile.approvedMigrationChecksums[WAREHOUSE_SHEET_MIGRATION], sheetFixture.migration.sha256);
     assert.ok(Object.isFrozen(profile) && Object.isFrozen(profile.catalog.categories));
   });
   check("perfil35 conserva su checkpoint y catálogo congelado", () => {
@@ -88,23 +94,24 @@ try {
     rejected(`destino sin perfil rechazado: ${database}`, () => sqlDriftProfileForDatabase(database), /destino sin perfil/);
   }
 
-  check("historial38 exacto y checksums fuente aceptados", () => {
-    assert.equal(validateCrm01b1MigrationHistory(history, migrations, canonicalDatabase).complete, 38);
+  check("historial39 exacto y checksums fuente aceptados", () => {
+    assert.equal(validateCrm01b1MigrationHistory(history, migrations, canonicalDatabase).complete, 39);
   });
   check("historial22 exacto conserva checkpoint histórico", () => {
     assert.equal(validateCrm01b1MigrationHistory(history.slice(0, 22), migrations, historicalDatabase).complete, 22);
   });
-  rejected("CI no selecciona22 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 22), migrations, canonicalDatabase), /38 migraciones/);
-  rejected("CI no retrocede a35 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 35), migrations, canonicalDatabase), /38 migraciones/);
-  rejected("CI no retrocede a36 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 36), migrations, canonicalDatabase), /38 migraciones/);
-  rejected("fixture histórico no asciende a38 por conteo observado", () => validateCrm01b1MigrationHistory(history, migrations, historicalDatabase), /22 migraciones/);
-  rejected("CI no retrocede a37 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 37), migrations, canonicalDatabase), /38 migraciones/);
+  rejected("CI no selecciona22 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 22), migrations, canonicalDatabase), /39 migraciones/);
+  rejected("CI no retrocede a35 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 35), migrations, canonicalDatabase), /39 migraciones/);
+  rejected("CI no retrocede a36 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 36), migrations, canonicalDatabase), /39 migraciones/);
+  rejected("fixture histórico no asciende a39 por conteo observado", () => validateCrm01b1MigrationHistory(history, migrations, historicalDatabase), /22 migraciones/);
+  rejected("CI no retrocede a37 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 37), migrations, canonicalDatabase), /39 migraciones/);
+  rejected("CI no retrocede a38 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 38), migrations, canonicalDatabase), /39 migraciones/);
   const duplicate = clone(history);
   duplicate[34] = clone(history[33]);
-  rejected("duplicado con conteo38 rechazado", () => validateCrm01b1MigrationHistory(duplicate, migrations, canonicalDatabase), /38 migraciones/);
+  rejected("duplicado con conteo39 rechazado", () => validateCrm01b1MigrationHistory(duplicate, migrations, canonicalDatabase), /39 migraciones/);
   const renamed = clone(history);
   renamed[20].migration_name = "20260827020000_unapproved_same_count";
-  rejected("nombre sustituido con conteo38 rechazado", () => validateCrm01b1MigrationHistory(renamed, migrations, canonicalDatabase), /38 migraciones/);
+  rejected("nombre sustituido con conteo39 rechazado", () => validateCrm01b1MigrationHistory(renamed, migrations, canonicalDatabase), /39 migraciones/);
   for (const [property, value] of [["finished_at", null], ["rolled_back_at", new Date()], ["applied_steps_count", 0], ["applied_steps_count", 2]]) {
     const altered = clone(history);
     altered[5][property] = value;
@@ -135,6 +142,12 @@ try {
   const changedWarehouseHistory = clone(history);
   changedWarehouseHistory[37].checksum = createHash("sha256").update(changedWarehouseSources[37][1]).digest("hex");
   rejected("20B no acepta SQL nuevo aunque coincida con el historial", () => validateCrm01b1MigrationHistory(changedWarehouseHistory, changedWarehouseSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
+
+  const changedSheetSources = clone(migrations);
+  changedSheetSources[38][1] += "\n-- unreviewed warehouse sheet\n";
+  const changedSheetHistory = clone(history);
+  changedSheetHistory[38].checksum = createHash("sha256").update(changedSheetSources[38][1]).digest("hex");
+  rejected("20C no acepta SQL nuevo aunque coincida con el historial", () => validateCrm01b1MigrationHistory(changedSheetHistory, changedSheetSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
 
   check("hash histórico22 conservado", () => {
     assert.equal(validateCrm01b1CatalogSummary(HISTORICAL_22_CATALOG).sha256,
@@ -314,6 +327,43 @@ try {
     rejected(`catálogo20B rechaza cambios en ${kind}`, () => validateCrm01b1CatalogSummary(summarizeCrm01b1Catalog(changed), warehouseFixture.delta.catalog), /firma total/);
     const removed = warehouseFixture.delta.rows.filter((row) => row !== warehouseFixture.delta.rows.find((entry) => entry.kind === kind));
     rejected(`catálogo20B rechaza ausencia de ${kind}`, () => validateCrm01b1CatalogSummary(summarizeCrm01b1Catalog(removed), warehouseFixture.delta.catalog), /conteo total/);
+  }
+  check("catálogo39 medido conserva perfil38 y agrega solo los objetos de20C", () => {
+    assert.equal(sheetFixture.provenance.kind, "LOCAL_DISPOSABLE_POSTGRESQL");
+    assert.equal(sheetFixture.provenance.previousObjectsUnchangedAfterMigration, true);
+    assert.equal(sheetFixture.provenance.catalogQuerySha256, createHash("sha256").update(CATALOG_SQL).digest("hex"));
+    assert.deepEqual(sheetFixture.catalog, CANONICAL_39_WAREHOUSE_SHEET_CATALOG);
+    assert.deepEqual(sheetFixture.previousCatalog, CANONICAL_38_WAREHOUSE_CONFIGURATION_CATALOG);
+    assert.equal(sheetFixture.migration.sha256, history[38].checksum);
+    assert.deepEqual(sheetFixture.delta.tables, WAREHOUSE_SHEET_TABLES);
+    assert.deepEqual(sheetFixture.delta.functions, WAREHOUSE_SHEET_FUNCTIONS);
+    assert.deepEqual(sheetFixture.delta.enums, WAREHOUSE_SHEET_ENUMS);
+    assert.deepEqual(summarizeCrm01b1Catalog(sheetFixture.delta.rows), sheetFixture.delta.catalog);
+    assert.deepEqual(partitionWarehouseSheetCatalog(sheetFixture.delta.rows), { previousRows: [], deltaRows: sheetFixture.delta.rows });
+    for (const [kind, summary] of Object.entries(CANONICAL_39_WAREHOUSE_SHEET_CATALOG.categories)) {
+      assert.equal(summary.count, CANONICAL_38_WAREHOUSE_CONFIGURATION_CATALOG.categories[kind].count + (sheetFixture.delta.catalog.categories[kind]?.count || 0));
+    }
+    assert.deepEqual(sheetFixture.delta.sqlOnlyCounts, CANONICAL_39_WAREHOUSE_SHEET_SQL_ONLY_COUNTS[WAREHOUSE_SHEET_MIGRATION]);
+    assert.equal(validateSqlOnlyInventory({ counts: CANONICAL_39_WAREHOUSE_SHEET_SQL_ONLY_COUNTS, unmapped: [] }, CANONICAL_39_WAREHOUSE_SHEET_SQL_ONLY_COUNTS).migrations, 39);
+  });
+  check("partición20C no absorbe tablas o funciones parecidas ni otro esquema", () => {
+    const preserved = [
+      { kind: "column", schema_name: "osi", table_name: "warehouse_sheet_profiles_archive", object_name: "id", definition: "old" },
+      { kind: "column", schema_name: "public", table_name: "warehouse_sheet_profiles", object_name: "id", definition: "old" },
+      { kind: "function", schema_name: "osi", table_name: "", object_name: "v17_warehouse_sheet_identity_guard(text)", definition: "old" },
+    ];
+    assert.deepEqual(partitionWarehouseSheetCatalog([...preserved, ...sheetFixture.delta.rows]), { previousRows: preserved, deltaRows: sheetFixture.delta.rows });
+  });
+  rejected("catálogo38 no reemplaza catálogo39", () => validateCrm01b1CatalogSummary(CANONICAL_38_WAREHOUSE_CONFIGURATION_CATALOG, CANONICAL_39_WAREHOUSE_SHEET_CATALOG), /conteo total/);
+  rejected("inventario38 no reemplaza inventario39", () => validateSqlOnlyInventory({ counts: CANONICAL_38_WAREHOUSE_CONFIGURATION_SQL_ONLY_COUNTS, unmapped: [] }, CANONICAL_39_WAREHOUSE_SHEET_SQL_ONLY_COUNTS), /inventario SQL-only cambio/);
+  for (const kind of ["check", "foreign_key", "function", "trigger"]) {
+    const changed = clone(sheetFixture.delta.rows);
+    const selected = changed.find((row) => row.kind === kind);
+    assert.ok(selected);
+    selected.definition += " altered";
+    rejected(`catálogo20C rechaza cambios en ${kind}`, () => validateCrm01b1CatalogSummary(summarizeCrm01b1Catalog(changed), sheetFixture.delta.catalog), /firma total/);
+    const removed = sheetFixture.delta.rows.filter((row) => row !== sheetFixture.delta.rows.find((entry) => entry.kind === kind));
+    rejected(`catálogo20C rechaza ausencia de ${kind}`, () => validateCrm01b1CatalogSummary(summarizeCrm01b1Catalog(removed), sheetFixture.delta.catalog), /conteo total/);
   }
   rejected("canonical37 sin btree_gist rechazada", () => validateCrm01b1SqlExtensions({ extensions: [], members: [] }, canonicalDatabase), /extensiones, versiones o esquemas/);
   for (const [field, value] of [["extension_name", "unexpected_extension"], ["version", "1.7"], ["schema_name", "public"]]) {

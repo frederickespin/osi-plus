@@ -1,7 +1,7 @@
 import type { WarehouseLocationRow, WarehouseRow } from "@/materials-inventory/api";
 
 export const LOCATION_KIND_LABELS: Readonly<Record<string, string>> = Object.freeze({
-  WAREHOUSE_ROOT: "Almacén principal", ZONE: "Zona", AISLE: "Pasillo", RACK: "Estante",
+  WAREHOUSE_ROOT: "Almacén principal", ZONE: "Zona", AISLE: "Pasillo", RACK: "Estantería",
   LEVEL: "Nivel", BIN: "Posición", RECEIVING: "Recepción", DISPATCH: "Despacho",
   QUARANTINE: "Cuarentena", OTHER: "Otra ubicación",
 });
@@ -43,7 +43,10 @@ export type SpaceTreeRow = Readonly<{
   matches: boolean;
 }>;
 
-export function spaceTreeRows(warehouses: readonly WarehouseRow[], search: string, status: string, collapsed: ReadonlySet<string>): SpaceTreeRow[] {
+type SearchableLocation = WarehouseLocationRow & Readonly<{ address?: Readonly<{ label: string }> | null }>;
+type SearchableWarehouse = Omit<WarehouseRow, "locations"> & Readonly<{ warehouseLabel?: string | null; locations: readonly SearchableLocation[] }>;
+
+export function spaceTreeRows(warehouses: readonly SearchableWarehouse[], search: string, status: string, collapsed: ReadonlySet<string>): SpaceTreeRow[] {
   const query = search.trim().toLocaleLowerCase("es");
   const filtering = Boolean(query || status);
   const result: SpaceTreeRow[] = [];
@@ -51,7 +54,7 @@ export function spaceTreeRows(warehouses: readonly WarehouseRow[], search: strin
     const byRef = new Map(warehouse.locations.map((row) => [row.locationRef, row]));
     const root = warehouse.locations.find((row) => row.parentLocationRef === null) ?? null;
     const rootKey = root?.locationRef ?? warehouse.warehouseRef;
-    const children = new Map<string, WarehouseLocationRow[]>();
+    const children = new Map<string, SearchableLocation[]>();
     for (const location of warehouse.locations) {
       if (location === root) continue;
       const parent = location.parentLocationRef && byRef.has(location.parentLocationRef) ? location.parentLocationRef : rootKey;
@@ -59,11 +62,11 @@ export function spaceTreeRows(warehouses: readonly WarehouseRow[], search: strin
       siblings.push(location);
       children.set(parent, siblings);
     }
-    for (const siblings of children.values()) siblings.sort((a, b) => a.code.localeCompare(b.code));
-    const rootMatches = (!status || warehouse.status === status) && (!query || `${warehouse.name} ${warehouse.code}`.toLocaleLowerCase("es").includes(query));
+    for (const siblings of children.values()) siblings.sort((a, b) => (a.address?.label ?? a.code).localeCompare(b.address?.label ?? b.code));
+    const rootMatches = (!status || warehouse.status === status) && (!query || `${warehouse.name} ${warehouse.code} ${warehouse.warehouseLabel ?? ""}`.toLocaleLowerCase("es").includes(query));
     const matching = new Set(warehouse.locations.filter((location) => location !== root
       && (!status || location.status === status)
-      && (!query || `${location.name} ${location.code} ${locationNamePath(warehouse, location)}`.toLocaleLowerCase("es").includes(query))).map((row) => row.locationRef));
+      && (!query || `${location.name} ${location.code} ${location.address?.label ?? ""} ${locationNamePath(warehouse, location)}`.toLocaleLowerCase("es").includes(query))).map((row) => row.locationRef));
     if (filtering && !rootMatches && matching.size === 0) continue;
     const included = new Set(matching);
     for (const ref of matching) {

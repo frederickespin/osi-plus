@@ -7,13 +7,24 @@ export type LogisticsRule = Readonly<{ ruleRef: string; seriesRef: string; famil
 async function request<T>(authorization: string | undefined, path: string, init: RequestInit = {}): Promise<T> { const response = await fetch(path, { ...init, credentials: "omit", cache: "no-store", headers: { ...(init.body ? { "Content-Type": "application/json" } : {}), ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}), ...(init.headers || {}) } }); const body = await response.json(); if (!response.ok) throw new Error(body?.error || "LOGISTICS_REQUEST_FAILED"); return body.data as T; }
 function canonicalJson(value: unknown): string { if (value === null || typeof value !== "object") return JSON.stringify(value); if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`; const row = value as Record<string, unknown>; return `{${Object.keys(row).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(row[key])}`).join(",")}}`; }
 async function sha256(value: string) { const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)); return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join(""); }
-async function command<T>(authorization: string | undefined, path: string, operation: string, payload: Record<string, unknown>) { const requestId = crypto.randomUUID(); const payloadHash = await sha256(canonicalJson({ operation, requestId, ...payload })); return request<T>(authorization, path, { method: "POST", body: JSON.stringify({ requestId, payloadHash, ...payload }) }); }
+async function command<T>(authorization: string | undefined, path: string, operation: string, payload: Record<string, unknown>, requestId: string = crypto.randomUUID()) { const payloadHash = await sha256(canonicalJson({ operation, requestId, ...payload })); return request<T>(authorization, path, { method: "POST", body: JSON.stringify({ requestId, payloadHash, ...payload }) }); }
 export const logisticsApi = Object.freeze({
   plan: (authorization: string | undefined, caseRef: string) => request<LogisticsRevision | null>(authorization, `/api/logistics/plans/${encodeURIComponent(caseRef)}`),
   calculate: (authorization: string | undefined, payload: { caseRef: string; intervalStart: string; intervalEnd: string }) => command<LogisticsCalculation>(authorization, "/api/logistics/plans/calculate", "LOGISTICS_CALCULATE", payload),
   publish: (authorization: string | undefined, calculationRef: string) => command<LogisticsRevision>(authorization, "/api/logistics/plans/publish", "LOGISTICS_PUBLISH", { calculationRef }),
   rules: (authorization?: string) => request<readonly LogisticsRule[]>(authorization, "/api/logistics/rules"),
-  versionRule: (authorization: string | undefined, payload: Record<string, unknown>) => command<LogisticsRule>(authorization, "/api/logistics/rules", "LOGISTICS_RULE_VERSION", payload),
+  versionRule: (authorization: string | undefined, payload: Record<string, unknown>, requestId?: string) => command<LogisticsRule>(authorization, "/api/logistics/rules", "LOGISTICS_RULE_VERSION", payload, requestId),
   override: (authorization: string | undefined, payload: Record<string, unknown>) => command(authorization, "/api/logistics/plans/overrides", "LOGISTICS_OVERRIDE", payload),
   resolve: (authorization: string | undefined, payload: Record<string, unknown>) => command(authorization, "/api/logistics/plans/issues/resolve", "LOGISTICS_ISSUE_RESOLVE", payload),
 });
+
+export function logisticsErrorMessage(cause: unknown): string {
+  const code = cause instanceof Error ? cause.message : "";
+  if (code === "LOGISTICS_IDEMPOTENCY_CONFLICT") return "Esta solicitud ya guardó una versión con otros datos. Actualice el listado y abra la versión guardada antes de continuar.";
+  if (/LOGISTICS_RULE_CODE_(?:IMMUTABLE|CONFLICT)/.test(code)) return "No se pudo confirmar la referencia automática. Actualice el listado y abra la regla vigente antes de continuar.";
+  if (code === "LOGISTICS_RULE_NOT_FOUND") return "La regla ya no está disponible. Actualice el listado antes de continuar.";
+  if (/CONCURRENCY|CONFLICT|STALE/.test(code)) return "La información cambió desde que la abrió. Actualice y revise la versión vigente antes de continuar.";
+  if (/FORBIDDEN/.test(code)) return "Su acceso no permite esta operación logística.";
+  if (/INVALID|REQUIRED/.test(code)) return "Revise los campos indicados y complete los datos obligatorios de la regla.";
+  return "No se pudo confirmar la operación. Actualice el listado para comprobar si se guardó antes de continuar.";
+}

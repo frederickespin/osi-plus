@@ -131,7 +131,7 @@ test("modalidades asignan código según alcance y LOCAL conserva su identidad",
   expect(seen.unexpected).toEqual([]);
 });
 
-test("combinaciones y sus requerimientos se crean sin códigos escritos por el usuario", async ({ page }) => {
+test("combinaciones y sus requerimientos se crean sin códigos escritos por el usuario", async ({ page }, testInfo) => {
   const seen = await setup(page, true);
   await page.getByTestId("service-catalog-admin").getByRole("button", { name: "Combinar", exact: true }).click();
   const defaults = page.getByRole("dialog", { name: "Combinación predeterminada", exact: true });
@@ -148,11 +148,38 @@ test("combinaciones y sus requerimientos se crean sin códigos escritos por el u
   await editor.getByRole("button", { name: "Agregar", exact: true }).click();
   const requirement = page.getByRole("dialog", { name: "Requerimiento", exact: true });
   await expect(requirement.getByLabel("Código", { exact: true })).toHaveCount(0);
-  await requirement.getByLabel("Horas", { exact: true }).fill("8");
+  for (const label of ["Cantidad", "Horas", "Días"]) {
+    const input = requirement.getByLabel(label, { exact: true });
+    await expect(input).toHaveAttribute("type", "text");
+    const bounds = await input.boundingBox();
+    expect(bounds!.width).toBeLessThanOrEqual(96);
+    await expect(input).toHaveCSS("height", testInfo.project.name === "chromium-mobile" ? "32px" : "28px");
+  }
+  const hours = requirement.getByLabel("Horas", { exact: true });
+  await hours.fill("7.5");
+  expect(await hours.evaluate((element: HTMLInputElement) => element.validity.valid)).toBe(true);
+  await requirement.getByLabel("Nombre", { exact: true }).click();
+  await hours.click();
+  expect(await hours.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 3]);
+  await page.keyboard.type("8");
+  await hours.press("ArrowUp");
+  await hours.press("ArrowDown");
+  await expect(hours).toHaveValue("8");
+  const quantity = requirement.getByLabel("Cantidad", { exact: true });
+  await quantity.fill("abc");
+  await requirement.getByRole("button", { name: "Agregar requerimiento", exact: true }).click();
+  await expect(requirement).toBeVisible();
+  expect(await quantity.evaluate((element: HTMLInputElement) => element.validity.valid)).toBe(false);
+  await quantity.fill("-1");
+  await requirement.getByRole("button", { name: "Agregar requerimiento", exact: true }).click();
+  await expect(requirement).toBeVisible();
+  expect(await quantity.evaluate((element: HTMLInputElement) => element.validity.valid)).toBe(false);
+  await quantity.fill("");
+  await page.screenshot({ path: testInfo.outputPath("combination-numeric-fields.png"), fullPage: true, animations: "disabled" });
   await requirement.getByRole("button", { name: "Agregar requerimiento", exact: true }).click();
   await editor.getByRole("button", { name: "Guardar versión", exact: true }).click();
   await expect(editor).toHaveCount(0);
-  expect(seen.writes[1].body).toMatchObject({ code: null, name: "Combinación con duración", primaryServiceRef: SERVICE_REF, requirements: [{ kind: "DURATION", code: null, hours: 8 }] });
+  expect(seen.writes[1].body).toMatchObject({ code: null, name: "Combinación con duración", primaryServiceRef: SERVICE_REF, requirements: [{ kind: "DURATION", code: null, quantity: null, hours: 8, days: null }] });
   expect(seen.unexpected).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });

@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapPinned, Plus, RefreshCw, Search } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
+import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
+import { cn } from "@/lib/utils";
 import { isTransportUnauthorized, transportApi, transportErrorMessage, TransportRequestError, type TransportZone, type TransportZoneInput } from "./transportApi";
 import type { TransportUiAccess } from "./transportAccess";
 import { PURPOSE_LABELS, STATE_LABELS } from "./transportPresentation";
@@ -15,7 +17,7 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [editor, setEditor] = useState<{ zone: TransportZone | null } | null>(null);
+  const [editor, setEditor] = useState<{ zone: TransportZone | null; requestId: string } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
@@ -52,14 +54,14 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
     return () => { controller.abort(); scope.current += 1; };
   }, [load]);
 
-  const open = (zone: TransportZone | null) => { if (uncertain) return; setEditor({ zone }); setSaveError(null); setNotice(null); };
+  const open = (zone: TransportZone | null) => { if (uncertain) return; setEditor({ zone, requestId: crypto.randomUUID() }); setSaveError(null); setNotice(null); };
   const save = async (input: TransportZoneInput) => {
-    if (!access.canZonesManage || saving || uncertain) return;
+    if (!access.canZonesManage || !editor || saving || uncertain) return;
     const currentScope = scope.current;
     setSaving(true);
     setSaveError(null);
     try {
-      const saved = await transportApi.versionZone(authorization, input);
+      const saved = await transportApi.versionZone(authorization, input, undefined, editor.requestId);
       if (currentScope !== scope.current) return;
       setZones((current) => [...current.filter((zone) => zone.ruleRef !== saved.ruleRef), saved]);
       setEditor(null);
@@ -88,7 +90,7 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
       <div className="flex items-center gap-1"><h3 className="text-sm font-semibold text-slate-900">Zonas y costos de transporte</h3><AdministrationHelp title="Zonas y costos"><p>Configure el perímetro, el tipo de vehículo y los costos que corresponden a cada zona. Las tarifas y el rendimiento son datos de su empresa.</p><p>Una zona activa puede aplicarse a cotizaciones, servicios y visitas. Sus cambios crean versiones; las publicaciones anteriores conservan sus tarifas.</p></AdministrationHelp></div>
       <div className="flex items-center gap-2"><AdministrationIconAction label="Actualizar zonas" disabled={loading || saving} onClick={() => void (uncertain ? reconcile() : load())}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></AdministrationIconAction>{access.canZonesManage && <button type="button" disabled={loading || saving || uncertain || Boolean(error)} onClick={() => open(null)} className="inline-flex min-h-10 items-center gap-1.5 rounded bg-[#003366] px-3 text-xs font-semibold text-white disabled:opacity-40"><Plus className="h-4 w-4" />Nueva zona</button>}</div>
     </div>
-    <div className="flex flex-wrap gap-2"><label className="relative min-w-48 flex-1"><span className="sr-only">Buscar zonas</span><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Código, nombre o tipo de vehículo…" className="h-10 w-full rounded border border-slate-300 bg-white pl-9 pr-3 text-xs" /></label><select aria-label="Estado de la zona" value={state} onChange={(event) => setState(event.target.value)} className="h-10 rounded border border-slate-300 bg-white px-3 text-xs"><option value="ALL">Todos los estados</option>{Object.entries(STATE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+    <div className="flex flex-wrap gap-2"><label className="relative min-w-48 flex-1"><span className="sr-only">Buscar zonas</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Código, nombre o tipo de vehículo…" className={cn(COMPACT_FORM_FIELD, "w-full pl-9 pr-3")} /></label><select aria-label="Estado de la zona" value={state} onChange={(event) => setState(event.target.value)} className={COMPACT_FORM_FIELD}><option value="ALL">Todos los estados</option>{Object.entries(STATE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     {error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</p>}
     {uncertain && !editor && <p role="alert" className="rounded border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">El guardado anterior no se confirmó. Actualice las zonas para consultar su estado antes de iniciar otro cambio.</p>}
     {notice && <p role="status" className="rounded border border-blue-100 bg-blue-50 p-3 text-xs text-[#003366]">{notice}</p>}

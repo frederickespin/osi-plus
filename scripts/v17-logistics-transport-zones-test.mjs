@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { canonicalHash } from "../api/_lib/logisticsEngineContract.js";
+import { automaticLogisticsConfigurationCode } from "../api/_lib/logisticsConfigurationCode.js";
 import { TRANSPORT_CONTRACT } from "../api/_lib/logisticsTransportContract.js";
 import {
   listTransportZones, loadTransportZones, revalidateTransportActor, TRANSPORT_ZONE_PERMISSIONS,
@@ -102,6 +103,32 @@ function fixture({ actor = currentActor, failAudit = false, initial = null } = {
   return { prisma, calls, state: () => structuredClone(state), transactions: () => transactions, setActor: (next) => { liveActor = next; } };
 }
 const rejects = (work, code) => assert.rejects(work, (error) => error.code === `LOGISTICS_TRANSPORT_${code}`);
+
+{
+  const automatic = fixture();
+  const request = command({ code: null, components: [{ ...fuel, code: null }, { ...toll, code: null }], state: "DRAFT" });
+  const created = await versionTransportZone(automatic.prisma, context, request);
+  check("new zone and all new rows receive independent automatic codes", /^ZON_[A-F0-9]{24}$/.test(created.code)
+    && created.components.every((row) => /^REN_[A-F0-9]{24}$/.test(row.code)) && new Set(created.components.map((row) => row.code)).size === 2);
+  check("automatic code identity is tenant scoped and stable for the same command", created.code === automaticLogisticsConfigurationCode(context.tenantId, { ...request, operation: "TRANSPORT_ZONE_VERSION" }, "ZONE")
+    && created.code !== automaticLogisticsConfigurationCode("other-tenant", { ...request, operation: "TRANSPORT_ZONE_VERSION" }, "ZONE"));
+  const beforeReplay = automatic.state();
+  check("automatic code retry returns the same full saved version", JSON.stringify(await versionTransportZone(automatic.prisma, context, request)) === JSON.stringify(created)
+    && JSON.stringify(automatic.state()) === JSON.stringify(beforeReplay));
+  await rejects(() => versionTransportZone(automatic.prisma, context, command({ code: null, name: "Changed after save", components: request.components, state: "DRAFT" }, request.requestId)), "IDEMPOTENCY_CONFLICT");
+  const revised = await versionTransportZone(automatic.prisma, context, command({ seriesRef: created.seriesRef, expectedVersion: 1, code: null,
+    components: [{ ...fuel, code: created.components[0].code, unitCost: "260" }, { ...toll, code: created.components[1].code },
+      { ...toll, code: null, label: "Nuevo renglón sintético", kind: "OTHER", basis: "FIXED" }], state: "DRAFT" }));
+  check("versioning preserves saved identities while assigning only new row codes", revised.code === created.code
+    && revised.components[0].code === created.components[0].code && revised.components[0].costRuleVersion === 2
+    && revised.components[1].code === created.components[1].code && revised.components[2].costRuleVersion === 1
+    && !created.components.some((row) => row.code === revised.components[2].code));
+  await rejects(() => versionTransportZone(automatic.prisma, context, command({ seriesRef: created.seriesRef, expectedVersion: 2, code: "RENAME_NOT_ALLOWED" })), "ZONE_CODE_IMMUTABLE");
+  check("automatic codes remain stored after a rejected rename", automatic.state().zones.every((row) => row.code === created.code));
+  const collisionRequest = command({ code: null, state: "DRAFT" });
+  const generated = automaticLogisticsConfigurationCode(context.tenantId, { ...collisionRequest, operation: "TRANSPORT_ZONE_VERSION" }, "COMPONENT", 0);
+  await rejects(() => versionTransportZone(automatic.prisma, context, command({ code: null, state: "DRAFT", components: [{ ...fuel, code: null }, { ...toll, code: generated }] }, collisionRequest.requestId)), "COMPONENT_CODE_CONFLICT");
+}
 
 for (const permissionsToUse of [[], [permissions[0]], [permissions[2]], [permissions[2], permissions[3]]]) {
   if (permissionsToUse.length === 2) continue;

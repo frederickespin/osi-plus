@@ -10,8 +10,12 @@ El usuario aprobó el formato compacto de la hoja de materiales y pidió conserv
 - Texto de los campos: **12 px**, con una línea de 16 px y espacio interior suficiente para leer el valor completo.
 - Ventanas y filas con espacio vertical reducido; botones compactos y ayudas accesibles.
 - Los controles táctiles, casillas y campos de varias líneas conservan el espacio que necesita su interacción.
+- Los números se escriben directamente, sin flechas de incremento ni cambios por la rueda. Al entrar con clic, toque o Tab se selecciona el valor completo; un segundo clic permite colocar el cursor para corregir una cifra.
+- Los campos de cantidades, horas y días usan un ancho acotado. Una celda vacía sigue siendo un dato pendiente, sin convertirse automáticamente en cero.
 
 Este es el criterio de partida para nuevos formularios y para las pantallas que se renueven. `src/components/ui/compact-form.ts` reúne las clases compartidas para reproducirlo de forma consistente. Lo usan las políticas de materiales, el catálogo de servicios, los modos, las combinaciones y sus requerimientos; los formularios compartidos de edición mantienen la misma presentación.
+
+`src/components/ui/numeric-input.tsx` reúne el comportamiento de entrada numérica y conserva las restricciones de obligatoriedad, límites y precisión de cada formulario. Lo usan los requerimientos de combinaciones, los porcentajes de materiales y los campos numéricos del Motor Logístico. La hoja de materiales conserva su aceptación de coma o punto decimal y sus mensajes de validación por fila.
 
 ## Cambios de uso
 

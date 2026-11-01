@@ -104,12 +104,24 @@ test("crea la política en una sola hoja, con nombres y porcentajes, sin permiso
   const seen = await fixture(page);
   const sheet = await newPolicy(page);
   await fillValidPolicy(page);
-  await sheet.getByLabel("Porcentaje, fila 1", { exact: true }).fill("70");
+  const percentage = sheet.getByLabel("Porcentaje, fila 1", { exact: true });
+  await expect(percentage).toHaveAttribute("type", "text");
+  const percentageBounds = await percentage.boundingBox();
+  expect(percentageBounds!.width).toBeLessThanOrEqual(80);
+  expect(percentageBounds!.height).toBe(testInfo.project.name === "chromium-mobile" ? 32 : 28);
+  await sheet.getByLabel("Clase, fila 1", { exact: true }).click();
+  await percentage.click();
+  expect(await percentage.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 3]);
+  await page.keyboard.type("70,5");
+  await percentage.press("ArrowUp");
+  await percentage.press("ArrowDown");
+  await expect(percentage).toHaveValue("70,5");
+  expect(await percentage.evaluate((element: HTMLInputElement) => element.validity.valid)).toBe(true);
   await sheet.getByRole("button", { name: "Agregar fila", exact: true }).click();
   await sheet.getByLabel("Tipo, fila 2", { exact: true }).selectOption("ASSET");
   await sheet.getByLabel("Material o recurso, fila 2", { exact: true }).selectOption(ASSET);
   await sheet.getByLabel("Clase, fila 2", { exact: true }).fill("REUSABLE");
-  await sheet.getByLabel("Porcentaje, fila 2", { exact: true }).fill("30");
+  await sheet.getByLabel("Porcentaje, fila 2", { exact: true }).fill("29,5");
   await sheet.getByLabel("Uso, fila 2", { exact: true }).selectOption("RETURNABLE");
   await sheet.getByLabel("Cargo, fila 2", { exact: true }).selectOption("USAGE");
   await expect(sheet.getByText("Total: 100 %", { exact: true })).toBeVisible();
@@ -128,7 +140,7 @@ test("crea la política en una sola hoja, con nombres y porcentajes, sin permiso
   await sheet.getByRole("button", { name: "Guardar política", exact: true }).click();
   await expect(sheet).toHaveCount(0);
   expect(seen.saves).toHaveLength(1);
-  expect(seen.saves[0]).toMatchObject({ code: null, modeRef: MODE, state: "DRAFT", lines: [{ materialRef: MATERIAL, assetModelRef: null, proportion: 0.7, materialClass: "NEW" }, { materialRef: null, assetModelRef: ASSET, proportion: 0.3, materialClass: "REUSABLE", disposition: "RETURNABLE", chargeType: "USAGE" }] });
+  expect(seen.saves[0]).toMatchObject({ code: null, modeRef: MODE, state: "DRAFT", lines: [{ materialRef: MATERIAL, assetModelRef: null, proportion: 0.705, materialClass: "NEW" }, { materialRef: null, assetModelRef: ASSET, proportion: 0.295, materialClass: "REUSABLE", disposition: "RETURNABLE", chargeType: "USAGE" }] });
   expect(seen.unexpected).toEqual([]);
 });
 

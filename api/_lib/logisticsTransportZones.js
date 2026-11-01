@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { automaticLogisticsConfigurationCode } from "./logisticsConfigurationCode.js";
 import { canonicalHash, logisticsFail } from "./logisticsEngineContract.js";
 import { normalizeTransportZone, normalizeTransportZonePayload, TRANSPORT_CONTRACT } from "./logisticsTransportContract.js";
 import { effectivePermissionsFor } from "./rbac.js";
@@ -221,7 +222,12 @@ export async function versionTransportZone(prisma, context, raw) {
     if (input.seriesRef && !current) fail("ZONE_NOT_FOUND", 404);
     if (current) assertZoneIdentity(current, actor.tenantId);
     if ((current?.version ?? null) !== input.expectedVersion) fail("VERSION_CONFLICT");
-    const codeConflict = await tx.logisticsRule.findFirst({ where: { ...namespaceWhere(actor.tenantId), code: { equals: input.code, mode: "insensitive" }, seriesRef: { not: seriesRef } } });
+    if (current && input.code !== null && input.code !== current.code) fail("ZONE_CODE_IMMUTABLE");
+    const code = current?.code ?? input.code ?? automaticLogisticsConfigurationCode(actor.tenantId, input, "ZONE");
+    const components = input.components.map((component, index) => ({ ...component,
+      code: component.code ?? automaticLogisticsConfigurationCode(actor.tenantId, input, "COMPONENT", index) }));
+    if (new Set(components.map((component) => component.code)).size !== components.length) fail("COMPONENT_CODE_CONFLICT");
+    const codeConflict = await tx.logisticsRule.findFirst({ where: { ...namespaceWhere(actor.tenantId), code: { equals: code, mode: "insensitive" }, seriesRef: { not: seriesRef } } });
     if (codeConflict) fail("ZONE_CODE_CONFLICT");
     if (!current) {
       const series = await tx.logisticsRule.findMany({ where: namespaceWhere(actor.tenantId), distinct: ["seriesRef"], select: { seriesRef: true }, take: MAX_ZONES });
@@ -248,7 +254,7 @@ export async function versionTransportZone(prisma, context, raw) {
       await tx.costingRule.update({ where: { tenantId_id: { tenantId: actor.tenantId, id: row.id } }, data: closeVersion(row, at) });
     }
     const tariffs = [];
-    for (const component of input.components) {
+    for (const component of components) {
       const conditions = { transportContract: TRANSPORT_CONTRACT, zoneSeriesRef: seriesRef, componentCode: component.code };
       const previous = await tx.costingRule.findFirst({ where: { ...tariffWhere(actor.tenantId, seriesRef),
         AND: [...tariffWhere(actor.tenantId, seriesRef).AND, { conditions: { path: ["componentCode"], equals: component.code } }] }, orderBy: { version: "desc" } });
@@ -267,10 +273,10 @@ export async function versionTransportZone(prisma, context, raw) {
     const policy = { kind: "TRANSPORT_ZONE_POLICY", contract: TRANSPORT_CONTRACT, zoneType: input.zoneType, purposes: input.purposes,
       geometry: input.geometry, mode: input.mode, factor: input.factor, currency: input.currency, kmPerGallon: input.kmPerGallon,
       gallonUnit: input.gallonUnit, fuelType: input.fuelType, includedConcepts: input.includedConcepts,
-      components: input.components.map((component, index) => ({ code: component.code, label: component.label, kind: component.kind,
+      components: components.map((component, index) => ({ code: component.code, label: component.label, kind: component.kind,
         basis: component.basis, includedConcepts: component.includedConcepts, costRuleRef: tariffs[index].ruleRef, costRuleVersion: tariffs[index].version })) };
     const row = await tx.logisticsRule.create({ data: { tenantId: actor.tenantId, ruleRef: randomUUID(), seriesRef, family: "ZONE",
-      code: input.code, name: input.name, priority: input.priority, specificity: input.vehicleType ? 1 : 0,
+      code, name: input.name, priority: input.priority, specificity: input.vehicleType ? 1 : 0,
       conditions, conditionHash: canonicalHash(conditions), result: policy, state: input.state, version: (current?.version || 0) + 1,
       validFrom: at, validTo: null, replacesRuleId: current?.id || null, requestId: input.requestId, payloadHash: input.payloadHash, ...actorData(actor) } });
     const result = zoneDto(row, new Map(tariffs.map((tariff) => [tariff.ruleRef, tariff])));

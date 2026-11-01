@@ -9,6 +9,15 @@ const VEHICLE = "cmtransporttestvehicle000001";
 const permissions = ["pipeline:view", "membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status", "logistics:rules:view", "logistics:rules:manage", "logistics:plan:view", "logistics:plan:calculate", "logistics:plan:publish", "costing:rules:view", "costing:rules:manage", "costing:view", "costing:calculate", "costing:publish"];
 const json = (data: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data }) });
 
+function editableZone(): TransportZone {
+  return {
+    ruleRef: ZONE, seriesRef: ZONE, version: 1, code: "SYNTHETIC_UI", name: "Zona de prueba", zoneType: "INTERIOR", priority: 100, vehicleType: null,
+    purposes: ["QUOTE"], geometry: { type: "Polygon", coordinates: [[[-70, 18], [-69, 18], [-69, 19], [-70, 18]]] }, mode: "ITEMIZED", factor: null, currency: "DOP",
+    kmPerGallon: null, gallonUnit: "US", fuelType: null, includedConcepts: [], state: "DRAFT", validFrom: null, validTo: null,
+    components: [{ code: "BASE", label: "Base de prueba", kind: "BASE", basis: "TRIP", unitCost: "1000", classification: "PR", minimumMarginBps: 2000, recommendedMarginBps: 2500, includedConcepts: [], costRuleRef: ZONE, costRuleVersion: 1 }],
+  };
+}
+
 async function session(page: Page, grants = permissions, denied: string[] = []) {
   await page.addInitScript(({ membershipRef }) => {
     localStorage.setItem("osi-plus.token", "synthetic.transport.token");
@@ -104,7 +113,7 @@ test("una zona conserva perímetro real trazado y tarifas pendientes, con campos
     if (route.request().method() === "POST") {
       const command = route.request().postDataJSON();
       input = Object.fromEntries(Object.entries(command).filter(([key]) => key !== "requestId" && key !== "payloadHash")) as TransportZoneInput;
-      const zone: TransportZone = { ...input, ruleRef: ZONE, seriesRef: ZONE, version: 1, validFrom: null, validTo: null, components: input.components.map((row) => ({ ...row, costRuleRef: ZONE, costRuleVersion: 1 })) };
+      const zone: TransportZone = { ...input, code: "SYNTHETIC_UI", ruleRef: ZONE, seriesRef: ZONE, version: 1, validFrom: null, validTo: null, components: input.components.map((row, index) => ({ ...row, code: `SYNTHETIC_ROW_${index + 1}`, costRuleRef: ZONE, costRuleVersion: 1 })) };
       saved.push(zone);
       return route.fulfill(json(zone));
     }
@@ -113,7 +122,7 @@ test("una zona conserva perímetro real trazado y tarifas pendientes, con campos
   await page.goto("/administration/logistics");
   await page.getByRole("button", { name: "Nueva zona", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Código *", { exact: true }).fill("SYNTHETIC_UI");
+  await expect(dialog.getByRole("textbox", { name: /Código/ })).toHaveCount(0);
   await dialog.getByLabel("Nombre *", { exact: true }).fill("Perímetro de prueba local");
   await dialog.getByRole("button", { name: "Trazar perímetro", exact: true }).click();
   const map = dialog.getByRole("region", { name: "Mapa de la geocerca" });
@@ -125,16 +134,21 @@ test("una zona conserva perímetro real trazado y tarifas pendientes, con campos
   await expect(dialog.getByText("Coordenadas · 3 puntos")).toBeVisible();
   await dialog.getByRole("button", { name: "Añadir renglón", exact: true }).click();
   await dialog.getByLabel("Concepto del renglón 1").selectOption("FUEL");
-  await dialog.getByLabel("Código del renglón 1").fill("FUEL");
   await dialog.getByLabel("Nombre del renglón 1").fill("Combustible pendiente");
-  const width = await dialog.getByLabel("Rendimiento km/gal").evaluate((element) => element.getBoundingClientRect().width);
-  expect(width).toBeLessThanOrEqual(110);
+  const expectedHeight = testInfo.project.name.includes("mobile") ? 32 : 28;
+  for (const control of [dialog.getByLabel("Nombre *", { exact: true }), dialog.getByLabel("Concepto del renglón 1"), dialog.getByLabel("Rendimiento km/gal")]) {
+    const height = await control.evaluate((element) => element.getBoundingClientRect().height);
+    expect(height).toBe(expectedHeight);
+  }
+  expect(await dialog.getByLabel("Rendimiento km/gal").evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(110);
   expect(await dialog.getByTestId("transport-zone-scroll").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
-  if (process.env.CAPTURE_TRANSPORT_UI === "true") await page.screenshot({ path: testInfo.outputPath("transport-zone-editor.png") });
+  if (process.env.CAPTURE_TRANSPORT_UI === "true") await page.screenshot({ animations: "disabled", path: testInfo.outputPath("transport-zone-editor.png") });
   await dialog.getByRole("button", { name: "Guardar zona", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(input).not.toBeNull();
   const submitted = input as unknown as TransportZoneInput;
+  expect(submitted.code).toBeNull();
+  expect(submitted.components[0].code).toBeNull();
   expect(submitted.geometry.coordinates[0]).toHaveLength(4);
   expect(submitted.geometry.coordinates[0][0]).toEqual(submitted.geometry.coordinates[0][3]);
   expect(submitted.components[0].unitCost).toBeNull();
@@ -142,6 +156,126 @@ test("una zona conserva perímetro real trazado y tarifas pendientes, con campos
   await expect(page.getByRole("cell", { name: "Perímetro de prueba local SYNTHETIC_UI" })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
   expect(overflow).toBe(false);
+});
+
+test("los números se reemplazan completos sin flechas y conservan límites antes de guardar", async ({ page }) => {
+  await session(page);
+  const original = editableZone();
+  const commands: TransportZoneInput[] = [];
+  await page.route("**/api/logistics/transport/zones", async (route) => {
+    if (route.request().method() === "POST") {
+      const command = route.request().postDataJSON() as TransportZoneInput;
+      commands.push(command);
+      return route.fulfill(json({ ...original, ...command, version: 2 }));
+    }
+    return route.fulfill(json([original]));
+  });
+  await page.goto("/administration/logistics");
+  await page.getByRole("button", { name: "Editar zona", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const priority = dialog.getByLabel("Prioridad", { exact: true });
+  const save = dialog.getByRole("button", { name: "Guardar nueva versión", exact: true });
+  await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
+  await dialog.getByLabel("Nombre *", { exact: true }).focus();
+  await priority.click();
+  expect(await priority.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 3]);
+  await priority.pressSequentially("125");
+  await expect(priority).toHaveValue("125");
+  await priority.press("ArrowUp");
+  await priority.press("ArrowDown");
+  await priority.hover();
+  await page.mouse.wheel(0, 300);
+  await expect(priority).toHaveValue("125");
+  await priority.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(priority).toBeFocused();
+  expect(await priority.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 3]);
+
+  for (const value of ["", "10000", "100.5", "abc"]) {
+    await priority.fill(value);
+    await save.click();
+    await expect(priority).toBeFocused();
+    expect(await priority.evaluate((element: HTMLInputElement) => element.checkValidity())).toBe(false);
+    expect(commands).toHaveLength(0);
+  }
+  await priority.fill("125");
+  const rate = dialog.getByLabel("Tarifa del renglón 1");
+  for (const value of ["-1", "0.0000001"]) {
+    await rate.fill(value);
+    expect(await rate.evaluate((element: HTMLInputElement) => element.checkValidity())).toBe(false);
+    await save.click();
+    expect(commands).toHaveLength(0);
+  }
+  await rate.fill("0");
+  expect(await rate.evaluate((element: HTMLInputElement) => element.checkValidity())).toBe(true);
+  await rate.fill("");
+  expect(await rate.evaluate((element: HTMLInputElement) => element.checkValidity())).toBe(true);
+  const margin = dialog.getByLabel("Margen recomendado del renglón 1");
+  await margin.fill("100");
+  expect(await margin.evaluate((element: HTMLInputElement) => element.checkValidity())).toBe(false);
+  await save.click();
+  expect(commands).toHaveLength(0);
+  await margin.fill("25");
+  await dialog.getByText("Coordenadas · 3 puntos", { exact: true }).click();
+  const longitude = dialog.getByLabel("Longitud del punto 1", { exact: true });
+  await longitude.fill("-70.5");
+  expect(await longitude.evaluate((element: HTMLInputElement) => element.checkValidity())).toBe(true);
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toMatchObject({ code: "SYNTHETIC_UI", priority: 125, components: [{ code: "BASE", unitCost: null }] });
+  expect(commands[0].geometry.coordinates[0][0][0]).toBe(-70.5);
+});
+
+test("las ayudas comparan parámetros con ejemplos sin cargar tarifas ni cambiar la ficha", async ({ page }, testInfo) => {
+  await session(page);
+  let writes = 0;
+  await page.route("**/api/logistics/transport/zones", (route) => {
+    if (route.request().method() !== "GET") writes += 1;
+    return route.fulfill(json([editableZone()]));
+  });
+  await page.goto("/administration/logistics");
+  await page.getByRole("button", { name: "Editar zona", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Nueva versión de zona", exact: true });
+  const closeHelp = async (title: string) => {
+    const help = page.getByRole("dialog", { name: title, exact: true });
+    await help.getByRole("button", { name: "Cerrar ayuda", exact: true }).click();
+    await expect(help).toHaveCount(0);
+  };
+  await editor.getByRole("button", { name: "Ayuda de Prioridad de la zona", exact: true }).click();
+  await expect(page.getByText(/Cambiar de 100 a 101 no aumenta el costo de transporte/)).toBeVisible();
+  await closeHelp("Prioridad de la zona");
+  await editor.getByRole("combobox", { name: "Forma de cálculo", exact: true }).selectOption("FACTOR");
+  await editor.getByRole("button", { name: "Ayuda de Factor de la zona", exact: true }).click();
+  await expect(page.getByText(/factor 1.25 cuesta 1,250/)).toBeVisible();
+  await closeHelp("Factor de la zona");
+  await expect(editor.getByLabel("Factor", { exact: true })).toHaveValue("");
+  await expect(editor.getByLabel("Tarifa del renglón 1")).toHaveValue("1000");
+  await editor.getByRole("button", { name: "Añadir renglón", exact: true }).click();
+  await editor.getByLabel("Concepto del renglón 2").selectOption("FUEL");
+  await expect(editor.getByLabel("Nombre del renglón 2")).toHaveValue("Combustible");
+  await editor.getByLabel("Nombre del renglón 2").fill("Combustible personalizado");
+  await editor.getByLabel("Concepto del renglón 2").selectOption("OTHER");
+  await expect(editor.getByLabel("Nombre del renglón 2")).toHaveValue("Combustible personalizado");
+  await editor.getByLabel("Concepto del renglón 2").selectOption("FUEL");
+  await editor.getByRole("button", { name: "Ayuda de Rendimiento de combustible", exact: true }).click();
+  await expect(page.getByText(/160 km.*8 km\/gal.*20 galones.*10 km\/gal.*16/)).toBeVisible();
+  await expect(page.getByText(/costo baja de 5,000 a 4,000/)).toBeVisible();
+  await closeHelp("Rendimiento de combustible");
+  await expect(editor.getByLabel("Rendimiento km/gal", { exact: true })).toHaveValue("");
+  await expect(editor.getByLabel("Tarifa del renglón 2")).toHaveValue("");
+  await editor.getByRole("button", { name: "Ayuda de Base del renglón", exact: true }).click();
+  await expect(page.getByText(/2 personas × 3 días = 6 unidades/)).toBeVisible();
+  await closeHelp("Base del renglón");
+  await editor.getByRole("button", { name: "Ayuda de Tarifa del renglón", exact: true }).click();
+  await expect(page.getByText(/2 pasos × 100 = 200/)).toBeVisible();
+  await closeHelp("Tarifa del renglón");
+  await editor.getByRole("button", { name: "Ayuda de Márgenes del renglón", exact: true }).click();
+  await expect(page.getByText(/al subir a 25 % propone 1,333.33.*El costo sigue siendo 1,000/)).toBeVisible();
+  await expect(page.getByText(/vender a 1,200 deja 16.67 % y requiere autorización/)).toBeVisible();
+  if (process.env.CAPTURE_TRANSPORT_UI === "true") await page.screenshot({ animations: "disabled", path: testInfo.outputPath("transport-cost-help.png") });
+  await closeHelp("Márgenes del renglón");
+  expect(writes).toBe(0);
 });
 
 for (const purpose of ["QUOTE", "SERVICE", "VISIT"] as const) test(`${purpose}: calcula pendientes y publica exclusivamente el contexto elegido`, async ({ page }) => {
@@ -218,12 +352,7 @@ test("el acceso de consulta no concede cálculo ni publicación", async ({ page 
 test("el guardado incierto de zona bloquea nuevas escrituras hasta consultar el listado", async ({ page }) => {
   await session(page);
   let posts = 0;
-  let zone: TransportZone = {
-    ruleRef: ZONE, seriesRef: ZONE, version: 1, code: "SYNTHETIC_UI", name: "Zona de prueba", zoneType: "INTERIOR", priority: 100, vehicleType: null,
-    purposes: ["QUOTE"], geometry: { type: "Polygon", coordinates: [[[-70, 18], [-69, 18], [-69, 19], [-70, 18]]] }, mode: "ITEMIZED", factor: null, currency: "DOP",
-    kmPerGallon: null, gallonUnit: "US", fuelType: null, includedConcepts: [], state: "DRAFT", validFrom: null, validTo: null,
-    components: [{ code: "BASE", label: "Base de prueba", kind: "BASE", basis: "TRIP", unitCost: null, classification: "PR", minimumMarginBps: null, recommendedMarginBps: null, includedConcepts: [], costRuleRef: ZONE, costRuleVersion: 1 }],
-  };
+  let zone: TransportZone = editableZone();
   await page.route("**/api/logistics/transport/zones", async (route) => {
     if (route.request().method() === "POST") {
       posts += 1;

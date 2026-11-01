@@ -74,9 +74,9 @@ export function pointInTransportPolygon(point, geometry) {
   return inside;
 }
 
-function component(raw) {
+function component(raw, allowAutomaticCodes) {
   const value = object(raw); exact(value, COMPONENT_KEYS);
-  const code = text(value.code, 48); if (!/^[A-Z][A-Z0-9_]{0,47}$/.test(code)) invalid("TRANSPORT_COMPONENT_CODE_INVALID");
+  const code = text(value.code, 48, allowAutomaticCodes); if (code !== null && !/^[A-Z][A-Z0-9_]{0,47}$/.test(code)) invalid("TRANSPORT_COMPONENT_CODE_INVALID");
   const kind = enumeration(value.kind, KINDS), basis = enumeration(value.basis, BASIS_BY_KIND[kind]);
   const includedConcepts = uniqueEnums(value.includedConcepts, KINDS.filter((item) => item !== kind && item !== "BASE"));
   const minimumMarginBps = integer(value.minimumMarginBps, 0, 9999, true), recommendedMarginBps = integer(value.recommendedMarginBps, 0, 9999, true);
@@ -95,12 +95,13 @@ function validateCoverage(zone) {
     }
   }
 }
-export function normalizeTransportZonePayload(raw) {
+export function normalizeTransportZonePayload(raw, { allowAutomaticCodes = false } = {}) {
   const value = object(raw); exact(value, ZONE_KEYS);
-  const code = text(value.code, 64); if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(code)) invalid("TRANSPORT_ZONE_CODE_INVALID");
+  const code = text(value.code, 64, allowAutomaticCodes); if (code !== null && !/^[A-Z][A-Z0-9_]{1,63}$/.test(code)) invalid("TRANSPORT_ZONE_CODE_INVALID");
   if (!Array.isArray(value.components) || value.components.length > 40) invalid();
-  const components = value.components.map(component);
-  if (new Set(components.map((row) => row.code)).size !== components.length || components.filter((row) => row.kind === "BASE").length > 1) invalid("TRANSPORT_COMPONENT_DUPLICATED");
+  const components = value.components.map((row) => component(row, allowAutomaticCodes));
+  const suppliedCodes = components.map((row) => row.code).filter((code) => code !== null);
+  if (new Set(suppliedCodes).size !== suppliedCodes.length || components.filter((row) => row.kind === "BASE").length > 1) invalid("TRANSPORT_COMPONENT_DUPLICATED");
   const zone = {
     seriesRef: value.seriesRef === null ? null : transportRef(value.seriesRef), expectedVersion: integer(value.expectedVersion, 1, 2147483647, true),
     code, name: text(value.name, 180), zoneType: enumeration(value.zoneType, ["METRO", "INTERIOR"]), priority: integer(value.priority, 0, 9999),
@@ -115,7 +116,7 @@ export function normalizeTransportZonePayload(raw) {
 }
 export function normalizeTransportZone(raw) {
   const value = object(raw); exact(value, [...ZONE_KEYS, "requestId", "payloadHash"]);
-  return command(value, "TRANSPORT_ZONE_VERSION", normalizeTransportZonePayload(Object.fromEntries(ZONE_KEYS.map((key) => [key, value[key]]))));
+  return command(value, "TRANSPORT_ZONE_VERSION", normalizeTransportZonePayload(Object.fromEntries(ZONE_KEYS.map((key) => [key, value[key]])), { allowAutomaticCodes: true }));
 }
 export function normalizeTransportInput(raw) {
   const value = object(raw); exact(value, CALCULATE_KEYS);

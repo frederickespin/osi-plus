@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { createCrm01b1LocalPrisma, validateCrm01b1LocalUrl } from "./crm-01b1-local-target.mjs";
 import { createFleetDriversPg17LocalPrisma } from "./v17-fleet-drivers-pg17-local-target.mjs";
-import { CATALOG_SQL, CANONICAL_37_FLEET_DRIVERS_CATALOG, summarizeCrm01b1Catalog } from "./crm-01b1-sql-drift-baseline.mjs";
+import { CATALOG_SQL, CANONICAL_38_WAREHOUSE_CONFIGURATION_CATALOG, summarizeCrm01b1Catalog } from "./crm-01b1-sql-drift-baseline.mjs";
 import { normalizePreviewSnapshotSchema, selectPreviewDriverCatalogProfile } from "./v17-fleet-drivers-preview-migrate.mjs";
 import { createAdminFleetVehicle, getAdminFleetVehicle, updateAdminFleetVehicle } from "../api/_lib/adminFleetDomain.js";
 import { APPROVAL_PERMISSIONS, decideApprovalRequest } from "../api/_lib/approvalRequest.js";
@@ -21,7 +21,7 @@ assert.ok(compatibilityMode === undefined || compatibilityMode === "PG17", "unsu
 const pg17Compatibility = compatibilityMode === "PG17";
 const rawLocalUrl = pg17Compatibility ? process.env.V17_FLEET_DRIVERS_PG17_DATABASE_URL : process.env.CRM01B1_TEST_DATABASE_URL;
 const createLocalPrisma = pg17Compatibility ? createFleetDriversPg17LocalPrisma : createCrm01b1LocalPrisma;
-let expectedCatalog = CANONICAL_37_FLEET_DRIVERS_CATALOG;
+let expectedCatalog = CANONICAL_38_WAREHOUSE_CONFIGURATION_CATALOG;
 if (pg17Compatibility) {
   const fixture = JSON.parse(readFileSync(new URL("../tests/crm-01b1/fleet-drivers-19f-pg17-catalog.json", import.meta.url), "utf8"));
   selectPreviewDriverCatalogProfile("170011", { 17: fixture });
@@ -116,7 +116,7 @@ async function verifyPreviewSnapshotSchema() {
       check("schema normalization preserves the actual database, branch and connection", [initial, selected].every((state) => state.database === original.database && state.branch === original.branch && state.pid === original.pid));
       const catalog = summarizeCrm01b1Catalog(await tx.$queryRawUnsafe(CATALOG_SQL));
       assert.deepEqual(catalog, expectedCatalog);
-      check(`normalized snapshot preserves the exact ${pg17Compatibility ? "PG17 compatibility" : "canonical 37"} catalog`, true);
+      check(`normalized snapshot preserves the exact ${pg17Compatibility ? "PG17 compatibility" : "canonical 38"} catalog`, true);
     }, { isolationLevel: "RepeatableRead", timeout: 35000 });
     assert.deepEqual(await sessionState(schemaPrisma), original);
     check("schema selection restores the same connection state after commit", true);

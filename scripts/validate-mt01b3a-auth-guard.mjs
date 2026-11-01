@@ -43,6 +43,9 @@ const FACTORY_GROUPS = [
     "api/materials/warehouse-configuration/index.js", "api/materials/warehouse-uses/index.js",
     "api/materials/warehouse-uses/[useRef].js", "api/materials/warehouses/locations/[locationRef]/configuration.js",
   ]],
+  ["TENANT", "warehouseSheetHttp.js", "createWarehouseSheetHandler", [
+    "api/materials/warehouse-sheets/index.js", "api/materials/warehouse-sheets/manager-options.js",
+  ]],
   ["TENANT", "logisticsEngineHttp.js", "createLogisticsHandler", [
     "api/logistics/plans/[caseRef].js", "api/logistics/plans/calculate.js", "api/logistics/plans/issues/resolve.js",
     "api/logistics/plans/overrides.js", "api/logistics/plans/publish.js", "api/logistics/rules/index.js",
@@ -223,13 +226,17 @@ function assertFactoryOptions(node, route) {
   const options = node.arguments[0];
   invariant(ts.isObjectLiteralExpression(options), route + " requiere opciones explícitas del adaptador");
   const permitted = new Set(["prismaClient", "prisma", "methods", "permission", "permissions", "execute", "response", "status", "maxBytes"]);
+  const managerOptionsRoute = route === "api/materials/warehouse-sheets/manager-options.js";
+  if (managerOptionsRoute) permitted.add("managerOptions");
   const names = new Set();
   for (const property of options.properties) {
     invariant(ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)), route + " introduce opciones dinámicas del adaptador");
     const name = property.name.text;
     invariant(!names.has(name) && permitted.has(name), route + " sobrescribe la autoridad del adaptador: " + name);
     names.add(name);
+    if (name === "managerOptions") invariant(property.initializer.kind === ts.SyntaxKind.TrueKeyword, route + " requiere autoridad de gestión para consultar encargados");
   }
+  if (managerOptionsRoute) invariant(names.has("managerOptions"), route + " requiere autoridad de gestión para consultar encargados");
 }
 function validateRouteContract(route, source, contract) {
   const inspection = inspectRoute(route, source);

@@ -185,5 +185,19 @@ rejected("inventario canónico no puede omitir una ruta migrada", { canonicalInv
 rejected("excepción legacy debe permanecer físicamente desactivada", { canonicalInventory: { ...canonicalInventory, remainingDisabledFiles: ["api/active-header-authority.js"] } }, /MT-01B3A: una excepción legacy dejó/);
 rejected("AuthContext no puede perder inmutabilidad", { authContextSource: authContextSource.replaceAll("Object.freeze", "Object.assign") }, /MT-01B3A: AuthContext debe ser inmutable/);
 
+const warehouseSheetRoutes = ["api/materials/warehouse-sheets/index.js", "api/materials/warehouse-sheets/manager-options.js"];
+positive("hoja20C usa exactamente el adaptador empresarial propio", () => {
+  for (const route of warehouseSheetRoutes) assert.deepEqual(MT01B3A_ROUTE_INVENTORY[route].calls, [{ module: "api/_lib/warehouseSheetHttp.js", name: "createWarehouseSheetHandler" }]);
+});
+for (const route of warehouseSheetRoutes) {
+  rejectRoute("hoja20C no sustituye su gate por20B: " + route, route, (s) => s.replaceAll("warehouseSheetHttp.js", "warehouseConfigurationHttp.js").replaceAll("createWarehouseSheetHandler", "createWarehouseConfigurationHandler"));
+  rejectRoute("hoja20C no acepta contexto inyectado: " + route, route, (s) => s.replace("prismaClient: prisma", "resolveContext: async () => ({tenantId:'forged'}), prismaClient: prisma"), /autoridad alternativa/);
+  rejectRoute("hoja20C no fuerza su modo desde la ruta: " + route, route, (s) => s.replace("prismaClient: prisma", "env: {}, prismaClient: prisma"), /sobrescribe la autoridad/);
+}
+rejectRoute("encargados requiere autoridad de gestión explícita", warehouseSheetRoutes[1], (s) => s.replace("managerOptions: true, ", ""), /requiere autoridad de gestión/);
+rejectRoute("encargados no acepta false ni valor dinámico", warehouseSheetRoutes[1], (s) => s.replace("managerOptions: true", "managerOptions: false"), /requiere autoridad de gestión/);
+rejectAdapter("hoja20C no reemplaza contexto autenticado", "api/_lib/warehouseSheetHttp.js", (s) => s.replace("await resolveContext(req, { env, prisma: prismaClient })", "({role:'A'})"), /contexto empresarial canónico/);
+rejected("una ruta nueva de hojas no hereda autoridad por prefijo", { routeSources: new Map([...routeSources, ["api/materials/warehouse-sheets/extra.js", routeSources.get(warehouseSheetRoutes[0])]]) }, /ruta nueva sin clasificación/);
+
 process.stdout.write(JSON.stringify({ ok: true, passed: results.length, positive: results.filter((item) => item.kind === "positive").length,
   negative: results.filter((item) => item.kind === "negative").length, current, results }, null, 2) + "\n");

@@ -33,7 +33,8 @@ export async function captureWarehouseConfigurationCatalog({ root = process.cwd(
   invariant(process.env.CANONICAL_DB_VALIDATION === "true", "requires the disposable canonical CI environment");
   const candidateTarget = validateCrm01b1LocalUrl(rawUrl);
   invariant(candidateTarget.database === "osi_db01n_ci", "only the disposable canonical database is accepted");
-  const names = validateMigrationFiles(root);
+  // Validate the full closed source inventory, then measure only this historical checkpoint.
+  const names = validateMigrationFiles(root).filter((name) => name <= WAREHOUSE_CONFIGURATION_MIGRATION);
   invariant(names.length === 38 && names.at(-1) === WAREHOUSE_CONFIGURATION_MIGRATION, "20B requires the exact named 38-migration inventory");
   const migrations = await Promise.all(names.map(async (name) => [name, await readFile(join(root, "prisma/migrations", name, "migration.sql"), "utf8")]));
   const migrationChecksums = Object.fromEntries(migrations.map(([name, sql]) => [name, createHash("sha256").update(sql).digest("hex")]));
@@ -55,7 +56,7 @@ export async function captureWarehouseConfigurationCatalog({ root = process.cwd(
         SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count
         FROM "osi"."_prisma_migrations" ORDER BY migration_name
       `);
-      const appliedNames = validateAppliedMigrationHistory(history);
+      const appliedNames = validateAppliedMigrationHistory(history, { throughMigration: WAREHOUSE_CONFIGURATION_MIGRATION });
       invariant(history.every((row) => row.checksum === migrationChecksums[row.migration_name]), "applied checksums differ from the reviewed source files");
       const catalogRows = await tx.$queryRawUnsafe(CATALOG_SQL);
       const sqlOnlyRows = await tx.$queryRawUnsafe(SQL_ONLY_SQL);

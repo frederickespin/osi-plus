@@ -47,7 +47,7 @@ try {
   expectFailure("HYBRID rechazado", safeFiles, { MT01B_AUTH_MODE: "HYBRID" }, /HYBRID/);
   expectFailure("tenant switch rechazado", safeFiles, { MT01B_TENANT_SWITCH_ENABLED: "true" }, /tenant switch/);
   expectFailure("cliente V2 rechazado", safeFiles, { VITE_MT01B2_CLIENT_ENABLED: "true" }, /cliente V2/);
-  expectFailure("migración adicional rechazada", [...safeFiles, "prisma/migrations/20260901010000_future/migration.sql"], {}, /38 migraciones canónicas/);
+  expectFailure("migración adicional rechazada", [...safeFiles, "prisma/migrations/20260901010000_future/migration.sql"], {}, /39 migraciones canónicas/);
   safeExecutor();
   write("api/_lib/employeeProvisioningExecutor.js", readFileSync(join(root, "api/_lib/employeeProvisioningExecutor.js"), "utf8").replace("critical: true", "critical: false"));
   expectFailure("auditoría no crítica rechazada", safeFiles, {}, /auditoría crítica/);

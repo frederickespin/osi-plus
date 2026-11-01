@@ -141,6 +141,8 @@ model Tenant {
   warehouseAreaUses                 WarehouseAreaUse[]
   warehouseLocationConfigurations   WarehouseLocationConfiguration[]
   warehouseLocationPolicyEpoch      WarehouseLocationPolicyEpoch?
+  warehouseSheetProfiles            WarehouseSheetProfile[]
+  warehouseLocationAddresses        WarehouseLocationAddress[]
   materialInventoryCommands         MaterialInventoryCommand[]
   materialInventoryMovements        MaterialInventoryMovement[]
   materialReservations              MaterialReservation[]
@@ -237,6 +239,7 @@ model Tenant {
 }
 
 model TenantMembership {
+  managedWarehouseSheets           WarehouseSheetProfile[] @relation("WarehouseSheetManager")
   fleetPrimaryDriverEvents          FleetDriverPrimaryEvent[]  @relation("FleetPrimaryDriver")
   fleetPrimaryAssignedEvents        FleetDriverPrimaryEvent[]  @relation("FleetPrimaryAssigner")
   fleetTemporaryDriverAuthorizations FleetDriverAuthorization[] @relation("FleetTemporaryDriver")
@@ -4138,6 +4141,7 @@ model MaterialWarehouse {
   updatedAt    DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_warehouses_tenant_fkey")
   locations    MaterialLocation[]
+  sheetProfile WarehouseSheetProfile?
 
   @@unique([tenantId, id], map: "material_warehouses_tenant_id_key")
   @@unique([tenantId, warehouseRef], map: "material_warehouses_tenant_ref_key")
@@ -4171,6 +4175,7 @@ model MaterialLocation {
   assignmentDestinations AssetAssignment[]           @relation("AssetAssignmentDestination")
   inspectionLocations    AssetInspection[]           @relation("AssetInspectionLocation")
   configuration          WarehouseLocationConfiguration?
+  address                WarehouseLocationAddress?
 
   @@unique([tenantId, id], map: "material_locations_tenant_id_key")
   @@unique([tenantId, locationRef], map: "material_locations_tenant_ref_key")
@@ -4232,6 +4237,50 @@ enum WarehouseAreaUsePurpose {
   INTERNAL
   CLIENT_STORAGE
   MIXED
+}
+
+// 20C presentation and responsibility are separate from immutable inventory identity.
+model WarehouseSheetProfile {
+  id                  String                     @id @default(cuid())
+  tenantId            String                     @map("tenant_id")
+  warehouseId         String                     @map("warehouse_id")
+  warehouseNumber     Int                        @map("warehouse_number")
+  managerMembershipId String?                    @map("manager_membership_id")
+  managerUserId       String?                    @map("manager_user_id")
+  version             Int                        @default(1)
+  createdAt           DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant              Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_sheet_profiles_tenant_fkey")
+  warehouse           MaterialWarehouse          @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_sheet_profiles_warehouse_fkey")
+  manager             TenantMembership?          @relation("WarehouseSheetManager", fields: [tenantId, managerMembershipId, managerUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_sheet_profiles_manager_fkey")
+  addresses           WarehouseLocationAddress[]
+
+  @@unique([tenantId, warehouseId], map: "warehouse_sheet_profiles_warehouse_key")
+  @@unique([tenantId, warehouseNumber], map: "warehouse_sheet_profiles_number_key")
+  @@index([tenantId, managerMembershipId], map: "warehouse_sheet_profiles_manager_idx")
+  @@map("warehouse_sheet_profiles")
+}
+
+model WarehouseLocationAddress {
+  id             String                 @id @default(cuid())
+  tenantId       String                 @map("tenant_id")
+  warehouseId    String                 @map("warehouse_id")
+  locationId     String                 @map("location_id")
+  label          String                 @db.VarChar(32)
+  zoneNumber     Int                    @default(0) @map("zone_number")
+  aisleNumber    Int                    @default(0) @map("aisle_number")
+  rackCode       String?                @map("rack_code") @db.VarChar(2)
+  levelNumber    Int                    @default(0) @map("level_number")
+  positionNumber Int                    @default(0) @map("position_number")
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant         Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_addresses_tenant_fkey")
+  profile        WarehouseSheetProfile  @relation(fields: [tenantId, warehouseId], references: [tenantId, warehouseId], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_addresses_profile_fkey")
+  location       MaterialLocation       @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_addresses_location_fkey")
+
+  @@unique([tenantId, locationId], map: "warehouse_location_addresses_location_key")
+  @@unique([tenantId, label], map: "warehouse_location_addresses_label_key")
+  @@index([tenantId, warehouseId], map: "warehouse_location_addresses_warehouse_idx")
+  @@map("warehouse_location_addresses")
 }
 
 model WarehouseLocationPolicyEpoch {

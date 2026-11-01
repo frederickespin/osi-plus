@@ -1,5 +1,7 @@
 import type { WarehouseLocationRow, WarehouseRow } from "@/materials-inventory/api";
 import type { WarehouseAreaPurpose, WarehouseAreaUse, WarehouseAvailabilityRule, WarehouseConfiguration, WarehouseLocationConfiguration, WarehouseOperationalStatus } from "./configurationTypes";
+import type { WarehouseManagerOptions, WarehouseSheet, WarehouseSheetChange, WarehouseSheetSaved } from "./sheetTypes";
+import { formatWarehouseAddress, type WarehouseAddressSegments } from "../../shared/warehouseSheetAddress.js";
 
 export class WarehouseApiError extends Error {
   readonly code: string;
@@ -22,6 +24,10 @@ const RECEIPT_CHECKED_REJECTIONS = new Set([
   "WAREHOUSE_CONFIGURATION_VERSION_CONFLICT", "WAREHOUSE_AREA_USE_NAME_CONFLICT", "WAREHOUSE_AREA_USE_CODE_CONFLICT",
   "WAREHOUSE_AREA_USE_NOT_FOUND", "WAREHOUSE_AREA_USE_INACTIVE", "WAREHOUSE_LOCATION_NOT_FOUND",
   "WAREHOUSE_CONFIGURATION_IMPACT_ACK_REQUIRED", "WAREHOUSE_CONFIGURATION_COMMITMENTS_ACTIVE", "WAREHOUSE_CONFIGURATION_HIERARCHY_INVALID",
+  "WAREHOUSE_SHEET_NOT_FOUND", "WAREHOUSE_SHEET_LOCATION_NOT_FOUND", "WAREHOUSE_SHEET_MANAGER_NOT_FOUND", "WAREHOUSE_SHEET_MANAGER_INELIGIBLE",
+  "WAREHOUSE_SHEET_USE_NOT_FOUND", "WAREHOUSE_SHEET_USE_INACTIVE", "WAREHOUSE_SHEET_VERSION_CONFLICT", "WAREHOUSE_SHEET_HIERARCHY_INVALID",
+  "WAREHOUSE_SHEET_ROOT_ROW_INVALID", "WAREHOUSE_SHEET_RESOURCE_INACTIVE", "WAREHOUSE_SHEET_ADDRESS_CAPACITY_EXCEEDED",
+  "WAREHOUSE_SHEET_CODE_CONFLICT", "WAREHOUSE_SHEET_WRITE_CONFLICT",
 ]);
 export function isWarehouseRejectionConfirmed(error: unknown) {
   return error instanceof WarehouseApiError && RECEIPT_CHECKED_REJECTIONS.has(error.code);
@@ -32,6 +38,29 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+}
+
+const responseRef = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+const responseRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+function isAddressResponse(value: unknown): boolean {
+  if (!responseRecord(value) || typeof value.label !== "string") return false;
+  try { return formatWarehouseAddress(value as unknown as WarehouseAddressSegments) === value.label; } catch { return false; }
+}
+function isSheetResponse(value: unknown): value is WarehouseSheet {
+  if (!responseRecord(value) || !responseRef(value.warehouseRef) || typeof value.code !== "string" || typeof value.name !== "string"
+    || typeof value.status !== "string" || !Number.isSafeInteger(value.version) || Number(value.version) < 1
+    || !Number.isSafeInteger(value.profileVersion) || Number(value.profileVersion) < 0 || !Number.isSafeInteger(value.rootConfigurationVersion) || Number(value.rootConfigurationVersion) < 0
+    || value.rootLocationRef !== null && !responseRef(value.rootLocationRef) || value.rootAreaUseRef !== null && !responseRef(value.rootAreaUseRef)
+    || value.warehouseLabel !== null && typeof value.warehouseLabel !== "string"
+    || value.warehouseNumber !== null && (!Number.isSafeInteger(value.warehouseNumber) || Number(value.warehouseNumber) < 1 || Number(value.warehouseNumber) > 99)
+    || value.manager !== null && (!responseRecord(value.manager) || !responseRef(value.manager.membershipRef) || typeof value.manager.displayName !== "string" || typeof value.manager.eligible !== "boolean")
+    || !Array.isArray(value.locations)) return false;
+  return value.locations.every((row: unknown) => responseRecord(row) && responseRef(row.locationRef)
+    && (row.parentLocationRef === null || responseRef(row.parentLocationRef)) && typeof row.name === "string" && typeof row.code === "string"
+    && typeof row.kind === "string" && typeof row.path === "string" && typeof row.status === "string"
+    && Number.isSafeInteger(row.version) && Number(row.version) >= 1 && Number.isSafeInteger(row.depth) && Number(row.depth) >= 0
+    && Number.isSafeInteger(row.configurationVersion) && Number(row.configurationVersion) >= 0
+    && (row.areaUseRef === null || responseRef(row.areaUseRef)) && (row.address === null || isAddressResponse(row.address)));
 }
 
 export type WarehouseSpatialChange =
@@ -49,8 +78,8 @@ export type WarehouseLocationConfigurationChange = Readonly<{
   operationalStatus: WarehouseOperationalStatus; availabilityRule: WarehouseAvailabilityRule;
   changeReason: string | null; acknowledgeImpact: boolean;
 }>;
-export type WarehouseChange = WarehouseSpatialChange | WarehouseAreaUseChange | WarehouseLocationConfigurationChange;
-export type WarehouseSaved = WarehouseRow | WarehouseLocationRow | WarehouseAreaUse | WarehouseLocationConfiguration;
+export type WarehouseChange = WarehouseSpatialChange | WarehouseAreaUseChange | WarehouseLocationConfigurationChange | WarehouseSheetChange;
+export type WarehouseSaved = WarehouseRow | WarehouseLocationRow | WarehouseAreaUse | WarehouseLocationConfiguration | WarehouseSheetSaved;
 
 export function isWarehouseSpatialChange(change: WarehouseChange): change is WarehouseSpatialChange {
   return ["WAREHOUSE_CREATE", "WAREHOUSE_UPDATE", "WAREHOUSE_LOCATION_CREATE", "WAREHOUSE_LOCATION_UPDATE"].includes(change.operation);
@@ -86,16 +115,34 @@ export class WarehouseApi {
     return data;
   }
 
+  async sheets(signal?: AbortSignal) {
+    const data = await this.request<{ warehouses: readonly WarehouseSheet[] }>("/api/materials/warehouse-sheets", { method: "GET", signal });
+    if (!data || !Array.isArray(data.warehouses) || !data.warehouses.every(isSheetResponse)) throw new WarehouseApiError("MATERIALS_RESPONSE_INVALID", 503);
+    return data.warehouses;
+  }
+
+  async managerOptions(query: string, page: number, signal?: AbortSignal) {
+    const search = new URLSearchParams({ page: String(page), pageSize: "25" });
+    if (query.trim()) search.set("q", query.trim());
+    const data = await this.request<WarehouseManagerOptions>(`/api/materials/warehouse-sheets/manager-options?${search}`, { method: "GET", signal });
+    if (!data || !Array.isArray(data.data) || !Number.isSafeInteger(data.total) || data.total < 0
+      || !Number.isSafeInteger(data.page) || data.page < 1 || data.page > 100_000 || !Number.isSafeInteger(data.pageSize) || data.pageSize < 1 || data.pageSize > 50
+      || data.data.some((row) => !responseRecord(row) || !responseRef(row.membershipRef) || typeof row.displayName !== "string" || !row.displayName.trim())) throw new WarehouseApiError("MATERIALS_RESPONSE_INVALID", 503);
+    return data;
+  }
+
   save(change: WarehouseSpatialChange, requestId: string, signal?: AbortSignal): Promise<WarehouseRow | WarehouseLocationRow>;
   save(change: WarehouseAreaUseChange, requestId: string, signal?: AbortSignal): Promise<WarehouseAreaUse>;
   save(change: WarehouseLocationConfigurationChange, requestId: string, signal?: AbortSignal): Promise<WarehouseLocationConfiguration>;
+  save(change: WarehouseSheetChange, requestId: string, signal?: AbortSignal): Promise<WarehouseSheetSaved>;
   save(change: WarehouseChange, requestId: string, signal?: AbortSignal): Promise<WarehouseSaved>;
   async save(change: WarehouseChange, requestId: string, signal?: AbortSignal): Promise<WarehouseSaved> {
     const { operation, ...payload } = change;
     const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson({ operation, requestId, ...payload })));
     const payloadHash = [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    const path = operation === "WAREHOUSE_CREATE" ? "/api/materials/warehouses"
+    const path = operation === "WAREHOUSE_SHEET_SAVE" ? "/api/materials/warehouse-sheets"
+      : operation === "WAREHOUSE_CREATE" ? "/api/materials/warehouses"
       : operation === "WAREHOUSE_LOCATION_CREATE" ? "/api/materials/warehouses/locations"
       : operation === "WAREHOUSE_UPDATE" ? `/api/materials/warehouses/${encodeURIComponent(change.warehouseRef)}`
       : operation === "WAREHOUSE_LOCATION_UPDATE" ? `/api/materials/warehouses/locations/${encodeURIComponent(change.locationRef)}`
@@ -108,7 +155,24 @@ export class WarehouseApi {
     if (operation === "WAREHOUSE_UPDATE") delete body.warehouseRef;
     if (operation === "WAREHOUSE_LOCATION_UPDATE" || operation === "WAREHOUSE_LOCATION_CONFIGURATION_UPDATE") delete body.locationRef;
     if (operation === "WAREHOUSE_AREA_USE_UPDATE") delete body.useRef;
-    return this.request(path, { method, body: JSON.stringify({ requestId, payloadHash, ...body }), signal });
+    const saved = await this.request<unknown>(path, { method, body: JSON.stringify({ requestId, payloadHash, ...body }), signal });
+    if (operation === "WAREHOUSE_SHEET_SAVE") {
+      if (!responseRecord(saved) || !isSheetResponse(saved.warehouse) || !Array.isArray(saved.rowResults)
+        || change.warehouseRef !== null && saved.warehouse.warehouseRef !== change.warehouseRef
+        || saved.rowResults.length !== change.rows.length) throw new WarehouseApiError("MATERIALS_RESPONSE_INVALID", 503);
+      const expectedRows = new Map(change.rows.map((row) => [row.rowId, row]));
+      const returned = new Set<string>();
+      const returnedLocations = new Set<string>();
+      for (const row of saved.rowResults) {
+        if (!responseRecord(row) || !responseRef(row.rowId) || !responseRef(row.locationRef) || returned.has(row.rowId) || returnedLocations.has(row.locationRef)
+          || !expectedRows.has(row.rowId) || !saved.warehouse.locations.some((location) => location.locationRef === row.locationRef)) throw new WarehouseApiError("MATERIALS_RESPONSE_INVALID", 503);
+        const expected = expectedRows.get(row.rowId)!;
+        if (expected.action === "UPDATE" && expected.locationRef !== row.locationRef) throw new WarehouseApiError("MATERIALS_RESPONSE_INVALID", 503);
+        returned.add(row.rowId);
+        returnedLocations.add(row.locationRef);
+      }
+    }
+    return saved as WarehouseSaved;
   }
 }
 
@@ -143,6 +207,24 @@ export function warehouseErrorText(error: unknown): string {
     WAREHOUSE_CONFIGURATION_IMPACT_ACK_REQUIRED: "Escriba un motivo y confirme el alcance antes de cambiar los controles operativos.",
     WAREHOUSE_CONFIGURATION_COMMITMENTS_ACTIVE: "Hay reservas o préstamos pendientes en esta ubicación o en sus ubicaciones interiores. Resuelva esos compromisos antes de cambiar los controles.",
     WAREHOUSE_CONFIGURATION_HIERARCHY_INVALID: "No se pudo confirmar la jerarquía de esta ubicación. Actualice el listado antes de continuar.",
+    WAREHOUSE_SHEET_FORBIDDEN: "No tiene permiso para guardar la hoja de almacén.",
+    WAREHOUSE_SHEET_INPUT_INVALID: "Revise los nombres, las filas y los límites de la hoja antes de guardar.",
+    WAREHOUSE_SHEET_NOT_FOUND: "El almacén ya no está disponible. Actualice el listado.",
+    WAREHOUSE_SHEET_LOCATION_NOT_FOUND: "Una ubicación de la hoja ya no está disponible. Actualice el listado.",
+    WAREHOUSE_SHEET_MANAGER_NOT_FOUND: "La persona seleccionada ya no está disponible. Seleccione otro encargado o deje el campo sin asignar.",
+    WAREHOUSE_SHEET_MANAGER_INELIGIBLE: "La persona seleccionada ya no está habilitada para esta asignación. Seleccione otro encargado o deje el campo sin asignar.",
+    WAREHOUSE_SHEET_USE_NOT_FOUND: "Un uso de la hoja ya no está disponible. Seleccione otro uso o deje la ubicación sin uso asignado.",
+    WAREHOUSE_SHEET_USE_INACTIVE: "Un uso seleccionado está inactivo. Seleccione un uso activo para la nueva asignación o deje el campo sin asignar.",
+    WAREHOUSE_SHEET_VERSION_CONFLICT: "Otra persona modificó este almacén o alguna ubicación. Actualice el listado antes de editar la hoja de nuevo.",
+    WAREHOUSE_SHEET_WRITE_CONFLICT: "Coincidieron varios cambios. Actualice el listado antes de guardar una nueva versión de la hoja.",
+    WAREHOUSE_SHEET_IDEMPOTENCY_CONFLICT: "Este intento ya tiene otros datos asociados. Actualice el listado antes de continuar.",
+    WAREHOUSE_SHEET_HIERARCHY_INVALID: "Revise la ubicación superior y el tipo de cada fila. Los niveles necesitan una estantería y las posiciones son terminales.",
+    WAREHOUSE_SHEET_ROOT_ROW_INVALID: "Cambie los datos del almacén en la cabecera de la hoja, no como una fila interior.",
+    WAREHOUSE_SHEET_RESOURCE_INACTIVE: "El almacén o una ubicación superior está inactiva. Actualice el listado antes de agregar ubicaciones.",
+    WAREHOUSE_SHEET_ADDRESS_CAPACITY_EXCEEDED: "Se agotó el rango de etiquetas disponible: 99 almacenes, 999 zonas, 99 pasillos, 676 estanterías, 9 niveles o 4 posiciones por ubicación superior. Reduzca las filas o elija otra ubicación superior.",
+    WAREHOUSE_SHEET_CODE_CONFLICT: "No se pudo asignar un código único a la hoja. Actualice el listado antes de volver a guardar.",
+    WAREHOUSE_SHEET_DISABLED: "La hoja de almacenes todavía no está habilitada en este entorno.",
+    WAREHOUSE_SHEET_CONFIGURATION_INVALID: "La hoja de almacenes no está disponible en este entorno.",
   };
   return messages[code] ?? "No se pudo confirmar la operación. Reintente cuando tenga conexión.";
 }

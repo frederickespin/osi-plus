@@ -90,7 +90,7 @@ function failingAuditClient() {
 try {
   const history = await prisma.$queryRaw`SELECT migration_name, finished_at, rolled_back_at, applied_steps_count FROM "osi"."_prisma_migrations" ORDER BY started_at`;
   const migrationNames = validateAppliedMigrationHistory(history, compatibility === "PG17" ? { throughMigration: "20261031010000_v17_fleet_driver_authority" } : {});
-  check("full current canonical migration inventory is present", migrationNames.length === (compatibility === "PG17" ? 37 : 38));
+  check("full current canonical migration inventory is present", migrationNames.length === (compatibility === "PG17" ? 37 : 39));
   const [a, b] = await Promise.all([account("A"), account("B")]);
   const { pipelineCase, serviceRevision } = await caseFixture(a, "A");
 

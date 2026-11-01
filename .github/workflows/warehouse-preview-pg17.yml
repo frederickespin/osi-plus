@@ -5,17 +5,22 @@ on:
     paths:
       - ".github/workflows/warehouse-preview-pg17.yml"
       - "scripts/v17-warehouse-configuration*.mjs"
+      - "scripts/v17-warehouse-sheet*.mjs"
       - "scripts/v17-warehouse-policy*.mjs"
       - "scripts/v17-warehouse-location*.mjs"
       - "scripts/capture-v17-warehouse-configuration*.mjs"
+      - "scripts/capture-v17-warehouse-sheet*.mjs"
+      - "scripts/canonical-migrations.mjs"
       - "scripts/crm-01b1-sql-drift-baseline.mjs"
       - "tests/crm-01b1/warehouse-configuration-20b*.json"
+      - "tests/crm-01b1/warehouse-sheet-20c*.json"
       - "prisma/**"
       - "api/_lib/warehouse*"
       - "api/_lib/materialsInventoryDomain.js"
       - "api/_lib/toolsEquipmentDomain.js"
       - "api/_lib/logisticsEngineDomain.js"
       - "shared/warehouseConfigurationMigration.js"
+      - "shared/warehouseSheetMigration.js"
       - "package.json"
       - "package-lock.json"
 
@@ -72,6 +77,7 @@ jobs:
           node scripts/validate-prisma-schema-target.mjs
           node scripts/v17-warehouse-configuration-pg17-local-target-test.mjs
           node scripts/v17-warehouse-configuration-preview-migrate-test.mjs
+          node scripts/v17-warehouse-sheet-preview-migrate-test.mjs
       - name: Verify empty isolated target before migrations
         run: |
           node --input-type=module <<'NODE'
@@ -92,7 +98,7 @@ jobs:
             assert.equal(identity.ledger_absent, true);
           } finally { await prisma.$disconnect(); }
           NODE
-      - name: Prepare exact37 staging directory
+      - name: Prepare exact37 and38 historical staging directories
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -100,10 +106,11 @@ jobs:
           import { join } from 'node:path';
           import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
           const source = validateMigrationFiles();
-          assert.equal(source.length, 38);
-          assert.equal(source.at(-1), '20261101010000_v17_warehouse_configuration');
+          assert.equal(source.length, 39);
+          assert.equal(source.at(-1), '20261101020000_v17_warehouse_sheet');
+          assert.equal(source[37], '20261101010000_v17_warehouse_configuration');
           assert.equal(source[36], '20261031010000_v17_fleet_driver_authority');
-          for (const count of [37]) {
+          for (const count of [37, 38]) {
             const stage = join(process.env.RUNNER_TEMP, `warehouse-pg17-${count}`);
             mkdirSync(join(stage, 'migrations'), { recursive: true });
             copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
@@ -120,14 +127,26 @@ jobs:
           node scripts/capture-v17-warehouse-configuration-pg17-catalog.mjs --before "$RUNNER_TEMP/warehouse-pg17-before.json"
       - name: Upgrade37 to38 and verify preserved catalog and measured delta
         run: |
-          npx prisma migrate deploy --schema prisma/schema.prisma
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/warehouse-pg17-38/schema.prisma"
           node scripts/capture-v17-warehouse-configuration-pg17-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg17-after.json" --previous "$RUNNER_TEMP/warehouse-pg17-before.json"
-      - name: Verify idempotent deploy and replayed catalog
+      - name: Verify historical38 idempotent deploy and replayed catalog
         run: |
-          npx prisma migrate deploy --schema prisma/schema.prisma
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/warehouse-pg17-38/schema.prisma"
           node scripts/capture-v17-warehouse-configuration-pg17-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg17-replay.json" --previous "$RUNNER_TEMP/warehouse-pg17-before.json"
       - name: Verify area assignments and controls on PostgreSQL17
         run: npm run test:v17-warehouse-configuration:db
+      - name: Capture PostgreSQL17 baseline before worksheet migration
+        run: node scripts/capture-v17-warehouse-sheet-pg17-catalog.mjs --before "$RUNNER_TEMP/warehouse-pg17-sheet-before.json"
+      - name: Upgrade38 to39 and verify preserved catalog and measured delta
+        run: |
+          npx prisma migrate deploy --schema prisma/schema.prisma
+          node scripts/capture-v17-warehouse-sheet-pg17-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg17-sheet-after.json" --previous "$RUNNER_TEMP/warehouse-pg17-sheet-before.json"
+      - name: Verify worksheet migration idempotent deploy and replayed catalog
+        run: |
+          npx prisma migrate deploy --schema prisma/schema.prisma
+          node scripts/capture-v17-warehouse-sheet-pg17-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg17-sheet-replay.json" --previous "$RUNNER_TEMP/warehouse-pg17-sheet-before.json"
+      - name: Verify atomic warehouse worksheets on PostgreSQL17
+        run: npm run test:v17-warehouse-sheet:db
       - name: Upload synthetic compatibility evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

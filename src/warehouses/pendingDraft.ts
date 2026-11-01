@@ -1,4 +1,5 @@
 import type { WarehouseChange } from "./api";
+import { SHEET_BYTE_LIMIT, validatePendingWarehouseSheetChange } from "./sheetDraft";
 
 export type PendingWarehouseDraft<T extends WarehouseChange = WarehouseChange> = Readonly<{ requestId: string; change: T }>;
 
@@ -31,6 +32,12 @@ function validateDraft(value: unknown): PendingWarehouseDraft | null {
   const input = value.change;
   let change: WarehouseChange;
   switch (input.operation) {
+    case "WAREHOUSE_SHEET_SAVE": {
+      const sheet = validatePendingWarehouseSheetChange(input);
+      if (!sheet) return null;
+      change = sheet;
+      break;
+    }
     case "WAREHOUSE_CREATE":
       if (!exactKeys(input, ["operation", "name"]) || !validName(input.name)) return null;
       change = { operation: input.operation, name: input.name };
@@ -78,7 +85,7 @@ function validateDraft(value: unknown): PendingWarehouseDraft | null {
 }
 
 function readStoredDraft(raw: string): PendingWarehouseDraft | null {
-  if (raw.length > 16384) return null;
+  if (new TextEncoder().encode(raw).byteLength > SHEET_BYTE_LIMIT) return null;
   try {
     const wrapper: unknown = JSON.parse(raw);
     return record(wrapper) && exactKeys(wrapper, ["version", "draft"]) && wrapper.version === 1 ? validateDraft(wrapper.draft) : null;
@@ -105,12 +112,14 @@ export function setPendingWarehouseDraft(membershipRef: string, draft: PendingWa
   if (!validRef(membershipRef)) return;
   const validated = validateDraft(draft);
   if (!validated) return;
+  const serialized = JSON.stringify({ version: 1, draft: validated });
+  if (new TextEncoder().encode(serialized).byteLength > SHEET_BYTE_LIMIT) return;
   const entry: MemoryEntry = { draft: validated, unsynced: true };
   pendingByMembership.set(membershipRef, entry);
   try {
     const storage = globalThis.sessionStorage;
     if (!storage) return;
-    storage.setItem(`${STORAGE_PREFIX}${membershipRef}`, JSON.stringify({ version: 1, draft: validated }));
+    storage.setItem(`${STORAGE_PREFIX}${membershipRef}`, serialized);
     entry.unsynced = false;
   } catch { /* Retain the validated intent in memory for this page. */ }
 }

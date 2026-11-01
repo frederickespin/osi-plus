@@ -142,6 +142,8 @@
       "/api/materials/reservations/release",
       "/api/materials/units",
       "/api/materials/warehouse-configuration",
+      "/api/materials/warehouse-sheets",
+      "/api/materials/warehouse-sheets/manager-options",
       "/api/materials/warehouse-uses",
       "/api/materials/warehouse-uses/[useRef]",
       "/api/materials/warehouses",

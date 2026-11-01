@@ -85,16 +85,17 @@ test("alta de almacén sin código manual ni ubicaciones inventadas, con campos 
   await page.goto("/warehouses/spaces");
   await expect(page.getByText("Todavía no hay almacenes registrados.")).toBeVisible();
   await page.getByRole("button", { name: "Nuevo almacén", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Nuevo almacén", exact: true });
-  await expect(dialog.getByText("Código automático al guardar.")).toBeVisible();
-  await expect(dialog.getByRole("textbox")).toHaveCount(1);
-  const name = dialog.getByLabel("Nombre del almacén", { exact: true });
+  const panel = page.getByRole("region", { name: "Nuevo almacén", exact: true });
+  await expect(panel.getByText("Código automático al guardar.")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(panel.getByRole("textbox")).toHaveCount(1);
+  const name = panel.getByLabel("Nombre del almacén", { exact: true });
   await expect(name).toBeFocused();
   await expect.poll(async () => Math.round((await name.boundingBox())!.height)).toBe(info.project.name.endsWith("mobile") ? 32 : 28);
   await name.fill("Almacén norte");
   await page.screenshot({ path: `/tmp/osi-warehouses-20a-create-${info.project.name}.png`, fullPage: true });
-  await dialog.getByRole("button", { name: "Guardar almacén" }).click();
-  await expect(dialog).toHaveCount(0);
+  await panel.getByRole("button", { name: "Guardar almacén" }).click();
+  await expect(panel).toHaveCount(0);
   await expect(page.getByTestId("warehouse-space-row")).toHaveCount(1);
   await expect(page.getByTestId("warehouse-space-row").getByText("Almacén norte", { exact: true })).toBeVisible();
   expect(api.writes).toHaveLength(1); expect(api.rows()[0].locations).toHaveLength(1);
@@ -106,12 +107,12 @@ test("ubicación explícita bajo un padre, búsqueda con antecesores y árbol pl
   await session(page, EDIT); const api = await warehouseApi(page, [fixture()]);
   await page.goto("/warehouses/spaces");
   await page.getByRole("button", { name: "Agregar ubicación en Embalaje", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Nueva ubicación", exact: true });
-  await dialog.getByLabel("Nombre de la ubicación", { exact: true }).fill("Estante lateral");
-  await expect(dialog.getByLabel("Dentro de", { exact: true })).toHaveValue(ZONE);
-  await dialog.getByLabel("Tipo de ubicación", { exact: true }).selectOption("RACK");
-  await dialog.getByRole("button", { name: "Guardar ubicación" }).click();
-  await expect(dialog).toHaveCount(0);
+  const panel = page.getByRole("region", { name: "Nueva ubicación", exact: true });
+  await panel.getByLabel("Nombre de la ubicación", { exact: true }).fill("Estante lateral");
+  await expect(panel.getByLabel("Dentro de", { exact: true })).toHaveValue(ZONE);
+  await panel.getByLabel("Tipo de ubicación", { exact: true }).selectOption("RACK");
+  await panel.getByRole("button", { name: "Guardar ubicación" }).click();
+  await expect(panel).toHaveCount(0);
   await expect(page.getByTestId("warehouse-space-row")).toHaveCount(4);
   expect(api.writes[0].body).toMatchObject({ warehouseRef: WAREHOUSE, parentLocationRef: ZONE, kind: "RACK", name: "Estante lateral" });
   await page.getByRole("button", { name: "Contraer Embalaje", exact: true }).click();
@@ -132,13 +133,13 @@ test("editar nombres conserva códigos y referencias y envía la versión visibl
   await page.getByRole("button", { name: "Cambiar nombre de Almacén central", exact: true }).click();
   await page.getByLabel("Nombre del almacén", { exact: true }).fill("Almacén principal");
   await page.getByRole("button", { name: "Guardar nombre" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
   await expect(page.getByTitle("Almacén principal", { exact: true })).toBeVisible();
   expect(api.writes[0]).toMatchObject({ method: "PATCH", path: `/api/materials/warehouses/${WAREHOUSE}`, body: { expectedVersion: 3, name: "Almacén principal" } });
   await page.getByRole("button", { name: "Cambiar nombre de Embalaje", exact: true }).click();
   await page.getByLabel("Nombre de la ubicación", { exact: true }).fill("Embalaje seco");
   await page.getByRole("button", { name: "Guardar nombre" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
   await expect(page.getByTestId("warehouse-space-row").getByText("Embalaje seco", { exact: true })).toBeVisible();
   expect(api.writes[1]).toMatchObject({ method: "PATCH", path: `/api/materials/warehouses/locations/${ZONE}`, body: { expectedVersion: 4 } });
   expect(api.rows()[0].code).toBe("ALM-EXISTENTE");
@@ -157,7 +158,7 @@ test("una respuesta perdida conserva el intento al cerrar y reabrir, sin duplica
   await expect(page.getByRole("button", { name: "Nuevo almacén", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Reabrir guardado" }).click();
   await page.getByRole("button", { name: "Reintentar guardado" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
   await expect(page.getByTestId("warehouse-space-row")).toHaveCount(1);
   expect(api.writes).toHaveLength(2);
   expect(api.writes[1].body).toEqual(api.writes[0].body);
@@ -173,7 +174,7 @@ test("el conflicto de versión exige recargar sin mostrar un nombre no guardado"
   await expect(page.getByRole("alert")).toContainText("Otra persona modificó este registro");
   await expect(page.getByRole("button", { name: "Guardar nombre" })).toHaveCount(0);
   await page.getByRole("button", { name: "Actualizar listado" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
   await expect(page.getByTestId("warehouse-space-row").getByText("Embalaje", { exact: true })).toBeVisible();
   expect(api.writes).toHaveLength(1);
 });
@@ -199,13 +200,13 @@ test("el intento pendiente sobrevive a navegación, recarga y un rechazo previo 
   await page.reload();
   await expect(page.getByLabel("Nombre del almacén", { exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Reintentar guardado" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
   expect(api.writes).toHaveLength(3);
   for (const write of api.writes) expect(write.body).toEqual(api.writes[0].body);
   expect(api.rows()).toHaveLength(1);
   await page.reload();
   await expect(page.getByTestId("warehouse-space-row")).toHaveCount(1);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
 });
 
 test("un fallo de consulta ofrece reintento y no aparenta un almacén vacío", async ({ page }) => {
@@ -230,12 +231,12 @@ test("un conflicto de versión confirmado después de una pérdida de respuesta 
   await page.getByRole("button", { name: "Reintentar guardado" }).click();
   await expect(page.getByRole("alert")).toContainText("Otra persona modificó este registro");
   await page.getByRole("button", { name: "Actualizar listado" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Nuevo almacén", exact: true })).toBeEnabled();
   expect(api.writes).toHaveLength(2); expect(api.writes[1].body).toEqual(api.writes[0].body);
   await page.reload();
   await expect(page.getByTestId("warehouse-space-row")).toHaveCount(3);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("warehouse-inline-editor")).toHaveCount(0);
 });
 
 test("antecesores inactivos no permiten crear ubicaciones y la ayuda restaura el foco", async ({ page }) => {

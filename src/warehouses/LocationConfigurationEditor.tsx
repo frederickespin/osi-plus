@@ -3,7 +3,7 @@ import { AdministrationHelp } from "@/administration/AdministrationHelp";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import type { WarehouseLocationRow, WarehouseRow } from "@/materials-inventory/api";
 import { WarehouseApi, type WarehouseLocationConfigurationChange } from "./api";
-import { ConfigurationDialog } from "./ConfigurationDialog";
+import { ConfigurationPanel } from "./ConfigurationPanel";
 import { AVAILABILITY_RULE_LABELS, OPERATIONAL_STATUS_LABELS, type WarehouseAreaUse, type WarehouseAvailabilityRule, type WarehouseLocationConfiguration, type WarehouseOperationalStatus } from "./configurationTypes";
 import { findConfiguredLocation, WAREHOUSE_TEXTAREA } from "./configurationUi";
 import { locationNamePath } from "./locationTree";
@@ -60,7 +60,7 @@ export default function LocationConfigurationEditor({ editor, open, api, members
     };
     void mutation.submit(change);
   }
-  return <ConfigurationDialog open={open} title={controls ? "Controles operativos" : "Configurar ubicación"} description={locationNamePath(editor.warehouse, editor.location)} {...mutation} canManage={canManage} canSubmit={canSubmit} triggerRef={triggerRef} onClose={onClose} onRefresh={onRefresh} onSubmit={submit}>
+  return <ConfigurationPanel open={open} title={controls ? "Controles operativos" : "Configurar ubicación"} description={locationNamePath(editor.warehouse, editor.location)} {...mutation} canManage={canManage} canSubmit={canSubmit} triggerRef={triggerRef} onClose={onClose} onRefresh={onRefresh} onSubmit={submit}>
     <p className="text-xs text-slate-500">Código: <span className="font-mono">{editor.location.code}</span>. La identidad de la ubicación se conserva.</p>
     {!controls && <fieldset className="space-y-3">
       <div><div className="flex items-center gap-1"><label htmlFor="warehouse-location-use" className="text-xs font-medium text-slate-700">Uso del área</label><AdministrationHelp title="Asignación del uso"><p>Seleccione un uso creado en Configuración. La asignación solo corresponde a esta ubicación; las ubicaciones interiores se asignan por separado.</p><p>Dejar «Sin uso asignado» conserva la ubicación y no asigna un destino automáticamente.</p></AdministrationHelp></div><select id="warehouse-location-use" disabled={fieldsDisabled} value={areaUseRef} onChange={(event) => setAreaUseRef(event.target.value)} className={`${COMPACT_FORM_FIELD} w-full`}><option value="">Sin uso asignado</option>{areaUseRef && !choices.some((use) => use.useRef === areaUseRef) && <option value={areaUseRef}>Uso del guardado anterior</option>}{choices.map((use) => <option key={use.useRef} value={use.useRef}>{use.name}{use.status === "INACTIVE" ? " · Inactivo" : ""}</option>)}</select>{areaUses.length === 0 && <p className="mt-1 text-xs text-slate-500">Cree los usos en Configuración para poder seleccionarlos aquí.</p>}</div>
@@ -75,5 +75,5 @@ export default function LocationConfigurationEditor({ editor, open, api, members
     {controls && config.lastControlReason && <p className="text-xs leading-5 text-slate-500">Último motivo registrado: {config.lastControlReason}</p>}
     <LocationOperationalSummary configuration={config} warehouses={warehouses} />
     {controls && <p className="text-xs leading-5 text-slate-500">Se revisarán los compromisos pendientes al guardar. El estado guardado conserva sus efectos hasta que se confirme el cambio.</p>}
-  </ConfigurationDialog>;
+  </ConfigurationPanel>;
 }

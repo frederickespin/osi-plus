@@ -28,7 +28,7 @@ try {
   cpSync(resolve("prisma/migrations"), join(root, "prisma/migrations"), { recursive: true });
   restore();
   const baseline = validateMt01c1b2aGuard(root);
-  assert.equal(baseline.migrations, 38);
+  assert.equal(baseline.migrations, 39);
   assert.deepEqual(baseline.retiredRoutes, ["api/users/index.js"]);
   results.push({ name: "canonical auth and retired users baseline", passed: true });
   reject("JWT status cannot replace current DB status", "api/_lib/requireAuth.js", (s) => `${s}\nconst unsafe = payload.status;`, /status del JWT/);

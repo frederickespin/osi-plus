@@ -45,7 +45,7 @@ function validateEvidenceIdentity(evidence, phase) {
     && same(partition.deltaRows, evidence.delta?.rows)
     && same(summarizeCrm01b1Catalog(partition.deltaRows), evidence.delta.catalog), "catalog partition differs from measured rows");
   const names = validateAppliedMigrationHistory(evidence.history?.rows,
-    phase === "before37" ? { throughMigration: PREVIOUS_MIGRATION } : {});
+    { throughMigration: phase === "before37" ? PREVIOUS_MIGRATION : WAREHOUSE_CONFIGURATION_MIGRATION });
   invariant(names.length === (phase === "before37" ? 37 : 38)
     && same(names, evidence.history.migrations) && names.length === evidence.history.complete,
   "history does not match its named checkpoint");
@@ -60,7 +60,8 @@ export async function collectWarehouseConfigurationPg17CatalogEvidence({
   rawUrl = env.V17_WAREHOUSE_CONFIGURATION_PG17_DATABASE_URL,
 } = {}) {
   invariant(["before37", "after38"].includes(phase), "phase must be before37 or after38");
-  const names = validateMigrationFiles(root);
+  // Source validation stays closed; the historical37→38 measurement excludes later SQL.
+  const names = validateMigrationFiles(root).filter((name) => name <= WAREHOUSE_CONFIGURATION_MIGRATION);
   invariant(names.length === 38 && names.at(-1) === WAREHOUSE_CONFIGURATION_MIGRATION && names.at(-2) === PREVIOUS_MIGRATION,
     "requires the exact 38-migration source inventory");
   const migrations = await Promise.all(names.map(async (name) => [name,
@@ -94,7 +95,7 @@ export async function collectWarehouseConfigurationPg17CatalogEvidence({
         FROM osi._prisma_migrations ORDER BY migration_name
       `);
       const applied = validateAppliedMigrationHistory(history,
-        phase === "before37" ? { throughMigration: PREVIOUS_MIGRATION } : {});
+        { throughMigration: phase === "before37" ? PREVIOUS_MIGRATION : WAREHOUSE_CONFIGURATION_MIGRATION });
       invariant(history.every((row) => row.checksum === migrationChecksums[row.migration_name]),
         "applied checksums differ from the exact source files");
       const catalogRows = await tx.$queryRawUnsafe(CATALOG_SQL);

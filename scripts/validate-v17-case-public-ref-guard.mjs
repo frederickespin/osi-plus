@@ -93,6 +93,7 @@ export const PUBLIC_REFERENCE_CONTRACTS = Object.freeze({
   "api/_lib/servicePackagesDomain.js": ["CASE"],
   "api/_lib/surveySchedulingDomain.js": ["CASE", "CLIENT", "MEMBERSHIP"],
   "api/_lib/toolsEquipmentDomain.js": ["CASE", "MEMBERSHIP"],
+  "api/_lib/warehouseSheetDomain.js": ["MEMBERSHIP"],
 });
 for (const kinds of Object.values(PUBLIC_REFERENCE_CONTRACTS)) Object.freeze(kinds);
 const REFERENCE_MODELS = Object.freeze({
@@ -258,13 +259,14 @@ function validateReferenceConsumer(path, content, kinds) {
     });
     return lookups === 1;
   }
-  function fleetMembershipSql() {
+  function composedMembershipSql() {
     const handled = new Set(); let queries = 0;
-    if (path !== "api/_lib/fleetDriversDomain.js") return { handled, queries };
-    // This consumer shares a projection and joins across three read helpers.
+    const warehouseSheet = path === "api/_lib/warehouseSheetDomain.js";
+    if (path !== "api/_lib/fleetDriversDomain.js" && !warehouseSheet) return { handled, queries };
+    // These consumers share a projection and joins across their read helpers.
     // Validate the expanded SQL at every database call, including both branches
     // of an optional predicate. Registering a projection never exempts its use.
-    const helpers = new Set(["personColumns", "personJoins"]);
+    const helpers = new Set(warehouseSheet ? ["managerSelect", "managerFrom"] : ["personColumns", "personJoins"]);
     function joined(left, right) {
       return { sql: left.sql + right.sql.replace(/<(\d+)>/g, (_, index) => `<${Number(index) + left.values.length}>`),
         values: [...left.values, ...right.values], templates: new Set([...left.templates, ...right.templates]) };
@@ -278,7 +280,8 @@ function validateReferenceConsumer(path, content, kinds) {
       if (ts.isConditionalExpression(node)) return [...expand(node.whenTrue, seen), ...expand(node.whenFalse, seen)];
       if (ts.isIdentifier(node)) {
         const value = constInitializer(node);
-        if (value && ts.isTaggedTemplateExpression(value) && value.tag.getText(source) === "Prisma.sql") return expand(value, seen);
+        if (value && (ts.isTaggedTemplateExpression(value) && value.tag.getText(source) === "Prisma.sql"
+          || warehouseSheet && ts.isConditionalExpression(value))) return expand(value, seen);
       }
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && helpers.has(node.expression.text)) {
         const definition = definitions.get(node.expression.text);
@@ -313,6 +316,30 @@ function validateReferenceConsumer(path, content, kinds) {
       }
       return depth !== 0;
     }
+    function warehouseCteBody(sql, node) {
+      const prefix = /^\s*WITH\s+e\s+AS\s*\(/.exec(sql);
+      if (!prefix || enclosingFunction(node) !== "listWarehouseManagerOptions") return null;
+      // Only this local, tenant-bound CTE is supported. The complete outer read
+      // must consume e; additional tables, CTEs, subqueries and set operations
+      // cannot hide outside the membership predicate that is checked below.
+      const unquoted = sql.replace(/'(?:''|[^'])*'|"(?:""|[^"])*"/g, (value) => " ".repeat(value.length));
+      let depth = 1; let end = prefix[0].length;
+      for (; end < unquoted.length && depth; end += 1) {
+        if (unquoted[end] === "(") depth += 1;
+        else if (unquoted[end] === ")") depth -= 1;
+      }
+      if (depth !== 0) fail("CTE de encargados no está cerrado");
+      const body = sql.slice(prefix[0].length, end - 1);
+      const outer = sql.slice(end).replace(/\s+/g, " ").trim();
+      const search = '(?: AND e\\."display_name" ILIKE <\\d+> ESCAPE \'[^\']*\')?';
+      const count = new RegExp('^SELECT COUNT\\(\\*\\)::integer AS "total" FROM e WHERE e\\."eligible"' + search + '$');
+      const rows = new RegExp('^SELECT \\* FROM e WHERE e\\."eligible"' + search
+        + ' ORDER BY LOWER\\(e\\."display_name"\\),e\\."membership_ref" LIMIT <\\d+> OFFSET <\\d+>$');
+      if (!/^\s*SELECT\s/.test(body) || !count.test(outer) && !rows.test(outer)) {
+        fail("lectura exterior del CTE de encargados no está limitada a e");
+      }
+      return body;
+    }
     visitNodes(source, (node) => {
       if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)
         || !/^\$(?:queryRaw|executeRaw)$/.test(node.expression.name.text) || node.arguments.length !== 1
@@ -321,10 +348,14 @@ function validateReferenceConsumer(path, content, kinds) {
       if (!variants.some(({ sql }) => /\bpublic_ref\b|\bFROM\s+"osi"\."tenant_memberships"\s+m\b/.test(sql))) return;
       for (const { sql: template, values, templates } of variants) {
         const sql = template.replace(/--[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
-        const from = /\bFROM\s+"osi"\."tenant_memberships"\s+m\b/.test(sql);
-        const where = sql.match(/\bWHERE\s+m\."tenant_id"\s*=\s*<(\d+)>(?=\s+AND\b)/);
+        const cte = warehouseSheet ? warehouseCteBody(sql, node) : null;
+        const scopedSql = cte ?? sql;
+        const from = /\bFROM\s+"osi"\."tenant_memberships"\s+m\b/.test(scopedSql);
+        const where = scopedSql.match(cte
+          ? /\bWHERE\s+m\."tenant_id"\s*=\s*<(\d+)>(?=\s*(?:AND\b|$))/
+          : /\bWHERE\s+m\."tenant_id"\s*=\s*<(\d+)>(?=\s+AND\b)/);
         if (!from || !where || !trustedTenantValue(values[Number(where[1])], source)
-          || topLevelOr(sql.slice(where.index)) || /\b(?:UNION|INTERSECT|EXCEPT)\b/i.test(sql)) {
+          || topLevelOr(scopedSql.slice(where.index)) || /\b(?:UNION|INTERSECT|EXCEPT)\b/i.test(sql)) {
           fail("SQL público compuesto perdió el predicado obligatorio de empresa en " + enclosingFunction(node));
         }
         for (const fragment of templates) handled.add(fragment);
@@ -333,8 +364,8 @@ function validateReferenceConsumer(path, content, kinds) {
     });
     return { handled, queries };
   }
-  const fleetSql = fleetMembershipSql();
-  let prismaQueries = 0, sqlQueries = fleetSql.queries;
+  const membershipSql = composedMembershipSql();
+  let prismaQueries = 0, sqlQueries = membershipSql.queries;
   visitNodes(source, (node) => {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
       && ts.isPropertyAccessExpression(node.left) && node.left.name.text === "tenantId") fail("no admite reasignar tenantId");
@@ -357,7 +388,7 @@ function validateReferenceConsumer(path, content, kinds) {
       if (tenantState(propertyValue(args, field)) !== 1) fail("ausente o dinámico en " + target.getText(source) + "." + node.expression.name.text);
       prismaQueries += 1;
     }
-    if (!ts.isTaggedTemplateExpression(node) || node.tag.getText(source) !== "Prisma.sql" || !/\bpublic_ref\b/.test(node.template.getText(source)) || fleetSql.handled.has(node)) return;
+    if (!ts.isTaggedTemplateExpression(node) || node.tag.getText(source) !== "Prisma.sql" || !/\bpublic_ref\b/.test(node.template.getText(source)) || membershipSql.handled.has(node)) return;
     const parts = sqlParts(node);
     const sql = parts.sql.replace(/--[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
     const values = parts.values;

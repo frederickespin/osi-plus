@@ -33,8 +33,10 @@ import { isPersonnelPoliciesUiEnabled } from "@/personnel-policies/mode";
 import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 import { resolveClientTemporaryAccessUi } from "@/client-portal/access";
 import { resolveClientTemporaryPortalMode } from "@/client-portal/mode";
+import { availableWarehouseSections, groupWarehouseLaunchers } from "@/warehouses/warehouseSections";
 
 const AdministrationWorkspace = lazy(() => import("@/administration/AdministrationWorkspace"));
+const WarehouseWorkspace = lazy(() => import("@/warehouses/WarehouseWorkspace"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
 const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
@@ -66,6 +68,7 @@ type Props = {
 function ctaLabel(application: HubApplication) {
   if (application.appId === "commercial-crm") return "Abrir ERP →";
   if (application.appId === "administration") return "Abrir Administración →";
+  if (application.appId === "warehouses") return "Abrir Almacenes →";
   if (application.appId === "materials-equipment") return "Abrir Inventario →";
   if (application.appId === "tools-equipment") return "Abrir Activos →";
   return "Abrir aplicación →";
@@ -146,6 +149,8 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const toolsAuthorized = visible.some((application) => application.appId === "tools-equipment");
   const materialsAvailable = materialsEnabled && materialsAuthorized;
   const toolsAvailable = toolsEnabled && Boolean(toolsAuthorized);
+  const warehouseSections = availableWarehouseSections({ spaces: materialsEnabled, materials: materialsEnabled, equipment: toolsEnabled }, accessContext.effectivePermissions, accessContext.deniedPermissions);
+  const warehousesAvailable = warehouseSections.length > 0;
   const logisticsAccess = resolveLogisticsUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   const logisticsAdminAvailable = isLogisticsUiEnabled() && logisticsAccess.canRulesView;
   const communicationsAccess = resolveCommunicationsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
@@ -173,12 +178,13 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const available = availableHubApplications(visible, {
     "commercial-crm": crmReadEnabled,
     administration: administrationAvailable,
+    warehouses: warehousesAvailable,
     "osi-survey": surveyEnabled,
     "materials-equipment": materialsEnabled,
     "tools-equipment": toolsEnabled,
     "packing-calculator": true,
   });
-  const rootAvailable = available.filter((application) => !application.suiteId);
+  const rootAvailable = groupWarehouseLaunchers(available.filter((application) => !application.suiteId), warehouseSections);
   const mobileApplications = applicationsForHubSuite("osi-plus-mobile", available);
   const pendingApplications = visible.filter((application) => !available.includes(application));
   const navigate = (nextPath: string) => {
@@ -244,6 +250,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         onNavigate={onNavigate}
         onUnauthorized={onLogout}
       />
+    </Suspense>;
+  }
+  if (selected?.appId === "warehouses" && warehousesAvailable) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Almacenes…</div>}>
+      <WarehouseWorkspace authorization={authorization} pathname={pathname} sections={warehouseSections} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={onNavigate} onUnauthorized={onLogout} />
     </Suspense>;
   }
   if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {

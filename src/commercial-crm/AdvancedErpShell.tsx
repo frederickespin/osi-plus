@@ -60,6 +60,7 @@ type Props = Readonly<{
 
 const APPLICATION_ICONS: Readonly<Record<string, ElementType>> = {
   "commercial-crm": BriefcaseBusiness,
+  warehouses: Warehouse,
   "materials-equipment": Warehouse,
   "tools-equipment": Wrench,
   administration: Settings,

@@ -4,6 +4,7 @@ export type HubAppId =
   | "commercial-crm"
   | "coordination"
   | "operations"
+  | "warehouses"
   | "materials-equipment"
   | "tools-equipment"
   | "workshop"
@@ -47,7 +48,7 @@ export type HubApplication = Readonly<{
   status: HubAppStatus;
   requiredPermissions: readonly string[];
   permissionMode: "ANY" | "ALL";
-  /** Independent administrative entry permissions; other applications deny as a whole. */
+  /** Independent sections may deny one permission without denying unrelated sections. */
   denyScope?: "PERMISSION";
   requiresExplicitPermissions?: boolean;
   baselineRoles: readonly UserRole[];
@@ -109,6 +110,23 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     requiredPermissions: ["ops:view", "osi:view", "security:view"],
     permissionMode: "ANY",
     baselineRoles: ["A", "B", "C1", "D", "PE", "N", "E", "G"],
+    mobileAvailability: "RESPONSIVE",
+    directAccessAllowed: true,
+    lazy: true,
+  },
+  {
+    appId: "warehouses",
+    name: "Almacenes",
+    description: "Espacios, ubicaciones, materiales de embalaje y equipos.",
+    icon: "warehouse",
+    route: "/warehouses",
+    routeAliases: ["/warehouses/spaces", "/warehouses/materials", "/warehouses/equipment"],
+    status: "REGISTERED_INACTIVE",
+    requiredPermissions: ["inventory:stock:view", "assets:instance:view"],
+    permissionMode: "ANY",
+    denyScope: "PERMISSION",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
     mobileAvailability: "RESPONSIVE",
     directAccessAllowed: true,
     lazy: true,

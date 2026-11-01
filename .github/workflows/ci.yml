@@ -680,6 +680,9 @@ jobs:
           V17_COSTING_TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
         run: npm run test:v17-costing:db
 
+      - name: Validate warehouse identity, hierarchy and concurrent retries against PostgreSQL 18
+        run: npm run test:v17-warehouses:db
+
       - name: Validate transport zones, costs and context isolation against PostgreSQL 18
         run: npm run test:v17-logistics-transport:db
 

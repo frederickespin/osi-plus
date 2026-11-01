@@ -72,6 +72,19 @@ rejectRoute("un comentario no sustituye la importación autorizada", asset, (s) 
 rejectRoute("factory no acepta un resolvedor de contexto inyectado", asset, (s) => s.replace("prismaClient: prisma", "resolveContext: async () => ({ role: 'A' }), prismaClient: prisma"), /MT-01B3A: .*autoridad alternativa/);
 rejectRoute("factory no acepta spread de autoridad", asset, (s) => s.replace("prismaClient: prisma", "...options, prismaClient: prisma"), /MT-01B3A: .*opciones dinámicas/);
 rejectRoute("factory no acepta sobrescritura por clave duplicada", asset, (s) => s.replace("prismaClient: prisma", "prismaClient: prisma, prismaClient: unsafe"), /MT-01B3A: .*sobrescribe la autoridad/);
+const warehouseRoutes = [
+  "api/materials/warehouses/[warehouseRef].js",
+  "api/materials/warehouses/locations/index.js",
+  "api/materials/warehouses/locations/[locationRef].js",
+];
+for (const route of warehouseRoutes) {
+  rejectRoute("Almacenes conserva el adaptador empresarial: " + route, route, (source) => source.replace("materialsInventoryHttp.js", "otherHttp.js"));
+  rejectRoute("Almacenes no admite contexto inyectado: " + route, route,
+    (source) => source.replace("prismaClient: prisma", "resolveContext: async () => ({ role: 'A' }), prismaClient: prisma"), /autoridad alternativa/);
+}
+rejected("una ubicación nueva no hereda autorización por su directorio", {
+  routeSources: new Map([...routeSources, ["api/materials/warehouses/locations/extra.js", routeSources.get(warehouseRoutes[1])]]),
+}, /ruta nueva sin clasificación/);
 rejectRoute("wrapper ICP no acepta un contexto sintético predeterminado", "api/crm/icp-v2/clients/search.js", (s) => s.replace("  resolveContext,", "  resolveContext = async () => ({ role: 'A' }),"), /MT-01B3A: .*sustituye el contexto predeterminado/);
 rejectRoute("wrapper CRM no permite inyectar permisos al exportar", "api/crm/pipeline-summary.js", (s) => s.replace("export default createPipelineSummaryHandler();", "export default createPipelineSummaryHandler({ resolveContext: () => ({}) });"), /MT-01B3A: .*autoridad alternativa|MT-01B3A: .*inyecta autoridad en el wrapper/);
 rejectRoute("lectura CRM no admite permiso sintético predeterminado", "api/crm/pipeline-summary.js", (s) => s.replace("requirePermission = requireCrmPipelinePermissionResponse", "requirePermission = async () => ({ role: 'A' })"), /MT-01B3A: .*sustituye el permiso canónico/);

@@ -5,6 +5,8 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const CODE = /^[A-Z][A-Z0-9_-]{0,63}$/;
 const MOVEMENT_TYPES = new Set(["RECEIPT", "TRANSFER_OUT", "TRANSFER_IN", "ISSUE", "CONSUMPTION", "RETURN", "ADJUSTMENT_POSITIVE", "ADJUSTMENT_NEGATIVE"]);
 const FORMULA_TYPES = new Set(["FIXED", "PER_ITEM", "PER_LENGTH", "PER_AREA"]);
+const LOCATION_KINDS = new Set(["WAREHOUSE_ROOT", "ZONE", "AISLE", "RACK", "LEVEL", "BIN", "RECEIVING", "DISPATCH", "QUARANTINE", "OTHER"]);
+const CHILD_LOCATION_KINDS = new Set([...LOCATION_KINDS].filter((kind) => kind !== "WAREHOUSE_ROOT"));
 
 export class MaterialsInventoryError extends Error {
   constructor(code, status = 400) { super(code); this.name = "MaterialsInventoryError"; this.code = code; this.status = status; }
@@ -72,14 +74,45 @@ export function normalizeUnitCreate(input) {
 }
 
 export function normalizeWarehouseCreate(input) {
-  const value = object(input); exact(value, ["requestId", "payloadHash", "code", "name", "locations"]);
+  const value = object(input);
+  // A name-only request registers the warehouse itself. Interior locations are
+  // separate, explicit commands; no levels are inferred from a quantity.
+  if (!Object.hasOwn(value, "code") && !Object.hasOwn(value, "locations")) {
+    exact(value, ["requestId", "payloadHash", "name"]);
+    return command(value, "WAREHOUSE_CREATE", { code: null, name: text(value.name, 160), locations: null });
+  }
+  exact(value, ["requestId", "payloadHash", "code", "name", "locations"]);
   if (!Array.isArray(value.locations) || value.locations.length < 1 || value.locations.length > 500) materialFail("MATERIALS_INPUT_INVALID");
   const locations = value.locations.map((entry, position) => {
     const row = object(entry); exact(row, ["code", "name", "kind", "parentCode"]);
-    return Object.freeze({ code: code(row.code), name: text(row.name, 160), kind: enumValue(row.kind, new Set(["WAREHOUSE_ROOT", "ZONE", "AISLE", "RACK", "LEVEL", "BIN", "RECEIVING", "DISPATCH", "QUARANTINE", "OTHER"])), parentCode: text(row.parentCode, 64, true), position });
+    return Object.freeze({ code: code(row.code), name: text(row.name, 160), kind: enumValue(row.kind, LOCATION_KINDS), parentCode: text(row.parentCode, 64, true), position });
   });
   if (new Set(locations.map((row) => row.code)).size !== locations.length || locations.filter((row) => row.parentCode === null).length !== 1 || locations.some((row) => row.parentCode && !locations.some((parent) => parent.code === row.parentCode && parent.position < row.position))) materialFail("MATERIALS_LOCATION_TREE_INVALID");
   return command(value, "WAREHOUSE_CREATE", { code: code(value.code), name: text(value.name, 160), locations: Object.freeze(locations) });
+}
+
+export function normalizeWarehouseLocationCreate(input) {
+  const value = object(input); exact(value, ["requestId", "payloadHash", "warehouseRef", "parentLocationRef", "name", "kind"]);
+  return command(value, "WAREHOUSE_LOCATION_CREATE", {
+    warehouseRef: uuid(value.warehouseRef), parentLocationRef: uuid(value.parentLocationRef),
+    name: text(value.name, 160), kind: enumValue(value.kind, CHILD_LOCATION_KINDS),
+  });
+}
+
+function normalizeWarehouseNameUpdate(input, reference, referenceKey, operation) {
+  const value = object(input); exact(value, ["requestId", "payloadHash", "expectedVersion", "name"]);
+  const requestId = text(value.requestId, 191); const payloadHash = text(value.payloadHash, 64); const normalizedRef = uuid(reference);
+  const expectedVersion = integer(value.expectedVersion, 1, 1_000_000); const name = text(value.name, 160);
+  if (!SHA256.test(payloadHash) || payloadHash !== canonicalPayloadHash({ operation, requestId, [referenceKey]: normalizedRef, expectedVersion, name })) materialFail("MATERIALS_PAYLOAD_HASH_MISMATCH", 400);
+  return Object.freeze({ operation, requestId, payloadHash, [referenceKey]: normalizedRef, expectedVersion, name });
+}
+
+export function normalizeWarehouseUpdate(input, warehouseRef) {
+  return normalizeWarehouseNameUpdate(input, warehouseRef, "warehouseRef", "WAREHOUSE_UPDATE");
+}
+
+export function normalizeWarehouseLocationUpdate(input, locationRef) {
+  return normalizeWarehouseNameUpdate(input, locationRef, "locationRef", "WAREHOUSE_LOCATION_UPDATE");
 }
 
 export function normalizeCostVersionCreate(input) {

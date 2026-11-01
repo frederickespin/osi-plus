@@ -77,8 +77,11 @@ test("el Hub ofrece módulos disponibles y conserva los pendientes sin accesos v
     "projects:view", "ops:view", "wms:view", "fleet:view", "hr:view",
   ] });
   await page.goto("/hub");
-  for (const name of ["Comercial y CRM", "Materiales e Inventario", "Herramientas y Equipos", "OSi Plus Mobile"]) {
+  for (const name of ["Comercial y CRM", "Almacenes", "OSi Plus Mobile"]) {
     await expect(page.locator("main").getByRole("heading", { name, exact: true })).toBeVisible();
+  }
+  for (const name of ["Materiales e Inventario", "Herramientas y Equipos"]) {
+    await expect(page.locator("main").getByRole("heading", { name, exact: true })).toHaveCount(0);
   }
   await expect(page.locator("main").getByRole("heading", { name: "OSi Survey", exact: true })).toHaveCount(0);
   await expect(page.locator("main").getByRole("heading", { name: "Calculadora de Empaque", exact: true })).toHaveCount(0);
@@ -91,6 +94,62 @@ test("el Hub ofrece módulos disponibles y conserva los pendientes sin accesos v
   }
   expect(state.unexpectedApi).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test("Almacenes agrupa accesos y conserva permisos y rutas directas de Materiales y Activos", async ({ page }) => {
+  const permissions = ["inventory:catalog:view", "inventory:stock:view", "assets:instance:view"];
+  const state = await installSession(page, { permissions });
+  for (const path of ["/api/materials/warehouses", "/api/materials/catalog", "/api/assets/instances"]) {
+    await page.route(`**${path}`, (route) => {
+      expect(route.request().method()).toBe("GET");
+      expect(route.request().headers().authorization).toBe("Bearer synthetic.mobile.integration.token");
+      return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({
+        ok: true, data: path === "/api/materials/warehouses" ? [] : { page: 1, pageSize: 25, total: 0, items: [] },
+      }) });
+    });
+  }
+  await page.goto("/hub");
+  await expect(page.locator("main").getByRole("button", { name: /Abrir Almacenes/ })).toHaveCount(1);
+  await expect(page.locator("main").getByRole("button", { name: /Abrir Inventario|Abrir Activos/ })).toHaveCount(0);
+  await page.locator("main").getByRole("button", { name: /Abrir Almacenes/ }).click();
+  await expect(page).toHaveURL(/\/warehouses$/);
+  await expect(page.getByTestId("warehouse-spaces")).toBeVisible();
+  await expect(page.getByText("Todavía no hay almacenes registrados.", { exact: true })).toBeVisible();
+
+  for (const [path, heading, empty] of [
+    ["/warehouses/materials", "Materiales e Inventario", "No hay materiales para estos filtros."],
+    ["/warehouses/equipment", "Herramientas y Equipos", "No hay activos para estos filtros."],
+  ]) {
+    const selector = page.getByLabel("Sección de Almacenes", { exact: true });
+    if (await selector.isVisible()) await selector.selectOption(path);
+    else await page.getByRole("navigation", { name: "Secciones de Almacenes", exact: true }).locator(`a[href="${path}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(page.getByTestId("warehouse-workspace")).toBeVisible();
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await expect(page.getByText(empty, { exact: true })).toBeVisible();
+  }
+
+  for (const [path, heading, empty] of [
+    ["/materials", "Materiales e Inventario", "No hay materiales para estos filtros."],
+    ["/assets", "Herramientas y Equipos", "No hay activos para estos filtros."],
+  ]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await expect(page.getByText(empty, { exact: true })).toBeVisible();
+    await expect(page.getByTestId("warehouse-workspace")).toHaveCount(0);
+  }
+
+  state.actor = { permissions, deniedPermissions: ["inventory:catalog:view", "assets:instance:view"] };
+  for (const path of ["/materials", "/assets"]) {
+    state.requests.length = 0;
+    await page.goto(path);
+    await expect(page.getByTestId("hub-forbidden")).toBeVisible();
+    expect(state.requests.filter((request) => request.startsWith("/api/") && request !== "/api/auth/me")).toEqual([]);
+  }
+  await page.goto("/warehouses");
+  await expect(page.getByTestId("warehouse-spaces")).toBeVisible();
+  expect(state.unexpectedApi).toEqual([]);
 });
 
 test("Hub y Mobile abren Survey funcional con retorno y conservan el alias survey", async ({ page }) => {

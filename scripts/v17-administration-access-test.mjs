@@ -216,7 +216,7 @@ test("otras aplicaciones conservan la denegación global, incluso para permisos 
   assert.equal(evaluateHubAccess(coordination, deniedContext).reason, "PERMISSION_DENIED");
   assert.equal(evaluateHubRouteAccess("/coordination", deniedContext).allowed, false);
   assert.equal(evaluateHubAccess(coordination, context(["projects:view"], [], "K")).allowed, true);
-  assert.deepEqual(HUB_APPLICATIONS.filter((application) => application.denyScope === "PERMISSION").map((application) => application.appId), ["administration"]);
+  assert.deepEqual(HUB_APPLICATIONS.filter((application) => application.denyScope === "PERMISSION").map((application) => application.appId), ["warehouses", "administration"]);
 });
 
 test("catálogo y secciones coinciden en rutas y permisos explícitos", () => {

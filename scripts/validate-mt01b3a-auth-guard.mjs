@@ -37,6 +37,7 @@ const FACTORY_GROUPS = [
     "api/materials/purchase-requests/transition/index.js", "api/materials/recipes/index.js", "api/materials/recipes/version/index.js",
     "api/materials/requirements/index.js", "api/materials/requirements/resolve.js", "api/materials/reservations/assign/index.js",
     "api/materials/reservations/index.js", "api/materials/reservations/release.js", "api/materials/units/index.js", "api/materials/warehouses/index.js",
+    "api/materials/warehouses/[warehouseRef].js", "api/materials/warehouses/locations/index.js", "api/materials/warehouses/locations/[locationRef].js",
   ]],
   ["TENANT", "logisticsEngineHttp.js", "createLogisticsHandler", [
     "api/logistics/plans/[caseRef].js", "api/logistics/plans/calculate.js", "api/logistics/plans/issues/resolve.js",

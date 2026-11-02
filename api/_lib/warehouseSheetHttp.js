@@ -8,9 +8,10 @@ import { WAREHOUSE_SHEET_MAX_BYTES, warehouseSheetFail } from "./warehouseSheetC
 export function createWarehouseSheetHandler({ env = process.env, prismaClient, methods, managerOptions = false, execute, resolveContext = resolveCrmPipelineContext } = {}) {
   return withPrivateApiHeaders(async (req, res) => {
     if (!prepareMaterialsRequest(req, res, env)) return;
+    try { resolveWarehouseSheetApiMode(env, req); }
+    catch (error) { return sendMaterialsError(res, error, req.method === "HEAD"); }
     let routesEnabled;
     try {
-      resolveWarehouseSheetApiMode(env, req);
       routesEnabled = resolveWarehouseRoutesApiMode(env, req) !== WAREHOUSE_ROUTES_API_MODES.DISABLED;
     }
     catch (error) { return sendMaterialsError(res, error, req.method === "HEAD"); }

@@ -12,7 +12,7 @@ const prisma = new PrismaClient({ datasourceUrl: raw }); const marker = randomUU
 try {
   await verifyV17ServicesLocalDatabase(prisma, target);
   const migrations = await prisma.$queryRaw`SELECT migration_name,finished_at,rolled_back_at,applied_steps_count FROM "osi"."_prisma_migrations" ORDER BY started_at`;
-  pass(validateAppliedMigrationHistory(migrations).length === 39, "39/39 migraciones canónicas completas sin cambios de esquema");
+  pass(validateAppliedMigrationHistory(migrations).length === 40, "40/40 migraciones canónicas completas sin cambios de esquema");
   pass(target.canonicalCi, "PostgreSQL 18 local aislado verificado antes de escribir fixtures");
   const tenant = await prisma.tenant.create({ data: { id: `sp_t_${marker}`, code: `SP${marker}`, name: "Service packages synthetic", countryCode: "DO" } }); const other = await prisma.tenant.create({ data: { id: `sp_x_${marker}`, code: `SX${marker}`, name: "Service packages cross tenant", countryCode: "DO" } });
   const adminUser = await prisma.user.create({ data: { id: `sp_u_${marker}`, code: `SPU${marker}`, name: "Synthetic package admin", email: `sp-${marker}@example.invalid`, phone: "0000000000", role: "A", status: "ACTIVE", joinDate: "2026-09-15", passwordHash: "synthetic-not-login-capable" } }); const sellerUser = await prisma.user.create({ data: { id: `sp_v_${marker}`, code: `SPV${marker}`, name: "Synthetic seller", email: `sp-v-${marker}@example.invalid`, phone: "0000000000", role: "V", status: "ACTIVE", joinDate: "2026-09-15", passwordHash: "synthetic-not-login-capable" } });
@@ -97,5 +97,5 @@ try {
   pass(await prisma.serviceConfigurationCommand.count({ where: { tenantId: tenant.id, requestId: { in: [automaticModeCommand.requestId, automaticPackageCommand.requestId, automaticPolicyCommand.requestId] } } }) === 3,
     "replay de altas automáticas no duplica comandos ni identidades");
   pass(await prisma.serviceConfigurationCommand.count({ where: { tenantId: tenant.id } }) === await prisma.serviceConfigurationAuditEvent.count({ where: { tenantId: tenant.id } }), "altas y versiones automáticas conservan paridad de auditoría");
-  process.stdout.write(`${JSON.stringify({ ok: true, checks, postgres: 18, migrations: "39/39", automaticCodes: ["COM", "POL"], canonicalMode: "EXPORT", automaticRequirementCodes: true, caseConfigurations: 3, conflictResolution: "single-winner", productionApiEnabled: false })}\n`);
+  process.stdout.write(`${JSON.stringify({ ok: true, checks, postgres: 18, migrations: "40/40", automaticCodes: ["COM", "POL"], canonicalMode: "EXPORT", automaticRequirementCodes: true, caseConfigurations: 3, conflictResolution: "single-winner", productionApiEnabled: false })}\n`);
 } finally { await prisma.$disconnect(); }

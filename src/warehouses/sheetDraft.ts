@@ -1,4 +1,4 @@
-import { allocateWarehouseAddressOrdinal, canPlaceWarehouseAddressKind, formatWarehouseAddress, warehouseAddressOrdinal, warehouseAddressSegments, warehouseAddressToken } from "../../shared/warehouseSheetAddress.js";
+import { allocateWarehouseAddressOrdinal, canPlaceWarehouseAddressKind, formatWarehouseAddress, normalizeWarehouseAddressIdentifier, warehouseAddressIdentifier, warehouseAddressOrdinal, warehouseAddressSegments, warehouseAddressSegmentsFromIdentifier, warehouseAddressToken } from "../../shared/warehouseSheetAddress.js";
 import type { WarehouseAreaUse } from "./configurationTypes";
 import type { WarehouseSheet, WarehouseSheetChange, WarehouseSheetCreateRow, WarehouseSheetKind, WarehouseSheetLocation, WarehouseSheetRowChange } from "./sheetTypes";
 
@@ -14,6 +14,9 @@ const name = (value: unknown): value is string => typeof value === "string" && v
 const version = (value: unknown, min = 0): value is number => Number.isSafeInteger(value) && Number(value) >= min && Number(value) <= 1_000_000;
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const exact = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+const canonicalIdentifier = (kind: WarehouseSheetKind, value: unknown): value is string => {
+  try { return typeof value === "string" && normalizeWarehouseAddressIdentifier(kind, value) === value; } catch { return false; }
+};
 
 /** Reconstruct a bounded command only; stored content cannot supply identity authority or labels. */
 function validateSheetChange(value: unknown, incomplete: boolean): WarehouseSheetChange | null {
@@ -29,10 +32,12 @@ function validateSheetChange(value: unknown, incomplete: boolean): WarehouseShee
     if (!record(input) || !ref(input.rowId) || ids.has(input.rowId) || !validName(input.name) || !nullableRef(input.areaUseRef)) return null;
     ids.add(input.rowId);
     if (input.action === "CREATE") {
-      if (!exact(input, ["action", "rowId", "parentRowId", "parentLocationRef", "kind", "name", "areaUseRef"])
+      const explicit = Object.hasOwn(input, "identifier");
+      if (!exact(input, ["action", "rowId", "parentRowId", "parentLocationRef", "kind", "name", "areaUseRef", ...(explicit ? ["identifier"] : [])])
         || !nullableRef(input.parentRowId) || !nullableRef(input.parentLocationRef) || input.parentRowId !== null && input.parentLocationRef !== null
-        || value.warehouseRef === null && input.parentLocationRef !== null || typeof input.kind !== "string" || !SHEET_KINDS.includes(input.kind as WarehouseSheetKind)) return null;
-      rows.push(Object.freeze({ action: "CREATE", rowId: input.rowId, parentRowId: input.parentRowId, parentLocationRef: input.parentLocationRef, kind: input.kind as WarehouseSheetKind, name: input.name, areaUseRef: input.areaUseRef }));
+        || value.warehouseRef === null && input.parentLocationRef !== null || typeof input.kind !== "string" || !SHEET_KINDS.includes(input.kind as WarehouseSheetKind)
+        || explicit && !canonicalIdentifier(input.kind as WarehouseSheetKind, input.identifier)) return null;
+      rows.push(Object.freeze({ action: "CREATE", rowId: input.rowId, parentRowId: input.parentRowId, parentLocationRef: input.parentLocationRef, kind: input.kind as WarehouseSheetKind, name: input.name, areaUseRef: input.areaUseRef, ...(explicit ? { identifier: input.identifier as string } : {}) }));
     } else if (input.action === "UPDATE") {
       if (!exact(input, ["action", "rowId", "locationRef", "expectedVersion", "expectedConfigurationVersion", "name", "areaUseRef"])
         || value.warehouseRef === null || !ref(input.locationRef) || locations.has(input.locationRef) || !version(input.expectedVersion, 1) || !version(input.expectedConfigurationVersion)) return null;
@@ -56,7 +61,7 @@ function validateSheetChange(value: unknown, incomplete: boolean): WarehouseShee
 export function validatePendingWarehouseSheetChange(value: unknown) { return validateSheetChange(value, false); }
 export function validateWorkingWarehouseSheetChange(value: unknown) { return validateSheetChange(value, true); }
 
-export type SheetDraftRow = Readonly<{ rowId: string; name: string; kind: string; parentKey: string; areaUseRef: string; existing?: WarehouseSheetLocation }>;
+export type SheetDraftRow = Readonly<{ rowId: string; name: string; kind: string; parentKey: string; areaUseRef: string; identifier?: string; existing?: WarehouseSheetLocation }>;
 export type SheetDraft = Readonly<{ name: string; managerMembershipRef: string; rootAreaUseRef: string; rows: readonly SheetDraftRow[] }>;
 export const existingParentKey = (reference: string) => `location:${reference}`;
 export const newParentKey = (rowId: string) => `row:${rowId}`;
@@ -65,7 +70,7 @@ export function newSheetRow(parentKey = "", kind: WarehouseSheetKind = "ZONE", i
 export function sheetDraftFrom(sheet?: WarehouseSheet, recovery?: WarehouseSheetChange): SheetDraft {
   const rows: SheetDraftRow[] = (sheet?.locations ?? []).filter((row) => row.locationRef !== sheet?.rootLocationRef).map((row) => ({ rowId: crypto.randomUUID(), name: row.name, kind: row.kind, parentKey: row.parentLocationRef && row.parentLocationRef !== sheet?.rootLocationRef ? existingParentKey(row.parentLocationRef) : "", areaUseRef: row.areaUseRef ?? "", existing: row }));
   for (const change of recovery?.rows ?? []) {
-    if (change.action === "CREATE") rows.push({ rowId: change.rowId, name: change.name, kind: change.kind, parentKey: change.parentRowId ? newParentKey(change.parentRowId) : change.parentLocationRef ? existingParentKey(change.parentLocationRef) : "", areaUseRef: change.areaUseRef ?? "" });
+    if (change.action === "CREATE") rows.push({ rowId: change.rowId, name: change.name, kind: change.kind, parentKey: change.parentRowId ? newParentKey(change.parentRowId) : change.parentLocationRef ? existingParentKey(change.parentLocationRef) : "", areaUseRef: change.areaUseRef ?? "", ...(change.identifier === undefined ? {} : { identifier: change.identifier }) });
     else {
       const index = rows.findIndex((row) => row.existing?.locationRef === change.locationRef);
       const prior = index >= 0 ? rows[index] : { rowId: change.rowId, name: change.name, kind: "OTHER", parentKey: "", areaUseRef: change.areaUseRef ?? "", existing: { locationRef: change.locationRef, parentLocationRef: null, code: "—", name: change.name, kind: "OTHER", depth: 0, path: "", status: "", version: change.expectedVersion, configurationVersion: change.expectedConfigurationVersion, areaUseRef: change.areaUseRef, address: null } };
@@ -99,7 +104,7 @@ export function warehouseSheetChange(draft: SheetDraft, sheet?: WarehouseSheet, 
   for (const row of draft.rows) {
     if (row.existing) {
       if (row.name.trim() !== row.existing.name || (row.areaUseRef || null) !== row.existing.areaUseRef) rows.push({ action: "UPDATE", rowId: row.rowId, locationRef: row.existing.locationRef, expectedVersion: row.existing.version, expectedConfigurationVersion: row.existing.configurationVersion, name: row.name.trim(), areaUseRef: row.areaUseRef || null });
-    } else rows.push({ action: "CREATE", rowId: row.rowId, parentRowId: row.parentKey.startsWith("row:") ? row.parentKey.slice(4) : null, parentLocationRef: row.parentKey.startsWith("location:") ? row.parentKey.slice(9) : null, kind: row.kind as WarehouseSheetKind, name: row.name.trim(), areaUseRef: row.areaUseRef || null });
+    } else rows.push({ action: "CREATE", rowId: row.rowId, parentRowId: row.parentKey.startsWith("row:") ? row.parentKey.slice(4) : null, parentLocationRef: row.parentKey.startsWith("location:") ? row.parentKey.slice(9) : null, kind: row.kind as WarehouseSheetKind, name: row.name.trim(), areaUseRef: row.areaUseRef || null, ...(row.identifier === undefined ? {} : { identifier: row.identifier }) });
   }
   return { operation: "WAREHOUSE_SHEET_SAVE", warehouseRef: recovery ? recovery.warehouseRef : sheet?.warehouseRef ?? null, expectedWarehouseVersion: recovery?.expectedWarehouseVersion ?? sheet?.version ?? 0, expectedProfileVersion: recovery?.expectedProfileVersion ?? sheet?.profileVersion ?? 0, expectedRootConfigurationVersion: recovery?.expectedRootConfigurationVersion ?? sheet?.rootConfigurationVersion ?? 0, name: draft.name.trim(), managerMembershipRef: draft.managerMembershipRef || null, rootAreaUseRef: draft.rootAreaUseRef || null, rows };
 }
@@ -108,6 +113,7 @@ export function validateSheetDraft(draft: SheetDraft, sheet: WarehouseSheet | un
   const general: string[] = []; const errors: Record<string, string[]> = {};
   if (!name(draft.name.trim())) general.push("Escriba un nombre de almacén de hasta 160 caracteres.");
   const validUse = (value: string, prior: string | null) => !value || value === prior || uses.some((use) => use.useRef === value && use.status === "ACTIVE");
+  const identifiers = new Set<string>();
   if (!validUse(draft.rootAreaUseRef, sheet?.rootAreaUseRef ?? null)) general.push("Seleccione un uso activo para el almacén.");
   for (const row of draft.rows) {
     const messages: string[] = [];
@@ -117,6 +123,12 @@ export function validateSheetDraft(draft: SheetDraft, sheet: WarehouseSheet | un
     if (!row.existing) {
       const ancestors = sheetParentKinds(row.parentKey, draft.rows, sheet, new Set([newParentKey(row.rowId)]));
       if (!ancestors || !canPlaceWarehouseAddressKind(row.kind, [...ancestors])) messages.push("Revise el tipo y su ubicación superior; un nivel necesita una estantería y una posición es terminal.");
+      if (row.identifier !== undefined) {
+        const key = `${row.parentKey}|${row.kind}|${row.identifier}`;
+        if (!canonicalIdentifier(row.kind as WarehouseSheetKind, row.identifier)) messages.push("El identificador no cumple el formato de este nivel.");
+        if (identifiers.has(key)) messages.push("Este identificador ya está en otra fila dentro de la misma ubicación.");
+        identifiers.add(key);
+      }
     }
     if (messages.length) errors[row.rowId] = messages;
   }
@@ -125,18 +137,21 @@ export function validateSheetDraft(draft: SheetDraft, sheet: WarehouseSheet | un
   return { general, rows: errors, valid: general.length === 0 && Object.keys(errors).length === 0 };
 }
 
-export function provisionalSheetLabels(rows: readonly SheetDraftRow[], sheet?: WarehouseSheet): ReadonlyMap<string, string | null> {
+export function provisionalSheetLabels(rows: readonly SheetDraftRow[], sheet?: WarehouseSheet, options: { unknownWarehouse?: boolean } = {}): ReadonlyMap<string, string | null> {
   const addresses = new Map<string, ReturnType<typeof warehouseAddressSegments> | null>(); const labels = new Map<string, string | null>();
   const used = new Map<string, Set<number>>(); const visiting = new Set<string>();
-  const ordinal = (row: WarehouseSheetLocation) => {
-    const a = row.address!;
-    return row.kind === "ZONE" ? a.zoneNumber : row.kind === "AISLE" ? a.aisleNumber : row.kind === "RACK" && a.rackCode ? warehouseAddressOrdinal("RACK", a.rackCode) : row.kind === "LEVEL" ? a.levelNumber : a.positionNumber;
+  const parentKeyFor = (key: string) => key === existingParentKey(sheet?.rootLocationRef ?? "") ? "" : key;
+  const reserve = (parentKey: string, kind: WarehouseSheetKind, identifier: string) => {
+    // Alphanumeric zones do not consume a numeric ordinal (their legacy number is zero).
+    if (kind === "ZONE" && /[A-Z]/.test(identifier)) return;
+    try { const key = `${parentKeyFor(parentKey)}|${kind}`; const values = used.get(key) ?? new Set<number>(); values.add(warehouseAddressOrdinal(kind, identifier)); used.set(key, values); } catch { /* Invalid rows are reported by validation, never allocated as zero. */ }
   };
   for (const row of sheet?.locations ?? []) {
     if (!row.address || !SHEET_KINDS.includes(row.kind as WarehouseSheetKind)) continue;
-    const key = `${row.parentLocationRef && row.parentLocationRef !== sheet?.rootLocationRef ? existingParentKey(row.parentLocationRef) : ""}|${row.kind}`;
-    const values = used.get(key) ?? new Set<number>(); values.add(ordinal(row)); used.set(key, values);
+    reserve(row.parentLocationRef ? existingParentKey(row.parentLocationRef) : "", row.kind as WarehouseSheetKind, warehouseAddressIdentifier(row.kind as WarehouseSheetKind, row.address));
   }
+  // Explicit choices reserve their siblings before any automatic row is numbered.
+  for (const row of rows) if (!row.existing && row.identifier !== undefined) reserve(row.parentKey, row.kind as WarehouseSheetKind, row.identifier);
   const addressFor = (row: SheetDraftRow): ReturnType<typeof warehouseAddressSegments> | null => {
     if (addresses.has(row.rowId)) return addresses.get(row.rowId)!;
     if (visiting.has(row.rowId)) return null;
@@ -145,12 +160,15 @@ export function provisionalSheetLabels(rows: readonly SheetDraftRow[], sheet?: W
     if (!row.existing) {
       let parent = warehouseAddressSegments(null, "WAREHOUSE_ROOT", sheet?.warehouseNumber ?? 1);
       if (row.parentKey.startsWith("row:")) { const found = rows.find((item) => newParentKey(item.rowId) === row.parentKey); const value = found && addressFor(found); if (!value) { visiting.delete(row.rowId); addresses.set(row.rowId, null); return null; } parent = value; }
-      else if (row.parentKey.startsWith("location:")) { const found = sheet?.locations.find((item) => existingParentKey(item.locationRef) === row.parentKey); if (!found?.address) { visiting.delete(row.rowId); addresses.set(row.rowId, null); return null; } parent = found.address; }
-      try { const key = `${row.parentKey}|${row.kind}`; const values = used.get(key) ?? new Set<number>(); const next = allocateWarehouseAddressOrdinal(row.kind as WarehouseSheetKind, values); result = warehouseAddressSegments(parent, row.kind as WarehouseSheetKind, next); values.add(next); used.set(key, values); } catch { result = null; }
+      else if (parentKeyFor(row.parentKey).startsWith("location:")) { const found = sheet?.locations.find((item) => existingParentKey(item.locationRef) === row.parentKey); if (!found?.address) { visiting.delete(row.rowId); addresses.set(row.rowId, null); return null; } parent = found.address; }
+      try {
+        if (row.identifier !== undefined) result = warehouseAddressSegmentsFromIdentifier(parent, row.kind as WarehouseSheetKind, row.identifier);
+        else { const key = `${parentKeyFor(row.parentKey)}|${row.kind}`; const values = used.get(key) ?? new Set<number>(); const next = allocateWarehouseAddressOrdinal(row.kind as WarehouseSheetKind, values); result = warehouseAddressSegments(parent, row.kind as WarehouseSheetKind, next); values.add(next); used.set(key, values); }
+      } catch { result = null; }
     }
     visiting.delete(row.rowId); addresses.set(row.rowId, result); return result;
   };
-  for (const row of rows) { const address = addressFor(row); labels.set(row.rowId, address ? formatWarehouseAddress(address) : null); }
+  for (const row of rows) { const address = addressFor(row); const label = address ? formatWarehouseAddress(address) : null; labels.set(row.rowId, label && !row.existing && !sheet?.warehouseNumber && options.unknownWarehouse ? label.replace(/^ALM-\d{2}-/, "ALM-??-") : label); }
   return labels;
 }
 

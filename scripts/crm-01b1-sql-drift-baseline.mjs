@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCrm01b1LocalPrisma } from "./crm-01b1-local-target.mjs";
 import { validateAppliedMigrationHistory, validateMigrationFiles } from "./canonical-migrations.mjs";
+import { WAREHOUSE_ROUTES_MIGRATION, WAREHOUSE_ROUTES_MIGRATION_CHECKSUM } from "../shared/warehouseRoutesMigration.js";
+import { WAREHOUSE_SHEET_MIGRATION, WAREHOUSE_SHEET_MIGRATION_CHECKSUM } from "../shared/warehouseSheetMigration.js";
 
 export const PRISMA_EMPTY_DIFF_SHA256 = "0983c8c2474f18152b093842104ef9aef25f03fb78861c9e681da2249a64a385";
 export const LOCAL_15_CATALOG_SHA256 = "cf48b58f82cdaa9f2ce4e7bb3f467848ee32a3b83043977d56a896f27888dd35";
@@ -185,6 +187,28 @@ export const CANONICAL_39_WAREHOUSE_SHEET_SQL_ONLY_COUNTS = Object.freeze({
   "20261101020000_v17_warehouse_sheet": Object.freeze({ check: 4, function: 2, trigger: 2 }),
 });
 
+// Independently measured20D: two additions and one explicitly reviewed function replacement.
+export const CANONICAL_40_WAREHOUSE_ROUTES_CATALOG = Object.freeze({
+  count: 10829,
+  sha256: "4e9dab05da616c18b0cddcf9d8a0e0bedb4c5532d9f3cb44006cf7c3a8c89a60",
+  categories: Object.freeze({
+    check: Object.freeze({ count: 426, sha256: "bd464bc7559fc1db9d0f539048c306ca6c91341c2d87b2813ff8054329c185cb" }),
+    column: Object.freeze({ count: 3860, sha256: "dd416b537fa34d018cdc65300baa2c6c19b532603d4fcef2912b21a3d4f4a122" }),
+    constraint: Object.freeze({ count: 3104, sha256: "14aff416a17959c4609a97763ced9f1488b6ebe47275a839ec79ab855ad84cfa" }),
+    enum: Object.freeze({ count: 1110, sha256: "5ebe8e1f975cb016ec35109a07d6271f0e71a204c52da9a6452e77819597948d" }),
+    foreign_key: Object.freeze({ count: 683, sha256: "bb9c069961106d1499edfbb2086f59fe6f0651bd7f282a6614ad51e105ceb80c" }),
+    function: Object.freeze({ count: 305, sha256: "aca57d2646fc53b4cf3d422ecf1796fc05746d62d4aeeff6165a7ca6797cc554" }),
+    index: Object.freeze({ count: 1151, sha256: "054cd5824aec06cb35ca6441ff56dd76c50ea8fe1d11f46f43c716516fc78ef8" }),
+    trigger: Object.freeze({ count: 190, sha256: "df09a0465410f21de390211d7c6b2db5ae1f363dc0cf1127d9921b5457dc907b" }),
+  }),
+});
+export const CANONICAL_40_WAREHOUSE_ROUTES_SQL_ONLY_COUNTS = Object.freeze({
+  ...CANONICAL_39_WAREHOUSE_SHEET_SQL_ONLY_COUNTS,
+  // The replaced function moves provenance to40; the frozen39 inventory above stays unchanged.
+  "20261101020000_v17_warehouse_sheet": Object.freeze({ check: 4, function: 1, trigger: 2 }),
+  "20261102010000_v17_warehouse_routes": Object.freeze({ check: 1, function: 1 }),
+});
+
 const BTREE_GIST_MIGRATION = "20260907010000_v17_tools_equipment";
 const HISTORICAL_22_PROFILE = Object.freeze({
   id: "historical-22", migrations: 22,
@@ -246,6 +270,18 @@ const CANONICAL_39_WAREHOUSE_SHEET_PROFILE = Object.freeze({
   approvedMigrationChecksums: Object.freeze({
     ...CANONICAL_38_WAREHOUSE_CONFIGURATION_PROFILE.approvedMigrationChecksums,
     "20261101020000_v17_warehouse_sheet": "8acd3ee3669de51ad9064e3a97927257606035ea4fef1d64e481f96884244de3",
+  }),
+});
+
+const CANONICAL_40_WAREHOUSE_ROUTES_PROFILE = Object.freeze({
+  id: "canonical-40-warehouse-routes-20d", migrations: 40,
+  catalog: CANONICAL_40_WAREHOUSE_ROUTES_CATALOG,
+  sqlOnlyCounts: CANONICAL_40_WAREHOUSE_ROUTES_SQL_ONLY_COUNTS,
+  extensions: CANONICAL_39_WAREHOUSE_SHEET_PROFILE.extensions,
+  extensionMembers: CANONICAL_39_WAREHOUSE_SHEET_PROFILE.extensionMembers,
+  approvedMigrationChecksums: Object.freeze({
+    ...CANONICAL_39_WAREHOUSE_SHEET_PROFILE.approvedMigrationChecksums,
+    [WAREHOUSE_ROUTES_MIGRATION]: WAREHOUSE_ROUTES_MIGRATION_CHECKSUM,
   }),
 });
 
@@ -346,7 +382,7 @@ function normalizeDefinition(value) {
 }
 
 export function sqlDriftProfileForDatabase(database) {
-  if (database === "osi_db01n_ci") return CANONICAL_39_WAREHOUSE_SHEET_PROFILE;
+  if (database === "osi_db01n_ci") return CANONICAL_40_WAREHOUSE_ROUTES_PROFILE;
   if (["osi_crm01b_local", "osi_v17_case_client_local", "osi_v17_case_public_ref_local"].includes(database)) {
     return HISTORICAL_22_PROFILE;
   }
@@ -405,9 +441,32 @@ export function mapSqlOnlyObjects(rows, migrations, extensionMembers = []) {
   const unmapped = [];
   const dependencies = new Map(extensionMembers.map((member) => [`${member.kind}:${member.object_name}`, member]));
   invariant(dependencies.size === extensionMembers.length, "atribución de extensión ambigua");
+  const replacementSources = migrations.filter(([name]) => name === WAREHOUSE_ROUTES_MIGRATION);
+  const originalSources = migrations.filter(([name]) => name === WAREHOUSE_SHEET_MIGRATION);
   for (const row of rows) {
     const bareName = row.object_name.replace(/\(.*$/, "");
     const dependency = dependencies.get(`${row.kind}:${row.object_name}`);
+    // One reviewed replacement changes provenance, not the number of functions.
+    // Historical callers pass their checkpoint sources, so39 still attributes
+    // the original guard to20C. No global "last textual match" rule is allowed.
+    const isReviewedReplacement = !dependency && row.kind === "function"
+      && row.object_name === "v17_warehouse_location_address_guard()"
+      && (row.schema_name === undefined || row.schema_name === "osi")
+      && replacementSources.length > 0;
+    if (isReviewedReplacement) {
+      const reviewed = replacementSources.length === 1
+        && originalSources.length === 1
+        && createHash("sha256").update(originalSources[0][1]).digest("hex") === WAREHOUSE_SHEET_MIGRATION_CHECKSUM
+        && createHash("sha256").update(replacementSources[0][1]).digest("hex") === WAREHOUSE_ROUTES_MIGRATION_CHECKSUM
+        && /CREATE OR REPLACE FUNCTION "v17_warehouse_location_address_guard"\(\) RETURNS TRIGGER/u.test(replacementSources[0][1]);
+      if (!reviewed) {
+        unmapped.push(`${row.kind}:${row.object_name}`);
+        continue;
+      }
+      counts[WAREHOUSE_ROUTES_MIGRATION] ??= {};
+      counts[WAREHOUSE_ROUTES_MIGRATION].function = (counts[WAREHOUSE_ROUTES_MIGRATION].function ?? 0) + 1;
+      continue;
+    }
     const migration = dependency
       ? (dependency.extension_name === "btree_gist" && dependency.version === "1.8"
         && dependency.extension_schema === "osi" && dependency.kind === "function"

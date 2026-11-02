@@ -1,5 +1,6 @@
 import { SHEET_BYTE_LIMIT, validateWorkingWarehouseSheetChange } from "./sheetDraft";
 import type { WarehouseSheetChange } from "./sheetTypes";
+import { clearWorkingWarehouseRoute } from "./routeWorking";
 
 const PREFIX = "osi-plus.warehouses.sheet-working.v1:";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -38,6 +39,8 @@ export function setWorkingWarehouseSheet(membershipRef: string, change: Warehous
 
 export function clearWorkingWarehouseSheet(membershipRef: string): void {
   if (!UUID.test(membershipRef)) return;
+  const prior = getWorkingWarehouseSheet(membershipRef);
+  if (prior) clearWorkingWarehouseRoute(membershipRef, prior.warehouseRef);
   memory.set(membershipRef, { change: null, unsynced: true });
   try { if (globalThis.sessionStorage) { sessionStorage.removeItem(`${PREFIX}${membershipRef}`); memory.delete(membershipRef); } } catch { /* Prevent stale storage being resurrected on this page. */ }
 }

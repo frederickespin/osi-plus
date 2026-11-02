@@ -3,10 +3,14 @@ import { canonicalPayloadHash } from "./materialsInventoryContract.js";
 import { permsForRole } from "./rbac.js";
 import { normalizeWarehouseManagerQuery, normalizeWarehouseSheetSave, warehouseSheetFail } from "./warehouseSheetContract.js";
 import { advanceWarehouseLocationPolicyEpoch, lockWarehouseConfiguration } from "./warehouseLocationPolicy.js";
-import { allocateWarehouseAddressOrdinal, canPlaceWarehouseAddressKind, formatWarehouseAddress, warehouseAddressOrdinal, warehouseAddressSegments, warehouseAddressToken } from "../../shared/warehouseSheetAddress.js";
+import { allocateWarehouseAddressOrdinal, canPlaceWarehouseAddressKind, formatWarehouseAddress, warehouseAddressIdentifier, warehouseAddressOrdinal, warehouseAddressSegments, warehouseAddressSegmentsFromIdentifier, warehouseAddressToken } from "../../shared/warehouseSheetAddress.js";
 
 const permissions = ["inventory:stock:view", "inventory:catalog:manage"];
-const include = { sheetProfile: true, locations: { include: { configuration: { include: { areaUse: { select: { useRef: true } } } }, address: true }, orderBy: [{ depth: "asc" }, { code: "asc" }] } };
+// Explicit legacy fields keep 20C operational during CHECK/APPLY while the 20D
+// column does not yet exist. This also applies to INSERT's returned selection.
+const legacyAddressSelect = Object.freeze({ id: true, tenantId: true, warehouseId: true, locationId: true, label: true, zoneNumber: true, aisleNumber: true, rackCode: true, levelNumber: true, positionNumber: true, createdAt: true });
+function addressSelect(routesEnabled) { return routesEnabled ? { ...legacyAddressSelect, zoneCode: true } : legacyAddressSelect; }
+function sheetInclude(routesEnabled) { return { sheetProfile: true, locations: { include: { configuration: { include: { areaUse: { select: { useRef: true } } } }, address: { select: addressSelect(routesEnabled) } }, orderBy: [{ depth: "asc" }, { code: "asc" }] } }; }
 const addressFields = { ZONE: "zoneNumber", AISLE: "aisleNumber", RACK: "rackCode", LEVEL: "levelNumber", BIN: "positionNumber" };
 function requirePermission(context, write = false) {
   if (permissions.slice(0, write ? 2 : 1).some((permission) => !context?.effectivePermissions?.includes(permission) || context?.deniedPermissions?.includes(permission))) warehouseSheetFail("WAREHOUSE_SHEET_FORBIDDEN", 403);
@@ -59,10 +63,12 @@ async function managerFor(tx, tenantId, reference, previousId) {
   if (!rows[0].eligible && rows[0].membership_id !== previousId) warehouseSheetFail("WAREHOUSE_SHEET_MANAGER_INELIGIBLE", 409);
   return rows[0];
 }
-function publicAddress(row, warehouseNumber) {
-  return row ? { label: row.label, warehouseNumber, zoneNumber: row.zoneNumber, aisleNumber: row.aisleNumber, rackCode: row.rackCode, levelNumber: row.levelNumber, positionNumber: row.positionNumber } : null;
+function hasAlphanumericZone(row) { return !!row && /[A-Z]/u.test(row.label.split("-")[2] ?? ""); }
+function publicAddress(row, warehouseNumber, routesEnabled = false) {
+  if (!row || !routesEnabled && hasAlphanumericZone(row)) return null;
+  return { label: row.label, warehouseNumber, zoneNumber: row.zoneNumber, ...(routesEnabled ? { zoneCode: row.zoneCode ?? null } : {}), aisleNumber: row.aisleNumber, rackCode: row.rackCode, levelNumber: row.levelNumber, positionNumber: row.positionNumber };
 }
-function publicSheet(row, people) {
+function publicSheet(row, people, routesEnabled = false) {
   const roots = row.locations.filter((location) => location.parentLocationId === null);
   const root = roots.length === 1 ? roots[0] : null;
   const refs = new Map(row.locations.map((location) => [location.id, location.locationRef]));
@@ -78,17 +84,17 @@ function publicSheet(row, people) {
       locationRef: location.locationRef, parentLocationRef: location.parentLocationId ? refs.get(location.parentLocationId) ?? null : null,
       code: location.code, name: location.name, kind: location.kind, depth: location.depth, path: location.path, status: location.status, version: location.version,
       configurationVersion: location.configuration?.version ?? 0, areaUseRef: location.configuration?.areaUse?.useRef ?? null,
-      address: publicAddress(location.address, profile?.warehouseNumber ?? null),
+      address: publicAddress(location.address, profile?.warehouseNumber ?? null, routesEnabled),
     })),
   };
 }
-export async function listWarehouseSheets(prisma, context) {
+export async function listWarehouseSheets(prisma, context, { routesEnabled = false } = {}) {
   requirePermission(context);
   return prisma.$transaction(async (tx) => {
     await revalidateActor(tx, context, false);
-    const rows = await tx.materialWarehouse.findMany({ where: { tenantId: context.tenantId }, include, orderBy: { code: "asc" } });
+    const rows = await tx.materialWarehouse.findMany({ where: { tenantId: context.tenantId }, include: sheetInclude(routesEnabled), orderBy: { code: "asc" } });
     const people = await managersById(tx, context.tenantId, rows.map((row) => row.sheetProfile?.managerMembershipId));
-    return { warehouses: rows.map((row) => publicSheet(row, people)) };
+    return { warehouses: rows.map((row) => publicSheet(row, people, routesEnabled)) };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxWait: 5000, timeout: 15000 });
 }
 export async function listWarehouseManagerOptions(prisma, context, raw = {}) {
@@ -171,11 +177,43 @@ async function setUse(tx, context, location, expectedVersion, useRef, uses) {
   } else await tx.warehouseLocationConfiguration.create({ data: { tenantId: context.tenantId, locationId: location.id, areaUseId: use.id } });
 }
 
+function routeTarget(parent, kind, identifier, state) {
+  if (!parent) return null;
+  const matches = [...state.byId.values()].filter((location) => location.parentLocationId === parent.id && location.kind === kind && location.address
+    && warehouseAddressIdentifier(kind, publicAddress(location.address, state.profile.warehouseNumber, true)) === identifier);
+  if (matches.length > 1) warehouseSheetFail("WAREHOUSE_ROUTES_IDENTIFIER_CONFLICT", 409);
+  return matches[0] ?? null;
+}
+
+// Reserve explicit siblings even when their CREATE row follows an automatic row
+// or references a not-yet-processed explicit parent that will reuse an existing node.
+function reservedOrdinals(parent, kind, state) {
+  if (!state.routesEnabled) return [];
+  const resolveParent = (row, seen = new Set()) => {
+    if (row.parentLocationRef) return state.byRef.get(row.parentLocationRef) ?? null;
+    if (!row.parentRowId) return state.root;
+    if (state.resultRows.has(row.parentRowId)) return state.resultRows.get(row.parentRowId);
+    if (seen.has(row.parentRowId)) return null;
+    seen.add(row.parentRowId);
+    const pendingParent = state.createRows.get(row.parentRowId);
+    if (!pendingParent?.identifier) return null;
+    return routeTarget(resolveParent(pendingParent, seen), pendingParent.kind, pendingParent.identifier, state);
+  };
+  return [...state.createRows.values()].filter((row) => row.kind === kind && row.identifier && resolveParent(row)?.id === parent.id)
+    .filter((row) => kind !== "ZONE" || !/[A-Z]/u.test(row.identifier))
+    .map((row) => warehouseAddressOrdinal(kind, row.identifier));
+}
+
 // Addresses are assigned only by an explicit save to the root, touched existing
 // rows/their ancestors, and explicitly created rows. Historical unsupported
 // branches retain their old codes; no synthetic zero-placeholder nodes exist.
-async function ensureAddress(tx, context, location, state, { required = false } = {}) {
-  if (location.address) return publicAddress(location.address, state.profile.warehouseNumber);
+async function ensureAddress(tx, context, location, state, { required = false, identifier } = {}) {
+  if (location.address) {
+    if (!state.routesEnabled && hasAlphanumericZone(location.address)) warehouseSheetFail("WAREHOUSE_ROUTES_DISABLED", 409);
+    const address = publicAddress(location.address, state.profile.warehouseNumber, state.routesEnabled);
+    if (identifier && warehouseAddressIdentifier(location.kind, address) !== identifier) warehouseSheetFail("WAREHOUSE_ROUTES_IDENTIFIER_CONFLICT", 409);
+    return address;
+  }
   const ancestors = ancestorsFor(location, state.byId);
   if (!ancestors || !canPlaceWarehouseAddressKind(location.kind, ancestors.slice(0, -1).map((row) => row.kind))) {
     if (required) warehouseSheetFail("WAREHOUSE_SHEET_HIERARCHY_INVALID", 409);
@@ -188,9 +226,13 @@ async function ensureAddress(tx, context, location, state, { required = false } 
       const parent = state.byId.get(location.parentLocationId);
       const parentAddress = await ensureAddress(tx, context, parent, state, { required });
       if (!parentAddress) return null;
-      const used = [...state.byId.values()].filter((row) => row.parentLocationId === parent.id && row.kind === location.kind && row.address)
-        .map((row) => location.kind === "RACK" ? warehouseAddressOrdinal("RACK", row.address.rackCode) : row.address[addressFields[location.kind]]);
-      segments = warehouseAddressSegments(parentAddress, location.kind, allocateWarehouseAddressOrdinal(location.kind, used));
+      if (identifier) segments = warehouseAddressSegmentsFromIdentifier(parentAddress, location.kind, identifier);
+      else {
+        const used = [...state.byId.values()].filter((row) => row.parentLocationId === parent.id && row.kind === location.kind && row.address)
+          .map((row) => location.kind === "RACK" ? warehouseAddressOrdinal("RACK", row.address.rackCode) : row.address[addressFields[location.kind]])
+          .filter((ordinal) => ordinal !== 0);
+        segments = warehouseAddressSegments(parentAddress, location.kind, allocateWarehouseAddressOrdinal(location.kind, [...used, ...reservedOrdinals(parent, location.kind, state)]));
+      }
     }
   } catch (error) {
     if (error?.name !== "WarehouseAddressError") throw error;
@@ -198,12 +240,16 @@ async function ensureAddress(tx, context, location, state, { required = false } 
     return null;
   }
   const { warehouseNumber: _warehouseNumber, ...fields } = segments;
-  location.address = await tx.warehouseLocationAddress.create({ data: { tenantId: context.tenantId, warehouseId: state.warehouse.id, locationId: location.id, label: formatWarehouseAddress(segments), ...fields } });
-  return publicAddress(location.address, state.profile.warehouseNumber);
+  const label = formatWarehouseAddress(segments);
+  if (identifier && [...state.byId.values()].some((row) => row.id !== location.id && row.address?.label === label)) warehouseSheetFail("WAREHOUSE_ROUTES_IDENTIFIER_CONFLICT", 409);
+  location.address = await tx.warehouseLocationAddress.create({ data: { tenantId: context.tenantId, warehouseId: state.warehouse.id, locationId: location.id, label, ...fields }, select: addressSelect(state.routesEnabled) });
+  return publicAddress(location.address, state.profile.warehouseNumber, state.routesEnabled);
 }
 
-export async function saveWarehouseSheet(prisma, context, raw) {
+export async function saveWarehouseSheet(prisma, context, raw, { routesEnabled = false } = {}) {
   requirePermission(context, true); const input = normalizeWarehouseSheetSave(raw);
+  if (!routesEnabled && input.rows.some((row) => Object.hasOwn(row, "identifier"))) warehouseSheetFail("WAREHOUSE_ROUTES_DISABLED", 409);
+  const include = sheetInclude(routesEnabled);
   return mutate(prisma, context, input, async (tx, actor) => {
     let warehouse;
     if (input.warehouseRef) {
@@ -224,7 +270,7 @@ export async function saveWarehouseSheet(prisma, context, raw) {
     const byId = new Map(warehouse.locations.map((row) => [row.id, row]));
     const byRef = new Map(warehouse.locations.map((row) => [row.locationRef, row]));
     const beforePeople = await managersById(tx, actor.tenantId, [warehouse.sheetProfile?.managerMembershipId]);
-    const before = input.warehouseRef ? publicSheet(warehouse, beforePeople) : null;
+    const before = input.warehouseRef ? publicSheet(warehouse, beforePeople, routesEnabled) : null;
     const manager = await managerFor(tx, actor.tenantId, input.managerMembershipRef, warehouse.sheetProfile?.managerMembershipId);
     const useRefs = [...new Set([input.rootAreaUseRef, ...input.rows.map((row) => row.areaUseRef)].filter(Boolean))];
     const uses = new Map((useRefs.length ? await tx.warehouseAreaUse.findMany({ where: { tenantId: actor.tenantId, useRef: { in: useRefs } } }) : []).map((row) => [row.useRef, row]));
@@ -246,9 +292,15 @@ export async function saveWarehouseSheet(prisma, context, raw) {
       }
     }
     await setUse(tx, actor, root, input.expectedRootConfigurationVersion, input.rootAreaUseRef, uses);
-    const state = { warehouse, profile, byId };
-    await ensureAddress(tx, actor, root, state);
     const resultRows = new Map();
+    const createRows = new Map(input.rows.filter((row) => row.action === "CREATE").map((row) => [row.rowId, row]));
+    const state = { warehouse, profile, root, byId, byRef, createRows, resultRows, routesEnabled };
+    const claimedTargets = new Set();
+    const recordResult = (row, location) => {
+      if (claimedTargets.has(location.id)) warehouseSheetFail("WAREHOUSE_ROUTES_DUPLICATE_TARGET", 409);
+      claimedTargets.add(location.id); resultRows.set(row.rowId, location);
+    };
+    await ensureAddress(tx, actor, root, state);
     for (const row of input.rows.filter((entry) => entry.action === "UPDATE")) {
       const location = byRef.get(row.locationRef);
       if (!location) warehouseSheetFail("WAREHOUSE_SHEET_LOCATION_NOT_FOUND", 404);
@@ -260,7 +312,7 @@ export async function saveWarehouseSheet(prisma, context, raw) {
         if (changed.count !== 1) warehouseSheetFail("WAREHOUSE_SHEET_VERSION_CONFLICT", 409);
       }
       await ensureAddress(tx, actor, location, state);
-      resultRows.set(row.rowId, location);
+      recordResult(row, location);
     }
     const pending = input.rows.filter((entry) => entry.action === "CREATE");
     while (pending.length) {
@@ -273,18 +325,26 @@ export async function saveWarehouseSheet(prisma, context, raw) {
       if (!ancestors || !canPlaceWarehouseAddressKind(row.kind, ancestors.map((node) => node.kind))) warehouseSheetFail("WAREHOUSE_SHEET_HIERARCHY_INVALID", 409);
       if (warehouse.status !== "ACTIVE" || ancestors.some((node) => node.status !== "ACTIVE")) warehouseSheetFail("WAREHOUSE_SHEET_RESOURCE_INACTIVE", 409);
       await ensureAddress(tx, actor, parent, state, { required: true });
+      const existing = row.identifier ? routeTarget(parent, row.kind, row.identifier, state) : null;
+      if (existing) {
+        if (claimedTargets.has(existing.id)) warehouseSheetFail("WAREHOUSE_ROUTES_DUPLICATE_TARGET", 409);
+        if (existing.status !== "ACTIVE") warehouseSheetFail("WAREHOUSE_SHEET_RESOURCE_INACTIVE", 409);
+        if (existing.name !== row.name || (existing.configuration?.areaUse?.useRef ?? null) !== row.areaUseRef) warehouseSheetFail("WAREHOUSE_ROUTES_REUSE_CONFLICT", 409);
+        recordResult(row, existing);
+        continue;
+      }
       const code = generatedCode("UBI", actor, input, row.rowId);
       const path = `${parent.path}/${code}`; const depth = parent.depth + 1;
       if (depth > 32 || path.length > 600) warehouseSheetFail("WAREHOUSE_SHEET_HIERARCHY_INVALID", 409);
       const location = { ...await tx.materialLocation.create({ data: { tenantId: actor.tenantId, warehouseId: warehouse.id, parentLocationId: parent.id, code, name: row.name, kind: row.kind, depth, path } }), configuration: null, address: null };
       byId.set(location.id, location); byRef.set(location.locationRef, location);
       await setUse(tx, actor, location, 0, row.areaUseRef, uses);
-      await ensureAddress(tx, actor, location, state, { required: true });
-      resultRows.set(row.rowId, location);
+      await ensureAddress(tx, actor, location, state, { required: true, identifier: row.identifier });
+      recordResult(row, location);
     }
     const saved = await tx.materialWarehouse.findFirst({ where: { tenantId: actor.tenantId, id: warehouse.id }, include });
     const people = await managersById(tx, actor.tenantId, [saved.sheetProfile.managerMembershipId]);
-    const result = { warehouse: publicSheet(saved, people), rowResults: input.rows.map((row) => ({ rowId: row.rowId, locationRef: resultRows.get(row.rowId).locationRef })) };
+    const result = { warehouse: publicSheet(saved, people, routesEnabled), rowResults: input.rows.map((row) => ({ rowId: row.rowId, locationRef: resultRows.get(row.rowId).locationRef })) };
     await tx.materialInventoryCommand.create({ data: { tenantId: actor.tenantId, requestId: input.requestId, operation: input.operation, payloadHash: input.payloadHash, targetRef: warehouse.warehouseRef, resultJson: result, actorMembershipId: actor.membershipId, actorUserId: actor.userId } });
     await tx.commercialAuditLog.create({ data: { tenant_id: actor.tenantId, actor_user_id: actor.userId, actor_membership_id: actor.membershipId, role_snapshot: actor.role, action: input.operation, entity: "WarehouseSheet", entityId: warehouse.warehouseRef, ...(before ? { before_json: before } : {}), after_json: result, source: "V17_WAREHOUSE_SHEET", request_id: input.requestId, correlation_id: input.requestId, critical: true } });
     return result;

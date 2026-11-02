@@ -33,7 +33,7 @@ export async function captureWarehouseSheetCatalog({ root = process.cwd(), rawUr
   invariant(process.env.CANONICAL_DB_VALIDATION === "true", "requires the disposable canonical CI environment");
   const candidateTarget = validateCrm01b1LocalUrl(rawUrl);
   invariant(candidateTarget.database === "osi_db01n_ci", "only the disposable canonical database is accepted");
-  const names = validateMigrationFiles(root);
+  const names = validateMigrationFiles(root).filter((name) => name <= WAREHOUSE_SHEET_MIGRATION);
   invariant(names.length === 39 && names.at(-1) === WAREHOUSE_SHEET_MIGRATION, "20C requires the exact named 39-migration inventory");
   const migrations = await Promise.all(names.map(async (name) => [name, await readFile(join(root, "prisma/migrations", name, "migration.sql"), "utf8")]));
   const migrationChecksums = Object.fromEntries(migrations.map(([name, sql]) => [name, createHash("sha256").update(sql).digest("hex")]));
@@ -55,7 +55,7 @@ export async function captureWarehouseSheetCatalog({ root = process.cwd(), rawUr
         SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count
         FROM "osi"."_prisma_migrations" ORDER BY migration_name
       `);
-      const appliedNames = validateAppliedMigrationHistory(history);
+      const appliedNames = validateAppliedMigrationHistory(history, { throughMigration: WAREHOUSE_SHEET_MIGRATION });
       invariant(history.every((row) => row.checksum === migrationChecksums[row.migration_name]), "applied checksums differ from the reviewed source files");
       const catalogRows = await tx.$queryRawUnsafe(CATALOG_SQL);
       const sqlOnlyRows = await tx.$queryRawUnsafe(SQL_ONLY_SQL);

@@ -78,3 +78,25 @@ test("explicit identifiers reject disabled markers, coercion, invalid ranges and
   ]) for (const identifier of identifiers) invalid(command({ rows: [row({ kind, identifier })] }));
   invalid(command({ warehouseRef: ref(), expectedWarehouseVersion: 1, rows: [update({ identifier: "TRD" })] }));
 });
+
+test("optional locality preserves absent legacy fields and includes explicit assignments in the hash", () => {
+  const legacy = command(); const previous = structuredClone(legacy);
+  const normalized = normalizeWarehouseSheetSave(legacy);
+  assert.equal(Object.hasOwn(normalized, "localityNumber"), false);
+  assert.equal(normalized.payloadHash, legacy.payloadHash); assert.deepEqual(legacy, previous);
+  for (const localityNumber of [null, 1, 999]) {
+    const input = command({ localityNumber }); const output = normalizeWarehouseSheetSave(input);
+    assert.equal(Object.hasOwn(output, "localityNumber"), true); assert.equal(output.localityNumber, localityNumber);
+    assert.equal(output.payloadHash, input.payloadHash); assert.ok(Object.isFrozen(output));
+    const { localityNumber: omitted, ...removed } = input;
+    assert.throws(() => normalizeWarehouseSheetSave(removed), /WAREHOUSE_SHEET_PAYLOAD_HASH_MISMATCH/);
+    assert.throws(() => normalizeWarehouseSheetSave({ ...input, localityNumber: localityNumber === 1 ? 2 : 1 }), /WAREHOUSE_SHEET_PAYLOAD_HASH_MISMATCH/);
+  }
+  assert.throws(() => normalizeWarehouseSheetSave({ ...legacy, localityNumber: null }), /WAREHOUSE_SHEET_PAYLOAD_HASH_MISMATCH/);
+});
+
+test("locality rejects nonintegers, coercion, values outside1–999 and writable display labels", () => {
+  for (const localityNumber of [undefined, 0, -1, 1000, 1.5, "1", "S1", true, {}, []]) invalid(command({ localityNumber }));
+  for (const extra of [{ displayLabel: "S1-ALM4" }, { localityCode: "S1" }, { warehouseDisplayLabel: "S1-ALM4" }]) invalid(command(extra));
+  invalid(command({ rows: [row({ displayLabel: "S1-ALM4-000-00-AA-02-0" })] }));
+});

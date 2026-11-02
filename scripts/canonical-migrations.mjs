@@ -44,6 +44,7 @@ export const CANONICAL_MIGRATIONS = Object.freeze([
   "20261101010000_v17_warehouse_configuration",
   "20261101020000_v17_warehouse_sheet",
   "20261102010000_v17_warehouse_routes",
+  "20261102020000_v17_warehouse_localities",
 ]);
 
 function invariant(condition, message) {

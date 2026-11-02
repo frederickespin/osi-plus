@@ -157,7 +157,8 @@ export async function collectWarehouseRoutesCatalogEvidence({
     invariant(env.CANONICAL_DB_VALIDATION === "true", "requires disposable canonical CI mode");
     invariant(validateCrm01b1LocalUrl(rawUrl).database === "osi_db01n_ci", "only canonical disposable database accepted");
   }
-  const sourceNames = validateMigrationFiles(root);
+  // Validate today's complete closed inventory, then capture the named historical40 checkpoint.
+  const sourceNames = validateMigrationFiles(root).filter((name) => name <= WAREHOUSE_ROUTES_MIGRATION);
   invariant(sourceNames.length === 40 && sourceNames.at(-1) === WAREHOUSE_ROUTES_MIGRATION
     && sourceNames.at(-2) === WAREHOUSE_SHEET_MIGRATION, "requires exact40 named source inventory");
   const names = phase === "before39" ? sourceNames.slice(0, 39) : sourceNames;

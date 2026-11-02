@@ -3,6 +3,7 @@ import test from "node:test";
 import { createWarehouseSheetHandler } from "../api/_lib/warehouseSheetHttp.js";
 import { resolveWarehouseSheetApiMode } from "../api/_lib/warehouseSheetMode.js";
 import { resolveWarehouseRoutesApiMode } from "../api/_lib/warehouseRoutesMode.js";
+import { resolveWarehouseLocalitiesApiMode } from "../api/_lib/warehouseLocalitiesMode.js";
 
 const env = { MATERIALS_INVENTORY_API_MODE: "LOCAL_ONLY", WAREHOUSE_CONFIGURATION_API_MODE: "LOCAL_ONLY", WAREHOUSE_SHEET_API_MODE: "LOCAL_ONLY" };
 const reader = { effectivePermissions: ["inventory:stock:view"], deniedPermissions: [] };
@@ -83,4 +84,46 @@ test("routes Preview requires its own exact batch and the enabled20C prerequisit
   for (const patch of [{ VERCEL_ENV: "production" }, { VERCEL_GIT_COMMIT_REF: "main" }, { WAREHOUSE_ROUTES_API_BATCH: "wrong" }, { WAREHOUSE_SHEET_API_BATCH: "wrong" }, { WAREHOUSE_SHEET_API_MODE: "DISABLED" }, { WAREHOUSE_CONFIGURATION_API_MODE: "DISABLED" }, { MT01B_TENANT_SWITCH_ENABLED: "true" }]) assert.throws(() => resolveWarehouseRoutesApiMode({ ...preview, ...patch }, request()));
   assert.throws(() => resolveWarehouseRoutesApiMode({ ...env, WAREHOUSE_ROUTES_API_MODE: "LOCAL_ONLY", VERCEL: "1" }, request()));
   assert.throws(() => resolveWarehouseRoutesApiMode({ ...env, WAREHOUSE_ROUTES_API_MODE: "LOCAL_ONLY" }, request({ socket: { remoteAddress: "203.0.113.1" } })));
+});
+
+test("localities OFF preserves legacy requests and rejects even a null locality before execution", async () => {
+  let executed = 0;
+  const options = { env: { ...env, WAREHOUSE_ROUTES_API_MODE: "LOCAL_ONLY" }, execute: ({ routesEnabled, localitiesEnabled }) => { executed++; assert.equal(routesEnabled, true); assert.equal(localitiesEnabled, false); return {}; } };
+  assert.equal((await invoke(options)).statusCode, 200);
+  assert.equal((await invoke(options, { method: "POST", body: { rows: [] } })).statusCode, 200);
+  for (const localityNumber of [null, 1]) {
+    const blocked = await invoke(options, { method: "POST", body: { rows: [], localityNumber } });
+    assert.equal(blocked.statusCode, 409); assert.equal(blocked.body.error, "WAREHOUSE_LOCALITIES_DISABLED");
+  }
+  assert.equal(executed, 2);
+});
+
+test("localities LOCAL_ONLY requires routes, forwards the option and keeps deny precedence", async () => {
+  const enabled = { ...env, WAREHOUSE_ROUTES_API_MODE: "LOCAL_ONLY", WAREHOUSE_LOCALITIES_API_MODE: "LOCAL_ONLY" };
+  const options = { env: enabled, execute: ({ routesEnabled, localitiesEnabled, input }) => { assert.equal(routesEnabled, true); assert.equal(localitiesEnabled, true); assert.equal(input.localityNumber, 1); return {}; } };
+  assert.equal((await invoke(options, { method: "POST", body: { rows: [], localityNumber: 1 } })).statusCode, 200);
+  for (const context of [reader, { ...manager, deniedPermissions: ["inventory:catalog:manage"] }]) {
+    assert.equal((await invoke({ ...options, resolveContext: async () => context }, { method: "POST", body: "invalid" })).statusCode, 403);
+  }
+  assert.throws(() => resolveWarehouseLocalitiesApiMode({ ...env, WAREHOUSE_LOCALITIES_API_MODE: "LOCAL_ONLY" }, request()), /WAREHOUSE_LOCALITIES_CONFIGURATION_INVALID/);
+  assert.throws(() => resolveWarehouseLocalitiesApiMode({ ...enabled, VERCEL: "1" }, request()));
+  assert.throws(() => resolveWarehouseLocalitiesApiMode(enabled, request({ socket: { remoteAddress: "203.0.113.1" } })));
+});
+
+test("invalid locality mode rejects all methods before authority, body parsing or execution", async () => {
+  let calls = 0;
+  for (const method of ["GET", "HEAD", "POST", "OPTIONS"]) {
+    const result = await invoke({ env: { ...env, WAREHOUSE_LOCALITIES_API_MODE: "UNREVIEWED" }, resolveContext: () => { calls++; }, execute: () => { calls++; } }, { method, body: "invalid" });
+    assert.equal(result.statusCode, 503); if (method !== "HEAD") assert.equal(result.body.error, "WAREHOUSE_LOCALITIES_CONFIGURATION_INVALID");
+  }
+  assert.equal(calls, 0);
+});
+
+test("localities Preview requires its exact batch and20D; Production and independent enabling fail", () => {
+  const preview = { VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/v17-consolidated-preview", WAREHOUSE_CONFIGURATION_API_MODE: "PREVIEW_REHEARSAL", WAREHOUSE_CONFIGURATION_API_BATCH: "V17-WAREHOUSE-CONFIGURATION-20B-PREVIEW", WAREHOUSE_SHEET_API_MODE: "PREVIEW_REHEARSAL", WAREHOUSE_SHEET_API_BATCH: "V17-WAREHOUSE-SHEET-20C-PREVIEW", WAREHOUSE_ROUTES_API_MODE: "PREVIEW_REHEARSAL", WAREHOUSE_ROUTES_API_BATCH: "V17-WAREHOUSE-ROUTES-20D-PREVIEW", WAREHOUSE_LOCALITIES_API_MODE: "PREVIEW_REHEARSAL", WAREHOUSE_LOCALITIES_API_BATCH: "V17-WAREHOUSE-LOCALITIES-20E-PREVIEW", MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" };
+  assert.equal(resolveWarehouseLocalitiesApiMode({}, request()), "DISABLED");
+  assert.equal(resolveWarehouseLocalitiesApiMode(preview, request()), "PREVIEW_REHEARSAL");
+  for (const patch of [{ VERCEL_ENV: "production" }, { VERCEL_GIT_COMMIT_REF: "main" }, { VERCEL_GIT_COMMIT_REF: "feature/v17-warehouse-localities-20e" }, { WAREHOUSE_LOCALITIES_API_BATCH: "wrong" }, { WAREHOUSE_ROUTES_API_MODE: "DISABLED" }, { WAREHOUSE_ROUTES_API_BATCH: "wrong" }, { WAREHOUSE_SHEET_API_MODE: "DISABLED" }, { MT01B_TENANT_SWITCH_ENABLED: "true" }]) {
+    assert.throws(() => resolveWarehouseLocalitiesApiMode({ ...preview, ...patch }, request()));
+  }
 });

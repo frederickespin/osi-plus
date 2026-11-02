@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "prisma generate && node scripts/v17-fleet-drivers-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-configuration-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-sheet-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-routes-preview-migrate.mjs --build-hook && vite build",
+    "build": "prisma generate && node scripts/v17-fleet-drivers-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-configuration-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-sheet-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-routes-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-localities-preview-migrate.mjs --build-hook && vite build",
     "postinstall": "prisma generate",
     "lint": "eslint .",
     "test:auth-null:browser": "playwright test -c playwright.auth-null.config.ts",
@@ -187,7 +187,11 @@
     "test:v17-warehouse-sheet:browser": "playwright test -c playwright.v17-warehouse-sheet.config.ts",
     "test:v17-warehouse-routes": "node scripts/v17-warehouse-routes-client-test.mjs && node scripts/v17-warehouse-routes-preview-migrate-test.mjs && node scripts/capture-v17-warehouse-routes-catalog-test.mjs",
     "test:v17-warehouse-routes:browser": "playwright test -c playwright.v17-warehouse-routes.config.ts",
-    "test:v17-warehouse-routes:db": "node scripts/v17-warehouse-routes-db-test.mjs"
+    "test:v17-warehouse-routes:db": "node scripts/v17-warehouse-routes-db-test.mjs",
+    "test:v17-warehouse-localities": "node scripts/v17-warehouse-localities-address-test.mjs && node scripts/v17-warehouse-sheet-contract-test.mjs && node scripts/v17-warehouse-sheet-http-test.mjs && node scripts/v17-warehouse-localities-client-test.mjs && node scripts/v17-warehouse-localities-preview-migrate-test.mjs && node scripts/capture-v17-warehouse-localities-catalog-test.mjs",
+    "test:v17-warehouse-localities:db": "node scripts/v17-warehouse-localities-db-test.mjs",
+    "test:v17-warehouse-localities:client": "node scripts/v17-warehouse-localities-client-test.mjs",
+    "test:v17-warehouse-localities:browser": "playwright test -c playwright.v17-warehouse-localities.config.ts"
   },
   "dependencies": {
     "22": "^0.0.0",

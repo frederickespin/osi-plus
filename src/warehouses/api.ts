@@ -2,6 +2,7 @@ import type { WarehouseLocationRow, WarehouseRow } from "@/materials-inventory/a
 import type { WarehouseAreaPurpose, WarehouseAreaUse, WarehouseAvailabilityRule, WarehouseConfiguration, WarehouseLocationConfiguration, WarehouseOperationalStatus } from "./configurationTypes";
 import type { WarehouseManagerOptions, WarehouseSheet, WarehouseSheetChange, WarehouseSheetSaved } from "./sheetTypes";
 import { formatWarehouseAddress, warehouseAddressIdentifier, warehouseAddressSegmentsFromIdentifier, type WarehouseAddressSegments } from "../../shared/warehouseSheetAddress.js";
+import { formatWarehouseDisplayAddress, isWarehouseLocalityNumber } from "../../shared/warehouseLocalityAddress.js";
 
 export class WarehouseApiError extends Error {
   readonly code: string;
@@ -43,9 +44,14 @@ function canonicalJson(value: unknown): string {
 
 const responseRef = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
 const responseRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-function isAddressResponse(value: unknown): boolean {
+function isAddressResponse(value: unknown, localityNumber: number | null | undefined): boolean {
   if (!responseRecord(value) || typeof value.label !== "string") return false;
-  try { return formatWarehouseAddress(value as unknown as WarehouseAddressSegments) === value.label; } catch { return false; }
+  try {
+    if (formatWarehouseAddress(value as unknown as WarehouseAddressSegments) !== value.label) return false;
+    // Optional computed fields may be absent from old receipts, but cannot contradict their sheet.
+    return !Object.hasOwn(value, "displayLabel") || localityNumber !== undefined
+      && formatWarehouseDisplayAddress(localityNumber, value as unknown as WarehouseAddressSegments) === value.displayLabel;
+  } catch { return false; }
 }
 function isSheetResponse(value: unknown): value is WarehouseSheet {
   if (!responseRecord(value) || !responseRef(value.warehouseRef) || typeof value.code !== "string" || typeof value.name !== "string"
@@ -54,6 +60,7 @@ function isSheetResponse(value: unknown): value is WarehouseSheet {
     || value.rootLocationRef !== null && !responseRef(value.rootLocationRef) || value.rootAreaUseRef !== null && !responseRef(value.rootAreaUseRef)
     || value.warehouseLabel !== null && typeof value.warehouseLabel !== "string"
     || value.warehouseNumber !== null && (!Number.isSafeInteger(value.warehouseNumber) || Number(value.warehouseNumber) < 1 || Number(value.warehouseNumber) > 99)
+    || Object.hasOwn(value, "localityNumber") && value.localityNumber !== null && !isWarehouseLocalityNumber(value.localityNumber)
     || value.manager !== null && (!responseRecord(value.manager) || !responseRef(value.manager.membershipRef) || typeof value.manager.displayName !== "string" || typeof value.manager.eligible !== "boolean")
     || !Array.isArray(value.locations)) return false;
   return value.locations.every((row: unknown) => responseRecord(row) && responseRef(row.locationRef)
@@ -61,7 +68,7 @@ function isSheetResponse(value: unknown): value is WarehouseSheet {
     && typeof row.kind === "string" && typeof row.path === "string" && typeof row.status === "string"
     && Number.isSafeInteger(row.version) && Number(row.version) >= 1 && Number.isSafeInteger(row.depth) && Number(row.depth) >= 0
     && Number.isSafeInteger(row.configurationVersion) && Number(row.configurationVersion) >= 0
-    && (row.areaUseRef === null || responseRef(row.areaUseRef)) && (row.address === null || isAddressResponse(row.address)));
+    && (row.areaUseRef === null || responseRef(row.areaUseRef)) && (row.address === null || isAddressResponse(row.address, value.localityNumber as number | null | undefined)));
 }
 
 export type WarehouseSpatialChange =
@@ -160,6 +167,7 @@ export class WarehouseApi {
     if (operation === "WAREHOUSE_SHEET_SAVE") {
       if (!responseRecord(saved) || !isSheetResponse(saved.warehouse) || !Array.isArray(saved.rowResults)
         || change.warehouseRef !== null && saved.warehouse.warehouseRef !== change.warehouseRef
+        || Object.hasOwn(change, "localityNumber") && (!Object.hasOwn(saved.warehouse, "localityNumber") || saved.warehouse.localityNumber !== change.localityNumber)
         || saved.rowResults.length !== change.rows.length) throw new WarehouseApiError("MATERIALS_RESPONSE_INVALID", 503);
       const expectedRows = new Map(change.rows.map((row) => [row.rowId, row]));
       const returned = new Set<string>();
@@ -221,6 +229,8 @@ export function warehouseErrorText(error: unknown): string {
     WAREHOUSE_CONFIGURATION_IMPACT_ACK_REQUIRED: "Escriba un motivo y confirme el alcance antes de cambiar los controles operativos.",
     WAREHOUSE_CONFIGURATION_COMMITMENTS_ACTIVE: "Hay reservas o préstamos pendientes en esta ubicación o en sus ubicaciones interiores. Resuelva esos compromisos antes de cambiar los controles.",
     WAREHOUSE_CONFIGURATION_HIERARCHY_INVALID: "No se pudo confirmar la jerarquía de esta ubicación. Actualice el listado antes de continuar.",
+    WAREHOUSE_LOCALITIES_DISABLED: "Las localidades de almacenes todavía no están habilitadas en este entorno.",
+    WAREHOUSE_LOCALITIES_CONFIGURATION_INVALID: "Las localidades de almacenes no están disponibles en este entorno.",
     WAREHOUSE_SHEET_FORBIDDEN: "No tiene permiso para guardar la hoja de almacén.",
     WAREHOUSE_SHEET_INPUT_INVALID: "Revise los nombres, las filas y los límites de la hoja antes de guardar.",
     WAREHOUSE_SHEET_NOT_FOUND: "El almacén ya no está disponible. Actualice el listado.",

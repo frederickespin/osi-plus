@@ -1,0 +1,554 @@
+{
+  "migration": {
+    "name": "20261102010000_v17_warehouse_routes",
+    "sha256": "12e651c831b5e761a59ce5381258b2b538d853367c2fee834587f0fa3d7175a1"
+  },
+  "provenance": {
+    "kind": "LOCAL_DISPOSABLE_POSTGRESQL",
+    "capturedAt": "2026-11-02T00:24:37.144Z",
+    "sourceCommit": "8148f8eccf370b70396d04c3d506706e02eda200",
+    "prismaVersion": "6.19.2",
+    "catalogQuerySha256": "04aea6b13957570b4939bf9362cfb7d64e6891da94f2ba6b2f3f1c48fd6ae0c4",
+    "sqlOnlyQuerySha256": "b0b5e65a1baa8098c2cbe50bb369e836d2446cdfac34ef0fb0e0ab4f8505dcfe",
+    "searchPath": "osi",
+    "readOnly": true,
+    "previousEvidenceSha256": "eda56dc614dddedeb274999066fc892ce6d50a18f7b24e4b090a8a9254d3f04c",
+    "server": {
+      "version_number": "180006",
+      "version": "18.6 (Ubuntu 18.6-1.pgdg24.04+2)",
+      "collation": "C",
+      "character_type": "C"
+    },
+    "previousObjectsUnchangedExceptReviewedReplacement": true,
+    "beforeEvidenceSha256": "eda56dc614dddedeb274999066fc892ce6d50a18f7b24e4b090a8a9254d3f04c",
+    "afterEvidenceSha256": "28d819c718ee884fedd8725125fde0c03284de9d4aff24ee72e1a4599c102096"
+  },
+  "target": {
+    "database": "osi_db01n_ci",
+    "schema": "osi",
+    "address": "127.0.0.1",
+    "port": 55432
+  },
+  "server": {
+    "version_number": "180006",
+    "version": "18.6 (Ubuntu 18.6-1.pgdg24.04+2)",
+    "collation": "C",
+    "character_type": "C"
+  },
+  "history": {
+    "complete": 40,
+    "migrations": [
+      "20260801000000_production_baseline",
+      "20260801001000_mt01a_tenant_memberships",
+      "20260801002000_commercial_audit_log",
+      "20260801003000_approval_requests",
+      "20260801004000_risk_engine_rules_evaluations",
+      "20260801005000_logistic_override_approvals",
+      "20260801006000_quote_change_orders",
+      "20260801007000_logistics_geography_zone_rules",
+      "20260801008000_vehicle_engine_settings",
+      "20260801009000_logistics_rate_metadata",
+      "20260801010000_crate_settings",
+      "20260801011000_mt01b_auth_sessions",
+      "20260801012000_mt01c1a_employee_profiles",
+      "20260801013000_mt01c1b1_provisioning_persistence",
+      "20260801014000_mt01c2b1_commercial_tenant_foundation",
+      "20260801015000_crm01b_pipeline_mutation_authority",
+      "20260801020000_v17_pipeline_case_client_authority",
+      "20260821010000_v17_pipeline_case_public_ref",
+      "20260824010000_v17_client_public_ref_case_mutations",
+      "20260827010000_v17_tenant_membership_public_ref",
+      "20260827020000_v17_admin_identity_invitation",
+      "20260831010000_v17_crm_icp_foundation",
+      "20260904010000_v17_services_tenant_first",
+      "20260905010000_v17_survey_foundation",
+      "20260906010000_v17_materials_inventory",
+      "20260907010000_v17_tools_equipment",
+      "20260908010000_v17_logistics_engine",
+      "20260909010000_v17_costing",
+      "20260910010000_v17_quote",
+      "20260911010000_v17_scheduling_desktop_convergence",
+      "20260912010000_v17_commercial_relationships",
+      "20260913010000_v17_communications_templates",
+      "20260914010000_v17_personnel_operational_policies",
+      "20260915010000_v17_service_packages_resources",
+      "20260916010000_v17_client_temporary_portal",
+      "20261030010000_v17_user_identity_enrollment",
+      "20261031010000_v17_fleet_driver_authority",
+      "20261101010000_v17_warehouse_configuration",
+      "20261101020000_v17_warehouse_sheet",
+      "20261102010000_v17_warehouse_routes"
+    ]
+  },
+  "migrationChecksums": {
+    "20260801000000_production_baseline": "59a6060c78107a73cf9793da65cc5fc1a35d9d3c5e60ae37e04e5f395812bb2c",
+    "20260801001000_mt01a_tenant_memberships": "015c8bd39f050f71fbe1bea0f94198091149296269fed77905bcefd23094cd44",
+    "20260801002000_commercial_audit_log": "b7f2a68d769b1d3564a042d282e98e84bed9b8ceb2c5c2369c96e8d66d346206",
+    "20260801003000_approval_requests": "5802a029f4e83aa4a76e8a1f753bb4ebd71449d2538d2ba20edaa37c225a782a",
+    "20260801004000_risk_engine_rules_evaluations": "2575855557b64ee46166e85c61768339f08770aa6af3f18d77b5d3b62da00b08",
+    "20260801005000_logistic_override_approvals": "15a864aa487a66457e39e459b4767871863c5798d76f1a607f96a628986385df",
+    "20260801006000_quote_change_orders": "91cccaf3f19cebb9880fcdec880ffa8ed0e6ece1975e4b38924b5794b86b1f6c",
+    "20260801007000_logistics_geography_zone_rules": "77c32308f74d6ceb9e6ef9f45856d2cfe7169f9b3162f32808208bc30adae04b",
+    "20260801008000_vehicle_engine_settings": "4f61d20698ec8e61f5324f436e8012e63dc29c1e883b6e3922cc3cc9696499b3",
+    "20260801009000_logistics_rate_metadata": "8852e835e027fc76d828d9a3ab2e1c40f251f817ab4f573296bb39224b425899",
+    "20260801010000_crate_settings": "d834b99fe7083e5d9907a7b0c49ac6d0d3ff1f577de638e098c04ea9513f5310",
+    "20260801011000_mt01b_auth_sessions": "8d707e9b93d1bd6c1d15a7feee54189bef2a55718a85fb50c57048383c37f57c",
+    "20260801012000_mt01c1a_employee_profiles": "8da805f6923e7b3ef30c8cf4cd46dfddfafefe39d758023102c9eaa1b5f53131",
+    "20260801013000_mt01c1b1_provisioning_persistence": "38585d10feca36a488bdee93c7056880545bf2c7fcea333736e6e36d90c46bae",
+    "20260801014000_mt01c2b1_commercial_tenant_foundation": "776e0c167cb0d7561537745cced0438299dea90af1e7bc010325822519d1811b",
+    "20260801015000_crm01b_pipeline_mutation_authority": "77db8b909def5731693d1c8b8e2fbe020ff31f0322b2c8a57a1e18d79fc685f8",
+    "20260801020000_v17_pipeline_case_client_authority": "7ca9bb66584016879e00b9753da04521238ad164581ab6f755c73783a9feed1d",
+    "20260821010000_v17_pipeline_case_public_ref": "4e1b55da969a567042e3eb780389ee46a6fa11be4932c8ce7ad66a490abfc893",
+    "20260824010000_v17_client_public_ref_case_mutations": "dbb093f15eb2ee708328518dcf19e52fd8b0623fbc893cec1a001cf819a6da70",
+    "20260827010000_v17_tenant_membership_public_ref": "b1284e443778ad1c7336d7703c9478ac09215b81a00f6b09bad48ceba6d5051c",
+    "20260827020000_v17_admin_identity_invitation": "9ee56aaee53d5629db8dada22bcf86511d10c837c4ad61fb37fbd0b4caf53808",
+    "20260831010000_v17_crm_icp_foundation": "d085a74f4be3bd7be727d182993598008f53f019c8f1d626863b987be6726f37",
+    "20260904010000_v17_services_tenant_first": "3eaf8c7b3ff6b21b6223758ca292a9d8f4f898d6376eb1f027f563ac031c6e65",
+    "20260905010000_v17_survey_foundation": "faeb0dee08b667b1ba042ab1756e683b4fb832fb47789e01c5d8be220694dde1",
+    "20260906010000_v17_materials_inventory": "9d2f1eebb797e02a59343e166bbaaed3921347920d4c630b349f04709406bd21",
+    "20260907010000_v17_tools_equipment": "81dd96e97a1b35446dd1a2fe8934f1fe2524b1c75d6ff5645b98e091ebf98a44",
+    "20260908010000_v17_logistics_engine": "e8e073725b8075d6306e64d34dcf5c1b5fbc459ac1f3a808243747c28f78cb0e",
+    "20260909010000_v17_costing": "d1484bb4380f7f8f8984cfd977503637f4c318357d05978599dc3374071b543a",
+    "20260910010000_v17_quote": "75930bca82e4852c28bcc6a07b9509a10213e1f0573d5f54a56c0809fc17fbdd",
+    "20260911010000_v17_scheduling_desktop_convergence": "8b4b507f57714586fc3bfd16a22b58979c4da50059ffbc2bb6397e9caab86896",
+    "20260912010000_v17_commercial_relationships": "2cc93336058dcc3976c03b0a0c2d29bfadb08eb397980f25895b206b46616c23",
+    "20260913010000_v17_communications_templates": "26b7c3552f067c737e651d0e95a5188a6b4641b512df6331136caf5bf1637320",
+    "20260914010000_v17_personnel_operational_policies": "76690c0a5d464440f5924fb72905603e6d301ef8523f39ba3afc5a5cd6bc3bdb",
+    "20260915010000_v17_service_packages_resources": "23bfcc3ad34e48ef9ff7cb774780d9ab3437d1dbdb2c828e3f522ee958097ace",
+    "20260916010000_v17_client_temporary_portal": "daaae1a2a3b5271c047bf1f0aaa089d7faa7231f1ee20286e5097e1ea1659a8b",
+    "20261030010000_v17_user_identity_enrollment": "328529a4c68c8203d279c148c33bb70562c1b9fb6024b0d9f09c390976d3ca50",
+    "20261031010000_v17_fleet_driver_authority": "3a6db22d52441aa1614e13c0bd619ef4bba84230f9af91a3c794f31496d2bd14",
+    "20261101010000_v17_warehouse_configuration": "4fd765d2090163512be0f58d6eda3be59ad9b35fbfaf1e7b11a679f194d080d5",
+    "20261101020000_v17_warehouse_sheet": "8acd3ee3669de51ad9064e3a97927257606035ea4fef1d64e481f96884244de3",
+    "20261102010000_v17_warehouse_routes": "12e651c831b5e761a59ce5381258b2b538d853367c2fee834587f0fa3d7175a1"
+  },
+  "catalog": {
+    "count": 10829,
+    "sha256": "4e9dab05da616c18b0cddcf9d8a0e0bedb4c5532d9f3cb44006cf7c3a8c89a60",
+    "categories": {
+      "check": {
+        "count": 426,
+        "sha256": "bd464bc7559fc1db9d0f539048c306ca6c91341c2d87b2813ff8054329c185cb"
+      },
+      "column": {
+        "count": 3860,
+        "sha256": "dd416b537fa34d018cdc65300baa2c6c19b532603d4fcef2912b21a3d4f4a122"
+      },
+      "constraint": {
+        "count": 3104,
+        "sha256": "14aff416a17959c4609a97763ced9f1488b6ebe47275a839ec79ab855ad84cfa"
+      },
+      "enum": {
+        "count": 1110,
+        "sha256": "5ebe8e1f975cb016ec35109a07d6271f0e71a204c52da9a6452e77819597948d"
+      },
+      "foreign_key": {
+        "count": 683,
+        "sha256": "bb9c069961106d1499edfbb2086f59fe6f0651bd7f282a6614ad51e105ceb80c"
+      },
+      "function": {
+        "count": 305,
+        "sha256": "aca57d2646fc53b4cf3d422ecf1796fc05746d62d4aeeff6165a7ca6797cc554"
+      },
+      "index": {
+        "count": 1151,
+        "sha256": "054cd5824aec06cb35ca6441ff56dd76c50ea8fe1d11f46f43c716516fc78ef8"
+      },
+      "trigger": {
+        "count": 190,
+        "sha256": "df09a0465410f21de390211d7c6b2db5ae1f363dc0cf1127d9921b5457dc907b"
+      }
+    }
+  },
+  "previousCatalog": {
+    "count": 10827,
+    "sha256": "c9ec38f5e35c159bc23dfaa3a6a43aecdac90aeb1bc53183bdceaf73ba72c56c",
+    "categories": {
+      "check": {
+        "count": 425,
+        "sha256": "536d4f4a45d2653fcdd777f00b852e1f57a9efa51c74db7571d709f4d5c73ddc"
+      },
+      "column": {
+        "count": 3859,
+        "sha256": "1166d67744275535be90d9c4636d62fe543875deb2a9b8d7f9b7af29182c6f9e"
+      },
+      "constraint": {
+        "count": 3104,
+        "sha256": "14aff416a17959c4609a97763ced9f1488b6ebe47275a839ec79ab855ad84cfa"
+      },
+      "enum": {
+        "count": 1110,
+        "sha256": "5ebe8e1f975cb016ec35109a07d6271f0e71a204c52da9a6452e77819597948d"
+      },
+      "foreign_key": {
+        "count": 683,
+        "sha256": "bb9c069961106d1499edfbb2086f59fe6f0651bd7f282a6614ad51e105ceb80c"
+      },
+      "function": {
+        "count": 305,
+        "sha256": "e79e404414fc47ff700f2c65e23fbc5a1e853aa88c2c5f081d7477715cfc5464"
+      },
+      "index": {
+        "count": 1151,
+        "sha256": "054cd5824aec06cb35ca6441ff56dd76c50ea8fe1d11f46f43c716516fc78ef8"
+      },
+      "trigger": {
+        "count": 190,
+        "sha256": "df09a0465410f21de390211d7c6b2db5ae1f363dc0cf1127d9921b5457dc907b"
+      }
+    }
+  },
+  "preservedCatalog": {
+    "count": 10826,
+    "sha256": "9f6f6594e1f419877f72ff2446f40e05d3030bf52d683ed45b3d5a738b42c4a2",
+    "categories": {
+      "check": {
+        "count": 425,
+        "sha256": "536d4f4a45d2653fcdd777f00b852e1f57a9efa51c74db7571d709f4d5c73ddc"
+      },
+      "column": {
+        "count": 3859,
+        "sha256": "1166d67744275535be90d9c4636d62fe543875deb2a9b8d7f9b7af29182c6f9e"
+      },
+      "constraint": {
+        "count": 3104,
+        "sha256": "14aff416a17959c4609a97763ced9f1488b6ebe47275a839ec79ab855ad84cfa"
+      },
+      "enum": {
+        "count": 1110,
+        "sha256": "5ebe8e1f975cb016ec35109a07d6271f0e71a204c52da9a6452e77819597948d"
+      },
+      "foreign_key": {
+        "count": 683,
+        "sha256": "bb9c069961106d1499edfbb2086f59fe6f0651bd7f282a6614ad51e105ceb80c"
+      },
+      "function": {
+        "count": 304,
+        "sha256": "af578a5559e982f45383ca764f9f531765ca7076669665265d4a393c0bcb2efc"
+      },
+      "index": {
+        "count": 1151,
+        "sha256": "054cd5824aec06cb35ca6441ff56dd76c50ea8fe1d11f46f43c716516fc78ef8"
+      },
+      "trigger": {
+        "count": 190,
+        "sha256": "df09a0465410f21de390211d7c6b2db5ae1f363dc0cf1127d9921b5457dc907b"
+      }
+    }
+  },
+  "extensions": [
+    {
+      "extension_name": "btree_gist",
+      "version": "1.8",
+      "schema_name": "osi"
+    }
+  ],
+  "extensionMembers": {
+    "count": 212,
+    "sha256": "5768fa15ad9dc973614d90b162eeb87fbef323dc2b76e019e0f07a454623d5cc"
+  },
+  "sqlOnlyCounts": {
+    "20260827020000_v17_admin_identity_invitation": {
+      "check": 6,
+      "function": 1,
+      "special_index": 1,
+      "trigger": 1
+    },
+    "20260914010000_v17_personnel_operational_policies": {
+      "check": 37,
+      "function": 4,
+      "special_index": 4,
+      "trigger": 12
+    },
+    "20260801003000_approval_requests": {
+      "check": 11,
+      "function": 1,
+      "special_index": 1,
+      "trigger": 1
+    },
+    "20260907010000_v17_tools_equipment": {
+      "check": 27,
+      "function": 217,
+      "special_index": 2,
+      "trigger": 17
+    },
+    "20260801011000_mt01b_auth_sessions": {
+      "check": 6,
+      "special_index": 1
+    },
+    "20260915010000_v17_service_packages_resources": {
+      "check": 18,
+      "function": 4,
+      "special_index": 2,
+      "trigger": 9
+    },
+    "20260831010000_v17_crm_icp_foundation": {
+      "check": 11,
+      "function": 7,
+      "special_index": 4,
+      "trigger": 6
+    },
+    "20260916010000_v17_client_temporary_portal": {
+      "check": 8,
+      "function": 3,
+      "trigger": 8
+    },
+    "20260912010000_v17_commercial_relationships": {
+      "check": 46,
+      "function": 2,
+      "special_index": 1,
+      "trigger": 15
+    },
+    "20260801002000_commercial_audit_log": {
+      "check": 2,
+      "function": 1,
+      "special_index": 1,
+      "trigger": 1
+    },
+    "20260913010000_v17_communications_templates": {
+      "check": 10,
+      "function": 4,
+      "special_index": 1,
+      "trigger": 5
+    },
+    "20260909010000_v17_costing": {
+      "check": 6,
+      "function": 4,
+      "special_index": 2,
+      "trigger": 12
+    },
+    "20260801010000_crate_settings": {
+      "check": 13,
+      "function": 3,
+      "special_index": 2,
+      "trigger": 4
+    },
+    "20260801013000_mt01c1b1_provisioning_persistence": {
+      "check": 21,
+      "function": 3,
+      "special_index": 1,
+      "trigger": 3
+    },
+    "20260801012000_mt01c1a_employee_profiles": {
+      "check": 8,
+      "function": 1,
+      "trigger": 1
+    },
+    "20260801000000_production_baseline": {
+      "check": 5,
+      "function": 1,
+      "special_index": 2,
+      "trigger": 1
+    },
+    "20261031010000_v17_fleet_driver_authority": {
+      "check": 10,
+      "function": 2,
+      "special_index": 2,
+      "trigger": 2
+    },
+    "20260801005000_logistic_override_approvals": {
+      "check": 2,
+      "function": 1,
+      "trigger": 1
+    },
+    "20260908010000_v17_logistics_engine": {
+      "check": 6,
+      "function": 4,
+      "special_index": 1,
+      "trigger": 11
+    },
+    "20260801007000_logistics_geography_zone_rules": {
+      "check": 21,
+      "function": 5,
+      "special_index": 7,
+      "trigger": 5
+    },
+    "20260906010000_v17_materials_inventory": {
+      "check": 16,
+      "function": 5,
+      "special_index": 4,
+      "trigger": 17
+    },
+    "20260801020000_v17_pipeline_case_client_authority": {
+      "check": 1
+    },
+    "20260801014000_mt01c2b1_commercial_tenant_foundation": {
+      "check": 1,
+      "function": 1,
+      "trigger": 1
+    },
+    "20260801015000_crm01b_pipeline_mutation_authority": {
+      "check": 13,
+      "function": 3,
+      "trigger": 3
+    },
+    "20260801009000_logistics_rate_metadata": {
+      "check": 4,
+      "function": 2,
+      "trigger": 2
+    },
+    "20260801008000_vehicle_engine_settings": {
+      "check": 14,
+      "function": 2,
+      "special_index": 5,
+      "trigger": 2
+    },
+    "20260904010000_v17_services_tenant_first": {
+      "check": 15,
+      "function": 4,
+      "special_index": 2,
+      "trigger": 6
+    },
+    "20260801006000_quote_change_orders": {
+      "check": 19,
+      "function": 2,
+      "special_index": 3,
+      "trigger": 3
+    },
+    "20260910010000_v17_quote": {
+      "check": 5,
+      "function": 3,
+      "special_index": 1,
+      "trigger": 8
+    },
+    "20260801004000_risk_engine_rules_evaluations": {
+      "check": 11,
+      "function": 2,
+      "special_index": 2,
+      "trigger": 5
+    },
+    "20260905010000_v17_survey_foundation": {
+      "check": 10,
+      "function": 4,
+      "special_index": 2,
+      "trigger": 15
+    },
+    "20260911010000_v17_scheduling_desktop_convergence": {
+      "check": 14,
+      "function": 2,
+      "special_index": 2,
+      "trigger": 5
+    },
+    "20260801001000_mt01a_tenant_memberships": {
+      "check": 3,
+      "special_index": 1
+    },
+    "20261030010000_v17_user_identity_enrollment": {
+      "check": 16,
+      "special_index": 2
+    },
+    "20261101010000_v17_warehouse_configuration": {
+      "check": 5,
+      "function": 2,
+      "trigger": 3
+    },
+    "20261101020000_v17_warehouse_sheet": {
+      "check": 4,
+      "function": 1,
+      "trigger": 2
+    },
+    "20261102010000_v17_warehouse_routes": {
+      "check": 1,
+      "function": 1
+    },
+    "20260824010000_v17_client_public_ref_case_mutations": {
+      "function": 1,
+      "trigger": 1
+    },
+    "20260821010000_v17_pipeline_case_public_ref": {
+      "function": 1,
+      "trigger": 1
+    },
+    "20260827010000_v17_tenant_membership_public_ref": {
+      "function": 1,
+      "trigger": 1
+    }
+  },
+  "sqlOnlyScope": "ALL_OBJECTS_INCLUDING_FROZEN_EXTENSION_MEMBERS",
+  "delta": {
+    "addedRows": [
+      {
+        "kind": "check",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_addresses",
+        "object_name": "warehouse_location_addresses_zone_code_check",
+        "definition": "CHECK (zone_code IS NULL OR zone_code::text ~ '^[A-Z0-9]{3}$'::text AND zone_code::text ~ '[A-Z]'::text AND zone_number = 0)"
+      },
+      {
+        "kind": "column",
+        "schema_name": "osi",
+        "table_name": "warehouse_location_addresses",
+        "object_name": "zone_code",
+        "definition": "12|character varying(3)|f|||"
+      }
+    ],
+    "addedCatalog": {
+      "count": 2,
+      "sha256": "b0b706c5f31cabe18da1001e74363cfdf156672ae0e8b4b95e4e3fa951faec57",
+      "categories": {
+        "check": {
+          "count": 1,
+          "sha256": "45d8d40e29d8df9c6530427f04783b8c4f330b0eb3a1c3926a36bed1ca035342"
+        },
+        "column": {
+          "count": 1,
+          "sha256": "e8735ea040739cf1761c1c9be1f27afd192bef8739a005cca08c4160bef062f7"
+        }
+      }
+    },
+    "replacedBeforeRows": [
+      {
+        "kind": "function",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "v17_warehouse_location_address_guard()",
+        "definition": "CREATE OR REPLACE FUNCTION osi.v17_warehouse_location_address_guard()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nDECLARE\n  location_row RECORD;\n  parent_row RECORD;\n  parent_address RECORD;\n  warehouse_number INTEGER;\n  location_rank INTEGER;\n  parent_rank INTEGER;\n  expected_label TEXT;\nBEGIN\n  IF TG_OP <> 'INSERT' THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_IMMUTABLE' USING ERRCODE = '55000';\n  END IF;\n  SELECT * INTO location_row FROM \"osi\".\"material_locations\"\n    WHERE \"tenant_id\" = NEW.\"tenant_id\" AND \"id\" = NEW.\"location_id\";\n  SELECT p.\"warehouse_number\" INTO warehouse_number FROM \"osi\".\"warehouse_sheet_profiles\" p\n    WHERE p.\"tenant_id\" = NEW.\"tenant_id\" AND p.\"warehouse_id\" = NEW.\"warehouse_id\";\n  IF location_row.\"id\" IS NULL OR location_row.\"warehouse_id\" <> NEW.\"warehouse_id\" OR warehouse_number IS NULL THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_SCOPE_INVALID' USING ERRCODE = '23514';\n  END IF;\n  expected_label := 'ALM-' || LPAD(warehouse_number::text, 2, '0') || '-'\n    || LPAD(NEW.\"zone_number\"::text, 3, '0') || '-' || LPAD(NEW.\"aisle_number\"::text, 2, '0') || '-'\n    || COALESCE(NEW.\"rack_code\", '00') || '-' || NEW.\"level_number\"::text || '-' || NEW.\"position_number\"::text;\n  IF NEW.\"label\" <> expected_label THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_LABEL_INVALID' USING ERRCODE = '23514';\n  END IF;\n  location_rank := CASE location_row.\"kind\"::text WHEN 'WAREHOUSE_ROOT' THEN 0 WHEN 'ZONE' THEN 1 WHEN 'AISLE' THEN 2 WHEN 'RACK' THEN 3 WHEN 'LEVEL' THEN 4 WHEN 'BIN' THEN 5 ELSE -1 END;\n  IF location_rank = 0 THEN\n    IF location_row.\"parent_location_id\" IS NOT NULL OR NEW.\"zone_number\" <> 0 OR NEW.\"aisle_number\" <> 0\n       OR NEW.\"rack_code\" IS NOT NULL OR NEW.\"level_number\" <> 0 OR NEW.\"position_number\" <> 0 THEN\n      RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_HIERARCHY_INVALID' USING ERRCODE = '23514';\n    END IF;\n    RETURN NEW;\n  END IF;\n  IF location_rank < 1 OR location_row.\"parent_location_id\" IS NULL THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_HIERARCHY_INVALID' USING ERRCODE = '23514';\n  END IF;\n  SELECT * INTO parent_row FROM \"osi\".\"material_locations\"\n    WHERE \"tenant_id\" = NEW.\"tenant_id\" AND \"id\" = location_row.\"parent_location_id\";\n  SELECT * INTO parent_address FROM \"osi\".\"warehouse_location_addresses\"\n    WHERE \"tenant_id\" = NEW.\"tenant_id\" AND \"location_id\" = location_row.\"parent_location_id\";\n  parent_rank := CASE parent_row.\"kind\"::text WHEN 'WAREHOUSE_ROOT' THEN 0 WHEN 'ZONE' THEN 1 WHEN 'AISLE' THEN 2 WHEN 'RACK' THEN 3 WHEN 'LEVEL' THEN 4 WHEN 'BIN' THEN 5 ELSE -1 END;\n  IF parent_row.\"warehouse_id\" IS DISTINCT FROM NEW.\"warehouse_id\" OR parent_address.\"id\" IS NULL\n     OR parent_rank < 0 OR parent_rank >= location_rank THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_HIERARCHY_INVALID' USING ERRCODE = '23514';\n  END IF;\n  IF (location_rank = 1 AND NEW.\"zone_number\" = 0) OR (location_rank > 1 AND NEW.\"zone_number\" <> parent_address.\"zone_number\")\n     OR (location_rank < 2 AND NEW.\"aisle_number\" <> 0) OR (location_rank = 2 AND NEW.\"aisle_number\" = 0) OR (location_rank > 2 AND NEW.\"aisle_number\" <> parent_address.\"aisle_number\")\n     OR (location_rank < 3 AND NEW.\"rack_code\" IS NOT NULL) OR (location_rank = 3 AND NEW.\"rack_code\" IS NULL) OR (location_rank > 3 AND NEW.\"rack_code\" IS DISTINCT FROM parent_address.\"rack_code\")\n     OR (location_rank < 4 AND NEW.\"level_number\" <> 0) OR (location_rank = 4 AND (NEW.\"level_number\" = 0 OR NEW.\"rack_code\" IS NULL)) OR (location_rank > 4 AND NEW.\"level_number\" <> parent_address.\"level_number\")\n     OR (location_rank < 5 AND NEW.\"position_number\" <> 0) OR (location_rank = 5 AND NEW.\"position_number\" = 0) THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_SEGMENTS_INVALID' USING ERRCODE = '23514';\n  END IF;\n  RETURN NEW;\nEND;\n$function$\n"
+      }
+    ],
+    "replacedBeforeCatalog": {
+      "count": 1,
+      "sha256": "be54fb37477825aa0d721280f2351ba35d7ae9e20ecfa2cef7ba5cc6da6aec5b",
+      "categories": {
+        "function": {
+          "count": 1,
+          "sha256": "be54fb37477825aa0d721280f2351ba35d7ae9e20ecfa2cef7ba5cc6da6aec5b"
+        }
+      }
+    },
+    "replacedAfterRows": [
+      {
+        "kind": "function",
+        "schema_name": "osi",
+        "table_name": "",
+        "object_name": "v17_warehouse_location_address_guard()",
+        "definition": "CREATE OR REPLACE FUNCTION osi.v17_warehouse_location_address_guard()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\nDECLARE\n  location_row RECORD;\n  parent_row RECORD;\n  parent_address RECORD;\n  warehouse_number INTEGER;\n  location_rank INTEGER;\n  parent_rank INTEGER;\n  expected_label TEXT;\nBEGIN\n  IF TG_OP <> 'INSERT' THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_IMMUTABLE' USING ERRCODE = '55000';\n  END IF;\n  SELECT * INTO location_row FROM \"osi\".\"material_locations\"\n    WHERE \"tenant_id\" = NEW.\"tenant_id\" AND \"id\" = NEW.\"location_id\";\n  SELECT p.\"warehouse_number\" INTO warehouse_number FROM \"osi\".\"warehouse_sheet_profiles\" p\n    WHERE p.\"tenant_id\" = NEW.\"tenant_id\" AND p.\"warehouse_id\" = NEW.\"warehouse_id\";\n  IF location_row.\"id\" IS NULL OR location_row.\"warehouse_id\" <> NEW.\"warehouse_id\" OR warehouse_number IS NULL THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_SCOPE_INVALID' USING ERRCODE = '23514';\n  END IF;\n  expected_label := 'ALM-' || LPAD(warehouse_number::text, 2, '0') || '-'\n    || COALESCE(NEW.\"zone_code\", LPAD(NEW.\"zone_number\"::text, 3, '0')) || '-' || LPAD(NEW.\"aisle_number\"::text, 2, '0') || '-'\n    || COALESCE(NEW.\"rack_code\", '00') || '-' || NEW.\"level_number\"::text || '-' || NEW.\"position_number\"::text;\n  IF NEW.\"label\" <> expected_label THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_LABEL_INVALID' USING ERRCODE = '23514';\n  END IF;\n  location_rank := CASE location_row.\"kind\"::text WHEN 'WAREHOUSE_ROOT' THEN 0 WHEN 'ZONE' THEN 1 WHEN 'AISLE' THEN 2 WHEN 'RACK' THEN 3 WHEN 'LEVEL' THEN 4 WHEN 'BIN' THEN 5 ELSE -1 END;\n  IF location_rank = 0 THEN\n    IF location_row.\"parent_location_id\" IS NOT NULL OR NEW.\"zone_number\" <> 0 OR NEW.\"zone_code\" IS NOT NULL OR NEW.\"aisle_number\" <> 0\n       OR NEW.\"rack_code\" IS NOT NULL OR NEW.\"level_number\" <> 0 OR NEW.\"position_number\" <> 0 THEN\n      RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_HIERARCHY_INVALID' USING ERRCODE = '23514';\n    END IF;\n    RETURN NEW;\n  END IF;\n  IF location_rank < 1 OR location_row.\"parent_location_id\" IS NULL THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_HIERARCHY_INVALID' USING ERRCODE = '23514';\n  END IF;\n  SELECT * INTO parent_row FROM \"osi\".\"material_locations\"\n    WHERE \"tenant_id\" = NEW.\"tenant_id\" AND \"id\" = location_row.\"parent_location_id\";\n  SELECT * INTO parent_address FROM \"osi\".\"warehouse_location_addresses\"\n    WHERE \"tenant_id\" = NEW.\"tenant_id\" AND \"location_id\" = location_row.\"parent_location_id\";\n  parent_rank := CASE parent_row.\"kind\"::text WHEN 'WAREHOUSE_ROOT' THEN 0 WHEN 'ZONE' THEN 1 WHEN 'AISLE' THEN 2 WHEN 'RACK' THEN 3 WHEN 'LEVEL' THEN 4 WHEN 'BIN' THEN 5 ELSE -1 END;\n  IF parent_row.\"warehouse_id\" IS DISTINCT FROM NEW.\"warehouse_id\" OR parent_address.\"id\" IS NULL\n     OR parent_rank < 0 OR parent_rank >= location_rank THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_HIERARCHY_INVALID' USING ERRCODE = '23514';\n  END IF;\n  IF (location_rank = 1 AND NEW.\"zone_number\" = 0 AND NEW.\"zone_code\" IS NULL)\n     OR (location_rank > 1 AND (NEW.\"zone_number\" <> parent_address.\"zone_number\" OR NEW.\"zone_code\" IS DISTINCT FROM parent_address.\"zone_code\"))\n     OR (location_rank < 2 AND NEW.\"aisle_number\" <> 0) OR (location_rank = 2 AND NEW.\"aisle_number\" = 0) OR (location_rank > 2 AND NEW.\"aisle_number\" <> parent_address.\"aisle_number\")\n     OR (location_rank < 3 AND NEW.\"rack_code\" IS NOT NULL) OR (location_rank = 3 AND NEW.\"rack_code\" IS NULL) OR (location_rank > 3 AND NEW.\"rack_code\" IS DISTINCT FROM parent_address.\"rack_code\")\n     OR (location_rank < 4 AND NEW.\"level_number\" <> 0) OR (location_rank = 4 AND (NEW.\"level_number\" = 0 OR NEW.\"rack_code\" IS NULL)) OR (location_rank > 4 AND NEW.\"level_number\" <> parent_address.\"level_number\")\n     OR (location_rank < 5 AND NEW.\"position_number\" <> 0) OR (location_rank = 5 AND NEW.\"position_number\" = 0) THEN\n    RAISE EXCEPTION 'V17_WAREHOUSE_ADDRESS_SEGMENTS_INVALID' USING ERRCODE = '23514';\n  END IF;\n  RETURN NEW;\nEND;\n$function$\n"
+      }
+    ],
+    "replacedAfterCatalog": {
+      "count": 1,
+      "sha256": "11fe30205d49e8b367193de1212704f037fcde1c055b0a70bcd433c63e20582b",
+      "categories": {
+        "function": {
+          "count": 1,
+          "sha256": "11fe30205d49e8b367193de1212704f037fcde1c055b0a70bcd433c63e20582b"
+        }
+      }
+    }
+  },
+  "dataPreservation": {
+    "tables": 259,
+    "rows": 2732,
+    "beforeSha256": "cf04ac3823d9f199c0bfe42ec2830e1d59e3165692f4e0d73423ca731c8c9ad6",
+    "afterSha256": "cf04ac3823d9f199c0bfe42ec2830e1d59e3165692f4e0d73423ca731c8c9ad6",
+    "existingAddresses": 20,
+    "zoneCodeNonNullRows": 0
+  },
+  "verification": {
+    "previousObjectsUnchangedExceptReviewedReplacement": true,
+    "previousCatalogReconstructed": true,
+    "previousHistoryUnchanged": true,
+    "previousExtensionUnchanged": true,
+    "previousDataUnchanged": true,
+    "existingAddressZoneCodesRemainNull": true
+  }
+}

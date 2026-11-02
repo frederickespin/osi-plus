@@ -1,4 +1,5 @@
 import { canonicalPayloadHash } from "./materialsInventoryContract.js";
+import { normalizeWarehouseAddressIdentifier } from "../../shared/warehouseSheetAddress.js";
 
 export const WAREHOUSE_SHEET_OPERATION = "WAREHOUSE_SHEET_SAVE";
 export const WAREHOUSE_SHEET_MAX_ROWS = 200;
@@ -29,9 +30,14 @@ function name(value) {
 }
 function row(value) {
   if (value?.action === "CREATE") {
-    exact(value, ["action", "rowId", "parentRowId", "parentLocationRef", "kind", "name", "areaUseRef"]);
+    const hasIdentifier = Object.hasOwn(value, "identifier");
+    exact(value, ["action", "rowId", "parentRowId", "parentLocationRef", "kind", "name", "areaUseRef", ...(hasIdentifier ? ["identifier"] : [])]);
     if (!WAREHOUSE_SHEET_KINDS.includes(value.kind) || value.parentRowId !== null && value.parentLocationRef !== null) invalid();
-    return Object.freeze({ action: "CREATE", rowId: reference(value.rowId), parentRowId: reference(value.parentRowId, true), parentLocationRef: reference(value.parentLocationRef, true), kind: value.kind, name: name(value.name), areaUseRef: reference(value.areaUseRef, true) });
+    if (hasIdentifier) {
+      try { if (normalizeWarehouseAddressIdentifier(value.kind, value.identifier) !== value.identifier) invalid(); }
+      catch { invalid(); }
+    }
+    return Object.freeze({ action: "CREATE", rowId: reference(value.rowId), parentRowId: reference(value.parentRowId, true), parentLocationRef: reference(value.parentLocationRef, true), kind: value.kind, name: name(value.name), areaUseRef: reference(value.areaUseRef, true), ...(hasIdentifier ? { identifier: value.identifier } : {}) });
   }
   if (value?.action === "UPDATE") {
     exact(value, ["action", "rowId", "locationRef", "expectedVersion", "expectedConfigurationVersion", "name", "areaUseRef"]);

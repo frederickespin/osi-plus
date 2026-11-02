@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createWarehouseSheetHandler } from "../api/_lib/warehouseSheetHttp.js";
 import { resolveWarehouseSheetApiMode } from "../api/_lib/warehouseSheetMode.js";
+import { resolveWarehouseRoutesApiMode } from "../api/_lib/warehouseRoutesMode.js";
 
 const env = { MATERIALS_INVENTORY_API_MODE: "LOCAL_ONLY", WAREHOUSE_CONFIGURATION_API_MODE: "LOCAL_ONLY", WAREHOUSE_SHEET_API_MODE: "LOCAL_ONLY" };
 const reader = { effectivePermissions: ["inventory:stock:view"], deniedPermissions: [] };
@@ -54,4 +55,32 @@ test("Preview is exact-branch/batch only; Production and any mismatched prerequi
   const preview = { VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/v17-consolidated-preview", WAREHOUSE_CONFIGURATION_API_MODE: "PREVIEW_REHEARSAL", WAREHOUSE_CONFIGURATION_API_BATCH: "V17-WAREHOUSE-CONFIGURATION-20B-PREVIEW", WAREHOUSE_SHEET_API_MODE: "PREVIEW_REHEARSAL", WAREHOUSE_SHEET_API_BATCH: "V17-WAREHOUSE-SHEET-20C-PREVIEW", MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" };
   assert.equal(resolveWarehouseSheetApiMode(preview, request()), "PREVIEW_REHEARSAL");
   for (const patch of [{ VERCEL_ENV: "production" }, { VERCEL_GIT_COMMIT_REF: "main" }, { WAREHOUSE_SHEET_API_BATCH: "wrong" }, { MT01B_TENANT_SWITCH_ENABLED: "true" }, { WAREHOUSE_CONFIGURATION_API_MODE: "DISABLED" }]) assert.throws(() => resolveWarehouseSheetApiMode({ ...preview, ...patch }, request()));
+});
+
+test("routes OFF retains the legacy endpoint and passes a false projection option", async () => {
+  let executed = 0;
+  const options = { execute: ({ routesEnabled }) => { executed++; assert.equal(routesEnabled, false); return {}; } };
+  assert.equal((await invoke(options)).statusCode, 200);
+  assert.equal((await invoke(options, { method: "POST", body: { rows: [{ action: "CREATE" }] } })).statusCode, 200);
+  const blocked = await invoke(options, { method: "POST", body: { rows: [{ action: "CREATE", identifier: "TRD" }] } });
+  assert.equal(blocked.statusCode, 409); assert.equal(blocked.body.error, "WAREHOUSE_ROUTES_DISABLED"); assert.equal(executed, 2);
+});
+
+test("routes LOCAL_ONLY forwards enabled context; malformed mode stops before authority lookup", async () => {
+  assert.equal((await invoke({ env: { ...env, WAREHOUSE_ROUTES_API_MODE: "LOCAL_ONLY" }, execute: ({ routesEnabled }) => { assert.equal(routesEnabled, true); return {}; } }, { method: "POST", body: { rows: [{ identifier: "TRD" }] } })).statusCode, 200);
+  let calls = 0;
+  for (const method of ["GET", "HEAD", "POST", "OPTIONS"]) {
+    const response = await invoke({ env: { ...env, WAREHOUSE_ROUTES_API_MODE: "UNREVIEWED" }, resolveContext: () => { calls++; }, execute: () => { calls++; } }, { method });
+    assert.equal(response.statusCode, 503); if (method !== "HEAD") assert.equal(response.body.error, "WAREHOUSE_ROUTES_CONFIGURATION_INVALID");
+  }
+  assert.equal(calls, 0);
+});
+
+test("routes Preview requires its own exact batch and the enabled20C prerequisite", () => {
+  const preview = { VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/v17-consolidated-preview", WAREHOUSE_CONFIGURATION_API_MODE: "PREVIEW_REHEARSAL", WAREHOUSE_CONFIGURATION_API_BATCH: "V17-WAREHOUSE-CONFIGURATION-20B-PREVIEW", WAREHOUSE_SHEET_API_MODE: "PREVIEW_REHEARSAL", WAREHOUSE_SHEET_API_BATCH: "V17-WAREHOUSE-SHEET-20C-PREVIEW", WAREHOUSE_ROUTES_API_MODE: "PREVIEW_REHEARSAL", WAREHOUSE_ROUTES_API_BATCH: "V17-WAREHOUSE-ROUTES-20D-PREVIEW", MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" };
+  assert.equal(resolveWarehouseRoutesApiMode({}, request()), "DISABLED");
+  assert.equal(resolveWarehouseRoutesApiMode(preview, request()), "PREVIEW_REHEARSAL");
+  for (const patch of [{ VERCEL_ENV: "production" }, { VERCEL_GIT_COMMIT_REF: "main" }, { WAREHOUSE_ROUTES_API_BATCH: "wrong" }, { WAREHOUSE_SHEET_API_BATCH: "wrong" }, { WAREHOUSE_SHEET_API_MODE: "DISABLED" }, { WAREHOUSE_CONFIGURATION_API_MODE: "DISABLED" }, { MT01B_TENANT_SWITCH_ENABLED: "true" }]) assert.throws(() => resolveWarehouseRoutesApiMode({ ...preview, ...patch }, request()));
+  assert.throws(() => resolveWarehouseRoutesApiMode({ ...env, WAREHOUSE_ROUTES_API_MODE: "LOCAL_ONLY", VERCEL: "1" }, request()));
+  assert.throws(() => resolveWarehouseRoutesApiMode({ ...env, WAREHOUSE_ROUTES_API_MODE: "LOCAL_ONLY" }, request({ socket: { remoteAddress: "203.0.113.1" } })));
 });

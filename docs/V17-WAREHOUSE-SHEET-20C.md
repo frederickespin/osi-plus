@@ -1,5 +1,7 @@
 # Almacenes 20C: hoja de creación y organización
 
+> Documento histórico de20C. La aclaración posterior del usuario y el recorrido por identificadores alfanuméricos se implementan en [V17-WAREHOUSE-ROUTES-20D.md](V17-WAREHOUSE-ROUTES-20D.md). Allí se detallan los formatos y los niveles omitidos por recorrido.
+
 ## Solicitud y referencia
 
 Este incremento responde a la solicitud de crear y editar un almacén en una hoja dentro de la página, con usos, encargado, pasillos, estanterías y niveles. Continúa la configuración 20B y conserva las preferencias de campos compactos, códigos automáticos y números sin flechas, con selección del valor al entrar.

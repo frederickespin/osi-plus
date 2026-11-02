@@ -1,7 +1,7 @@
 import type { WarehouseLocationRow, WarehouseRow } from "@/materials-inventory/api";
 import type { WarehouseAreaPurpose, WarehouseAreaUse, WarehouseAvailabilityRule, WarehouseConfiguration, WarehouseLocationConfiguration, WarehouseOperationalStatus } from "./configurationTypes";
 import type { WarehouseManagerOptions, WarehouseSheet, WarehouseSheetChange, WarehouseSheetSaved } from "./sheetTypes";
-import { formatWarehouseAddress, type WarehouseAddressSegments } from "../../shared/warehouseSheetAddress.js";
+import { formatWarehouseAddress, warehouseAddressIdentifier, warehouseAddressSegmentsFromIdentifier, type WarehouseAddressSegments } from "../../shared/warehouseSheetAddress.js";
 
 export class WarehouseApiError extends Error {
   readonly code: string;
@@ -28,6 +28,7 @@ const RECEIPT_CHECKED_REJECTIONS = new Set([
   "WAREHOUSE_SHEET_USE_NOT_FOUND", "WAREHOUSE_SHEET_USE_INACTIVE", "WAREHOUSE_SHEET_VERSION_CONFLICT", "WAREHOUSE_SHEET_HIERARCHY_INVALID",
   "WAREHOUSE_SHEET_ROOT_ROW_INVALID", "WAREHOUSE_SHEET_RESOURCE_INACTIVE", "WAREHOUSE_SHEET_ADDRESS_CAPACITY_EXCEEDED",
   "WAREHOUSE_SHEET_CODE_CONFLICT", "WAREHOUSE_SHEET_WRITE_CONFLICT",
+  "WAREHOUSE_ROUTES_REUSE_CONFLICT", "WAREHOUSE_ROUTES_DUPLICATE_TARGET", "WAREHOUSE_ROUTES_IDENTIFIER_CONFLICT",
 ]);
 export function isWarehouseRejectionConfirmed(error: unknown) {
   return error instanceof WarehouseApiError && RECEIPT_CHECKED_REJECTIONS.has(error.code);
@@ -171,6 +172,19 @@ export class WarehouseApi {
         returned.add(row.rowId);
         returnedLocations.add(row.locationRef);
       }
+      const mappings = new Map(saved.rowResults.map((row) => [row.rowId as string, row.locationRef as string]));
+      for (const expected of change.rows) {
+        if (expected.action !== "CREATE" || expected.identifier === undefined) continue;
+        const location = saved.warehouse.locations.find((row) => row.locationRef === mappings.get(expected.rowId));
+        const parentRef = expected.parentRowId ? mappings.get(expected.parentRowId) : expected.parentLocationRef ?? saved.warehouse.rootLocationRef;
+        const parent = saved.warehouse.locations.find((row) => row.locationRef === parentRef);
+        if (!location?.address || !parent?.address || location.kind !== expected.kind || location.parentLocationRef !== parentRef
+          || location.name !== expected.name || location.areaUseRef !== expected.areaUseRef) throw new WarehouseApiError("MATERIALS_RESPONSE_INVALID", 503);
+        try {
+          if (warehouseAddressIdentifier(expected.kind, location.address) !== expected.identifier
+            || formatWarehouseAddress(warehouseAddressSegmentsFromIdentifier(parent.address, expected.kind, expected.identifier)) !== location.address.label) throw new Error("MISMATCH");
+        } catch { throw new WarehouseApiError("MATERIALS_RESPONSE_INVALID", 503); }
+      }
     }
     return saved as WarehouseSaved;
   }
@@ -221,10 +235,15 @@ export function warehouseErrorText(error: unknown): string {
     WAREHOUSE_SHEET_HIERARCHY_INVALID: "Revise la ubicación superior y el tipo de cada fila. Los niveles necesitan una estantería y las posiciones son terminales.",
     WAREHOUSE_SHEET_ROOT_ROW_INVALID: "Cambie los datos del almacén en la cabecera de la hoja, no como una fila interior.",
     WAREHOUSE_SHEET_RESOURCE_INACTIVE: "El almacén o una ubicación superior está inactiva. Actualice el listado antes de agregar ubicaciones.",
-    WAREHOUSE_SHEET_ADDRESS_CAPACITY_EXCEEDED: "Se agotó el rango de etiquetas disponible: 99 almacenes, 999 zonas, 99 pasillos, 676 estanterías, 9 niveles o 4 posiciones por ubicación superior. Reduzca las filas o elija otra ubicación superior.",
+    WAREHOUSE_SHEET_ADDRESS_CAPACITY_EXCEEDED: "Se agotó el rango de etiquetas disponible: 99 almacenes, 999 zonas numéricas, 99 pasillos, 676 estanterías, 9 niveles o 4 posiciones por ubicación superior. Reduzca las filas o elija otra ubicación superior.",
     WAREHOUSE_SHEET_CODE_CONFLICT: "No se pudo asignar un código único a la hoja. Actualice el listado antes de volver a guardar.",
     WAREHOUSE_SHEET_DISABLED: "La hoja de almacenes todavía no está habilitada en este entorno.",
     WAREHOUSE_SHEET_CONFIGURATION_INVALID: "La hoja de almacenes no está disponible en este entorno.",
+    WAREHOUSE_ROUTES_REUSE_CONFLICT: "El recorrido coincide con una ubicación que tiene otro nombre o uso. Actualice el listado y revise la ubicación existente antes de continuar.",
+    WAREHOUSE_ROUTES_DUPLICATE_TARGET: "Dos filas apuntan a la misma ubicación. Actualice el listado y agregue cada ubicación una sola vez.",
+    WAREHOUSE_ROUTES_IDENTIFIER_CONFLICT: "El identificador coincide con una estructura diferente. Actualice el listado y revise el recorrido.",
+    WAREHOUSE_ROUTES_DISABLED: "Los recorridos por identificadores no están habilitados en este entorno.",
+    WAREHOUSE_ROUTES_CONFIGURATION_INVALID: "Los recorridos por identificadores no están disponibles en este entorno.",
   };
   return messages[code] ?? "No se pudo confirmar la operación. Reintente cuando tenga conexión.";
 }

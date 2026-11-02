@@ -1,7 +1,7 @@
 import type { WarehouseLocationRow } from "@/materials-inventory/api";
 
 export type WarehouseSheetKind = "ZONE" | "AISLE" | "RACK" | "LEVEL" | "BIN";
-export type WarehouseAddress = Readonly<{ label: string; warehouseNumber: number; zoneNumber: number; aisleNumber: number; rackCode: string | null; levelNumber: number; positionNumber: number }>;
+export type WarehouseAddress = Readonly<{ label: string; warehouseNumber: number; zoneNumber: number; zoneCode?: string | null; aisleNumber: number; rackCode: string | null; levelNumber: number; positionNumber: number }>;
 export type WarehouseSheetLocation = WarehouseLocationRow & Readonly<{ configurationVersion: number; areaUseRef: string | null; address: WarehouseAddress | null }>;
 export type WarehouseSheet = Readonly<{
   warehouseRef: string; code: string; name: string; status: string; version: number; profileVersion: number;
@@ -10,7 +10,7 @@ export type WarehouseSheet = Readonly<{
   rootLocationRef: string | null; rootAreaUseRef: string | null; rootConfigurationVersion: number;
   locations: readonly WarehouseSheetLocation[];
 }>;
-export type WarehouseSheetCreateRow = Readonly<{ action: "CREATE"; rowId: string; parentRowId: string | null; parentLocationRef: string | null; kind: WarehouseSheetKind; name: string; areaUseRef: string | null }>;
+export type WarehouseSheetCreateRow = Readonly<{ action: "CREATE"; rowId: string; parentRowId: string | null; parentLocationRef: string | null; kind: WarehouseSheetKind; name: string; areaUseRef: string | null; identifier?: string }>;
 export type WarehouseSheetUpdateRow = Readonly<{ action: "UPDATE"; rowId: string; locationRef: string; expectedVersion: number; expectedConfigurationVersion: number; name: string; areaUseRef: string | null }>;
 export type WarehouseSheetRowChange = WarehouseSheetCreateRow | WarehouseSheetUpdateRow;
 export type WarehouseSheetChange = Readonly<{

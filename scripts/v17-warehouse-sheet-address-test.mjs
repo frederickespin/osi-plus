@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   WAREHOUSE_ADDRESS_LIMITS, allocateWarehouseAddressOrdinal, canPlaceWarehouseAddressKind,
-  formatWarehouseAddress, warehouseAddressOrdinal, warehouseAddressSegments, warehouseAddressToken,
+  formatWarehouseAddress, normalizeWarehouseAddressIdentifier, warehouseAddressIdentifier, warehouseAddressOrdinal, warehouseAddressSegments, warehouseAddressSegmentsFromIdentifier, warehouseAddressToken,
 } from "../shared/warehouseSheetAddress.js";
 
 const root = warehouseAddressSegments(null, "WAREHOUSE_ROOT", 3);
@@ -81,4 +81,43 @@ test("invalid persisted segments and corrupted allocation inputs fail explicitly
   for (const used of [null, {}, [0], [-1], [1.1], ["1"], [100]]) rejects(() => allocateWarehouseAddressOrdinal("AISLE", used));
   rejects(() => allocateWarehouseAddressOrdinal("OTHER", []));
   rejects(() => warehouseAddressSegments(root, "ZONE", NaN));
+});
+
+test("reference TRD route skips the aisle without allocating a zero-placeholder node", () => {
+  const warehouse = warehouseAddressSegments(null, "WAREHOUSE_ROOT", 1);
+  const zone = warehouseAddressSegmentsFromIdentifier(warehouse, "ZONE", "TRD");
+  const rack = warehouseAddressSegmentsFromIdentifier(zone, "RACK", "AA");
+  assert.equal(formatWarehouseAddress(rack), "ALM-01-TRD-00-AA-0-0");
+  assert.equal(rack.zoneNumber, 0); assert.equal(rack.zoneCode, "TRD");
+  assert.equal(warehouseAddressIdentifier("ZONE", rack), "TRD");
+  assert.equal(warehouseAddressIdentifier("AISLE", rack), "00");
+  assert.equal(warehouseAddressIdentifier("LEVEL", rack), "0");
+  assert.equal(warehouseAddressIdentifier("BIN", rack), "0");
+  assert.equal(formatWarehouseAddress(warehouseAddressSegments(rack, "BIN", 4)), "ALM-01-TRD-00-AA-0-4");
+  rejects(() => warehouseAddressSegments(zone, "ZONE", 1), "HIERARCHY_INVALID");
+  rejects(() => warehouseAddressSegmentsFromIdentifier(zone, "LEVEL", "1"), "HIERARCHY_INVALID");
+});
+
+test("individual identifiers normalize input while strict construction keeps widths and ranges", () => {
+  for (const [kind, raw, expected] of [["ZONE", " trd ", "TRD"], ["ZONE", "a01", "A01"], ["ZONE", "1", "001"], ["AISLE", "2", "02"], ["RACK", "az", "AZ"], ["LEVEL", "9", "9"], ["BIN", "4", "4"]]) {
+    assert.equal(normalizeWarehouseAddressIdentifier(kind, raw), expected);
+    if (raw !== expected) rejects(() => warehouseAddressSegmentsFromIdentifier(root, kind, raw));
+  }
+  for (const [kind, zero] of [["ZONE", "000"], ["AISLE", "00"], ["RACK", "00"], ["LEVEL", "0"], ["BIN", "0"]]) {
+    assert.equal(normalizeWarehouseAddressIdentifier(kind, "", { allowDisabled: true }), zero);
+    assert.equal(normalizeWarehouseAddressIdentifier(kind, zero, { allowDisabled: true }), zero);
+    rejects(() => normalizeWarehouseAddressIdentifier(kind, zero));
+    rejects(() => warehouseAddressSegmentsFromIdentifier(root, kind, zero));
+  }
+  for (const [kind, token] of [["ZONE", "A"], ["ZONE", "ABCD"], ["ZONE", "Á01"], ["ZONE", "A-1"], ["ZONE", "0001"], ["AISLE", "A1"], ["AISLE", "100"], ["RACK", "A1"], ["RACK", "AAA"], ["LEVEL", "10"], ["BIN", "5"]]) rejects(() => normalizeWarehouseAddressIdentifier(kind, token));
+});
+
+test("numeric legacy addresses keep their shape; malformed paired zones cannot be formatted", () => {
+  const numeric = warehouseAddressSegmentsFromIdentifier(root, "ZONE", "999");
+  assert.equal(formatWarehouseAddress(numeric), "ALM-03-999-00-00-0-0");
+  assert.equal(Object.hasOwn(numeric, "zoneCode"), false);
+  assert.equal(warehouseAddressIdentifier("ZONE", numeric), "999");
+  assert.equal(formatWarehouseAddress({ ...numeric, zoneCode: null }), formatWarehouseAddress(numeric));
+  for (const zoneCode of ["001", "trd", "TR", "TRDD", "A-1", 123]) rejects(() => formatWarehouseAddress({ ...root, zoneCode }));
+  rejects(() => formatWarehouseAddress({ ...numeric, zoneCode: "TRD" }));
 });

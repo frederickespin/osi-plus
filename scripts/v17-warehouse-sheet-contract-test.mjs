@@ -58,3 +58,23 @@ test("manager lookup query is bounded and rejects tenant or arbitrary filters", 
   assert.deepEqual(normalizeWarehouseManagerQuery({ q: "Ana", page: "2", pageSize: "50" }), { q: "Ana", page: 2, pageSize: 50 });
   for (const value of [{ q: "" }, { q: " padded" }, { q: "a".repeat(121) }, { page: "0" }, { pageSize: "51" }, { tenantId: "foreign" }, { role: "A" }, { q: ["x"] }]) assert.throws(() => normalizeWarehouseManagerQuery(value), /WAREHOUSE_SHEET_INPUT_INVALID/);
 });
+
+test("optional CREATE identifier binds the requested segment without changing legacy command shape", () => {
+  const legacy = row(); const normalizedLegacy = normalizeWarehouseSheetSave(command({ rows: [legacy] }));
+  assert.deepEqual(normalizedLegacy.rows[0], legacy); assert.equal(Object.hasOwn(normalizedLegacy.rows[0], "identifier"), false);
+  for (const [kind, identifier] of [["ZONE", "TRD"], ["ZONE", "A01"], ["ZONE", "001"], ["AISLE", "09"], ["RACK", "ZZ"], ["LEVEL", "9"], ["BIN", "4"]]) {
+    const input = command({ rows: [row({ kind, identifier })] }); const output = normalizeWarehouseSheetSave(input);
+    assert.equal(output.rows[0].identifier, identifier);
+    const tampered = { ...input, rows: [{ ...input.rows[0], identifier: kind === "ZONE" ? "B01" : identifier, name: "Changed" }] };
+    assert.throws(() => normalizeWarehouseSheetSave(tampered), /WAREHOUSE_SHEET_PAYLOAD_HASH_MISMATCH/);
+  }
+});
+
+test("explicit identifiers reject disabled markers, coercion, invalid ranges and noncanonical widths", () => {
+  for (const [kind, identifiers] of [
+    ["ZONE", ["", "000", "1", "0001", "trd", " TRD", "TRDD", "A-1", 1, null, undefined]],
+    ["AISLE", ["00", "1", "100", "A1"]], ["RACK", ["00", "A", "aa", "A1", "AAA"]],
+    ["LEVEL", ["0", "01", "10"]], ["BIN", ["0", "01", "5"]],
+  ]) for (const identifier of identifiers) invalid(command({ rows: [row({ kind, identifier })] }));
+  invalid(command({ warehouseRef: ref(), expectedWarehouseVersion: 1, rows: [update({ identifier: "TRD" })] }));
+});

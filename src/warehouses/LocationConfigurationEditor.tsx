@@ -9,6 +9,7 @@ import { findConfiguredLocation, WAREHOUSE_TEXTAREA } from "./configurationUi";
 import { locationNamePath } from "./locationTree";
 import type { PendingWarehouseDraft } from "./pendingDraft";
 import { useWarehouseMutation } from "./useWarehouseMutation";
+import { isWarehouseRoutesUiEnabled } from "./routesMode";
 
 export type LocationConfigurationEditorState = Readonly<{
   id: string; kind: "details" | "controls"; warehouse: WarehouseRow; location: WarehouseLocationRow;
@@ -36,6 +37,7 @@ export default function LocationConfigurationEditor({ editor, open, api, members
   onClose(retain: boolean): void; onPending(draft: PendingWarehouseDraft | null): void; onSaved(): void; onUnauthorized(): void; onRefresh(): void;
 }) {
   const recovered = editor.recovery?.change;
+  const routesEnabled = isWarehouseRoutesUiEnabled();
   const config = editor.configuration;
   const controls = editor.kind === "controls";
   const [areaUseRef, setAreaUseRef] = useState((recovered ? recovered.areaUseRef : config.areaUseRef) ?? "");
@@ -64,7 +66,7 @@ export default function LocationConfigurationEditor({ editor, open, api, members
     <p className="text-xs text-slate-500">Código: <span className="font-mono">{editor.location.code}</span>. La identidad de la ubicación se conserva.</p>
     {!controls && <fieldset className="space-y-3">
       <div><div className="flex items-center gap-1"><label htmlFor="warehouse-location-use" className="text-xs font-medium text-slate-700">Uso del área</label><AdministrationHelp title="Asignación del uso"><p>Seleccione un uso creado en Configuración. La asignación solo corresponde a esta ubicación; las ubicaciones interiores se asignan por separado.</p><p>Dejar «Sin uso asignado» conserva la ubicación y no asigna un destino automáticamente.</p></AdministrationHelp></div><select id="warehouse-location-use" disabled={fieldsDisabled} value={areaUseRef} onChange={(event) => setAreaUseRef(event.target.value)} className={`${COMPACT_FORM_FIELD} w-full`}><option value="">Sin uso asignado</option>{areaUseRef && !choices.some((use) => use.useRef === areaUseRef) && <option value={areaUseRef}>Uso del guardado anterior</option>}{choices.map((use) => <option key={use.useRef} value={use.useRef}>{use.name}{use.status === "INACTIVE" ? " · Inactivo" : ""}</option>)}</select>{areaUses.length === 0 && <p className="mt-1 text-xs text-slate-500">Cree los usos en Configuración para poder seleccionarlos aquí.</p>}</div>
-      <div><div className="flex items-center gap-1"><label htmlFor="warehouse-location-characteristics" className="text-xs font-medium text-slate-700">Características</label><AdministrationHelp title="Características de la ubicación"><p>Describa condiciones físicas, por ejemplo «Área techada, acceso por rampa».</p><p>Este texto es informativo. Escribir dimensiones o capacidades no calcula espacio libre ni modifica los controles operativos.</p></AdministrationHelp></div><input id="warehouse-location-characteristics" disabled={fieldsDisabled} maxLength={180} value={characteristics} onChange={(event) => setCharacteristics(event.target.value)} className={`${COMPACT_FORM_FIELD} w-full`} placeholder="Ej.: Área techada, acceso por rampa" /></div>
+      <div><div className="flex items-center gap-1"><label htmlFor="warehouse-location-characteristics" className="text-xs font-medium text-slate-700">{routesEnabled ? "Capacidad / características" : "Características"}</label><AdministrationHelp title={routesEnabled ? "Capacidad y características de la ubicación" : "Características de la ubicación"}><p>{routesEnabled ? "Describa el tamaño y las condiciones físicas, por ejemplo «6 m³, área techada, acceso por rampa»." : "Describa condiciones físicas, por ejemplo «Área techada, acceso por rampa»."}</p><p>Este texto es informativo. Escribir dimensiones o capacidades no calcula espacio libre ni modifica los controles operativos.</p></AdministrationHelp></div><input id="warehouse-location-characteristics" disabled={fieldsDisabled} maxLength={180} value={characteristics} onChange={(event) => setCharacteristics(event.target.value)} className={`${COMPACT_FORM_FIELD} w-full`} placeholder={routesEnabled ? "Ej.: 6 m³, área techada, acceso por rampa" : "Ej.: Área techada, acceso por rampa"} /></div>
       <label className="block text-xs font-medium text-slate-700">Notas<textarea disabled={fieldsDisabled} rows={3} maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)} className={`${WAREHOUSE_TEXTAREA} mt-1`} placeholder="Indicaciones para identificar o utilizar este lugar" /></label>
     </fieldset>}
     {controls && <fieldset className="space-y-3">

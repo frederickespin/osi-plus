@@ -16,6 +16,7 @@ on:
       - "api/_lib/logisticsEngineDomain.js"
       - "shared/warehouseConfigurationMigration.js"
       - "shared/warehouseSheet*"
+      - "shared/warehouseRoutes*"
       - "prisma/**"
       - "package.json"
       - "package-lock.json"
@@ -26,7 +27,11 @@ on:
       - "tests/v17-warehouses/**"
       - "tests/v17-warehouse-configuration/**"
       - "tests/v17-warehouse-sheet/**"
+      - "tests/v17-warehouse-routes/**"
+      - "tests/crm-01b1/warehouse-routes-20d*.json"
+      - "scripts/capture-v17-warehouse-routes*.mjs"
       - "playwright.v17-warehouse-sheet.config.ts"
+      - "playwright.v17-warehouse-routes.config.ts"
       - "playwright.v17-warehouse-configuration.config.ts"
       - "tests/v17-materials-inventory/**"
       - "tests/v17-tools-equipment/**"
@@ -58,13 +63,14 @@ jobs:
           npm run test:v17-warehouses
           npm run test:v17-warehouse-configuration
           npm run test:v17-warehouse-sheet
+          npm run test:v17-warehouse-routes
           npm run test:v17-materials-inventory
           npm run guard:v17-materials-inventory
           npm run guard:v17-tools-equipment
           npm run guard:v17-hub-auth-lazy
           node scripts/validate-mt01b3a-auth-guard.mjs
           node scripts/validate-mt01b3a-auth-guard-test.mjs
-          npx eslint src/warehouses src/materials-inventory src/tools-equipment tests/v17-warehouses tests/v17-materials-inventory/warehouse-consumer.spec.ts tests/v17-tools-equipment/warehouse-consumer.spec.ts playwright.v17-warehouses.config.ts playwright.v17-warehouse-configuration.config.ts tests/v17-warehouse-configuration api/_lib/warehouse*.js shared/warehouseConfigurationMigration.js shared/warehouseSheetAddress.js shared/warehouseSheetAddress.d.ts shared/warehouseSheetMigration.js playwright.v17-warehouse-sheet.config.ts tests/v17-warehouse-sheet scripts/v17-warehouse-sheet-client-test.mjs
+          npx eslint src/warehouses src/materials-inventory src/tools-equipment tests/v17-warehouses tests/v17-materials-inventory/warehouse-consumer.spec.ts tests/v17-tools-equipment/warehouse-consumer.spec.ts playwright.v17-warehouses.config.ts playwright.v17-warehouse-configuration.config.ts tests/v17-warehouse-configuration api/_lib/warehouse*.js shared/warehouseConfigurationMigration.js shared/warehouseSheetAddress.js shared/warehouseSheetAddress.d.ts shared/warehouseSheetMigration.js playwright.v17-warehouse-sheet.config.ts tests/v17-warehouse-sheet scripts/v17-warehouse-sheet-client-test.mjs scripts/v17-warehouse-routes-client-test.mjs shared/warehouseRoutesMigration.js playwright.v17-warehouse-routes.config.ts tests/v17-warehouse-routes
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Verify spaces, automatic identifiers, retries and section isolation
@@ -73,6 +79,8 @@ jobs:
         run: npm run test:v17-warehouse-configuration:browser
       - name: Verify inline worksheet, automatic labels and exact retry recovery
         run: npm run test:v17-warehouse-sheet:browser
+      - name: Verify explicit routes, reuse, formats and draft recovery
+        run: npm run test:v17-warehouse-routes:browser
       - name: Verify existing inventory consumers and restricted readers
         run: npm run test:v17-materials-inventory:browser -- --project=chromium-desktop --project=chromium-mobile
       - name: Verify existing equipment consumers and restricted readers
@@ -86,5 +94,6 @@ jobs:
             /tmp/osi-warehouses-20a-*.png
             /tmp/osi-warehouse-20b-*.png
             /tmp/osi-warehouse-20c-*.png
+            /tmp/osi-warehouse-20d-*.png
           if-no-files-found: ignore
           retention-days: 7

@@ -57,6 +57,7 @@ jobs:
           npm run test:v17-fleet-drivers:http
           npm run test:v17-warehouse-configuration
           npm run test:v17-warehouse-sheet
+          npm run test:v17-warehouse-routes
           npm run test:v17-logistics-transport
           npm run guard:v17-logistics-engine
           node scripts/v17-quote-local-target-test.mjs
@@ -578,8 +579,54 @@ jobs:
           npx prisma validate --schema prisma/schema.prisma
           npx prisma generate --schema prisma/schema.prisma
 
-      - name: Deploy canonical migrations from empty database
-        run: npx prisma migrate deploy --schema prisma/schema.prisma
+      - name: Prepare exact38 and39 historical PostgreSQL18 staging directories
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { mkdirSync, copyFileSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
+          const source = validateMigrationFiles();
+          assert.equal(source.length, 40);
+          assert.equal(source.at(-1), '20261102010000_v17_warehouse_routes');
+          assert.equal(source[38], '20261101020000_v17_warehouse_sheet');
+          assert.equal(source[37], '20261101010000_v17_warehouse_configuration');
+          for (const count of [38, 39]) {
+            const stage = join(process.env.RUNNER_TEMP, `canonical-pg18-${count}`);
+            mkdirSync(join(stage, 'migrations'), { recursive: true });
+            copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
+            writeFileSync(join(stage, 'migrations/migration_lock.toml'), 'provider = "postgresql"\n');
+            for (const name of source.slice(0, count)) {
+              mkdirSync(join(stage, 'migrations', name));
+              copyFileSync(join('prisma/migrations', name, 'migration.sql'), join(stage, 'migrations', name, 'migration.sql'));
+            }
+          }
+          NODE
+
+      - name: Deploy historical38 and capture its frozen PostgreSQL18 catalog
+        env:
+          V17_WAREHOUSE_CONFIGURATION_CATALOG_EVIDENCE_PATH: ${{ runner.temp }}/warehouse-pg18-before-sheet38.json
+        run: |
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/canonical-pg18-38/schema.prisma"
+          node scripts/capture-v17-warehouse-configuration-catalog.mjs
+
+      - name: Upgrade38 to39 and preserve the historical20C catalog evidence
+        env:
+          V17_WAREHOUSE_SHEET_CATALOG_EVIDENCE_PATH: ${{ runner.temp }}/warehouse-pg18-sheet39.json
+        run: |
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/canonical-pg18-39/schema.prisma"
+          node scripts/capture-v17-warehouse-sheet-catalog.mjs
+
+      - name: Verify real legacy20C flow on39 with the generated40 client and20D disabled
+        run: node scripts/v17-warehouse-routes-legacy-db-test.mjs
+
+      - name: Capture independent PostgreSQL18 baseline before routes40
+        run: node scripts/capture-v17-warehouse-routes-catalog.mjs --before "$RUNNER_TEMP/warehouse-pg18-routes-before.json"
+
+      - name: Upgrade39 to40 and verify only the reviewed catalog changes
+        run: |
+          npx prisma migrate deploy --schema prisma/schema.prisma
+          node scripts/capture-v17-warehouse-routes-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-routes-after.json" --previous "$RUNNER_TEMP/warehouse-pg18-routes-before.json"
 
       - name: Verify idempotent second deploy
         shell: bash
@@ -605,17 +652,15 @@ jobs:
           test "$diff_status" -eq 0
           grep -Fxq -- "-- This is an empty migration." "$RUNNER_TEMP/canonical-drift.sql"
 
-      - name: Capture read-only20C SQL catalog evidence
-        env:
-          V17_WAREHOUSE_SHEET_CATALOG_EVIDENCE_PATH: ${{ runner.temp }}/v17-warehouse-sheet-catalog-evidence.json
-        run: node scripts/capture-v17-warehouse-sheet-catalog.mjs
+      - name: Capture read-only40 replay and verify preserved data
+        run: node scripts/capture-v17-warehouse-routes-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-routes-replay.json" --previous "$RUNNER_TEMP/warehouse-pg18-routes-before.json"
 
       - name: Publish candidate catalog without accepting a baseline
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: v17-warehouse-sheet-catalog-evidence
-          path: ${{ runner.temp }}/v17-warehouse-sheet-catalog-evidence.json
+          name: v17-warehouse-routes-catalog-evidence
+          path: ${{ runner.temp }}/warehouse-pg18-*.json
           if-no-files-found: ignore
           retention-days: 7
 
@@ -687,6 +732,7 @@ jobs:
           npm run test:v17-warehouses:db
           npm run test:v17-warehouse-configuration:db
           npm run test:v17-warehouse-sheet:db
+          npm run test:v17-warehouse-routes:db
 
       - name: Validate transport zones, costs and context isolation against PostgreSQL 18
         run: npm run test:v17-logistics-transport:db

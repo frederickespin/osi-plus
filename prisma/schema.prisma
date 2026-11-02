@@ -4268,6 +4268,7 @@ model WarehouseLocationAddress {
   locationId     String                 @map("location_id")
   label          String                 @db.VarChar(32)
   zoneNumber     Int                    @default(0) @map("zone_number")
+  zoneCode       String?                @map("zone_code") @db.VarChar(3)
   aisleNumber    Int                    @default(0) @map("aisle_number")
   rackCode       String?                @map("rack_code") @db.VarChar(2)
   levelNumber    Int                    @default(0) @map("level_number")

@@ -1,4 +1,5 @@
 import { canPlaceWarehouseAddressKind, formatWarehouseAddress, normalizeWarehouseAddressIdentifier, warehouseAddressIdentifier, warehouseAddressSegments, warehouseAddressSegmentsFromIdentifier, type WarehouseAddressSegments } from "../../shared/warehouseSheetAddress.js";
+import { formatWarehouseDisplayAddress } from "../../shared/warehouseLocalityAddress.js";
 import { SHEET_KIND_LABELS, SHEET_KINDS, SHEET_ROW_LIMIT, existingParentKey, newParentKey, warehouseSheetChange, type SheetDraft, type SheetDraftRow } from "./sheetDraft";
 import type { WarehouseSheet, WarehouseSheetKind } from "./sheetTypes";
 
@@ -12,15 +13,31 @@ export const ROUTE_FORMATS: Readonly<Record<WarehouseSheetKind, Readonly<{ label
   BIN: { label: "Posición", format: "1 dígito · 1–4", example: "1", zero: "0", width: 1, numeric: true },
 };
 
-export function emptyWarehouseRoute(): WarehouseRouteDraft {
-  return Object.fromEntries(SHEET_KINDS.map((kind) => [kind, { identifier: ROUTE_FORMATS[kind].zero, name: "" }])) as Record<WarehouseSheetKind, WarehouseRouteField>;
+export function warehouseRouteFormats(localitiesEnabled = false): typeof ROUTE_FORMATS {
+  return localitiesEnabled ? { ...ROUTE_FORMATS, LEVEL: { ...ROUTE_FORMATS.LEVEL, format: "2 dígitos · 01–09", example: "02", zero: "00", width: 2 } } : ROUTE_FORMATS;
 }
 
-export function warehouseRouteFromLocation(sheet: WarehouseSheet | undefined, locationRef?: string): WarehouseRouteDraft {
-  const route = emptyWarehouseRoute();
+export function normalizeWarehouseRouteIdentifier(kind: WarehouseSheetKind, value: string, localitiesEnabled = false): string {
+  // Display padding is not an address identity change: 02 is always sent as canonical 2.
+  if (localitiesEnabled && kind === "LEVEL" && value.trim().length > 2) throw new Error("LEVEL_IDENTIFIER_INVALID");
+  const token = localitiesEnabled && kind === "LEVEL" && /^0\d$/.test(value.trim()) ? String(Number(value.trim())) : value;
+  return normalizeWarehouseAddressIdentifier(kind, token, { allowDisabled: true });
+}
+
+export function displayWarehouseRouteIdentifier(kind: WarehouseSheetKind, value: string, localitiesEnabled = false): string {
+  return localitiesEnabled && kind === "LEVEL" ? value.padStart(2, "0") : value;
+}
+
+export function emptyWarehouseRoute(localitiesEnabled = false): WarehouseRouteDraft {
+  const formats = warehouseRouteFormats(localitiesEnabled);
+  return Object.fromEntries(SHEET_KINDS.map((kind) => [kind, { identifier: formats[kind].zero, name: "" }])) as Record<WarehouseSheetKind, WarehouseRouteField>;
+}
+
+export function warehouseRouteFromLocation(sheet: WarehouseSheet | undefined, locationRef?: string, localitiesEnabled = false): WarehouseRouteDraft {
+  const route = emptyWarehouseRoute(localitiesEnabled);
   const address = sheet?.locations.find((location) => location.locationRef === locationRef)?.address;
   if (!address) return route;
-  return Object.fromEntries(SHEET_KINDS.map((kind) => [kind, { identifier: warehouseAddressIdentifier(kind, address), name: "" }])) as Record<WarehouseSheetKind, WarehouseRouteField>;
+  return Object.fromEntries(SHEET_KINDS.map((kind) => [kind, { identifier: displayWarehouseRouteIdentifier(kind, warehouseAddressIdentifier(kind, address), localitiesEnabled), name: "" }])) as Record<WarehouseSheetKind, WarehouseRouteField>;
 }
 
 const controls = (value: string) => Array.from(value).some((char) => char.charCodeAt(0) <= 31 || char.charCodeAt(0) === 127);
@@ -56,27 +73,33 @@ export type WarehouseRoutePlan = Readonly<{
 }>;
 
 /** Match only persisted addresses and explicit identifiers already staged in the worksheet. */
-export function planWarehouseRoute(route: WarehouseRouteDraft, draft: SheetDraft, sheet?: WarehouseSheet, id: () => string = () => crypto.randomUUID()): WarehouseRoutePlan {
+export function planWarehouseRoute(route: WarehouseRouteDraft, draft: SheetDraft, sheet?: WarehouseSheet, id: () => string = () => crypto.randomUUID(), options: { localitiesEnabled?: boolean } = {}): WarehouseRoutePlan {
+  const formats = warehouseRouteFormats(options.localitiesEnabled);
+  const locality = Object.hasOwn(draft, "localityNumber") ? draft.localityNumber ?? null : sheet?.localityNumber ?? null;
   const errors: Partial<Record<WarehouseSheetKind, string>> = {};
   const identifiers: Partial<Record<WarehouseSheetKind, string>> = {};
   const kinds: WarehouseSheetKind[] = [];
   for (const kind of SHEET_KINDS) {
     const field = route[kind];
     try {
-      const token = normalizeWarehouseAddressIdentifier(kind, field.identifier, { allowDisabled: true });
+      const token = normalizeWarehouseRouteIdentifier(kind, field.identifier, options.localitiesEnabled);
       identifiers[kind] = token;
       if (token === ROUTE_FORMATS[kind].zero) continue;
       if (field.name.trim().length > 160 || controls(field.name)) errors[kind] = "El nombre admite hasta 160 caracteres, en una sola línea.";
       if (!canPlaceWarehouseAddressKind(kind, ["WAREHOUSE_ROOT", ...kinds])) errors[kind as WarehouseSheetKind] = "Un nivel necesita una estantería en este recorrido.";
       kinds.push(kind);
-    } catch { errors[kind] = `${ROUTE_FORMATS[kind].format}. Ejemplo: ${ROUTE_FORMATS[kind].example}; ${ROUTE_FORMATS[kind].zero} omite este nivel.`; }
+    } catch { errors[kind] = `${formats[kind].format}. Ejemplo: ${formats[kind].example}; ${formats[kind].zero} omite este nivel.`; }
   }
   const labelFor = (address: WarehouseAddressSegments) => {
+    if (options.localitiesEnabled && locality !== null) {
+      const label = formatWarehouseDisplayAddress(locality, address)!;
+      return sheet?.warehouseNumber ? label : label.replace(/^S\d+-ALM\d+-/, `S${locality}-ALM?-`);
+    }
     const label = formatWarehouseAddress(address);
     return sheet?.warehouseNumber ? label : label.replace(/^ALM-\d{2}-/, "ALM-??-");
   };
   let address: WarehouseAddressSegments = warehouseAddressSegments(null, "WAREHOUSE_ROOT", sheet?.warehouseNumber ?? 1);
-  const nodes: WarehouseRouteNode[] = [{ kind: "WAREHOUSE_ROOT", name: draft.name.trim() || "Almacén principal", identifier: sheet?.warehouseNumber ? String(sheet.warehouseNumber).padStart(2, "0") : "??", label: sheet?.warehouseLabel ?? "ALM-??", status: sheet ? "existing" : "newWarehouse", ...(sheet?.rootLocationRef ? { locationRef: sheet.rootLocationRef } : {}) }];
+  const nodes: WarehouseRouteNode[] = [{ kind: "WAREHOUSE_ROOT", name: draft.name.trim() || "Almacén principal", identifier: sheet?.warehouseNumber ? String(sheet.warehouseNumber).padStart(2, "0") : "??", label: options.localitiesEnabled && locality !== null ? `S${locality}-ALM${sheet?.warehouseNumber ?? "?"}` : sheet?.warehouseLabel ?? "ALM-??", status: sheet ? "existing" : "newWarehouse", ...(sheet?.rootLocationRef ? { locationRef: sheet.rootLocationRef } : {}) }];
   const rows: SheetDraftRow[] = [];
   const result = (error: string | null = null): WarehouseRoutePlan => ({
     nodes, rows, errors, error, label: Object.keys(errors).length || error ? null : labelFor(address),

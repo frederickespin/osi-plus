@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { CANONICAL_MIGRATIONS } from "./canonical-migrations.mjs";
 import { test } from "node:test";
 import { MATERIALS_PREVIEW_BATCH } from "../api/_lib/materialsInventoryHttp.js";
 import { sortWarehouseRoutesCatalogRows } from "./capture-v17-warehouse-routes-catalog.mjs";
@@ -7,6 +9,7 @@ import { WAREHOUSE_ROUTES_MIGRATION, WAREHOUSE_ROUTES_MIGRATION_CHECKSUM } from 
 import { WAREHOUSE_ROUTES_PREVIEW_MIGRATION_OPERATION, RETAINED_PREVIEW_EXTENSION, previewMigrationOperation, previewMigrationManifest, validatePreviewWarehouseRoutesHistory, validatePreviewCatalogPin, validatePreviewDatabaseIdentity, selectPreviewWarehouseRoutesCatalogProfile, validatePreviewWarehouseRoutesCatalog, normalizePreviewSnapshotSchema, runWarehouseRoutesPreviewMigration } from "./v17-warehouse-routes-preview-migrate.mjs";
 
 const commit = "a".repeat(40);
+const historicalManifest = () => Object.fromEntries(CANONICAL_MIGRATIONS.slice(0, 40).map((name) => [name, createHash("sha256").update(readFileSync(new URL(`../prisma/migrations/${name}/migration.sql`, import.meta.url))).digest("hex")]));
 const preview = {
   VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/v17-consolidated-preview", VERCEL_GIT_COMMIT_SHA: commit,
   [WAREHOUSE_ROUTES_PREVIEW_MIGRATION_OPERATION]: `CHECK:${commit}`,
@@ -172,14 +175,15 @@ test("snapshot rejects absent schema, non-read-only transactions and incorrect e
     assert.equal(statements.includes("SET LOCAL search_path = osi"), executed);
   }
 });
-test("source manifest fixes the reviewed checksum and exact40 named migrations", () => {
-  const manifest = previewMigrationManifest();
+test("historical20D hook rejects a source containing later migrations", () => {
+  assert.throws(() => previewMigrationManifest(), /SOURCE_INVENTORY_INVALID/);
+  const manifest = historicalManifest();
   assert.equal(Object.keys(manifest).length, 40);
   assert.equal(manifest[WAREHOUSE_ROUTES_MIGRATION], WAREHOUSE_ROUTES_MIGRATION_CHECKSUM);
   assert.ok(!Object.hasOwn(manifest, RETAINED_PREVIEW_EXTENSION.name));
 });
 test("Preview plan preserves the documented extension and permits only pending20D", () => {
-  const manifest = previewMigrationManifest();
+  const manifest = historicalManifest();
   const row = (migration_name, checksum) => ({ migration_name, checksum, finished_at: new Date("2026-10-31T00:00:00Z"), rolled_back_at: null, applied_steps_count: 1 });
   const previous = Object.entries(manifest).filter(([name]) => name !== WAREHOUSE_ROUTES_MIGRATION).map(([name, checksum]) => row(name, checksum));
   previous.push(row(RETAINED_PREVIEW_EXTENSION.name, RETAINED_PREVIEW_EXTENSION.checksum));

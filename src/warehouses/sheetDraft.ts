@@ -1,4 +1,5 @@
 import { allocateWarehouseAddressOrdinal, canPlaceWarehouseAddressKind, formatWarehouseAddress, normalizeWarehouseAddressIdentifier, warehouseAddressIdentifier, warehouseAddressOrdinal, warehouseAddressSegments, warehouseAddressSegmentsFromIdentifier, warehouseAddressToken } from "../../shared/warehouseSheetAddress.js";
+import { formatWarehouseDisplayAddress, isWarehouseLocalityNumber } from "../../shared/warehouseLocalityAddress.js";
 import type { WarehouseAreaUse } from "./configurationTypes";
 import type { WarehouseSheet, WarehouseSheetChange, WarehouseSheetCreateRow, WarehouseSheetKind, WarehouseSheetLocation, WarehouseSheetRowChange } from "./sheetTypes";
 
@@ -21,8 +22,9 @@ const canonicalIdentifier = (kind: WarehouseSheetKind, value: unknown): value is
 /** Reconstruct a bounded command only; stored content cannot supply identity authority or labels. */
 function validateSheetChange(value: unknown, incomplete: boolean): WarehouseSheetChange | null {
   const validName = (input: unknown): input is string => name(input) || incomplete && input === "";
-  if (!record(value) || !exact(value, ["operation", "warehouseRef", "expectedWarehouseVersion", "expectedProfileVersion", "expectedRootConfigurationVersion", "name", "managerMembershipRef", "rootAreaUseRef", "rows"])
+  if (!record(value) || !exact(value, ["operation", "warehouseRef", "expectedWarehouseVersion", "expectedProfileVersion", "expectedRootConfigurationVersion", "name", "managerMembershipRef", "rootAreaUseRef", "rows", ...(Object.hasOwn(value, "localityNumber") ? ["localityNumber"] : [])])
     || value.operation !== "WAREHOUSE_SHEET_SAVE" || !nullableRef(value.warehouseRef) || !validName(value.name)
+    || Object.hasOwn(value, "localityNumber") && value.localityNumber !== null && !isWarehouseLocalityNumber(value.localityNumber)
     || !version(value.expectedWarehouseVersion, value.warehouseRef === null ? 0 : 1) || !version(value.expectedProfileVersion) || !version(value.expectedRootConfigurationVersion)
     || !nullableRef(value.managerMembershipRef) || !nullableRef(value.rootAreaUseRef) || !Array.isArray(value.rows) || value.rows.length > SHEET_ROW_LIMIT
     || value.warehouseRef === null && (value.expectedWarehouseVersion !== 0 || value.expectedProfileVersion !== 0 || value.expectedRootConfigurationVersion !== 0)) return null;
@@ -55,19 +57,19 @@ function validateSheetChange(value: unknown, incomplete: boolean): WarehouseShee
       parentId = parent.parentRowId;
     }
   }
-  const change = { operation: "WAREHOUSE_SHEET_SAVE" as const, warehouseRef: value.warehouseRef, expectedWarehouseVersion: value.expectedWarehouseVersion, expectedProfileVersion: value.expectedProfileVersion, expectedRootConfigurationVersion: value.expectedRootConfigurationVersion, name: value.name, managerMembershipRef: value.managerMembershipRef, rootAreaUseRef: value.rootAreaUseRef, rows: Object.freeze(rows) };
+  const change = { operation: "WAREHOUSE_SHEET_SAVE" as const, warehouseRef: value.warehouseRef, expectedWarehouseVersion: value.expectedWarehouseVersion, expectedProfileVersion: value.expectedProfileVersion, expectedRootConfigurationVersion: value.expectedRootConfigurationVersion, name: value.name, managerMembershipRef: value.managerMembershipRef, rootAreaUseRef: value.rootAreaUseRef, ...(Object.hasOwn(value, "localityNumber") ? { localityNumber: value.localityNumber as number | null } : {}), rows: Object.freeze(rows) };
   return new TextEncoder().encode(JSON.stringify(change)).byteLength <= SHEET_BYTE_LIMIT ? Object.freeze(change) : null;
 }
 export function validatePendingWarehouseSheetChange(value: unknown) { return validateSheetChange(value, false); }
 export function validateWorkingWarehouseSheetChange(value: unknown) { return validateSheetChange(value, true); }
 
 export type SheetDraftRow = Readonly<{ rowId: string; name: string; kind: string; parentKey: string; areaUseRef: string; identifier?: string; existing?: WarehouseSheetLocation }>;
-export type SheetDraft = Readonly<{ name: string; managerMembershipRef: string; rootAreaUseRef: string; rows: readonly SheetDraftRow[] }>;
+export type SheetDraft = Readonly<{ name: string; managerMembershipRef: string; rootAreaUseRef: string; localityNumber?: number | null; rows: readonly SheetDraftRow[] }>;
 export const existingParentKey = (reference: string) => `location:${reference}`;
 export const newParentKey = (rowId: string) => `row:${rowId}`;
 export function newSheetRow(parentKey = "", kind: WarehouseSheetKind = "ZONE", id: string = crypto.randomUUID()): SheetDraftRow { return { rowId: id, name: "", kind, parentKey, areaUseRef: "" }; }
 
-export function sheetDraftFrom(sheet?: WarehouseSheet, recovery?: WarehouseSheetChange): SheetDraft {
+export function sheetDraftFrom(sheet?: WarehouseSheet, recovery?: WarehouseSheetChange, options: { localitiesEnabled?: boolean } = {}): SheetDraft {
   const rows: SheetDraftRow[] = (sheet?.locations ?? []).filter((row) => row.locationRef !== sheet?.rootLocationRef).map((row) => ({ rowId: crypto.randomUUID(), name: row.name, kind: row.kind, parentKey: row.parentLocationRef && row.parentLocationRef !== sheet?.rootLocationRef ? existingParentKey(row.parentLocationRef) : "", areaUseRef: row.areaUseRef ?? "", existing: row }));
   for (const change of recovery?.rows ?? []) {
     if (change.action === "CREATE") rows.push({ rowId: change.rowId, name: change.name, kind: change.kind, parentKey: change.parentRowId ? newParentKey(change.parentRowId) : change.parentLocationRef ? existingParentKey(change.parentLocationRef) : "", areaUseRef: change.areaUseRef ?? "", ...(change.identifier === undefined ? {} : { identifier: change.identifier }) });
@@ -78,7 +80,10 @@ export function sheetDraftFrom(sheet?: WarehouseSheet, recovery?: WarehouseSheet
       if (index >= 0) rows[index] = next; else rows.push(next);
     }
   }
-  return { name: recovery?.name ?? sheet?.name ?? "", managerMembershipRef: (recovery ? recovery.managerMembershipRef : sheet?.manager?.membershipRef) ?? "", rootAreaUseRef: (recovery ? recovery.rootAreaUseRef : sheet?.rootAreaUseRef) ?? "", rows };
+  // Absent locality is part of a legacy command's identity and must stay absent on replay.
+  const locality = recovery ? Object.hasOwn(recovery, "localityNumber") ? { localityNumber: recovery.localityNumber } : {}
+    : options.localitiesEnabled ? { localityNumber: sheet ? sheet.localityNumber ?? null : 1 } : {};
+  return { name: recovery?.name ?? sheet?.name ?? "", managerMembershipRef: (recovery ? recovery.managerMembershipRef : sheet?.manager?.membershipRef) ?? "", rootAreaUseRef: (recovery ? recovery.rootAreaUseRef : sheet?.rootAreaUseRef) ?? "", ...locality, rows };
 }
 
 export function sheetParentKinds(parentKey: string, rows: readonly SheetDraftRow[], sheet?: WarehouseSheet, visiting = new Set<string>()): readonly string[] | null {
@@ -106,12 +111,13 @@ export function warehouseSheetChange(draft: SheetDraft, sheet?: WarehouseSheet, 
       if (row.name.trim() !== row.existing.name || (row.areaUseRef || null) !== row.existing.areaUseRef) rows.push({ action: "UPDATE", rowId: row.rowId, locationRef: row.existing.locationRef, expectedVersion: row.existing.version, expectedConfigurationVersion: row.existing.configurationVersion, name: row.name.trim(), areaUseRef: row.areaUseRef || null });
     } else rows.push({ action: "CREATE", rowId: row.rowId, parentRowId: row.parentKey.startsWith("row:") ? row.parentKey.slice(4) : null, parentLocationRef: row.parentKey.startsWith("location:") ? row.parentKey.slice(9) : null, kind: row.kind as WarehouseSheetKind, name: row.name.trim(), areaUseRef: row.areaUseRef || null, ...(row.identifier === undefined ? {} : { identifier: row.identifier }) });
   }
-  return { operation: "WAREHOUSE_SHEET_SAVE", warehouseRef: recovery ? recovery.warehouseRef : sheet?.warehouseRef ?? null, expectedWarehouseVersion: recovery?.expectedWarehouseVersion ?? sheet?.version ?? 0, expectedProfileVersion: recovery?.expectedProfileVersion ?? sheet?.profileVersion ?? 0, expectedRootConfigurationVersion: recovery?.expectedRootConfigurationVersion ?? sheet?.rootConfigurationVersion ?? 0, name: draft.name.trim(), managerMembershipRef: draft.managerMembershipRef || null, rootAreaUseRef: draft.rootAreaUseRef || null, rows };
+  return { operation: "WAREHOUSE_SHEET_SAVE", warehouseRef: recovery ? recovery.warehouseRef : sheet?.warehouseRef ?? null, expectedWarehouseVersion: recovery?.expectedWarehouseVersion ?? sheet?.version ?? 0, expectedProfileVersion: recovery?.expectedProfileVersion ?? sheet?.profileVersion ?? 0, expectedRootConfigurationVersion: recovery?.expectedRootConfigurationVersion ?? sheet?.rootConfigurationVersion ?? 0, name: draft.name.trim(), managerMembershipRef: draft.managerMembershipRef || null, rootAreaUseRef: draft.rootAreaUseRef || null, ...(Object.hasOwn(draft, "localityNumber") ? { localityNumber: draft.localityNumber } : {}), rows };
 }
 
 export function validateSheetDraft(draft: SheetDraft, sheet: WarehouseSheet | undefined, uses: readonly WarehouseAreaUse[]) {
   const general: string[] = []; const errors: Record<string, string[]> = {};
   if (!name(draft.name.trim())) general.push("Escriba un nombre de almacén de hasta 160 caracteres.");
+  if (Object.hasOwn(draft, "localityNumber") && draft.localityNumber !== null && !isWarehouseLocalityNumber(draft.localityNumber)) general.push("La localidad debe ser un número de 1 a 999 o quedar sin asignar.");
   const validUse = (value: string, prior: string | null) => !value || value === prior || uses.some((use) => use.useRef === value && use.status === "ACTIVE");
   const identifiers = new Set<string>();
   if (!validUse(draft.rootAreaUseRef, sheet?.rootAreaUseRef ?? null)) general.push("Seleccione un uso activo para el almacén.");
@@ -137,7 +143,7 @@ export function validateSheetDraft(draft: SheetDraft, sheet: WarehouseSheet | un
   return { general, rows: errors, valid: general.length === 0 && Object.keys(errors).length === 0 };
 }
 
-export function provisionalSheetLabels(rows: readonly SheetDraftRow[], sheet?: WarehouseSheet, options: { unknownWarehouse?: boolean } = {}): ReadonlyMap<string, string | null> {
+export function provisionalSheetLabels(rows: readonly SheetDraftRow[], sheet?: WarehouseSheet, options: { unknownWarehouse?: boolean; localitiesEnabled?: boolean; localityNumber?: number | null } = {}): ReadonlyMap<string, string | null> {
   const addresses = new Map<string, ReturnType<typeof warehouseAddressSegments> | null>(); const labels = new Map<string, string | null>();
   const used = new Map<string, Set<number>>(); const visiting = new Set<string>();
   const parentKeyFor = (key: string) => key === existingParentKey(sheet?.rootLocationRef ?? "") ? "" : key;
@@ -168,7 +174,13 @@ export function provisionalSheetLabels(rows: readonly SheetDraftRow[], sheet?: W
     }
     visiting.delete(row.rowId); addresses.set(row.rowId, result); return result;
   };
-  for (const row of rows) { const address = addressFor(row); const label = address ? formatWarehouseAddress(address) : null; labels.set(row.rowId, label && !row.existing && !sheet?.warehouseNumber && options.unknownWarehouse ? label.replace(/^ALM-\d{2}-/, "ALM-??-") : label); }
+  for (const row of rows) {
+    const address = addressFor(row);
+    const locality = Object.hasOwn(options, "localityNumber") ? options.localityNumber ?? null : sheet?.localityNumber ?? null;
+    const label = address ? options.localitiesEnabled && locality !== null ? formatWarehouseDisplayAddress(locality, address) : formatWarehouseAddress(address) : null;
+    labels.set(row.rowId, label && !row.existing && !sheet?.warehouseNumber && options.unknownWarehouse
+      ? options.localitiesEnabled && locality !== null ? label.replace(/^S\d+-ALM\d+-/, `S${locality}-ALM?-`) : label.replace(/^ALM-\d{2}-/, "ALM-??-") : label);
+  }
   return labels;
 }
 

@@ -4,13 +4,17 @@ import { permsForRole } from "./rbac.js";
 import { normalizeWarehouseManagerQuery, normalizeWarehouseSheetSave, warehouseSheetFail } from "./warehouseSheetContract.js";
 import { advanceWarehouseLocationPolicyEpoch, lockWarehouseConfiguration } from "./warehouseLocationPolicy.js";
 import { allocateWarehouseAddressOrdinal, canPlaceWarehouseAddressKind, formatWarehouseAddress, warehouseAddressIdentifier, warehouseAddressOrdinal, warehouseAddressSegments, warehouseAddressSegmentsFromIdentifier, warehouseAddressToken } from "../../shared/warehouseSheetAddress.js";
+import { formatWarehouseDisplayAddress } from "../../shared/warehouseLocalityAddress.js";
 
 const permissions = ["inventory:stock:view", "inventory:catalog:manage"];
 // Explicit legacy fields keep 20C operational during CHECK/APPLY while the 20D
 // column does not yet exist. This also applies to INSERT's returned selection.
 const legacyAddressSelect = Object.freeze({ id: true, tenantId: true, warehouseId: true, locationId: true, label: true, zoneNumber: true, aisleNumber: true, rackCode: true, levelNumber: true, positionNumber: true, createdAt: true });
 function addressSelect(routesEnabled) { return routesEnabled ? { ...legacyAddressSelect, zoneCode: true } : legacyAddressSelect; }
-function sheetInclude(routesEnabled) { return { sheetProfile: true, locations: { include: { configuration: { include: { areaUse: { select: { useRef: true } } } }, address: { select: addressSelect(routesEnabled) } }, orderBy: [{ depth: "asc" }, { code: "asc" }] } }; }
+// Locality is an additive20E field. OFF must not read it, including on CREATE.
+const legacyProfileSelect = Object.freeze({ id: true, tenantId: true, warehouseId: true, warehouseNumber: true, managerMembershipId: true, managerUserId: true, version: true, createdAt: true, updatedAt: true });
+function profileSelect(localitiesEnabled) { return localitiesEnabled ? { ...legacyProfileSelect, localityNumber: true } : legacyProfileSelect; }
+function sheetInclude(routesEnabled, localitiesEnabled) { return { sheetProfile: { select: profileSelect(localitiesEnabled) }, locations: { include: { configuration: { include: { areaUse: { select: { useRef: true } } } }, address: { select: addressSelect(routesEnabled) } }, orderBy: [{ depth: "asc" }, { code: "asc" }] } }; }
 const addressFields = { ZONE: "zoneNumber", AISLE: "aisleNumber", RACK: "rackCode", LEVEL: "levelNumber", BIN: "positionNumber" };
 function requirePermission(context, write = false) {
   if (permissions.slice(0, write ? 2 : 1).some((permission) => !context?.effectivePermissions?.includes(permission) || context?.deniedPermissions?.includes(permission))) warehouseSheetFail("WAREHOUSE_SHEET_FORBIDDEN", 403);
@@ -64,11 +68,12 @@ async function managerFor(tx, tenantId, reference, previousId) {
   return rows[0];
 }
 function hasAlphanumericZone(row) { return !!row && /[A-Z]/u.test(row.label.split("-")[2] ?? ""); }
-function publicAddress(row, warehouseNumber, routesEnabled = false) {
+function publicAddress(row, warehouseNumber, routesEnabled = false, localitiesEnabled = false, localityNumber = null) {
   if (!row || !routesEnabled && hasAlphanumericZone(row)) return null;
-  return { label: row.label, warehouseNumber, zoneNumber: row.zoneNumber, ...(routesEnabled ? { zoneCode: row.zoneCode ?? null } : {}), aisleNumber: row.aisleNumber, rackCode: row.rackCode, levelNumber: row.levelNumber, positionNumber: row.positionNumber };
+  const address = { label: row.label, warehouseNumber, zoneNumber: row.zoneNumber, ...(routesEnabled ? { zoneCode: row.zoneCode ?? null } : {}), aisleNumber: row.aisleNumber, rackCode: row.rackCode, levelNumber: row.levelNumber, positionNumber: row.positionNumber };
+  return { ...address, ...(localitiesEnabled ? { displayLabel: formatWarehouseDisplayAddress(localityNumber, address) } : {}) };
 }
-function publicSheet(row, people, routesEnabled = false) {
+function publicSheet(row, people, routesEnabled = false, localitiesEnabled = false) {
   const roots = row.locations.filter((location) => location.parentLocationId === null);
   const root = roots.length === 1 ? roots[0] : null;
   const refs = new Map(row.locations.map((location) => [location.id, location.locationRef]));
@@ -76,6 +81,7 @@ function publicSheet(row, people, routesEnabled = false) {
   return {
     warehouseRef: row.warehouseRef, code: row.code, name: row.name, status: row.status, version: row.version,
     profileVersion: profile?.version ?? 0, warehouseNumber: profile?.warehouseNumber ?? null,
+    ...(localitiesEnabled ? { localityNumber: profile?.localityNumber ?? null } : {}),
     warehouseLabel: profile ? `ALM-${warehouseAddressToken("WAREHOUSE_ROOT", profile.warehouseNumber)}` : null,
     manager: publicManager(people.get(profile?.managerMembershipId)),
     rootLocationRef: root?.locationRef ?? null, rootAreaUseRef: root?.configuration?.areaUse?.useRef ?? null,
@@ -84,17 +90,18 @@ function publicSheet(row, people, routesEnabled = false) {
       locationRef: location.locationRef, parentLocationRef: location.parentLocationId ? refs.get(location.parentLocationId) ?? null : null,
       code: location.code, name: location.name, kind: location.kind, depth: location.depth, path: location.path, status: location.status, version: location.version,
       configurationVersion: location.configuration?.version ?? 0, areaUseRef: location.configuration?.areaUse?.useRef ?? null,
-      address: publicAddress(location.address, profile?.warehouseNumber ?? null, routesEnabled),
+      address: publicAddress(location.address, profile?.warehouseNumber ?? null, routesEnabled, localitiesEnabled, profile?.localityNumber ?? null),
     })),
   };
 }
-export async function listWarehouseSheets(prisma, context, { routesEnabled = false } = {}) {
+export async function listWarehouseSheets(prisma, context, { routesEnabled = false, localitiesEnabled = false } = {}) {
   requirePermission(context);
+  if (localitiesEnabled && !routesEnabled) warehouseSheetFail("WAREHOUSE_LOCALITIES_CONFIGURATION_INVALID", 503);
   return prisma.$transaction(async (tx) => {
     await revalidateActor(tx, context, false);
-    const rows = await tx.materialWarehouse.findMany({ where: { tenantId: context.tenantId }, include: sheetInclude(routesEnabled), orderBy: { code: "asc" } });
+    const rows = await tx.materialWarehouse.findMany({ where: { tenantId: context.tenantId }, include: sheetInclude(routesEnabled, localitiesEnabled), orderBy: { code: "asc" } });
     const people = await managersById(tx, context.tenantId, rows.map((row) => row.sheetProfile?.managerMembershipId));
-    return { warehouses: rows.map((row) => publicSheet(row, people, routesEnabled)) };
+    return { warehouses: rows.map((row) => publicSheet(row, people, routesEnabled, localitiesEnabled)) };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxWait: 5000, timeout: 15000 });
 }
 export async function listWarehouseManagerOptions(prisma, context, raw = {}) {
@@ -246,10 +253,13 @@ async function ensureAddress(tx, context, location, state, { required = false, i
   return publicAddress(location.address, state.profile.warehouseNumber, state.routesEnabled);
 }
 
-export async function saveWarehouseSheet(prisma, context, raw, { routesEnabled = false } = {}) {
+export async function saveWarehouseSheet(prisma, context, raw, { routesEnabled = false, localitiesEnabled = false } = {}) {
   requirePermission(context, true); const input = normalizeWarehouseSheetSave(raw);
+  if (localitiesEnabled && !routesEnabled) warehouseSheetFail("WAREHOUSE_LOCALITIES_CONFIGURATION_INVALID", 503);
   if (!routesEnabled && input.rows.some((row) => Object.hasOwn(row, "identifier"))) warehouseSheetFail("WAREHOUSE_ROUTES_DISABLED", 409);
-  const include = sheetInclude(routesEnabled);
+  const hasLocality = Object.hasOwn(input, "localityNumber");
+  if (!localitiesEnabled && hasLocality) warehouseSheetFail("WAREHOUSE_LOCALITIES_DISABLED", 409);
+  const include = sheetInclude(routesEnabled, localitiesEnabled);
   return mutate(prisma, context, input, async (tx, actor) => {
     let warehouse;
     if (input.warehouseRef) {
@@ -270,18 +280,18 @@ export async function saveWarehouseSheet(prisma, context, raw, { routesEnabled =
     const byId = new Map(warehouse.locations.map((row) => [row.id, row]));
     const byRef = new Map(warehouse.locations.map((row) => [row.locationRef, row]));
     const beforePeople = await managersById(tx, actor.tenantId, [warehouse.sheetProfile?.managerMembershipId]);
-    const before = input.warehouseRef ? publicSheet(warehouse, beforePeople, routesEnabled) : null;
+    const before = input.warehouseRef ? publicSheet(warehouse, beforePeople, routesEnabled, localitiesEnabled) : null;
     const manager = await managerFor(tx, actor.tenantId, input.managerMembershipRef, warehouse.sheetProfile?.managerMembershipId);
     const useRefs = [...new Set([input.rootAreaUseRef, ...input.rows.map((row) => row.areaUseRef)].filter(Boolean))];
     const uses = new Map((useRefs.length ? await tx.warehouseAreaUse.findMany({ where: { tenantId: actor.tenantId, useRef: { in: useRefs } } }) : []).map((row) => [row.useRef, row]));
     let profile = warehouse.sheetProfile;
     if (profile) {
-      const changed = await tx.warehouseSheetProfile.updateMany({ where: { tenantId: actor.tenantId, id: profile.id, version: input.expectedProfileVersion }, data: { managerMembershipId: manager?.membership_id ?? null, managerUserId: manager?.user_id ?? null, version: { increment: 1 } } });
+      const changed = await tx.warehouseSheetProfile.updateMany({ where: { tenantId: actor.tenantId, id: profile.id, version: input.expectedProfileVersion }, data: { managerMembershipId: manager?.membership_id ?? null, managerUserId: manager?.user_id ?? null, ...(hasLocality ? { localityNumber: input.localityNumber } : {}), version: { increment: 1 } } });
       if (changed.count !== 1) warehouseSheetFail("WAREHOUSE_SHEET_VERSION_CONFLICT", 409);
     } else {
       const allocated = await tx.warehouseSheetProfile.findMany({ where: { tenantId: actor.tenantId }, select: { warehouseNumber: true } });
       let warehouseNumber; try { warehouseNumber = allocateWarehouseAddressOrdinal("WAREHOUSE_ROOT", allocated.map((row) => row.warehouseNumber)); } catch (error) { addressFailure(error); }
-      profile = await tx.warehouseSheetProfile.create({ data: { tenantId: actor.tenantId, warehouseId: warehouse.id, warehouseNumber, managerMembershipId: manager?.membership_id ?? null, managerUserId: manager?.user_id ?? null } });
+      profile = await tx.warehouseSheetProfile.create({ data: { tenantId: actor.tenantId, warehouseId: warehouse.id, warehouseNumber, managerMembershipId: manager?.membership_id ?? null, managerUserId: manager?.user_id ?? null, ...(hasLocality ? { localityNumber: input.localityNumber } : {}) }, select: profileSelect(localitiesEnabled) });
     }
     if (input.warehouseRef) {
       const changed = await tx.materialWarehouse.updateMany({ where: { tenantId: actor.tenantId, id: warehouse.id, version: input.expectedWarehouseVersion }, data: { name: input.name, version: { increment: 1 } } });
@@ -344,7 +354,7 @@ export async function saveWarehouseSheet(prisma, context, raw, { routesEnabled =
     }
     const saved = await tx.materialWarehouse.findFirst({ where: { tenantId: actor.tenantId, id: warehouse.id }, include });
     const people = await managersById(tx, actor.tenantId, [saved.sheetProfile.managerMembershipId]);
-    const result = { warehouse: publicSheet(saved, people, routesEnabled), rowResults: input.rows.map((row) => ({ rowId: row.rowId, locationRef: resultRows.get(row.rowId).locationRef })) };
+    const result = { warehouse: publicSheet(saved, people, routesEnabled, localitiesEnabled), rowResults: input.rows.map((row) => ({ rowId: row.rowId, locationRef: resultRows.get(row.rowId).locationRef })) };
     await tx.materialInventoryCommand.create({ data: { tenantId: actor.tenantId, requestId: input.requestId, operation: input.operation, payloadHash: input.payloadHash, targetRef: warehouse.warehouseRef, resultJson: result, actorMembershipId: actor.membershipId, actorUserId: actor.userId } });
     await tx.commercialAuditLog.create({ data: { tenant_id: actor.tenantId, actor_user_id: actor.userId, actor_membership_id: actor.membershipId, role_snapshot: actor.role, action: input.operation, entity: "WarehouseSheet", entityId: warehouse.warehouseRef, ...(before ? { before_json: before } : {}), after_json: result, source: "V17_WAREHOUSE_SHEET", request_id: input.requestId, correlation_id: input.requestId, critical: true } });
     return result;

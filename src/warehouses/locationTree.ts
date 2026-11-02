@@ -43,10 +43,10 @@ export type SpaceTreeRow = Readonly<{
   matches: boolean;
 }>;
 
-type SearchableLocation = WarehouseLocationRow & Readonly<{ address?: Readonly<{ label: string }> | null }>;
-type SearchableWarehouse = Omit<WarehouseRow, "locations"> & Readonly<{ warehouseLabel?: string | null; locations: readonly SearchableLocation[] }>;
+type SearchableLocation = WarehouseLocationRow & Readonly<{ address?: Readonly<{ label: string; displayLabel?: string | null }> | null }>;
+type SearchableWarehouse = Omit<WarehouseRow, "locations"> & Readonly<{ warehouseLabel?: string | null; warehouseNumber?: number | null; localityNumber?: number | null; locations: readonly SearchableLocation[] }>;
 
-export function spaceTreeRows(warehouses: readonly SearchableWarehouse[], search: string, status: string, collapsed: ReadonlySet<string>): SpaceTreeRow[] {
+export function spaceTreeRows(warehouses: readonly SearchableWarehouse[], search: string, status: string, collapsed: ReadonlySet<string>, options: { localitiesEnabled?: boolean } = {}): SpaceTreeRow[] {
   const query = search.trim().toLocaleLowerCase("es");
   const filtering = Boolean(query || status);
   const result: SpaceTreeRow[] = [];
@@ -62,11 +62,13 @@ export function spaceTreeRows(warehouses: readonly SearchableWarehouse[], search
       siblings.push(location);
       children.set(parent, siblings);
     }
-    for (const siblings of children.values()) siblings.sort((a, b) => (a.address?.label ?? a.code).localeCompare(b.address?.label ?? b.code));
-    const rootMatches = (!status || warehouse.status === status) && (!query || `${warehouse.name} ${warehouse.code} ${warehouse.warehouseLabel ?? ""}`.toLocaleLowerCase("es").includes(query));
+    const localityLabel = options.localitiesEnabled ? warehouse.localityNumber == null ? "Localidad sin asignar" : `Localidad S${warehouse.localityNumber} S${warehouse.localityNumber}-ALM${warehouse.warehouseNumber ?? "?"}` : "";
+    const labelFor = (location: SearchableLocation) => options.localitiesEnabled ? location.address?.displayLabel ?? location.address?.label ?? location.code : location.address?.label ?? location.code;
+    for (const siblings of children.values()) siblings.sort((a, b) => labelFor(a).localeCompare(labelFor(b)));
+    const rootMatches = (!status || warehouse.status === status) && (!query || `${warehouse.name} ${warehouse.code} ${warehouse.warehouseLabel ?? ""} ${localityLabel}`.toLocaleLowerCase("es").includes(query));
     const matching = new Set(warehouse.locations.filter((location) => location !== root
       && (!status || location.status === status)
-      && (!query || `${location.name} ${location.code} ${location.address?.label ?? ""} ${locationNamePath(warehouse, location)}`.toLocaleLowerCase("es").includes(query))).map((row) => row.locationRef));
+      && (!query || `${location.name} ${location.code} ${location.address?.label ?? ""} ${options.localitiesEnabled ? location.address?.displayLabel ?? "" : ""} ${localityLabel} ${locationNamePath(warehouse, location)}`.toLocaleLowerCase("es").includes(query))).map((row) => row.locationRef));
     if (filtering && !rootMatches && matching.size === 0) continue;
     const included = new Set(matching);
     for (const ref of matching) {

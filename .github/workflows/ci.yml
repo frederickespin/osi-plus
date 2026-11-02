@@ -58,6 +58,7 @@ jobs:
           npm run test:v17-warehouse-configuration
           npm run test:v17-warehouse-sheet
           npm run test:v17-warehouse-routes
+          npm run test:v17-warehouse-localities
           npm run test:v17-logistics-transport
           npm run guard:v17-logistics-engine
           node scripts/v17-quote-local-target-test.mjs
@@ -413,6 +414,135 @@ jobs:
             exit 1
           fi
 
+  # The durable40 receipt must survive migration41. Its actor and append-only
+  # history belong to this disposable runner, independent of MT-01A's empty
+  # identity bootstrap in canonical-database-validation.
+  warehouse-localities-pg18-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CANONICAL_DB_VALIDATION: "true"
+      VERCEL_ENV: development
+      DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      DIRECT_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+      CRM01B1_TEST_DATABASE_URL: postgresql://postgres:osi-ci-only-password@127.0.0.1:55432/osi_db01n_ci?schema=osi
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Start isolated PostgreSQL18.6 on host loopback
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --name osi-warehouse-postgres-18 --network host \
+            -e POSTGRES_DB=osi_db01n_ci \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=osi-ci-only-password \
+            postgres:18.6 \
+            -c listen_addresses=127.0.0.1 \
+            -c port=55432
+          for attempt in {1..30}; do
+            if docker exec osi-warehouse-postgres-18 pg_isready -h 127.0.0.1 -p 55432 -U postgres -d osi_db01n_ci >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs --tail 40 osi-warehouse-postgres-18
+          exit 1
+
+      - name: Install locked dependencies and generate schema41 client
+        run: |
+          npm ci
+          node scripts/validate-prisma-schema-target.mjs
+          npx prisma generate --schema prisma/schema.prisma
+
+      - name: Verify empty isolated PostgreSQL18 target
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { PrismaClient } from '@prisma/client';
+          import { validateV17ServicesTestUrl } from './scripts/v17-services-local-target.mjs';
+          const target = validateV17ServicesTestUrl(process.env.DATABASE_URL);
+          assert.equal(target.canonicalCi, true);
+          assert.equal(process.env.DIRECT_URL, target.raw);
+          assert.equal(process.env.CRM01B1_TEST_DATABASE_URL, target.raw);
+          const prisma = new PrismaClient({ datasourceUrl: target.raw });
+          try {
+            const [identity] = await prisma.$queryRawUnsafe("SELECT current_database() AS database, current_setting('neon.branch_id', true) AS branch, current_setting('server_version_num')::integer AS version, inet_server_addr()::text AS address, inet_server_port() AS port, to_regclass('osi._prisma_migrations') IS NULL AS ledger_absent");
+            assert.equal(identity.database, 'osi_db01n_ci');
+            assert.equal(identity.branch, null);
+            assert.equal(identity.version, 180006);
+            assert.equal(identity.address?.split('/')[0], '127.0.0.1');
+            assert.equal(identity.port, 55432);
+            assert.equal(identity.ledger_absent, true);
+          } finally { await prisma.$disconnect(); }
+          NODE
+
+      - name: Prepare the exact40 historical staging directory
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { mkdirSync, copyFileSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
+          const source = validateMigrationFiles();
+          assert.equal(source.length, 41);
+          assert.equal(source.at(-1), '20261102020000_v17_warehouse_localities');
+          assert.equal(source[39], '20261102010000_v17_warehouse_routes');
+          const stage = join(process.env.RUNNER_TEMP, 'warehouse-pg18-durable40');
+          mkdirSync(join(stage, 'migrations'), { recursive: true });
+          copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
+          writeFileSync(join(stage, 'migrations/migration_lock.toml'), 'provider = "postgresql"\n');
+          for (const name of source.slice(0, 40)) {
+            mkdirSync(join(stage, 'migrations', name));
+            copyFileSync(join('prisma/migrations', name, 'migration.sql'), join(stage, 'migrations', name, 'migration.sql'));
+          }
+          NODE
+
+      - name: Apply40 and persist the legacy20D receipt with20E disabled
+        env:
+          V17_WAREHOUSE_LOCALITIES_LEGACY_EVIDENCE_PATH: ${{ runner.temp }}/warehouse-pg18-durable-legacy.json
+        run: |
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/warehouse-pg18-durable40/schema.prisma"
+          node scripts/v17-warehouse-localities-legacy-db-test.mjs
+          node scripts/capture-v17-warehouse-localities-catalog.mjs --before "$RUNNER_TEMP/warehouse-pg18-durable-before.json"
+
+      - name: Upgrade40 to41 and verify populated data preservation
+        run: |
+          npx prisma migrate deploy --schema prisma/schema.prisma
+          node scripts/capture-v17-warehouse-localities-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-durable-after.json" --previous "$RUNNER_TEMP/warehouse-pg18-durable-before.json"
+
+      - name: Verify idempotent41 deploy and unchanged populated catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(npx prisma migrate deploy --schema prisma/schema.prisma 2>&1)"
+          printf '%s\n' "$output"
+          grep -Fq "No pending migrations to apply." <<< "$output"
+          node scripts/capture-v17-warehouse-localities-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-durable-replay.json" --previous "$RUNNER_TEMP/warehouse-pg18-durable-before.json"
+
+      - name: Verify all10 locality database cases including the exact pre41 receipt replay
+        env:
+          V17_WAREHOUSE_LOCALITIES_LEGACY_EVIDENCE_PATH: ${{ runner.temp }}/warehouse-pg18-durable-legacy.json
+        run: npm run test:v17-warehouse-localities:db
+
+      - name: Upload synthetic populated transition evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: v17-warehouse-localities-pg18-populated-evidence
+          path: ${{ runner.temp }}/warehouse-pg18-durable-*.json
+          if-no-files-found: error
+          retention-days: 7
+
   canonical-database-validation:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -579,7 +709,7 @@ jobs:
           npx prisma validate --schema prisma/schema.prisma
           npx prisma generate --schema prisma/schema.prisma
 
-      - name: Prepare exact38 and39 historical PostgreSQL18 staging directories
+      - name: Prepare exact38,39 and40 historical PostgreSQL18 staging directories
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -587,11 +717,12 @@ jobs:
           import { join } from 'node:path';
           import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
           const source = validateMigrationFiles();
-          assert.equal(source.length, 40);
-          assert.equal(source.at(-1), '20261102010000_v17_warehouse_routes');
+          assert.equal(source.length, 41);
+          assert.equal(source.at(-1), '20261102020000_v17_warehouse_localities');
+          assert.equal(source[39], '20261102010000_v17_warehouse_routes');
           assert.equal(source[38], '20261101020000_v17_warehouse_sheet');
           assert.equal(source[37], '20261101010000_v17_warehouse_configuration');
-          for (const count of [38, 39]) {
+          for (const count of [38, 39, 40]) {
             const stage = join(process.env.RUNNER_TEMP, `canonical-pg18-${count}`);
             mkdirSync(join(stage, 'migrations'), { recursive: true });
             copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
@@ -617,7 +748,7 @@ jobs:
           npx prisma migrate deploy --schema "$RUNNER_TEMP/canonical-pg18-39/schema.prisma"
           node scripts/capture-v17-warehouse-sheet-catalog.mjs
 
-      - name: Verify real legacy20C flow on39 with the generated40 client and20D disabled
+      - name: Verify real legacy20C flow on39 with the generated41 client and20D disabled
         run: node scripts/v17-warehouse-routes-legacy-db-test.mjs
 
       - name: Capture independent PostgreSQL18 baseline before routes40
@@ -625,8 +756,21 @@ jobs:
 
       - name: Upgrade39 to40 and verify only the reviewed catalog changes
         run: |
-          npx prisma migrate deploy --schema prisma/schema.prisma
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/canonical-pg18-40/schema.prisma"
           node scripts/capture-v17-warehouse-routes-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-routes-after.json" --previous "$RUNNER_TEMP/warehouse-pg18-routes-before.json"
+
+      - name: Verify read-only40 replay and legacy20D with locality disabled
+        run: |
+          node scripts/capture-v17-warehouse-routes-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-routes-replay.json" --previous "$RUNNER_TEMP/warehouse-pg18-routes-before.json"
+          node scripts/v17-warehouse-localities-legacy-db-test.mjs
+
+      - name: Capture independent PostgreSQL18 baseline before localities41
+        run: node scripts/capture-v17-warehouse-localities-catalog.mjs --before "$RUNNER_TEMP/warehouse-pg18-localities-before.json"
+
+      - name: Upgrade40 to41 and verify the additive locality migration
+        run: |
+          npx prisma migrate deploy --schema prisma/schema.prisma
+          node scripts/capture-v17-warehouse-localities-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-localities-after.json" --previous "$RUNNER_TEMP/warehouse-pg18-localities-before.json"
 
       - name: Verify idempotent second deploy
         shell: bash
@@ -652,14 +796,14 @@ jobs:
           test "$diff_status" -eq 0
           grep -Fxq -- "-- This is an empty migration." "$RUNNER_TEMP/canonical-drift.sql"
 
-      - name: Capture read-only40 replay and verify preserved data
-        run: node scripts/capture-v17-warehouse-routes-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-routes-replay.json" --previous "$RUNNER_TEMP/warehouse-pg18-routes-before.json"
+      - name: Capture read-only41 replay and verify preserved data
+        run: node scripts/capture-v17-warehouse-localities-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-localities-replay.json" --previous "$RUNNER_TEMP/warehouse-pg18-localities-before.json"
 
       - name: Publish candidate catalog without accepting a baseline
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: v17-warehouse-routes-catalog-evidence
+          name: v17-warehouse-localities-catalog-evidence
           path: ${{ runner.temp }}/warehouse-pg18-*.json
           if-no-files-found: ignore
           retention-days: 7

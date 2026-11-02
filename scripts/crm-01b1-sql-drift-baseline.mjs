@@ -6,6 +6,7 @@ import { createCrm01b1LocalPrisma } from "./crm-01b1-local-target.mjs";
 import { validateAppliedMigrationHistory, validateMigrationFiles } from "./canonical-migrations.mjs";
 import { WAREHOUSE_ROUTES_MIGRATION, WAREHOUSE_ROUTES_MIGRATION_CHECKSUM } from "../shared/warehouseRoutesMigration.js";
 import { WAREHOUSE_SHEET_MIGRATION, WAREHOUSE_SHEET_MIGRATION_CHECKSUM } from "../shared/warehouseSheetMigration.js";
+import { WAREHOUSE_LOCALITIES_MIGRATION, WAREHOUSE_LOCALITIES_MIGRATION_CHECKSUM } from "../shared/warehouseLocalitiesMigration.js";
 
 export const PRISMA_EMPTY_DIFF_SHA256 = "0983c8c2474f18152b093842104ef9aef25f03fb78861c9e681da2249a64a385";
 export const LOCAL_15_CATALOG_SHA256 = "cf48b58f82cdaa9f2ce4e7bb3f467848ee32a3b83043977d56a896f27888dd35";
@@ -209,6 +210,27 @@ export const CANONICAL_40_WAREHOUSE_ROUTES_SQL_ONLY_COUNTS = Object.freeze({
   "20261102010000_v17_warehouse_routes": Object.freeze({ check: 1, function: 1 }),
 });
 
+// Measured independently on disposable PostgreSQL18.6 with populated40 data.
+// The nullable locality column and its CHECK preserve every previous object.
+export const CANONICAL_41_WAREHOUSE_LOCALITIES_CATALOG = Object.freeze({
+  count: 10831,
+  sha256: "d54f35d6141505bbe9e4e118718fcfc953dd9eecb06ad5212c94b69b39a9a862",
+  categories: Object.freeze({
+    check: Object.freeze({ count: 427, sha256: "121d2b23c0bbc9f446be5cce2f34085381d0e128fdc6dc44ea1c241d1b2f0d96" }),
+    column: Object.freeze({ count: 3861, sha256: "0cdcfbd868d627c56a82f55fcc1ec491d5f70ace49f47efc556455527a323351" }),
+    constraint: Object.freeze({ count: 3104, sha256: "14aff416a17959c4609a97763ced9f1488b6ebe47275a839ec79ab855ad84cfa" }),
+    enum: Object.freeze({ count: 1110, sha256: "5ebe8e1f975cb016ec35109a07d6271f0e71a204c52da9a6452e77819597948d" }),
+    foreign_key: Object.freeze({ count: 683, sha256: "bb9c069961106d1499edfbb2086f59fe6f0651bd7f282a6614ad51e105ceb80c" }),
+    function: Object.freeze({ count: 305, sha256: "aca57d2646fc53b4cf3d422ecf1796fc05746d62d4aeeff6165a7ca6797cc554" }),
+    index: Object.freeze({ count: 1151, sha256: "054cd5824aec06cb35ca6441ff56dd76c50ea8fe1d11f46f43c716516fc78ef8" }),
+    trigger: Object.freeze({ count: 190, sha256: "df09a0465410f21de390211d7c6b2db5ae1f363dc0cf1127d9921b5457dc907b" }),
+  }),
+});
+export const CANONICAL_41_WAREHOUSE_LOCALITIES_SQL_ONLY_COUNTS = Object.freeze({
+  ...CANONICAL_40_WAREHOUSE_ROUTES_SQL_ONLY_COUNTS,
+  [WAREHOUSE_LOCALITIES_MIGRATION]: Object.freeze({ check: 1 }),
+});
+
 const BTREE_GIST_MIGRATION = "20260907010000_v17_tools_equipment";
 const HISTORICAL_22_PROFILE = Object.freeze({
   id: "historical-22", migrations: 22,
@@ -282,6 +304,18 @@ const CANONICAL_40_WAREHOUSE_ROUTES_PROFILE = Object.freeze({
   approvedMigrationChecksums: Object.freeze({
     ...CANONICAL_39_WAREHOUSE_SHEET_PROFILE.approvedMigrationChecksums,
     [WAREHOUSE_ROUTES_MIGRATION]: WAREHOUSE_ROUTES_MIGRATION_CHECKSUM,
+  }),
+});
+
+const CANONICAL_41_WAREHOUSE_LOCALITIES_PROFILE = Object.freeze({
+  id: "canonical-41-warehouse-localities-20e", migrations: 41,
+  catalog: CANONICAL_41_WAREHOUSE_LOCALITIES_CATALOG,
+  sqlOnlyCounts: CANONICAL_41_WAREHOUSE_LOCALITIES_SQL_ONLY_COUNTS,
+  extensions: CANONICAL_40_WAREHOUSE_ROUTES_PROFILE.extensions,
+  extensionMembers: CANONICAL_40_WAREHOUSE_ROUTES_PROFILE.extensionMembers,
+  approvedMigrationChecksums: Object.freeze({
+    ...CANONICAL_40_WAREHOUSE_ROUTES_PROFILE.approvedMigrationChecksums,
+    [WAREHOUSE_LOCALITIES_MIGRATION]: WAREHOUSE_LOCALITIES_MIGRATION_CHECKSUM,
   }),
 });
 
@@ -382,7 +416,7 @@ function normalizeDefinition(value) {
 }
 
 export function sqlDriftProfileForDatabase(database) {
-  if (database === "osi_db01n_ci") return CANONICAL_40_WAREHOUSE_ROUTES_PROFILE;
+  if (database === "osi_db01n_ci") return CANONICAL_41_WAREHOUSE_LOCALITIES_PROFILE;
   if (["osi_crm01b_local", "osi_v17_case_client_local", "osi_v17_case_public_ref_local"].includes(database)) {
     return HISTORICAL_22_PROFILE;
   }

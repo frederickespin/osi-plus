@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronRight, MapPin, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Warehouse } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
@@ -18,6 +18,8 @@ import type { WarehouseSheet, WarehouseSheetChange } from "./sheetTypes";
 import { clearWorkingWarehouseSheet, getWorkingWarehouseSheet } from "./workingSheet";
 import { SHEET_KINDS, sheetParentKinds, existingParentKey } from "./sheetDraft";
 import { canPlaceWarehouseAddressKind } from "../../shared/warehouseSheetAddress.js";
+import { formatWarehouseDisplayAddress } from "../../shared/warehouseLocalityAddress.js";
+import { isWarehouseLocalitiesUiEnabled } from "./localitiesMode";
 
 const LocationConfigurationEditor = lazy(() => import("./LocationConfigurationEditor"));
 const WarehouseSheetEditor = lazy(() => import("./WarehouseSheetEditor"));
@@ -73,10 +75,12 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
   const [usesRevision, setUsesRevision] = useState(0);
   const configurationEnabled = isWarehouseConfigurationUiEnabled();
   const sheetEnabled = isWarehouseSheetUiEnabled();
+  const localitiesEnabled = isWarehouseLocalitiesUiEnabled();
   const configurationResult = useWarehouseConfiguration(api, configurationEnabled, revision + usesRevision, onUnauthorized);
   const [result, setResult] = useState<{ revision: number; rows: readonly WarehouseRow[]; error: string | null } | null>(null);
   const [search, setSearch] = useState("");
   const [warehouseFilter, setWarehouseFilter] = useState("");
+  const [localityFilter, setLocalityFilter] = useState("");
   const [status, setStatus] = useState("");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [pendingDraft, setPendingDraft] = useState(() => membershipRef ? getPendingWarehouseDraft(membershipRef) : null);
@@ -112,10 +116,13 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
   const loading = result?.revision !== revision;
   const warehouses = !loading && result && !result.error ? result.rows : [];
   const error = !loading ? result?.error : null;
-  const filteredWarehouses = warehouses.filter((warehouse) => !warehouseFilter || warehouse.warehouseRef === warehouseFilter);
+  const localityKey = (warehouse: WarehouseRow) => String((warehouse as WarehouseSheet).localityNumber ?? "unassigned");
+  const localityOptions = [...new Set(warehouses.map(localityKey))].sort((a, b) => (a === "unassigned" ? Infinity : Number(a)) - (b === "unassigned" ? Infinity : Number(b)));
+  const filteredWarehouses = warehouses.filter((warehouse) => (!warehouseFilter || warehouse.warehouseRef === warehouseFilter) && (!localitiesEnabled || !localityFilter || localityKey(warehouse) === localityFilter));
+  if (localitiesEnabled) filteredWarehouses.sort((a, b) => ((a as WarehouseSheet).localityNumber ?? Infinity) - ((b as WarehouseSheet).localityNumber ?? Infinity) || a.name.localeCompare(b.name, "es"));
   const configurations = configurationResult.data?.locations ?? [];
   const resolvedConfigurationEditor = configurationEditor?.recovery ? recoverConfigurationEditor(configurationEditor.recovery, warehouses, configurations) : configurationEditor;
-  const rows = spaceTreeRows(filteredWarehouses, search, status, collapsed);
+  const rows = spaceTreeRows(filteredWarehouses, search, status, collapsed, { localitiesEnabled });
   const filtering = Boolean(search.trim() || status);
   const refresh = () => { setRevision((current) => current + 1); };
   const openSheet = (warehouse?: WarehouseRow, options: Pick<SheetEditor, "initialParentRef" | "initialFocusRef"> = {}) => {
@@ -147,7 +154,7 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
     const sheet = warehouses.find((warehouse) => warehouse.warehouseRef === sheetEditor.warehouseRef) as WarehouseSheet | undefined;
     if (loading) return <p role="status" className="py-6 text-xs text-slate-500">Cargando hoja de almacén…</p>;
     if (sheetEditor.warehouseRef && !sheet && !sheetEditor.recovery) return <section className="mt-5 space-y-3"><p role="alert" className="text-xs text-red-800">{error ?? "El almacén del borrador ya no está disponible. Actualice el listado antes de continuar."}</p><div className="flex flex-wrap gap-2"><button type="button" className={buttonClass} onClick={refresh}>Reintentar consulta</button><button type="button" className={buttonClass} onClick={() => { clearWorkingWarehouseSheet(membershipRef); setWorkingDraft(null); setSheetEditor(null); }}>Descartar borrador</button></div></section>;
-    return <div className="mt-5 min-w-0"><Suspense fallback={<p role="status" className="py-3 text-xs text-slate-500">Preparando hoja de almacén…</p>}><WarehouseSheetEditor key={sheetEditor.id} api={api} membershipRef={membershipRef} sheet={sheet} recovery={sheetEditor.recovery} working={sheetEditor.working} initialParentRef={sheetEditor.initialParentRef} initialFocusRef={sheetEditor.initialFocusRef} uses={configurationResult.data?.areaUses ?? []} usesReady={Boolean(configurationResult.data) && !configurationResult.loading} usesError={configurationResult.error} onPending={(draft) => { setPendingDraft(draft); setPendingWrite(Boolean(draft)); }} onUnauthorized={onUnauthorized} onNavigate={(path) => onNavigate?.(path)} onReturn={(change) => { setSheetEditor(null); setWorkingDraft(change ?? getWorkingWarehouseSheet(membershipRef)); }} onRefresh={refresh} onRetryUses={() => setUsesRevision((value) => value + 1)} onSaved={(saved) => { setSheetEditor(null); setWorkingDraft(null); setPendingDraft(null); setPendingWrite(false); setWarehouseFilter(""); setSearch(""); setStatus(""); setCollapsed(new Set()); setNotice(`Guardado: ${saved.warehouse.name} · ${saved.warehouse.warehouseLabel ?? saved.warehouse.code}`); refresh(); }} /></Suspense></div>;
+    return <div className="mt-5 min-w-0"><Suspense fallback={<p role="status" className="py-3 text-xs text-slate-500">Preparando hoja de almacén…</p>}><WarehouseSheetEditor key={sheetEditor.id} api={api} membershipRef={membershipRef} sheet={sheet} recovery={sheetEditor.recovery} working={sheetEditor.working} initialParentRef={sheetEditor.initialParentRef} initialFocusRef={sheetEditor.initialFocusRef} uses={configurationResult.data?.areaUses ?? []} usesReady={Boolean(configurationResult.data) && !configurationResult.loading} usesError={configurationResult.error} onPending={(draft) => { setPendingDraft(draft); setPendingWrite(Boolean(draft)); }} onUnauthorized={onUnauthorized} onNavigate={(path) => onNavigate?.(path)} onReturn={(change) => { setSheetEditor(null); setWorkingDraft(change ?? getWorkingWarehouseSheet(membershipRef)); }} onRefresh={refresh} onRetryUses={() => setUsesRevision((value) => value + 1)} onSaved={(saved) => { setSheetEditor(null); setWorkingDraft(null); setPendingDraft(null); setPendingWrite(false); setWarehouseFilter(""); setLocalityFilter(""); setSearch(""); setStatus(""); setCollapsed(new Set()); setNotice(`Guardado: ${saved.warehouse.name} · ${localitiesEnabled && saved.warehouse.localityNumber != null ? `S${saved.warehouse.localityNumber}-ALM${saved.warehouse.warehouseNumber ?? "?"}` : saved.warehouse.warehouseLabel ?? saved.warehouse.code}`); refresh(); }} /></Suspense></div>;
   }
 
   const reopenPending = () => {
@@ -172,10 +179,11 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
       </div>
     </div>
     <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(180px,1fr)_minmax(160px,220px)_160px]">
-      <label className="relative col-span-2 sm:col-span-1"><Search aria-hidden="true" className="pointer-events-none absolute left-2 top-2 h-4 w-4 text-slate-400 sm:top-1.5" /><input type="search" aria-label="Buscar almacenes y ubicaciones" placeholder="Nombre o código…" maxLength={160} value={search} onChange={(event) => setSearch(event.target.value)} className={`${COMPACT_FORM_FIELD} w-full pl-8`} /></label>
+      <label className="relative col-span-2 sm:col-span-1"><Search aria-hidden="true" className="pointer-events-none absolute left-2 top-2 h-4 w-4 text-slate-400 sm:top-1.5" /><input type="search" aria-label="Buscar almacenes y ubicaciones" placeholder={localitiesEnabled ? "Nombre, localidad o etiqueta…" : "Nombre o código…"} maxLength={160} value={search} onChange={(event) => setSearch(event.target.value)} className={`${COMPACT_FORM_FIELD} w-full pl-8`} /></label>
       <select aria-label="Filtrar por almacén" value={warehouseFilter} onChange={(event) => setWarehouseFilter(event.target.value)} disabled={loading} className={COMPACT_FORM_FIELD}><option value="">Todos los almacenes</option>{warehouses.map((warehouse) => <option key={warehouse.warehouseRef} value={warehouse.warehouseRef}>{warehouse.name}</option>)}</select>
       <select aria-label={configurationEnabled ? "Estado del registro" : "Estado de ubicaciones"} value={status} onChange={(event) => setStatus(event.target.value)} className={COMPACT_FORM_FIELD}><option value="">{configurationEnabled ? "Todos los registros" : "Todos los estados"}</option><option value="ACTIVE">{configurationEnabled ? "Registros activos" : "Activos"}</option><option value="INACTIVE">{configurationEnabled ? "Registros inactivos" : "Inactivos"}</option></select>
     </div>
+    {localitiesEnabled && <label className="mb-3 flex items-center gap-2 text-xs text-slate-600">Localidad<select aria-label="Filtrar por localidad" value={localityFilter} onChange={(event) => setLocalityFilter(event.target.value)} disabled={loading} className={`${COMPACT_FORM_FIELD} w-44`}><option value="">Todas las localidades</option>{localityOptions.map((value) => <option key={value} value={value}>{value === "unassigned" ? "Sin asignar" : `Localidad S${value}`}</option>)}</select></label>}
     {notice && <p role="status" className="mb-3 flex items-center gap-2 text-xs text-emerald-800"><Check aria-hidden="true" className="h-4 w-4" />{notice}</p>}
     {pendingWrite && !editorOpen && <div role="alert" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-amber-900"><span>Hay un guardado sin confirmar. {canManage ? canReopenPending ? "Reabra el formulario para comprobar el mismo intento." : pendingSheet ? "La hoja de almacenes debe estar habilitada para comprobar ese intento." : configurationEnabled ? "Compruebe ese intento en Configuración antes de iniciar otro cambio." : "La configuración debe estar habilitada para comprobar ese intento." : "Necesita permiso de gestión para comprobarlo."}</span>{canManage && (canReopenPending ? <button type="button" onClick={reopenPending} className={buttonClass}>Reabrir guardado</button> : !pendingSheet && configurationEnabled && pendingDraft && onNavigate ? <button type="button" onClick={() => onNavigate(pendingWarehouseRoute(pendingDraft.change))} className={buttonClass}>Ir al guardado pendiente</button> : null)}</div>}
     {sheetEnabled && workingDraft && !pendingWrite && canManage && <div role="status" className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-700"><span>Hay una hoja sin guardar.</span><button type="button" disabled={loading || Boolean(error)} className={buttonClass} onClick={() => setSheetEditor({ id: crypto.randomUUID(), warehouseRef: workingDraft.warehouseRef, working: workingDraft })}>Continuar borrador</button><button type="button" className={buttonClass} onClick={() => { if (membershipRef) clearWorkingWarehouseSheet(membershipRef); setWorkingDraft(null); }}>Descartar borrador</button></div>}
@@ -187,24 +195,26 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
           <tbody>
             {loading && <tr><td colSpan={configurationEnabled ? 6 : 5} className="px-3 py-8 text-center text-slate-500"><span role="status">Cargando almacenes…</span></td></tr>}
             {error && <tr><td colSpan={configurationEnabled ? 6 : 5} className="px-3 py-6 text-center"><p role="alert" className="mb-2 text-red-800">{error}</p><button type="button" onClick={refresh} className={buttonClass}>Reintentar consulta</button></td></tr>}
-            {!loading && !error && rows.length === 0 && <tr><td colSpan={configurationEnabled ? 6 : 5} className="px-3 py-8 text-center text-slate-500">{search || warehouseFilter || status ? "No hay ubicaciones que coincidan con estos filtros." : "Todavía no hay almacenes registrados."}</td></tr>}
-            {!loading && !error && rows.map((row) => {
+            {!loading && !error && rows.length === 0 && <tr><td colSpan={configurationEnabled ? 6 : 5} className="px-3 py-8 text-center text-slate-500">{search || warehouseFilter || localityFilter || status ? "No hay ubicaciones que coincidan con estos filtros." : "Todavía no hay almacenes registrados."}</td></tr>}
+            {!loading && !error && rows.map((row, index) => {
               const name = row.isWarehouse ? row.warehouse.name : row.location!.name;
               const active = (row.isWarehouse ? row.warehouse.status : row.location!.status) === "ACTIVE";
               const sheet = sheetEnabled ? row.warehouse as WarehouseSheet : undefined;
               const sheetLocation = sheet?.locations.find((location) => location.locationRef === row.location?.locationRef);
-              const code = row.isWarehouse ? sheet?.warehouseLabel ?? row.warehouse.code : sheetLocation?.address?.label ?? row.location!.code;
+              const code = row.isWarehouse ? localitiesEnabled && sheet?.localityNumber != null ? `S${sheet.localityNumber}-ALM${sheet.warehouseNumber ?? "?"}` : sheet?.warehouseLabel ?? row.warehouse.code : localitiesEnabled && sheetLocation?.address ? formatWarehouseDisplayAddress(sheet?.localityNumber ?? null, sheetLocation.address) ?? sheetLocation.address.label : sheetLocation?.address?.label ?? row.location!.code;
+              const startsLocality = localitiesEnabled && (index === 0 || localityKey(rows[index - 1].warehouse) !== localityKey(row.warehouse));
               const parentKinds = sheetEnabled && row.location ? sheetParentKinds(row.isWarehouse ? "" : existingParentKey(row.location.locationRef), [], sheet) : null;
               const canAddSheetChild = !sheetEnabled || Boolean(parentKinds && SHEET_KINDS.some((kind) => canPlaceWarehouseAddressKind(kind, parentKinds)));
               const configuration = configurations.find((item) => item.locationRef === row.location?.locationRef);
               const areaUse = configurationResult.data?.areaUses.find((use) => use.useRef === configuration?.areaUseRef);
-              return <tr key={row.key} data-testid="warehouse-space-row" className={`border-t border-slate-100 ${row.isWarehouse ? "bg-slate-50/70" : "hover:bg-slate-50"}`}>
+              return <Fragment key={row.key}>{startsLocality && <tr data-testid="warehouse-locality-group" className="border-t border-slate-200 bg-slate-100"><th scope="rowgroup" colSpan={configurationEnabled ? 6 : 5} className="px-3 py-2 text-xs font-semibold text-slate-700">{sheet?.localityNumber == null ? "Localidad sin asignar" : `Localidad S${sheet.localityNumber}`}</th></tr>}<tr data-testid="warehouse-space-row" className={`border-t border-slate-100 ${row.isWarehouse ? "bg-slate-50/70" : "hover:bg-slate-50"}`}>
                 <td className={`max-w-[420px] py-1.5 pr-3 ${row.matches ? "text-slate-900" : "text-slate-500"}`} style={{ paddingLeft: `${12 + Math.min(row.indent, 5) * 18}px` }}>
                   <div className="flex items-center gap-1">
                     {row.hasChildren ? <button type="button" aria-label={`${!filtering && collapsed.has(row.key) ? "Expandir" : "Contraer"} ${name}`} aria-expanded={filtering || !collapsed.has(row.key)} disabled={filtering} onClick={() => toggle(row.key)} className="inline-flex h-8 w-7 shrink-0 items-center justify-center rounded hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-indigo-600 disabled:opacity-50">{!filtering && collapsed.has(row.key) ? <ChevronRight aria-hidden="true" className="h-4 w-4" /> : <ChevronDown aria-hidden="true" className="h-4 w-4" />}</button> : <span className="w-7 shrink-0" />}
                     {row.isWarehouse ? <Warehouse aria-hidden="true" className="h-4 w-4 shrink-0 text-[#003366]" /> : <MapPin aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
                     <span title={row.location ? locationNamePath(row.warehouse, row.location) : name} className={`break-words ${row.isWarehouse ? "font-semibold" : ""}`}>{name}</span>
                   </div>
+                  {row.isWarehouse && localitiesEnabled && sheet?.localityNumber == null && <p className="ml-12 mt-1 text-[11px] text-slate-500">Localidad sin asignar</p>}
                   {row.isWarehouse && sheet?.manager && <p className="ml-12 mt-1 text-[11px] text-slate-500">Encargado: {sheet.manager.displayName}{!sheet.manager.eligible ? " · Asignación conservada" : ""}</p>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 font-mono text-[11px] text-slate-600">{code}</td>
@@ -218,7 +228,7 @@ function SpacesContent({ authorization, canManage, membershipRef, onNavigate, on
                   <AdministrationIconAction label={`${canManage ? "Configurar" : "Ver configuración de"} ${name}`} disabled={pendingWrite || !configuration} onClick={() => openConfigurationEditor(row, "details")}><Settings className="h-3.5 w-3.5" aria-hidden="true" /></AdministrationIconAction>
                   <AdministrationIconAction label={`Controles operativos de ${name}`} disabled={pendingWrite || !configuration} onClick={() => openConfigurationEditor(row, "controls")}><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /></AdministrationIconAction>
                 </>}</div></td>
-              </tr>;
+              </tr></Fragment>;
             })}
           </tbody>
         </table>

@@ -1,11 +1,11 @@
 import type { WarehouseLocationRow } from "@/materials-inventory/api";
 
 export type WarehouseSheetKind = "ZONE" | "AISLE" | "RACK" | "LEVEL" | "BIN";
-export type WarehouseAddress = Readonly<{ label: string; warehouseNumber: number; zoneNumber: number; zoneCode?: string | null; aisleNumber: number; rackCode: string | null; levelNumber: number; positionNumber: number }>;
+export type WarehouseAddress = Readonly<{ label: string; displayLabel?: string | null; warehouseNumber: number; zoneNumber: number; zoneCode?: string | null; aisleNumber: number; rackCode: string | null; levelNumber: number; positionNumber: number }>;
 export type WarehouseSheetLocation = WarehouseLocationRow & Readonly<{ configurationVersion: number; areaUseRef: string | null; address: WarehouseAddress | null }>;
 export type WarehouseSheet = Readonly<{
   warehouseRef: string; code: string; name: string; status: string; version: number; profileVersion: number;
-  warehouseNumber: number | null; warehouseLabel: string | null;
+  warehouseNumber: number | null; warehouseLabel: string | null; localityNumber?: number | null;
   manager: Readonly<{ membershipRef: string; displayName: string; eligible: boolean }> | null;
   rootLocationRef: string | null; rootAreaUseRef: string | null; rootConfigurationVersion: number;
   locations: readonly WarehouseSheetLocation[];
@@ -16,7 +16,7 @@ export type WarehouseSheetRowChange = WarehouseSheetCreateRow | WarehouseSheetUp
 export type WarehouseSheetChange = Readonly<{
   operation: "WAREHOUSE_SHEET_SAVE"; warehouseRef: string | null;
   expectedWarehouseVersion: number; expectedProfileVersion: number; expectedRootConfigurationVersion: number;
-  name: string; managerMembershipRef: string | null; rootAreaUseRef: string | null;
+  name: string; managerMembershipRef: string | null; rootAreaUseRef: string | null; localityNumber?: number | null;
   rows: readonly WarehouseSheetRowChange[];
 }>;
 export type WarehouseSheetSaved = Readonly<{ warehouse: WarehouseSheet; rowResults: readonly Readonly<{ rowId: string; locationRef: string }>[] }>;

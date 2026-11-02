@@ -4245,6 +4245,7 @@ model WarehouseSheetProfile {
   tenantId            String                     @map("tenant_id")
   warehouseId         String                     @map("warehouse_id")
   warehouseNumber     Int                        @map("warehouse_number")
+  localityNumber      Int?                       @map("locality_number")
   managerMembershipId String?                    @map("manager_membership_id")
   managerUserId       String?                    @map("manager_user_id")
   version             Int                        @default(1)

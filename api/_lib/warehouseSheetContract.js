@@ -1,5 +1,6 @@
 import { canonicalPayloadHash } from "./materialsInventoryContract.js";
 import { normalizeWarehouseAddressIdentifier } from "../../shared/warehouseSheetAddress.js";
+import { isWarehouseLocalityNumber } from "../../shared/warehouseLocalityAddress.js";
 
 export const WAREHOUSE_SHEET_OPERATION = "WAREHOUSE_SHEET_SAVE";
 export const WAREHOUSE_SHEET_MAX_ROWS = 200;
@@ -46,7 +47,9 @@ function row(value) {
   invalid();
 }
 export function normalizeWarehouseSheetSave(value) {
-  exact(value, ["requestId", "payloadHash", "warehouseRef", "expectedWarehouseVersion", "expectedProfileVersion", "name", "managerMembershipRef", "rootAreaUseRef", "expectedRootConfigurationVersion", "rows"]);
+  const hasLocality = value !== null && typeof value === "object" && Object.hasOwn(value, "localityNumber");
+  exact(value, ["requestId", "payloadHash", "warehouseRef", "expectedWarehouseVersion", "expectedProfileVersion", "name", "managerMembershipRef", "rootAreaUseRef", "expectedRootConfigurationVersion", "rows", ...(hasLocality ? ["localityNumber"] : [])]);
+  if (hasLocality && value.localityNumber !== null && !isWarehouseLocalityNumber(value.localityNumber)) invalid();
   if (!Array.isArray(value.rows) || value.rows.length > WAREHOUSE_SHEET_MAX_ROWS) invalid();
   const rows = value.rows.map(row);
   const byId = new Map(rows.map((entry) => [entry.rowId, entry]));
@@ -70,7 +73,7 @@ export function normalizeWarehouseSheetSave(value) {
   const body = Object.fromEntries(Object.entries(value).filter(([key]) => !["requestId", "payloadHash"].includes(key)));
   if (typeof value.payloadHash !== "string" || !/^[0-9a-f]{64}$/u.test(value.payloadHash)
     || value.payloadHash !== canonicalPayloadHash({ operation: WAREHOUSE_SHEET_OPERATION, requestId, ...body })) warehouseSheetFail("WAREHOUSE_SHEET_PAYLOAD_HASH_MISMATCH");
-  return Object.freeze({ operation: WAREHOUSE_SHEET_OPERATION, requestId, payloadHash: value.payloadHash, warehouseRef, expectedWarehouseVersion, expectedProfileVersion, expectedRootConfigurationVersion, name: name(value.name), managerMembershipRef: reference(value.managerMembershipRef, true), rootAreaUseRef: reference(value.rootAreaUseRef, true), rows: Object.freeze(rows) });
+  return Object.freeze({ operation: WAREHOUSE_SHEET_OPERATION, requestId, payloadHash: value.payloadHash, warehouseRef, expectedWarehouseVersion, expectedProfileVersion, expectedRootConfigurationVersion, name: name(value.name), managerMembershipRef: reference(value.managerMembershipRef, true), rootAreaUseRef: reference(value.rootAreaUseRef, true), ...(hasLocality ? { localityNumber: value.localityNumber } : {}), rows: Object.freeze(rows) });
 }
 
 export function normalizeWarehouseManagerQuery(value = {}) {

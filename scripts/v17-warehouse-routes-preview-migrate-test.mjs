@@ -45,7 +45,7 @@ test("only explicit CHECK/APPLY of the exact consolidated Preview commit can run
     { DIRECT_URL: "postgresql://synthetic.example.invalid/v17_consolidated_preview_10b?schema=wrong_schema" },
     { DIRECT_URL: "postgresql://synthetic.example.invalid:55432/v17_consolidated_preview_10b?schema=osi" },
     { DATABASE_URL: "postgresql://synthetic.example.invalid/other_database?schema=osi" },
-    { DATABASE_URL: "postgresql://synthetic.example.invalid/v17_consolidated_preview_10b?schema=public" },
+    { DATABASE_URL: "postgresql://synthetic.example.invalid/v17_consolidated_preview_10b?schema=wrong_schema" },
     { DATABASE_URL: "https://synthetic.example.invalid/v17_consolidated_preview_10b?schema=osi" },
   ]) assert.throws(() => previewMigrationOperation({ ...preview, ...override }));
 });

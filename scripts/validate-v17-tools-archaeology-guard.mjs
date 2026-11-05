@@ -12,6 +12,8 @@ const document = text(documentPath);
 const wrapper = text("src/hub/ArchaeologicalPackingTool.tsx");
 const catalog = text("src/hub/appCatalog.ts");
 const workspace = text("src/hub/HubWorkspace.tsx");
+const toolsAuthority = text("shared/v17OsiPlusToolsPreview.js");
+const toolsSession = text("api/_lib/v17OsiPlusToolsPreviewAuth.js");
 
 if (digest(documentPath) !== "FF74CC4424891058AFF9D19E875229B03F7AE616CB6BFCC76D4B364603C54F6E") fail("the approved 3.19 calculator document changed");
 if (digest(vendorPath) !== "CC015130AA8521E7F088F88898EBA949CCDCBFB38DF0BD129B44B7273C3A6F41") fail("the pinned SheetJS asset changed");
@@ -37,5 +39,13 @@ for (const signature of [
 ]) if (!wrapper.includes(signature)) fail(`isolated wrapper contract missing: ${signature}`);
 if (!workspace.includes('lazy(() => import("./ArchaeologicalPackingTool"))')) fail("calculator is not behind the authorized lazy boundary");
 if (!workspace.includes('lazy(() => import("@/modules/CrateWoodModule"))')) fail("wood-crate tool is not behind the authorized lazy boundary");
+for (const signature of [
+  'CRM_PIPELINE_RUNTIME_MODE === "DISABLED"',
+  'CRM_PIPELINE_MUTATION_MODE === "DISABLED"',
+  'COMMERCIAL_TENANCY_WRITE_MODE === "LEGACY_ONLY"',
+  'COMMERCIAL_TENANCY_READ_MODE === "LEGACY_ONLY"',
+  'COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED"',
+]) if (!toolsAuthority.includes(signature)) fail(`hub-only Preview authority missing: ${signature}`);
+if (!toolsSession.includes("resolveCommercialContext") || /resolveCrmPipelineContext/u.test(toolsSession)) fail("tools Preview does not use isolated read-only membership resolution");
 
 console.log(JSON.stringify({ ok: true, revision: "3.19", documentSha256: digest(documentPath), vendorSha256: digest(vendorPath), connectedToErp: false }));

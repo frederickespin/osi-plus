@@ -34,15 +34,12 @@ export function isExactV17CommercialCrmPreviewServerEnvironment(environment = {}
     && environment.VERCEL_ENV === "preview"
     && (environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_PREVIEW_BRANCH
       || environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH
-      || environment.VERCEL_GIT_COMMIT_REF === V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH
-      || environment.VERCEL_GIT_COMMIT_REF === V17_OSI_PLUS_TOOLS_PREVIEW_BRANCH)
+      || environment.VERCEL_GIT_COMMIT_REF === V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH)
     && environment.CRM_PIPELINE_RUNTIME_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE
     && exactOneOf(environment.CRM_PIPELINE_MUTATION_MODE, [DISABLED, V17_COMMERCIAL_CRM_PREVIEW_MODE])
     && (environment.VERCEL_GIT_COMMIT_REF !== V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH
       || environment.CRM_PIPELINE_MUTATION_MODE === DISABLED)
     && (environment.VERCEL_GIT_COMMIT_REF !== V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH
-      || environment.CRM_PIPELINE_MUTATION_MODE === DISABLED)
-    && (environment.VERCEL_GIT_COMMIT_REF !== V17_OSI_PLUS_TOOLS_PREVIEW_BRANCH
       || environment.CRM_PIPELINE_MUTATION_MODE === DISABLED)
     && environment.CRM_PIPELINE_ACTIVATION_BATCH === V17_COMMERCIAL_CRM_PREVIEW_BATCH
     && environment.VITE_OSI_HUB_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE
@@ -74,8 +71,7 @@ export function resolveV17CommercialCrmPreviewClientAuthority(configuration = {}
     && configuration.vercelEnvironment === "preview"
     && (configuration.gitBranch === V17_COMMERCIAL_CRM_PREVIEW_BRANCH
       || configuration.gitBranch === V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH
-      || configuration.gitBranch === V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH
-      || configuration.gitBranch === V17_OSI_PLUS_TOOLS_PREVIEW_BRANCH)
+      || configuration.gitBranch === V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH)
     && !isLoopbackHostname(configuration.hostname);
   return Object.freeze({
     requested: true,

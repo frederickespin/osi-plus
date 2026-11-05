@@ -203,7 +203,7 @@ function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLo
     void validateLegacySession(session, controller.signal).then((validatedSession) => {
       if (fence !== navigationFence.current) return;
       activeNavigation.current = null;
-      if (mode === 'PREVIEW_REHEARSAL' && validatedSession.commercialCrmPreviewAuthorized !== true) {
+      if (mode === 'PREVIEW_REHEARSAL' && !hasPreviewSessionAuthority(validatedSession)) {
         onLogout();
         return;
       }
@@ -370,6 +370,7 @@ function resolveValidatedLegacySession(token: string, signal?: AbortSignal): Pro
       permissions: Array.isArray(response.user.permissions) ? response.user.permissions : undefined,
       deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
       commercialCrmPreviewAuthorized: response.user.commercialCrmPreviewAuthorized === true,
+      osiPlusToolsPreviewAuthorized: response.user.osiPlusToolsPreviewAuthorized === true,
       commercialCrmProductionAuthorized: response.user.commercialCrmProductionAuthorized === true,
     };
   });
@@ -410,10 +411,14 @@ async function resolveInitialAuthState(): Promise<AuthState> {
   }
 }
 
+function hasPreviewSessionAuthority(session: Session) {
+  return session.commercialCrmPreviewAuthorized === true || session.osiPlusToolsPreviewAuthorized === true;
+}
+
 function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const hubMode = resolveOsiHubMode();
   const serverConfirmed = hubMode.mode === 'PREVIEW_REHEARSAL'
-    ? session.commercialCrmPreviewAuthorized === true
+    ? hasPreviewSessionAuthority(session)
     : hubMode.mode === 'PRODUCTION_READ'
       ? session.commercialCrmProductionAuthorized === true
       : true;
@@ -614,7 +619,7 @@ function SessionApp() {
       const validated = requiresServerConfirmation
         ? await validateLegacySession(session)
         : session;
-      if (hubMode.mode === 'PREVIEW_REHEARSAL' && validated.commercialCrmPreviewAuthorized !== true) {
+      if (hubMode.mode === 'PREVIEW_REHEARSAL' && !hasPreviewSessionAuthority(validated)) {
         throw Object.assign(new Error('El servidor no confirmó el ensayo CRM.'), { status: 503 });
       }
       if (hubMode.mode === 'PRODUCTION_READ' && validated.commercialCrmProductionAuthorized !== true) {

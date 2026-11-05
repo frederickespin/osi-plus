@@ -115,7 +115,6 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
     "environment.COMMERCIAL_TENANCY_MUTATION_MODE === DISABLED",
     "configuration.gitBranch === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",
     "configuration.gitBranch === V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH",
-    "configuration.gitBranch === V17_OSI_PLUS_TOOLS_PREVIEW_BRANCH",
   ]) requireText(files, shared, signature, `autoridad Preview incompleta: ${signature}`);
   forbidText(files, shared, /(?:\.trim\(|toUpperCase|toLowerCase)/, "la autoridad Preview normaliza configuración inválida");
 

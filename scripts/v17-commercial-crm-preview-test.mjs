@@ -15,7 +15,6 @@ import {
   V17_COMMERCIAL_CRM_PREVIEW_BRANCH,
   V17_COMMERCIAL_CRM_PREVIEW_MODE,
   V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH,
-  V17_OSI_PLUS_TOOLS_PREVIEW_BRANCH,
   isExactV17CommercialCrmPreviewServerEnvironment,
   resolveV17CommercialCrmPreviewClientAuthority,
 } from "../shared/v17CommercialCrmPreview.js";
@@ -83,13 +82,6 @@ expectConfigurationError("OSi Plus Mobile preview rejects writes", () => resolve
   ...exactMobileHubPreview,
   CRM_PIPELINE_MUTATION_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE,
 }));
-const exactToolsPreview = Object.freeze({ ...exactPreview, VERCEL_GIT_COMMIT_REF: V17_OSI_PLUS_TOOLS_PREVIEW_BRANCH });
-check("exact OSi Plus Tools preview certified read only", isExactV17CommercialCrmPreviewServerEnvironment(exactToolsPreview)
-  && resolveCrmPipelineModes(exactToolsPreview).mutationMode === "DISABLED");
-expectConfigurationError("OSi Plus Tools preview rejects writes", () => resolveCrmPipelineModes({
-  ...exactToolsPreview,
-  CRM_PIPELINE_MUTATION_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE,
-}));
 check("preview read only enabled", resolveCrmPipelineModes(exactPreview).readMode === CRM_PIPELINE_READ_MODES.PREVIEW_REHEARSAL && resolveCrmPipelineModes(exactPreview).preview === true);
 check("preview case mutations require the same exact authority", resolveCrmPipelineModes({ ...exactPreview, CRM_PIPELINE_MUTATION_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE }).mutationMode === V17_COMMERCIAL_CRM_PREVIEW_MODE);
 const exactPreviewWrite = Object.freeze({ ...exactPreview, CRM_PIPELINE_MUTATION_MODE: V17_COMMERCIAL_CRM_PREVIEW_MODE });
@@ -127,10 +119,6 @@ check("frontend exact preview enabled", resolveV17CommercialCrmPreviewClientAuth
 check("frontend exact OSi Plus Mobile preview enabled", resolveV17CommercialCrmPreviewClientAuthority({
   ...exactClient,
   gitBranch: V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH,
-}).enabled);
-check("frontend exact OSi Plus Tools preview enabled", resolveV17CommercialCrmPreviewClientAuthority({
-  ...exactClient,
-  gitBranch: V17_OSI_PLUS_TOOLS_PREVIEW_BRANCH,
 }).enabled);
 for (const [name, overrides] of [
   ["frontend local simulation rejected", { hostname: "127.0.0.1" }],

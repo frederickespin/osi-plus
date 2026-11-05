@@ -8,6 +8,7 @@ export type Session = {
   permissions?: readonly string[];
   deniedPermissions?: readonly string[];
   commercialCrmPreviewAuthorized?: boolean;
+  osiPlusToolsPreviewAuthorized?: boolean;
   commercialCrmProductionAuthorized?: boolean;
 };
 

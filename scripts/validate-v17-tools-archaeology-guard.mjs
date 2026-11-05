@@ -14,6 +14,9 @@ const catalog = text("src/hub/appCatalog.ts");
 const workspace = text("src/hub/HubWorkspace.tsx");
 const toolsAuthority = text("shared/v17OsiPlusToolsPreview.js");
 const toolsSession = text("api/_lib/v17OsiPlusToolsPreviewAuth.js");
+const toolsPreviewMode = text("src/tools-preview/clientMode.ts");
+const toolsVisualPreview = text("src/tools-preview/ToolsVisualPreview.tsx");
+const app = text("src/App.tsx");
 
 if (digest(documentPath) !== "FF74CC4424891058AFF9D19E875229B03F7AE616CB6BFCC76D4B364603C54F6E") fail("the approved 3.19 calculator document changed");
 if (digest(vendorPath) !== "CC015130AA8521E7F088F88898EBA949CCDCBFB38DF0BD129B44B7273C3A6F41") fail("the pinned SheetJS asset changed");
@@ -47,5 +50,12 @@ for (const signature of [
   'COMMERCIAL_TENANCY_MUTATION_MODE === "DISABLED"',
 ]) if (!toolsAuthority.includes(signature)) fail(`hub-only Preview authority missing: ${signature}`);
 if (!toolsSession.includes("resolveCommercialContext") || /resolveCrmPipelineContext/u.test(toolsSession)) fail("tools Preview does not use isolated read-only membership resolution");
+for (const signature of [
+  '/experience-preview/tools',
+  'vercelEnvironment === "preview"',
+  'feature/v17-tools-archaeology-calculator-11a',
+]) if (!toolsPreviewMode.includes(signature)) fail(`visual Preview boundary missing: ${signature}`);
+if (!toolsVisualPreview.includes('crmReadEnabled={false}') || !toolsVisualPreview.includes('effectivePermissions: ["pipeline:view"]')) fail("visual Preview is not isolated from CRM read authority");
+if (!app.includes("isOsiPlusToolsVisualPreviewRoute") || !app.includes("ToolsVisualPreview")) fail("visual Preview route is not registered");
 
 console.log(JSON.stringify({ ok: true, revision: "3.19", documentSha256: digest(documentPath), vendorSha256: digest(vendorPath), connectedToErp: false }));

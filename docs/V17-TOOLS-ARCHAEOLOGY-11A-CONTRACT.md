@@ -34,6 +34,7 @@ La única biblioteca de la calculadora es SheetJS 0.20.3, fijada dentro del repo
 - Ambas herramientas reutilizan temporalmente el permiso explícito `pipeline:view` y no conceden acceso por rol implícito.
 - La rama exacta `feature/v17-tools-archaeology-calculator-11a` usa una autoridad Preview exclusiva del Hub: autenticación y resolución tenant-first de permisos en lectura, con CRM cliente/servidor, mutaciones comerciales y escritura de tenencia explícitamente desactivados.
 - Production no se modifica ni se habilita.
+- La revisión visual está disponible sólo en la rama exacta de Preview mediante `/experience-preview/tools`; no contiene autoridad de lectura CRM ni de mutación.
 - CRM, Survey, ICP, Cotización, APIs y migraciones permanecen sin cambios funcionales.
 
 ## Decisión de producto

@@ -11,9 +11,10 @@ export type HubAppId =
   | "administration"
   | "human-resources"
   | "osi-survey"
-  | "packing-calculator";
+  | "archaeological-packing"
+  | "wood-crate-calculator";
 
-export type HubSuiteId = "osi-plus-mobile";
+export type HubSuiteId = "osi-plus-mobile" | "tools";
 
 export type HubIconId =
   | "briefcase"
@@ -25,7 +26,7 @@ export type HubIconId =
   | "users"
   | "clipboard"
   | "calculator";
-export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED" | "EXTERNAL_AVAILABLE";
+export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED" | "EXTERNAL_AVAILABLE" | "INTERNAL_STANDALONE" | "INTERNAL_AVAILABLE";
 export type HubMobileAvailability =
   "RESPONSIVE" | "MOBILE_PRIMARY" | "DESKTOP_PRIMARY";
 
@@ -65,6 +66,13 @@ export const HUB_SUITES: readonly HubSuite[] = Object.freeze([
     description: "Aplicaciones móviles disponibles según los permisos y las asignaciones del usuario.",
     icon: "clipboard",
     route: "/mobile",
+  },
+  {
+    suiteId: "tools",
+    name: "Herramientas",
+    description: "Calculadoras y utilidades especializadas para trabajo de escritorio.",
+    icon: "calculator",
+    route: "/tools",
   },
 ]);
 
@@ -242,21 +250,37 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     suiteId: "osi-plus-mobile",
   },
   {
-    appId: "packing-calculator",
-    name: "Calculadora de Empaque",
-    description: "Medidas, materiales, costos y reportes de cajas, huacales y pallets.",
+    appId: "archaeological-packing",
+    name: "Calculadora de empaque arqueológico",
+    description: "Inventario, embalaje, medidas, reportes y etiquetas para piezas arqueológicas.",
     icon: "calculator",
-    route: "/mobile/packing",
-    externalHref: "https://ip-suite-inventario-empaquee.vercel.app/empaque/index.html",
-    status: "EXTERNAL_AVAILABLE",
+    route: "/tools/archaeological-packing",
+    routeAliases: ["/mobile/packing"],
+    status: "INTERNAL_STANDALONE",
     requiredPermissions: ["pipeline:view"],
     permissionMode: "ALL",
     requiresExplicitPermissions: true,
     baselineRoles: [],
-    mobileAvailability: "RESPONSIVE",
+    mobileAvailability: "DESKTOP_PRIMARY",
     directAccessAllowed: true,
     lazy: true,
-    suiteId: "osi-plus-mobile",
+    suiteId: "tools",
+  },
+  {
+    appId: "wood-crate-calculator",
+    name: "Calculadora de cajas de madera",
+    description: "Diseño, agrupación, ingeniería y costos de cajas y huacales de madera.",
+    icon: "hammer",
+    route: "/tools/wood-crates",
+    status: "INTERNAL_AVAILABLE",
+    requiredPermissions: ["pipeline:view"],
+    permissionMode: "ALL",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
+    mobileAvailability: "DESKTOP_PRIMARY",
+    directAccessAllowed: true,
+    lazy: true,
+    suiteId: "tools",
   },
 ]);
 

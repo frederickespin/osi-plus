@@ -25,6 +25,7 @@ import { isAdminUserIdentityActivationRoute } from '@/admin-tenant/adminUserIden
 import { isAdminUserIdentityEnabled } from '@/admin-tenant/adminUserIdentityMode';
 import { isCrmIcpV2VisualPreviewRoute } from '@/crm-icp-v2/clientMode';
 import { isClientTemporaryPortalRoute } from '@/client-portal/mode';
+import { isV17ToolsVisualPreviewRoute } from '@/tools-preview/clientMode';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const AdminIdentityActivation = lazy(() =>
@@ -35,6 +36,7 @@ const AdminUserIdentityActivation = lazy(() =>
 );
 const IcpVisualPreview = lazy(() => import('@/crm-icp-v2/IcpVisualPreview'));
 const ClientTemporaryPortal = lazy(() => import('@/client-portal/ClientTemporaryPortal'));
+const ToolsVisualPreview = lazy(() => import('@/tools-preview/ToolsVisualPreview'));
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
 );
@@ -673,6 +675,7 @@ function SessionApp() {
 
 function App() {
   if (isClientTemporaryPortalRoute()) return <Suspense fallback={<div className="min-h-screen bg-slate-50" />}><ClientTemporaryPortal /></Suspense>;
+  if (isV17ToolsVisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-slate-50" />}><ToolsVisualPreview /></Suspense>;
   if (isCrmIcpV2VisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-[#003366]" />}><IcpVisualPreview /></Suspense>;
   if (isAdminUserIdentityActivationRoute() && isAdminUserIdentityEnabled()) return <Suspense fallback={<div className="min-h-screen bg-slate-50" />}><AdminUserIdentityActivation /></Suspense>;
   if (!isAdminIdentityActivationRoute() || !isAdminIdentityInvitationEnabled()) return <SessionApp />;

@@ -44,7 +44,8 @@ const CONTRACTS = Object.freeze([
   { appId: "administration", route: "/administration", aliases: ["/administration/access", "/administration/fleet", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"], permissions: ["membership:view", "fleet:view", "services:catalog:view", "services:packages:view", "services:materials:view", "costing:rules:view", "logistics:rules:view", "communications:templates:view", "personnel:profiles:view", "personnel:capabilities:view", "scheduling:policies:view", "scheduling:exceptions:request", "scheduling:exceptions:approve", "scheduling:exceptions:respond"], mode: "ANY", roles: [], explicit: true, denyScope: "PERMISSION" },
   { appId: "human-resources", route: "/hr", permissions: ["hr:view"], mode: "ALL", roles: ["A", "I"] },
   { appId: "osi-survey", route: "/mobile/survey", aliases: ["/survey"], permissions: ["survey:assignment:view"], mode: "ALL", roles: [], explicit: true, suite: "osi-plus-mobile" },
-  { appId: "packing-calculator", route: "/mobile/packing", permissions: ["pipeline:view"], mode: "ALL", roles: [], explicit: true, suite: "osi-plus-mobile", external: "https://ip-suite-inventario-empaquee.vercel.app/empaque/index.html" },
+  { appId: "archaeological-packing", route: "/tools/archaeological-packing", aliases: ["/mobile/packing"], permissions: ["pipeline:view"], mode: "ALL", roles: [], explicit: true, suite: "tools" },
+  { appId: "wood-crate-calculator", route: "/tools/wood-crates", permissions: ["pipeline:view"], mode: "ALL", roles: [], explicit: true, suite: "tools" },
 ]);
 
 function sameMembers(actual, expected) {
@@ -67,8 +68,10 @@ export function validateHubCatalog(source) {
   const applications = readFrozenCatalog(source, "HUB_APPLICATIONS");
   invariant(sameMembers(applications.map((application) => application.appId), CONTRACTS.map((contract) => contract.appId)), "inventario de aplicaciones distinto del contrato vigente");
   const suites = readFrozenCatalog(source, "HUB_SUITES");
-  invariant(suites.length === 1 && suites[0].suiteId === "osi-plus-mobile" && suites[0].route === "/mobile", "suite Mobile no canónica");
-  const routes = new Set([suites[0].route]);
+  invariant(suites.length === 2
+    && suites.some((suite) => suite.suiteId === "osi-plus-mobile" && suite.route === "/mobile")
+    && suites.some((suite) => suite.suiteId === "tools" && suite.route === "/tools"), "suites Mobile/Herramientas no canónicas");
+  const routes = new Set(suites.map((suite) => suite.route));
   for (const contract of CONTRACTS) {
     const application = applications.find((item) => item.appId === contract.appId);
     invariant(application.route === contract.route && sameMembers(application.routeAliases || [], contract.aliases || []), `rutas o alias alterados:${contract.appId}`);

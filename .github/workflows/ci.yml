@@ -154,6 +154,7 @@ jobs:
           node scripts/validate-sec-dep-01-guard-test.mjs
           node scripts/validate-v17-hub-guard.mjs
           npm run guard:v17-hub-auth-lazy
+          npm run guard:v17-tools-archaeology
           npm run guard:v17-admin-tenant-memberships
           npm run test:v17-admin-tenant-memberships:http
           npm run guard:v17-admin-identity

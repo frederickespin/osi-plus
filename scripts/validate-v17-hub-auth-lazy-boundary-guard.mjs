@@ -56,6 +56,8 @@ for (const signature of ["pathname: string", "onNavigate: (pathname: string) => 
 requireText(workspace, "selected?.appId === \"commercial-crm\" && crmReadEnabled", "la lectura CRM perdió su compuerta funcional");
 requireText(workspace, 'lazy(() => import("@/commercial-crm/AdvancedErpShell"))', "el ERP Comercial dejó de ser lazy");
 requireText(workspace, 'lazy(() => import("@/crm-survey-preview/SurveyVisualPreview"))', "OSi Survey dejó de ser lazy");
+requireText(workspace, 'lazy(() => import("./ArchaeologicalPackingTool"))', "la calculadora arqueológica dejó de ser lazy");
+requireText(workspace, 'lazy(() => import("@/modules/CrateWoodModule"))', "la calculadora de cajas dejó de ser lazy");
 if (/const\s+BASE\s*=|allowed(?:Backend|Prisma|Global)?Changes|[0-9a-f]{40}/i.test(commercialGuard)) fail("una guardia protegida usa SHA fijo o allowlist global");
 if (/prefetch|webpackPrefetch|rel=["'](?:modulepreload|preload)["']/i.test([app, routeAccess, workspace, index].join("\n"))) fail("se introdujo prefetch o preload protegido");
 
@@ -65,4 +67,4 @@ for (const signature of ["headingRef.current?.focus()", "tabIndex={-1}", "Volver
   requireText(errorBoundary, signature, `el error accesible perdió: ${signature}`);
 }
 
-console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, protectedLazyImports: 4, migrationsExpected: 20 }));
+console.log(JSON.stringify({ ok: true, boundary: "PRE_LAZY", navigationRevalidation: true, abort: true, fencing: true, historyAfterAuthorization: true, protectedLazyImports: 6, migrationsExpected: 20 }));

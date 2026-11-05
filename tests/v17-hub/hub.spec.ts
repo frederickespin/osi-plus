@@ -2,8 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 
 type Actor = { role: string; permissions?: string[]; deniedPermissions?: string[]; name?: string };
 
-const PACKING_CALCULATOR_URL = "https://ip-suite-inventario-empaquee.vercel.app/empaque/index.html";
-
 function authMeBody(actor: Actor & { id?: string }) {
   return JSON.stringify({
     ok: true,
@@ -478,63 +476,63 @@ test("OSi Plus Mobile agrupa Survey sin duplicarlo en el Hub principal", async (
   await expect(page).toHaveURL(/\/mobile$/);
 });
 
-test("Calculadora de Empaque aparece sólo dentro de Mobile con pipeline:view y revalida la navegación", async ({ page, context }) => {
-  let authRequests = 0;
-  const externalRequests: string[] = [];
-  await context.route(`${new URL(PACKING_CALCULATOR_URL).origin}/**`, (route) => route.abort());
-  context.on("request", (request) => {
-    const url = new URL(request.url());
-    if (url.pathname === "/api/auth/me") authRequests += 1;
-    if (url.origin === new URL(PACKING_CALCULATOR_URL).origin) externalRequests.push(request.url());
-  });
+test("Herramientas agrupa las dos calculadoras sin duplicarlas en Mobile ni en el Hub", async ({ page }) => {
   await authenticate(page, { role: "D", permissions: ["pipeline:view"] });
   await page.goto("/hub");
-  const suiteCard = page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ });
-  await expect(suiteCard).toBeVisible();
-  await expect(suiteCard.getByText("Aplicaciones", { exact: true })).toBeVisible();
-  await expect(page.locator("main").getByRole("button", { name: /Calculadora de Empaque|OSi Survey/ })).toHaveCount(0);
-
-  const beforeSuite = authRequests;
-  await suiteCard.click();
-  await expect(page).toHaveURL(/\/mobile$/);
-  expect(authRequests).toBe(beforeSuite + 1);
-  const mobileHub = page.getByTestId("osi-plus-mobile-hub");
-  const calculator = mobileHub.getByRole("button", { name: /Calculadora de Empaque/ });
-  await expect(calculator).toBeVisible();
-  await expect(calculator.getByText("Aplicación externa", { exact: true })).toBeVisible();
-  await expect(calculator.getByText("MVP visual", { exact: true })).toHaveCount(0);
-  await expect(mobileHub.getByRole("button", { name: /OSi Survey/ })).toHaveCount(0);
-
-  const beforeCalculator = authRequests;
-  await calculator.click();
-  await expect(page).toHaveURL(/\/mobile\/packing$/);
-  expect(authRequests).toBe(beforeCalculator + 1);
-  const launcher = page.getByTestId("hub-external-application");
-  await expect(launcher.getByRole("heading", { name: "Calculadora de Empaque", exact: true })).toBeVisible();
-  await expect(page.locator("iframe")).toHaveCount(0);
-  await page.waitForLoadState("networkidle");
-  expect(externalRequests).toEqual([]);
-  expect(context.pages()).toEqual([page]);
-
-  await launcher.getByRole("button", { name: "Volver a OSi Plus Mobile", exact: true }).click();
-  await expect(page).toHaveURL(/\/mobile$/);
-  await mobileHub.getByRole("button", { name: "Volver al Hub", exact: true }).click();
-  await expect(page).toHaveURL(/\/hub$/);
+  await expect(page.locator("main").getByRole("button", { name: /Herramientas/ })).toBeVisible();
+  await expect(page.locator("main").getByRole("button", { name: /Calculadora de empaque arqueológico|Calculadora de cajas de madera/ })).toHaveCount(0);
+  await expect(page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ })).toHaveCount(0);
+  await page.locator("main").getByRole("button", { name: /Herramientas/ }).click();
+  await expect(page).toHaveURL(/\/tools$/);
+  const tools = page.getByTestId("tools-hub");
+  await expect(tools.getByRole("button", { name: /Calculadora de empaque arqueológico/ })).toBeVisible();
+  await expect(tools.getByRole("button", { name: /Calculadora de cajas de madera/ })).toBeVisible();
+  await expect(tools.getByText("Interna · independiente", { exact: true })).toBeVisible();
+  await expect(tools.getByText("Módulo existente", { exact: true })).toBeVisible();
 });
 
-test("OSi Plus Mobile muestra Survey y Calculadora con sus permisos e indicadores independientes", async ({ page, context }) => {
-  await context.route(`${new URL(PACKING_CALCULATOR_URL).origin}/**`, (route) => route.abort());
+test("Mobile y Herramientas conservan permisos y catálogos independientes", async ({ page }) => {
   await authenticate(page, { role: "D", permissions: ["pipeline:view", "survey:assigned:view"] });
   await page.goto("/mobile");
-  const mobileHub = page.getByTestId("osi-plus-mobile-hub");
-  const survey = mobileHub.getByRole("button", { name: /OSi Survey/ });
-  const calculator = mobileHub.getByRole("button", { name: /Calculadora de Empaque/ });
-  await expect(survey).toBeVisible();
-  await expect(calculator).toBeVisible();
-  await expect(survey.getByText("MVP visual", { exact: true })).toBeVisible();
-  await expect(survey.getByText("Aplicación externa", { exact: true })).toHaveCount(0);
-  await expect(calculator.getByText("Aplicación externa", { exact: true })).toBeVisible();
-  await expect(calculator.getByText("MVP visual", { exact: true })).toHaveCount(0);
+  const mobile = page.getByTestId("osi-plus-mobile-hub");
+  await expect(mobile.getByRole("button", { name: /OSi Survey/ })).toBeVisible();
+  await expect(mobile.getByRole("button", { name: /Calculadora/ })).toHaveCount(0);
+  await page.goto("/tools");
+  const tools = page.getByTestId("tools-hub");
+  await expect(tools.getByRole("button", { name: /Calculadora de empaque arqueológico/ })).toBeVisible();
+  await expect(tools.getByRole("button", { name: /Calculadora de cajas de madera/ })).toBeVisible();
+  await expect(tools.getByRole("button", { name: /OSi Survey/ })).toHaveCount(0);
+});
+
+test("Calculadora arqueológica se ejecuta internamente, aislada y sin llamadas ERP", async ({ page, context }) => {
+  const requests: string[] = [];
+  context.on("request", (request) => requests.push(request.url()));
+  await authenticate(page, { role: "D", permissions: ["pipeline:view"] });
+  await page.goto("/tools/archaeological-packing");
+  await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
+  await expect(page.getByText("Interna · sin conexión ERP", { exact: true })).toBeVisible();
+  const frame = page.frameLocator('[data-testid="archaeological-packing-frame"]');
+  await expect(frame.getByRole("heading", { name: /Inventario de piezas/ })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  expect(requests.filter((url) => new URL(url).pathname.startsWith("/api/"))).toEqual([expect.stringContaining("/api/auth/me")]);
+  expect(requests.some((url) => new URL(url).hostname === "cdn.sheetjs.com")).toBe(false);
+  expect(context.pages()).toEqual([page]);
+  await page.getByRole("button", { name: "Herramientas", exact: true }).click();
+  await expect(page).toHaveURL(/\/tools$/);
+});
+
+test("alias histórico autorizado abre la calculadora interna", async ({ page }) => {
+  await authenticate(page, { role: "D", permissions: ["pipeline:view"] });
+  await page.goto("/mobile/packing");
+  await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
+  await expect(page.locator("iframe")).toHaveCount(1);
+});
+
+test("calculadora de cajas de madera se monta desde Herramientas", async ({ page }) => {
+  await authenticate(page, { role: "D", permissions: ["pipeline:view"] });
+  await page.goto("/tools/wood-crates");
+  await expect(page.getByTestId("wood-crate-tool")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Herramientas", exact: true })).toBeVisible();
 });
 
 for (const { label, actor } of [
@@ -542,57 +540,18 @@ for (const { label, actor } of [
   { label: "sin permisos efectivos", actor: { role: "A" } },
   { label: "sólo permiso de Survey", actor: { role: "D", permissions: ["survey:assigned:view"] } },
 ] satisfies { label: string; actor: Actor }[]) {
-  test(`Calculadora rechaza deep link antes del lazy: ${label}`, async ({ page, context }) => {
-    const resources: string[] = [];
-    await context.route(`${new URL(PACKING_CALCULATOR_URL).origin}/**`, (route) => route.abort());
-    context.on("request", (request) => resources.push(request.url()));
+  test(`Herramientas rechaza deep link antes del lazy: ${label}`, async ({ page, context }) => {
+    const resources: { url: string; type: string }[] = [];
+    context.on("request", (request) => resources.push({ url: request.url(), type: request.resourceType() }));
     await authenticate(page, actor);
-    await page.goto("/mobile/packing");
+    await page.goto("/tools/archaeological-packing");
     await expect(page.getByTestId("hub-forbidden")).toBeVisible();
-    await expect(page.getByTestId("hub-external-application")).toHaveCount(0);
+    await expect(page.getByTestId("archaeological-packing-tool")).toHaveCount(0);
     await page.waitForLoadState("networkidle");
-    expect(resources.some((url) => /HubWorkspace|OsiPlusMobileHub/.test(new URL(url).pathname))).toBe(false);
-    expect(resources.some((url) => new URL(url).origin === new URL(PACKING_CALCULATOR_URL).origin)).toBe(false);
+    expect(resources.some(({ url, type }) => type === "script" && /HubWorkspace|ArchaeologicalPackingTool|archaeological-packing/.test(new URL(url).pathname))).toBe(false);
     expect(context.pages()).toEqual([page]);
   });
 }
-
-test("Calculadora sólo abre el destino externo al pulsar el enlace y conserva Mobile sin compartir sesión", async ({ page, context }) => {
-  const navigationRequests: { url: string; referer?: string; authorization?: string }[] = [];
-  await context.route(`${new URL(PACKING_CALCULATOR_URL).origin}/**`, async (route) => {
-    const request = route.request();
-    if (request.isNavigationRequest()) {
-      navigationRequests.push({ url: request.url(), referer: request.headers().referer, authorization: request.headers().authorization });
-    }
-    await route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Calculadora externa de prueba</title><h1>Calculadora externa de prueba</h1>" });
-  });
-  await authenticate(page, { role: "D", permissions: ["pipeline:view"] });
-  await page.goto("/mobile/packing");
-  const launcher = page.getByTestId("hub-external-application");
-  const link = launcher.getByRole("link", { name: /^Abrir Calculadora de Empaque/ });
-  await expect(link).toHaveAttribute("href", PACKING_CALCULATOR_URL);
-  await expect(link).toHaveAttribute("target", "_blank");
-  await expect(link).toHaveAttribute("rel", /\bnoopener\b/);
-  await expect(link).toHaveAttribute("rel", /\bnoreferrer\b/);
-  await expect(link).toHaveAttribute("referrerpolicy", "no-referrer");
-  await expect(page.locator("iframe")).toHaveCount(0);
-  await page.waitForLoadState("networkidle");
-  expect(navigationRequests).toEqual([]);
-  expect(context.pages()).toEqual([page]);
-  const sourceUrl = page.url();
-
-  const [calculator] = await Promise.all([context.waitForEvent("page"), link.click()]);
-  await calculator.waitForLoadState("domcontentloaded");
-  await expect(calculator).toHaveURL(PACKING_CALCULATOR_URL);
-  await expect(calculator.getByRole("heading", { name: "Calculadora externa de prueba" })).toBeVisible();
-  expect(navigationRequests).toEqual([{ url: PACKING_CALCULATOR_URL, referer: undefined, authorization: undefined }]);
-  expect(await calculator.evaluate(() => ({ openerIsNull: window.opener === null, referrer: document.referrer }))).toEqual({ openerIsNull: true, referrer: "" });
-  await expect(page).toHaveURL(sourceUrl);
-  await expect(launcher).toBeVisible();
-  await calculator.close();
-  await launcher.getByRole("button", { name: "Volver a OSi Plus Mobile", exact: true }).click();
-  await expect(page).toHaveURL(/\/mobile$/);
-});
 
 test("OSi Survey exige autorización explícita y permanece sin API ni persistencia", async ({ page }) => {
   const apiRequests: string[] = [];

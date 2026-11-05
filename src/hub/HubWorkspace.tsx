@@ -1,5 +1,5 @@
 import { Suspense, lazy, useMemo, useState, type ElementType } from "react";
-import { ArrowLeft, BriefcaseBusiness, Calculator, ClipboardCheck, ExternalLink, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Smartphone, Truck, Users, Warehouse } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, Calculator, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Smartphone, Truck, Users, Warehouse, Wrench } from "lucide-react";
 import { ENV_LABELS, getAppEnv } from "@/lib/env";
 import { HUB_APPLICATIONS, applicationsForHubSuite, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
 import { visibleHubApplications, type HubAccessContext } from "./hubAccess";
@@ -8,10 +8,13 @@ import { resolveCrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess"
 import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resolveAdminIdentityInvitationMode } from "@/admin-tenant/adminMode";
 
 import OsiPlusMobileHub from "./OsiPlusMobileHub";
+import ToolsHub from "./ToolsHub";
 
 const SurveyVisualPreview = lazy(() => import("@/crm-survey-preview/SurveyVisualPreview"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
 const AdminTenantMembershipModule = lazy(() => import("@/admin-tenant/AdminTenantMembershipModule"));
+const ArchaeologicalPackingTool = lazy(() => import("./ArchaeologicalPackingTool"));
+const CrateWoodModule = lazy(() => import("@/modules/CrateWoodModule"));
 
 const ICONS: Record<HubIconId, ElementType> = {
   briefcase: BriefcaseBusiness,
@@ -39,7 +42,8 @@ type Props = {
 function statusLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean) {
   if (application.appId === "commercial-crm" && crmReadEnabled) return "Disponible";
   if (application.appId === "administration" && adminEnabled) return "Disponible";
-  if (application.status === "EXTERNAL_AVAILABLE") return "Aplicación externa";
+  if (application.status === "INTERNAL_STANDALONE") return "Herramienta interna";
+  if (application.status === "INTERNAL_AVAILABLE") return "Disponible";
   if (application.status === "PREVIEW_AVAILABLE") return "MVP visual";
   return application.status === "PLANNED" ? "Próximamente" : "En integración";
 }
@@ -47,7 +51,7 @@ function statusLabel(application: HubApplication, crmReadEnabled: boolean, admin
 function ctaLabel(application: HubApplication, crmReadEnabled: boolean, adminEnabled: boolean) {
   if (application.appId === "commercial-crm" && crmReadEnabled) return "Abrir ERP →";
   if (application.appId === "administration" && adminEnabled) return "Abrir Administración →";
-  if (application.status === "PREVIEW_AVAILABLE" || application.status === "EXTERNAL_AVAILABLE") return "Abrir aplicación →";
+  if (application.status === "PREVIEW_AVAILABLE" || application.status === "INTERNAL_STANDALONE" || application.status === "INTERNAL_AVAILABLE") return "Abrir aplicación →";
   return "Ver descriptor →";
 }
 
@@ -59,7 +63,7 @@ function environmentLabel(mode: OsiHubMode) {
     : ENV_LABELS[getAppEnv()];
 }
 
-function HubHome({ applications, mobileApplications, crmReadEnabled, adminEnabled, userName, onNavigate }: { applications: readonly HubApplication[]; mobileApplications: readonly HubApplication[]; crmReadEnabled: boolean; adminEnabled: boolean; userName?: string; onNavigate: (pathname: string) => void }) {
+function HubHome({ applications, mobileApplications, toolsApplications, crmReadEnabled, adminEnabled, userName, onNavigate }: { applications: readonly HubApplication[]; mobileApplications: readonly HubApplication[]; toolsApplications: readonly HubApplication[]; crmReadEnabled: boolean; adminEnabled: boolean; userName?: string; onNavigate: (pathname: string) => void }) {
   return (
     <div className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-11">
       <p className="text-xs font-bold uppercase tracking-[.2em] text-indigo-600">OSi Plus Hub</p>
@@ -85,8 +89,16 @@ function HubHome({ applications, mobileApplications, crmReadEnabled, adminEnable
             <p className="mt-5 text-xs font-semibold text-indigo-600">Abrir aplicaciones →</p>
           </button>
         )}
+        {toolsApplications.length > 0 && (
+          <button type="button" onClick={() => onNavigate("/tools")} className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg">
+            <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Wrench className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">Utilidades</span></div>
+            <h2 className="mt-5 font-bold text-slate-950">Herramientas</h2>
+            <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">Calculadoras y utilidades especializadas disponibles dentro de OSi Plus.</p>
+            <p className="mt-5 text-xs font-semibold text-indigo-600">Abrir herramientas →</p>
+          </button>
+        )}
       </div>
-      {applications.length === 0 && mobileApplications.length === 0 && <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-600">No hay aplicaciones habilitadas para este contexto.</div>}
+      {applications.length === 0 && mobileApplications.length === 0 && toolsApplications.length === 0 && <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-600">No hay aplicaciones habilitadas para este contexto.</div>}
     </div>
   );
 }
@@ -96,35 +108,12 @@ function RegisteredApplication({ application }: { application: HubApplication })
   return <section className="mx-auto max-w-3xl px-5 py-12"><div className="rounded-3xl border bg-white p-8 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Icon className="h-7 w-7" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-indigo-600">Aplicación registrada</p><h1 className="mt-2 text-3xl font-black">{application.name}</h1><p className="mt-3 text-sm leading-6 text-slate-600">{application.description}</p><div className="mt-7 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>En integración.</strong> La conexión funcional se realizará en un lote separado; esta vista no ejecuta APIs ni monta el módulo heredado.</div></div></section>;
 }
 
-function ExternalApplication({ application, onNavigate }: { application: HubApplication; onNavigate: (pathname: string) => void }) {
-  if (!application.externalHref) return null;
-  const Icon = ICONS[application.icon];
-  return (
-    <section className="mx-auto max-w-3xl px-4 py-6 sm:px-7 sm:py-9" data-testid="hub-external-application">
-      <button type="button" onClick={() => onNavigate("/mobile")} className="flex min-h-11 items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950">
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />Volver a OSi Plus Mobile
-      </button>
-      <div className="mt-4 flex items-start gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white"><Icon className="h-5 w-5" aria-hidden="true" /></span>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[.2em] text-emerald-700">Aplicación externa</p>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{application.name}</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{application.description}</p>
-        </div>
-      </div>
-      <a href={application.externalHref} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600" aria-describedby="external-application-note">
-        Abrir {application.name}<ExternalLink className="h-4 w-4" aria-hidden="true" />
-      </a>
-      <p id="external-application-note" className="mt-3 text-sm leading-6 text-slate-600">Se abre en otra pestaña. Esta pestaña conserva OSi Plus Mobile para que puedas regresar.</p>
-    </section>
-  );
-}
-
 export default function HubWorkspace({ userName, authorization, accessContext, crmReadEnabled, mode, pathname, onNavigate, onLogout }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
   const rootVisible = useMemo(() => visible.filter((application) => application.suiteId === undefined), [visible]);
   const mobileApplications = useMemo(() => applicationsForHubSuite("osi-plus-mobile", visible), [visible]);
+  const toolsApplications = useMemo(() => applicationsForHubSuite("tools", visible), [visible]);
   const selected = findHubApplicationByRoute(pathname);
   const commercialCaseRef = commercialCaseRefFromRoute(pathname);
   const adminEnabled = isAdminTenantMembershipEnabled();
@@ -161,19 +150,29 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       <SurveyVisualPreview onBack={() => onNavigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
     </Suspense>;
   }
+  if (selected?.appId === "archaeological-packing") {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-100 text-sm font-semibold text-slate-600">Cargando calculadora arqueológica…</div>}>
+      <ArchaeologicalPackingTool onBack={() => onNavigate("/tools")} />
+    </Suspense>;
+  }
+  if (selected?.appId === "wood-crate-calculator") {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-100 text-sm font-semibold text-slate-600">Cargando calculadora de cajas…</div>}>
+      <div className="min-h-screen bg-slate-50" data-testid="wood-crate-tool"><div className="border-b bg-white px-4 py-2"><button type="button" onClick={() => onNavigate("/tools")} className="flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Herramientas</button></div><CrateWoodModule /></div>
+    </Suspense>;
+  }
   const sidebar = (
     <aside className="flex h-full w-72 flex-col bg-slate-950 text-white">
       <button onClick={() => onNavigate("/hub")} className="flex items-center gap-3 border-b border-white/10 p-5 text-left"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500"><LayoutGrid className="h-5 w-5" /></span><span><strong className="block">OSi Plus</strong><small className="text-slate-400">Hub de aplicaciones</small></span></button>
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Aplicaciones OSi Plus"><button onClick={() => onNavigate("/hub")} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/hub" ? "bg-white/15" : "text-slate-300 hover:bg-white/10"}`}>Inicio</button>{rootVisible.map((application) => { const Icon = ICONS[application.icon]; const active = selected?.appId === application.appId; return <button key={application.appId} onClick={() => onNavigate(application.route)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${active ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Icon className="h-4 w-4" />{application.name}</button>; })}{mobileApplications.length > 0 && <button type="button" onClick={() => onNavigate("/mobile")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/mobile" ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Smartphone className="h-4 w-4" />OSi Plus Mobile</button>}</nav>
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Aplicaciones OSi Plus"><button onClick={() => onNavigate("/hub")} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/hub" ? "bg-white/15" : "text-slate-300 hover:bg-white/10"}`}>Inicio</button>{rootVisible.map((application) => { const Icon = ICONS[application.icon]; const active = selected?.appId === application.appId; return <button key={application.appId} onClick={() => onNavigate(application.route)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${active ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Icon className="h-4 w-4" />{application.name}</button>; })}{mobileApplications.length > 0 && <button type="button" onClick={() => onNavigate("/mobile")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/mobile" ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Smartphone className="h-4 w-4" />OSi Plus Mobile</button>}{toolsApplications.length > 0 && <button type="button" onClick={() => onNavigate("/tools")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/tools" ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Wrench className="h-4 w-4" />Herramientas</button>}</nav>
       <div className="border-t border-white/10 p-4"><p className="mb-3 text-xs text-slate-400">{userName || "Usuario"}<br />{environmentLabel(mode)}</p><button onClick={onLogout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-500/10"><LogOut className="h-4 w-4" />Cerrar sesión</button></div>
     </aside>
   );
   const content = pathname === "/hub"
-    ? <HubHome applications={rootVisible} mobileApplications={mobileApplications} crmReadEnabled={crmReadEnabled} adminEnabled={adminEnabled} userName={userName} onNavigate={onNavigate} />
+    ? <HubHome applications={rootVisible} mobileApplications={mobileApplications} toolsApplications={toolsApplications} crmReadEnabled={crmReadEnabled} adminEnabled={adminEnabled} userName={userName} onNavigate={onNavigate} />
     : pathname === "/mobile"
       ? <OsiPlusMobileHub applications={mobileApplications} onNavigate={onNavigate} />
-    : selected?.externalHref
-      ? <ExternalApplication application={selected} onNavigate={onNavigate} />
+    : pathname === "/tools"
+      ? <ToolsHub applications={toolsApplications} onNavigate={onNavigate} />
     : selected
       ? <RegisteredApplication application={selected} />
       : <section className="p-12 text-center"><p className="font-bold">404 · Ruta del Hub no registrada</p></section>;

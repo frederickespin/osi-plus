@@ -104,6 +104,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
     'V17_COMMERCIAL_CRM_PREVIEW_BATCH = "V17-COMMERCIAL-CRM-PREVIEW-01"',
     'V17_COMMERCIAL_CRM_PREVIEW_BRANCH = "feature/v17-commercial-crm-preview"',
     'V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH = "feature/v17-osi-plus-mobile-hub-10a"',
+    'V17_OSI_PLUS_TOOLS_PREVIEW_BRANCH = "feature/v17-tools-archaeology-calculator-11a"',
     'environment.VERCEL === "1"',
     'environment.VERCEL_ENV === "preview"',
     "environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",
@@ -114,6 +115,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
     "environment.COMMERCIAL_TENANCY_MUTATION_MODE === DISABLED",
     "configuration.gitBranch === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",
     "configuration.gitBranch === V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH",
+    "configuration.gitBranch === V17_OSI_PLUS_TOOLS_PREVIEW_BRANCH",
   ]) requireText(files, shared, signature, `autoridad Preview incompleta: ${signature}`);
   forbidText(files, shared, /(?:\.trim\(|toUpperCase|toLowerCase)/, "la autoridad Preview normaliza configuración inválida");
 

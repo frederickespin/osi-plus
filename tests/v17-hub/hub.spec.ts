@@ -489,14 +489,14 @@ test("Herramientas queda fuera de OSi Plus Mobile y reúne las dos calculadoras 
   await page.goto("/mobile");
   await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
   await expect(page.getByText("Calculadora de empaque arqueológico", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Calculadora de cajas de madera", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Calculadora de empaque y cajas de madera", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Volver al Hub", exact: true }).click();
   await expect(page.locator("main").getByRole("button", { name: /Herramientas/ })).toBeVisible();
   await page.locator("main").getByRole("button", { name: /Herramientas/ }).click();
   await expect(page.getByTestId("tools-hub")).toBeVisible();
   await expect(page.getByRole("button", { name: /Calculadora de empaque arqueológico/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Calculadora de cajas de madera/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Calculadora de empaque y cajas de madera/ })).toBeVisible();
 });
 
 test("Calculadora arqueológica se ejecuta internamente y sin delegación externa", async ({ page }) => {
@@ -511,20 +511,24 @@ test("Calculadora arqueológica se ejecuta internamente y sin delegación extern
   expect([...hosts]).toEqual(["127.0.0.1"]);
 });
 
-test("alias histórico de empaque abre la calculadora arqueológica interna desde Herramientas", async ({ page }) => {
+test("alias histórico de empaque abre la calculadora general interna desde Herramientas", async ({ page }) => {
   await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
   await page.goto("/mobile/packing");
-  await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
+  await expect(page.getByTestId("general-packing-tool")).toBeVisible();
   await page.getByRole("button", { name: "Herramientas", exact: true }).click();
   await expect(page).toHaveURL(/\/tools$/);
 });
 
-test("calculadora de cajas reutiliza el módulo existente dentro de Herramientas", async ({ page }) => {
+test("calculadora general de empaque se ejecuta internamente y conserva su flujo completo", async ({ page }) => {
+  const hosts = new Set<string>();
+  page.on("request", (request) => hosts.add(new URL(request.url()).hostname));
   await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
   await page.goto("/tools");
-  await page.getByRole("button", { name: /Calculadora de cajas de madera/ }).click();
-  await expect(page).toHaveURL(/\/tools\/wood-crates$/);
-  await expect(page.getByTestId("wood-crate-tool")).toBeVisible();
+  await page.getByRole("button", { name: /Calculadora de empaque y cajas de madera/ }).click();
+  await expect(page).toHaveURL(/\/tools\/packing$/);
+  await expect(page.getByTestId("general-packing-tool")).toBeVisible();
+  await expect(page.frameLocator('[data-testid="general-packing-frame"]').getByRole("heading", { name: "Artículos del proyecto" })).toBeVisible();
+  expect([...hosts]).toEqual(["127.0.0.1"]);
 });
 
 test("deep link, reload, regreso al Hub y navegación móvil conservan autoridad", async ({ page }, testInfo) => {

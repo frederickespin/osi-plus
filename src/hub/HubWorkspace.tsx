@@ -1,7 +1,7 @@
 import { Suspense, lazy, useMemo, useState, type ElementType } from "react";
 import { ArrowLeft, BriefcaseBusiness, Calculator, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Smartphone, Truck, Users, Warehouse, Wrench } from "lucide-react";
 import { ENV_LABELS, getAppEnv } from "@/lib/env";
-import { HUB_APPLICATIONS, applicationsForHubSuite, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
+import { HUB_APPLICATIONS, applicationsForHubSuite, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubAppId, type HubIconId } from "./appCatalog";
 import { visibleHubApplications, type HubAccessContext } from "./hubAccess";
 import { availableHubApplications } from "./hubAvailability";
 import OsiPlusMobileHub from "./OsiPlusMobileHub";
@@ -43,7 +43,7 @@ const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
 const ArchaeologicalPackingTool = lazy(() => import("./ArchaeologicalPackingTool"));
-const CrateWoodModule = lazy(() => import("@/modules/CrateWoodModule"));
+const GeneralPackingTool = lazy(() => import("./GeneralPackingTool"));
 
 const ICONS: Record<HubIconId, ElementType> = {
   briefcase: BriefcaseBusiness,
@@ -64,6 +64,7 @@ type Props = {
   crmReadEnabled: boolean;
   mode: OsiHubMode;
   pathname: string;
+  catalogPreviewApplicationIds?: readonly HubAppId[];
   onNavigate: (pathname: string) => void;
   onLogout: () => void;
 };
@@ -142,10 +143,11 @@ function RegisteredApplication({ application, onNavigate }: { application: HubAp
   return <section className="mx-auto max-w-3xl px-5 py-12"><div className="rounded-3xl border bg-white p-8 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Icon className="h-7 w-7" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-indigo-600">Pendiente de habilitación</p><h1 className="mt-2 text-3xl font-black">{application.name}</h1><p className="mt-3 text-sm leading-6 text-slate-600">Esta aplicación todavía no está disponible en este entorno. Puedes continuar en las aplicaciones disponibles del Hub.</p><button type="button" onClick={() => onNavigate("/hub")} className="mt-6 flex min-h-11 items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"><ArrowLeft className="h-4 w-4" />Volver al Hub</button></div></section>;
 }
 
-export default function HubWorkspace({ userName, authorization, accessContext, crmReadEnabled, mode, pathname, onNavigate, onLogout }: Props) {
+export default function HubWorkspace({ userName, authorization, accessContext, crmReadEnabled, mode, pathname, catalogPreviewApplicationIds = [], onNavigate, onLogout }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
   const selected = findHubApplicationByRoute(pathname);
+  const catalogPreview = new Set(catalogPreviewApplicationIds);
   const commercialCaseRef = commercialCaseRefFromRoute(pathname);
   const adminEnabled = isAdminTenantMembershipEnabled();
   const effectivePermissions = new Set(accessContext.effectivePermissions || []);
@@ -188,14 +190,14 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const commercialRelationshipsEnabled = isCommercialRelationshipsUiEnabled();
   const commercialRelationshipsAccess = resolveCommercialRelationshipsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   const available = availableHubApplications(visible, {
-    "commercial-crm": crmReadEnabled,
-    administration: administrationAvailable,
-    warehouses: warehousesAvailable,
-    "osi-survey": surveyEnabled,
+    "commercial-crm": crmReadEnabled || catalogPreview.has("commercial-crm"),
+    administration: administrationAvailable || catalogPreview.has("administration"),
+    warehouses: warehousesAvailable || catalogPreview.has("warehouses"),
+    "osi-survey": surveyEnabled || catalogPreview.has("osi-survey"),
     "materials-equipment": materialsEnabled,
     "tools-equipment": toolsEnabled,
     "archaeological-packing": true,
-    "wood-crate-calculator": true,
+    "packing-calculator": true,
   });
   const rootAvailable = groupWarehouseLaunchers(available.filter((application) => !application.suiteId), warehouseSections);
   const mobileApplications = applicationsForHubSuite("osi-plus-mobile", available);
@@ -291,12 +293,9 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       <ArchaeologicalPackingTool onBack={() => onNavigate("/tools")} />
     </Suspense>;
   }
-  if (selected?.appId === "wood-crate-calculator" && available.includes(selected)) {
+  if (selected?.appId === "packing-calculator" && available.includes(selected)) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando calculadora…</div>}>
-      <section className="min-h-screen bg-slate-50" data-testid="wood-crate-tool">
-        <div className="border-b border-slate-200 bg-white px-4 py-2 sm:px-6"><button type="button" onClick={() => onNavigate("/tools")} className="flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Herramientas</button></div>
-        <CrateWoodModule />
-      </section>
+      <GeneralPackingTool onBack={() => onNavigate("/tools")} />
     </Suspense>;
   }
   const sidebar = (

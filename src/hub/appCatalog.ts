@@ -12,7 +12,7 @@ export type HubAppId =
   | "human-resources"
   | "osi-survey"
   | "archaeological-packing"
-  | "wood-crate-calculator";
+  | "packing-calculator";
 
 export type HubSuiteId = "osi-plus-mobile" | "tools";
 
@@ -255,7 +255,6 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     description: "Inventario, embalaje, medidas, reportes y etiquetas para piezas arqueológicas.",
     icon: "calculator",
     route: "/tools/archaeological-packing",
-    routeAliases: ["/mobile/packing"],
     status: "INTERNAL_STANDALONE",
     requiredPermissions: ["pipeline:view"],
     permissionMode: "ALL",
@@ -267,12 +266,13 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     suiteId: "tools",
   },
   {
-    appId: "wood-crate-calculator",
-    name: "Calculadora de cajas de madera",
-    description: "Diseño, agrupación, ingeniería y costos de cajas y huacales de madera.",
+    appId: "packing-calculator",
+    name: "Calculadora de empaque y cajas de madera",
+    description: "Diseño, agrupación, materiales, ingeniería, costos y reportes de cajas y huacales.",
     icon: "hammer",
-    route: "/tools/wood-crates",
-    status: "INTERNAL_AVAILABLE",
+    route: "/tools/packing",
+    routeAliases: ["/mobile/packing"],
+    status: "INTERNAL_STANDALONE",
     requiredPermissions: ["pipeline:view"],
     permissionMode: "ALL",
     requiresExplicitPermissions: true,

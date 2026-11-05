@@ -52,7 +52,7 @@ for (const [name, before, after, expected] of [
   ["rol comercial ampliado", 'baselineRoles: ["A", "V"]', 'baselineRoles: ["A", "V", "N"]', /autoridad alterada:commercial-crm/],
   ["Mobile sin suite canónica", 'route: "/mobile"', 'route: "/mobile-unsafe"', /suites Mobile\/Herramientas no canónicas/],
   ["Herramientas sin suite canónica", 'route: "/tools"', 'route: "/tools-unsafe"', /suites Mobile\/Herramientas no canónicas/],
-  ["alias histórico de la calculadora alterado", 'routeAliases: ["/mobile/packing"]', 'routeAliases: ["/mobile/packing-unsafe"]', /rutas o alias alterados:archaeological-packing/],
+  ["alias histórico de la calculadora alterado", 'routeAliases: ["/mobile/packing"]', 'routeAliases: ["/mobile/packing-unsafe"]', /rutas o alias alterados:packing-calculator/],
   ["carga eager", 'lazy: true,', 'lazy: false,', /contrato lazy/],
 ]) negative(name, () => validateHubCatalog(replace(catalog, before, after)), expected);
 negative("declaración duplicada no se decide por primera coincidencia", () => readFrozenCatalog(`${catalog}\nconst HUB_APPLICATIONS = Object.freeze([]);`, "HUB_APPLICATIONS"), /declarativo y único/);

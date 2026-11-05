@@ -187,16 +187,32 @@ test("Herramientas abre internamente la calculadora arqueológica sin abandonar 
   expect(state.unexpectedApi).toEqual([]);
 });
 
+test("Herramientas abre internamente la calculadora general de empaque y conserva el alias histórico", async ({ page }) => {
+  const state = await installSession(page, { permissions: ["pipeline:view"] });
+  await page.goto("/tools");
+  await page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque y cajas de madera/ }).click();
+  await expect(page).toHaveURL(/\/tools\/packing$/);
+  await expect(page.getByTestId("general-packing-tool")).toBeVisible();
+  await expect(page.frameLocator('[data-testid="general-packing-frame"]').getByRole("heading", { name: "Artículos del proyecto" })).toBeVisible();
+  await page.goto("/mobile/packing");
+  await expect(page.getByTestId("general-packing-tool")).toBeVisible();
+  await page.getByRole("button", { name: "Herramientas", exact: true }).click();
+  await expect(page.getByTestId("tools-hub")).toBeVisible();
+  expect(state.unexpectedApi).toEqual([]);
+});
+
 test("Survey y Herramientas conservan permisos independientes y suites separadas", async ({ page }) => {
   const state = await installSession(page, { permissions: ["survey:assignment:view"] });
   await page.goto("/mobile");
   await expect(page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /OSi Survey/ })).toBeVisible();
   await expect(page.getByText("Calculadora de empaque arqueológico", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Calculadora de empaque y cajas de madera", { exact: true })).toHaveCount(0);
   await page.goto("/mobile/packing");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   state.actor = { permissions: ["pipeline:view"] };
   await page.goto("/tools");
   await expect(page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque arqueológico/ })).toBeVisible();
+  await expect(page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque y cajas de madera/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /OSi Survey/ })).toHaveCount(0);
   await page.goto("/mobile/survey");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
@@ -209,12 +225,12 @@ test("Survey y Herramientas conservan permisos independientes y suites separadas
 
 test("las denegaciones bloquean Mobile, Herramientas, alias y aplicaciones antes del lazy y de sus APIs", async ({ page }) => {
   const state = await installSession(page, { permissions: mobilePermissions, deniedPermissions: mobilePermissions });
-  for (const path of ["/mobile/survey", "/survey", "/mobile/packing", "/mobile", "/tools", "/tools/archaeological-packing", "/tools/wood-crates"]) {
+  for (const path of ["/mobile/survey", "/survey", "/mobile/packing", "/mobile", "/tools", "/tools/archaeological-packing", "/tools/packing"]) {
     state.requests.length = 0;
     await page.goto(path);
     await expect(page.getByTestId("hub-forbidden")).toContainText("403");
     expect(state.requests.filter((request) => request.startsWith("/api/") && request !== "/api/auth/me")).toEqual([]);
-    expect(state.requests.some((request) => /HubWorkspace|SurveyApp|ArchaeologicalPackingTool|CrateWoodModule|AdvancedErpShell/.test(request))).toBe(false);
+    expect(state.requests.some((request) => /HubWorkspace|SurveyApp|ArchaeologicalPackingTool|GeneralPackingTool|AdvancedErpShell/.test(request))).toBe(false);
   }
   expect(state.unexpectedApi).toEqual([]);
 });

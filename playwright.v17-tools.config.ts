@@ -15,7 +15,7 @@ export default defineConfig({
   retries: 0,
   forbidOnly: true,
   reporter: "list",
-  grep: /Herramientas|Calculadora arqueológica|alias histórico|calculadora de cajas/u,
+  grep: /Herramientas|Calculadora arqueológica|alias histórico|calculadora general/u,
   use: { baseURL: "http://127.0.0.1:4183", trace: "off", screenshot: "only-on-failure", video: "off", serviceWorkers: "block" },
   webServer: useExternalServer ? undefined : {
     command: "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4183",

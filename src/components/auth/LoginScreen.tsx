@@ -28,6 +28,7 @@ export interface LoginSession {
   permissions?: readonly string[];
   deniedPermissions?: readonly string[];
   commercialCrmPreviewAuthorized?: boolean;
+  osiPlusToolsPreviewAuthorized?: boolean;
   commercialCrmProductionAuthorized?: boolean;
 }
 
@@ -64,6 +65,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           permissions: Array.isArray(response.user.permissions) ? response.user.permissions : undefined,
           deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
           commercialCrmPreviewAuthorized: response.user.commercialCrmPreviewAuthorized === true,
+          osiPlusToolsPreviewAuthorized: response.user.osiPlusToolsPreviewAuthorized === true,
           commercialCrmProductionAuthorized: response.user.commercialCrmProductionAuthorized === true,
         };
         

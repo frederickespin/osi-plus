@@ -24,6 +24,7 @@ import { isCrmIcpV2VisualPreviewRoute } from '@/crm-icp-v2/clientMode';
 import { isCrmServicesVisualPreviewRoute } from '@/crm-services-preview/clientMode';
 import { isCrmCostingVisualPreviewRoute } from '@/crm-costing-preview/clientMode';
 import { isCrmSurveyVisualPreviewRoute } from '@/crm-survey-preview/clientMode';
+import { isOsiPlusToolsVisualPreviewRoute } from '@/tools-preview/clientMode';
 export type { ModuleId } from '@/lib/roleModuleMap';
 
 const AdminIdentityActivation = lazy(() =>
@@ -33,6 +34,7 @@ const IcpVisualPreview = lazy(() => import('@/crm-icp-v2/IcpVisualPreview'));
 const ServicesVisualPreview = lazy(() => import('@/crm-services-preview/ServicesVisualPreview'));
 const CostingVisualPreview = lazy(() => import('@/crm-costing-preview/CostingVisualPreview'));
 const SurveyVisualPreview = lazy(() => import('@/crm-survey-preview/SurveyVisualPreview'));
+const ToolsVisualPreview = lazy(() => import('@/tools-preview/ToolsVisualPreview'));
 const TowerControl = lazy(() =>
   import('@/components/modules/TowerControl').then((m) => ({ default: m.TowerControl }))
 );
@@ -203,7 +205,7 @@ function AuthorizedHubEntry({ session, accessContext, crmReadEnabled, mode, onLo
     void validateLegacySession(session, controller.signal).then((validatedSession) => {
       if (fence !== navigationFence.current) return;
       activeNavigation.current = null;
-      if (mode === 'PREVIEW_REHEARSAL' && validatedSession.commercialCrmPreviewAuthorized !== true) {
+      if (mode === 'PREVIEW_REHEARSAL' && !hasPreviewSessionAuthority(validatedSession)) {
         onLogout();
         return;
       }
@@ -370,6 +372,7 @@ function resolveValidatedLegacySession(token: string, signal?: AbortSignal): Pro
       permissions: Array.isArray(response.user.permissions) ? response.user.permissions : undefined,
       deniedPermissions: Array.isArray(response.user.deniedPermissions) ? response.user.deniedPermissions : undefined,
       commercialCrmPreviewAuthorized: response.user.commercialCrmPreviewAuthorized === true,
+      osiPlusToolsPreviewAuthorized: response.user.osiPlusToolsPreviewAuthorized === true,
       commercialCrmProductionAuthorized: response.user.commercialCrmProductionAuthorized === true,
     };
   });
@@ -410,10 +413,14 @@ async function resolveInitialAuthState(): Promise<AuthState> {
   }
 }
 
+function hasPreviewSessionAuthority(session: Session) {
+  return session.commercialCrmPreviewAuthorized === true || session.osiPlusToolsPreviewAuthorized === true;
+}
+
 function AuthenticatedApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const hubMode = resolveOsiHubMode();
   const serverConfirmed = hubMode.mode === 'PREVIEW_REHEARSAL'
-    ? session.commercialCrmPreviewAuthorized === true
+    ? hasPreviewSessionAuthority(session)
     : hubMode.mode === 'PRODUCTION_READ'
       ? session.commercialCrmProductionAuthorized === true
       : true;
@@ -614,7 +621,7 @@ function SessionApp() {
       const validated = requiresServerConfirmation
         ? await validateLegacySession(session)
         : session;
-      if (hubMode.mode === 'PREVIEW_REHEARSAL' && validated.commercialCrmPreviewAuthorized !== true) {
+      if (hubMode.mode === 'PREVIEW_REHEARSAL' && !hasPreviewSessionAuthority(validated)) {
         throw Object.assign(new Error('El servidor no confirmó el ensayo CRM.'), { status: 503 });
       }
       if (hubMode.mode === 'PRODUCTION_READ' && validated.commercialCrmProductionAuthorized !== true) {
@@ -647,6 +654,7 @@ function SessionApp() {
 }
 
 function App() {
+  if (isOsiPlusToolsVisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-slate-950" />}><ToolsVisualPreview /></Suspense>;
   if (isCrmSurveyVisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-[#003366]" />}><SurveyVisualPreview /></Suspense>;
   if (isCrmCostingVisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-[#003366]" />}><CostingVisualPreview /></Suspense>;
   if (isCrmServicesVisualPreviewRoute()) return <Suspense fallback={<div className="min-h-screen bg-[#003366]" />}><ServicesVisualPreview /></Suspense>;

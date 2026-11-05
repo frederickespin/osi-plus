@@ -9,11 +9,12 @@ export type HubAppId =
   | "administration"
   | "human-resources"
   | "osi-survey"
-  | "packing-calculator";
+  | "archaeological-packing"
+  | "wood-crate-calculator";
 
-export type HubSuiteId = "osi-plus-mobile";
+export type HubSuiteId = "osi-plus-mobile" | "tools";
 export type HubIconId = "briefcase" | "route" | "truck" | "warehouse" | "hammer" | "settings" | "users" | "clipboard" | "calculator";
-export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED" | "PREVIEW_AVAILABLE" | "EXTERNAL_AVAILABLE";
+export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED" | "PREVIEW_AVAILABLE" | "INTERNAL_STANDALONE" | "INTERNAL_AVAILABLE";
 export type HubMobileAvailability = "RESPONSIVE" | "MOBILE_PRIMARY" | "DESKTOP_PRIMARY";
 
 export type HubSuite = Readonly<{
@@ -31,7 +32,6 @@ export type HubApplication = Readonly<{
   icon: HubIconId;
   route: string;
   routeAliases?: readonly string[];
-  externalHref?: string;
   status: HubAppStatus;
   requiredPermissions: readonly string[];
   permissionMode: "ANY" | "ALL";
@@ -51,6 +51,13 @@ export const HUB_SUITES: readonly HubSuite[] = Object.freeze([
     icon: "clipboard",
     route: "/mobile",
   },
+  {
+    suiteId: "tools",
+    name: "Herramientas",
+    description: "Calculadoras y utilidades especializadas disponibles dentro de OSi Plus.",
+    icon: "calculator",
+    route: "/tools",
+  },
 ]);
 
 export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
@@ -62,7 +69,8 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   { appId: "administration", name: "Administración", description: "Acceso, roles y permisos del tenant.", icon: "settings", route: "/administration", status: "REGISTERED_INACTIVE", requiredPermissions: ["membership:view"], permissionMode: "ALL", requiresExplicitPermissions: true, baselineRoles: ["A"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
   { appId: "human-resources", name: "Recursos Humanos", description: "Personal, indicadores y gestión laboral.", icon: "users", route: "/hr", status: "REGISTERED_INACTIVE", requiredPermissions: ["hr:view"], permissionMode: "ALL", baselineRoles: ["A", "I"], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true },
   { appId: "osi-survey", name: "OSi Survey", description: "Visitas asignadas y captura móvil del evaluador.", icon: "clipboard", route: "/mobile/survey", routeAliases: ["/survey"], status: "PREVIEW_AVAILABLE", requiredPermissions: ["survey:assigned:view"], permissionMode: "ALL", requiresExplicitPermissions: true, baselineRoles: [], mobileAvailability: "MOBILE_PRIMARY", directAccessAllowed: true, lazy: true, suiteId: "osi-plus-mobile" },
-  { appId: "packing-calculator", name: "Calculadora de Empaque", description: "Medidas, materiales, costos y reportes de cajas, huacales y pallets.", icon: "calculator", route: "/mobile/packing", externalHref: "https://ip-suite-inventario-empaquee.vercel.app/empaque/index.html", status: "EXTERNAL_AVAILABLE", requiredPermissions: ["pipeline:view"], permissionMode: "ALL", requiresExplicitPermissions: true, baselineRoles: [], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true, suiteId: "osi-plus-mobile" },
+  { appId: "archaeological-packing", name: "Calculadora de empaque arqueológico", description: "Inventario, embalaje, medidas, reportes y etiquetas para piezas arqueológicas.", icon: "calculator", route: "/tools/archaeological-packing", routeAliases: ["/mobile/packing"], status: "INTERNAL_STANDALONE", requiredPermissions: ["pipeline:view"], permissionMode: "ALL", requiresExplicitPermissions: true, baselineRoles: [], mobileAvailability: "RESPONSIVE", directAccessAllowed: true, lazy: true, suiteId: "tools" },
+  { appId: "wood-crate-calculator", name: "Calculadora de cajas de madera", description: "Diseño, agrupación, ingeniería y costos de cajas y huacales de madera.", icon: "hammer", route: "/tools/wood-crates", status: "INTERNAL_AVAILABLE", requiredPermissions: ["pipeline:view"], permissionMode: "ALL", requiresExplicitPermissions: true, baselineRoles: [], mobileAvailability: "DESKTOP_PRIMARY", directAccessAllowed: true, lazy: true, suiteId: "tools" },
 ]);
 
 const COMMERCIAL_CASE_ROUTE = /^\/commercial\/cases\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;

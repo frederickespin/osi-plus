@@ -6,6 +6,7 @@ import {
   V17_COMMERCIAL_CRM_PRODUCTION_MODE,
   resolveV17CommercialCrmProductionClientAuthority,
 } from "../../shared/v17CommercialCrmProduction.js";
+import { resolveV17OsiPlusToolsPreviewClientAuthority } from "../../shared/v17OsiPlusToolsPreview.js";
 
 export const OSI_HUB_MODES = Object.freeze({
   DISABLED: "DISABLED",
@@ -47,7 +48,7 @@ export function resolveOsiHubMode(
     return Object.freeze({ mode: OSI_HUB_MODES.DISABLED, enabled: false, valid: true, reason: "DISABLED" });
   }
   if (raw === OSI_HUB_MODES.PREVIEW_REHEARSAL) {
-    const preview = resolveV17CommercialCrmPreviewClientAuthority({
+    const configuration = {
       hubMode: raw,
       clientMode: environment.VITE_CRM_PIPELINE_CLIENT_MODE,
       readMode: environment.VITE_CRM_PIPELINE_READ_MODE,
@@ -55,7 +56,11 @@ export function resolveOsiHubMode(
       vercelEnvironment: runtime.vercelEnvironment,
       gitBranch: runtime.gitBranch,
       hostname: runtime.hostname,
-    });
+    };
+    const toolsPreview = resolveV17OsiPlusToolsPreviewClientAuthority(configuration);
+    const preview = toolsPreview.requested
+      ? toolsPreview
+      : resolveV17CommercialCrmPreviewClientAuthority(configuration);
     return Object.freeze({
       mode: preview.enabled ? OSI_HUB_MODES.PREVIEW_REHEARSAL : OSI_HUB_MODES.DISABLED,
       enabled: preview.enabled,

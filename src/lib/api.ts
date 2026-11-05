@@ -34,6 +34,7 @@ export type UserDto = {
   permissions?: string[];
   deniedPermissions?: string[];
   commercialCrmPreviewAuthorized?: boolean;
+  osiPlusToolsPreviewAuthorized?: boolean;
   commercialCrmProductionAuthorized?: boolean;
 };
 

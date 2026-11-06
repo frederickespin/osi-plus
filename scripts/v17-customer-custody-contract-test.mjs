@@ -12,6 +12,15 @@ test("access grants separate inventory scope from operations", () => { const pay
 test("access grants can be explicitly revised or deactivated", () => { const grantRef = ref("1"); const payload = { expectedVersion: 2, operations: ["VIEW"], status: "INACTIVE" }; const requestId = ref("2"); const input = { requestId, payloadHash: custodyPayloadHash({ operation: "WAREHOUSE_ACCESS_GRANT_UPDATE", requestId, grantRef, ...payload }), ...payload }; assert.equal(normalizeWarehouseGrantUpdate(input, grantRef).status, "INACTIVE"); assert.throws(() => normalizeWarehouseGrantUpdate({ ...input, expectedVersion: 1 }, grantRef)); });
 test("production and unrelated preview branches remain disabled", () => { assert.throws(() => resolveCustomerCustodyMode({ CUSTOMER_CUSTODY_API_MODE: "DISABLED" })); const preview = { CUSTOMER_CUSTODY_API_MODE: "PREVIEW_REHEARSAL", CUSTOMER_CUSTODY_API_BATCH: "V17-CUSTOMER-CUSTODY-21A-PREVIEW", VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/v17-customer-custody-21a", MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" }; assert.equal(resolveCustomerCustodyMode(preview), "PREVIEW_REHEARSAL"); for (const override of [{ VERCEL_ENV: "production" }, { VERCEL_GIT_COMMIT_REF: "main" }, { CUSTOMER_CUSTODY_API_BATCH: "wrong" }]) assert.throws(() => resolveCustomerCustodyMode({ ...preview, ...override })); });
 test("frontend Preview is pinned to the same exact branch and batch", () => { const source = readFileSync("src/customer-custody/mode.ts", "utf8"); assert.match(source, /VITE_VERCEL_ENV === "preview"/); assert.match(source, /VITE_VERCEL_GIT_COMMIT_REF === "feature\/v17-customer-custody-21a"/); assert.match(source, /V17-CUSTOMER-CUSTODY-21A-PREVIEW/); assert.doesNotMatch(source, /productionApiEnabled\s*=\s*true/); });
+test("custody routes are explicitly classified as protected same-origin APIs", () => {
+  const inventory = JSON.parse(readFileSync("scripts/protected-cors-route-inventory.json", "utf8"));
+  for (const route of [
+    "/api/customer-custody/access-grants",
+    "/api/customer-custody/access-grants/[grantRef]",
+    "/api/customer-custody/lots",
+    "/api/customer-custody/movements",
+  ]) assert.ok(inventory.categories.protectedSameOrigin.includes(route), `missing protected route ${route}`);
+});
 test("database migration seals custody history and enforces tenant-first scope", () => {
   const sql = readFileSync("prisma/migrations/20261106010000_v17_customer_custody/migration.sql", "utf8");
   for (const authority of [

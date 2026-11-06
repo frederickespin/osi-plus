@@ -31,15 +31,16 @@ function withCanonicalRead(source) {
   return { extraRuntimeSources: { ...canonicalRuntime, "api/_lib/crmPipelineRead.js": source } };
 }
 function changeConsumer(path, before, after) {
-  const source = canonicalRuntime[path];
+  const source = canonicalRuntime[path]?.replaceAll("\r\n", "\n");
   if (!source?.includes(before) || before === after) throw new Error("Mutación sin efecto: " + path + " / " + before);
   return { extraRuntimeSources: { ...canonicalRuntime, [path]: source.replace(before, after) } };
 }
 
 check("baseline publicRef aprobada", baseline.ok);
 check("inventario distingue casos y clientes de membresías e invitaciones",
-  baseline.runtimeConsumers === 30
+  baseline.runtimeConsumers === 31
   && baseline.consumerContracts["api/_lib/crmIcpV2ApiDomain.js"].kinds.join(",") === "CASE,CLIENT"
+  && baseline.consumerContracts["api/_lib/customerCustodyDomain.js"].kinds.join(",") === "CASE,CLIENT,MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/authContext.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminUserIdentityDomain.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminUserEnrollmentDomain.js"].kinds.join(",") === "MEMBERSHIP"

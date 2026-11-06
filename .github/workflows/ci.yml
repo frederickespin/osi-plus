@@ -59,6 +59,7 @@ jobs:
           npm run test:v17-warehouse-sheet
           npm run test:v17-warehouse-routes
           npm run test:v17-warehouse-localities
+          npm run test:v17-customer-custody
           npm run test:v17-logistics-transport
           npm run guard:v17-logistics-engine
           node scripts/v17-quote-local-target-test.mjs
@@ -486,7 +487,7 @@ jobs:
           } finally { await prisma.$disconnect(); }
           NODE
 
-      - name: Prepare the exact40 historical staging directory
+      - name: Prepare exact40 and41 historical staging directories
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -498,13 +499,15 @@ jobs:
           assert.equal(source.at(-1), '20261106010000_v17_customer_custody');
           assert.equal(source[40], '20261102020000_v17_warehouse_localities');
           assert.equal(source[39], '20261102010000_v17_warehouse_routes');
-          const stage = join(process.env.RUNNER_TEMP, 'warehouse-pg18-durable40');
-          mkdirSync(join(stage, 'migrations'), { recursive: true });
-          copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
-          writeFileSync(join(stage, 'migrations/migration_lock.toml'), 'provider = "postgresql"\n');
-          for (const name of source.slice(0, 40)) {
-            mkdirSync(join(stage, 'migrations', name));
-            copyFileSync(join('prisma/migrations', name, 'migration.sql'), join(stage, 'migrations', name, 'migration.sql'));
+          for (const count of [40, 41]) {
+            const stage = join(process.env.RUNNER_TEMP, `warehouse-pg18-durable${count}`);
+            mkdirSync(join(stage, 'migrations'), { recursive: true });
+            copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
+            writeFileSync(join(stage, 'migrations/migration_lock.toml'), 'provider = "postgresql"\n');
+            for (const name of source.slice(0, count)) {
+              mkdirSync(join(stage, 'migrations', name));
+              copyFileSync(join('prisma/migrations', name, 'migration.sql'), join(stage, 'migrations', name, 'migration.sql'));
+            }
           }
           NODE
 
@@ -518,14 +521,14 @@ jobs:
 
       - name: Upgrade40 to41 and verify populated data preservation
         run: |
-          npx prisma migrate deploy --schema prisma/schema.prisma
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/warehouse-pg18-durable41/schema.prisma"
           node scripts/capture-v17-warehouse-localities-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-durable-after.json" --previous "$RUNNER_TEMP/warehouse-pg18-durable-before.json"
 
       - name: Verify idempotent41 deploy and unchanged populated catalog
         shell: bash
         run: |
           set -euo pipefail
-          output="$(npx prisma migrate deploy --schema prisma/schema.prisma 2>&1)"
+          output="$(npx prisma migrate deploy --schema "$RUNNER_TEMP/warehouse-pg18-durable41/schema.prisma" 2>&1)"
           printf '%s\n' "$output"
           grep -Fq "No pending migrations to apply." <<< "$output"
           node scripts/capture-v17-warehouse-localities-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-durable-replay.json" --previous "$RUNNER_TEMP/warehouse-pg18-durable-before.json"
@@ -879,6 +882,9 @@ jobs:
           npm run test:v17-warehouse-configuration:db
           npm run test:v17-warehouse-sheet:db
           npm run test:v17-warehouse-routes:db
+
+      - name: Validate customer custody, scoped access and append-only history against PostgreSQL 18
+        run: npm run test:v17-customer-custody:db
 
       - name: Validate transport zones, costs and context isolation against PostgreSQL 18
         run: npm run test:v17-logistics-transport:db

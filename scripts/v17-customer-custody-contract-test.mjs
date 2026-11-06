@@ -27,6 +27,7 @@ test("database migration seals custody history and enforces tenant-first scope",
     "customer_storage_lots_case_client_fkey",
     "customer_custody_commands_append_only",
     "customer_custody_movements_append_only",
+    "v17_customer_custody_movement_append_only_guard",
     "warehouse_access_grants_scope_guard",
   ]) assert.match(sql, new RegExp(authority));
   assert.match(sql, /CHECK \(cardinality\("operations"\) > 0\)/);

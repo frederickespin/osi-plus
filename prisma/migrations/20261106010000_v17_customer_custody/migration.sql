@@ -275,13 +275,23 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION "v17_customer_custody_movement_append_only_guard"()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = pg_catalog, osi
+AS $$
+BEGIN
+  RAISE EXCEPTION 'V17_CUSTOMER_CUSTODY_APPEND_ONLY';
+END;
+$$;
+
 CREATE TRIGGER "customer_custody_commands_append_only"
 BEFORE UPDATE OR DELETE ON "customer_custody_commands"
 FOR EACH ROW EXECUTE FUNCTION "v17_customer_custody_append_only_guard"();
 
 CREATE TRIGGER "customer_custody_movements_append_only"
 BEFORE UPDATE OR DELETE ON "customer_custody_movements"
-FOR EACH ROW EXECUTE FUNCTION "v17_customer_custody_append_only_guard"();
+FOR EACH ROW EXECUTE FUNCTION "v17_customer_custody_movement_append_only_guard"();
 
 -- Physical scopes must agree with the warehouse declared by the grant or lot.
 CREATE OR REPLACE FUNCTION "v17_customer_custody_scope_guard"()

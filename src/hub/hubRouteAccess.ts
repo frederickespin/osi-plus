@@ -1,5 +1,5 @@
-import { HUB_APPLICATIONS, findHubApplicationByRoute } from "./appCatalog";
-import { evaluateHubAccess, visibleHubApplications, type HubAccessContext } from "./hubAccess";
+import { HUB_APPLICATIONS, findHubApplicationByRoute, findHubSuiteByRoute } from "./appCatalog";
+import { evaluateHubAccess, evaluateHubSuiteAccess, visibleHubApplications, type HubAccessContext } from "./hubAccess";
 
 export type HubRouteAccessDecision = Readonly<{
   allowed: boolean;
@@ -21,18 +21,28 @@ export function evaluateHubRouteAccess(pathname: string, context: HubAccessConte
   }
 
   const application = findHubApplicationByRoute(normalizedPath);
-  if (!application) {
+  if (application) {
+    const decision = evaluateHubAccess(application, context);
     return Object.freeze({
-      allowed: hasAuthorizedApplication,
+      allowed: decision.allowed,
       hasAuthorizedApplication,
-      reason: hasAuthorizedApplication ? "ROUTE_NOT_REGISTERED" : "ACCESS_DENIED",
+      reason: decision.allowed ? "APPLICATION_ALLOWED" : "ACCESS_DENIED",
     });
   }
 
-  const decision = evaluateHubAccess(application, context);
+  const suite = findHubSuiteByRoute(normalizedPath);
+  if (suite) {
+    const decision = evaluateHubSuiteAccess(suite, HUB_APPLICATIONS, context);
+    return Object.freeze({
+      allowed: decision.allowed,
+      hasAuthorizedApplication,
+      reason: decision.allowed ? "APPLICATION_ALLOWED" : "ACCESS_DENIED",
+    });
+  }
+
   return Object.freeze({
-    allowed: decision.allowed,
+    allowed: hasAuthorizedApplication,
     hasAuthorizedApplication,
-    reason: decision.allowed ? "APPLICATION_ALLOWED" : "ACCESS_DENIED",
+    reason: hasAuthorizedApplication ? "ROUTE_NOT_REGISTERED" : "ACCESS_DENIED",
   });
 }

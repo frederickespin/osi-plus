@@ -2,6 +2,7 @@ export const V17_COMMERCIAL_CRM_PREVIEW_MODE = "PREVIEW_REHEARSAL";
 export const V17_COMMERCIAL_CRM_PREVIEW_BATCH = "V17-COMMERCIAL-CRM-PREVIEW-01";
 export const V17_COMMERCIAL_CRM_PREVIEW_BRANCH = "feature/v17-commercial-crm-preview";
 export const V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH = "feature/v17-crm-icp-ui-05c1";
+export const V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH = "feature/v17-osi-plus-mobile-hub-10a";
 
 const DISABLED = "DISABLED";
 const LEGACY = "LEGACY";
@@ -31,10 +32,13 @@ export function isExactV17CommercialCrmPreviewServerEnvironment(environment = {}
   return environment.VERCEL === "1"
     && environment.VERCEL_ENV === "preview"
     && (environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_PREVIEW_BRANCH
-      || environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH)
+      || environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH
+      || environment.VERCEL_GIT_COMMIT_REF === V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH)
     && environment.CRM_PIPELINE_RUNTIME_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE
     && exactOneOf(environment.CRM_PIPELINE_MUTATION_MODE, [DISABLED, V17_COMMERCIAL_CRM_PREVIEW_MODE])
     && (environment.VERCEL_GIT_COMMIT_REF !== V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH
+      || environment.CRM_PIPELINE_MUTATION_MODE === DISABLED)
+    && (environment.VERCEL_GIT_COMMIT_REF !== V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH
       || environment.CRM_PIPELINE_MUTATION_MODE === DISABLED)
     && environment.CRM_PIPELINE_ACTIVATION_BATCH === V17_COMMERCIAL_CRM_PREVIEW_BATCH
     && environment.VITE_OSI_HUB_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE
@@ -65,7 +69,8 @@ export function resolveV17CommercialCrmPreviewClientAuthority(configuration = {}
     && configuration.batch === V17_COMMERCIAL_CRM_PREVIEW_BATCH
     && configuration.vercelEnvironment === "preview"
     && (configuration.gitBranch === V17_COMMERCIAL_CRM_PREVIEW_BRANCH
-      || configuration.gitBranch === V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH)
+      || configuration.gitBranch === V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH
+      || configuration.gitBranch === V17_OSI_PLUS_MOBILE_HUB_PREVIEW_BRANCH)
     && !isLoopbackHostname(configuration.hostname);
   return Object.freeze({
     requested: true,

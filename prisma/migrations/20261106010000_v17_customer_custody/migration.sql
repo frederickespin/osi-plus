@@ -291,39 +291,60 @@ SET search_path = pg_catalog, osi
 AS $$
 DECLARE
   expected_warehouse_id TEXT;
+  v_tenant_id TEXT;
+  v_warehouse_id TEXT;
+  v_location_id TEXT;
+  v_storage_lot_id TEXT;
+  v_origin_location_id TEXT;
+  v_destination_location_id TEXT;
 BEGIN
-  IF TG_TABLE_NAME = 'warehouse_access_grants' AND NEW.location_id IS NOT NULL THEN
-    SELECT warehouse_id INTO expected_warehouse_id
-    FROM osi.material_locations
-    WHERE tenant_id = NEW.tenant_id AND id = NEW.location_id;
-    IF expected_warehouse_id IS DISTINCT FROM NEW.warehouse_id THEN
+  v_tenant_id := NEW.tenant_id;
+
+  IF TG_TABLE_NAME = 'warehouse_access_grants' THEN
+    v_warehouse_id := NEW.warehouse_id;
+    v_location_id := NEW.location_id;
+    IF v_location_id IS NULL THEN
+      RETURN NEW;
+    END IF;
+    SELECT location.warehouse_id INTO expected_warehouse_id
+    FROM osi.material_locations location
+    WHERE location.tenant_id = v_tenant_id AND location.id = v_location_id;
+    IF expected_warehouse_id IS DISTINCT FROM v_warehouse_id THEN
       RAISE EXCEPTION 'V17_WAREHOUSE_ACCESS_LOCATION_SCOPE_MISMATCH';
     END IF;
-  ELSIF TG_TABLE_NAME = 'customer_stored_items' AND NEW.current_location_id IS NOT NULL THEN
+  ELSIF TG_TABLE_NAME = 'customer_stored_items' THEN
+    v_storage_lot_id := NEW.storage_lot_id;
+    v_location_id := NEW.current_location_id;
+    IF v_location_id IS NULL THEN
+      RETURN NEW;
+    END IF;
     SELECT lot.warehouse_id INTO expected_warehouse_id
     FROM osi.customer_storage_lots lot
-    WHERE lot.tenant_id = NEW.tenant_id AND lot.id = NEW.storage_lot_id;
+    WHERE lot.tenant_id = v_tenant_id AND lot.id = v_storage_lot_id;
     IF NOT EXISTS (
       SELECT 1 FROM osi.material_locations location
-      WHERE location.tenant_id = NEW.tenant_id
-        AND location.id = NEW.current_location_id
+      WHERE location.tenant_id = v_tenant_id
+        AND location.id = v_location_id
         AND location.warehouse_id = expected_warehouse_id
     ) THEN
       RAISE EXCEPTION 'V17_CUSTOMER_ITEM_LOCATION_SCOPE_MISMATCH';
     END IF;
   ELSIF TG_TABLE_NAME = 'customer_custody_movements' THEN
+    v_storage_lot_id := NEW.storage_lot_id;
+    v_origin_location_id := NEW.origin_location_id;
+    v_destination_location_id := NEW.destination_location_id;
     SELECT lot.warehouse_id INTO expected_warehouse_id
     FROM osi.customer_storage_lots lot
-    WHERE lot.tenant_id = NEW.tenant_id AND lot.id = NEW.storage_lot_id;
-    IF NEW.origin_location_id IS NOT NULL AND NOT EXISTS (
+    WHERE lot.tenant_id = v_tenant_id AND lot.id = v_storage_lot_id;
+    IF v_origin_location_id IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM osi.material_locations location
-      WHERE location.tenant_id = NEW.tenant_id AND location.id = NEW.origin_location_id AND location.warehouse_id = expected_warehouse_id
+      WHERE location.tenant_id = v_tenant_id AND location.id = v_origin_location_id AND location.warehouse_id = expected_warehouse_id
     ) THEN
       RAISE EXCEPTION 'V17_CUSTOMER_MOVEMENT_ORIGIN_SCOPE_MISMATCH';
     END IF;
-    IF NEW.destination_location_id IS NOT NULL AND NOT EXISTS (
+    IF v_destination_location_id IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM osi.material_locations location
-      WHERE location.tenant_id = NEW.tenant_id AND location.id = NEW.destination_location_id AND location.warehouse_id = expected_warehouse_id
+      WHERE location.tenant_id = v_tenant_id AND location.id = v_destination_location_id AND location.warehouse_id = expected_warehouse_id
     ) THEN
       RAISE EXCEPTION 'V17_CUSTOMER_MOVEMENT_DESTINATION_SCOPE_MISMATCH';
     END IF;

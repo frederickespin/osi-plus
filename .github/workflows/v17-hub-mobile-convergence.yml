@@ -7,6 +7,9 @@ on:
       - "src/commercial-crm/AdvancedErpShell.tsx"
       - "src/survey/SurveyApp.tsx"
       - "tests/v17-consolidated-preview/**"
+      - "tests/v17-tools-preview/**"
+      - "src/tools-preview/**"
+      - "playwright.v17-tools-preview.config.ts"
       - "scripts/validate-v17-hub-auth-lazy-boundary-guard*.mjs"
       - ".github/workflows/v17-hub-mobile-convergence.yml"
 
@@ -39,3 +42,5 @@ jobs:
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Verify commercial flow, Mobile, and permissions
         run: npx playwright test -c playwright.v17-consolidated-preview.config.ts --workers=2
+      - name: Verify functional Hub Preview destinations
+        run: npm run test:v17-tools-preview:browser -- --workers=2

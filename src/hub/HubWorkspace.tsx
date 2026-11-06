@@ -1,11 +1,11 @@
 import { Suspense, lazy, useEffect, useMemo, useState, type ElementType } from "react";
-import { ArrowLeft, BriefcaseBusiness, Calculator, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Smartphone, Truck, Users, Warehouse } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, Calculator, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Smartphone, Truck, Users, Warehouse, Wrench } from "lucide-react";
 import { ENV_LABELS, getAppEnv } from "@/lib/env";
-import { HUB_APPLICATIONS, applicationsForHubSuite, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
+import { HUB_APPLICATIONS, applicationsForHubSuite, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubAppId, type HubIconId } from "./appCatalog";
 import { visibleHubApplications, type HubAccessContext } from "./hubAccess";
 import { availableHubApplications } from "./hubAvailability";
 import OsiPlusMobileHub from "./OsiPlusMobileHub";
-import ExternalApplication from "./ExternalApplication";
+import ToolsHub from "./ToolsHub";
 import type { OsiHubMode } from "./hubMode";
 import { resolveCrmCaseMutationUiAccess } from "@/crm-relational/mutationAccess";
 import { resolveCrmServicesUiAccess } from "@/crm-services/access";
@@ -43,6 +43,10 @@ const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"))
 const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
+const ArchaeologicalPackingTool = lazy(() => import("./ArchaeologicalPackingTool"));
+const GeneralPackingTool = lazy(() => import("./GeneralPackingTool"));
+const VisualInventoryApp = lazy(() => import("./VisualInventoryApp"));
+const RecoveredCommercialPreview = lazy(() => import("./RecoveredCommercialPreview"));
 
 const ICONS: Record<HubIconId, ElementType> = {
   briefcase: BriefcaseBusiness,
@@ -53,6 +57,7 @@ const ICONS: Record<HubIconId, ElementType> = {
   settings: Settings,
   users: Users,
   clipboard: ClipboardCheck,
+  smartphone: Smartphone,
   calculator: Calculator,
 };
 
@@ -63,9 +68,14 @@ type Props = {
   crmReadEnabled: boolean;
   mode: OsiHubMode;
   pathname: string;
+  catalogPreviewApplicationIds?: readonly HubAppId[];
+  catalogPreviewLaunchUrls?: Readonly<Partial<Record<string, string>>>;
   onNavigate: (pathname: string) => void;
   onLogout: () => void;
 };
+
+const EMPTY_PREVIEW_APPLICATION_IDS: readonly HubAppId[] = Object.freeze([]);
+const EMPTY_PREVIEW_LAUNCH_URLS: Readonly<Partial<Record<string, string>>> = Object.freeze({});
 
 function ctaLabel(application: HubApplication) {
   if (application.appId === "commercial-crm") return "Abrir ERP →";
@@ -84,9 +94,10 @@ function environmentLabel(mode: OsiHubMode) {
     : ENV_LABELS[getAppEnv()];
 }
 
-function HubHome({ applications, mobileApplications, pendingApplications, userName, onNavigate }: {
+function HubHome({ applications, mobileApplications, toolsApplications, pendingApplications, userName, onNavigate }: {
   applications: readonly HubApplication[];
   mobileApplications: readonly HubApplication[];
+  toolsApplications: readonly HubApplication[];
   pendingApplications: readonly HubApplication[];
   userName?: string;
   onNavigate: (pathname: string) => void;
@@ -112,12 +123,20 @@ function HubHome({ applications, mobileApplications, pendingApplications, userNa
           <button type="button" onClick={() => onNavigate("/mobile")} className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg">
             <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Smartphone className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">Aplicaciones</span></div>
             <h2 className="mt-5 font-bold text-slate-950">OSi Plus Mobile</h2>
-            <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">Visitas, levantamientos y herramientas de empaque.</p>
+            <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">Visitas, levantamientos y aplicaciones para trabajo móvil.</p>
             <p className="mt-5 text-xs font-semibold text-indigo-600">Abrir aplicaciones →</p>
           </button>
         )}
+        {toolsApplications.length > 0 && (
+          <button type="button" onClick={() => onNavigate("/tools")} className="group rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg">
+            <div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white"><Wrench className="h-5 w-5" /></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">Escritorio</span></div>
+            <h2 className="mt-5 font-bold text-slate-950">Herramientas</h2>
+            <p className="mt-2 min-h-10 text-xs leading-5 text-slate-600">Calculadoras especializadas preparadas para integrarse con futuras cotizaciones.</p>
+            <p className="mt-5 text-xs font-semibold text-indigo-600">Abrir herramientas →</p>
+          </button>
+        )}
       </div>
-      {applications.length === 0 && mobileApplications.length === 0 && <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-600">No hay aplicaciones habilitadas para este contexto.</div>}
+      {applications.length === 0 && mobileApplications.length === 0 && toolsApplications.length === 0 && <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-600">No hay aplicaciones habilitadas para este contexto.</div>}
       {pendingApplications.length > 0 && <details className="mt-7 rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-500" data-testid="hub-pending-applications">
         <summary className="cursor-pointer font-semibold">Módulos pendientes de habilitación ({pendingApplications.length})</summary>
         <p className="mt-3">Estos módulos todavía no están disponibles en este entorno.</p>
@@ -132,13 +151,14 @@ function RegisteredApplication({ application, onNavigate }: { application: HubAp
   return <section className="mx-auto max-w-3xl px-5 py-12"><div className="rounded-3xl border bg-white p-8 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Icon className="h-7 w-7" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-indigo-600">Pendiente de habilitación</p><h1 className="mt-2 text-3xl font-black">{application.name}</h1><p className="mt-3 text-sm leading-6 text-slate-600">Esta aplicación todavía no está disponible en este entorno. Puedes continuar en las aplicaciones disponibles del Hub.</p><button type="button" onClick={() => onNavigate("/hub")} className="mt-6 flex min-h-11 items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"><ArrowLeft className="h-4 w-4" />Volver al Hub</button></div></section>;
 }
 
-export default function HubWorkspace({ userName, authorization, accessContext, crmReadEnabled, mode, pathname, onNavigate, onLogout }: Props) {
+export default function HubWorkspace({ userName, authorization, accessContext, crmReadEnabled, mode, pathname, catalogPreviewApplicationIds = EMPTY_PREVIEW_APPLICATION_IDS, catalogPreviewLaunchUrls = EMPTY_PREVIEW_LAUNCH_URLS, onNavigate, onLogout }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
     rememberPreviewHubReturn();
   }, []);
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
   const selected = findHubApplicationByRoute(pathname);
+  const catalogPreview = useMemo(() => new Set(catalogPreviewApplicationIds), [catalogPreviewApplicationIds]);
   const commercialCaseRef = commercialCaseRefFromRoute(pathname);
   const adminEnabled = isAdminTenantMembershipEnabled();
   const effectivePermissions = new Set(accessContext.effectivePermissions || []);
@@ -181,20 +201,28 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const commercialRelationshipsEnabled = isCommercialRelationshipsUiEnabled();
   const commercialRelationshipsAccess = resolveCommercialRelationshipsAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   const available = availableHubApplications(visible, {
-    "commercial-crm": crmReadEnabled,
-    administration: administrationAvailable,
-    warehouses: warehousesAvailable,
-    "osi-survey": surveyEnabled,
+    "commercial-crm": crmReadEnabled || catalogPreview.has("commercial-crm"),
+    administration: administrationAvailable || catalogPreview.has("administration"),
+    warehouses: warehousesAvailable || catalogPreview.has("warehouses"),
+    "osi-survey": surveyEnabled || catalogPreview.has("osi-survey"),
+    "visual-inventory": catalogPreview.has("visual-inventory"),
     "materials-equipment": materialsEnabled,
     "tools-equipment": toolsEnabled,
+    "archaeological-packing": true,
     "packing-calculator": true,
   });
   const rootAvailable = groupWarehouseLaunchers(available.filter((application) => !application.suiteId), warehouseSections);
   const mobileApplications = applicationsForHubSuite("osi-plus-mobile", available);
+  const toolsApplications = applicationsForHubSuite("tools", available);
   const pendingApplications = visible.filter((application) => !available.includes(application));
   const navigate = (nextPath: string) => {
     setMobileOpen(false);
     if (redirectToPreviewHub(nextPath)) return;
+    const externalHref = catalogPreviewLaunchUrls[nextPath];
+    if (externalHref) {
+      window.open(externalHref, "_blank", "noopener,noreferrer");
+      return;
+    }
     onNavigate(nextPath);
   };
   if (selected && !visible.includes(selected)) {
@@ -202,6 +230,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   }
   if (pathname === "/commercial/relationships" && (!commercialRelationshipsEnabled || !commercialRelationshipsAccess.canView)) {
     return <CanonicalAccessDenied onReturnToSafeRoute={() => navigate("/hub")} />;
+  }
+  if (selected?.appId === "commercial-crm" && catalogPreview.has("commercial-crm") && !crmReadEnabled) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Recuperando Comercial…</div>}>
+      <RecoveredCommercialPreview onBack={() => navigate("/hub")} />
+    </Suspense>;
   }
   if (selected?.appId === "commercial-crm" && crmReadEnabled) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando ERP Comercial…</div>}>
@@ -268,6 +301,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       <SurveyApp authorization={authorization} onUnauthorized={onLogout} onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
     </Suspense>;
   }
+  if (selected?.appId === "visual-inventory" && available.includes(selected)) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Inventario Visual…</div>}>
+      <VisualInventoryApp onBack={() => navigate("/mobile")} />
+    </Suspense>;
+  }
   if (selected?.appId === "materials-equipment" && materialsEnabled) {
     if (materialsAuthorized) return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando Materiales e Inventario…</div>}>
         <MaterialsInventoryApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={navigate} onUnauthorized={onLogout} />
@@ -276,6 +314,16 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   if (selected?.appId === "tools-equipment" && toolsEnabled && toolsAuthorized) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando Herramientas y Equipos…</div>}>
       <ToolsEquipmentApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={navigate} onUnauthorized={onLogout} />
+    </Suspense>;
+  }
+  if (selected?.appId === "archaeological-packing" && available.includes(selected)) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando calculadora…</div>}>
+      <ArchaeologicalPackingTool onBack={() => navigate("/tools")} />
+    </Suspense>;
+  }
+  if (selected?.appId === "packing-calculator" && available.includes(selected)) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando calculadora…</div>}>
+      <GeneralPackingTool onBack={() => navigate("/tools")} />
     </Suspense>;
   }
   const sidebar = (
@@ -289,16 +337,17 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
           return <button type="button" key={application.appId} onClick={() => navigate(application.route)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${active ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Icon className="h-4 w-4" />{application.name}</button>;
         })}
         {mobileApplications.length > 0 && <button type="button" onClick={() => navigate("/mobile")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/mobile" || selected?.suiteId === "osi-plus-mobile" ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Smartphone className="h-4 w-4" />OSi Plus Mobile</button>}
+        {toolsApplications.length > 0 && <button type="button" onClick={() => navigate("/tools")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${pathname === "/tools" || selected?.suiteId === "tools" ? "bg-indigo-500 text-white" : "text-slate-300 hover:bg-white/10"}`}><Wrench className="h-4 w-4" />Herramientas</button>}
       </nav>
       <div className="border-t border-white/10 p-4"><p className="mb-3 text-xs text-slate-400">{userName || "Usuario"}<br />{environmentLabel(mode)}</p><button onClick={onLogout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-500/10"><LogOut className="h-4 w-4" />Cerrar sesión</button></div>
     </aside>
   );
   const content = pathname === "/hub"
-    ? <HubHome applications={rootAvailable} mobileApplications={mobileApplications} pendingApplications={pendingApplications} userName={userName} onNavigate={navigate} />
+    ? <HubHome applications={rootAvailable} mobileApplications={mobileApplications} toolsApplications={toolsApplications} pendingApplications={pendingApplications} userName={userName} onNavigate={navigate} />
     : pathname === "/mobile"
       ? <OsiPlusMobileHub applications={mobileApplications} onNavigate={navigate} />
-      : selected?.externalHref && available.includes(selected)
-        ? <ExternalApplication application={selected} onNavigate={navigate} />
+      : pathname === "/tools"
+        ? <ToolsHub applications={toolsApplications} onNavigate={navigate} />
         : selected
           ? <RegisteredApplication application={selected} onNavigate={navigate} />
           : <section className="p-12 text-center"><p className="font-bold">404 · Ruta del Hub no registrada</p><button type="button" className="mt-4 font-semibold text-indigo-600" onClick={() => navigate("/hub")}>Volver al Hub</button></section>;

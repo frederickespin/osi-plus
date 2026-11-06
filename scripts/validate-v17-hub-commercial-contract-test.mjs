@@ -25,9 +25,9 @@ function sourceNegative(name, guard, path, before, after, expected) {
 
 positive("catálogo completo vigente", () => {
   const actual = validateHubCatalog(catalog);
-  assert.equal(actual.applications.length, 11);
-  assert.equal(actual.suites.length, 1);
-  assert.equal(actual.routes.length, 27);
+  assert.equal(actual.applications.length, 13);
+  assert.equal(actual.suites.length, 2);
+  assert.equal(actual.routes.length, 31);
   assert.equal(validateCommercialCatalog(catalog).appId, "commercial-crm");
 });
 positive("formato del catálogo no concede autoridad", () => {
@@ -50,8 +50,9 @@ for (const [name, before, after, expected] of [
   ["capacidad Survey incorrecta", 'requiredPermissions: ["survey:assignment:view"]', 'requiredPermissions: ["pipeline:view"]', /autoridad alterada:osi-survey/],
   ["permiso explícito eliminado", 'requiresExplicitPermissions: true', 'requiresExplicitPermissions: false', /autoridad alterada:commercial-crm/],
   ["rol comercial ampliado", 'baselineRoles: ["A", "V"]', 'baselineRoles: ["A", "V", "N"]', /autoridad alterada:commercial-crm/],
-  ["Mobile sin suite canónica", 'route: "/mobile"', 'route: "/mobile-unsafe"', /suite Mobile no canónica/],
-  ["calculadora con destino alterado", 'externalHref: "https://ip-suite-inventario-empaquee.vercel.app/empaque/index.html"', 'externalHref: "https://example.test/collect"', /destino externo alterado/],
+  ["Mobile sin suite canónica", 'route: "/mobile"', 'route: "/mobile-unsafe"', /suites Mobile\/Herramientas no canónicas/],
+  ["Herramientas sin suite canónica", 'route: "/tools"', 'route: "/tools-unsafe"', /suites Mobile\/Herramientas no canónicas/],
+  ["alias histórico de la calculadora alterado", 'routeAliases: ["/mobile/packing"]', 'routeAliases: ["/mobile/packing-unsafe"]', /rutas o alias alterados:packing-calculator/],
   ["carga eager", 'lazy: true,', 'lazy: false,', /contrato lazy/],
 ]) negative(name, () => validateHubCatalog(replace(catalog, before, after)), expected);
 negative("declaración duplicada no se decide por primera coincidencia", () => readFrozenCatalog(`${catalog}\nconst HUB_APPLICATIONS = Object.freeze([]);`, "HUB_APPLICATIONS"), /declarativo y único/);
@@ -66,8 +67,8 @@ for (const args of [
   ["Production mantiene mutaciones deshabilitadas", "api/_lib/v17CommercialCrmProductionAuth.js", "CRM_PIPELINE_MUTATION_MODES.DISABLED", "CRM_PIPELINE_MUTATION_MODES.LOCAL_ONLY", /CRM mutations disabled/],
   ["disponibilidad sólo restringe catálogo autorizado", "src/hub/hubAvailability.ts", "authorizedApplications.filter((application) => availability[application.appId] === true)", "HUB_APPLICATIONS", /only narrow the authorized catalog/],
   ["menú ERP usa catálogo disponible", "src/hub/HubWorkspace.tsx", "navigationApplications={rootAvailable}", "navigationApplications={HUB_APPLICATIONS}", /available authorized catalog/],
-  ["la calculadora aísla opener", "src/hub/ExternalApplication.tsx", 'rel="noopener noreferrer"', 'rel="external"', /external application isolation/],
-  ["la calculadora no envía referente", "src/hub/ExternalApplication.tsx", 'referrerPolicy="no-referrer"', 'referrerPolicy="unsafe-url"', /external application isolation/],
+  ["el componente externo genérico aísla opener", "src/hub/ExternalApplication.tsx", 'rel="noopener noreferrer"', 'rel="external"', /external application isolation/],
+  ["el componente externo genérico no envía referente", "src/hub/ExternalApplication.tsx", 'referrerPolicy="no-referrer"', 'referrerPolicy="unsafe-url"', /external application isolation/],
 ]) sourceNegative(args[0], validateV17HubGuard, ...args.slice(1));
 for (const [name, extra, expected] of [
   ["Hub no lee autoridad del navegador", '\nlocalStorage.getItem("role");', /browser authority/],

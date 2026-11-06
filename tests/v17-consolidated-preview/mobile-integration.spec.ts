@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 import { PIPELINE_CASE_STATUSES } from "../../src/crm-relational/types";
 
 const MEMBERSHIP_REF = "118f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
-const PACKING_URL = "https://ip-suite-inventario-empaquee.vercel.app/empaque/index.html";
 const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
 const mobilePermissions = ["pipeline:view", "survey:assignment:view"];
 type Actor = { permissions: string[]; deniedPermissions?: string[] };
@@ -77,14 +76,14 @@ test("el Hub ofrece módulos disponibles y conserva los pendientes sin accesos v
     "projects:view", "ops:view", "wms:view", "fleet:view", "hr:view",
   ] });
   await page.goto("/hub");
-  for (const name of ["Comercial y CRM", "Almacenes", "OSi Plus Mobile"]) {
+  for (const name of ["Comercial y CRM", "Almacenes", "OSi Plus Mobile", "Herramientas"]) {
     await expect(page.locator("main").getByRole("heading", { name, exact: true })).toBeVisible();
   }
   for (const name of ["Materiales e Inventario", "Herramientas y Equipos"]) {
     await expect(page.locator("main").getByRole("heading", { name, exact: true })).toHaveCount(0);
   }
   await expect(page.locator("main").getByRole("heading", { name: "OSi Survey", exact: true })).toHaveCount(0);
-  await expect(page.locator("main").getByRole("heading", { name: "Calculadora de Empaque", exact: true })).toHaveCount(0);
+  await expect(page.locator("main").getByRole("heading", { name: "Calculadora de empaque arqueológico", exact: true })).toHaveCount(0);
   const pending = page.getByTestId("hub-pending-applications");
   await pending.locator("summary").click();
   for (const name of ["Coordinación", "Operaciones", "Taller y Carpintería", "Recursos Humanos"]) {
@@ -176,48 +175,44 @@ test("Hub y Mobile abren Survey funcional con retorno y conservan el alias surve
   expect(state.unexpectedApi).toEqual([]);
 });
 
-test("la calculadora conserva Mobile y sólo abre el destino externo al pulsar el enlace", async ({ page, context }) => {
+test("Herramientas abre internamente la calculadora arqueológica sin abandonar OSi Plus", async ({ page }) => {
   const state = await installSession(page, { permissions: ["pipeline:view"] });
-  const externalRequests: { url: string; headers: Record<string, string> }[] = [];
-  await context.route(PACKING_URL, (route) => {
-    externalRequests.push({ url: route.request().url(), headers: route.request().headers() });
-    return route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Calculadora interceptada</title><h1>Calculadora interceptada</h1>" });
-  });
-  await page.goto("/mobile");
-  await page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /Calculadora de Empaque/ }).click();
-  await expect(page).toHaveURL(/\/mobile\/packing$/);
-  const open = page.getByRole("link", { name: "Abrir Calculadora de Empaque" });
-  await expect(open).toHaveAttribute("href", PACKING_URL);
-  await expect(open).toHaveAttribute("target", "_blank");
-  await expect(open).toHaveAttribute("rel", "noopener noreferrer");
-  await expect(open).toHaveAttribute("referrerpolicy", "no-referrer");
-  expect(externalRequests).toHaveLength(0);
-  const opened = context.waitForEvent("page");
-  await open.click();
-  const destination = await opened;
-  await expect(destination.getByRole("heading", { name: "Calculadora interceptada" })).toBeVisible();
-  await expect(page).toHaveURL(/\/mobile\/packing$/);
-  expect(await destination.evaluate(() => window.opener === null)).toBe(true);
-  expect(externalRequests).toHaveLength(1);
-  expect(externalRequests[0].url).toBe(PACKING_URL);
-  expect(externalRequests[0].headers.authorization).toBeUndefined();
-  expect(externalRequests[0].headers.referer).toBeUndefined();
-  await destination.close();
-  await page.getByRole("button", { name: "Volver a OSi Plus Mobile", exact: true }).click();
-  await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
+  await page.goto("/tools");
+  await page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque arqueológico/ }).click();
+  await expect(page).toHaveURL(/\/tools\/archaeological-packing$/);
+  await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
+  await expect(page.frameLocator('[data-testid="archaeological-packing-frame"]').getByRole("heading", { name: /Inventario de piezas/ })).toBeVisible();
+  await page.getByRole("button", { name: "Herramientas", exact: true }).click();
+  await expect(page.getByTestId("tools-hub")).toBeVisible();
   expect(state.unexpectedApi).toEqual([]);
 });
 
-test("Survey y Empaque conservan permisos independientes dentro de la suite", async ({ page }) => {
+test("Herramientas abre internamente la calculadora general de empaque y conserva el alias histórico", async ({ page }) => {
+  const state = await installSession(page, { permissions: ["pipeline:view"] });
+  await page.goto("/tools");
+  await page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque y cajas de madera/ }).click();
+  await expect(page).toHaveURL(/\/tools\/packing$/);
+  await expect(page.getByTestId("general-packing-tool")).toBeVisible();
+  await expect(page.frameLocator('[data-testid="general-packing-frame"]').getByRole("heading", { name: "Artículos del proyecto" })).toBeVisible();
+  await page.goto("/mobile/packing");
+  await expect(page.getByTestId("general-packing-tool")).toBeVisible();
+  await page.getByRole("button", { name: "Herramientas", exact: true }).click();
+  await expect(page.getByTestId("tools-hub")).toBeVisible();
+  expect(state.unexpectedApi).toEqual([]);
+});
+
+test("Survey y Herramientas conservan permisos independientes y suites separadas", async ({ page }) => {
   const state = await installSession(page, { permissions: ["survey:assignment:view"] });
   await page.goto("/mobile");
   await expect(page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /OSi Survey/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Calculadora de Empaque/ })).toHaveCount(0);
+  await expect(page.getByText("Calculadora de empaque arqueológico", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Calculadora de empaque y cajas de madera", { exact: true })).toHaveCount(0);
   await page.goto("/mobile/packing");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   state.actor = { permissions: ["pipeline:view"] };
-  await page.goto("/mobile");
-  await expect(page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /Calculadora de Empaque/ })).toBeVisible();
+  await page.goto("/tools");
+  await expect(page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque arqueológico/ })).toBeVisible();
+  await expect(page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque y cajas de madera/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /OSi Survey/ })).toHaveCount(0);
   await page.goto("/mobile/survey");
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
@@ -228,19 +223,19 @@ test("Survey y Empaque conservan permisos independientes dentro de la suite", as
   expect(state.unexpectedApi).toEqual([]);
 });
 
-test("las denegaciones bloquean suite, alias y aplicaciones antes del lazy y de sus APIs", async ({ page }) => {
+test("las denegaciones bloquean Mobile, Herramientas, alias y aplicaciones antes del lazy y de sus APIs", async ({ page }) => {
   const state = await installSession(page, { permissions: mobilePermissions, deniedPermissions: mobilePermissions });
-  for (const path of ["/mobile/survey", "/survey", "/mobile/packing", "/mobile"]) {
+  for (const path of ["/mobile/survey", "/survey", "/mobile/packing", "/mobile", "/tools", "/tools/archaeological-packing", "/tools/packing"]) {
     state.requests.length = 0;
     await page.goto(path);
     await expect(page.getByTestId("hub-forbidden")).toContainText("403");
     expect(state.requests.filter((request) => request.startsWith("/api/") && request !== "/api/auth/me")).toEqual([]);
-    expect(state.requests.some((request) => /HubWorkspace|SurveyApp|ExternalApplication|AdvancedErpShell/.test(request))).toBe(false);
+    expect(state.requests.some((request) => /HubWorkspace|SurveyApp|ArchaeologicalPackingTool|GeneralPackingTool|AdvancedErpShell/.test(request))).toBe(false);
   }
   expect(state.unexpectedApi).toEqual([]);
 });
 
-test("una revocación al abrir Survey se revalida y conserva el acceso autorizado a Empaque", async ({ page }) => {
+test("una revocación al abrir Survey se revalida y conserva el acceso autorizado a Herramientas", async ({ page }) => {
   const state = await installSession(page, { permissions: mobilePermissions });
   await page.goto("/mobile");
   await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
@@ -253,35 +248,35 @@ test("una revocación al abrir Survey se revalida y conserva el acceso autorizad
   expect(state.requests.some((request) => /SurveyApp|\/api\/crm\/survey\//.test(request))).toBe(false);
   await page.getByRole("button", { name: "Volver a una ruta segura" }).click();
   await expect(page).toHaveURL(/\/hub$/);
-  await page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ }).click();
-  await expect(page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /Calculadora de Empaque/ })).toBeVisible();
+  await page.locator("main").getByRole("button", { name: /Herramientas/ }).click();
+  await expect(page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque arqueológico/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /OSi Survey/ })).toHaveCount(0);
   expect(state.unexpectedApi).toEqual([]);
 });
 
-test("back y forward mantienen la ruta de Mobile y revalidan la sesión", async ({ page }) => {
+test("back y forward mantienen la ruta de Herramientas y revalidan la sesión", async ({ page }) => {
   const state = await installSession(page, { permissions: ["pipeline:view"] });
   await page.goto("/hub");
-  await page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ }).click();
-  await expect(page).toHaveURL(/\/mobile$/);
-  await page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /Calculadora de Empaque/ }).click();
-  await expect(page.getByTestId("hub-external-application")).toBeVisible();
+  await page.locator("main").getByRole("button", { name: /Herramientas/ }).click();
+  await expect(page).toHaveURL(/\/tools$/);
+  await page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque arqueológico/ }).click();
+  await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
   let before = state.reads;
   await page.goBack();
-  await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
+  await expect(page.getByTestId("tools-hub")).toBeVisible();
   await expect.poll(() => state.reads).toBeGreaterThan(before);
   before = state.reads;
   await page.goBack();
   await expect(page).toHaveURL(/\/hub$/);
-  await expect(page.locator("main").getByRole("heading", { name: "OSi Plus Mobile", exact: true })).toBeVisible();
+  await expect(page.locator("main").getByRole("heading", { name: "Herramientas", exact: true })).toBeVisible();
   await expect.poll(() => state.reads).toBeGreaterThan(before);
   before = state.reads;
   await page.goForward();
-  await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
+  await expect(page.getByTestId("tools-hub")).toBeVisible();
   await expect.poll(() => state.reads).toBeGreaterThan(before);
   before = state.reads;
   await page.goForward();
-  await expect(page.getByTestId("hub-external-application")).toBeVisible();
+  await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
   await expect.poll(() => state.reads).toBeGreaterThan(before);
   expect(state.unexpectedApi).toEqual([]);
 });

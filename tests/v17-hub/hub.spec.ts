@@ -236,7 +236,7 @@ test("cuatro rutas deny, back/forward y logout permanecen antes del límite lazy
   await context.close();
 });
 
-test("un permiso retirado se revalida antes de una navegación SPA y bloquea Mobile sin descargar el Inbox", async ({ browser }) => {
+test("un permiso retirado se revalida antes de una navegación SPA y bloquea Herramientas sin descargar el Inbox", async ({ browser }) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   let denied = false;
@@ -250,11 +250,11 @@ test("un permiso retirado se revalida antes de una navegación SPA y bloquea Mob
     body: authMeBody({ role: "V", name: "Actor revalidado", permissions: ["pipeline:view"], deniedPermissions: denied ? ["pipeline:view"] : [] }),
   }));
   await page.goto("/hub");
-  await expect(page.getByRole("heading", { name: "OSi Plus Mobile", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Herramientas", exact: true })).toBeVisible();
   denied = true;
   const requestsAfterRevocation: string[] = [];
   page.on("request", (request) => requestsAfterRevocation.push(new URL(request.url()).pathname));
-  await page.locator("main").getByRole("button").filter({ hasText: "OSi Plus Mobile" }).click();
+  await page.locator("main").getByRole("button").filter({ hasText: "Herramientas" }).click();
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   expect(new URL(page.url()).pathname).toBe("/hub");
   expect(requestsAfterRevocation.filter((path) => path === "/api/auth/me")).toHaveLength(1);
@@ -289,7 +289,7 @@ test("pushState espera autorización y un fallo de red desmonta el Hub con error
   await page.goto("/hub");
   await expect(page.getByText("Hola, Actor A")).toBeVisible();
   navigationOutcome = "NETWORK_ERROR";
-  await page.locator("main").getByRole("button").filter({ hasText: "OSi Plus Mobile" }).click();
+  await page.locator("main").getByRole("button").filter({ hasText: "Herramientas" }).click();
   await expect(page.locator('[role="status"]')).toContainText("Verificando acceso");
   expect(new URL(page.url()).pathname).toBe("/hub");
   await expect(page.getByText("Hola, Actor A")).toBeVisible();
@@ -327,7 +327,7 @@ test("cambio de identidad y logout durante revalidación cierran la sesión y an
   await page.waitForLoadState("networkidle");
   expect(JSON.parse(await page.evaluate(() => localStorage.getItem("osi-plus.session") || "{}"))).toMatchObject({ membershipRef: MEMBERSHIP_REF });
   phase = "IDENTITY_CHANGE";
-  await page.locator("main").getByRole("button").filter({ hasText: "OSi Plus Mobile" }).click();
+  await page.locator("main").getByRole("button").filter({ hasText: "Herramientas" }).click();
   await expect.poll(() => observedPhases.filter((value) => value === "IDENTITY_CHANGE").length).toBe(1);
   await expect(page.getByRole("button", { name: "Iniciar Sesión" })).toBeVisible();
   expect(await page.evaluate(() => [localStorage.getItem("osi-plus.token"), localStorage.getItem("osi-plus.session")])).toEqual([null, null]);
@@ -342,7 +342,7 @@ test("cambio de identidad y logout durante revalidación cierran la sesión y an
   phase = "PENDING_LOGOUT";
   releaseNavigation = null;
   const navigationRoot = testInfo.project.name.includes("mobile") ? page.getByRole("navigation", { name: "Aplicaciones OSi Plus" }) : page.locator("main");
-  await navigationRoot.getByRole("button").filter({ hasText: "OSi Plus Mobile" }).click();
+  await navigationRoot.getByRole("button").filter({ hasText: "Herramientas" }).click();
   await expect.poll(() => releaseNavigation !== null).toBe(true);
   if (testInfo.project.name.includes("mobile")) await page.getByRole("button", { name: "Abrir navegación" }).click();
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
@@ -353,7 +353,7 @@ test("cambio de identidad y logout durante revalidación cierran la sesión y an
   expect(new URL(page.url()).pathname).toBe("/hub");
 });
 
-test("veinte intenciones rápidas cancelan las anteriores y sólo la última gana", async ({ page }) => {
+test("Herramientas: veinte intenciones rápidas cancelan las anteriores y sólo la última gana", async ({ page }) => {
   const actor = { id: "hub-race-user", role: "A", permissions: ["pipeline:view", "projects:view"] };
   let requestNumber = 0;
   const pendingNavigationResponses: Array<() => void> = [];
@@ -381,27 +381,27 @@ test("veinte intenciones rápidas cancelan las anteriores y sólo la última gan
     }
   });
 
-  await page.goto("/mobile");
-  const hub = page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: "Volver al Hub", exact: true });
-  const packing = page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /Calculadora de Empaque/ });
+  await page.goto("/tools");
+  const hub = page.getByTestId("tools-hub").getByRole("button", { name: "Volver al Hub", exact: true });
+  const packing = page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque arqueológico/ });
   for (let index = 0; index < 20; index += 1) {
     await (index % 2 === 0 ? hub : packing).click();
   }
   await expect.poll(() => pendingNavigationResponses.length).toBe(20);
   pendingNavigationResponses.at(-1)?.();
-  await expect(page).toHaveURL(/\/mobile\/packing$/);
-  await expect(page.getByRole("heading", { name: "Calculadora de Empaque" })).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe("/mobile/packing");
+  await expect(page).toHaveURL(/\/tools\/archaeological-packing$/);
+  await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/tools/archaeological-packing");
   expect(apiRequests.filter((path) => path === "/api/auth/me")).toHaveLength(21);
   expect(apiRequests.some((path) => path.startsWith("/api/crm/"))).toBe(false);
   expect(failedRequests.length).toBeGreaterThanOrEqual(19);
   for (const release of pendingNavigationResponses.slice(0, -1).reverse()) release();
   await page.waitForTimeout(100);
-  await expect(page.getByRole("heading", { name: "Calculadora de Empaque" })).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe("/mobile/packing");
+  await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe("/tools/archaeological-packing");
 });
 
-test("cincuenta navegaciones no acumulan listeners, timers ni revalidaciones", async ({ page }) => {
+test("Herramientas: cincuenta navegaciones no acumulan listeners, timers ni revalidaciones", async ({ page }) => {
   const actor = { id: "hub-stability-user", role: "A", permissions: ["pipeline:view", "projects:view"] };
   let authRequests = 0;
   await page.addInitScript(() => {
@@ -424,15 +424,15 @@ test("cincuenta navegaciones no acumulan listeners, timers ni revalidaciones", a
     authRequests += 1;
     await route.fulfill({ status: 200, contentType: "application/json", body: authMeBody(actor) });
   });
-  await page.goto("/mobile");
+  await page.goto("/tools");
   const startedAt = Date.now();
   for (let index = 0; index < 25; index += 1) {
-    await page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /Calculadora de Empaque/ }).click();
-    await expect(page).toHaveURL(/\/mobile\/packing$/);
-    await expect(page.getByRole("heading", { name: "Calculadora de Empaque" })).toBeVisible();
-    await page.getByRole("button", { name: "Volver a OSi Plus Mobile", exact: true }).click();
-    await expect(page).toHaveURL(/\/mobile$/);
-    await expect(page.getByRole("heading", { name: "OSi Plus Mobile", exact: true })).toBeVisible();
+    await page.getByTestId("tools-hub").getByRole("button", { name: /Calculadora de empaque arqueológico/ }).click();
+    await expect(page).toHaveURL(/\/tools\/archaeological-packing$/);
+    await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
+    await page.getByRole("button", { name: "Herramientas", exact: true }).click();
+    await expect(page).toHaveURL(/\/tools$/);
+    await expect(page.getByRole("heading", { name: "Herramientas", exact: true })).toBeVisible();
   }
   const elapsedMs = Date.now() - startedAt;
   const audit = await page.evaluate(() => (window as typeof window & { __hubNavigationAudit: { activePopstate: number } }).__hubNavigationAudit);
@@ -451,15 +451,15 @@ test("rutas desconocidas y traversal permanecen cerrados; back/forward conserva 
   await expect(page.getByRole("heading", { name: "Comercial y CRM" })).toBeVisible();
   await expect(page.getByText("Pendiente de habilitación", { exact: true })).toBeVisible();
   await page.goto("/hub");
-  await page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ }).click();
-  await expect(page).toHaveURL(/\/mobile$/);
-  await expect(page.getByRole("heading", { name: "OSi Plus Mobile", exact: true })).toBeVisible();
+  await page.locator("main").getByRole("button", { name: /Herramientas/ }).click();
+  await expect(page).toHaveURL(/\/tools$/);
+  await expect(page.getByRole("heading", { name: "Herramientas", exact: true })).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/\/hub$/);
   await expect(page.getByText("Hola, Actor A")).toBeVisible();
   await page.goForward();
-  await expect(page).toHaveURL(/\/mobile$/);
-  await expect(page.getByRole("heading", { name: "OSi Plus Mobile", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/tools$/);
+  await expect(page.getByRole("heading", { name: "Herramientas", exact: true })).toBeVisible();
 });
 
 test("denegar Survey no descarga el módulo destino", async ({ page }) => {
@@ -484,6 +484,53 @@ test("OSi Survey exige autorización explícita y, con compuerta OFF, permanece 
   expect(stored.local.some((key) => /survey|draft|autosave/i.test(key))).toBe(false);
 });
 
+test("Herramientas queda fuera de OSi Plus Mobile y reúne las dos calculadoras de escritorio", async ({ page }) => {
+  await authenticate(page, { role: "A", permissions: ["pipeline:view", "survey:assignment:view"] });
+  await page.goto("/mobile");
+  await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
+  await expect(page.getByText("Calculadora de empaque arqueológico", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Calculadora de empaque y cajas de madera", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Volver al Hub", exact: true }).click();
+  await expect(page.locator("main").getByRole("button", { name: /Herramientas/ })).toBeVisible();
+  await page.locator("main").getByRole("button", { name: /Herramientas/ }).click();
+  await expect(page.getByTestId("tools-hub")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Calculadora de empaque arqueológico/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Calculadora de empaque y cajas de madera/ })).toBeVisible();
+});
+
+test("Calculadora arqueológica se ejecuta internamente y sin delegación externa", async ({ page }) => {
+  const hosts = new Set<string>();
+  page.on("request", (request) => hosts.add(new URL(request.url()).hostname));
+  await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
+  await page.goto("/tools");
+  await page.getByRole("button", { name: /Calculadora de empaque arqueológico/ }).click();
+  await expect(page).toHaveURL(/\/tools\/archaeological-packing$/);
+  await expect(page.getByTestId("archaeological-packing-tool")).toBeVisible();
+  await expect(page.frameLocator('[data-testid="archaeological-packing-frame"]').getByRole("heading", { name: /Inventario de piezas/ })).toBeVisible();
+  expect([...hosts]).toEqual(["127.0.0.1"]);
+});
+
+test("alias histórico de empaque abre la calculadora general interna desde Herramientas", async ({ page }) => {
+  await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
+  await page.goto("/mobile/packing");
+  await expect(page.getByTestId("general-packing-tool")).toBeVisible();
+  await page.getByRole("button", { name: "Herramientas", exact: true }).click();
+  await expect(page).toHaveURL(/\/tools$/);
+});
+
+test("calculadora general de empaque se ejecuta internamente y conserva su flujo completo", async ({ page }) => {
+  const hosts = new Set<string>();
+  page.on("request", (request) => hosts.add(new URL(request.url()).hostname));
+  await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
+  await page.goto("/tools");
+  await page.getByRole("button", { name: /Calculadora de empaque y cajas de madera/ }).click();
+  await expect(page).toHaveURL(/\/tools\/packing$/);
+  await expect(page.getByTestId("general-packing-tool")).toBeVisible();
+  await expect(page.frameLocator('[data-testid="general-packing-frame"]').getByRole("heading", { name: "Artículos del proyecto" })).toBeVisible();
+  expect([...hosts]).toEqual(["127.0.0.1"]);
+});
+
 test("deep link, reload, regreso al Hub y navegación móvil conservan autoridad", async ({ page }, testInfo) => {
   await authenticate(page, { role: "A", permissions: ["inventory:catalog:view", "inventory:stock:view", "pipeline:view"] });
   await page.goto("/materials");
@@ -494,7 +541,7 @@ test("deep link, reload, regreso al Hub y navegación móvil conservan autoridad
   await page.getByRole("button", { name: "OSi Plus Hub", exact: true }).click();
   await expect(page.getByText("Hola, Actor A")).toBeVisible();
   await expect(page.locator("main").getByRole("button", { name: /Materiales e Inventario/ })).toHaveCount(0);
-  await expect(page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ })).toBeVisible();
+  await expect(page.locator("main").getByRole("button", { name: /Herramientas/ })).toBeVisible();
   if (testInfo.project.name.includes("mobile")) {
     await page.getByRole("button", { name: "Abrir navegación" }).click();
     await expect(page.getByRole("navigation", { name: "Aplicaciones OSi Plus" })).toBeVisible();

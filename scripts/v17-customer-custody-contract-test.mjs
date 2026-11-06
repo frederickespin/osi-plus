@@ -37,3 +37,8 @@ test("missing custody evidence is persisted as SQL NULL", () => {
   assert.match(source, /item\.evidence === null \? Prisma\.DbNull : item\.evidence/);
   assert.doesNotMatch(source, /item\.evidence === null \? Prisma\.JsonNull/);
 });
+test("custody client presentation uses the canonical fiscal name", () => {
+  const source = readFileSync("api/_lib/customerCustodyDomain.js", "utf8");
+  assert.match(source, /fiscalName/);
+  assert.doesNotMatch(source, /companyName/);
+});

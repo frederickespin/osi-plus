@@ -228,6 +228,11 @@ model Tenant {
   clientTemporaryContributionItems  ClientTemporarySurveyContributionItem[]
   clientTemporaryContributionAssets ClientTemporarySurveyContributionAsset[]
   clientTemporaryQrConfirmations    ClientTemporaryQrConfirmation[]
+  warehouseAccessGrants             WarehouseAccessGrant[]
+  customerStorageLots               CustomerStorageLot[]
+  customerStoredItems               CustomerStoredItem[]
+  customerCustodyCommands           CustomerCustodyCommand[]
+  customerCustodyMovements          CustomerCustodyMovement[]
   memberships                       TenantMembership[]
   vehicle_import_batches            vehicle_import_batches[]
   vehicle_import_items              vehicle_import_items[]
@@ -239,16 +244,19 @@ model Tenant {
 }
 
 model TenantMembership {
-  managedWarehouseSheets           WarehouseSheetProfile[] @relation("WarehouseSheetManager")
-  fleetPrimaryDriverEvents          FleetDriverPrimaryEvent[]  @relation("FleetPrimaryDriver")
-  fleetPrimaryAssignedEvents        FleetDriverPrimaryEvent[]  @relation("FleetPrimaryAssigner")
-  fleetTemporaryDriverAuthorizations FleetDriverAuthorization[] @relation("FleetTemporaryDriver")
-  fleetTemporaryRequests            FleetDriverAuthorization[] @relation("FleetTemporaryRequester")
-  fleetTemporaryAuthorizations      FleetDriverAuthorization[] @relation("FleetTemporaryAuthorizer")
-  fleetTemporaryRevocations         FleetDriverAuthorization[] @relation("FleetTemporaryRevoker")
-  userIdentityProfile               TenantUserIdentity?
-  issuedUserEnrollments             UserEnrollment[] @relation("UserEnrollmentIssuer")
-  activatedUserEnrollments          UserEnrollment[] @relation("UserEnrollmentActivated")
+  managedWarehouseSheets                                                                                                                        WarehouseSheetProfile[]            @relation("WarehouseSheetManager")
+  warehouseAccessGrants                                                                                                                         WarehouseAccessGrant[]             @relation("WarehouseAccessGrantMembership")
+  customerCustodyCommandsAsActor                                                                                                                CustomerCustodyCommand[]           @relation("CustomerCustodyCommandActor")
+  customerCustodyMovementsAsActor                                                                                                               CustomerCustodyMovement[]          @relation("CustomerCustodyMovementActor")
+  fleetPrimaryDriverEvents                                                                                                                      FleetDriverPrimaryEvent[]          @relation("FleetPrimaryDriver")
+  fleetPrimaryAssignedEvents                                                                                                                    FleetDriverPrimaryEvent[]          @relation("FleetPrimaryAssigner")
+  fleetTemporaryDriverAuthorizations                                                                                                            FleetDriverAuthorization[]         @relation("FleetTemporaryDriver")
+  fleetTemporaryRequests                                                                                                                        FleetDriverAuthorization[]         @relation("FleetTemporaryRequester")
+  fleetTemporaryAuthorizations                                                                                                                  FleetDriverAuthorization[]         @relation("FleetTemporaryAuthorizer")
+  fleetTemporaryRevocations                                                                                                                     FleetDriverAuthorization[]         @relation("FleetTemporaryRevoker")
+  userIdentityProfile                                                                                                                           TenantUserIdentity?
+  issuedUserEnrollments                                                                                                                         UserEnrollment[]                   @relation("UserEnrollmentIssuer")
+  activatedUserEnrollments                                                                                                                      UserEnrollment[]                   @relation("UserEnrollmentActivated")
   id                                                                                                                                            String                             @id @default(cuid())
   publicRef                                                                                                                                     String                             @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
   tenantId                                                                                                                                      String                             @map("tenant_id")
@@ -664,6 +672,7 @@ model Client {
   surveys                   Survey[]
   commercialEntities        CommercialEntity[]
   clientTemporaryAccesses   ClientTemporaryAccess[]
+  customerStorageLots       CustomerStorageLot[]
 
   @@unique([tenantId, id], map: "osi_clients_tenant_id_id_key")
   @@unique([tenantId, publicRef], map: "osi_clients_tenant_id_public_ref_key")
@@ -1635,6 +1644,7 @@ model PipelineCase {
   quoteProposals                QuoteProposal[]
   commercialContexts            PipelineCaseCommercialContextVersion[]
   clientTemporaryAccesses       ClientTemporaryAccess[]
+  customerStorageLots           CustomerStorageLot[]
   projects                      Project[]                              @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -3036,46 +3046,46 @@ model TransportZoneRule {
 model Vehicle {
   fleetDriverPrimaryEvents  FleetDriverPrimaryEvent[]
   fleetDriverAuthorizations FleetDriverAuthorization[]
-  id                        String                   @id @default(cuid())
+  id                        String                     @id @default(cuid())
   tenant_id                 String
-  business_code             String                   @db.VarChar(80)
-  normalized_code           String                   @db.VarChar(80)
-  plate                     String?                  @db.VarChar(40)
-  normalized_plate          String?                  @db.VarChar(40)
-  vin                       String?                  @db.VarChar(80)
-  normalized_vin            String?                  @db.VarChar(80)
-  source_stable_id          String?                  @db.VarChar(191)
-  vehicle_type              String                   @db.VarChar(80)
-  brand                     String?                  @db.VarChar(120)
-  model                     String?                  @db.VarChar(120)
+  business_code             String                     @db.VarChar(80)
+  normalized_code           String                     @db.VarChar(80)
+  plate                     String?                    @db.VarChar(40)
+  normalized_plate          String?                    @db.VarChar(40)
+  vin                       String?                    @db.VarChar(80)
+  normalized_vin            String?                    @db.VarChar(80)
+  source_stable_id          String?                    @db.VarChar(191)
+  vehicle_type              String                     @db.VarChar(80)
+  brand                     String?                    @db.VarChar(120)
+  model                     String?                    @db.VarChar(120)
   model_year                Int?
-  capacity_weight           Decimal?                 @db.Decimal(14, 3)
-  capacity_volume           Decimal?                 @db.Decimal(14, 4)
-  usable_length             Decimal?                 @db.Decimal(12, 4)
-  usable_width              Decimal?                 @db.Decimal(12, 4)
-  usable_height             Decimal?                 @db.Decimal(12, 4)
-  weight_unit               String                   @default("KG") @db.VarChar(12)
-  volume_unit               String                   @default("CBM") @db.VarChar(12)
-  dimension_unit            String                   @default("M") @db.VarChar(12)
-  operational_status        VehicleOperationalStatus @default(AVAILABLE)
-  available_for_calculation Boolean                  @default(true)
-  effective_from            DateTime                 @default(now()) @db.Timestamptz(3)
-  effective_to              DateTime?                @db.Timestamptz(3)
-  hub_code                  String?                  @db.VarChar(80)
-  source                    String                   @db.VarChar(80)
+  capacity_weight           Decimal?                   @db.Decimal(14, 3)
+  capacity_volume           Decimal?                   @db.Decimal(14, 4)
+  usable_length             Decimal?                   @db.Decimal(12, 4)
+  usable_width              Decimal?                   @db.Decimal(12, 4)
+  usable_height             Decimal?                   @db.Decimal(12, 4)
+  weight_unit               String                     @default("KG") @db.VarChar(12)
+  volume_unit               String                     @default("CBM") @db.VarChar(12)
+  dimension_unit            String                     @default("M") @db.VarChar(12)
+  operational_status        VehicleOperationalStatus   @default(AVAILABLE)
+  available_for_calculation Boolean                    @default(true)
+  effective_from            DateTime                   @default(now()) @db.Timestamptz(3)
+  effective_to              DateTime?                  @db.Timestamptz(3)
+  hub_code                  String?                    @db.VarChar(80)
+  source                    String                     @db.VarChar(80)
   import_batch_id           String?
-  request_id                String                   @db.VarChar(191)
-  payload_hash              String                   @db.Char(64)
-  calculation_locked_at     DateTime?                @db.Timestamptz(3)
-  retired_at                DateTime?                @db.Timestamptz(3)
+  request_id                String                     @db.VarChar(191)
+  payload_hash              String                     @db.Char(64)
+  calculation_locked_at     DateTime?                  @db.Timestamptz(3)
+  retired_at                DateTime?                  @db.Timestamptz(3)
   created_by_user_id        String?
   created_by_membership_id  String?
-  row_version               Int                      @default(1)
-  createdAt                 DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
-  updated_at                DateTime                 @default(now()) @db.Timestamptz(3)
-  tenant_memberships        TenantMembership?        @relation(fields: [tenant_id, created_by_membership_id, created_by_user_id], references: [tenantId, id, userId], onUpdate: NoAction, map: "osi_vehicles_created_membership_fkey")
-  vehicle_import_batches    vehicle_import_batches?  @relation(fields: [tenant_id, import_batch_id], references: [tenant_id, id], onUpdate: NoAction, map: "osi_vehicles_import_batch_fkey")
-  tenants                   Tenant                   @relation(fields: [tenant_id], references: [id], onUpdate: NoAction, map: "osi_vehicles_tenant_fkey")
+  row_version               Int                        @default(1)
+  createdAt                 DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updated_at                DateTime                   @default(now()) @db.Timestamptz(3)
+  tenant_memberships        TenantMembership?          @relation(fields: [tenant_id, created_by_membership_id, created_by_user_id], references: [tenantId, id, userId], onUpdate: NoAction, map: "osi_vehicles_created_membership_fkey")
+  vehicle_import_batches    vehicle_import_batches?    @relation(fields: [tenant_id, import_batch_id], references: [tenant_id, id], onUpdate: NoAction, map: "osi_vehicles_import_batch_fkey")
+  tenants                   Tenant                     @relation(fields: [tenant_id], references: [id], onUpdate: NoAction, map: "osi_vehicles_tenant_fkey")
   vehicle_import_items      vehicle_import_items[]
 
   @@unique([tenant_id, normalized_code], map: "osi_vehicles_tenant_code_key")
@@ -3625,7 +3635,7 @@ model LogisticOverrideApproval {
 }
 
 model ApprovalRequest {
-  fleetDriverAuthorization                                                                                                    FleetDriverAuthorization?
+  fleetDriverAuthorization                                                                                                     FleetDriverAuthorization?
   id                                                                                                                           String                       @id @default(uuid())
   tenant_id                                                                                                                    String
   approval_type                                                                                                                String                       @db.VarChar(120)
@@ -4130,18 +4140,20 @@ model MaterialSupplierReference {
 }
 
 model MaterialWarehouse {
-  id           String               @id @default(cuid())
-  warehouseRef String               @default(dbgenerated("gen_random_uuid()")) @map("warehouse_ref") @db.Uuid
-  tenantId     String               @map("tenant_id")
-  code         String               @db.VarChar(64)
-  name         String               @db.VarChar(160)
-  status       MaterialRecordStatus @default(ACTIVE)
-  version      Int                  @default(1)
-  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_warehouses_tenant_fkey")
-  locations    MaterialLocation[]
-  sheetProfile WarehouseSheetProfile?
+  id                  String                 @id @default(cuid())
+  warehouseRef        String                 @default(dbgenerated("gen_random_uuid()")) @map("warehouse_ref") @db.Uuid
+  tenantId            String                 @map("tenant_id")
+  code                String                 @db.VarChar(64)
+  name                String                 @db.VarChar(160)
+  status              MaterialRecordStatus   @default(ACTIVE)
+  version             Int                    @default(1)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant              Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_warehouses_tenant_fkey")
+  locations           MaterialLocation[]
+  sheetProfile        WarehouseSheetProfile?
+  accessGrants        WarehouseAccessGrant[]
+  customerStorageLots CustomerStorageLot[]
 
   @@unique([tenantId, id], map: "material_warehouses_tenant_id_key")
   @@unique([tenantId, warehouseRef], map: "material_warehouses_tenant_ref_key")
@@ -4150,32 +4162,36 @@ model MaterialWarehouse {
 }
 
 model MaterialLocation {
-  id                     String                      @id @default(cuid())
-  locationRef            String                      @default(dbgenerated("gen_random_uuid()")) @map("location_ref") @db.Uuid
-  tenantId               String                      @map("tenant_id")
-  warehouseId            String                      @map("warehouse_id")
-  parentLocationId       String?                     @map("parent_location_id")
-  code                   String                      @db.VarChar(64)
-  name                   String                      @db.VarChar(160)
-  kind                   MaterialLocationKind
-  depth                  Int                         @default(0)
-  path                   String                      @db.VarChar(600)
-  status                 MaterialRecordStatus        @default(ACTIVE)
-  version                Int                         @default(1)
-  createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant                 Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_tenant_fkey")
-  warehouse              MaterialWarehouse           @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_warehouse_fkey")
-  parent                 MaterialLocation?           @relation("MaterialLocationTree", fields: [tenantId, parentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_parent_fkey")
-  children               MaterialLocation[]          @relation("MaterialLocationTree")
-  movements              MaterialInventoryMovement[]
-  reservations           MaterialReservation[]
-  currentAssets          AssetInstance[]             @relation("AssetCurrentLocation")
-  assignmentOrigins      AssetAssignment[]           @relation("AssetAssignmentOrigin")
-  assignmentDestinations AssetAssignment[]           @relation("AssetAssignmentDestination")
-  inspectionLocations    AssetInspection[]           @relation("AssetInspectionLocation")
-  configuration          WarehouseLocationConfiguration?
-  address                WarehouseLocationAddress?
+  id                          String                          @id @default(cuid())
+  locationRef                 String                          @default(dbgenerated("gen_random_uuid()")) @map("location_ref") @db.Uuid
+  tenantId                    String                          @map("tenant_id")
+  warehouseId                 String                          @map("warehouse_id")
+  parentLocationId            String?                         @map("parent_location_id")
+  code                        String                          @db.VarChar(64)
+  name                        String                          @db.VarChar(160)
+  kind                        MaterialLocationKind
+  depth                       Int                             @default(0)
+  path                        String                          @db.VarChar(600)
+  status                      MaterialRecordStatus            @default(ACTIVE)
+  version                     Int                             @default(1)
+  createdAt                   DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                      Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_tenant_fkey")
+  warehouse                   MaterialWarehouse               @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_warehouse_fkey")
+  parent                      MaterialLocation?               @relation("MaterialLocationTree", fields: [tenantId, parentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_parent_fkey")
+  children                    MaterialLocation[]              @relation("MaterialLocationTree")
+  movements                   MaterialInventoryMovement[]
+  reservations                MaterialReservation[]
+  currentAssets               AssetInstance[]                 @relation("AssetCurrentLocation")
+  assignmentOrigins           AssetAssignment[]               @relation("AssetAssignmentOrigin")
+  assignmentDestinations      AssetAssignment[]               @relation("AssetAssignmentDestination")
+  inspectionLocations         AssetInspection[]               @relation("AssetInspectionLocation")
+  configuration               WarehouseLocationConfiguration?
+  address                     WarehouseLocationAddress?
+  accessGrants                WarehouseAccessGrant[]
+  customerStoredItems         CustomerStoredItem[]            @relation("CustomerStoredItemCurrentLocation")
+  custodyMovementOrigins      CustomerCustodyMovement[]       @relation("CustomerCustodyMovementOrigin")
+  custodyMovementDestinations CustomerCustodyMovement[]       @relation("CustomerCustodyMovementDestination")
 
   @@unique([tenantId, id], map: "material_locations_tenant_id_key")
   @@unique([tenantId, locationRef], map: "material_locations_tenant_ref_key")
@@ -4185,19 +4201,19 @@ model MaterialLocation {
 }
 
 model WarehouseAreaUse {
-  id          String                     @id @default(cuid())
-  useRef      String                     @default(dbgenerated("gen_random_uuid()")) @map("use_ref") @db.Uuid
-  tenantId    String                     @map("tenant_id")
-  code        String                     @db.VarChar(64)
-  name        String                     @db.VarChar(160)
-  nameKey     String                     @map("name_key") @db.VarChar(320)
-  description String?                    @db.VarChar(500)
+  id          String                           @id @default(cuid())
+  useRef      String                           @default(dbgenerated("gen_random_uuid()")) @map("use_ref") @db.Uuid
+  tenantId    String                           @map("tenant_id")
+  code        String                           @db.VarChar(64)
+  name        String                           @db.VarChar(160)
+  nameKey     String                           @map("name_key") @db.VarChar(320)
+  description String?                          @db.VarChar(500)
   purpose     WarehouseAreaUsePurpose
-  status      MaterialRecordStatus       @default(ACTIVE)
-  version     Int                        @default(1)
-  createdAt   DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant      Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_area_uses_tenant_fkey")
+  status      MaterialRecordStatus             @default(ACTIVE)
+  version     Int                              @default(1)
+  createdAt   DateTime                         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant      Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_area_uses_tenant_fkey")
   locations   WarehouseLocationConfiguration[]
 
   @@unique([tenantId, id], map: "warehouse_area_uses_tenant_id_key")
@@ -4209,22 +4225,22 @@ model WarehouseAreaUse {
 }
 
 model WarehouseLocationConfiguration {
-  id                String                         @id @default(cuid())
-  configRef         String                         @default(dbgenerated("gen_random_uuid()")) @map("config_ref") @db.Uuid
-  tenantId          String                         @map("tenant_id")
-  locationId        String                         @map("location_id")
-  areaUseId         String?                        @map("area_use_id")
-  characteristics   String?                        @db.VarChar(180)
-  notes             String?                        @db.VarChar(2000)
+  id                String                             @id @default(cuid())
+  configRef         String                             @default(dbgenerated("gen_random_uuid()")) @map("config_ref") @db.Uuid
+  tenantId          String                             @map("tenant_id")
+  locationId        String                             @map("location_id")
+  areaUseId         String?                            @map("area_use_id")
+  characteristics   String?                            @db.VarChar(180)
+  notes             String?                            @db.VarChar(2000)
   operationalStatus WarehouseLocationOperationalStatus @default(ACTIVE) @map("operational_status")
   availabilityRule  WarehouseLocationAvailabilityRule  @default(CONDITION_BASED) @map("availability_rule")
-  controlReason     String?                        @map("control_reason") @db.VarChar(500)
-  version           Int                            @default(1)
-  createdAt         DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime                       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant            Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_configs_tenant_fkey")
-  location          MaterialLocation               @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_configs_location_fkey")
-  areaUse           WarehouseAreaUse?               @relation(fields: [tenantId, areaUseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_configs_area_use_fkey")
+  controlReason     String?                            @map("control_reason") @db.VarChar(500)
+  version           Int                                @default(1)
+  createdAt         DateTime                           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_configs_tenant_fkey")
+  location          MaterialLocation                   @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_configs_location_fkey")
+  areaUse           WarehouseAreaUse?                  @relation(fields: [tenantId, areaUseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_configs_area_use_fkey")
 
   @@unique([tenantId, id], map: "warehouse_location_configs_tenant_id_key")
   @@unique([tenantId, configRef], map: "warehouse_location_configs_tenant_ref_key")
@@ -4263,21 +4279,21 @@ model WarehouseSheetProfile {
 }
 
 model WarehouseLocationAddress {
-  id             String                 @id @default(cuid())
-  tenantId       String                 @map("tenant_id")
-  warehouseId    String                 @map("warehouse_id")
-  locationId     String                 @map("location_id")
-  label          String                 @db.VarChar(32)
-  zoneNumber     Int                    @default(0) @map("zone_number")
-  zoneCode       String?                @map("zone_code") @db.VarChar(3)
-  aisleNumber    Int                    @default(0) @map("aisle_number")
-  rackCode       String?                @map("rack_code") @db.VarChar(2)
-  levelNumber    Int                    @default(0) @map("level_number")
-  positionNumber Int                    @default(0) @map("position_number")
-  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant         Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_addresses_tenant_fkey")
-  profile        WarehouseSheetProfile  @relation(fields: [tenantId, warehouseId], references: [tenantId, warehouseId], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_addresses_profile_fkey")
-  location       MaterialLocation       @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_addresses_location_fkey")
+  id             String                @id @default(cuid())
+  tenantId       String                @map("tenant_id")
+  warehouseId    String                @map("warehouse_id")
+  locationId     String                @map("location_id")
+  label          String                @db.VarChar(32)
+  zoneNumber     Int                   @default(0) @map("zone_number")
+  zoneCode       String?               @map("zone_code") @db.VarChar(3)
+  aisleNumber    Int                   @default(0) @map("aisle_number")
+  rackCode       String?               @map("rack_code") @db.VarChar(2)
+  levelNumber    Int                   @default(0) @map("level_number")
+  positionNumber Int                   @default(0) @map("position_number")
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_addresses_tenant_fkey")
+  profile        WarehouseSheetProfile @relation(fields: [tenantId, warehouseId], references: [tenantId, warehouseId], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_addresses_profile_fkey")
+  location       MaterialLocation      @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_location_addresses_location_fkey")
 
   @@unique([tenantId, locationId], map: "warehouse_location_addresses_location_key")
   @@unique([tenantId, label], map: "warehouse_location_addresses_label_key")
@@ -4302,6 +4318,208 @@ enum WarehouseLocationOperationalStatus {
 enum WarehouseLocationAvailabilityRule {
   CONDITION_BASED
   BLOCKED
+}
+
+// 21A keeps customer property under custody separate from company stock and
+// reusable assets. Grants scope a person to an inventory and explicit jobs.
+model WarehouseAccessGrant {
+  id             String                     @id @default(cuid())
+  grantRef       String                     @default(dbgenerated("gen_random_uuid()")) @map("grant_ref") @db.Uuid
+  tenantId       String                     @map("tenant_id")
+  membershipId   String                     @map("membership_id")
+  userId         String                     @map("user_id")
+  warehouseId    String?                    @map("warehouse_id")
+  locationId     String?                    @map("location_id")
+  inventoryScope WarehouseInventoryScope    @map("inventory_scope")
+  operations     WarehouseGrantOperation[]  @default([])
+  status         WarehouseAccessGrantStatus @default(ACTIVE)
+  version        Int                        @default(1)
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant         Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_access_grants_tenant_fkey")
+  membership     TenantMembership           @relation("WarehouseAccessGrantMembership", fields: [tenantId, membershipId, userId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_access_grants_membership_fkey")
+  warehouse      MaterialWarehouse?         @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_access_grants_warehouse_fkey")
+  location       MaterialLocation?          @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "warehouse_access_grants_location_fkey")
+
+  @@unique([tenantId, id], map: "warehouse_access_grants_tenant_id_key")
+  @@unique([tenantId, grantRef], map: "warehouse_access_grants_tenant_ref_key")
+  @@index([tenantId, membershipId, status, inventoryScope], map: "warehouse_access_grants_membership_idx")
+  @@index([tenantId, warehouseId, locationId, status], map: "warehouse_access_grants_scope_idx")
+  @@map("warehouse_access_grants")
+}
+
+enum WarehouseInventoryScope {
+  INTERNAL_MATERIALS
+  INTERNAL_ASSETS
+  CUSTOMER_CUSTODY
+}
+
+enum WarehouseGrantOperation {
+  VIEW
+  RECEIVE
+  PUT_AWAY
+  TRANSFER
+  COUNT
+  PREPARE_EXIT
+  DISPATCH
+  RETURN
+  ADJUST
+}
+
+enum WarehouseAccessGrantStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model CustomerStorageLot {
+  id             String                    @id @default(cuid())
+  storageRef     String                    @default(dbgenerated("gen_random_uuid()")) @map("storage_ref") @db.Uuid
+  tenantId       String                    @map("tenant_id")
+  clientId       String                    @map("client_id")
+  pipelineCaseId String?                   @map("pipeline_case_id")
+  warehouseId    String                    @map("warehouse_id")
+  lotCode        String                    @map("lot_code") @db.VarChar(64)
+  status         CustomerStorageLotStatus  @default(RECEIVED)
+  receivedAt     DateTime                  @map("received_at") @db.Timestamptz(6)
+  billingStartAt DateTime?                 @map("billing_start_at") @db.Timestamptz(6)
+  releasedAt     DateTime?                 @map("released_at") @db.Timestamptz(6)
+  notes          String?                   @db.VarChar(2000)
+  version        Int                       @default(1)
+  createdAt      DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant         Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_tenant_fkey")
+  client         Client                    @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_client_fkey")
+  pipelineCase   PipelineCase?             @relation(fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_case_client_fkey")
+  warehouse      MaterialWarehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_warehouse_fkey")
+  items          CustomerStoredItem[]
+  movements      CustomerCustodyMovement[]
+
+  @@unique([tenantId, id], map: "customer_storage_lots_tenant_id_key")
+  @@unique([tenantId, storageRef], map: "customer_storage_lots_tenant_ref_key")
+  @@unique([tenantId, lotCode], map: "customer_storage_lots_code_key")
+  @@index([tenantId, warehouseId, status, receivedAt(sort: Desc)], map: "customer_storage_lots_warehouse_idx")
+  @@index([tenantId, clientId, status], map: "customer_storage_lots_client_idx")
+  @@map("customer_storage_lots")
+}
+
+enum CustomerStorageLotStatus {
+  RECEIVED
+  STORED
+  PARTIALLY_RELEASED
+  RELEASE_PREPARED
+  RELEASED
+  HOLD
+}
+
+model CustomerStoredItem {
+  id                String                    @id @default(cuid())
+  itemRef           String                    @default(dbgenerated("gen_random_uuid()")) @map("item_ref") @db.Uuid
+  tenantId          String                    @map("tenant_id")
+  storageLotId      String                    @map("storage_lot_id")
+  currentLocationId String?                   @map("current_location_id")
+  itemCode          String                    @map("item_code") @db.VarChar(80)
+  description       String                    @db.VarChar(240)
+  category          String?                   @db.VarChar(120)
+  quantity          Decimal                   @db.Decimal(14, 3)
+  unit              String                    @db.VarChar(24)
+  volumeM3          Decimal?                  @map("volume_m3") @db.Decimal(14, 6)
+  weightKg          Decimal?                  @map("weight_kg") @db.Decimal(14, 3)
+  condition         CustomerStoredCondition   @default(UNSPECIFIED)
+  evidence          Json?
+  notes             String?                   @db.VarChar(2000)
+  status            CustomerStoredItemStatus  @default(IN_CUSTODY)
+  version           Int                       @default(1)
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_stored_items_tenant_fkey")
+  storageLot        CustomerStorageLot        @relation(fields: [tenantId, storageLotId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_stored_items_lot_fkey")
+  currentLocation   MaterialLocation?         @relation("CustomerStoredItemCurrentLocation", fields: [tenantId, currentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_stored_items_location_fkey")
+  movements         CustomerCustodyMovement[]
+
+  @@unique([tenantId, id], map: "customer_stored_items_tenant_id_key")
+  @@unique([tenantId, itemRef], map: "customer_stored_items_tenant_ref_key")
+  @@unique([tenantId, storageLotId, itemCode], map: "customer_stored_items_code_key")
+  @@index([tenantId, currentLocationId, status], map: "customer_stored_items_location_idx")
+  @@map("customer_stored_items")
+}
+
+enum CustomerStoredCondition {
+  UNSPECIFIED
+  GOOD
+  USED
+  DAMAGED
+}
+
+enum CustomerStoredItemStatus {
+  IN_CUSTODY
+  EXIT_PREPARED
+  RELEASED
+  HOLD
+}
+
+model CustomerCustodyCommand {
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String                    @map("tenant_id")
+  requestId         String                    @map("request_id") @db.VarChar(191)
+  operation         String                    @db.VarChar(80)
+  payloadHash       String                    @map("payload_hash") @db.Char(64)
+  targetRef         String                    @map("target_ref") @db.VarChar(191)
+  resultJson        Json                      @map("result_json")
+  actorMembershipId String                    @map("actor_membership_id")
+  actorUserId       String                    @map("actor_user_id")
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_commands_tenant_fkey")
+  actorMembership   TenantMembership          @relation("CustomerCustodyCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_commands_actor_fkey")
+  movements         CustomerCustodyMovement[]
+
+  @@unique([tenantId, id], map: "customer_custody_commands_tenant_id_key")
+  @@unique([tenantId, requestId], map: "customer_custody_commands_request_key")
+  @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "customer_custody_commands_target_idx")
+  @@map("customer_custody_commands")
+}
+
+model CustomerCustodyMovement {
+  id                    String                      @id @default(cuid())
+  movementRef           String                      @default(dbgenerated("gen_random_uuid()")) @map("movement_ref") @db.Uuid
+  tenantId              String                      @map("tenant_id")
+  storageLotId          String                      @map("storage_lot_id")
+  storedItemId          String?                     @map("stored_item_id")
+  commandId             String                      @map("command_id") @db.Uuid
+  originLocationId      String?                     @map("origin_location_id")
+  destinationLocationId String?                     @map("destination_location_id")
+  movementType          CustomerCustodyMovementType @map("movement_type")
+  quantity              Decimal?                    @db.Decimal(14, 3)
+  notes                 String?                     @db.VarChar(1000)
+  actorMembershipId     String                      @map("actor_membership_id")
+  actorUserId           String                      @map("actor_user_id")
+  occurredAt            DateTime                    @map("occurred_at") @db.Timestamptz(6)
+  createdAt             DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_movements_tenant_fkey")
+  storageLot            CustomerStorageLot          @relation(fields: [tenantId, storageLotId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_movements_lot_fkey")
+  storedItem            CustomerStoredItem?         @relation(fields: [tenantId, storedItemId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_movements_item_fkey")
+  command               CustomerCustodyCommand      @relation(fields: [tenantId, commandId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_movements_command_fkey")
+  originLocation        MaterialLocation?           @relation("CustomerCustodyMovementOrigin", fields: [tenantId, originLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_movements_origin_fkey")
+  destinationLocation   MaterialLocation?           @relation("CustomerCustodyMovementDestination", fields: [tenantId, destinationLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_movements_destination_fkey")
+  actorMembership       TenantMembership            @relation("CustomerCustodyMovementActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_movements_actor_fkey")
+
+  @@unique([tenantId, id], map: "customer_custody_movements_tenant_id_key")
+  @@unique([tenantId, movementRef], map: "customer_custody_movements_tenant_ref_key")
+  @@index([tenantId, storageLotId, occurredAt(sort: Desc)], map: "customer_custody_movements_lot_idx")
+  @@index([tenantId, storedItemId, occurredAt(sort: Desc)], map: "customer_custody_movements_item_idx")
+  @@map("customer_custody_movements")
+}
+
+enum CustomerCustodyMovementType {
+  RECEIVE
+  PUT_AWAY
+  TRANSFER
+  COUNT
+  PREPARE_EXIT
+  DISPATCH
+  RETURN
+  ADJUST
+  HOLD
+  RELEASE_HOLD
 }
 
 model MaterialInventoryCommand {
@@ -9024,22 +9242,22 @@ enum ClientTemporaryQrResult {
 
 // Company-specific identity/contact information. Global login data remains on User.
 model FleetDriverPrimaryEvent {
-  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId               String           @map("tenant_id")
-  vehicleId              String           @map("vehicle_id")
+  id                     String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String            @map("tenant_id")
+  vehicleId              String            @map("vehicle_id")
   revision               Int
-  driverMembershipId     String?          @map("driver_membership_id")
-  driverUserId           String?          @map("driver_user_id")
-  assignedByMembershipId String           @map("assigned_by_membership_id")
-  assignedByUserId       String           @map("assigned_by_user_id")
-  reason                 String           @db.VarChar(500)
-  assignedAt             DateTime         @default(now()) @map("assigned_at") @db.Timestamptz(3)
-  requestId              String           @map("request_id") @db.Uuid
-  payloadHash            String           @map("payload_hash") @db.Char(64)
-  tenant                 Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_tenant_fkey")
-  vehicle                Vehicle          @relation(fields: [tenantId, vehicleId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_vehicle_fkey")
+  driverMembershipId     String?           @map("driver_membership_id")
+  driverUserId           String?           @map("driver_user_id")
+  assignedByMembershipId String            @map("assigned_by_membership_id")
+  assignedByUserId       String            @map("assigned_by_user_id")
+  reason                 String            @db.VarChar(500)
+  assignedAt             DateTime          @default(now()) @map("assigned_at") @db.Timestamptz(3)
+  requestId              String            @map("request_id") @db.Uuid
+  payloadHash            String            @map("payload_hash") @db.Char(64)
+  tenant                 Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_tenant_fkey")
+  vehicle                Vehicle           @relation(fields: [tenantId, vehicleId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_vehicle_fkey")
   driver                 TenantMembership? @relation("FleetPrimaryDriver", fields: [tenantId, driverMembershipId, driverUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_driver_fkey")
-  assignedBy             TenantMembership @relation("FleetPrimaryAssigner", fields: [tenantId, assignedByMembershipId, assignedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_actor_fkey")
+  assignedBy             TenantMembership  @relation("FleetPrimaryAssigner", fields: [tenantId, assignedByMembershipId, assignedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_primary_actor_fkey")
 
   @@unique([tenantId, id], map: "fleet_driver_primary_tenant_id_key")
   @@unique([tenantId, requestId], map: "fleet_driver_primary_request_key")
@@ -9050,41 +9268,41 @@ model FleetDriverPrimaryEvent {
 }
 
 model FleetDriverAuthorization {
-  id                         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId                   String            @map("tenant_id")
-  vehicleId                  String            @map("vehicle_id")
-  driverMembershipId         String            @map("driver_membership_id")
-  driverUserId               String            @map("driver_user_id")
-  approvalRequestId          String            @map("approval_request_id")
-  startsAt                   DateTime          @map("starts_at") @db.Timestamptz(3)
-  endsAt                     DateTime          @map("ends_at") @db.Timestamptz(3)
-  scopeHash                  String            @map("scope_hash") @db.Char(64)
-  requestedByMembershipId    String            @map("requested_by_membership_id")
-  requestedByUserId          String            @map("requested_by_user_id")
-  requestId                  String            @map("request_id") @db.Uuid
-  payloadHash                String            @map("payload_hash") @db.Char(64)
-  decisionAction             String?           @map("decision_action") @db.VarChar(12)
-  decisionRequestId          String?           @map("decision_request_id") @db.Uuid
-  decisionPayloadHash        String?           @map("decision_payload_hash") @db.Char(64)
-  authorizedAt               DateTime?         @map("authorized_at") @db.Timestamptz(3)
-  authorizedByMembershipId   String?           @map("authorized_by_membership_id")
-  authorizedByUserId         String?           @map("authorized_by_user_id")
-  revokedAt                  DateTime?         @map("revoked_at") @db.Timestamptz(3)
-  revokedByMembershipId      String?           @map("revoked_by_membership_id")
-  revokedByUserId            String?           @map("revoked_by_user_id")
-  revocationReason           String?           @map("revocation_reason") @db.VarChar(500)
-  revocationRequestId        String?           @map("revocation_request_id") @db.Uuid
-  revocationPayloadHash      String?           @map("revocation_payload_hash") @db.Char(64)
-  rowVersion                 Int               @default(1) @map("row_version")
-  createdAt                  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                  DateTime          @default(now()) @map("updated_at") @db.Timestamptz(3)
-  tenant                     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_tenant_fkey")
-  vehicle                    Vehicle           @relation(fields: [tenantId, vehicleId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_vehicle_fkey")
-  driver                     TenantMembership  @relation("FleetTemporaryDriver", fields: [tenantId, driverMembershipId, driverUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_driver_fkey")
-  approvalRequest            ApprovalRequest   @relation(fields: [tenantId, approvalRequestId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_approval_fkey")
-  requestedBy                TenantMembership  @relation("FleetTemporaryRequester", fields: [tenantId, requestedByMembershipId, requestedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_requester_fkey")
-  authorizedBy               TenantMembership? @relation("FleetTemporaryAuthorizer", fields: [tenantId, authorizedByMembershipId, authorizedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_authorizer_fkey")
-  revokedBy                  TenantMembership? @relation("FleetTemporaryRevoker", fields: [tenantId, revokedByMembershipId, revokedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_revoker_fkey")
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String            @map("tenant_id")
+  vehicleId                String            @map("vehicle_id")
+  driverMembershipId       String            @map("driver_membership_id")
+  driverUserId             String            @map("driver_user_id")
+  approvalRequestId        String            @map("approval_request_id")
+  startsAt                 DateTime          @map("starts_at") @db.Timestamptz(3)
+  endsAt                   DateTime          @map("ends_at") @db.Timestamptz(3)
+  scopeHash                String            @map("scope_hash") @db.Char(64)
+  requestedByMembershipId  String            @map("requested_by_membership_id")
+  requestedByUserId        String            @map("requested_by_user_id")
+  requestId                String            @map("request_id") @db.Uuid
+  payloadHash              String            @map("payload_hash") @db.Char(64)
+  decisionAction           String?           @map("decision_action") @db.VarChar(12)
+  decisionRequestId        String?           @map("decision_request_id") @db.Uuid
+  decisionPayloadHash      String?           @map("decision_payload_hash") @db.Char(64)
+  authorizedAt             DateTime?         @map("authorized_at") @db.Timestamptz(3)
+  authorizedByMembershipId String?           @map("authorized_by_membership_id")
+  authorizedByUserId       String?           @map("authorized_by_user_id")
+  revokedAt                DateTime?         @map("revoked_at") @db.Timestamptz(3)
+  revokedByMembershipId    String?           @map("revoked_by_membership_id")
+  revokedByUserId          String?           @map("revoked_by_user_id")
+  revocationReason         String?           @map("revocation_reason") @db.VarChar(500)
+  revocationRequestId      String?           @map("revocation_request_id") @db.Uuid
+  revocationPayloadHash    String?           @map("revocation_payload_hash") @db.Char(64)
+  rowVersion               Int               @default(1) @map("row_version")
+  createdAt                DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime          @default(now()) @map("updated_at") @db.Timestamptz(3)
+  tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_tenant_fkey")
+  vehicle                  Vehicle           @relation(fields: [tenantId, vehicleId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_vehicle_fkey")
+  driver                   TenantMembership  @relation("FleetTemporaryDriver", fields: [tenantId, driverMembershipId, driverUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_driver_fkey")
+  approvalRequest          ApprovalRequest   @relation(fields: [tenantId, approvalRequestId], references: [tenant_id, id], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_approval_fkey")
+  requestedBy              TenantMembership  @relation("FleetTemporaryRequester", fields: [tenantId, requestedByMembershipId, requestedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_requester_fkey")
+  authorizedBy             TenantMembership? @relation("FleetTemporaryAuthorizer", fields: [tenantId, authorizedByMembershipId, authorizedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_authorizer_fkey")
+  revokedBy                TenantMembership? @relation("FleetTemporaryRevoker", fields: [tenantId, revokedByMembershipId, revokedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Restrict, map: "fleet_driver_authorization_revoker_fkey")
 
   @@unique([tenantId, id], map: "fleet_driver_authorization_tenant_id_key")
   @@unique([tenantId, requestId], map: "fleet_driver_authorization_request_key")
@@ -9123,34 +9341,34 @@ model TenantUserIdentity {
 }
 
 model UserEnrollment {
-  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  enrollmentRef           String            @default(dbgenerated("gen_random_uuid()")) @map("enrollment_ref") @db.Uuid
-  tenantId                String            @map("tenant_id")
-  normalizedEmail         String            @map("normalized_email") @db.VarChar(320)
-  fullName                String            @map("full_name") @db.VarChar(160)
-  contactPhone            String            @default("") @map("contact_phone") @db.VarChar(40)
-  contactEmail            String?           @map("contact_email") @db.VarChar(320)
-  documentType            String            @default("CEDULA") @map("document_type") @db.VarChar(16)
-  documentNumber          String?           @map("document_number") @db.VarChar(40)
-  intendedRole            TenantMembershipRole @map("intended_role")
-  photoBytes              Bytes?            @map("photo_bytes")
-  photoSha256             String?           @map("photo_sha256") @db.Char(64)
-  tokenHash               String            @unique(map: "user_enrollments_token_key") @map("token_hash") @db.Char(64)
-  status                  String            @default("PENDING") @db.VarChar(16)
-  expiresAt               DateTime          @map("expires_at") @db.Timestamptz(6)
-  issuedByMembershipId    String            @map("issued_by_membership_id")
-  issuedByUserId          String            @map("issued_by_user_id")
-  activatedMembershipId   String?           @map("activated_membership_id")
-  activatedUserId         String?           @map("activated_user_id")
-  requestId               String            @map("request_id") @db.Uuid
-  payloadHash             String            @map("payload_hash") @db.Char(64)
-  activatedAt             DateTime?         @map("activated_at") @db.Timestamptz(6)
-  revokedAt               DateTime?         @map("revoked_at") @db.Timestamptz(6)
-  createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
-  tenant                  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "user_enrollments_tenant_fkey")
-  issuer                  TenantMembership  @relation("UserEnrollmentIssuer", fields: [tenantId, issuedByMembershipId, issuedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "user_enrollments_issuer_fkey")
-  activatedMembership     TenantMembership? @relation("UserEnrollmentActivated", fields: [tenantId, activatedMembershipId, activatedUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "user_enrollments_activated_fkey")
+  id                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  enrollmentRef         String               @default(dbgenerated("gen_random_uuid()")) @map("enrollment_ref") @db.Uuid
+  tenantId              String               @map("tenant_id")
+  normalizedEmail       String               @map("normalized_email") @db.VarChar(320)
+  fullName              String               @map("full_name") @db.VarChar(160)
+  contactPhone          String               @default("") @map("contact_phone") @db.VarChar(40)
+  contactEmail          String?              @map("contact_email") @db.VarChar(320)
+  documentType          String               @default("CEDULA") @map("document_type") @db.VarChar(16)
+  documentNumber        String?              @map("document_number") @db.VarChar(40)
+  intendedRole          TenantMembershipRole @map("intended_role")
+  photoBytes            Bytes?               @map("photo_bytes")
+  photoSha256           String?              @map("photo_sha256") @db.Char(64)
+  tokenHash             String               @unique(map: "user_enrollments_token_key") @map("token_hash") @db.Char(64)
+  status                String               @default("PENDING") @db.VarChar(16)
+  expiresAt             DateTime             @map("expires_at") @db.Timestamptz(6)
+  issuedByMembershipId  String               @map("issued_by_membership_id")
+  issuedByUserId        String               @map("issued_by_user_id")
+  activatedMembershipId String?              @map("activated_membership_id")
+  activatedUserId       String?              @map("activated_user_id")
+  requestId             String               @map("request_id") @db.Uuid
+  payloadHash           String               @map("payload_hash") @db.Char(64)
+  activatedAt           DateTime?            @map("activated_at") @db.Timestamptz(6)
+  revokedAt             DateTime?            @map("revoked_at") @db.Timestamptz(6)
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime             @default(now()) @map("updated_at") @db.Timestamptz(6)
+  tenant                Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "user_enrollments_tenant_fkey")
+  issuer                TenantMembership     @relation("UserEnrollmentIssuer", fields: [tenantId, issuedByMembershipId, issuedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "user_enrollments_issuer_fkey")
+  activatedMembership   TenantMembership?    @relation("UserEnrollmentActivated", fields: [tenantId, activatedMembershipId, activatedUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "user_enrollments_activated_fkey")
 
   @@unique([tenantId, enrollmentRef], map: "user_enrollments_ref_key")
   @@unique([tenantId, requestId], map: "user_enrollments_request_key")

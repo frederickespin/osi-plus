@@ -34,8 +34,8 @@ const {
 } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
 
 const warehouses = HUB_APPLICATIONS.find((application) => application.appId === "warehouses");
-const allEnabled = { spaces: true, configuration: true, materials: true, equipment: true };
-const permissions = ["inventory:stock:view", "inventory:catalog:view", "assets:instance:view"];
+const allEnabled = { spaces: true, configuration: true, materials: true, equipment: true, "customer-custody": true };
+const permissions = ["inventory:stock:view", "inventory:catalog:view", "assets:instance:view", "customer-custody:view"];
 const context = (effective, denied = [], role = "A") => ({ role, effectivePermissions: effective, deniedPermissions: denied, source: effective === null ? "SERVER_VALIDATED_ROLE" : "SERVER_EFFECTIVE_PERMISSIONS" });
 const sectionIds = (effective, denied = [], enabled = allEnabled) => availableWarehouseSections(enabled, effective, denied).map((section) => section.id);
 
@@ -51,8 +51,8 @@ test("Almacenes requires an explicit entry permission regardless of role", () =>
 
 test("section authorization agrees with deep routes for every grant and deny combination", () => {
   const subset = (mask) => permissions.filter((_, index) => mask & (1 << index));
-  for (let grantMask = 0; grantMask < 8; grantMask += 1) {
-    for (let denyMask = 0; denyMask < 8; denyMask += 1) {
+  for (let grantMask = 0; grantMask < 16; grantMask += 1) {
+    for (let denyMask = 0; denyMask < 16; denyMask += 1) {
       const effective = subset(grantMask); const denied = subset(denyMask);
       const can = (permission) => effective.includes(permission) && !denied.includes(permission);
       const expected = {
@@ -60,6 +60,7 @@ test("section authorization agrees with deep routes for every grant and deny com
         configuration: can("inventory:stock:view"),
         materials: can("inventory:catalog:view") && can("inventory:stock:view"),
         equipment: can("assets:instance:view"),
+        "customer-custody": can("customer-custody:view"),
       };
       const actual = sectionIds(effective, denied);
       assert.equal(evaluateHubRouteAccess("/warehouses", context(effective, denied)).allowed, Object.values(expected).some(Boolean));
@@ -73,13 +74,13 @@ test("section authorization agrees with deep routes for every grant and deny com
 });
 
 test("a catalog denial leaves spaces and independently authorized equipment available", () => {
-  assert.deepEqual(sectionIds(permissions, ["inventory:catalog:view"]), ["spaces", "configuration", "equipment"]);
-  assert.deepEqual(sectionIds(permissions, ["inventory:stock:view"]), ["equipment"]);
-  assert.deepEqual(sectionIds(permissions, ["assets:instance:view"]), ["spaces", "configuration", "materials"]);
+  assert.deepEqual(sectionIds(permissions, ["inventory:catalog:view"]), ["spaces", "configuration", "equipment", "customer-custody"]);
+  assert.deepEqual(sectionIds(permissions, ["inventory:stock:view"]), ["equipment", "customer-custody"]);
+  assert.deepEqual(sectionIds(permissions, ["assets:instance:view"]), ["spaces", "configuration", "materials", "customer-custody"]);
 });
 
 test("feature availability only narrows authorized sections", () => {
-  for (let mask = 0; mask < 16; mask += 1) {
+  for (let mask = 0; mask < 32; mask += 1) {
     const enabled = Object.fromEntries(WAREHOUSE_SECTIONS.map((section, index) => [section.id, Boolean(mask & (1 << index))]));
     assert.deepEqual(sectionIds(permissions, [], enabled), WAREHOUSE_SECTIONS.filter((section) => enabled[section.id]).map((section) => section.id));
     assert.deepEqual(sectionIds([], [], enabled), []);

@@ -79,6 +79,10 @@ const FACTORY_GROUPS = [
   ]],
   ["DISABLED_TRANSPORT", "communicationsHttp.js", "createTransportDisabledHandler", ["api/communications/send.js"]],
   ["TENANT", "personnelPoliciesHttp.js", "createPersonnelPoliciesHandler", ["api/personnel/policies/index.js"]],
+  ["TENANT", "customerCustodyHttp.js", "createCustomerCustodyHandler", [
+    "api/customer-custody/access-grants/[grantRef].js", "api/customer-custody/access-grants/index.js",
+    "api/customer-custody/lots/index.js", "api/customer-custody/movements/index.js",
+  ]],
   ["TENANT", "crmServicesHttp.js", "createCrmServicesHandler", [
     "api/crm/services/cases/[caseRef].js", "api/crm/services/catalog-modes/index.js", "api/crm/services/catalog/[serviceRef].js",
     "api/crm/services/catalog/index.js", "api/crm/services/configurations/[caseRef].js",
@@ -225,7 +229,7 @@ function assertFactoryOptions(node, route) {
   if (!node.arguments.length) return;
   const options = node.arguments[0];
   invariant(ts.isObjectLiteralExpression(options), route + " requiere opciones explícitas del adaptador");
-  const permitted = new Set(["prismaClient", "prisma", "methods", "permission", "permissions", "execute", "response", "status", "maxBytes"]);
+  const permitted = new Set(["prismaClient", "prisma", "methods", "permission", "permissions", "normalize", "execute", "response", "status", "maxBytes"]);
   const managerOptionsRoute = route === "api/materials/warehouse-sheets/manager-options.js";
   if (managerOptionsRoute) permitted.add("managerOptions");
   const names = new Set();

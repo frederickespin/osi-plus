@@ -72,6 +72,7 @@ const adminPermissions = [
   "inventory:catalog:view", "inventory:catalog:manage", "inventory:stock:view", "inventory:stock:receive",
   "inventory:stock:transfer", "inventory:stock:issue", "inventory:stock:adjust", "inventory:reservation:manage",
   "inventory:purchase:request", "inventory:purchase:approve", "inventory:recipes:view", "inventory:recipes:manage",
+  "customer-custody:view", "customer-custody:receive", "customer-custody:operate", "warehouse-access:manage",
   "assets:model:view", "assets:model:manage", "assets:instance:view", "assets:instance:manage",
   "assets:reservation:manage", "assets:assignment:manage", "assets:inspection:perform",
   "assets:maintenance:view", "assets:maintenance:manage", "assets:incident:manage",

@@ -55,7 +55,8 @@ if (!workspace.includes('pathname === "/tools"')) fail("desktop tools route is n
 if (mobileHub.includes("herramientas de empaque") || mobileHub.includes("Calculadora")) fail("OSi Plus Mobile still advertises desktop calculators");
 if (!visualMode.includes('feature/v17-tools-consolidated-11b') || !visualMode.includes('/experience-preview/tools')) fail("exact Preview route contract is missing");
 for (const signature of [
-  '"/commercial": `${CONSOLIDATED_HUB_ORIGIN}/commercial`',
+  'const APPROVED_COMMERCIAL_PIPELINE_URL = "https://osi-plus-v17-experience-preview-02a-hub.vercel.app/sales/pipeline"',
+  '"/commercial": APPROVED_COMMERCIAL_PIPELINE_URL',
   '"/warehouses": `${CONSOLIDATED_HUB_ORIGIN}/warehouses`',
   '"/administration": `${CONSOLIDATED_HUB_ORIGIN}/administration`',
   '"/mobile/survey": "https://osi-plus-erp-v17-git-feature-642495-frederick-espinals-projects.vercel.app/mobile/survey"',

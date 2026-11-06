@@ -3,8 +3,9 @@ import HubWorkspace from "@/hub/HubWorkspace";
 
 const PREVIEW_APPLICATION_IDS = ["commercial-crm", "warehouses", "administration", "osi-survey", "archaeological-packing", "packing-calculator"] as const;
 const CONSOLIDATED_HUB_ORIGIN = "https://osi-plus-erp-v17-git-feature-bb4db4-frederick-espinals-projects.vercel.app";
+const APPROVED_COMMERCIAL_PIPELINE_URL = "https://osi-plus-v17-experience-preview-02a-hub.vercel.app/sales/pipeline";
 const PREVIEW_LAUNCH_URLS = Object.freeze({
-  "/commercial": `${CONSOLIDATED_HUB_ORIGIN}/commercial`,
+  "/commercial": APPROVED_COMMERCIAL_PIPELINE_URL,
   "/warehouses": `${CONSOLIDATED_HUB_ORIGIN}/warehouses`,
   "/administration": `${CONSOLIDATED_HUB_ORIGIN}/administration`,
   "/mobile/survey": "https://osi-plus-erp-v17-git-feature-642495-frederick-espinals-projects.vercel.app/mobile/survey",

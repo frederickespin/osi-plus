@@ -34,7 +34,7 @@ La única biblioteca de la calculadora es SheetJS 0.20.3, fijada dentro del repo
 
 - Ambas herramientas reutilizan temporalmente el permiso explícito `pipeline:view` y no conceden acceso por rol implícito.
 - La rama exacta `feature/v17-tools-consolidated-11b` expone el ensayo visual aislado `/experience-preview/tools` únicamente en Preview.
-- En ese ensayo, Comercial, Almacenes y Administración abren las aplicaciones funcionales de la base consolidada `bb4db4` en otra pestaña; OSi Survey abre el Preview Mobile aprobado `642495`. El Hub permanece abierto.
+- En ese ensayo, Comercial y CRM abre el Pipeline visual aprobado `experience-preview-02a-hub/sales/pipeline`; Almacenes y Administración abren las aplicaciones funcionales de la base consolidada `bb4db4`; OSi Survey abre el Preview Mobile aprobado `642495`. Todos los destinos se abren en otra pestaña y el Hub permanece abierto.
 - Production no se modifica ni se habilita.
 - CRM, Survey, ICP, Cotización, APIs y migraciones permanecen sin cambios funcionales.
 

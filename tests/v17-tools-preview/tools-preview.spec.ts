@@ -8,12 +8,14 @@ async function expectExternalLaunch(page: Page, buttonName: RegExp, expectedUrl:
   await page.locator("main").getByRole("button", { name: buttonName }).click();
   const popup = await popupPromise;
   await popup.waitForLoadState("domcontentloaded");
-  expect(popup.url()).toBe(expectedUrl);
+  const launched = new URL(popup.url());
+  expect(`${launched.origin}${launched.pathname}`).toBe(expectedUrl);
+  expect(launched.searchParams.get("osiPlusHubReturn")).toBe(new URL("/experience-preview/tools", page.url()).toString());
   await popup.close();
   await expect(page).toHaveURL(/\/experience-preview\/tools$/);
 }
 
-test("Hub Preview abre los módulos funcionales acordados y conserva el Hub", async ({ page }) => {
+test("Hub Preview abre los módulos funcionales acordados y conserva el retorno al mismo Hub", async ({ page }) => {
   await page.context().route(`${CONSOLIDATED_ORIGIN}/**`, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Destino consolidado</title>" }));
   await page.context().route("https://osi-plus-erp-v17-git-feature-642495-frederick-espinals-projects.vercel.app/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>OSi Survey</title>" }));
   await page.goto("/experience-preview/tools");

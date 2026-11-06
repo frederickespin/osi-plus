@@ -45,7 +45,7 @@ La única biblioteca de la calculadora es SheetJS 0.20.3, fijada dentro del repo
 - Ambas herramientas reutilizan temporalmente el permiso explícito `pipeline:view` y no conceden acceso por rol implícito.
 - La rama exacta `feature/v17-tools-consolidated-11b` expone el ensayo visual aislado `/experience-preview/tools` únicamente en Preview.
 - En ese ensayo, Comercial y CRM recupera localmente el Inbox compacto aprobado de 103 casos y su botón **Hub** vuelve al Hub canónico; ya no navega al Hub retirado `experience-preview-02a-hub`.
-- Almacenes y Administración abren las aplicaciones funcionales de la base consolidada `bb4db4`; OSi Survey abre el Preview Mobile aprobado `642495`.
+- Almacenes y Administración abren las aplicaciones funcionales de la base consolidada `bb4db4`; OSi Survey abre el Preview Mobile aprobado `642495`. Cada lanzamiento transporta un retorno validado al Hub que lo originó, de modo que **Volver al Hub** no puede desviar al usuario hacia el Hub propio de una versión anterior.
 - Inventario Visual se ejecuta internamente desde la fuente HTML 01A, conserva IndexedDB y cámara, y se identifica expresamente como aplicación independiente con conexión ERP pendiente.
 - Production no se modifica ni se habilita.
 - CRM, Survey, ICP, Cotización, APIs y migraciones permanecen sin cambios funcionales.

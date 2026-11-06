@@ -32,3 +32,8 @@ test("database migration seals custody history and enforces tenant-first scope",
   assert.match(sql, /CHECK \(cardinality\("operations"\) > 0\)/);
   assert.match(sql, /CHECK \("quantity" > 0\)/);
 });
+test("missing custody evidence is persisted as SQL NULL", () => {
+  const source = readFileSync("api/_lib/customerCustodyDomain.js", "utf8");
+  assert.match(source, /item\.evidence === null \? Prisma\.DbNull : item\.evidence/);
+  assert.doesNotMatch(source, /item\.evidence === null \? Prisma\.JsonNull/);
+});

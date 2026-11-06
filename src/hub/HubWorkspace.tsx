@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState, type ElementType } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState, type ElementType } from "react";
 import { ArrowLeft, BriefcaseBusiness, Calculator, ClipboardCheck, Hammer, LayoutGrid, LogOut, Menu, Route, Settings, Smartphone, Truck, Users, Warehouse } from "lucide-react";
 import { ENV_LABELS, getAppEnv } from "@/lib/env";
 import { HUB_APPLICATIONS, applicationsForHubSuite, commercialCaseRefFromRoute, findHubApplicationByRoute, type HubApplication, type HubIconId } from "./appCatalog";
@@ -35,6 +35,7 @@ import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 import { resolveClientTemporaryAccessUi } from "@/client-portal/access";
 import { resolveClientTemporaryPortalMode } from "@/client-portal/mode";
 import { availableWarehouseSections, groupWarehouseLaunchers } from "@/warehouses/warehouseSections";
+import { redirectToPreviewHub, rememberPreviewHubReturn } from "./previewHubReturn";
 
 const AdministrationWorkspace = lazy(() => import("@/administration/AdministrationWorkspace"));
 const WarehouseWorkspace = lazy(() => import("@/warehouses/WarehouseWorkspace"));
@@ -133,6 +134,9 @@ function RegisteredApplication({ application, onNavigate }: { application: HubAp
 
 export default function HubWorkspace({ userName, authorization, accessContext, crmReadEnabled, mode, pathname, onNavigate, onLogout }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  useEffect(() => {
+    rememberPreviewHubReturn();
+  }, []);
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
   const selected = findHubApplicationByRoute(pathname);
   const commercialCaseRef = commercialCaseRefFromRoute(pathname);
@@ -190,13 +194,14 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const pendingApplications = visible.filter((application) => !available.includes(application));
   const navigate = (nextPath: string) => {
     setMobileOpen(false);
+    if (redirectToPreviewHub(nextPath)) return;
     onNavigate(nextPath);
   };
   if (selected && !visible.includes(selected)) {
-    return <CanonicalAccessDenied onReturnToSafeRoute={() => onNavigate("/hub")} />;
+    return <CanonicalAccessDenied onReturnToSafeRoute={() => navigate("/hub")} />;
   }
   if (pathname === "/commercial/relationships" && (!commercialRelationshipsEnabled || !commercialRelationshipsAccess.canView)) {
-    return <CanonicalAccessDenied onReturnToSafeRoute={() => onNavigate("/hub")} />;
+    return <CanonicalAccessDenied onReturnToSafeRoute={() => navigate("/hub")} />;
   }
   if (selected?.appId === "commercial-crm" && crmReadEnabled) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando ERP Comercial…</div>}>
@@ -226,7 +231,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         navigationApplications={rootAvailable}
         mobileAvailable={mobileApplications.length > 0}
         userName={userName}
-        onNavigate={onNavigate}
+        onNavigate={navigate}
         onLogout={onLogout}
         onUnauthorized={onLogout}
       />
@@ -248,29 +253,29 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         personnelPoliciesAccess={personnelPoliciesAccess}
         invitationEnabled={adminInvitationsEnabled}
         invitationMode={adminInvitationMode}
-        onNavigate={onNavigate}
+        onNavigate={navigate}
         onUnauthorized={onLogout}
       />
     </Suspense>;
   }
   if (selected?.appId === "warehouses" && warehousesAvailable) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Almacenes…</div>}>
-      <WarehouseWorkspace authorization={authorization} pathname={pathname} sections={warehouseSections} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={onNavigate} onUnauthorized={onLogout} />
+      <WarehouseWorkspace authorization={authorization} pathname={pathname} sections={warehouseSections} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={navigate} onUnauthorized={onLogout} />
     </Suspense>;
   }
   if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
-      <SurveyApp authorization={authorization} onUnauthorized={onLogout} onBack={() => onNavigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
+      <SurveyApp authorization={authorization} onUnauthorized={onLogout} onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
     </Suspense>;
   }
   if (selected?.appId === "materials-equipment" && materialsEnabled) {
     if (materialsAuthorized) return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando Materiales e Inventario…</div>}>
-        <MaterialsInventoryApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={onNavigate} onUnauthorized={onLogout} />
+        <MaterialsInventoryApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={navigate} onUnauthorized={onLogout} />
       </Suspense>;
   }
   if (selected?.appId === "tools-equipment" && toolsEnabled && toolsAuthorized) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando Herramientas y Equipos…</div>}>
-      <ToolsEquipmentApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={onNavigate} onUnauthorized={onLogout} />
+      <ToolsEquipmentApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={navigate} onUnauthorized={onLogout} />
     </Suspense>;
   }
   const sidebar = (

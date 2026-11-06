@@ -45,7 +45,7 @@ Producción permanece desactivada y no se modifica en este PR.
 ## Base de datos
 
 - Migración: `20261106010000_v17_customer_custody`
-- SHA-256: `b6676ee3460edbd64f39879a5658989c2efe32b54ff080059071b46a7e30efeb`
+- SHA-256: `1f6b3d0071fb35992e78796c8eb688c0774357d096bbfd45d86102cf2262341b`
 - Inventario canónico esperado: `42/42`
 
 ## Fuera de alcance

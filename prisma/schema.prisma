@@ -4389,7 +4389,7 @@ model CustomerStorageLot {
   updatedAt      DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   tenant         Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_tenant_fkey")
   client         Client                    @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_client_fkey")
-  pipelineCase   PipelineCase?             @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_case_fkey")
+  pipelineCase   PipelineCase?             @relation(fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_case_client_fkey")
   warehouse      MaterialWarehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_warehouse_fkey")
   items          CustomerStoredItem[]
   movements      CustomerCustodyMovement[]

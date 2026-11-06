@@ -207,9 +207,6 @@ ALTER TABLE "customer_storage_lots" ADD CONSTRAINT "customer_storage_lots_tenant
 -- AddForeignKey
 ALTER TABLE "customer_storage_lots" ADD CONSTRAINT "customer_storage_lots_client_fkey" FOREIGN KEY ("tenant_id", "client_id") REFERENCES "osi_clients"("tenant_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- AddForeignKey
-ALTER TABLE "customer_storage_lots" ADD CONSTRAINT "customer_storage_lots_case_fkey" FOREIGN KEY ("tenant_id", "pipeline_case_id") REFERENCES "osi_pipeline_cases"("tenant_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
 -- A case may only be attached to a custody lot for its authoritative service client.
 ALTER TABLE "customer_storage_lots" ADD CONSTRAINT "customer_storage_lots_case_client_fkey" FOREIGN KEY ("tenant_id", "pipeline_case_id", "client_id") REFERENCES "osi_pipeline_cases"("tenant_id", "id", "client_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

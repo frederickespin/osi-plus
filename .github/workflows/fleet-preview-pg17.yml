@@ -98,7 +98,8 @@ jobs:
           import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
           const source = validateMigrationFiles();
           assert.equal(source.length, 42);
-          assert.equal(source.at(-1), '20261102020000_v17_warehouse_localities');
+          assert.equal(source.at(-1), '20261106010000_v17_customer_custody');
+          assert.equal(source[40], '20261102020000_v17_warehouse_localities');
           assert.equal(source[39], '20261102010000_v17_warehouse_routes');
           assert.equal(source[38], '20261101020000_v17_warehouse_sheet');
           assert.equal(source[37], '20261101010000_v17_warehouse_configuration');

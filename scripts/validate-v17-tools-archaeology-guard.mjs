@@ -17,6 +17,7 @@ const catalog = text("src/hub/appCatalog.ts");
 const workspace = text("src/hub/HubWorkspace.tsx");
 const mobileHub = text("src/hub/OsiPlusMobileHub.tsx");
 const visualMode = text("src/tools-preview/clientMode.ts");
+const visualPreview = text("src/tools-preview/ToolsVisualPreview.tsx");
 const app = text("src/App.tsx");
 
 if (digest(documentPath) !== "FF74CC4424891058AFF9D19E875229B03F7AE616CB6BFCC76D4B364603C54F6E") fail("the approved 3.19 calculator document changed");
@@ -53,6 +54,13 @@ if (!workspace.includes('applicationsForHubSuite("tools", available)')) fail("de
 if (!workspace.includes('pathname === "/tools"')) fail("desktop tools route is not rendered by the Hub");
 if (mobileHub.includes("herramientas de empaque") || mobileHub.includes("Calculadora")) fail("OSi Plus Mobile still advertises desktop calculators");
 if (!visualMode.includes('feature/v17-tools-consolidated-11b') || !visualMode.includes('/experience-preview/tools')) fail("exact Preview route contract is missing");
+for (const signature of [
+  '"/commercial": `${CONSOLIDATED_HUB_ORIGIN}/commercial`',
+  '"/warehouses": `${CONSOLIDATED_HUB_ORIGIN}/warehouses`',
+  '"/administration": `${CONSOLIDATED_HUB_ORIGIN}/administration`',
+  '"/mobile/survey": "https://osi-plus-erp-v17-git-feature-642495-frederick-espinals-projects.vercel.app/mobile/survey"',
+  'catalogPreviewLaunchUrls={PREVIEW_LAUNCH_URLS}',
+]) if (!visualPreview.includes(signature)) fail(`functional Preview destination missing: ${signature}`);
 if (!app.includes("isV17ToolsVisualPreviewRoute()") || !app.includes("<ToolsVisualPreview")) fail("visual Preview is not routed before authenticated runtime");
 for (const signature of [
   'index.html?raw',

@@ -2,6 +2,13 @@ import { useState } from "react";
 import HubWorkspace from "@/hub/HubWorkspace";
 
 const PREVIEW_APPLICATION_IDS = ["commercial-crm", "warehouses", "administration", "osi-survey", "archaeological-packing", "packing-calculator"] as const;
+const CONSOLIDATED_HUB_ORIGIN = "https://osi-plus-erp-v17-git-feature-bb4db4-frederick-espinals-projects.vercel.app";
+const PREVIEW_LAUNCH_URLS = Object.freeze({
+  "/commercial": `${CONSOLIDATED_HUB_ORIGIN}/commercial`,
+  "/warehouses": `${CONSOLIDATED_HUB_ORIGIN}/warehouses`,
+  "/administration": `${CONSOLIDATED_HUB_ORIGIN}/administration`,
+  "/mobile/survey": "https://osi-plus-erp-v17-git-feature-642495-frederick-espinals-projects.vercel.app/mobile/survey",
+});
 
 export default function ToolsVisualPreview() {
   const [pathname, setPathname] = useState("/hub");
@@ -35,6 +42,7 @@ export default function ToolsVisualPreview() {
       mode="PREVIEW_REHEARSAL"
       pathname={pathname}
       catalogPreviewApplicationIds={PREVIEW_APPLICATION_IDS}
+      catalogPreviewLaunchUrls={PREVIEW_LAUNCH_URLS}
       onNavigate={setPathname}
       onLogout={() => setPathname("/hub")}
     />

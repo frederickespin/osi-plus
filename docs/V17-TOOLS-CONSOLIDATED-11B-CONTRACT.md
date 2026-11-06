@@ -34,9 +34,12 @@ La única biblioteca de la calculadora es SheetJS 0.20.3, fijada dentro del repo
 
 - Ambas herramientas reutilizan temporalmente el permiso explícito `pipeline:view` y no conceden acceso por rol implícito.
 - La rama exacta `feature/v17-tools-consolidated-11b` expone el ensayo visual aislado `/experience-preview/tools` únicamente en Preview.
+- En ese ensayo, Comercial, Almacenes y Administración abren las aplicaciones funcionales de la base consolidada `bb4db4` en otra pestaña; OSi Survey abre el Preview Mobile aprobado `642495`. El Hub permanece abierto.
 - Production no se modifica ni se habilita.
 - CRM, Survey, ICP, Cotización, APIs y migraciones permanecen sin cambios funcionales.
 
 ## Decisión de producto
 
 Esta fase conserva las aplicaciones aprobadas dentro del ecosistema OSi Plus. La calculadora general fijada corresponde exactamente al archivo entregado `calculadora_empaque_v4191_importacion_separada.html` y permanece sin conexión al ERP. Las mejoras visuales o la integración con casos, inventario, cajas de madera y cotización se evaluarán previamente y se implementarán en lotes separados.
+
+El Hub queda establecido como la entrada principal de la nueva versión. En incrementos posteriores se continuará separando del bloque Comercial y CRM cada módulo que tenga responsabilidad empresarial propia, conservando contratos, permisos y datos hasta que su aplicación independiente sea aprobada.

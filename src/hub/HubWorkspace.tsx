@@ -65,9 +65,13 @@ type Props = {
   mode: OsiHubMode;
   pathname: string;
   catalogPreviewApplicationIds?: readonly HubAppId[];
+  catalogPreviewLaunchUrls?: Readonly<Partial<Record<string, string>>>;
   onNavigate: (pathname: string) => void;
   onLogout: () => void;
 };
+
+const EMPTY_PREVIEW_APPLICATION_IDS: readonly HubAppId[] = Object.freeze([]);
+const EMPTY_PREVIEW_LAUNCH_URLS: Readonly<Partial<Record<string, string>>> = Object.freeze({});
 
 function ctaLabel(application: HubApplication) {
   if (application.appId === "commercial-crm") return "Abrir ERP →";
@@ -143,11 +147,11 @@ function RegisteredApplication({ application, onNavigate }: { application: HubAp
   return <section className="mx-auto max-w-3xl px-5 py-12"><div className="rounded-3xl border bg-white p-8 shadow-sm"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Icon className="h-7 w-7" /></span><p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-indigo-600">Pendiente de habilitación</p><h1 className="mt-2 text-3xl font-black">{application.name}</h1><p className="mt-3 text-sm leading-6 text-slate-600">Esta aplicación todavía no está disponible en este entorno. Puedes continuar en las aplicaciones disponibles del Hub.</p><button type="button" onClick={() => onNavigate("/hub")} className="mt-6 flex min-h-11 items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"><ArrowLeft className="h-4 w-4" />Volver al Hub</button></div></section>;
 }
 
-export default function HubWorkspace({ userName, authorization, accessContext, crmReadEnabled, mode, pathname, catalogPreviewApplicationIds = [], onNavigate, onLogout }: Props) {
+export default function HubWorkspace({ userName, authorization, accessContext, crmReadEnabled, mode, pathname, catalogPreviewApplicationIds = EMPTY_PREVIEW_APPLICATION_IDS, catalogPreviewLaunchUrls = EMPTY_PREVIEW_LAUNCH_URLS, onNavigate, onLogout }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const visible = useMemo(() => visibleHubApplications(HUB_APPLICATIONS, accessContext), [accessContext]);
   const selected = findHubApplicationByRoute(pathname);
-  const catalogPreview = new Set(catalogPreviewApplicationIds);
+  const catalogPreview = useMemo(() => new Set(catalogPreviewApplicationIds), [catalogPreviewApplicationIds]);
   const commercialCaseRef = commercialCaseRefFromRoute(pathname);
   const adminEnabled = isAdminTenantMembershipEnabled();
   const effectivePermissions = new Set(accessContext.effectivePermissions || []);
@@ -205,6 +209,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const pendingApplications = visible.filter((application) => !available.includes(application));
   const navigate = (nextPath: string) => {
     setMobileOpen(false);
+    const externalHref = catalogPreviewLaunchUrls[nextPath];
+    if (externalHref) {
+      window.open(externalHref, "_blank", "noopener,noreferrer");
+      return;
+    }
     onNavigate(nextPath);
   };
   if (selected && !visible.includes(selected)) {

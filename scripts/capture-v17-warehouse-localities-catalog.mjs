@@ -89,7 +89,8 @@ export async function collectWarehouseLocalitiesCatalogEvidence({ phase, serverM
     invariant(validateCrm01b1LocalUrl(rawUrl).database === "osi_db01n_ci", "only canonical disposable database accepted");
   }
   const source = validateMigrationFiles(root);
-  invariant(source.length === 41 && source.at(-1) === WAREHOUSE_LOCALITIES_MIGRATION && source.at(-2) === WAREHOUSE_ROUTES_MIGRATION, "requires exact41 source inventory");
+  const checkpoint = source.indexOf(WAREHOUSE_LOCALITIES_MIGRATION);
+  invariant(source.length === 42 && source.at(-1) === "20261106010000_v17_customer_custody" && checkpoint === 40 && source[checkpoint - 1] === WAREHOUSE_ROUTES_MIGRATION, "requires exact42 source inventory with localities checkpoint");
   invariant(sha256(await readFile(resolve(root, "prisma/migrations", WAREHOUSE_LOCALITIES_MIGRATION, "migration.sql"))) === WAREHOUSE_LOCALITIES_MIGRATION_CHECKSUM, "reviewed SQL41 changed");
   const names = phase === "before40" ? source.slice(0, 40) : source;
   const migrations = await Promise.all(names.map(async (name) => [name, await readFile(resolve(root, "prisma/migrations", name, "migration.sql"), "utf8")]));

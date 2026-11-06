@@ -194,7 +194,9 @@
     "test:v17-warehouse-localities": "node scripts/v17-warehouse-localities-address-test.mjs && node scripts/v17-warehouse-sheet-contract-test.mjs && node scripts/v17-warehouse-sheet-http-test.mjs && node scripts/v17-warehouse-localities-client-test.mjs && node scripts/v17-warehouse-localities-preview-migrate-test.mjs && node scripts/capture-v17-warehouse-localities-catalog-test.mjs",
     "test:v17-warehouse-localities:db": "node scripts/v17-warehouse-localities-db-test.mjs",
     "test:v17-warehouse-localities:client": "node scripts/v17-warehouse-localities-client-test.mjs",
-    "test:v17-warehouse-localities:browser": "playwright test -c playwright.v17-warehouse-localities.config.ts"
+    "test:v17-warehouse-localities:browser": "playwright test -c playwright.v17-warehouse-localities.config.ts",
+    "test:v17-customer-custody": "node scripts/v17-customer-custody-contract-test.mjs && node scripts/v17-customer-custody-http-test.mjs",
+    "test:v17-customer-custody:db": "node scripts/v17-customer-custody-db-test.mjs"
   },
   "dependencies": {
     "22": "^0.0.0",

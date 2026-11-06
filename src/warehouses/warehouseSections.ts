@@ -1,10 +1,11 @@
 import type { HubApplication } from "@/hub/appCatalog";
 
-export type WarehouseSectionId = "spaces" | "configuration" | "materials" | "equipment";
-export type WarehouseSectionGroupId = "organization" | "inventory";
+export type WarehouseSectionId = "spaces" | "configuration" | "materials" | "equipment" | "customer-custody";
+export type WarehouseSectionGroupId = "organization" | "inventory" | "custody";
 export const WAREHOUSE_SECTION_GROUPS: readonly Readonly<{ id: WarehouseSectionGroupId; label: string }>[] = Object.freeze([
   { id: "organization", label: "Organización y catálogo" },
-  { id: "inventory", label: "Control de inventario" },
+  { id: "inventory", label: "Inventarios internos" },
+  { id: "custody", label: "Inventario de clientes" },
 ]);
 
 export type WarehouseSection = Readonly<{
@@ -21,6 +22,7 @@ export const WAREHOUSE_SECTIONS: readonly WarehouseSection[] = Object.freeze([
   { id: "configuration", label: "Configuración", route: "/warehouses/configuration", permissions: ["inventory:stock:view"], group: "organization" },
   { id: "materials", label: "Materiales de embalaje", route: "/warehouses/materials", permissions: ["inventory:catalog:view", "inventory:stock:view"], group: "inventory" },
   { id: "equipment", label: "Herramientas y equipos", route: "/warehouses/equipment", permissions: ["assets:instance:view"], group: "inventory" },
+  { id: "customer-custody", label: "Efectos de clientes", route: "/warehouses/customer-custody", permissions: ["customer-custody:view"], group: "custody" },
 ]);
 
 export function warehouseSectionFromRoute(pathname: string) {

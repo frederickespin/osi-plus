@@ -7,9 +7,14 @@ export type WarehouseAccessGrant = Readonly<{ grantRef: string; membership: { me
 
 function canonicalJson(value: unknown): string { if (value === null || typeof value !== "object") return JSON.stringify(value); if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`; const row = value as Record<string, unknown>; return `{${Object.keys(row).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(row[key])}`).join(",")}}`; }
 async function hash(value: unknown) { const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson(value))); return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join(""); }
-export class CustomerCustodyApiError extends Error { constructor(readonly code: string, readonly status: number) { super(code); } }
+export class CustomerCustodyApiError extends Error {
+  readonly code: string;
+  readonly status: number;
+  constructor(code: string, status: number) { super(code); this.code = code; this.status = status; }
+}
 export class CustomerCustodyApi {
-  constructor(private readonly authorization?: string) {}
+  private readonly authorization?: string;
+  constructor(authorization?: string) { this.authorization = authorization; }
   private async request<T>(path: string, init: RequestInit = {}) { const membershipRef = getMembershipRef(); const response = await fetch(path, { ...init, credentials: "omit", cache: "no-store", headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(this.authorization ? { Authorization: `Bearer ${this.authorization}` } : {}), ...(membershipRef ? { "X-OSI-Membership-Ref": membershipRef } : {}) } }); const body = await response.json(); if (!response.ok || body?.ok !== true) throw new CustomerCustodyApiError(body?.error || "CUSTOMER_CUSTODY_REQUEST_FAILED", response.status); return body.data as T; }
   list(query = "", status = "ALL", signal?: AbortSignal) { const search = new URLSearchParams(); if (query.trim()) search.set("q", query.trim()); if (status !== "ALL") search.set("status", status); return this.request<readonly CustomerStorageLot[]>(`/api/customer-custody/lots?${search}`, { signal }); }
   private async command<T>(path: string, operation: string, payload: Record<string, unknown>) { const requestId = crypto.randomUUID(); const payloadHash = await hash({ operation, requestId, ...payload }); return this.request<T>(path, { method: "POST", body: JSON.stringify({ requestId, payloadHash, ...payload }) }); }

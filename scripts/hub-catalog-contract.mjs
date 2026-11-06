@@ -44,6 +44,7 @@ const CONTRACTS = Object.freeze([
   { appId: "administration", route: "/administration", aliases: ["/administration/access", "/administration/fleet", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"], permissions: ["membership:view", "fleet:view", "services:catalog:view", "services:packages:view", "services:materials:view", "costing:rules:view", "logistics:rules:view", "communications:templates:view", "personnel:profiles:view", "personnel:capabilities:view", "scheduling:policies:view", "scheduling:exceptions:request", "scheduling:exceptions:approve", "scheduling:exceptions:respond"], mode: "ANY", roles: [], explicit: true, denyScope: "PERMISSION" },
   { appId: "human-resources", route: "/hr", permissions: ["hr:view"], mode: "ALL", roles: ["A", "I"] },
   { appId: "osi-survey", route: "/mobile/survey", aliases: ["/survey"], permissions: ["survey:assignment:view"], mode: "ALL", roles: [], explicit: true, suite: "osi-plus-mobile" },
+  { appId: "visual-inventory", route: "/mobile/visual-inventory", permissions: ["survey:assignment:view"], mode: "ALL", roles: [], explicit: true, suite: "osi-plus-mobile" },
   { appId: "archaeological-packing", route: "/tools/archaeological-packing", permissions: ["pipeline:view"], mode: "ALL", roles: [], explicit: true, suite: "tools" },
   { appId: "packing-calculator", route: "/tools/packing", aliases: ["/mobile/packing"], permissions: ["pipeline:view"], mode: "ALL", roles: [], explicit: true, suite: "tools" },
 ]);

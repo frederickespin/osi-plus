@@ -11,6 +11,7 @@ export type HubAppId =
   | "administration"
   | "human-resources"
   | "osi-survey"
+  | "visual-inventory"
   | "archaeological-packing"
   | "packing-calculator";
 
@@ -25,6 +26,7 @@ export type HubIconId =
   | "settings"
   | "users"
   | "clipboard"
+  | "smartphone"
   | "calculator";
 export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED" | "EXTERNAL_AVAILABLE" | "INTERNAL_STANDALONE" | "INTERNAL_AVAILABLE";
 export type HubMobileAvailability =
@@ -240,6 +242,22 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     route: "/mobile/survey",
     routeAliases: ["/survey"],
     status: "REGISTERED_INACTIVE",
+    requiredPermissions: ["survey:assignment:view"],
+    permissionMode: "ALL",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
+    mobileAvailability: "MOBILE_PRIMARY",
+    directAccessAllowed: true,
+    lazy: true,
+    suiteId: "osi-plus-mobile",
+  },
+  {
+    appId: "visual-inventory",
+    name: "Inventario Visual",
+    description: "Registro móvil independiente de artículos, fotografías, medidas, etiquetas y ubicaciones.",
+    icon: "smartphone",
+    route: "/mobile/visual-inventory",
+    status: "INTERNAL_STANDALONE",
     requiredPermissions: ["survey:assignment:view"],
     permissionMode: "ALL",
     requiresExplicitPermissions: true,

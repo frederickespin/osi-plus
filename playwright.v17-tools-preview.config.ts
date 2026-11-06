@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+const useExternalServer = process.env.PLAYWRIGHT_EXTERNAL_SERVER === "1";
+
 export default defineConfig({
   testDir: "./tests/v17-tools-preview",
   outputDir: join(tmpdir(), `v17-tools-preview-${process.pid}`),
@@ -13,10 +15,10 @@ export default defineConfig({
   forbidOnly: true,
   reporter: "list",
   use: { baseURL: "http://127.0.0.1:4185", trace: "off", screenshot: "only-on-failure", video: "off", serviceWorkers: "block" },
-  webServer: {
+  webServer: useExternalServer ? undefined : {
     command: "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4185",
     url: "http://127.0.0.1:4185/experience-preview/tools",
-    reuseExistingServer: false,
+    reuseExistingServer: true,
     timeout: 120_000,
     env: {
       VERCEL_ENV: "preview",

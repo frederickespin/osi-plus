@@ -44,6 +44,8 @@ const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/Materials
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
 const ArchaeologicalPackingTool = lazy(() => import("./ArchaeologicalPackingTool"));
 const GeneralPackingTool = lazy(() => import("./GeneralPackingTool"));
+const VisualInventoryApp = lazy(() => import("./VisualInventoryApp"));
+const RecoveredCommercialPreview = lazy(() => import("./RecoveredCommercialPreview"));
 
 const ICONS: Record<HubIconId, ElementType> = {
   briefcase: BriefcaseBusiness,
@@ -54,6 +56,7 @@ const ICONS: Record<HubIconId, ElementType> = {
   settings: Settings,
   users: Users,
   clipboard: ClipboardCheck,
+  smartphone: Smartphone,
   calculator: Calculator,
 };
 
@@ -198,6 +201,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     administration: administrationAvailable || catalogPreview.has("administration"),
     warehouses: warehousesAvailable || catalogPreview.has("warehouses"),
     "osi-survey": surveyEnabled || catalogPreview.has("osi-survey"),
+    "visual-inventory": catalogPreview.has("visual-inventory"),
     "materials-equipment": materialsEnabled,
     "tools-equipment": toolsEnabled,
     "archaeological-packing": true,
@@ -221,6 +225,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   }
   if (pathname === "/commercial/relationships" && (!commercialRelationshipsEnabled || !commercialRelationshipsAccess.canView)) {
     return <CanonicalAccessDenied onReturnToSafeRoute={() => onNavigate("/hub")} />;
+  }
+  if (selected?.appId === "commercial-crm" && catalogPreview.has("commercial-crm") && !crmReadEnabled) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Recuperando Comercial…</div>}>
+      <RecoveredCommercialPreview onBack={() => onNavigate("/hub")} />
+    </Suspense>;
   }
   if (selected?.appId === "commercial-crm" && crmReadEnabled) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-[#003366] text-sm font-semibold text-white">Cargando ERP Comercial…</div>}>
@@ -285,6 +294,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
       <SurveyApp authorization={authorization} onUnauthorized={onLogout} onBack={() => onNavigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
+    </Suspense>;
+  }
+  if (selected?.appId === "visual-inventory" && available.includes(selected)) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Inventario Visual…</div>}>
+      <VisualInventoryApp onBack={() => onNavigate("/mobile")} />
     </Suspense>;
   }
   if (selected?.appId === "materials-equipment" && materialsEnabled) {

@@ -713,7 +713,7 @@ jobs:
           npx prisma validate --schema prisma/schema.prisma
           npx prisma generate --schema prisma/schema.prisma
 
-      - name: Prepare exact38,39 and40 historical PostgreSQL18 staging directories
+      - name: Prepare exact38 through41 historical PostgreSQL18 staging directories
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -727,7 +727,7 @@ jobs:
           assert.equal(source[39], '20261102010000_v17_warehouse_routes');
           assert.equal(source[38], '20261101020000_v17_warehouse_sheet');
           assert.equal(source[37], '20261101010000_v17_warehouse_configuration');
-          for (const count of [38, 39, 40]) {
+          for (const count of [38, 39, 40, 41]) {
             const stage = join(process.env.RUNNER_TEMP, `canonical-pg18-${count}`);
             mkdirSync(join(stage, 'migrations'), { recursive: true });
             copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
@@ -774,10 +774,24 @@ jobs:
 
       - name: Upgrade40 to41 and verify the additive locality migration
         run: |
-          npx prisma migrate deploy --schema prisma/schema.prisma
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/canonical-pg18-41/schema.prisma"
           node scripts/capture-v17-warehouse-localities-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-localities-after.json" --previous "$RUNNER_TEMP/warehouse-pg18-localities-before.json"
 
-      - name: Verify idempotent second deploy
+      - name: Verify idempotent41 second deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(npx prisma migrate deploy --schema "$RUNNER_TEMP/canonical-pg18-41/schema.prisma" 2>&1)"
+          printf '%s\n' "$output"
+          grep -Fq "No pending migrations to apply." <<< "$output"
+
+      - name: Capture read-only41 replay and verify preserved data
+        run: node scripts/capture-v17-warehouse-localities-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-localities-replay.json" --previous "$RUNNER_TEMP/warehouse-pg18-localities-before.json"
+
+      - name: Deploy current42 customer custody migration
+        run: npx prisma migrate deploy --schema prisma/schema.prisma
+
+      - name: Verify idempotent42 second deploy
         shell: bash
         run: |
           set -euo pipefail
@@ -800,9 +814,6 @@ jobs:
           cat "$RUNNER_TEMP/canonical-drift.sql"
           test "$diff_status" -eq 0
           grep -Fxq -- "-- This is an empty migration." "$RUNNER_TEMP/canonical-drift.sql"
-
-      - name: Capture read-only41 replay and verify preserved data
-        run: node scripts/capture-v17-warehouse-localities-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg18-localities-replay.json" --previous "$RUNNER_TEMP/warehouse-pg18-localities-before.json"
 
       - name: Publish candidate catalog without accepting a baseline
         if: always()

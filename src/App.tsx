@@ -17,6 +17,7 @@ import {
 import { isRelationalCrmReadEnabled } from '@/crm-relational/clientMode';
 import type { ModuleId } from '@/lib/roleModuleMap';
 import { resolveOsiHubMode, type OsiHubMode } from '@/hub/hubMode';
+import { redirectToPreviewHub, rememberPreviewHubReturn } from '@/hub/previewHubReturn';
 import type { HubAccessContext } from '@/hub/hubAccess';
 import { evaluateHubRouteAccess } from '@/hub/hubRouteAccess';
 import { isAdminIdentityActivationRoute } from '@/admin-tenant/adminIdentityActivationRoute';
@@ -616,6 +617,9 @@ function SessionApp() {
   const [authState, setAuthState] = useState<AuthState>({ status: 'AUTH_LOADING', session: null });
 
   useEffect(() => {
+    rememberPreviewHubReturn();
+    if (window.location.pathname === '/hub' && redirectToPreviewHub('/hub')) return;
+
     let active = true;
     void resolveInitialAuthState().then((nextState) => {
       if (active) setAuthState(nextState);

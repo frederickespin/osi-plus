@@ -8,6 +8,9 @@ const disabled = createMaterialsHandler({ env: {}, methods: ["POST"], permission
 let res = await invoke(disabled, request()); assert.equal(res.statusCode, 409); assert.equal(res.body.error, "MATERIALS_DISABLED"); assert.equal(auth, 0); assert.equal(execute, 0);
 assert.throws(() => resolveMaterialsApiMode({ MATERIALS_INVENTORY_API_MODE: "local_only" }, request()), /MATERIALS_CONFIGURATION_INVALID/);
 assert.throws(() => resolveMaterialsApiMode({ MATERIALS_INVENTORY_API_MODE: "LOCAL_ONLY", VERCEL: "0" }, request()), /MATERIALS_CONFIGURATION_INVALID/);
+const preview = { MATERIALS_INVENTORY_API_MODE: "PREVIEW_REHEARSAL", MATERIALS_INVENTORY_API_BATCH: "V17-MATERIALS-INVENTORY-05A-PREVIEW", VERCEL: "1", VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/v17-customer-custody-21a", MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false" };
+assert.equal(resolveMaterialsApiMode(preview, request()), "PREVIEW_REHEARSAL");
+for (const branch of ["main", "feature/v17-customer-custody-21a-extra"]) assert.throws(() => resolveMaterialsApiMode({ ...preview, VERCEL_GIT_COMMIT_REF: branch }, request()), /MATERIALS_CONFIGURATION_INVALID/);
 const local = createMaterialsHandler({ env: { MATERIALS_INVENTORY_API_MODE: "LOCAL_ONLY" }, methods: ["POST"], permission: "inventory:stock:receive", prismaClient: { marker: true }, resolveContext: async (_req, options) => { auth += 1; assert.equal(options.prisma.marker, true); return { effectivePermissions: ["inventory:stock:receive"], deniedPermissions: [] }; }, execute: async ({ input }) => { execute += 1; return input; } });
 res = await invoke(local, request({ headers: { origin: "https://attacker.invalid", "x-forwarded-proto": "http" } })); assert.equal(res.statusCode, 403); assert.equal(auth, 0);
 res = await invoke(local, request({ remoteAddress: "203.0.113.20" })); assert.equal(res.statusCode, 503); assert.equal(auth, 0);

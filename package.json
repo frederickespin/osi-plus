@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "prisma generate && node scripts/v17-fleet-drivers-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-configuration-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-sheet-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-routes-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-localities-preview-migrate.mjs --build-hook && vite build",
+    "build": "prisma generate && node scripts/v17-fleet-drivers-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-configuration-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-sheet-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-routes-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-localities-preview-migrate.mjs --build-hook && node scripts/v17-customer-custody-preview-migrate.mjs --build-hook && vite build",
     "postinstall": "prisma generate",
     "lint": "eslint .",
     "test:auth-null:browser": "playwright test -c playwright.auth-null.config.ts",
@@ -195,7 +195,7 @@
     "test:v17-warehouse-localities:db": "node scripts/v17-warehouse-localities-db-test.mjs",
     "test:v17-warehouse-localities:client": "node scripts/v17-warehouse-localities-client-test.mjs",
     "test:v17-warehouse-localities:browser": "playwright test -c playwright.v17-warehouse-localities.config.ts",
-    "test:v17-customer-custody": "node scripts/v17-customer-custody-contract-test.mjs && node scripts/v17-customer-custody-http-test.mjs",
+    "test:v17-customer-custody": "node scripts/v17-customer-custody-contract-test.mjs && node scripts/v17-customer-custody-http-test.mjs && node scripts/v17-customer-custody-preview-migrate-test.mjs",
     "test:v17-customer-custody:db": "node scripts/v17-customer-custody-db-test.mjs"
   },
   "dependencies": {

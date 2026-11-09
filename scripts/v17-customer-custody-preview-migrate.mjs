@@ -24,6 +24,11 @@ function requireCondition(condition, code) {
   if (!condition) throw new Error(`CUSTOMER_CUSTODY_PREVIEW_MIGRATION_${code}`);
 }
 
+function classifyUnexpectedFailure(error, stage) {
+  const prismaCode = typeof error?.code === "string" && /^P[0-9]{4}$/u.test(error.code) ? error.code : null;
+  requireCondition(false, prismaCode ? `${stage}_${prismaCode}` : stage);
+}
+
 function validateTargetUrls(env) {
   let direct;
   let application;
@@ -123,8 +128,8 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
     try {
       before = await snapshot(prisma, manifest);
     } catch (error) {
-      if (/^CUSTOMER_CUSTODY_PREVIEW_MIGRATION_[A-Z_]+$/u.test(error?.message ?? "")) throw error;
-      requireCondition(false, "SNAPSHOT_FAILED");
+      if (/^CUSTOMER_CUSTODY_PREVIEW_MIGRATION_[A-Z0-9_]+$/u.test(error?.message ?? "")) throw error;
+      classifyUnexpectedFailure(error, "SNAPSHOT_FAILED");
     }
     if (before.plan.alreadyApplied) {
       return { commit: operation.commit, status: "VERIFIED_21A_APPLIED", applied: before.plan.applied,
@@ -145,8 +150,8 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
     try {
       after = await snapshot(prisma, manifest);
     } catch (error) {
-      if (/^CUSTOMER_CUSTODY_PREVIEW_MIGRATION_[A-Z_]+$/u.test(error?.message ?? "")) throw error;
-      requireCondition(false, "VERIFY_SNAPSHOT_FAILED");
+      if (/^CUSTOMER_CUSTODY_PREVIEW_MIGRATION_[A-Z0-9_]+$/u.test(error?.message ?? "")) throw error;
+      classifyUnexpectedFailure(error, "VERIFY_SNAPSHOT_FAILED");
     }
     const previousBefore = before.history.filter((row) => row.migration_name !== CUSTOMER_CUSTODY_MIGRATION);
     const previousAfter = after.history.filter((row) => row.migration_name !== CUSTOMER_CUSTODY_MIGRATION);
@@ -166,7 +171,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const result = await runCustomerCustodyPreviewMigration();
     if (result) process.stdout.write(`${JSON.stringify({ customerCustodyPreviewMigration: result })}\n`);
   } catch (error) {
-    const code = /^CUSTOMER_CUSTODY_PREVIEW_MIGRATION_[A-Z_]+$/u.test(error?.message ?? "")
+    const code = /^CUSTOMER_CUSTODY_PREVIEW_MIGRATION_[A-Z0-9_]+$/u.test(error?.message ?? "")
       ? error.message : "CUSTOMER_CUSTODY_PREVIEW_MIGRATION_FAILED";
     process.stderr.write(`${JSON.stringify({ customerCustodyPreviewMigration: { status: "BLOCKED", code } })}\n`);
     process.exitCode = 1;

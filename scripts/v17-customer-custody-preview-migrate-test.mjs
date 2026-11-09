@@ -41,8 +41,8 @@ assert.equal(manifest[CUSTOMER_CUSTODY_MIGRATION], CUSTOMER_CUSTODY_MIGRATION_CH
 const row = (migration_name, checksum) => ({ migration_name, checksum, finished_at: new Date(), rolled_back_at: null, applied_steps_count: 1 });
 const before = Object.entries(manifest).filter(([name]) => name !== CUSTOMER_CUSTODY_MIGRATION).map(([name, checksum]) => row(name, checksum));
 before.push(row(RETAINED_PREVIEW_EXTENSION.name, RETAINED_PREVIEW_EXTENSION.checksum));
-assert.deepEqual(validatePreviewHistory(before, manifest), { alreadyApplied: false, applied: 42 });
-assert.deepEqual(validatePreviewHistory([...before, row(CUSTOMER_CUSTODY_MIGRATION, CUSTOMER_CUSTODY_MIGRATION_CHECKSUM)], manifest), { alreadyApplied: true, applied: 43 });
+assert.deepEqual(validatePreviewHistory(before, manifest), { alreadyApplied: false, applied: 43 });
+assert.deepEqual(validatePreviewHistory([...before, row(CUSTOMER_CUSTODY_MIGRATION, CUSTOMER_CUSTODY_MIGRATION_CHECKSUM)], manifest), { alreadyApplied: true, applied: 44 });
 assert.throws(() => validatePreviewHistory(before.slice(1), manifest), /HISTORY_INVALID/u);
 assert.throws(() => validatePreviewHistory([...before, row("unexpected", "0".repeat(64))], manifest), /HISTORY_INVALID/u);
 

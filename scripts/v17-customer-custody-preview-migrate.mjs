@@ -11,8 +11,8 @@ import { PrismaClient } from "@prisma/client";
 import { validateMigrationFiles } from "./canonical-migrations.mjs";
 
 export const CUSTOMER_CUSTODY_PREVIEW_MIGRATION_OPERATION = "V17_CUSTOMER_CUSTODY_PREVIEW_MIGRATION";
-export const CUSTOMER_CUSTODY_MIGRATION = "20261106010000_v17_customer_custody";
-export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "a336da2ff366cf1134414e84d57b10cfff3219b30eee8d9023105f16eaef59ce";
+export const CUSTOMER_CUSTODY_MIGRATION = "20261109010000_v17_customer_storage_groups";
+export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "a7123be8cc85dfc85dbb695ff5fe8abb2f7fb125582859c86dda8c2eb0acd8c1";
 export const RETAINED_PREVIEW_EXTENSION = Object.freeze({
   name: "20260917010000_v17_engineering_crating",
   checksum: "b437aae3600a23c655d97e674c3bfaa9a1721e0d54a26dcccc1181d90fdf2d0f",
@@ -74,7 +74,7 @@ export function previewMigrationOperation(env = process.env) {
 
 export function previewMigrationManifest(root = process.cwd()) {
   const names = validateMigrationFiles(root);
-  requireCondition(names.length === 42 && names.at(-1) === CUSTOMER_CUSTODY_MIGRATION, "SOURCE_INVENTORY_INVALID");
+  requireCondition(names.length === 43 && names.at(-1) === CUSTOMER_CUSTODY_MIGRATION, "SOURCE_INVENTORY_INVALID");
   const manifest = Object.fromEntries(names.map((name) => [name,
     sha256(readFileSync(resolve(root, "prisma/migrations", name, "migration.sql"))),
   ]));
@@ -113,9 +113,10 @@ async function snapshot(prisma, manifest) {
     requireCondition(tenants.length === 1 && tenants[0].status === "ACTIVE", "TENANT_INVALID");
     const history = await tx.$queryRawUnsafe("SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name");
     const plan = validatePreviewHistory(history, manifest);
-    const [relations] = await tx.$queryRawUnsafe("SELECT to_regclass('osi.warehouse_access_grants') IS NOT NULL AS grants_exists, to_regclass('osi.customer_storage_lots') IS NOT NULL AS lots_exists, to_regclass('osi.customer_stored_items') IS NOT NULL AS items_exists, to_regclass('osi.customer_custody_commands') IS NOT NULL AS commands_exists, to_regclass('osi.customer_custody_movements') IS NOT NULL AS movements_exists");
+    const [relations] = await tx.$queryRawUnsafe("SELECT to_regclass('osi.warehouse_access_grants') IS NOT NULL AS grants_exists, to_regclass('osi.customer_storage_lots') IS NOT NULL AS lots_exists, to_regclass('osi.customer_stored_items') IS NOT NULL AS items_exists, to_regclass('osi.customer_custody_commands') IS NOT NULL AS commands_exists, to_regclass('osi.customer_custody_movements') IS NOT NULL AS movements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'storage_type') AS storage_groups_exists");
     const relationCount = Object.values(relations).filter(Boolean).length;
-    requireCondition(relationCount === (plan.alreadyApplied ? 5 : 0), "RELATION_STATE_INVALID");
+    requireCondition(relationCount === (plan.alreadyApplied ? 6 : 5)
+      && relations.storage_groups_exists === plan.alreadyApplied, "RELATION_STATE_INVALID");
     return { plan, history, serverVersionNum: Number(identity.server_version_num) };
   }, { maxWait: 5000, timeout: 35000, isolationLevel: "RepeatableRead" });
 }
@@ -136,7 +137,7 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
       classifyUnexpectedFailure(error, "SNAPSHOT_FAILED");
     }
     if (before.plan.alreadyApplied) {
-      return { commit: operation.commit, status: "VERIFIED_21A_APPLIED", applied: before.plan.applied,
+      return { commit: operation.commit, status: "VERIFIED_21B_APPLIED", applied: before.plan.applied,
         serverVersionNum: before.serverVersionNum, retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name };
     }
     try {
@@ -161,7 +162,7 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
     const previousAfter = after.history.filter((row) => row.migration_name !== CUSTOMER_CUSTODY_MIGRATION);
     requireCondition(after.plan.alreadyApplied && after.plan.applied === before.plan.applied + 1
       && JSON.stringify(previousAfter) === JSON.stringify(previousBefore), "PREVIOUS_STATE_CHANGED");
-    return { commit: operation.commit, status: "VERIFIED_21A_APPLIED", applied: after.plan.applied,
+    return { commit: operation.commit, status: "VERIFIED_21B_APPLIED", applied: after.plan.applied,
       previousHistoryPreserved: true, serverVersionNum: after.serverVersionNum,
       retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name };
   } finally {

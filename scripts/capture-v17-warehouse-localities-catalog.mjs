@@ -90,7 +90,7 @@ export async function collectWarehouseLocalitiesCatalogEvidence({ phase, serverM
   }
   const source = validateMigrationFiles(root);
   const checkpoint = source.indexOf(WAREHOUSE_LOCALITIES_MIGRATION);
-  invariant(source.length === 42 && source.at(-1) === "20261106010000_v17_customer_custody" && checkpoint === 40 && source[checkpoint - 1] === WAREHOUSE_ROUTES_MIGRATION, "requires exact42 source inventory with localities checkpoint");
+  invariant(source.length === 43 && source.at(-1) === "20261109010000_v17_customer_storage_groups" && checkpoint === 40 && source[checkpoint - 1] === WAREHOUSE_ROUTES_MIGRATION, "requires exact43 source inventory with localities checkpoint");
   invariant(sha256(await readFile(resolve(root, "prisma/migrations", WAREHOUSE_LOCALITIES_MIGRATION, "migration.sql"))) === WAREHOUSE_LOCALITIES_MIGRATION_CHECKSUM, "reviewed SQL41 changed");
   const names = source.slice(0, phase === "before40" ? 40 : checkpoint + 1);
   const migrations = await Promise.all(names.map(async (name) => [name, await readFile(resolve(root, "prisma/migrations", name, "migration.sql"), "utf8")]));

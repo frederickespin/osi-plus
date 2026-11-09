@@ -21,12 +21,13 @@ try {
   const locationB = await prisma.materialLocation.create({ data: { tenantId: context.tenantId, warehouseId: warehouse.id, code: "B-02", name: "Posición B-02", kind: "BIN", path: "CUSTODY/B-02" } });
 
   await createWarehouseAccessGrant(prisma, context, normalizeWarehouseGrant(signed("WAREHOUSE_ACCESS_GRANT_CREATE", { membershipRef: membership.publicRef, warehouseRef: warehouse.warehouseRef, locationRef: null, inventoryScope: "CUSTOMER_CUSTODY", operations: ["VIEW", "RECEIVE", "PUT_AWAY", "TRANSFER", "COUNT", "PREPARE_EXIT", "DISPATCH", "RETURN", "ADJUST"] })));
-  const receiptPayload = { clientRef: client.publicRef, caseRef: pipelineCase.publicRef, warehouseRef: warehouse.warehouseRef, destinationLocationRef: locationA.locationRef, receivedAt: "2026-11-06T12:00:00.000Z", billingStartAt: "2026-11-06T12:00:00.000Z", notes: "Recepción sintética", items: [{ description: "Juego de sala", category: "MOBILIARIO", quantity: 1, unit: "juego", volumeM3: 4.2, weightKg: 180, condition: "GOOD", evidence: ["memory://custody/photo-1"], notes: "Cinco piezas" }, { description: "Cajas selladas", category: "CAJAS", quantity: 12, unit: "caja", volumeM3: 2.4, weightKg: 96, condition: "USED", evidence: null, notes: null }] };
+  const receiptPayload = { clientRef: client.publicRef, caseRef: pipelineCase.publicRef, warehouseRef: warehouse.warehouseRef, destinationLocationRef: locationA.locationRef, storageType: "PERSONAL_EFFECTS", receivedAt: "2026-11-06T12:00:00.000Z", billingStartAt: "2026-11-06T12:00:00.000Z", notes: "Recepción sintética", items: [{ description: "Juego de sala", category: "MOBILIARIO", quantity: 1, unit: "juego", volumeM3: 4.2, weightKg: 180, condition: "GOOD", evidence: ["memory://custody/photo-1"], notes: "Cinco piezas" }, { description: "Cajas selladas", category: "CAJAS", quantity: 12, unit: "caja", volumeM3: 2.4, weightKg: 96, condition: "USED", evidence: null, notes: null }] };
   const requestId = crypto.randomUUID();
   const receipt = normalizeCustodyReceipt(signed("CUSTOMER_CUSTODY_RECEIVE", receiptPayload, requestId));
   const lot = await receiveCustomerStorage(prisma, context, receipt);
   assert.deepEqual(await receiveCustomerStorage(prisma, context, receipt), lot, "repeated request must return the same lot");
   assert.equal(lot.items.length, 2);
+  assert.equal(lot.storageType, "PERSONAL_EFFECTS");
   assert.equal(lot.movements.length, 2);
   assert.equal(await prisma.customerStorageLot.count({ where: { tenantId: context.tenantId } }), 1);
 
@@ -36,6 +37,8 @@ try {
   assert.equal(moved.status, "STORED");
   assert.equal(moved.movements[0].movementType, "TRANSFER");
   assert.equal((await listCustomerStorageLots(prisma, context, { q: "custodia", status: "STORED" })).length, 1);
+  assert.equal((await listCustomerStorageLots(prisma, context, { storageType: "PERSONAL_EFFECTS" })).length, 1);
+  assert.equal((await listCustomerStorageLots(prisma, context, { storageType: "COMMERCIAL_STORAGE" })).length, 0);
   const outsider = { ...context, membershipId: `outsider-${suffix}`, userId: `outsider-user-${suffix}` };
   assert.deepEqual(await listCustomerStorageLots(prisma, outsider), [], "membership without a grant cannot enumerate custody");
   const commandCount = await prisma.customerCustodyCommand.count({ where: { tenantId: context.tenantId } });
@@ -46,7 +49,7 @@ try {
   const command = await prisma.customerCustodyCommand.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   await assert.rejects(() => prisma.customerCustodyMovement.update({ where: { id: movement.id }, data: { notes: "illegal edit" } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
   await assert.rejects(() => prisma.customerCustodyCommand.update({ where: { id: command.id }, data: { resultJson: { rewritten: true } } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
-  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "42/42", lots: 1, items: 2, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "43/43", lots: 1, items: 2, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true }) + "\n");
 } finally {
   await prisma.$disconnect();
 }

@@ -4379,6 +4379,7 @@ model CustomerStorageLot {
   pipelineCaseId String?                   @map("pipeline_case_id")
   warehouseId    String                    @map("warehouse_id")
   lotCode        String                    @map("lot_code") @db.VarChar(64)
+  storageType    CustomerStorageType       @default(PERSONAL_EFFECTS) @map("storage_type")
   status         CustomerStorageLotStatus  @default(RECEIVED)
   receivedAt     DateTime                  @map("received_at") @db.Timestamptz(6)
   billingStartAt DateTime?                 @map("billing_start_at") @db.Timestamptz(6)
@@ -4397,9 +4398,17 @@ model CustomerStorageLot {
   @@unique([tenantId, id], map: "customer_storage_lots_tenant_id_key")
   @@unique([tenantId, storageRef], map: "customer_storage_lots_tenant_ref_key")
   @@unique([tenantId, lotCode], map: "customer_storage_lots_code_key")
+  @@index([tenantId, storageType, status, receivedAt(sort: Desc)], map: "customer_storage_lots_type_idx")
   @@index([tenantId, warehouseId, status, receivedAt(sort: Desc)], map: "customer_storage_lots_warehouse_idx")
   @@index([tenantId, clientId, status], map: "customer_storage_lots_client_idx")
   @@map("customer_storage_lots")
+}
+
+enum CustomerStorageType {
+  PERSONAL_EFFECTS
+  IMPORT_STORAGE
+  INTERNATIONAL_DISPATCH
+  COMMERCIAL_STORAGE
 }
 
 enum CustomerStorageLotStatus {

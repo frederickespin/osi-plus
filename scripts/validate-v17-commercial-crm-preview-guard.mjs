@@ -114,15 +114,18 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
     'V17_COMMERCIAL_CRM_PREVIEW_MODE = "PREVIEW_REHEARSAL"',
     'V17_COMMERCIAL_CRM_PREVIEW_BATCH = "V17-COMMERCIAL-CRM-PREVIEW-01"',
     'V17_COMMERCIAL_CRM_PREVIEW_BRANCH = "feature/v17-commercial-crm-preview"',
+    'V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH = "feature/v17-customer-custody-21a"',
     'environment.VERCEL === "1"',
     'environment.VERCEL_ENV === "preview"',
     "environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",
+    "environment.VERCEL_GIT_COMMIT_REF === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH",
     "exactOneOf(environment.CRM_PIPELINE_MUTATION_MODE, [DISABLED, V17_COMMERCIAL_CRM_PREVIEW_MODE])",
     "environment.VITE_OSI_HUB_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE",
     "environment.VITE_CRM_PIPELINE_CLIENT_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE",
     "environment.VITE_CRM_PIPELINE_READ_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE",
     "environment.COMMERCIAL_TENANCY_MUTATION_MODE === DISABLED",
     "configuration.gitBranch === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",
+    "configuration.gitBranch === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH",
   ]) requireText(files, shared, signature, `autoridad Preview incompleta: ${signature}`);
   forbidText(files, shared, /(?:\.trim\(|toUpperCase|toLowerCase)/, "la autoridad Preview normaliza configuración inválida");
 

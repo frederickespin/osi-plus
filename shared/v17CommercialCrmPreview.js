@@ -4,6 +4,7 @@ import { isV17ConsolidatedPreviewBranch } from "./v17ConsolidatedPreview.js";
 
 export const V17_COMMERCIAL_CRM_PREVIEW_BRANCH = "feature/v17-commercial-crm-preview";
 export const V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH = "feature/v17-auth-users-tenant-first";
+export const V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH = "feature/v17-customer-custody-21a";
 
 const DISABLED = "DISABLED";
 const LEGACY = "LEGACY";
@@ -34,6 +35,7 @@ export function isExactV17CommercialCrmPreviewServerEnvironment(environment = {}
     && environment.VERCEL_ENV === "preview"
     && (environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_PREVIEW_BRANCH
       || environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH
+      || environment.VERCEL_GIT_COMMIT_REF === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH
       || isV17ConsolidatedPreviewBranch(environment.VERCEL_GIT_COMMIT_REF))
     && environment.CRM_PIPELINE_RUNTIME_MODE === V17_COMMERCIAL_CRM_PREVIEW_MODE
     && exactOneOf(environment.CRM_PIPELINE_MUTATION_MODE, [DISABLED, V17_COMMERCIAL_CRM_PREVIEW_MODE])
@@ -69,6 +71,7 @@ export function resolveV17CommercialCrmPreviewClientAuthority(configuration = {}
     && configuration.vercelEnvironment === "preview"
     && (configuration.gitBranch === V17_COMMERCIAL_CRM_PREVIEW_BRANCH
       || configuration.gitBranch === V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH
+      || configuration.gitBranch === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH
       || isV17ConsolidatedPreviewBranch(configuration.gitBranch))
     && !isLoopbackHostname(configuration.hostname);
   return Object.freeze({

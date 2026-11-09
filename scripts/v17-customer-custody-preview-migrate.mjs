@@ -119,7 +119,13 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
   requireCondition(prismaVersion === "6.19.2", "PRISMA_VERSION_INVALID");
   const prisma = new PrismaClient({ datasources: { db: { url: env.DIRECT_URL } }, log: [] });
   try {
-    const before = await snapshot(prisma, manifest);
+    let before;
+    try {
+      before = await snapshot(prisma, manifest);
+    } catch (error) {
+      if (/^CUSTOMER_CUSTODY_PREVIEW_MIGRATION_[A-Z_]+$/u.test(error?.message ?? "")) throw error;
+      requireCondition(false, "SNAPSHOT_FAILED");
+    }
     if (before.plan.alreadyApplied) {
       return { commit: operation.commit, status: "VERIFIED_21A_APPLIED", applied: before.plan.applied,
         serverVersionNum: before.serverVersionNum, retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name };
@@ -135,7 +141,13 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
     } catch {
       requireCondition(false, "PRISMA_DEPLOY_FAILED");
     }
-    const after = await snapshot(prisma, manifest);
+    let after;
+    try {
+      after = await snapshot(prisma, manifest);
+    } catch (error) {
+      if (/^CUSTOMER_CUSTODY_PREVIEW_MIGRATION_[A-Z_]+$/u.test(error?.message ?? "")) throw error;
+      requireCondition(false, "VERIFY_SNAPSHOT_FAILED");
+    }
     const previousBefore = before.history.filter((row) => row.migration_name !== CUSTOMER_CUSTODY_MIGRATION);
     const previousAfter = after.history.filter((row) => row.migration_name !== CUSTOMER_CUSTODY_MIGRATION);
     requireCondition(after.plan.alreadyApplied && after.plan.applied === before.plan.applied + 1

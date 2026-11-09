@@ -25,8 +25,12 @@ function requireCondition(condition, code) {
 }
 
 function classifyUnexpectedFailure(error, stage) {
-  const prismaCode = typeof error?.code === "string" && /^P[0-9]{4}$/u.test(error.code) ? error.code : null;
-  requireCondition(false, prismaCode ? `${stage}_${prismaCode}` : stage);
+  const rawCode = error?.code ?? error?.errorCode;
+  const prismaCode = typeof rawCode === "string" && /^P[0-9]{4}$/u.test(rawCode) ? rawCode : null;
+  const safeNames = new Set(["PrismaClientInitializationError", "PrismaClientKnownRequestError",
+    "PrismaClientUnknownRequestError", "PrismaClientValidationError", "TypeError"]);
+  const safeName = safeNames.has(error?.name) ? error.name.replace(/([a-z])([A-Z])/gu, "$1_$2").toUpperCase() : null;
+  requireCondition(false, [stage, prismaCode, safeName].filter(Boolean).join("_"));
 }
 
 function validateTargetUrls(env) {

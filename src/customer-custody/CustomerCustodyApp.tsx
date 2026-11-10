@@ -8,7 +8,7 @@ import { CustomerCustodyApi, customerCustodyErrorText, type CustomerStorageLot, 
 type Props = Readonly<{ authorization?: string; effectivePermissions: readonly string[]; deniedPermissions: readonly string[]; onUnauthorized(): void }>;
 type StorageGroup = Readonly<{ id: CustomerStorageType; label: string; shortLabel: string; description: string; empty: string; inventoryHelp: string; icon: typeof Archive }>;
 const BUTTON = "inline-flex min-h-9 items-center justify-center gap-1.5 rounded border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40";
-const PRIMARY = `${BUTTON} border-[#003366] bg-[#003366] text-white hover:bg-[#00264d]`;
+const PRIMARY = "inline-flex min-h-9 items-center justify-center gap-1.5 rounded border border-[#003366] bg-[#003366] px-3 text-xs font-semibold text-white hover:bg-[#00264d] disabled:opacity-40";
 const STATUS: Record<string, string> = { RECEIVED: "Recibido", STORED: "Almacenado", PARTIALLY_RELEASED: "Salida parcial", RELEASE_PREPARED: "Salida preparada", RELEASED: "Entregado", HOLD: "Retenido" };
 const MOVEMENT: Record<string, string> = { RECEIVE: "Recepción", PUT_AWAY: "Ubicación", TRANSFER: "Traslado", COUNT: "Conteo", PREPARE_EXIT: "Preparación", DISPATCH: "Salida", RETURN: "Retorno", ADJUST: "Ajuste", HOLD: "Retención", RELEASE_HOLD: "Liberación" };
 const STORAGE_GROUPS: readonly StorageGroup[] = Object.freeze([

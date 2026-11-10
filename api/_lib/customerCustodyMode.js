@@ -2,8 +2,8 @@ import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
 import { CustomerCustodyError } from "./customerCustodyContract.js";
 
 export const CUSTOMER_CUSTODY_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" });
-export const CUSTOMER_CUSTODY_PREVIEW_BATCH = "V17-CUSTOMER-CUSTODY-21A-PREVIEW";
-export const CUSTOMER_CUSTODY_PREVIEW_BRANCH = "feature/v17-customer-custody-21a";
+export const CUSTOMER_CUSTODY_PREVIEW_BATCH = "V17-STORAGE-COMMERCIAL-CONTRACT-22A-PREVIEW";
+export const CUSTOMER_CUSTODY_PREVIEW_BRANCH = "feature/v17-storage-commercial-contract-22a";
 function fail(code, status) { throw new CustomerCustodyError(code, status); }
 export function resolveCustomerCustodyMode(env = process.env, req) {
   const mode = env.CUSTOMER_CUSTODY_API_MODE ?? CUSTOMER_CUSTODY_MODES.DISABLED;

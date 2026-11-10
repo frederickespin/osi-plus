@@ -136,7 +136,7 @@ const validPreview = await invoke(previewHandler(), {});
 check("Preview exacto verifica destino y permite lectura", validPreview.statusCode === 200 && previewCalls.database === 1 && previewCalls.context === 1 && previewCalls.execute === 1);
 const featurePreview = await invoke(previewHandler({ env: { ...previewEnv, VERCEL_GIT_COMMIT_REF: "feature/v17-administration-users-roles-19b" } }), {});
 check("rama exacta del incremento permite Preview", featurePreview.statusCode === 200);
-const custodyPreview = await invoke(previewHandler({ env: { ...previewEnv, VERCEL_GIT_COMMIT_REF: "feature/v17-customer-custody-21a" } }), {});
+const custodyPreview = await invoke(previewHandler({ env: { ...previewEnv, VERCEL_GIT_COMMIT_REF: "feature/v17-storage-commercial-contract-22a" } }), {});
 check("rama exacta de custodia permite administrar accesos", custodyPreview.statusCode === 200);
 const previewHead = await invoke(previewHandler(), { method: "HEAD" });
 check("Preview HEAD verifica destino y no devuelve cuerpo", previewHead.statusCode === 200 && previewHead.body === undefined);

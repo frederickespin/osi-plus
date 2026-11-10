@@ -231,6 +231,7 @@ model Tenant {
   warehouseAccessGrants             WarehouseAccessGrant[]
   customerStorageLots               CustomerStorageLot[]
   customerStorageAuthorizations     CustomerStorageAuthorization[]
+  customerStorageAgreements         CustomerStorageAgreement[]
   customerStoredItems               CustomerStoredItem[]
   customerCustodyCommands           CustomerCustodyCommand[]
   customerCustodyMovements          CustomerCustodyMovement[]
@@ -253,6 +254,8 @@ model TenantMembership {
   customerCustodyMovementsAsActor                                                                                                               CustomerCustodyMovement[]           @relation("CustomerCustodyMovementActor")
   customerCustodyLocationEventsAsActor                                                                                                          CustomerCustodyLocationStateEvent[] @relation("CustomerCustodyLocationStateEventActor")
   customerStorageAuthorizationsAsActor                                                                                                          CustomerStorageAuthorization[]      @relation("CustomerStorageAuthorizationActor")
+  customerStorageAgreementsCreated                                                                                                              CustomerStorageAgreement[]          @relation("CustomerStorageAgreementCreator")
+  customerStorageAgreementsActivated                                                                                                            CustomerStorageAgreement[]          @relation("CustomerStorageAgreementActivator")
   fleetPrimaryDriverEvents                                                                                                                      FleetDriverPrimaryEvent[]           @relation("FleetPrimaryDriver")
   fleetPrimaryAssignedEvents                                                                                                                    FleetDriverPrimaryEvent[]           @relation("FleetPrimaryAssigner")
   fleetTemporaryDriverAuthorizations                                                                                                            FleetDriverAuthorization[]          @relation("FleetTemporaryDriver")
@@ -679,6 +682,7 @@ model Client {
   clientTemporaryAccesses       ClientTemporaryAccess[]
   customerStorageLots           CustomerStorageLot[]
   customerStorageAuthorizations CustomerStorageAuthorization[]
+  customerStorageAgreements     CustomerStorageAgreement[]
 
   @@unique([tenantId, id], map: "osi_clients_tenant_id_id_key")
   @@unique([tenantId, publicRef], map: "osi_clients_tenant_id_public_ref_key")
@@ -1652,6 +1656,7 @@ model PipelineCase {
   clientTemporaryAccesses       ClientTemporaryAccess[]
   customerStorageLots           CustomerStorageLot[]
   customerStorageAuthorizations CustomerStorageAuthorization[]
+  customerStorageAgreements     CustomerStorageAgreement[]
   projects                      Project[]                              @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -1836,6 +1841,7 @@ model PipelineCaseServiceRevision {
   surveyDrafts                  SurveyDraft[]
   surveyPublications            SurveyPublication[]
   customerStorageAuthorizations CustomerStorageAuthorization[]
+  customerStorageAgreements     CustomerStorageAgreement[]
 
   @@unique([tenantId, id], map: "pipeline_case_service_revisions_tenant_id_id_key")
   @@unique([tenantId, selectionRef], map: "pipeline_case_service_revisions_tenant_ref_key")
@@ -4444,6 +4450,7 @@ model CustomerStorageAuthorization {
   pipelineCaseId           String                             @map("pipeline_case_id")
   serviceRevisionId        String                             @map("service_revision_id")
   warehouseId              String                             @map("warehouse_id")
+  storageAgreementId       String?                            @map("storage_agreement_id")
   authorizationCode        String                             @map("authorization_code") @db.VarChar(64)
   movementType             CustomerStorageAuthorizationType   @map("movement_type")
   storageType              CustomerStorageType                @map("storage_type")
@@ -4467,6 +4474,7 @@ model CustomerStorageAuthorization {
   pipelineCase             PipelineCase                       @relation(fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_case_client_fkey")
   serviceRevision          PipelineCaseServiceRevision        @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_service_revision_fkey")
   warehouse                MaterialWarehouse                  @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_warehouse_fkey")
+  storageAgreement         CustomerStorageAgreement?          @relation(fields: [tenantId, storageAgreementId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_agreement_fkey")
   authorizedByMembership   TenantMembership                   @relation("CustomerStorageAuthorizationActor", fields: [tenantId, authorizedByMembershipId, authorizedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_actor_fkey")
   storageLot               CustomerStorageLot?
 
@@ -4476,7 +4484,94 @@ model CustomerStorageAuthorization {
   @@index([tenantId, movementType, status, validUntil], map: "customer_storage_authorizations_available_idx")
   @@index([tenantId, pipelineCaseId, authorizedAt(sort: Desc)], map: "customer_storage_authorizations_case_idx")
   @@index([tenantId, warehouseId, movementType, status], map: "customer_storage_authorizations_warehouse_idx")
+  @@index([tenantId, storageAgreementId, movementType, status], map: "customer_storage_authorizations_agreement_idx")
   @@map("customer_storage_authorizations")
+}
+
+model CustomerStorageAgreement {
+  id                      String                         @id @default(cuid())
+  agreementRef            String                         @default(dbgenerated("gen_random_uuid()")) @map("agreement_ref") @db.Uuid
+  tenantId                String                         @map("tenant_id")
+  clientId                String                         @map("client_id")
+  pipelineCaseId          String                         @map("pipeline_case_id")
+  serviceRevisionId       String                         @map("service_revision_id")
+  acceptedQuoteRevisionId String                         @map("accepted_quote_revision_id")
+  agreementCode           String                         @map("agreement_code") @db.VarChar(64)
+  status                  CustomerStorageAgreementStatus @default(DRAFT)
+  holderName              String                         @map("holder_name") @db.VarChar(200)
+  identityType            String                         @map("identity_type") @db.VarChar(40)
+  identityNumberMasked    String                         @map("identity_number_masked") @db.VarChar(40)
+  identityEvidenceRef     String                         @map("identity_evidence_ref") @db.VarChar(191)
+  billingPartyType        StorageBillingPartyType        @map("billing_party_type")
+  billingName             String                         @map("billing_name") @db.VarChar(200)
+  billingTaxId            String?                        @map("billing_tax_id") @db.VarChar(40)
+  billingEmail            String                         @map("billing_email") @db.VarChar(320)
+  billingAddress          String                         @map("billing_address") @db.VarChar(500)
+  billingCurrency         String                         @map("billing_currency") @db.Char(3)
+  billingFrequency        StorageBillingFrequency        @default(MONTHLY) @map("billing_frequency")
+  invoiceDay              Int                            @map("invoice_day")
+  startDate               DateTime                       @map("start_date") @db.Date
+  estimatedDurationMonths Int                            @map("estimated_duration_months")
+  estimatedEndDate        DateTime                       @map("estimated_end_date") @db.Date
+  capacityBasis           StorageCapacityBasis           @map("capacity_basis")
+  capacityQuantity        Decimal                        @map("capacity_quantity") @db.Decimal(12, 3)
+  termsVersion            String                         @map("terms_version") @db.VarChar(80)
+  acceptanceEvidenceRef   String?                        @map("acceptance_evidence_ref") @db.VarChar(191)
+  acceptedAt              DateTime?                      @map("accepted_at") @db.Timestamptz(6)
+  signedAt                DateTime?                      @map("signed_at") @db.Timestamptz(6)
+  activatedAt             DateTime?                      @map("activated_at") @db.Timestamptz(6)
+  createdByMembershipId   String                         @map("created_by_membership_id")
+  createdByUserId         String                         @map("created_by_user_id")
+  activatedByMembershipId String?                        @map("activated_by_membership_id")
+  activatedByUserId       String?                        @map("activated_by_user_id")
+  version                 Int                            @default(1)
+  createdAt               DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                  Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_agreements_tenant_fkey")
+  client                  Client                         @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_agreements_client_fkey")
+  pipelineCase            PipelineCase                   @relation(fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_agreements_case_client_fkey")
+  serviceRevision         PipelineCaseServiceRevision    @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_agreements_service_revision_fkey")
+  acceptedQuoteRevision   QuoteProposalRevision          @relation(fields: [tenantId, acceptedQuoteRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_agreements_quote_revision_fkey")
+  createdByMembership     TenantMembership               @relation("CustomerStorageAgreementCreator", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_agreements_creator_fkey")
+  activatedByMembership   TenantMembership?              @relation("CustomerStorageAgreementActivator", fields: [tenantId, activatedByMembershipId, activatedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_agreements_activator_fkey")
+  authorizations          CustomerStorageAuthorization[]
+
+  @@unique([tenantId, id], map: "customer_storage_agreements_tenant_id_key")
+  @@unique([tenantId, agreementRef], map: "customer_storage_agreements_tenant_ref_key")
+  @@unique([tenantId, agreementCode], map: "customer_storage_agreements_code_key")
+  @@unique([tenantId, acceptedQuoteRevisionId], map: "customer_storage_agreements_quote_key")
+  @@index([tenantId, pipelineCaseId, status, createdAt(sort: Desc)], map: "customer_storage_agreements_case_status_idx")
+  @@index([tenantId, clientId, status, startDate], map: "customer_storage_agreements_client_status_idx")
+  @@map("customer_storage_agreements")
+}
+
+enum CustomerStorageAgreementStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  ENDED
+  CANCELLED
+}
+
+enum StorageBillingPartyType {
+  CLIENT
+  COMPANY
+  THIRD_PARTY
+}
+
+enum StorageBillingFrequency {
+  MONTHLY
+  WEEKLY
+  QUARTERLY
+  CUSTOM
+}
+
+enum StorageCapacityBasis {
+  TWENTY_FOOT_CONTAINER
+  FORTY_FOOT_CONTAINER
+  CUBIC_METER
+  FIXED_SPACE
+  CUSTOM
 }
 
 enum CustomerStorageAuthorizationType {
@@ -5922,43 +6017,44 @@ model QuoteProposal {
 }
 
 model QuoteProposalRevision {
-  id                          String                  @id @default(cuid())
-  revisionRef                 String                  @default(dbgenerated("gen_random_uuid()")) @map("revision_ref") @db.Uuid
-  tenantId                    String                  @map("tenant_id")
-  proposalId                  String                  @map("proposal_id")
-  costingRevisionId           String                  @map("costing_revision_id")
+  id                          String                    @id @default(cuid())
+  revisionRef                 String                    @default(dbgenerated("gen_random_uuid()")) @map("revision_ref") @db.Uuid
+  tenantId                    String                    @map("tenant_id")
+  proposalId                  String                    @map("proposal_id")
+  costingRevisionId           String                    @map("costing_revision_id")
   revision                    Int
   state                       QuoteProposalState
-  proposalName                String                  @map("proposal_name") @db.VarChar(120)
-  costingLogicalSha256        String                  @map("costing_logical_sha256") @db.Char(64)
-  currency                    String                  @db.Char(3)
-  issueDate                   DateTime                @map("issue_date") @db.Date
-  validUntil                  DateTime                @map("valid_until") @db.Date
-  commercialContextSnapshot   Json                    @map("commercial_context_snapshot")
-  payerSnapshot               Json                    @map("payer_snapshot")
-  termsSnapshot               Json                    @map("terms_snapshot")
-  exchangeSnapshot            Json?                   @map("exchange_snapshot")
-  discountSnapshot            Json?                   @map("discount_snapshot")
-  totalsSnapshot              Json                    @map("totals_snapshot")
-  marginAuthorizationSnapshot Json?                   @map("margin_authorization_snapshot")
-  internalSnapshot            Json                    @map("internal_snapshot")
-  clientSnapshot              Json                    @map("client_snapshot")
-  logicalSha256               String                  @map("logical_sha256") @db.Char(64)
-  supersedesRevisionId        String?                 @map("supersedes_revision_id")
-  createdByMembershipId       String                  @map("created_by_membership_id")
-  createdByUserId             String                  @map("created_by_user_id")
-  createdAt                   DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant                      Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_tenant_fkey")
-  proposal                    QuoteProposal           @relation(fields: [tenantId, proposalId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_proposal_fkey")
-  costingRevision             CostingRevision         @relation(fields: [tenantId, costingRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_costing_fkey")
-  supersedes                  QuoteProposalRevision?  @relation("QuoteRevisionHistory", fields: [tenantId, supersedesRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_supersedes_fkey")
-  supersededBy                QuoteProposalRevision[] @relation("QuoteRevisionHistory")
-  createdByMembership         TenantMembership        @relation("QuoteProposalRevisionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_actor_fkey")
+  proposalName                String                    @map("proposal_name") @db.VarChar(120)
+  costingLogicalSha256        String                    @map("costing_logical_sha256") @db.Char(64)
+  currency                    String                    @db.Char(3)
+  issueDate                   DateTime                  @map("issue_date") @db.Date
+  validUntil                  DateTime                  @map("valid_until") @db.Date
+  commercialContextSnapshot   Json                      @map("commercial_context_snapshot")
+  payerSnapshot               Json                      @map("payer_snapshot")
+  termsSnapshot               Json                      @map("terms_snapshot")
+  exchangeSnapshot            Json?                     @map("exchange_snapshot")
+  discountSnapshot            Json?                     @map("discount_snapshot")
+  totalsSnapshot              Json                      @map("totals_snapshot")
+  marginAuthorizationSnapshot Json?                     @map("margin_authorization_snapshot")
+  internalSnapshot            Json                      @map("internal_snapshot")
+  clientSnapshot              Json                      @map("client_snapshot")
+  logicalSha256               String                    @map("logical_sha256") @db.Char(64)
+  supersedesRevisionId        String?                   @map("supersedes_revision_id")
+  createdByMembershipId       String                    @map("created_by_membership_id")
+  createdByUserId             String                    @map("created_by_user_id")
+  createdAt                   DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_tenant_fkey")
+  proposal                    QuoteProposal             @relation(fields: [tenantId, proposalId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_proposal_fkey")
+  costingRevision             CostingRevision           @relation(fields: [tenantId, costingRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_costing_fkey")
+  supersedes                  QuoteProposalRevision?    @relation("QuoteRevisionHistory", fields: [tenantId, supersedesRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_supersedes_fkey")
+  supersededBy                QuoteProposalRevision[]   @relation("QuoteRevisionHistory")
+  createdByMembership         TenantMembership          @relation("QuoteProposalRevisionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "quote_proposal_revisions_actor_fkey")
   lines                       QuoteLine[]
   issues                      QuoteIssue[]
   dispatches                  QuoteDispatch[]
   decisions                   QuoteClientDecision[]
   communicationRecords        CommunicationRecord[]
+  customerStorageAgreement    CustomerStorageAgreement?
 
   @@unique([tenantId, id], map: "quote_proposal_revisions_tenant_id_key")
   @@unique([tenantId, revisionRef], map: "quote_proposal_revisions_tenant_ref_key")

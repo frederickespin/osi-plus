@@ -82,6 +82,7 @@ const FACTORY_GROUPS = [
   ["TENANT", "customerCustodyHttp.js", "createCustomerCustodyHandler", [
     "api/customer-custody/access-grants/[grantRef].js", "api/customer-custody/access-grants/index.js",
     "api/customer-custody/lots/index.js", "api/customer-custody/movements/index.js", "api/customer-custody/reception-actions/index.js", "api/customer-custody/authorizations/index.js",
+    "api/customer-custody/storage-agreements/[agreementRef].js", "api/customer-custody/storage-agreements/index.js",
   ]],
   ["TENANT", "crmServicesHttp.js", "createCrmServicesHandler", [
     "api/crm/services/cases/[caseRef].js", "api/crm/services/catalog-modes/index.js", "api/crm/services/catalog/[serviceRef].js",

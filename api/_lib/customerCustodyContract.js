@@ -13,6 +13,9 @@ const UNIT_TYPES = new Set(["BOX", "PACKAGE", "BUNDLE", "PALLET", "LOOSE_ITEM", 
 const INSPECTION_RESULTS = new Set(["CLEARED", "HOLD"]);
 const LOCATION_STATUSES = new Set(["AVAILABLE", "IN_USE", "FULL", "BLOCKED", "RESERVED_EXIT", "REVIEW_REQUIRED"]);
 const AUTHORIZATION_TYPES = new Set(["ENTRY", "EXIT"]);
+const BILLING_PARTY_TYPES = new Set(["CLIENT", "COMPANY", "THIRD_PARTY"]);
+const BILLING_FREQUENCIES = new Set(["MONTHLY", "WEEKLY", "QUARTERLY", "CUSTOM"]);
+const STORAGE_CAPACITY_BASES = new Set(["TWENTY_FOOT_CONTAINER", "FORTY_FOOT_CONTAINER", "CUBIC_METER", "FIXED_SPACE", "CUSTOM"]);
 
 export class CustomerCustodyError extends Error {
   constructor(code, status = 400) { super(code); this.name = "CustomerCustodyError"; this.code = code; this.status = status; }
@@ -32,6 +35,7 @@ function integer(value, min = 1, max = 1_000_000, optional = false) { if (option
 function decimal(value, optional = false) { if (optional && (value === null || value === undefined)) return null; if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1_000_000_000) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return value; }
 function enumeration(value, allowed) { const result = text(value, 80); if (!allowed.has(result)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
 function instant(value, optional = false) { const result = text(value, 40, optional); if (result === null) return null; if (new Date(result).toISOString() !== result) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
+function dateOnly(value) { const result = text(value, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(result) || new Date(`${result}T00:00:00.000Z`).toISOString().slice(0, 10) !== result) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
 function evidence(value) { if (value === null) return null; if (!Array.isArray(value) || value.length > 12 || value.some((item) => typeof item !== "string" || item.length < 1 || item.length > 500)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return Object.freeze([...value]); }
 function textList(value, maxItems = 12) { if (!Array.isArray(value) || value.length < 1 || value.length > maxItems) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); const rows = value.map((item) => text(item, 120)); if (new Set(rows).size !== rows.length) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return Object.freeze(rows); }
 function command(value, operation, payload) { const requestId = text(value.requestId, 191); const payloadHash = text(value.payloadHash, 64); const body = Object.fromEntries(Object.entries(value).filter(([key]) => !["requestId", "payloadHash"].includes(key))); if (!SHA.test(payloadHash) || payloadHash !== custodyPayloadHash({ operation, requestId, ...body })) custodyFail("CUSTOMER_CUSTODY_PAYLOAD_HASH_MISMATCH"); return Object.freeze({ operation, requestId, payloadHash, ...payload }); }
@@ -47,13 +51,28 @@ export function normalizeCustodyReceipt(input) {
 }
 
 export function normalizeStorageAuthorizationCreate(input) {
-  const value = object(input); exact(value, ["requestId", "payloadHash", "caseRef", "serviceSelectionRef", "movementType", "storageType", "intakeSource", "warehouseRef", "plannedAt", "validUntil", "manifestCode", "originText", "destinationText", "instructions"]);
+  const value = object(input); exact(value, ["requestId", "payloadHash", "agreementRef", "caseRef", "serviceSelectionRef", "movementType", "storageType", "intakeSource", "warehouseRef", "plannedAt", "validUntil", "manifestCode", "originText", "destinationText", "instructions"]);
   const movementType = enumeration(value.movementType, AUTHORIZATION_TYPES);
   const intakeSource = value.intakeSource === null ? null : enumeration(value.intakeSource, INTAKE_SOURCES);
   if ((movementType === "ENTRY") !== Boolean(intakeSource)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   const plannedAt = instant(value.plannedAt); const validUntil = instant(value.validUntil);
   if (new Date(validUntil) <= new Date(plannedAt)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
-  return command(value, "CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { caseRef: uuid(value.caseRef), serviceSelectionRef: uuid(value.serviceSelectionRef), movementType, storageType: enumeration(value.storageType, STORAGE_TYPES), intakeSource, warehouseRef: uuid(value.warehouseRef), plannedAt, validUntil, manifestCode: text(value.manifestCode, 80, true), originText: text(value.originText, 500, true), destinationText: text(value.destinationText, 500, true), instructions: text(value.instructions, 2000, true) });
+  return command(value, "CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { agreementRef: uuid(value.agreementRef), caseRef: uuid(value.caseRef), serviceSelectionRef: uuid(value.serviceSelectionRef), movementType, storageType: enumeration(value.storageType, STORAGE_TYPES), intakeSource, warehouseRef: uuid(value.warehouseRef), plannedAt, validUntil, manifestCode: text(value.manifestCode, 80, true), originText: text(value.originText, 500, true), destinationText: text(value.destinationText, 500, true), instructions: text(value.instructions, 2000, true) });
+}
+
+export function normalizeStorageAgreementSave(input) {
+  const value = object(input); exact(value, ["requestId", "payloadHash", "caseRef", "serviceSelectionRef", "acceptedProposalRevisionRef", "holderName", "identityType", "identityNumberMasked", "identityEvidenceRef", "billingPartyType", "billingName", "billingTaxId", "billingEmail", "billingAddress", "billingCurrency", "billingFrequency", "invoiceDay", "startDate", "estimatedDurationMonths", "estimatedEndDate", "capacityBasis", "capacityQuantity", "termsVersion"]);
+  const startDate = dateOnly(value.startDate); const estimatedEndDate = dateOnly(value.estimatedEndDate);
+  if (estimatedEndDate < startDate) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  const billingEmail = text(value.billingEmail, 320); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  const billingCurrency = text(value.billingCurrency, 3); if (!/^[A-Z]{3}$/.test(billingCurrency)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  return command(value, "CUSTOMER_STORAGE_AGREEMENT_SAVE", { caseRef: uuid(value.caseRef), serviceSelectionRef: uuid(value.serviceSelectionRef), acceptedProposalRevisionRef: uuid(value.acceptedProposalRevisionRef), holderName: text(value.holderName, 200), identityType: text(value.identityType, 40), identityNumberMasked: text(value.identityNumberMasked, 40), identityEvidenceRef: text(value.identityEvidenceRef, 191), billingPartyType: enumeration(value.billingPartyType, BILLING_PARTY_TYPES), billingName: text(value.billingName, 200), billingTaxId: text(value.billingTaxId, 40, true), billingEmail, billingAddress: text(value.billingAddress, 500), billingCurrency, billingFrequency: enumeration(value.billingFrequency, BILLING_FREQUENCIES), invoiceDay: integer(value.invoiceDay, 1, 28), startDate, estimatedDurationMonths: integer(value.estimatedDurationMonths, 1, 600), estimatedEndDate, capacityBasis: enumeration(value.capacityBasis, STORAGE_CAPACITY_BASES), capacityQuantity: decimal(value.capacityQuantity), termsVersion: text(value.termsVersion, 80) });
+}
+
+export function normalizeStorageAgreementActivate(input, agreementRef) {
+  const value = object(input); exact(value, ["requestId", "payloadHash", "expectedVersion", "acceptedAt", "signedAt", "acceptanceEvidenceRef"]);
+  const acceptedAt = instant(value.acceptedAt); const signedAt = instant(value.signedAt); if (new Date(signedAt) < new Date(acceptedAt)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  return command(value, "CUSTOMER_STORAGE_AGREEMENT_ACTIVATE", { agreementRef: uuid(agreementRef), expectedVersion: integer(value.expectedVersion), acceptedAt, signedAt, acceptanceEvidenceRef: text(value.acceptanceEvidenceRef, 191) });
 }
 
 export function normalizeCustodyReceptionAction(input) {

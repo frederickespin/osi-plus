@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, BellRing, ChevronLeft, ChevronRight, Filter, MapPin, Pencil, Plus, Search, TriangleAlert } from "lucide-react";
+import { AlertCircle, ArrowLeft, BadgeCheck, BellRing, BriefcaseBusiness, Calculator, ChevronLeft, ChevronRight, ClipboardCheck, FileCheck2, Filter, MapPin, Pencil, Plus, Route, Search, TriangleAlert, type LucideIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -72,7 +72,6 @@ type AlertableCase = Readonly<{
   owner: unknown | null;
   requiresSurvey: boolean;
   destinationLocation: string | null;
-  estimatedCbm: number | null;
 }>;
 
 function factualAlerts(item: AlertableCase) {
@@ -81,12 +80,7 @@ function factualAlerts(item: AlertableCase) {
     !item.owner ? "Sin asignar" : null,
     item.requiresSurvey ? "Survey requerido" : null,
     !item.destinationLocation ? "Destino pendiente" : null,
-    item.estimatedCbm === null || item.estimatedCbm <= 0 ? "Volumen pendiente" : null,
   ].filter((value): value is string => Boolean(value));
-}
-
-function formatCbm(value: number | null) {
-  return value === null || value <= 0 ? "Pendiente de Survey o datos proporcionados" : `${new Intl.NumberFormat("es-DO", { maximumFractionDigits: 2 }).format(value)} m³`;
 }
 
 function SummaryStrip({ value, role }: { value: CrmPipelineSummary | null; role: string }) {
@@ -161,29 +155,71 @@ function SummaryRow({ label, value, note }: { label: string; value: string; note
   return <div className="grid gap-1 border-b border-slate-100 py-2 last:border-b-0 sm:grid-cols-[150px_minmax(0,1fr)]"><dt className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</dt><dd className="min-w-0 text-sm font-semibold text-slate-900"><span className="break-words">{value}</span>{note && <span className="mt-0.5 block text-xs font-normal leading-5 text-slate-500">{note}</span>}</dd></div>;
 }
 
-function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, mutationApi, onClear, onReload }: {
+type ProgressTone = "complete" | "current" | "attention" | "pending";
+type ProgressStage = Readonly<{ label: string; state: string; tone: ProgressTone; icon: LucideIcon; count?: number }>;
+const STATUS_INDEX = Object.freeze(Object.fromEntries(PIPELINE_CASE_STATUSES.map((status, index) => [status, index])) as Record<PipelineCaseStatus, number>);
+const PROGRESS_TONE_CLASS: Record<ProgressTone, string> = {
+  complete: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  current: "border-sky-400 bg-sky-50 text-sky-700 ring-2 ring-sky-100",
+  attention: "border-amber-300 bg-amber-50 text-amber-700",
+  pending: "border-slate-200 bg-white text-slate-400",
+};
+
+function reached(status: PipelineCaseStatus, checkpoint: PipelineCaseStatus) {
+  return STATUS_INDEX[status] >= STATUS_INDEX[checkpoint];
+}
+
+function progressStages(item: CrmPipelineCaseDetail): readonly ProgressStage[] {
+  const surveyComplete = reached(item.status, "SURVEY_COMPLETED");
+  const costingComplete = reached(item.status, "QUOTE_DRAFT");
+  const quoteComplete = item.quoteCount > 0;
+  const approved = ["WON", "APPROVED", "OPS_HANDOFF"].includes(item.status);
+  return [
+    { label: "Servicios", state: item.serviceType ? "Definido" : "Requiere definición", tone: item.serviceType ? "complete" : "attention", icon: BriefcaseBusiness },
+    { label: "Survey", state: !item.requiresSurvey ? "No requerido" : surveyComplete ? "Completado" : ["SURVEY_PLANNING", "SURVEY_SCHEDULED"].includes(item.status) ? "En curso" : "Requerido", tone: !item.requiresSurvey || surveyComplete ? "complete" : ["SURVEY_PLANNING", "SURVEY_SCHEDULED"].includes(item.status) ? "current" : "attention", icon: ClipboardCheck },
+    { label: "Costos", state: costingComplete ? "Confirmados" : item.status === "PRICING_IN_PROGRESS" ? "En preparación" : "Pendientes", tone: costingComplete ? "complete" : item.status === "PRICING_IN_PROGRESS" ? "current" : "pending", icon: Calculator },
+    { label: "Cotización", state: quoteComplete ? `${item.quoteCount} de 3 propuesta${item.quoteCount === 1 ? "" : "s"}` : ["QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION"].includes(item.status) ? "En curso" : "Pendiente", tone: quoteComplete ? "complete" : ["QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION"].includes(item.status) ? "current" : "pending", icon: FileCheck2, count: item.quoteCount || undefined },
+    { label: "Aprobación", state: approved ? "Aprobada" : ["QUOTE_SENT", "NEGOTIATION"].includes(item.status) ? "En decisión" : "Pendiente", tone: approved ? "complete" : ["QUOTE_SENT", "NEGOTIATION"].includes(item.status) ? "current" : "pending", icon: BadgeCheck },
+    { label: "Coordinación", state: item.status === "OPS_HANDOFF" ? "Entregada" : item.status === "APPROVED" ? "Lista para coordinar" : "Pendiente", tone: item.status === "OPS_HANDOFF" ? "complete" : item.status === "APPROVED" ? "current" : "pending", icon: Route },
+  ];
+}
+
+function CaseProgressHeader({ item, onOpenCase }: { item: CrmPipelineCaseDetail; onOpenCase(caseRef: string): void }) {
+  if (["LOST", "OPS_HANDOFF"].includes(item.status)) return null;
+  return <div data-testid="commercial-case-progress" className="flex min-w-0 items-center gap-1.5 overflow-x-auto" role="list" aria-label="Etapas del caso abierto">
+    {progressStages(item).map(({ label, state, tone, icon: Icon, count }) => <span key={label} role="listitem"><button type="button" title={`${label}: ${state}`} aria-label={`${label}: ${state}. Ver en la Ficha del Caso`} onClick={() => onOpenCase(item.caseRef)} className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition-colors hover:brightness-95 ${PROGRESS_TONE_CLASS[tone]}`}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        <span className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${tone === "complete" ? "bg-emerald-500" : tone === "current" ? "bg-sky-500" : tone === "attention" ? "bg-amber-500" : "bg-slate-300"}`} aria-hidden="true" />
+        {count !== undefined && <span className="absolute -bottom-1 -right-1 min-w-4 rounded-full bg-[#003366] px-1 text-center text-[9px] font-black leading-4 text-white" aria-hidden="true">{count}</span>}
+      </button></span>)}
+  </div>;
+}
+
+function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, mutationApi, onClear, onReload, onOpenCase }: {
   state: DetailState;
   mutationEnvironmentEnabled: boolean;
   mutationAccess: CrmCaseMutationUiAccess;
   mutationApi: CrmCaseMutationApi;
   onClear(): void;
   onReload(): void;
+  onOpenCase(caseRef: string): void;
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const item = state.value;
   const alerts = item ? factualAlerts(item) : [];
   const canEdit = Boolean(item && mutationEnvironmentEnabled && !["APPROVED", "OPS_HANDOFF"].includes(item.status) && (mutationAccess.canUpdateAny || (mutationAccess.canUpdateOwn && item.owner?.isCurrentActor)));
   const initial = useMemo<CrmCaseFields | undefined>(() => item ? ({ clientRef: item.client?.clientRef || null, mode: item.mode || "LOCAL", serviceType: item.serviceType || "", customerType: (item.customerType || "L4_PERSONAL") as CrmCaseFields["customerType"], estimatedCbm: item.estimatedCbm || 0, requiresSurvey: item.requiresSurvey, surveyMethod: (item.surveyMethod || "NO_APLICA") as CrmCaseFields["surveyMethod"], originLocation: item.originLocation || "", destinationLocation: item.destinationLocation || "", destinationContracted: item.destinationContracted ?? true }) : undefined, [item]);
-  return <section data-testid="commercial-case-summary" className="min-h-full bg-white" aria-labelledby="case-summary-heading">
+  return <section data-testid="commercial-case-summary" className="h-full overflow-y-auto bg-white" aria-labelledby="case-summary-heading">
     <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
       <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#0070a8]">Caso seleccionado</p><h2 id="case-summary-heading" className="mt-1 text-xl font-black text-[#003366]">Resumen comercial</h2></div>
       <Button size="sm" variant="outline" onClick={onClear}><ArrowLeft />Volver al Inbox</Button>
+      {item && <div className="flex w-full items-center justify-between gap-3 border-t border-slate-100 pt-2"><p className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-slate-500">Flujo del caso</p><CaseProgressHeader item={item} onOpenCase={onOpenCase} /></div>}
     </header>
     {state.loading && <div className="grid min-h-[40vh] place-items-center text-sm text-slate-500">Cargando resumen autorizado…</div>}
     {state.error && <Alert variant="destructive" role="alert" className="m-4"><AlertCircle /><AlertTitle>{state.error.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(state.error)}<Button className="mt-3" size="sm" variant="outline" onClick={onReload}>Reintentar lectura</Button></AlertDescription></Alert>}
     {item && <div className="divide-y divide-slate-200">
       <section className="px-4 py-3"><p className="font-mono text-sm font-black text-[#003366]">{item.caseCode}</p><p className="mt-1 text-base font-bold text-slate-900">{item.client?.displayName || "Sin Client vinculado"}</p><div className="mt-2 flex flex-wrap gap-2"><Badge data-status={item.status} variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">Etapa no publicada</span><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">SLA sin autoridad</span></div></section>
-      <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Identidad y servicio</h3><dl className="mt-1"><SummaryRow label="Vendedor" value={item.owner?.displayName || "Sin asignar"} /><SummaryRow label="Dir. origen" value={item.route?.origin?.compactAddress || "Dirección estructurada pendiente"} note={item.mode === "LOCAL" && item.route?.origin?.area === "INTERIOR" ? "⚠ Fuera de área METRO según clasificación publicada." : undefined} /><SummaryRow label="Dir. destino" value={item.route?.destination?.compactAddress || "Dirección estructurada pendiente"} note={item.mode === "LOCAL" && item.route?.destination?.area === "INTERIOR" ? "⚠ Fuera de área METRO según clasificación publicada." : undefined} /><SummaryRow label="Servicio" value={`${item.mode ? MODE_LABELS[item.mode] : "Modo no disponible"} · ${item.serviceType || "Tipo no disponible"}`} /><SummaryRow label="Volumen" value={formatCbm(item.estimatedCbm)} /></dl></section>
+      <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Identidad y servicio</h3><dl className="mt-1"><SummaryRow label="Vendedor" value={item.owner?.displayName || "Sin asignar"} /><SummaryRow label="Dir. origen" value={item.route?.origin?.compactAddress || "Dirección estructurada pendiente"} note={item.mode === "LOCAL" && item.route?.origin?.area === "INTERIOR" ? "⚠ Fuera de área METRO según clasificación publicada." : undefined} /><SummaryRow label="Dir. destino" value={item.route?.destination?.compactAddress || "Dirección estructurada pendiente"} note={item.mode === "LOCAL" && item.route?.destination?.area === "INTERIOR" ? "⚠ Fuera de área METRO según clasificación publicada." : undefined} /><SummaryRow label="Servicio" value={`${item.mode ? MODE_LABELS[item.mode] : "Modo no disponible"} · ${item.serviceType || "Tipo no disponible"}`} /></dl></section>
       <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Valor y seguimiento</h3><dl className="mt-1"><SummaryRow label="Precio" value="Sin cotización" note="No se infiere desde CBM, tarifas o borradores." /><SummaryRow label="Comunicación" value="Sin comunicación registrada" note="updatedAt no se utiliza como comunicación." /><SummaryRow label="Próximo paso" value="Pendiente de definir" note="Requiere una tarea o regla de workflow explícita." /></dl></section>
       <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Alertas</h3><div className="mt-2 flex flex-wrap gap-1.5">{alerts.length ? alerts.map((alert) => <span key={alert} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">{alert}</span>) : <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Sin alertas deterministas · SLA no calculable</span>}</div></section>
       <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Conteos publicados</h3><div className="mt-2 grid grid-cols-3 divide-x divide-slate-200 border-y border-slate-200 py-2 text-center"><div><strong className="block text-sm text-[#003366]">—</strong><span className="text-[10px] text-slate-500">Survey sin conteo</span></div><div><strong className="block text-sm text-[#003366]">{item.quoteCount}</strong><span className="text-[10px] text-slate-500">Cotizaciones</span></div><div><strong className="block text-sm text-[#003366]">{item.eventCount}</strong><span className="text-[10px] text-slate-500">Actividad</span></div></div></section>
@@ -266,6 +302,6 @@ export default function CommercialInboxModule({ authorization, mutationAccess, s
     {summaryError && <Alert variant="destructive" className="m-3"><AlertCircle /><AlertTitle>{summaryError.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(summaryError)}</AlertDescription></Alert>}
     {fullCaseWorkspace
       ? <main className="min-h-0 flex-1 bg-white" data-testid="commercial-full-case-workspace"><Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm font-semibold text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} authorization={authorization} servicesAccess={servicesAccess} logisticsAccess={logisticsAccess} logisticsEnabled={logisticsEnabled} costingAccess={costingAccess} costingEnabled={costingEnabled} quoteAccess={quoteAccess} quoteEnabled={quoteEnabled} surveyEnabled={surveyEnabled} surveySchedulingAccess={surveySchedulingAccess} commercialRelationshipsEnabled={commercialRelationshipsEnabled} commercialRelationshipsAccess={commercialRelationshipsAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} clientTemporaryAccessEnabled={clientTemporaryAccessEnabled} clientTemporaryAccess={clientTemporaryAccess} onNavigate={onNavigate} onUnauthorized={onUnauthorized} onOpenNavigation={onOpenNavigation} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense></main>
-      : <div data-testid="commercial-master-detail-layout" className="min-h-0 flex-1 xl:grid" style={{ gridTemplateColumns: "clamp(560px, 40%, 720px) minmax(0, 1fr)" }}><div className={selectedCaseRef ? "hidden xl:block" : "block"}>{queue}</div><main className={selectedCaseRef ? "block min-w-0 bg-white" : "hidden min-w-0 bg-white xl:block"}>{selectedCaseRef ? <CaseSummaryPanel state={detail} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onClear={() => setSelectedCaseRef(null)} onReload={() => { setDetailRefresh((value) => value + 1); setRefresh((value) => value + 1); }} /> : <SupervisionPanel summary={summary} role={role} />}</main></div>}
+      : <div data-testid="commercial-master-detail-layout" className="min-h-0 flex-1 xl:grid" style={{ gridTemplateColumns: "clamp(560px, 40%, 720px) minmax(0, 1fr)" }}><div className={selectedCaseRef ? "hidden xl:block" : "block"}>{queue}</div><main className={selectedCaseRef ? "block min-w-0 bg-white" : "hidden min-w-0 bg-white xl:block"}>{selectedCaseRef ? <CaseSummaryPanel state={detail} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onClear={() => setSelectedCaseRef(null)} onOpenCase={openFullCase} onReload={() => { setDetailRefresh((value) => value + 1); setRefresh((value) => value + 1); }} /> : <SupervisionPanel summary={summary} role={role} />}</main></div>}
   </section>;
 }

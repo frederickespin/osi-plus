@@ -73,7 +73,7 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
   const [communicationTarget, setCommunicationTarget] = useState<CommunicationTarget>(CASE_COMMUNICATIONS);
   const communicationsRegion = useRef<HTMLElement>(null);
   const item = state.value;
-  const alerts = item ? [!item.client ? "Cliente receptor pendiente" : null, !item.owner ? "Caso sin asignar" : null, item.requiresSurvey ? "Survey requerido" : null, !item.route?.destination ? "Destino estructurado pendiente" : null, item.estimatedCbm === null || item.estimatedCbm <= 0 ? "Volumen pendiente" : null].filter((value): value is string => Boolean(value)) : [];
+  const alerts = item ? [!item.client ? "Cliente receptor pendiente" : null, !item.owner ? "Caso sin asignar" : null, item.requiresSurvey ? "Survey requerido" : null, !item.route?.destination ? "Destino estructurado pendiente" : null].filter((value): value is string => Boolean(value)) : [];
   const servicesEnabled = isCrmServicesUiEnabled() && servicesAccess.canCaseView;
   const transportAccess = logisticsEnabled && costingEnabled ? resolveTransportUiAccess(logisticsAccess, costingAccess) : undefined;
   const tabs = TABS.filter(([value]) => (value !== "SERVICES" || servicesEnabled) && (value !== "SURVEY" || surveyEnabled && surveySchedulingAccess.canView) && (value !== "COSTING" || costingEnabled && costingAccess.canView) && (value !== "QUOTE" || quoteEnabled && quoteAccess.canView));

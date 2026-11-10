@@ -40,18 +40,18 @@ function validateTargetUrls(env) {
     direct = new URL(env.DIRECT_URL);
     application = new URL(env.DATABASE_URL);
   } catch {
-    requireCondition(false, "DIRECT_TARGET_INVALID");
+    requireCondition(false, "DIRECT_TARGET_INVALID_URL");
   }
   requireCondition(["postgres:", "postgresql:"].includes(direct.protocol)
-    && ["postgres:", "postgresql:"].includes(application.protocol)
-    && Boolean(direct.hostname) && !direct.hostname.includes("-pooler.")
-    && direct.hostname === application.hostname.replace(/-pooler(?=\.)/u, "")
-    && (direct.port || "5432") === (application.port || "5432")
-    && decodeURIComponent(direct.pathname.slice(1)) === "v17_consolidated_preview_10b"
-    && decodeURIComponent(application.pathname.slice(1)) === "v17_consolidated_preview_10b"
-    && direct.searchParams.getAll("schema").length === 1 && direct.searchParams.get("schema") === "osi"
-    && application.searchParams.getAll("schema").length === 1 && application.searchParams.get("schema") === "osi"
-    && !direct.hash && !application.hash, "DIRECT_TARGET_INVALID");
+    && ["postgres:", "postgresql:"].includes(application.protocol), "DIRECT_TARGET_INVALID_PROTOCOL");
+  requireCondition(Boolean(direct.hostname) && !direct.hostname.includes("-pooler."), "DIRECT_TARGET_INVALID_DIRECT_HOST");
+  requireCondition(direct.hostname === application.hostname.replace(/-pooler(?=\.)/u, ""), "DIRECT_TARGET_INVALID_HOST_PAIR");
+  requireCondition((direct.port || "5432") === (application.port || "5432"), "DIRECT_TARGET_INVALID_PORT_PAIR");
+  requireCondition(decodeURIComponent(direct.pathname.slice(1)) === "v17_consolidated_preview_10b"
+    && decodeURIComponent(application.pathname.slice(1)) === "v17_consolidated_preview_10b", "DIRECT_TARGET_INVALID_DATABASE");
+  requireCondition(direct.searchParams.getAll("schema").length === 1 && direct.searchParams.get("schema") === "osi"
+    && application.searchParams.getAll("schema").length === 1 && application.searchParams.get("schema") === "osi", "DIRECT_TARGET_INVALID_SCHEMA");
+  requireCondition(!direct.hash && !application.hash, "DIRECT_TARGET_INVALID_FRAGMENT");
 }
 
 export function previewMigrationOperation(env = process.env) {

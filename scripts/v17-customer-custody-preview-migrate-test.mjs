@@ -19,8 +19,8 @@ const base = {
   CUSTOMER_CUSTODY_API_BATCH: "V17-CUSTOMER-CUSTODY-21A-PREVIEW",
   VITE_CUSTOMER_CUSTODY_UI_MODE: "PREVIEW_REHEARSAL",
   VITE_CUSTOMER_CUSTODY_UI_BATCH: "V17-CUSTOMER-CUSTODY-21A-PREVIEW",
-  DIRECT_URL: "postgresql://u:p@ep-example.us-east-2.aws.neon.tech/v17_consolidated_preview_10b?sslmode=require&schema=osi",
-  DATABASE_URL: "postgresql://u:p@ep-example-pooler.us-east-2.aws.neon.tech/v17_consolidated_preview_10b?sslmode=require&schema=osi",
+  DIRECT_URL: "postgresql://synthetic.example.invalid/v17_consolidated_preview_10b?sslmode=require&schema=osi",
+  DATABASE_URL: "postgresql://synthetic-pooler.example.invalid/v17_consolidated_preview_10b?sslmode=require&schema=osi",
 };
 
 assert.deepEqual(previewMigrationOperation(base), { commit: sha });

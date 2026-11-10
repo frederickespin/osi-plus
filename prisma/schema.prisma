@@ -4162,38 +4162,40 @@ model MaterialWarehouse {
 }
 
 model MaterialLocation {
-  id                          String                          @id @default(cuid())
-  locationRef                 String                          @default(dbgenerated("gen_random_uuid()")) @map("location_ref") @db.Uuid
-  tenantId                    String                          @map("tenant_id")
-  warehouseId                 String                          @map("warehouse_id")
-  parentLocationId            String?                         @map("parent_location_id")
-  code                        String                          @db.VarChar(64)
-  name                        String                          @db.VarChar(160)
-  kind                        MaterialLocationKind
-  depth                       Int                             @default(0)
-  path                        String                          @db.VarChar(600)
-  status                      MaterialRecordStatus            @default(ACTIVE)
-  version                     Int                             @default(1)
-  createdAt                   DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                   DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant                      Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_tenant_fkey")
-  warehouse                   MaterialWarehouse               @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_warehouse_fkey")
-  parent                      MaterialLocation?               @relation("MaterialLocationTree", fields: [tenantId, parentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_parent_fkey")
-  children                    MaterialLocation[]              @relation("MaterialLocationTree")
-  movements                   MaterialInventoryMovement[]
-  reservations                MaterialReservation[]
-  currentAssets               AssetInstance[]                 @relation("AssetCurrentLocation")
-  assignmentOrigins           AssetAssignment[]               @relation("AssetAssignmentOrigin")
-  assignmentDestinations      AssetAssignment[]               @relation("AssetAssignmentDestination")
-  inspectionLocations         AssetInspection[]               @relation("AssetInspectionLocation")
-  configuration               WarehouseLocationConfiguration?
-  address                     WarehouseLocationAddress?
-  accessGrants                WarehouseAccessGrant[]
-  customerStoredItems         CustomerStoredItem[]            @relation("CustomerStoredItemCurrentLocation")
-  custodyMovementOrigins      CustomerCustodyMovement[]       @relation("CustomerCustodyMovementOrigin")
-  custodyMovementDestinations CustomerCustodyMovement[]       @relation("CustomerCustodyMovementDestination")
+  id                           String                          @id @default(cuid())
+  locationRef                  String                          @default(dbgenerated("gen_random_uuid()")) @map("location_ref") @db.Uuid
+  tenantId                     String                          @map("tenant_id")
+  warehouseId                  String                          @map("warehouse_id")
+  parentLocationId             String?                         @map("parent_location_id")
+  code                         String                          @db.VarChar(64)
+  name                         String                          @db.VarChar(160)
+  kind                         MaterialLocationKind
+  depth                        Int                             @default(0)
+  path                         String                          @db.VarChar(600)
+  status                       MaterialRecordStatus            @default(ACTIVE)
+  version                      Int                             @default(1)
+  createdAt                    DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                    DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                       Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_tenant_fkey")
+  warehouse                    MaterialWarehouse               @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_warehouse_fkey")
+  parent                       MaterialLocation?               @relation("MaterialLocationTree", fields: [tenantId, parentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_parent_fkey")
+  children                     MaterialLocation[]              @relation("MaterialLocationTree")
+  movements                    MaterialInventoryMovement[]
+  reservations                 MaterialReservation[]
+  currentAssets                AssetInstance[]                 @relation("AssetCurrentLocation")
+  assignmentOrigins            AssetAssignment[]               @relation("AssetAssignmentOrigin")
+  assignmentDestinations       AssetAssignment[]               @relation("AssetAssignmentDestination")
+  inspectionLocations          AssetInspection[]               @relation("AssetInspectionLocation")
+  configuration                WarehouseLocationConfiguration?
+  address                      WarehouseLocationAddress?
+  accessGrants                 WarehouseAccessGrant[]
+  customerStoredItems          CustomerStoredItem[]            @relation("CustomerStoredItemCurrentLocation")
+  customerStorageReceptionLots CustomerStorageLot[]            @relation("CustomerStorageReceptionLocation")
+  custodyMovementOrigins       CustomerCustodyMovement[]       @relation("CustomerCustodyMovementOrigin")
+  custodyMovementDestinations  CustomerCustodyMovement[]       @relation("CustomerCustodyMovementDestination")
 
   @@unique([tenantId, id], map: "material_locations_tenant_id_key")
+  @@unique([tenantId, warehouseId, id], map: "material_locations_tenant_warehouse_id_key")
   @@unique([tenantId, locationRef], map: "material_locations_tenant_ref_key")
   @@unique([tenantId, warehouseId, code], map: "material_locations_warehouse_code_key")
   @@index([tenantId, warehouseId, parentLocationId, status], map: "material_locations_tree_idx")
@@ -4372,33 +4374,48 @@ enum WarehouseAccessGrantStatus {
 }
 
 model CustomerStorageLot {
-  id             String                    @id @default(cuid())
-  storageRef     String                    @default(dbgenerated("gen_random_uuid()")) @map("storage_ref") @db.Uuid
-  tenantId       String                    @map("tenant_id")
-  clientId       String                    @map("client_id")
-  pipelineCaseId String?                   @map("pipeline_case_id")
-  warehouseId    String                    @map("warehouse_id")
-  lotCode        String                    @map("lot_code") @db.VarChar(64)
-  storageType    CustomerStorageType       @default(PERSONAL_EFFECTS) @map("storage_type")
-  status         CustomerStorageLotStatus  @default(RECEIVED)
-  receivedAt     DateTime                  @map("received_at") @db.Timestamptz(6)
-  billingStartAt DateTime?                 @map("billing_start_at") @db.Timestamptz(6)
-  releasedAt     DateTime?                 @map("released_at") @db.Timestamptz(6)
-  notes          String?                   @db.VarChar(2000)
-  version        Int                       @default(1)
-  createdAt      DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant         Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_tenant_fkey")
-  client         Client                    @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_client_fkey")
-  pipelineCase   PipelineCase?             @relation(fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_case_client_fkey")
-  warehouse      MaterialWarehouse         @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_warehouse_fkey")
-  items          CustomerStoredItem[]
-  movements      CustomerCustodyMovement[]
+  id                  String                        @id @default(cuid())
+  storageRef          String                        @default(dbgenerated("gen_random_uuid()")) @map("storage_ref") @db.Uuid
+  tenantId            String                        @map("tenant_id")
+  clientId            String                        @map("client_id")
+  pipelineCaseId      String?                       @map("pipeline_case_id")
+  warehouseId         String                        @map("warehouse_id")
+  receptionLocationId String                        @map("reception_location_id")
+  lotCode             String                        @map("lot_code") @db.VarChar(64)
+  storageType         CustomerStorageType           @default(PERSONAL_EFFECTS) @map("storage_type")
+  intakeSource        CustomerCustodyIntakeSource   @default(DIRECT_WAREHOUSE) @map("intake_source")
+  receptionStage      CustomerCustodyReceptionStage @default(CLOSED) @map("reception_stage")
+  status              CustomerStorageLotStatus      @default(RECEIVED)
+  manifestCode        String?                       @map("manifest_code") @db.VarChar(80)
+  expectedUnits       Int?                          @map("expected_units")
+  groupLeadName       String?                       @map("group_lead_name") @db.VarChar(160)
+  driverName          String?                       @map("driver_name") @db.VarChar(160)
+  vehicleCode         String?                       @map("vehicle_code") @db.VarChar(64)
+  sealNumber          String?                       @map("seal_number") @db.VarChar(80)
+  departedAt          DateTime?                     @map("departed_at") @db.Timestamptz(6)
+  arrivedAt           DateTime?                     @map("arrived_at") @db.Timestamptz(6)
+  handoffConfirmedAt  DateTime?                     @map("handoff_confirmed_at") @db.Timestamptz(6)
+  receptionClosedAt   DateTime?                     @map("reception_closed_at") @db.Timestamptz(6)
+  receivedAt          DateTime                      @map("received_at") @db.Timestamptz(6)
+  billingStartAt      DateTime?                     @map("billing_start_at") @db.Timestamptz(6)
+  releasedAt          DateTime?                     @map("released_at") @db.Timestamptz(6)
+  notes               String?                       @db.VarChar(2000)
+  version             Int                           @default(1)
+  createdAt           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant              Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_tenant_fkey")
+  client              Client                        @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_client_fkey")
+  pipelineCase        PipelineCase?                 @relation(fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_case_client_fkey")
+  warehouse           MaterialWarehouse             @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_warehouse_fkey")
+  receptionLocation   MaterialLocation              @relation("CustomerStorageReceptionLocation", fields: [tenantId, warehouseId, receptionLocationId], references: [tenantId, warehouseId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_reception_location_fkey")
+  items               CustomerStoredItem[]
+  movements           CustomerCustodyMovement[]
 
   @@unique([tenantId, id], map: "customer_storage_lots_tenant_id_key")
   @@unique([tenantId, storageRef], map: "customer_storage_lots_tenant_ref_key")
   @@unique([tenantId, lotCode], map: "customer_storage_lots_code_key")
   @@index([tenantId, storageType, status, receivedAt(sort: Desc)], map: "customer_storage_lots_type_idx")
+  @@index([tenantId, receptionStage, arrivedAt(sort: Desc)], map: "customer_storage_lots_reception_stage_idx")
   @@index([tenantId, warehouseId, status, receivedAt(sort: Desc)], map: "customer_storage_lots_warehouse_idx")
   @@index([tenantId, clientId, status], map: "customer_storage_lots_client_idx")
   @@map("customer_storage_lots")
@@ -4411,7 +4428,26 @@ enum CustomerStorageType {
   COMMERCIAL_STORAGE
 }
 
+enum CustomerCustodyIntakeSource {
+  OWN_PICKUP
+  EXTERNAL_ORIGIN
+  COMMERCIAL_PRE_ADVICE
+  DIRECT_WAREHOUSE
+}
+
+enum CustomerCustodyReceptionStage {
+  PLANNED
+  IN_TRANSIT
+  ARRIVED
+  RECEIVING
+  EXCEPTIONS
+  PUT_AWAY
+  CLOSED
+}
+
 enum CustomerStorageLotStatus {
+  PLANNED
+  IN_TRANSIT
   RECEIVED
   STORED
   PARTIALLY_RELEASED
@@ -4427,6 +4463,7 @@ model CustomerStoredItem {
   storageLotId      String                    @map("storage_lot_id")
   currentLocationId String?                   @map("current_location_id")
   itemCode          String                    @map("item_code") @db.VarChar(80)
+  externalCode      String?                   @map("external_code") @db.VarChar(120)
   description       String                    @db.VarChar(240)
   category          String?                   @db.VarChar(120)
   quantity          Decimal                   @db.Decimal(14, 3)
@@ -4437,6 +4474,7 @@ model CustomerStoredItem {
   evidence          Json?
   notes             String?                   @db.VarChar(2000)
   status            CustomerStoredItemStatus  @default(IN_CUSTODY)
+  receivedAt        DateTime?                 @map("received_at") @db.Timestamptz(6)
   version           Int                       @default(1)
   createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -4460,6 +4498,7 @@ enum CustomerStoredCondition {
 }
 
 enum CustomerStoredItemStatus {
+  EXPECTED
   IN_CUSTODY
   EXIT_PREPARED
   RELEASED
@@ -4519,6 +4558,8 @@ model CustomerCustodyMovement {
 }
 
 enum CustomerCustodyMovementType {
+  ARRIVAL
+  HANDOFF
   RECEIVE
   PUT_AWAY
   TRANSFER
@@ -4529,6 +4570,7 @@ enum CustomerCustodyMovementType {
   ADJUST
   HOLD
   RELEASE_HOLD
+  CLOSE_RECEIPT
 }
 
 model MaterialInventoryCommand {

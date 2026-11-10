@@ -81,6 +81,7 @@
       "/api/customer-custody/access-grants/[grantRef]",
       "/api/customer-custody/lots",
       "/api/customer-custody/movements",
+      "/api/customer-custody/reception-actions",
       "/api/crm/client-options",
       "/api/crm/icp-v2/clients/search",
       "/api/crm/icp-v2/pipeline-cases",

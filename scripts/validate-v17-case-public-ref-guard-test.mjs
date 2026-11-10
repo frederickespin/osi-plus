@@ -38,9 +38,10 @@ function changeConsumer(path, before, after) {
 
 check("baseline publicRef aprobada", baseline.ok);
 check("inventario distingue casos y clientes de membresías e invitaciones",
-  baseline.runtimeConsumers === 31
+  baseline.runtimeConsumers === 32
   && baseline.consumerContracts["api/_lib/crmIcpV2ApiDomain.js"].kinds.join(",") === "CASE,CLIENT"
   && baseline.consumerContracts["api/_lib/customerCustodyDomain.js"].kinds.join(",") === "CASE,CLIENT,MEMBERSHIP,CUSTODY_AUTHORIZATION"
+  && baseline.consumerContracts["api/_lib/storageAgreementDomain.js"].kinds.join(",") === "CASE,CLIENT"
   && baseline.consumerContracts["api/_lib/authContext.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminUserIdentityDomain.js"].kinds.join(",") === "MEMBERSHIP"
   && baseline.consumerContracts["api/_lib/adminUserEnrollmentDomain.js"].kinds.join(",") === "MEMBERSHIP"
@@ -208,6 +209,8 @@ check("ficha de almacén verifica cada lectura de membresía expandida",
   baseline.consumerContracts["api/_lib/warehouseSheetDomain.js"].sqlQueries === 5);
 check("autorizaciones de custodia conservan referencia pública tenant-first",
   baseline.consumerContracts["api/_lib/customerCustodyDomain.js"].prismaQueries > 0);
+check("contratos de almacenaje conservan referencias de caso y cliente tenant-first",
+  baseline.consumerContracts["api/_lib/storageAgreementDomain.js"].prismaQueries > 0);
 rejected("encargados guardados no pueden perder empresa", changeConsumer("api/_lib/warehouseSheetDomain.js",
   'WHERE m."tenant_id"=${tenantId} AND m."id" IN', 'WHERE m."id" IN'), /contrato tenant-first/);
 rejected("selección de encargado no puede perder empresa", changeConsumer("api/_lib/warehouseSheetDomain.js",

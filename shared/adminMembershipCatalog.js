@@ -120,6 +120,7 @@ const LABELS = Object.freeze({
   "customer-custody:view": "Consultar efectos de clientes en custodia",
   "customer-custody:receive": "Registrar recepción de efectos de clientes",
   "customer-custody:operate": "Gestionar movimientos y salidas de custodia",
+  "customer-custody:authorize": "Autorizar entradas y salidas de almacenaje desde Comercial",
   "warehouse-access:manage": "Administrar accesos a almacenes e inventarios",
   "assets:model:view": "Consultar modelos de herramientas y equipos",
   "assets:model:manage": "Administrar modelos de herramientas y equipos",

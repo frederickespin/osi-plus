@@ -230,6 +230,7 @@ model Tenant {
   clientTemporaryQrConfirmations    ClientTemporaryQrConfirmation[]
   warehouseAccessGrants             WarehouseAccessGrant[]
   customerStorageLots               CustomerStorageLot[]
+  customerStorageAuthorizations     CustomerStorageAuthorization[]
   customerStoredItems               CustomerStoredItem[]
   customerCustodyCommands           CustomerCustodyCommand[]
   customerCustodyMovements          CustomerCustodyMovement[]
@@ -246,150 +247,151 @@ model Tenant {
 }
 
 model TenantMembership {
-  managedWarehouseSheets                                                                                                                        WarehouseSheetProfile[]            @relation("WarehouseSheetManager")
-  warehouseAccessGrants                                                                                                                         WarehouseAccessGrant[]             @relation("WarehouseAccessGrantMembership")
-  customerCustodyCommandsAsActor                                                                                                                CustomerCustodyCommand[]           @relation("CustomerCustodyCommandActor")
-  customerCustodyMovementsAsActor                                                                                                               CustomerCustodyMovement[]          @relation("CustomerCustodyMovementActor")
+  managedWarehouseSheets                                                                                                                        WarehouseSheetProfile[]             @relation("WarehouseSheetManager")
+  warehouseAccessGrants                                                                                                                         WarehouseAccessGrant[]              @relation("WarehouseAccessGrantMembership")
+  customerCustodyCommandsAsActor                                                                                                                CustomerCustodyCommand[]            @relation("CustomerCustodyCommandActor")
+  customerCustodyMovementsAsActor                                                                                                               CustomerCustodyMovement[]           @relation("CustomerCustodyMovementActor")
   customerCustodyLocationEventsAsActor                                                                                                          CustomerCustodyLocationStateEvent[] @relation("CustomerCustodyLocationStateEventActor")
-  fleetPrimaryDriverEvents                                                                                                                      FleetDriverPrimaryEvent[]          @relation("FleetPrimaryDriver")
-  fleetPrimaryAssignedEvents                                                                                                                    FleetDriverPrimaryEvent[]          @relation("FleetPrimaryAssigner")
-  fleetTemporaryDriverAuthorizations                                                                                                            FleetDriverAuthorization[]         @relation("FleetTemporaryDriver")
-  fleetTemporaryRequests                                                                                                                        FleetDriverAuthorization[]         @relation("FleetTemporaryRequester")
-  fleetTemporaryAuthorizations                                                                                                                  FleetDriverAuthorization[]         @relation("FleetTemporaryAuthorizer")
-  fleetTemporaryRevocations                                                                                                                     FleetDriverAuthorization[]         @relation("FleetTemporaryRevoker")
+  customerStorageAuthorizationsAsActor                                                                                                          CustomerStorageAuthorization[]      @relation("CustomerStorageAuthorizationActor")
+  fleetPrimaryDriverEvents                                                                                                                      FleetDriverPrimaryEvent[]           @relation("FleetPrimaryDriver")
+  fleetPrimaryAssignedEvents                                                                                                                    FleetDriverPrimaryEvent[]           @relation("FleetPrimaryAssigner")
+  fleetTemporaryDriverAuthorizations                                                                                                            FleetDriverAuthorization[]          @relation("FleetTemporaryDriver")
+  fleetTemporaryRequests                                                                                                                        FleetDriverAuthorization[]          @relation("FleetTemporaryRequester")
+  fleetTemporaryAuthorizations                                                                                                                  FleetDriverAuthorization[]          @relation("FleetTemporaryAuthorizer")
+  fleetTemporaryRevocations                                                                                                                     FleetDriverAuthorization[]          @relation("FleetTemporaryRevoker")
   userIdentityProfile                                                                                                                           TenantUserIdentity?
-  issuedUserEnrollments                                                                                                                         UserEnrollment[]                   @relation("UserEnrollmentIssuer")
-  activatedUserEnrollments                                                                                                                      UserEnrollment[]                   @relation("UserEnrollmentActivated")
-  id                                                                                                                                            String                             @id @default(cuid())
-  publicRef                                                                                                                                     String                             @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
-  tenantId                                                                                                                                      String                             @map("tenant_id")
-  userId                                                                                                                                        String                             @map("user_id")
+  issuedUserEnrollments                                                                                                                         UserEnrollment[]                    @relation("UserEnrollmentIssuer")
+  activatedUserEnrollments                                                                                                                      UserEnrollment[]                    @relation("UserEnrollmentActivated")
+  id                                                                                                                                            String                              @id @default(cuid())
+  publicRef                                                                                                                                     String                              @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
+  tenantId                                                                                                                                      String                              @map("tenant_id")
+  userId                                                                                                                                        String                              @map("user_id")
   role                                                                                                                                          TenantMembershipRole
-  status                                                                                                                                        TenantMembershipStatus             @default(ACTIVE)
-  grantedPermissions                                                                                                                            String[]                           @default([]) @map("granted_permissions")
-  deniedPermissions                                                                                                                             String[]                           @default([]) @map("denied_permissions")
-  isDefault                                                                                                                                     Boolean                            @default(false) @map("is_default")
-  authorizationVersion                                                                                                                          Int                                @default(1) @map("authorization_version")
-  firstAccessAt                                                                                                                                 DateTime?                          @map("first_access_at")
-  lastAccessAt                                                                                                                                  DateTime?                          @map("last_access_at")
-  provisioningSource                                                                                                                            TenantProvisioningSource           @default(MANUAL) @map("provisioning_source")
-  provisioningBatchId                                                                                                                           String?                            @map("provisioning_batch_id")
-  createdAt                                                                                                                                     DateTime                           @default(now()) @map("created_at")
-  updatedAt                                                                                                                                     DateTime                           @updatedAt @map("updated_at")
-  approval_requests_approval_requests_tenant_id_assigned_approver_membership_id_assigned_approver_user_idTotenant_memberships                   ApprovalRequest[]                  @relation("approval_requests_tenant_id_assigned_approver_membership_id_assigned_approver_user_idTotenant_memberships")
-  approval_requests_approval_requests_tenant_id_decider_membership_id_decider_user_idTotenant_memberships                                       ApprovalRequest[]                  @relation("approval_requests_tenant_id_decider_membership_id_decider_user_idTotenant_memberships")
-  approval_requests_approval_requests_tenant_id_requester_membership_id_requester_user_idTotenant_memberships                                   ApprovalRequest[]                  @relation("approval_requests_tenant_id_requester_membership_id_requester_user_idTotenant_memberships")
+  status                                                                                                                                        TenantMembershipStatus              @default(ACTIVE)
+  grantedPermissions                                                                                                                            String[]                            @default([]) @map("granted_permissions")
+  deniedPermissions                                                                                                                             String[]                            @default([]) @map("denied_permissions")
+  isDefault                                                                                                                                     Boolean                             @default(false) @map("is_default")
+  authorizationVersion                                                                                                                          Int                                 @default(1) @map("authorization_version")
+  firstAccessAt                                                                                                                                 DateTime?                           @map("first_access_at")
+  lastAccessAt                                                                                                                                  DateTime?                           @map("last_access_at")
+  provisioningSource                                                                                                                            TenantProvisioningSource            @default(MANUAL) @map("provisioning_source")
+  provisioningBatchId                                                                                                                           String?                             @map("provisioning_batch_id")
+  createdAt                                                                                                                                     DateTime                            @default(now()) @map("created_at")
+  updatedAt                                                                                                                                     DateTime                            @updatedAt @map("updated_at")
+  approval_requests_approval_requests_tenant_id_assigned_approver_membership_id_assigned_approver_user_idTotenant_memberships                   ApprovalRequest[]                   @relation("approval_requests_tenant_id_assigned_approver_membership_id_assigned_approver_user_idTotenant_memberships")
+  approval_requests_approval_requests_tenant_id_decider_membership_id_decider_user_idTotenant_memberships                                       ApprovalRequest[]                   @relation("approval_requests_tenant_id_decider_membership_id_decider_user_idTotenant_memberships")
+  approval_requests_approval_requests_tenant_id_requester_membership_id_requester_user_idTotenant_memberships                                   ApprovalRequest[]                   @relation("approval_requests_tenant_id_requester_membership_id_requester_user_idTotenant_memberships")
   commercial_audit_logs                                                                                                                         CommercialAuditLog[]
   crate_calculation_snapshots                                                                                                                   crate_calculation_snapshots[]
-  crate_settings_versions_crate_settings_versions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                   crate_settings_versions[]          @relation("crate_settings_versions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
-  crate_settings_versions_crate_settings_versions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                     crate_settings_versions[]          @relation("crate_settings_versions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
-  logistics_configuration_versions_logistics_configuration_versions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships logistics_configuration_versions[] @relation("logistics_configuration_versions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
-  logistics_configuration_versions_logistics_configuration_versions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships   logistics_configuration_versions[] @relation("logistics_configuration_versions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
-  osi_geo_regions_osi_geo_regions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                                   GeoRegion[]                        @relation("osi_geo_regions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
-  osi_geo_regions_osi_geo_regions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                                     GeoRegion[]                        @relation("osi_geo_regions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
-  osi_transport_zone_rules_osi_transport_zone_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                 TransportZoneRule[]                @relation("osi_transport_zone_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
-  osi_transport_zone_rules_osi_transport_zone_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                   TransportZoneRule[]                @relation("osi_transport_zone_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
-  osi_vehicle_engine_settings_osi_vehicle_engine_settings_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships           VehicleEngineSettings[]            @relation("osi_vehicle_engine_settings_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
-  osi_vehicle_engine_settings_osi_vehicle_engine_settings_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships             VehicleEngineSettings[]            @relation("osi_vehicle_engine_settings_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
+  crate_settings_versions_crate_settings_versions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                   crate_settings_versions[]           @relation("crate_settings_versions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
+  crate_settings_versions_crate_settings_versions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                     crate_settings_versions[]           @relation("crate_settings_versions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
+  logistics_configuration_versions_logistics_configuration_versions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships logistics_configuration_versions[]  @relation("logistics_configuration_versions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
+  logistics_configuration_versions_logistics_configuration_versions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships   logistics_configuration_versions[]  @relation("logistics_configuration_versions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
+  osi_geo_regions_osi_geo_regions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                                   GeoRegion[]                         @relation("osi_geo_regions_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
+  osi_geo_regions_osi_geo_regions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                                     GeoRegion[]                         @relation("osi_geo_regions_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
+  osi_transport_zone_rules_osi_transport_zone_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                 TransportZoneRule[]                 @relation("osi_transport_zone_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
+  osi_transport_zone_rules_osi_transport_zone_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                   TransportZoneRule[]                 @relation("osi_transport_zone_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
+  osi_vehicle_engine_settings_osi_vehicle_engine_settings_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships           VehicleEngineSettings[]             @relation("osi_vehicle_engine_settings_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
+  osi_vehicle_engine_settings_osi_vehicle_engine_settings_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships             VehicleEngineSettings[]             @relation("osi_vehicle_engine_settings_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
   osi_vehicles                                                                                                                                  Vehicle[]
-  osi_zone_rules_osi_zone_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                                     ZoneRule[]                         @relation("osi_zone_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
-  osi_zone_rules_osi_zone_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                                       ZoneRule[]                         @relation("osi_zone_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
+  osi_zone_rules_osi_zone_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                                     ZoneRule[]                          @relation("osi_zone_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
+  osi_zone_rules_osi_zone_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                                       ZoneRule[]                          @relation("osi_zone_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
   quote_change_order_commands                                                                                                                   quote_change_order_commands[]
   quote_change_order_policies                                                                                                                   quote_change_order_policies[]
   quote_change_order_subjects                                                                                                                   quote_change_order_subjects[]
-  quote_change_orders_quote_change_orders_tenant_id_executed_by_membership_id_executed_by_user_idTotenant_memberships                           QuoteChangeOrder[]                 @relation("quote_change_orders_tenant_id_executed_by_membership_id_executed_by_user_idTotenant_memberships")
-  quote_change_orders_quote_change_orders_tenant_id_requested_by_membership_id_requested_by_user_idTotenant_memberships                         QuoteChangeOrder[]                 @relation("quote_change_orders_tenant_id_requested_by_membership_id_requested_by_user_idTotenant_memberships")
-  risk_engine_rules_risk_engine_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                               risk_engine_rules[]                @relation("risk_engine_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
-  risk_engine_rules_risk_engine_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                                 risk_engine_rules[]                @relation("risk_engine_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
-  risk_engine_settings                                                                                                                          risk_engine_settings[]             @relation("risk_engine_settings_actor") @ignore
+  quote_change_orders_quote_change_orders_tenant_id_executed_by_membership_id_executed_by_user_idTotenant_memberships                           QuoteChangeOrder[]                  @relation("quote_change_orders_tenant_id_executed_by_membership_id_executed_by_user_idTotenant_memberships")
+  quote_change_orders_quote_change_orders_tenant_id_requested_by_membership_id_requested_by_user_idTotenant_memberships                         QuoteChangeOrder[]                  @relation("quote_change_orders_tenant_id_requested_by_membership_id_requested_by_user_idTotenant_memberships")
+  risk_engine_rules_risk_engine_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships                               risk_engine_rules[]                 @relation("risk_engine_rules_tenant_id_approved_by_membership_id_approved_by_user_idTotenant_memberships")
+  risk_engine_rules_risk_engine_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships                                 risk_engine_rules[]                 @relation("risk_engine_rules_tenant_id_created_by_membership_id_created_by_user_idTotenant_memberships")
+  risk_engine_settings                                                                                                                          risk_engine_settings[]              @relation("risk_engine_settings_actor") @ignore
   risk_evaluations                                                                                                                              risk_evaluations[]
-  tenant                                                                                                                                        Tenant                             @relation(fields: [tenantId], references: [id])
-  user                                                                                                                                          User                               @relation(fields: [userId], references: [id])
-  vehicle_import_batches_vehicle_import_batches_tenant_id_confirmed_by_membership_id_confirmed_by_user_idTotenant_memberships                   vehicle_import_batches[]           @relation("vehicle_import_batches_tenant_id_confirmed_by_membership_id_confirmed_by_user_idTotenant_memberships")
-  vehicle_import_batches_vehicle_import_batches_tenant_id_rolled_back_by_membership_id_rolled_back_by_user_idTotenant_memberships               vehicle_import_batches[]           @relation("vehicle_import_batches_tenant_id_rolled_back_by_membership_id_rolled_back_by_user_idTotenant_memberships")
-  authSessions                                                                                                                                  AuthSession[]                      @relation("AuthSessionMembership")
-  employeeProfile                                                                                                                               EmployeeProfile?                   @relation("EmployeeProfileMembership")
-  supervisedEmployeeProfiles                                                                                                                    EmployeeProfile[]                  @relation("EmployeeProfileSupervisor")
-  provisionedEmployeeRequests                                                                                                                   EmployeeProvisioningRequest[]      @relation("EmployeeProvisioningRequestProvisionedMembership")
-  issuedProvisioningInvitations                                                                                                                 EmployeeProvisioningInvitation[]   @relation("EmployeeProvisioningInvitationIssuer")
-  issuedAdminIdentityInvitations                                                                                                                AdminIdentityInvitation[]          @relation("AdminIdentityInvitationIssuer")
-  activatedAdminIdentityInvitations                                                                                                             AdminIdentityInvitation[]          @relation("AdminIdentityInvitationActivatedMembership")
-  proposedEmployeeAdminRoles                                                                                                                    EmployeeAdminRoleProposal[]        @relation("EmployeeAdminRoleProposalProposer")
-  supervisedProvisioningRequests                                                                                                                EmployeeProvisioningRequest[]      @relation("EmployeeProvisioningRequestSupervisor")
-  enterpriseOwnedPipelineCases                                                                                                                  PipelineCase[]                     @relation("PipelineCaseEnterpriseOwner")
-  pipelineCaseCommandsAsActor                                                                                                                   PipelineCaseCommand[]              @relation("PipelineCaseCommandActor")
-  pipelineCaseCommandsAsPreviousOwner                                                                                                           PipelineCaseCommand[]              @relation("PipelineCaseCommandPreviousOwner")
-  pipelineCaseCommandsAsResultingOwner                                                                                                          PipelineCaseCommand[]              @relation("PipelineCaseCommandResultingOwner")
-  serviceMutationCommandsAsActor                                                                                                                ServiceMutationCommand[]           @relation("ServiceMutationCommandActor")
-  serviceRevisionsCreated                                                                                                                       PipelineCaseServiceRevision[]      @relation("PipelineCaseServiceRevisionActor")
-  servicePackageVersionsCreated                                                                                                                 ServicePackageVersion[]            @relation("ServicePackageVersionActor")
-  serviceMaterialPolicyVersionsCreated                                                                                                          ServiceMaterialPolicyVersion[]     @relation("ServiceMaterialPolicyVersionActor")
-  caseServiceConfigurationsCreated                                                                                                              CaseServiceConfigurationRevision[] @relation("CaseServiceConfigurationActor")
-  serviceConfigurationCommandsCreated                                                                                                           ServiceConfigurationCommand[]      @relation("ServiceConfigurationCommandActor")
-  serviceConfigurationAuditEventsCreated                                                                                                        ServiceConfigurationAuditEvent[]   @relation("ServiceConfigurationAuditActor")
-  serviceConfigurationConflictsResolved                                                                                                         ServiceConfigurationConflict[]     @relation("ServiceConfigurationConflictResolver")
-  surveyCatalogVersionsCreated                                                                                                                  SurveyCatalogVersion[]             @relation("SurveyCatalogVersionActor")
-  surveyAssignmentsCreated                                                                                                                      SurveyAssignment[]                 @relation("SurveyAssignmentCreator")
-  surveyAssignmentsEvaluated                                                                                                                    SurveyAssignment[]                 @relation("SurveyAssignmentEvaluator")
-  surveyEvaluationDecisionsCreated                                                                                                              SurveyEvaluationDecision[]         @relation("SurveyEvaluationDecisionActor")
-  surveySchedulePoliciesCreated                                                                                                                 SurveySchedulePolicyVersion[]      @relation("SurveySchedulePolicyActor")
-  surveyAssignmentEventsCreated                                                                                                                 SurveyAssignmentEvent[]            @relation("SurveyAssignmentEventActor")
-  surveyVisitFeesAuthorized                                                                                                                     SurveyVisitFee[]                   @relation("SurveyVisitFeeAuthorizer")
-  surveyCommunicationsPrepared                                                                                                                  SurveyCommunicationRecord[]        @relation("SurveyCommunicationActor")
-  communicationTemplateVersionsCreated                                                                                                          CommunicationTemplateVersion[]     @relation("CommunicationTemplateVersionCreator")
-  communicationTemplateVersionsPublished                                                                                                        CommunicationTemplateVersion[]     @relation("CommunicationTemplateVersionPublisher")
-  communicationRecordsPrepared                                                                                                                  CommunicationRecord[]              @relation("CommunicationRecordActor")
-  communicationCommandsCreated                                                                                                                  CommunicationCommand[]             @relation("CommunicationCommandActor")
-  communicationAuditEventsCreated                                                                                                               CommunicationAuditEvent[]          @relation("CommunicationAuditEventActor")
-  surveyPublicationsCreated                                                                                                                     SurveyPublication[]                @relation("SurveyPublicationActor")
-  surveyMutationCommandsAsActor                                                                                                                 SurveyMutationCommand[]            @relation("SurveyMutationCommandActor")
-  materialInventoryCommandsAsActor                                                                                                              MaterialInventoryCommand[]         @relation("MaterialInventoryCommandActor")
-  materialInventoryMovementsAsActor                                                                                                             MaterialInventoryMovement[]        @relation("MaterialInventoryMovementActor")
-  materialReservationEventsAsActor                                                                                                              MaterialReservationEvent[]         @relation("MaterialReservationEventActor")
-  materialCostVersionsAsActor                                                                                                                   MaterialCostVersion[]              @relation("MaterialCostVersionActor")
-  packingRecipeVersionsAsActor                                                                                                                  PackingRecipeVersion[]             @relation("PackingRecipeVersionActor")
-  materialRequirementSnapshotsAsActor                                                                                                           MaterialRequirementSnapshot[]      @relation("MaterialRequirementSnapshotActor")
-  materialPurchaseRequestsAsActor                                                                                                               MaterialPurchaseRequest[]          @relation("MaterialPurchaseRequestActor")
-  assetCommandsAsActor                                                                                                                          AssetMutationCommand[]             @relation("AssetMutationCommandActor")
-  assetReservationsAsActor                                                                                                                      AssetReservation[]                 @relation("AssetReservationActor")
-  assetAssignmentsAsActor                                                                                                                       AssetAssignment[]                  @relation("AssetAssignmentActor")
-  assetAssignmentsAsAssignee                                                                                                                    AssetAssignment[]                  @relation("AssetAssignmentAssignee")
-  assetAssignmentsAsCustodian                                                                                                                   AssetAssignment[]                  @relation("AssetAssignmentCustodian")
-  assetInspectionsAsActor                                                                                                                       AssetInspection[]                  @relation("AssetInspectionActor")
-  assetIncidentsAsActor                                                                                                                         AssetIncident[]                    @relation("AssetIncidentActor")
-  assetMaintenanceOrdersAsActor                                                                                                                 AssetMaintenanceOrder[]            @relation("AssetMaintenanceOrderActor")
-  assetHistoryEventsAsActor                                                                                                                     AssetHistoryEvent[]                @relation("AssetHistoryEventActor")
-  externalResourceReservationsAsActor                                                                                                           ExternalResourceReservation[]      @relation("ExternalResourceReservationActor")
-  logisticsRulesAsActor                                                                                                                         LogisticsRule[]                    @relation("LogisticsRuleActor")
-  logisticsCalculationsAsActor                                                                                                                  LogisticsCalculation[]             @relation("LogisticsCalculationActor")
-  logisticsRevisionsAsActor                                                                                                                     LogisticsPlanRevision[]            @relation("LogisticsRevisionActor")
-  logisticsIssuesResolved                                                                                                                       LogisticsPlanIssue[]               @relation("LogisticsIssueResolver")
-  logisticsOverridesAsActor                                                                                                                     LogisticsPlanOverride[]            @relation("LogisticsOverrideActor")
-  logisticsCommandsAsActor                                                                                                                      LogisticsMutationCommand[]         @relation("LogisticsCommandActor")
-  costingRulesAsActor                                                                                                                           CostingRule[]                      @relation("CostingRuleActor")
-  costingExchangeRatesAsActor                                                                                                                   CostingExchangeRate[]              @relation("CostingExchangeRateActor")
-  costingCalculationsAsActor                                                                                                                    CostingCalculation[]               @relation("CostingCalculationActor")
-  costingRevisionsAsActor                                                                                                                       CostingRevision[]                  @relation("CostingRevisionActor")
-  costingIssuesResolved                                                                                                                         CostingIssue[]                     @relation("CostingIssueResolver")
-  costingOverridesAsActor                                                                                                                       CostingOverride[]                  @relation("CostingOverrideActor")
-  costingMarginAuthorizationsAsActor                                                                                                            CostingMarginAuthorization[]       @relation("CostingMarginAuthorizationActor")
-  costingCommandsAsActor                                                                                                                        CostingMutationCommand[]           @relation("CostingCommandActor")
-  quoteProposalRevisionsAsActor                                                                                                                 QuoteProposalRevision[]            @relation("QuoteProposalRevisionActor")
-  quoteDispatchesAsActor                                                                                                                        QuoteDispatch[]                    @relation("QuoteDispatchActor")
-  quoteClientDecisionsAsActor                                                                                                                   QuoteClientDecision[]              @relation("QuoteClientDecisionActor")
-  quoteMutationCommandsAsActor                                                                                                                  QuoteMutationCommand[]             @relation("QuoteMutationCommandActor")
-  operationalCapabilitiesCreated                                                                                                                OperationalCapability[]            @relation("OperationalCapabilityActor")
-  operationalCapabilityAssignmentsCreated                                                                                                       OperationalCapabilityAssignment[]  @relation("OperationalCapabilityAssignmentActor")
-  operationalZoneAssignmentsCreated                                                                                                             OperationalZoneAssignment[]        @relation("OperationalZoneAssignmentActor")
-  visitPoliciesCreated                                                                                                                          VisitPolicyVersion[]               @relation("VisitPolicyActor")
-  operationalScheduleOverridesCreated                                                                                                           OperationalScheduleOverride[]      @relation("OperationalScheduleOverrideActor")
-  afterHoursVisitRequestsCreated                                                                                                                AfterHoursVisitRequest[]           @relation("AfterHoursVisitRequester")
-  afterHoursVisitRequestsEvaluated                                                                                                              AfterHoursVisitRequest[]           @relation("AfterHoursVisitEvaluator")
-  afterHoursVisitRequestsDecided                                                                                                                AfterHoursVisitRequest[]           @relation("AfterHoursVisitAdmin")
-  visitPolicyEventsCreated                                                                                                                      VisitPolicyEvent[]                 @relation("VisitPolicyEventActor")
-  personnelPolicyCommandsCreated                                                                                                                PersonnelPolicyCommand[]           @relation("PersonnelPolicyCommandActor")
-  clientTemporaryAccessesIssued                                                                                                                 ClientTemporaryAccess[]            @relation("ClientTemporaryAccessIssuer")
-  clientTemporaryAccessEventsAuthored                                                                                                           ClientTemporaryAccessEvent[]       @relation("ClientTemporaryAccessEventActor")
+  tenant                                                                                                                                        Tenant                              @relation(fields: [tenantId], references: [id])
+  user                                                                                                                                          User                                @relation(fields: [userId], references: [id])
+  vehicle_import_batches_vehicle_import_batches_tenant_id_confirmed_by_membership_id_confirmed_by_user_idTotenant_memberships                   vehicle_import_batches[]            @relation("vehicle_import_batches_tenant_id_confirmed_by_membership_id_confirmed_by_user_idTotenant_memberships")
+  vehicle_import_batches_vehicle_import_batches_tenant_id_rolled_back_by_membership_id_rolled_back_by_user_idTotenant_memberships               vehicle_import_batches[]            @relation("vehicle_import_batches_tenant_id_rolled_back_by_membership_id_rolled_back_by_user_idTotenant_memberships")
+  authSessions                                                                                                                                  AuthSession[]                       @relation("AuthSessionMembership")
+  employeeProfile                                                                                                                               EmployeeProfile?                    @relation("EmployeeProfileMembership")
+  supervisedEmployeeProfiles                                                                                                                    EmployeeProfile[]                   @relation("EmployeeProfileSupervisor")
+  provisionedEmployeeRequests                                                                                                                   EmployeeProvisioningRequest[]       @relation("EmployeeProvisioningRequestProvisionedMembership")
+  issuedProvisioningInvitations                                                                                                                 EmployeeProvisioningInvitation[]    @relation("EmployeeProvisioningInvitationIssuer")
+  issuedAdminIdentityInvitations                                                                                                                AdminIdentityInvitation[]           @relation("AdminIdentityInvitationIssuer")
+  activatedAdminIdentityInvitations                                                                                                             AdminIdentityInvitation[]           @relation("AdminIdentityInvitationActivatedMembership")
+  proposedEmployeeAdminRoles                                                                                                                    EmployeeAdminRoleProposal[]         @relation("EmployeeAdminRoleProposalProposer")
+  supervisedProvisioningRequests                                                                                                                EmployeeProvisioningRequest[]       @relation("EmployeeProvisioningRequestSupervisor")
+  enterpriseOwnedPipelineCases                                                                                                                  PipelineCase[]                      @relation("PipelineCaseEnterpriseOwner")
+  pipelineCaseCommandsAsActor                                                                                                                   PipelineCaseCommand[]               @relation("PipelineCaseCommandActor")
+  pipelineCaseCommandsAsPreviousOwner                                                                                                           PipelineCaseCommand[]               @relation("PipelineCaseCommandPreviousOwner")
+  pipelineCaseCommandsAsResultingOwner                                                                                                          PipelineCaseCommand[]               @relation("PipelineCaseCommandResultingOwner")
+  serviceMutationCommandsAsActor                                                                                                                ServiceMutationCommand[]            @relation("ServiceMutationCommandActor")
+  serviceRevisionsCreated                                                                                                                       PipelineCaseServiceRevision[]       @relation("PipelineCaseServiceRevisionActor")
+  servicePackageVersionsCreated                                                                                                                 ServicePackageVersion[]             @relation("ServicePackageVersionActor")
+  serviceMaterialPolicyVersionsCreated                                                                                                          ServiceMaterialPolicyVersion[]      @relation("ServiceMaterialPolicyVersionActor")
+  caseServiceConfigurationsCreated                                                                                                              CaseServiceConfigurationRevision[]  @relation("CaseServiceConfigurationActor")
+  serviceConfigurationCommandsCreated                                                                                                           ServiceConfigurationCommand[]       @relation("ServiceConfigurationCommandActor")
+  serviceConfigurationAuditEventsCreated                                                                                                        ServiceConfigurationAuditEvent[]    @relation("ServiceConfigurationAuditActor")
+  serviceConfigurationConflictsResolved                                                                                                         ServiceConfigurationConflict[]      @relation("ServiceConfigurationConflictResolver")
+  surveyCatalogVersionsCreated                                                                                                                  SurveyCatalogVersion[]              @relation("SurveyCatalogVersionActor")
+  surveyAssignmentsCreated                                                                                                                      SurveyAssignment[]                  @relation("SurveyAssignmentCreator")
+  surveyAssignmentsEvaluated                                                                                                                    SurveyAssignment[]                  @relation("SurveyAssignmentEvaluator")
+  surveyEvaluationDecisionsCreated                                                                                                              SurveyEvaluationDecision[]          @relation("SurveyEvaluationDecisionActor")
+  surveySchedulePoliciesCreated                                                                                                                 SurveySchedulePolicyVersion[]       @relation("SurveySchedulePolicyActor")
+  surveyAssignmentEventsCreated                                                                                                                 SurveyAssignmentEvent[]             @relation("SurveyAssignmentEventActor")
+  surveyVisitFeesAuthorized                                                                                                                     SurveyVisitFee[]                    @relation("SurveyVisitFeeAuthorizer")
+  surveyCommunicationsPrepared                                                                                                                  SurveyCommunicationRecord[]         @relation("SurveyCommunicationActor")
+  communicationTemplateVersionsCreated                                                                                                          CommunicationTemplateVersion[]      @relation("CommunicationTemplateVersionCreator")
+  communicationTemplateVersionsPublished                                                                                                        CommunicationTemplateVersion[]      @relation("CommunicationTemplateVersionPublisher")
+  communicationRecordsPrepared                                                                                                                  CommunicationRecord[]               @relation("CommunicationRecordActor")
+  communicationCommandsCreated                                                                                                                  CommunicationCommand[]              @relation("CommunicationCommandActor")
+  communicationAuditEventsCreated                                                                                                               CommunicationAuditEvent[]           @relation("CommunicationAuditEventActor")
+  surveyPublicationsCreated                                                                                                                     SurveyPublication[]                 @relation("SurveyPublicationActor")
+  surveyMutationCommandsAsActor                                                                                                                 SurveyMutationCommand[]             @relation("SurveyMutationCommandActor")
+  materialInventoryCommandsAsActor                                                                                                              MaterialInventoryCommand[]          @relation("MaterialInventoryCommandActor")
+  materialInventoryMovementsAsActor                                                                                                             MaterialInventoryMovement[]         @relation("MaterialInventoryMovementActor")
+  materialReservationEventsAsActor                                                                                                              MaterialReservationEvent[]          @relation("MaterialReservationEventActor")
+  materialCostVersionsAsActor                                                                                                                   MaterialCostVersion[]               @relation("MaterialCostVersionActor")
+  packingRecipeVersionsAsActor                                                                                                                  PackingRecipeVersion[]              @relation("PackingRecipeVersionActor")
+  materialRequirementSnapshotsAsActor                                                                                                           MaterialRequirementSnapshot[]       @relation("MaterialRequirementSnapshotActor")
+  materialPurchaseRequestsAsActor                                                                                                               MaterialPurchaseRequest[]           @relation("MaterialPurchaseRequestActor")
+  assetCommandsAsActor                                                                                                                          AssetMutationCommand[]              @relation("AssetMutationCommandActor")
+  assetReservationsAsActor                                                                                                                      AssetReservation[]                  @relation("AssetReservationActor")
+  assetAssignmentsAsActor                                                                                                                       AssetAssignment[]                   @relation("AssetAssignmentActor")
+  assetAssignmentsAsAssignee                                                                                                                    AssetAssignment[]                   @relation("AssetAssignmentAssignee")
+  assetAssignmentsAsCustodian                                                                                                                   AssetAssignment[]                   @relation("AssetAssignmentCustodian")
+  assetInspectionsAsActor                                                                                                                       AssetInspection[]                   @relation("AssetInspectionActor")
+  assetIncidentsAsActor                                                                                                                         AssetIncident[]                     @relation("AssetIncidentActor")
+  assetMaintenanceOrdersAsActor                                                                                                                 AssetMaintenanceOrder[]             @relation("AssetMaintenanceOrderActor")
+  assetHistoryEventsAsActor                                                                                                                     AssetHistoryEvent[]                 @relation("AssetHistoryEventActor")
+  externalResourceReservationsAsActor                                                                                                           ExternalResourceReservation[]       @relation("ExternalResourceReservationActor")
+  logisticsRulesAsActor                                                                                                                         LogisticsRule[]                     @relation("LogisticsRuleActor")
+  logisticsCalculationsAsActor                                                                                                                  LogisticsCalculation[]              @relation("LogisticsCalculationActor")
+  logisticsRevisionsAsActor                                                                                                                     LogisticsPlanRevision[]             @relation("LogisticsRevisionActor")
+  logisticsIssuesResolved                                                                                                                       LogisticsPlanIssue[]                @relation("LogisticsIssueResolver")
+  logisticsOverridesAsActor                                                                                                                     LogisticsPlanOverride[]             @relation("LogisticsOverrideActor")
+  logisticsCommandsAsActor                                                                                                                      LogisticsMutationCommand[]          @relation("LogisticsCommandActor")
+  costingRulesAsActor                                                                                                                           CostingRule[]                       @relation("CostingRuleActor")
+  costingExchangeRatesAsActor                                                                                                                   CostingExchangeRate[]               @relation("CostingExchangeRateActor")
+  costingCalculationsAsActor                                                                                                                    CostingCalculation[]                @relation("CostingCalculationActor")
+  costingRevisionsAsActor                                                                                                                       CostingRevision[]                   @relation("CostingRevisionActor")
+  costingIssuesResolved                                                                                                                         CostingIssue[]                      @relation("CostingIssueResolver")
+  costingOverridesAsActor                                                                                                                       CostingOverride[]                   @relation("CostingOverrideActor")
+  costingMarginAuthorizationsAsActor                                                                                                            CostingMarginAuthorization[]        @relation("CostingMarginAuthorizationActor")
+  costingCommandsAsActor                                                                                                                        CostingMutationCommand[]            @relation("CostingCommandActor")
+  quoteProposalRevisionsAsActor                                                                                                                 QuoteProposalRevision[]             @relation("QuoteProposalRevisionActor")
+  quoteDispatchesAsActor                                                                                                                        QuoteDispatch[]                     @relation("QuoteDispatchActor")
+  quoteClientDecisionsAsActor                                                                                                                   QuoteClientDecision[]               @relation("QuoteClientDecisionActor")
+  quoteMutationCommandsAsActor                                                                                                                  QuoteMutationCommand[]              @relation("QuoteMutationCommandActor")
+  operationalCapabilitiesCreated                                                                                                                OperationalCapability[]             @relation("OperationalCapabilityActor")
+  operationalCapabilityAssignmentsCreated                                                                                                       OperationalCapabilityAssignment[]   @relation("OperationalCapabilityAssignmentActor")
+  operationalZoneAssignmentsCreated                                                                                                             OperationalZoneAssignment[]         @relation("OperationalZoneAssignmentActor")
+  visitPoliciesCreated                                                                                                                          VisitPolicyVersion[]                @relation("VisitPolicyActor")
+  operationalScheduleOverridesCreated                                                                                                           OperationalScheduleOverride[]       @relation("OperationalScheduleOverrideActor")
+  afterHoursVisitRequestsCreated                                                                                                                AfterHoursVisitRequest[]            @relation("AfterHoursVisitRequester")
+  afterHoursVisitRequestsEvaluated                                                                                                              AfterHoursVisitRequest[]            @relation("AfterHoursVisitEvaluator")
+  afterHoursVisitRequestsDecided                                                                                                                AfterHoursVisitRequest[]            @relation("AfterHoursVisitAdmin")
+  visitPolicyEventsCreated                                                                                                                      VisitPolicyEvent[]                  @relation("VisitPolicyEventActor")
+  personnelPolicyCommandsCreated                                                                                                                PersonnelPolicyCommand[]            @relation("PersonnelPolicyCommandActor")
+  clientTemporaryAccessesIssued                                                                                                                 ClientTemporaryAccess[]             @relation("ClientTemporaryAccessIssuer")
+  clientTemporaryAccessEventsAuthored                                                                                                           ClientTemporaryAccessEvent[]        @relation("ClientTemporaryAccessEventActor")
 
   @@unique([tenantId, userId])
   @@unique([tenantId, publicRef], map: "tenant_memberships_tenant_id_public_ref_key")
@@ -633,49 +635,50 @@ model AuthRefreshToken {
 }
 
 model Client {
-  id                        String                  @id @default(cuid())
-  publicRef                 String                  @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
-  tenantId                  String?                 @map("tenant_id")
-  code                      String                  @unique
-  name                      String
-  email                     String
-  phone                     String
-  address                   String
-  type                      String
-  status                    String
-  totalServices             Int                     @default(0)
-  lastService               String?
-  createdAt                 String
-  fiscalName                String?
-  taxId                     String?
-  billingAddress            String?
-  paymentMethod             String?
-  currency                  String?
-  paymentTerms              String?
-  accountsPayableName       String?
-  accountsPayableEmail      String?
-  accountsPayablePhone      String?
-  complianceNotes           String?
-  kycCompleted              Boolean                 @default(false)
-  normalizedPhone           String?
-  normalizedEmail           String?                 @map("normalized_email") @db.VarChar(320)
-  taxIdNormalized           String?                 @map("tax_id_normalized") @db.VarChar(32)
-  billingTaxId              String?
-  serviceOriginAddress      String?
-  serviceDestinationAddress String?
-  updatedAt                 DateTime                @default(now()) @updatedAt
-  kycDocuments              KycDocument[]
-  leads                     Lead[]
-  projects                  Project[]
-  tenant                    Tenant?                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
-  tenantLeads               Lead[]                  @relation("LeadTenantCustomer")
-  tenantProjects            Project[]               @relation("ProjectTenantClient")
-  pipelineCases             PipelineCase[]          @relation("PipelineCaseServiceClient")
-  addresses                 ClientAddress[]
-  surveys                   Survey[]
-  commercialEntities        CommercialEntity[]
-  clientTemporaryAccesses   ClientTemporaryAccess[]
-  customerStorageLots       CustomerStorageLot[]
+  id                            String                         @id @default(cuid())
+  publicRef                     String                         @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
+  tenantId                      String?                        @map("tenant_id")
+  code                          String                         @unique
+  name                          String
+  email                         String
+  phone                         String
+  address                       String
+  type                          String
+  status                        String
+  totalServices                 Int                            @default(0)
+  lastService                   String?
+  createdAt                     String
+  fiscalName                    String?
+  taxId                         String?
+  billingAddress                String?
+  paymentMethod                 String?
+  currency                      String?
+  paymentTerms                  String?
+  accountsPayableName           String?
+  accountsPayableEmail          String?
+  accountsPayablePhone          String?
+  complianceNotes               String?
+  kycCompleted                  Boolean                        @default(false)
+  normalizedPhone               String?
+  normalizedEmail               String?                        @map("normalized_email") @db.VarChar(320)
+  taxIdNormalized               String?                        @map("tax_id_normalized") @db.VarChar(32)
+  billingTaxId                  String?
+  serviceOriginAddress          String?
+  serviceDestinationAddress     String?
+  updatedAt                     DateTime                       @default(now()) @updatedAt
+  kycDocuments                  KycDocument[]
+  leads                         Lead[]
+  projects                      Project[]
+  tenant                        Tenant?                        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "osi_clients_tenant_id_fkey")
+  tenantLeads                   Lead[]                         @relation("LeadTenantCustomer")
+  tenantProjects                Project[]                      @relation("ProjectTenantClient")
+  pipelineCases                 PipelineCase[]                 @relation("PipelineCaseServiceClient")
+  addresses                     ClientAddress[]
+  surveys                       Survey[]
+  commercialEntities            CommercialEntity[]
+  clientTemporaryAccesses       ClientTemporaryAccess[]
+  customerStorageLots           CustomerStorageLot[]
+  customerStorageAuthorizations CustomerStorageAuthorization[]
 
   @@unique([tenantId, id], map: "osi_clients_tenant_id_id_key")
   @@unique([tenantId, publicRef], map: "osi_clients_tenant_id_public_ref_key")
@@ -1648,6 +1651,7 @@ model PipelineCase {
   commercialContexts            PipelineCaseCommercialContextVersion[]
   clientTemporaryAccesses       ClientTemporaryAccess[]
   customerStorageLots           CustomerStorageLot[]
+  customerStorageAuthorizations CustomerStorageAuthorization[]
   projects                      Project[]                              @relation("PipelineCaseProjects")
 
   @@unique([tenantId, id], map: "osi_pipeline_cases_tenant_id_id_key")
@@ -1812,25 +1816,26 @@ model ServiceDefaultCombinationItem {
 }
 
 model PipelineCaseServiceRevision {
-  id                        String                     @id @default(cuid())
-  selectionRef              String                     @default(dbgenerated("gen_random_uuid()")) @map("selection_ref") @db.Uuid
-  tenantId                  String                     @map("tenant_id")
-  pipelineCaseId            String                     @map("pipeline_case_id")
-  revision                  Int
-  modeSnapshot              PipelineMode               @map("mode_snapshot")
-  source                    CaseServiceSelectionSource
-  defaultCombinationRef     String?                    @map("default_combination_ref") @db.Uuid
-  createdByMembershipId     String                     @map("created_by_membership_id")
-  createdByUserId           String                     @map("created_by_user_id")
-  createdAt                 DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant                    Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_tenant_fkey")
-  pipelineCase              PipelineCase               @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_case_fkey")
-  createdByMembership       TenantMembership           @relation("PipelineCaseServiceRevisionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_actor_fkey")
-  items                     PipelineCaseServiceItem[]
-  surveyAssignments         SurveyAssignment[]
-  surveyEvaluationDecisions SurveyEvaluationDecision[]
-  surveyDrafts              SurveyDraft[]
-  surveyPublications        SurveyPublication[]
+  id                            String                         @id @default(cuid())
+  selectionRef                  String                         @default(dbgenerated("gen_random_uuid()")) @map("selection_ref") @db.Uuid
+  tenantId                      String                         @map("tenant_id")
+  pipelineCaseId                String                         @map("pipeline_case_id")
+  revision                      Int
+  modeSnapshot                  PipelineMode                   @map("mode_snapshot")
+  source                        CaseServiceSelectionSource
+  defaultCombinationRef         String?                        @map("default_combination_ref") @db.Uuid
+  createdByMembershipId         String                         @map("created_by_membership_id")
+  createdByUserId               String                         @map("created_by_user_id")
+  createdAt                     DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant                        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_tenant_fkey")
+  pipelineCase                  PipelineCase                   @relation(fields: [tenantId, pipelineCaseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_case_fkey")
+  createdByMembership           TenantMembership               @relation("PipelineCaseServiceRevisionActor", fields: [tenantId, createdByMembershipId, createdByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "pipeline_case_service_revisions_actor_fkey")
+  items                         PipelineCaseServiceItem[]
+  surveyAssignments             SurveyAssignment[]
+  surveyEvaluationDecisions     SurveyEvaluationDecision[]
+  surveyDrafts                  SurveyDraft[]
+  surveyPublications            SurveyPublication[]
+  customerStorageAuthorizations CustomerStorageAuthorization[]
 
   @@unique([tenantId, id], map: "pipeline_case_service_revisions_tenant_id_id_key")
   @@unique([tenantId, selectionRef], map: "pipeline_case_service_revisions_tenant_ref_key")
@@ -4143,21 +4148,22 @@ model MaterialSupplierReference {
 }
 
 model MaterialWarehouse {
-  id                  String                 @id @default(cuid())
-  warehouseRef        String                 @default(dbgenerated("gen_random_uuid()")) @map("warehouse_ref") @db.Uuid
-  tenantId            String                 @map("tenant_id")
-  code                String                 @db.VarChar(64)
-  name                String                 @db.VarChar(160)
-  status              MaterialRecordStatus   @default(ACTIVE)
-  version             Int                    @default(1)
-  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant              Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_warehouses_tenant_fkey")
-  locations           MaterialLocation[]
-  sheetProfile        WarehouseSheetProfile?
-  accessGrants        WarehouseAccessGrant[]
-  customerStorageLots CustomerStorageLot[]
-  custodyLocationStates CustomerCustodyLocationState[]
+  id                            String                         @id @default(cuid())
+  warehouseRef                  String                         @default(dbgenerated("gen_random_uuid()")) @map("warehouse_ref") @db.Uuid
+  tenantId                      String                         @map("tenant_id")
+  code                          String                         @db.VarChar(64)
+  name                          String                         @db.VarChar(160)
+  status                        MaterialRecordStatus           @default(ACTIVE)
+  version                       Int                            @default(1)
+  createdAt                     DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                     DateTime                       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_warehouses_tenant_fkey")
+  locations                     MaterialLocation[]
+  sheetProfile                  WarehouseSheetProfile?
+  accessGrants                  WarehouseAccessGrant[]
+  customerStorageLots           CustomerStorageLot[]
+  customerStorageAuthorizations CustomerStorageAuthorization[]
+  custodyLocationStates         CustomerCustodyLocationState[]
 
   @@unique([tenantId, id], map: "material_warehouses_tenant_id_key")
   @@unique([tenantId, warehouseRef], map: "material_warehouses_tenant_ref_key")
@@ -4166,37 +4172,37 @@ model MaterialWarehouse {
 }
 
 model MaterialLocation {
-  id                           String                          @id @default(cuid())
-  locationRef                  String                          @default(dbgenerated("gen_random_uuid()")) @map("location_ref") @db.Uuid
-  tenantId                     String                          @map("tenant_id")
-  warehouseId                  String                          @map("warehouse_id")
-  parentLocationId             String?                         @map("parent_location_id")
-  code                         String                          @db.VarChar(64)
-  name                         String                          @db.VarChar(160)
+  id                           String                              @id @default(cuid())
+  locationRef                  String                              @default(dbgenerated("gen_random_uuid()")) @map("location_ref") @db.Uuid
+  tenantId                     String                              @map("tenant_id")
+  warehouseId                  String                              @map("warehouse_id")
+  parentLocationId             String?                             @map("parent_location_id")
+  code                         String                              @db.VarChar(64)
+  name                         String                              @db.VarChar(160)
   kind                         MaterialLocationKind
-  depth                        Int                             @default(0)
-  path                         String                          @db.VarChar(600)
-  status                       MaterialRecordStatus            @default(ACTIVE)
-  version                      Int                             @default(1)
-  createdAt                    DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                    DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant                       Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_tenant_fkey")
-  warehouse                    MaterialWarehouse               @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_warehouse_fkey")
-  parent                       MaterialLocation?               @relation("MaterialLocationTree", fields: [tenantId, parentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_parent_fkey")
-  children                     MaterialLocation[]              @relation("MaterialLocationTree")
+  depth                        Int                                 @default(0)
+  path                         String                              @db.VarChar(600)
+  status                       MaterialRecordStatus                @default(ACTIVE)
+  version                      Int                                 @default(1)
+  createdAt                    DateTime                            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                    DateTime                            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                       Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_tenant_fkey")
+  warehouse                    MaterialWarehouse                   @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_warehouse_fkey")
+  parent                       MaterialLocation?                   @relation("MaterialLocationTree", fields: [tenantId, parentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "material_locations_parent_fkey")
+  children                     MaterialLocation[]                  @relation("MaterialLocationTree")
   movements                    MaterialInventoryMovement[]
   reservations                 MaterialReservation[]
-  currentAssets                AssetInstance[]                 @relation("AssetCurrentLocation")
-  assignmentOrigins            AssetAssignment[]               @relation("AssetAssignmentOrigin")
-  assignmentDestinations       AssetAssignment[]               @relation("AssetAssignmentDestination")
-  inspectionLocations          AssetInspection[]               @relation("AssetInspectionLocation")
+  currentAssets                AssetInstance[]                     @relation("AssetCurrentLocation")
+  assignmentOrigins            AssetAssignment[]                   @relation("AssetAssignmentOrigin")
+  assignmentDestinations       AssetAssignment[]                   @relation("AssetAssignmentDestination")
+  inspectionLocations          AssetInspection[]                   @relation("AssetInspectionLocation")
   configuration                WarehouseLocationConfiguration?
   address                      WarehouseLocationAddress?
   accessGrants                 WarehouseAccessGrant[]
-  customerStoredItems          CustomerStoredItem[]            @relation("CustomerStoredItemCurrentLocation")
-  customerStorageReceptionLots CustomerStorageLot[]            @relation("CustomerStorageReceptionLocation")
-  custodyMovementOrigins       CustomerCustodyMovement[]       @relation("CustomerCustodyMovementOrigin")
-  custodyMovementDestinations  CustomerCustodyMovement[]       @relation("CustomerCustodyMovementDestination")
+  customerStoredItems          CustomerStoredItem[]                @relation("CustomerStoredItemCurrentLocation")
+  customerStorageReceptionLots CustomerStorageLot[]                @relation("CustomerStorageReceptionLocation")
+  custodyMovementOrigins       CustomerCustodyMovement[]           @relation("CustomerCustodyMovementOrigin")
+  custodyMovementDestinations  CustomerCustodyMovement[]           @relation("CustomerCustodyMovementDestination")
   custodyOccupancyState        CustomerCustodyLocationState?
   custodyOccupancyEvents       CustomerCustodyLocationStateEvent[]
 
@@ -4387,6 +4393,7 @@ model CustomerStorageLot {
   pipelineCaseId      String?                       @map("pipeline_case_id")
   warehouseId         String                        @map("warehouse_id")
   receptionLocationId String                        @map("reception_location_id")
+  authorizationId     String?                       @map("authorization_id")
   lotCode             String                        @map("lot_code") @db.VarChar(64)
   storageType         CustomerStorageType           @default(PERSONAL_EFFECTS) @map("storage_type")
   intakeSource        CustomerCustodyIntakeSource   @default(DIRECT_WAREHOUSE) @map("intake_source")
@@ -4414,17 +4421,75 @@ model CustomerStorageLot {
   pipelineCase        PipelineCase?                 @relation(fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_case_client_fkey")
   warehouse           MaterialWarehouse             @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_warehouse_fkey")
   receptionLocation   MaterialLocation              @relation("CustomerStorageReceptionLocation", fields: [tenantId, warehouseId, receptionLocationId], references: [tenantId, warehouseId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_reception_location_fkey")
+  authorization       CustomerStorageAuthorization? @relation(fields: [tenantId, authorizationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_lots_authorization_fkey")
   items               CustomerStoredItem[]
   movements           CustomerCustodyMovement[]
 
   @@unique([tenantId, id], map: "customer_storage_lots_tenant_id_key")
   @@unique([tenantId, storageRef], map: "customer_storage_lots_tenant_ref_key")
   @@unique([tenantId, lotCode], map: "customer_storage_lots_code_key")
+  @@unique([tenantId, authorizationId], map: "customer_storage_lots_authorization_key")
   @@index([tenantId, storageType, status, receivedAt(sort: Desc)], map: "customer_storage_lots_type_idx")
   @@index([tenantId, receptionStage, arrivedAt(sort: Desc)], map: "customer_storage_lots_reception_stage_idx")
   @@index([tenantId, warehouseId, status, receivedAt(sort: Desc)], map: "customer_storage_lots_warehouse_idx")
   @@index([tenantId, clientId, status], map: "customer_storage_lots_client_idx")
   @@map("customer_storage_lots")
+}
+
+model CustomerStorageAuthorization {
+  id                       String                             @id @default(cuid())
+  authorizationRef         String                             @default(dbgenerated("gen_random_uuid()")) @map("authorization_ref") @db.Uuid
+  tenantId                 String                             @map("tenant_id")
+  clientId                 String                             @map("client_id")
+  pipelineCaseId           String                             @map("pipeline_case_id")
+  serviceRevisionId        String                             @map("service_revision_id")
+  warehouseId              String                             @map("warehouse_id")
+  authorizationCode        String                             @map("authorization_code") @db.VarChar(64)
+  movementType             CustomerStorageAuthorizationType   @map("movement_type")
+  storageType              CustomerStorageType                @map("storage_type")
+  intakeSource             CustomerCustodyIntakeSource?       @map("intake_source")
+  status                   CustomerStorageAuthorizationStatus @default(AUTHORIZED)
+  plannedAt                DateTime                           @map("planned_at") @db.Timestamptz(6)
+  validUntil               DateTime                           @map("valid_until") @db.Timestamptz(6)
+  manifestCode             String?                            @map("manifest_code") @db.VarChar(80)
+  originText               String?                            @map("origin_text") @db.VarChar(500)
+  destinationText          String?                            @map("destination_text") @db.VarChar(500)
+  instructions             String?                            @db.VarChar(2000)
+  authorizedByMembershipId String                             @map("authorized_by_membership_id")
+  authorizedByUserId       String                             @map("authorized_by_user_id")
+  authorizedAt             DateTime                           @default(now()) @map("authorized_at") @db.Timestamptz(6)
+  consumedAt               DateTime?                          @map("consumed_at") @db.Timestamptz(6)
+  version                  Int                                @default(1)
+  createdAt                DateTime                           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant                   Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_tenant_fkey")
+  client                   Client                             @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_client_fkey")
+  pipelineCase             PipelineCase                       @relation(fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_case_client_fkey")
+  serviceRevision          PipelineCaseServiceRevision        @relation(fields: [tenantId, serviceRevisionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_service_revision_fkey")
+  warehouse                MaterialWarehouse                  @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_warehouse_fkey")
+  authorizedByMembership   TenantMembership                   @relation("CustomerStorageAuthorizationActor", fields: [tenantId, authorizedByMembershipId, authorizedByUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_actor_fkey")
+  storageLot               CustomerStorageLot?
+
+  @@unique([tenantId, id], map: "customer_storage_authorizations_tenant_id_key")
+  @@unique([tenantId, authorizationRef], map: "customer_storage_authorizations_tenant_ref_key")
+  @@unique([tenantId, authorizationCode], map: "customer_storage_authorizations_code_key")
+  @@index([tenantId, movementType, status, validUntil], map: "customer_storage_authorizations_available_idx")
+  @@index([tenantId, pipelineCaseId, authorizedAt(sort: Desc)], map: "customer_storage_authorizations_case_idx")
+  @@index([tenantId, warehouseId, movementType, status], map: "customer_storage_authorizations_warehouse_idx")
+  @@map("customer_storage_authorizations")
+}
+
+enum CustomerStorageAuthorizationType {
+  ENTRY
+  EXIT
+}
+
+enum CustomerStorageAuthorizationStatus {
+  AUTHORIZED
+  PARTIALLY_USED
+  CONSUMED
+  CANCELLED
+  EXPIRED
 }
 
 enum CustomerStorageType {
@@ -4463,34 +4528,34 @@ enum CustomerStorageLotStatus {
 }
 
 model CustomerStoredItem {
-  id                String                    @id @default(cuid())
-  itemRef           String                    @default(dbgenerated("gen_random_uuid()")) @map("item_ref") @db.Uuid
-  tenantId          String                    @map("tenant_id")
-  storageLotId      String                    @map("storage_lot_id")
-  currentLocationId String?                   @map("current_location_id")
-  itemCode          String                    @map("item_code") @db.VarChar(80)
-  externalCode      String?                   @map("external_code") @db.VarChar(120)
-  unitType          CustomerCustodyUnitType   @default(OTHER) @map("unit_type")
-  genericContents   String[]                  @default([]) @map("generic_contents")
-  identitySource    CustomerCustodyIdentitySource @default(MANIFEST) @map("identity_source")
-  inspectionStatus CustomerCustodyInspectionStatus @default(CLEARED) @map("inspection_status")
-  description       String                    @db.VarChar(240)
-  category          String?                   @db.VarChar(120)
-  quantity          Decimal                   @db.Decimal(14, 3)
-  unit              String                    @db.VarChar(24)
-  volumeM3          Decimal?                  @map("volume_m3") @db.Decimal(14, 6)
-  weightKg          Decimal?                  @map("weight_kg") @db.Decimal(14, 3)
-  condition         CustomerStoredCondition   @default(UNSPECIFIED)
+  id                String                          @id @default(cuid())
+  itemRef           String                          @default(dbgenerated("gen_random_uuid()")) @map("item_ref") @db.Uuid
+  tenantId          String                          @map("tenant_id")
+  storageLotId      String                          @map("storage_lot_id")
+  currentLocationId String?                         @map("current_location_id")
+  itemCode          String                          @map("item_code") @db.VarChar(80)
+  externalCode      String?                         @map("external_code") @db.VarChar(120)
+  unitType          CustomerCustodyUnitType         @default(OTHER) @map("unit_type")
+  genericContents   String[]                        @default([]) @map("generic_contents")
+  identitySource    CustomerCustodyIdentitySource   @default(MANIFEST) @map("identity_source")
+  inspectionStatus  CustomerCustodyInspectionStatus @default(CLEARED) @map("inspection_status")
+  description       String                          @db.VarChar(240)
+  category          String?                         @db.VarChar(120)
+  quantity          Decimal                         @db.Decimal(14, 3)
+  unit              String                          @db.VarChar(24)
+  volumeM3          Decimal?                        @map("volume_m3") @db.Decimal(14, 6)
+  weightKg          Decimal?                        @map("weight_kg") @db.Decimal(14, 3)
+  condition         CustomerStoredCondition         @default(UNSPECIFIED)
   evidence          Json?
-  notes             String?                   @db.VarChar(2000)
-  status            CustomerStoredItemStatus  @default(IN_CUSTODY)
-  receivedAt        DateTime?                 @map("received_at") @db.Timestamptz(6)
-  version           Int                       @default(1)
-  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_stored_items_tenant_fkey")
-  storageLot        CustomerStorageLot        @relation(fields: [tenantId, storageLotId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_stored_items_lot_fkey")
-  currentLocation   MaterialLocation?         @relation("CustomerStoredItemCurrentLocation", fields: [tenantId, currentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_stored_items_location_fkey")
+  notes             String?                         @db.VarChar(2000)
+  status            CustomerStoredItemStatus        @default(IN_CUSTODY)
+  receivedAt        DateTime?                       @map("received_at") @db.Timestamptz(6)
+  version           Int                             @default(1)
+  createdAt         DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant            Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_stored_items_tenant_fkey")
+  storageLot        CustomerStorageLot              @relation(fields: [tenantId, storageLotId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_stored_items_lot_fkey")
+  currentLocation   MaterialLocation?               @relation("CustomerStoredItemCurrentLocation", fields: [tenantId, currentLocationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_stored_items_location_fkey")
   movements         CustomerCustodyMovement[]
 
   @@unique([tenantId, id], map: "customer_stored_items_tenant_id_key")
@@ -4539,19 +4604,19 @@ enum CustomerStoredItemStatus {
 }
 
 model CustomerCustodyCommand {
-  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId          String                    @map("tenant_id")
-  requestId         String                    @map("request_id") @db.VarChar(191)
-  operation         String                    @db.VarChar(80)
-  payloadHash       String                    @map("payload_hash") @db.Char(64)
-  targetRef         String                    @map("target_ref") @db.VarChar(191)
-  resultJson        Json                      @map("result_json")
-  actorMembershipId String                    @map("actor_membership_id")
-  actorUserId       String                    @map("actor_user_id")
-  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_commands_tenant_fkey")
-  actorMembership   TenantMembership          @relation("CustomerCustodyCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_commands_actor_fkey")
-  movements         CustomerCustodyMovement[]
+  id                  String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                              @map("tenant_id")
+  requestId           String                              @map("request_id") @db.VarChar(191)
+  operation           String                              @db.VarChar(80)
+  payloadHash         String                              @map("payload_hash") @db.Char(64)
+  targetRef           String                              @map("target_ref") @db.VarChar(191)
+  resultJson          Json                                @map("result_json")
+  actorMembershipId   String                              @map("actor_membership_id")
+  actorUserId         String                              @map("actor_user_id")
+  createdAt           DateTime                            @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant              Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_commands_tenant_fkey")
+  actorMembership     TenantMembership                    @relation("CustomerCustodyCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_commands_actor_fkey")
+  movements           CustomerCustodyMovement[]
   locationStateEvents CustomerCustodyLocationStateEvent[]
 
   @@unique([tenantId, id], map: "customer_custody_commands_tenant_id_key")

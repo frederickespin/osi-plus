@@ -15,7 +15,8 @@ export function createCustomerCustodyHandler({ env = process.env, prismaClient, 
     try {
       const context = await resolveContext(req, { env, prisma: prismaClient });
       const required = typeof permission === "function" ? permission(req.method === "HEAD" ? "GET" : req.method) : permission;
-      if (!context.effectivePermissions?.includes(required) || context.deniedPermissions?.includes(required)) fail("CUSTOMER_CUSTODY_FORBIDDEN", 403);
+      const requiredPermissions = Array.isArray(required) ? required : [required];
+      if (!requiredPermissions.some((entry) => context.effectivePermissions?.includes(entry) && !context.deniedPermissions?.includes(entry))) fail("CUSTOMER_CUSTODY_FORBIDDEN", 403);
       const method = req.method === "HEAD" ? "GET" : req.method; const raw = method === "GET" ? undefined : await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 128 * 1024 }); const input = normalize && raw ? normalize(raw, req) : raw;
       const value = await execute({ req, context, input, prisma: prismaClient, method }); if (req.method === "HEAD") return res.status(200).end(); return res.status(method === "POST" ? 201 : 200).json({ ok: true, data: value });
     } catch (error) { return sendCustomerCustodyError(res, error, req.method === "HEAD"); }

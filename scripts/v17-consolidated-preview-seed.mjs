@@ -72,7 +72,7 @@ const adminPermissions = [
   "inventory:catalog:view", "inventory:catalog:manage", "inventory:stock:view", "inventory:stock:receive",
   "inventory:stock:transfer", "inventory:stock:issue", "inventory:stock:adjust", "inventory:reservation:manage",
   "inventory:purchase:request", "inventory:purchase:approve", "inventory:recipes:view", "inventory:recipes:manage",
-  "customer-custody:view", "customer-custody:receive", "customer-custody:operate", "warehouse-access:manage",
+  "customer-custody:view", "customer-custody:receive", "customer-custody:operate", "customer-custody:authorize", "warehouse-access:manage",
   "assets:model:view", "assets:model:manage", "assets:instance:view", "assets:instance:manage",
   "assets:reservation:manage", "assets:assignment:manage", "assets:inspection:perform",
   "assets:maintenance:view", "assets:maintenance:manage", "assets:incident:manage",
@@ -160,9 +160,9 @@ async function ensureAddress(tenantId, clientId, label, city, countryCode = "DO"
   return prisma.clientAddress.create({ data: { tenantId, clientId, countryCode, provinceState: countryCode === "DO" ? "Distrito Nacional" : "Florida", cityMunicipality: city, sector: "Sector Preview", streetAndNumber: "Calle Sintética 10B #1", buildingResidential: "Edificio Preview", floorUnit: "Nivel 1", arrivalReference: "Referencia ficticia", locationContactName: "Contacto Sintético", locationContactPhone: "+12025550199", label } });
 }
 
-async function ensureService(tenantId, code, name, modes, usage = "PRIMARY") {
+async function ensureService(tenantId, code, name, modes, usage = "PRIMARY", category = "PREVIEW_SYNTHETIC") {
   const existing = await prisma.serviceCatalogItem.findFirst({ where: { tenantId, code } });
-  return existing || prisma.serviceCatalogItem.create({ data: { tenantId, code, name, category: "PREVIEW_SYNTHETIC", usage, compatibleModes: modes, sortOrder: 10 } });
+  return existing || prisma.serviceCatalogItem.create({ data: { tenantId, code, name, category, usage, compatibleModes: modes, sortOrder: 10 } });
 }
 
 async function ensureCase({ tenant, client, owner, code, mode, service, cbm, requiresSurvey, destinationStatus, origin, destination }) {
@@ -512,6 +512,7 @@ async function main() {
     ensureService(tenant.id, "EXPORT_CRATING", "Exportación con Crating", ["EXPORT"]),
     ensureService(tenant.id, "OUTSOURCE_PENDING", "Servicio con proveedor pendiente", ["LOCAL"]),
     ensureService(tenant.id, "PREMIUM_MOVE", "Mudanza integral tres propuestas", ["LOCAL"]),
+    ensureService(tenant.id, "ALMACENAJE", "Almacenaje", ["LOCAL", "EXPORT", "IMPORT"], "PRIMARY", "STORAGE"),
   ]);
   const owner = { user: adminIdentity.user, membership: adminMembership };
   const scenarios = [

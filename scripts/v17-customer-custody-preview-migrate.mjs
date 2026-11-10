@@ -11,8 +11,8 @@ import { PrismaClient } from "@prisma/client";
 import { validateMigrationFiles } from "./canonical-migrations.mjs";
 
 export const CUSTOMER_CUSTODY_PREVIEW_MIGRATION_OPERATION = "V17_CUSTOMER_CUSTODY_PREVIEW_MIGRATION";
-export const CUSTOMER_CUSTODY_MIGRATION = "20261110020000_v17_customer_custody_scan_first";
-export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "70dc02210ac9a183d2cda9f106ceb36e0b8daaac5fe66222ea8f15f499475877";
+export const CUSTOMER_CUSTODY_MIGRATION = "20261110030000_v17_customer_custody_authorizations";
+export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "7b2a7c7626fcf4e773ee851a9b996436505d56758900b8cc63606ec86d53e331";
 export const RETAINED_PREVIEW_EXTENSION = Object.freeze({
   name: "20260917010000_v17_engineering_crating",
   checksum: "b437aae3600a23c655d97e674c3bfaa9a1721e0d54a26dcccc1181d90fdf2d0f",
@@ -74,7 +74,7 @@ export function previewMigrationOperation(env = process.env) {
 
 export function previewMigrationManifest(root = process.cwd()) {
   const names = validateMigrationFiles(root);
-  requireCondition(names.length === 45 && names.at(-1) === CUSTOMER_CUSTODY_MIGRATION, "SOURCE_INVENTORY_INVALID");
+  requireCondition(names.length === 46 && names.at(-1) === CUSTOMER_CUSTODY_MIGRATION, "SOURCE_INVENTORY_INVALID");
   const manifest = Object.fromEntries(names.map((name) => [name,
     sha256(readFileSync(resolve(root, "prisma/migrations", name, "migration.sql"))),
   ]));

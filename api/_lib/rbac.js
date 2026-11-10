@@ -110,6 +110,7 @@ export const PERMS = Object.freeze({
   CUSTOMER_CUSTODY_VIEW: "customer-custody:view",
   CUSTOMER_CUSTODY_RECEIVE: "customer-custody:receive",
   CUSTOMER_CUSTODY_OPERATE: "customer-custody:operate",
+  CUSTOMER_CUSTODY_AUTHORIZE: "customer-custody:authorize",
   WAREHOUSE_ACCESS_MANAGE: "warehouse-access:manage",
 
   // V17 reusable assets. Every permission is an explicit membership grant.
@@ -269,6 +270,7 @@ const EXPLICIT_CUSTOMER_CUSTODY_PERMISSIONS = new Set([
   PERMS.CUSTOMER_CUSTODY_VIEW,
   PERMS.CUSTOMER_CUSTODY_RECEIVE,
   PERMS.CUSTOMER_CUSTODY_OPERATE,
+  PERMS.CUSTOMER_CUSTODY_AUTHORIZE,
   PERMS.WAREHOUSE_ACCESS_MANAGE,
 ]);
 

@@ -99,6 +99,15 @@ export function validatePreviewHistory(history, manifest) {
   return Object.freeze({ alreadyApplied: names.has(CUSTOMER_CUSTODY_MIGRATION), applied: names.size });
 }
 
+export function validatePreviewRelationState(relations, alreadyApplied) {
+  const base = ["grants_exists", "lots_exists", "items_exists", "commands_exists", "movements_exists",
+    "storage_groups_exists", "reception_workflow_exists", "scan_first_exists"];
+  requireCondition(relations && base.every((name) => relations[name] === true)
+    && relations.authorizations_exists === alreadyApplied
+    && relations.lot_authorization_exists === alreadyApplied
+    && Object.values(relations).filter(Boolean).length === (alreadyApplied ? 10 : 8), "RELATION_STATE_INVALID");
+}
+
 async function snapshot(prisma, manifest) {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("SET TRANSACTION READ ONLY");
@@ -113,12 +122,8 @@ async function snapshot(prisma, manifest) {
     requireCondition(tenants.length === 1 && tenants[0].status === "ACTIVE", "TENANT_INVALID");
     const history = await tx.$queryRawUnsafe("SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name");
     const plan = validatePreviewHistory(history, manifest);
-    const [relations] = await tx.$queryRawUnsafe("SELECT to_regclass('osi.warehouse_access_grants') IS NOT NULL AS grants_exists, to_regclass('osi.customer_storage_lots') IS NOT NULL AS lots_exists, to_regclass('osi.customer_stored_items') IS NOT NULL AS items_exists, to_regclass('osi.customer_custody_commands') IS NOT NULL AS commands_exists, to_regclass('osi.customer_custody_movements') IS NOT NULL AS movements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'storage_type') AS storage_groups_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'reception_stage') AS reception_workflow_exists, to_regclass('osi.customer_custody_location_states') IS NOT NULL AS scan_first_exists");
-    const relationCount = Object.values(relations).filter(Boolean).length;
-    requireCondition(relationCount === (plan.alreadyApplied ? 8 : 7)
-      && relations.storage_groups_exists === true
-      && relations.reception_workflow_exists === true
-      && relations.scan_first_exists === plan.alreadyApplied, "RELATION_STATE_INVALID");
+    const [relations] = await tx.$queryRawUnsafe("SELECT to_regclass('osi.warehouse_access_grants') IS NOT NULL AS grants_exists, to_regclass('osi.customer_storage_lots') IS NOT NULL AS lots_exists, to_regclass('osi.customer_stored_items') IS NOT NULL AS items_exists, to_regclass('osi.customer_custody_commands') IS NOT NULL AS commands_exists, to_regclass('osi.customer_custody_movements') IS NOT NULL AS movements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'storage_type') AS storage_groups_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'reception_stage') AS reception_workflow_exists, to_regclass('osi.customer_custody_location_states') IS NOT NULL AS scan_first_exists, to_regclass('osi.customer_storage_authorizations') IS NOT NULL AS authorizations_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'authorization_id') AS lot_authorization_exists");
+    validatePreviewRelationState(relations, plan.alreadyApplied);
     return { plan, history, serverVersionNum: Number(identity.server_version_num) };
   }, { maxWait: 5000, timeout: 35000, isolationLevel: "RepeatableRead" });
 }

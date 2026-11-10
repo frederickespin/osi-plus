@@ -6,6 +6,7 @@ import {
   previewMigrationManifest,
   previewMigrationOperation,
   validatePreviewHistory,
+  validatePreviewRelationState,
 } from "./v17-customer-custody-preview-migrate.mjs";
 
 const sha = "1".repeat(40);
@@ -45,5 +46,14 @@ assert.deepEqual(validatePreviewHistory(before, manifest), { alreadyApplied: fal
 assert.deepEqual(validatePreviewHistory([...before, row(CUSTOMER_CUSTODY_MIGRATION, CUSTOMER_CUSTODY_MIGRATION_CHECKSUM)], manifest), { alreadyApplied: true, applied: 47 });
 assert.throws(() => validatePreviewHistory(before.slice(1), manifest), /HISTORY_INVALID/u);
 assert.throws(() => validatePreviewHistory([...before, row("unexpected", "0".repeat(64))], manifest), /HISTORY_INVALID/u);
+
+const baseRelations = {
+  grants_exists: true, lots_exists: true, items_exists: true, commands_exists: true,
+  movements_exists: true, storage_groups_exists: true, reception_workflow_exists: true,
+  scan_first_exists: true, authorizations_exists: false, lot_authorization_exists: false,
+};
+assert.doesNotThrow(() => validatePreviewRelationState(baseRelations, false));
+assert.doesNotThrow(() => validatePreviewRelationState({ ...baseRelations, authorizations_exists: true, lot_authorization_exists: true }, true));
+assert.throws(() => validatePreviewRelationState({ ...baseRelations, scan_first_exists: false }, false), /RELATION_STATE_INVALID/u);
 
 process.stdout.write("v17 customer custody preview migration: ok\n");

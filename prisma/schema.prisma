@@ -4461,7 +4461,7 @@ model CustomerStorageAuthorization {
   consumedAt               DateTime?                          @map("consumed_at") @db.Timestamptz(6)
   version                  Int                                @default(1)
   createdAt                DateTime                           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime                           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedAt                DateTime                           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   tenant                   Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_tenant_fkey")
   client                   Client                             @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_client_fkey")
   pipelineCase             PipelineCase                       @relation(fields: [tenantId, pipelineCaseId, clientId], references: [tenantId, id, clientId], onDelete: Restrict, onUpdate: Cascade, map: "customer_storage_authorizations_case_client_fkey")

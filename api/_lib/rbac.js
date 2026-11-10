@@ -105,6 +105,14 @@ export const PERMS = Object.freeze({
   INVENTORY_RECIPES_VIEW: "inventory:recipes:view",
   INVENTORY_RECIPES_MANAGE: "inventory:recipes:manage",
 
+  // Customer property is a separate custody authority. Role and internal
+  // inventory permissions never imply access to a customer's effects.
+  CUSTOMER_CUSTODY_VIEW: "customer-custody:view",
+  CUSTOMER_CUSTODY_RECEIVE: "customer-custody:receive",
+  CUSTOMER_CUSTODY_OPERATE: "customer-custody:operate",
+  CUSTOMER_CUSTODY_AUTHORIZE: "customer-custody:authorize",
+  WAREHOUSE_ACCESS_MANAGE: "warehouse-access:manage",
+
   // V17 reusable assets. Every permission is an explicit membership grant.
   ASSETS_MODEL_VIEW: "assets:model:view",
   ASSETS_MODEL_MANAGE: "assets:model:manage",
@@ -258,6 +266,14 @@ const EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS = new Set([
   PERMS.INVENTORY_RECIPES_MANAGE,
 ]);
 
+const EXPLICIT_CUSTOMER_CUSTODY_PERMISSIONS = new Set([
+  PERMS.CUSTOMER_CUSTODY_VIEW,
+  PERMS.CUSTOMER_CUSTODY_RECEIVE,
+  PERMS.CUSTOMER_CUSTODY_OPERATE,
+  PERMS.CUSTOMER_CUSTODY_AUTHORIZE,
+  PERMS.WAREHOUSE_ACCESS_MANAGE,
+]);
+
 const EXPLICIT_ASSET_PERMISSIONS = new Set([
   PERMS.ASSETS_MODEL_VIEW,
   PERMS.ASSETS_MODEL_MANAGE,
@@ -364,6 +380,7 @@ const ROLE_PERMS = {
     && !EXPLICIT_SERVICE_PERMISSIONS.has(permission)
     && !EXPLICIT_SURVEY_PERMISSIONS.has(permission)
     && !EXPLICIT_MATERIALS_INVENTORY_PERMISSIONS.has(permission)
+    && !EXPLICIT_CUSTOMER_CUSTODY_PERMISSIONS.has(permission)
     && !EXPLICIT_ASSET_PERMISSIONS.has(permission)
     && !EXPLICIT_LOGISTICS_PERMISSIONS.has(permission)
     && !EXPLICIT_COSTING_PERMISSIONS.has(permission)

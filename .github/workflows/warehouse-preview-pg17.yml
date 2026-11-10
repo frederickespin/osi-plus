@@ -109,7 +109,7 @@ jobs:
             assert.equal(identity.ledger_absent, true);
           } finally { await prisma.$disconnect(); }
           NODE
-      - name: Prepare exact37,38,39 and40 historical staging directories
+      - name: Prepare exact37 through41 historical staging directories
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -117,13 +117,14 @@ jobs:
           import { join } from 'node:path';
           import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
           const source = validateMigrationFiles();
-          assert.equal(source.length, 41);
-          assert.equal(source.at(-1), '20261102020000_v17_warehouse_localities');
+          assert.equal(source.length, 46);
+          assert.equal(source.at(-1), '20261110030000_v17_customer_custody_authorizations');
+          assert.equal(source[40], '20261102020000_v17_warehouse_localities');
           assert.equal(source[39], '20261102010000_v17_warehouse_routes');
           assert.equal(source[38], '20261101020000_v17_warehouse_sheet');
           assert.equal(source[37], '20261101010000_v17_warehouse_configuration');
           assert.equal(source[36], '20261031010000_v17_fleet_driver_authority');
-          for (const count of [37, 38, 39, 40]) {
+          for (const count of [37, 38, 39, 40, 41]) {
             const stage = join(process.env.RUNNER_TEMP, `warehouse-pg17-${count}`);
             mkdirSync(join(stage, 'migrations'), { recursive: true });
             copyFileSync('prisma/schema.prisma', join(stage, 'schema.prisma'));
@@ -176,11 +177,11 @@ jobs:
         run: node scripts/capture-v17-warehouse-localities-pg17-catalog.mjs --before "$RUNNER_TEMP/warehouse-pg17-localities-before.json"
       - name: Upgrade40 to41 and verify catalog history and populated data preservation
         run: |
-          npx prisma migrate deploy --schema prisma/schema.prisma
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/warehouse-pg17-41/schema.prisma"
           node scripts/capture-v17-warehouse-localities-pg17-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg17-localities-after.json" --previous "$RUNNER_TEMP/warehouse-pg17-localities-before.json"
       - name: Verify locality migration idempotency before functional writes
         run: |
-          npx prisma migrate deploy --schema prisma/schema.prisma
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/warehouse-pg17-41/schema.prisma"
           node scripts/capture-v17-warehouse-localities-pg17-catalog.mjs --after "$RUNNER_TEMP/warehouse-pg17-localities-replay.json" --previous "$RUNNER_TEMP/warehouse-pg17-localities-before.json"
       - name: Verify atomic worksheets and explicit routes on PostgreSQL17
         run: |

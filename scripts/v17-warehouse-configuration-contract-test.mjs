@@ -90,5 +90,7 @@ test("local gate requires real loopback and cannot run on Vercel", () => {
 
 test("Preview gate pins consolidated branch, batch, authentication and tenancy", () => {
   assert.equal(isWarehouseConfigurationEnabled(preview), true);
+  assert.equal(isWarehouseConfigurationEnabled({ ...preview, VERCEL_GIT_COMMIT_REF: "feature/v17-customer-custody-21a" }), true);
+  assert.throws(() => isWarehouseConfigurationEnabled({ ...preview, VERCEL_GIT_COMMIT_REF: "feature/v17-customer-custody-21a-extra" }), /WAREHOUSE_CONFIGURATION_INVALID/);
   for (const change of [{ VERCEL_ENV: "production" }, { VERCEL_GIT_COMMIT_REF: "feature/v17-warehouses-configuration-20b" }, { VERCEL_GIT_COMMIT_REF: "main" }, { WAREHOUSE_CONFIGURATION_API_BATCH: "OTHER" }, { MT01B_AUTH_MODE: "TENANT" }, { MT01B_TENANT_SWITCH_ENABLED: "true" }, { VITE_MT01B2_CLIENT_ENABLED: "true" }, { VERCEL: "0" }]) assert.throws(() => isWarehouseConfigurationEnabled({ ...preview, ...change }), /WAREHOUSE_CONFIGURATION_INVALID/);
 });

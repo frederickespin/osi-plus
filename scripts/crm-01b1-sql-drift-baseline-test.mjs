@@ -108,7 +108,7 @@ try {
   }
 
   check("historial41 exacto y checksums fuente aceptados", () => {
-    assert.equal(validateCrm01b1MigrationHistory(history, migrations, canonicalDatabase).complete, 41);
+    assert.equal(validateCrm01b1MigrationHistory(history.slice(0, 41), migrations, canonicalDatabase).complete, 41);
   });
   check("historial22 exacto conserva checkpoint histórico", () => {
     assert.equal(validateCrm01b1MigrationHistory(history.slice(0, 22), migrations, historicalDatabase).complete, 22);
@@ -116,59 +116,59 @@ try {
   rejected("CI no selecciona22 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 22), migrations, canonicalDatabase), /41 migraciones/);
   rejected("CI no retrocede a35 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 35), migrations, canonicalDatabase), /41 migraciones/);
   rejected("CI no retrocede a36 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 36), migrations, canonicalDatabase), /41 migraciones/);
-  rejected("fixture histórico no asciende a41 por conteo observado", () => validateCrm01b1MigrationHistory(history, migrations, historicalDatabase), /22 migraciones/);
+  rejected("fixture histórico no asciende a41 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 41), migrations, historicalDatabase), /22 migraciones/);
   rejected("CI no retrocede a37 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 37), migrations, canonicalDatabase), /41 migraciones/);
   rejected("CI no retrocede a38 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 38), migrations, canonicalDatabase), /41 migraciones/);
   rejected("CI no retrocede a39 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 39), migrations, canonicalDatabase), /41 migraciones/);
   rejected("CI no retrocede a40 por conteo observado", () => validateCrm01b1MigrationHistory(history.slice(0, 40), migrations, canonicalDatabase), /41 migraciones/);
   const duplicate = clone(history);
   duplicate[34] = clone(history[33]);
-  rejected("duplicado con conteo41 rechazado", () => validateCrm01b1MigrationHistory(duplicate, migrations, canonicalDatabase), /41 migraciones/);
+  rejected("duplicado con conteo41 rechazado", () => validateCrm01b1MigrationHistory(duplicate.slice(0, 41), migrations, canonicalDatabase), /41 migraciones/);
   const renamed = clone(history);
   renamed[20].migration_name = "20260827020000_unapproved_same_count";
-  rejected("nombre sustituido con conteo41 rechazado", () => validateCrm01b1MigrationHistory(renamed, migrations, canonicalDatabase), /41 migraciones/);
+  rejected("nombre sustituido con conteo41 rechazado", () => validateCrm01b1MigrationHistory(renamed.slice(0, 41), migrations, canonicalDatabase), /41 migraciones/);
   for (const [property, value] of [["finished_at", null], ["rolled_back_at", new Date()], ["applied_steps_count", 0], ["applied_steps_count", 2]]) {
     const altered = clone(history);
     altered[5][property] = value;
-    rejected(`estado de migración rechazado: ${property}=${value}`, () => validateCrm01b1MigrationHistory(altered, migrations, canonicalDatabase), /incompletas, revertidas o con pasos inválidos/);
+    rejected(`estado de migración rechazado: ${property}=${value}`, () => validateCrm01b1MigrationHistory(altered.slice(0, 41), migrations, canonicalDatabase), /incompletas, revertidas o con pasos inválidos/);
   }
   for (const checksum of [undefined, "", "0".repeat(64), "not-a-checksum"]) {
     const altered = clone(history);
     altered[6].checksum = checksum;
-    rejected(`checksum ausente o distinto rechazado: ${checksum}`, () => validateCrm01b1MigrationHistory(altered, migrations, canonicalDatabase), /checksum aplicado/);
+    rejected(`checksum ausente o distinto rechazado: ${checksum}`, () => validateCrm01b1MigrationHistory(altered.slice(0, 41), migrations, canonicalDatabase), /checksum aplicado/);
   }
   const changedSources = clone(migrations);
   changedSources[6][1] += "\n-- changed SQL source\n";
-  rejected("checksum aplicado debe coincidir con bytes de fuente", () => validateCrm01b1MigrationHistory(history, changedSources, canonicalDatabase), /checksum aplicado/);
-  rejected("fuente de migración ausente rechazada", () => validateCrm01b1MigrationHistory(history, migrations.slice(1), canonicalDatabase), /checksum aplicado/);
+  rejected("checksum aplicado debe coincidir con bytes de fuente", () => validateCrm01b1MigrationHistory(history.slice(0, 41), changedSources, canonicalDatabase), /checksum aplicado/);
+  rejected("fuente de migración ausente rechazada", () => validateCrm01b1MigrationHistory(history.slice(0, 41), migrations.slice(1), canonicalDatabase), /checksum aplicado/);
   const changedIdentitySources = clone(migrations);
   changedIdentitySources[35][1] += "\n-- unreviewed identity source\n";
   const changedIdentityHistory = clone(history);
   changedIdentityHistory[35].checksum = createHash("sha256").update(changedIdentitySources[35][1]).digest("hex");
-  rejected("19C no acepta SQL nuevo aunque coincida con su historial aplicado", () => validateCrm01b1MigrationHistory(changedIdentityHistory, changedIdentitySources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
+  rejected("19C no acepta SQL nuevo aunque coincida con su historial aplicado", () => validateCrm01b1MigrationHistory(changedIdentityHistory.slice(0, 41), changedIdentitySources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
   const changedFleetSources = clone(migrations);
   changedFleetSources[36][1] += "\n-- unreviewed fleet authority source\n";
   const changedFleetHistory = clone(history);
   changedFleetHistory[36].checksum = createHash("sha256").update(changedFleetSources[36][1]).digest("hex");
-  rejected("19F no acepta SQL nuevo aunque coincida con su historial aplicado", () => validateCrm01b1MigrationHistory(changedFleetHistory, changedFleetSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
+  rejected("19F no acepta SQL nuevo aunque coincida con su historial aplicado", () => validateCrm01b1MigrationHistory(changedFleetHistory.slice(0, 41), changedFleetSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
 
   const changedWarehouseSources = clone(migrations);
   changedWarehouseSources[37][1] += "\n-- unreviewed warehouse configuration\n";
   const changedWarehouseHistory = clone(history);
   changedWarehouseHistory[37].checksum = createHash("sha256").update(changedWarehouseSources[37][1]).digest("hex");
-  rejected("20B no acepta SQL nuevo aunque coincida con el historial", () => validateCrm01b1MigrationHistory(changedWarehouseHistory, changedWarehouseSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
+  rejected("20B no acepta SQL nuevo aunque coincida con el historial", () => validateCrm01b1MigrationHistory(changedWarehouseHistory.slice(0, 41), changedWarehouseSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
 
   const changedSheetSources = clone(migrations);
   changedSheetSources[38][1] += "\n-- unreviewed warehouse sheet\n";
   const changedSheetHistory = clone(history);
   changedSheetHistory[38].checksum = createHash("sha256").update(changedSheetSources[38][1]).digest("hex");
-  rejected("20C no acepta SQL nuevo aunque coincida con el historial", () => validateCrm01b1MigrationHistory(changedSheetHistory, changedSheetSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
+  rejected("20C no acepta SQL nuevo aunque coincida con el historial", () => validateCrm01b1MigrationHistory(changedSheetHistory.slice(0, 41), changedSheetSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
 
   const changedRoutesSources = clone(migrations);
   changedRoutesSources[39][1] += "\n-- unreviewed warehouse routes\n";
   const changedRoutesHistory = clone(history);
   changedRoutesHistory[39].checksum = createHash("sha256").update(changedRoutesSources[39][1]).digest("hex");
-  rejected("20D no acepta SQL nuevo aunque coincida con el historial", () => validateCrm01b1MigrationHistory(changedRoutesHistory, changedRoutesSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
+  rejected("20D no acepta SQL nuevo aunque coincida con el historial", () => validateCrm01b1MigrationHistory(changedRoutesHistory.slice(0, 41), changedRoutesSources, canonicalDatabase), /checksum fuente fuera de la medición aprobada/);
 
   check("hash histórico22 conservado", () => {
     assert.equal(validateCrm01b1CatalogSummary(HISTORICAL_22_CATALOG).sha256,

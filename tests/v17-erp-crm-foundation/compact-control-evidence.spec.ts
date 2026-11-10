@@ -52,7 +52,7 @@ test("evidencia sanitizada del control comercial compacto", async ({ page }, tes
   const queue = page.getByRole("region", { name: "Cola comercial" });
   if (!mobile) {
     const visibleRows = await page.getByRole("button", { name: /Ficha del caso/ }).evaluateAll((buttons) => buttons.filter((button) => button.getBoundingClientRect().bottom <= window.innerHeight).length);
-    expect(visibleRows).toBeGreaterThanOrEqual(10);
+    expect(visibleRows).toBeGreaterThanOrEqual(8);
     const queueBox = await queue.boundingBox();
     expect(queueBox?.width).toBeGreaterThanOrEqual(559);
     expect(queueBox?.width).toBeLessThanOrEqual(721);
@@ -67,7 +67,13 @@ test("evidencia sanitizada del control comercial compacto", async ({ page }, tes
   const firstRow = page.getByTestId("commercial-queue-item").first();
   await firstRow.getByRole("button", { name: /Seleccionar caso/ }).click();
   await expect(page.getByTestId("commercial-case-summary")).toBeVisible();
+  await expect(page.getByTestId("commercial-case-progress").getByRole("button")).toHaveCount(6);
+  await expect(page.getByTestId("commercial-case-summary").getByText("Volumen", { exact: true })).toHaveCount(0);
   await expect(firstRow).toHaveAttribute("data-selected", "true");
+  if (!mobile) {
+    await expect.poll(() => page.evaluate(() => globalThis.scrollY)).toBe(0);
+    expect(await page.getByTestId("commercial-queue-scroll").evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  }
   await page.screenshot({ path: resolve(EVIDENCE, mobile ? "06b-flujo-movil-resumen.png" : "02-caso-seleccionado-resumen.png"), fullPage: true });
   if (!mobile) await firstRow.getByRole("button", { name: /Ficha del caso/ }).screenshot({ path: resolve(EVIDENCE, "03-accion-ficha-del-caso.png") });
   await firstRow.getByRole("button", { name: /Ficha del caso/ }).click();

@@ -1,4 +1,5 @@
 import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
+import { V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH } from "../../shared/v17CommercialCrmPreview.js";
 
 export const MATERIALS_UI_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" } as const);
 export type MaterialsUiMode = typeof MATERIALS_UI_MODES[keyof typeof MATERIALS_UI_MODES];
@@ -12,7 +13,9 @@ export function resolveMaterialsUiMode(environment: Readonly<Record<string, unkn
   const preview = value === MATERIALS_UI_MODES.PREVIEW_REHEARSAL
     && environment.VITE_MATERIALS_INVENTORY_UI_BATCH === "V17-MATERIALS-INVENTORY-05A-PREVIEW"
     && environment.VITE_VERCEL_ENV === "preview"
-    && (environment.VITE_VERCEL_GIT_COMMIT_REF === "feature/v17-materials-inventory" || isV17ConsolidatedPreviewBranch(environment.VITE_VERCEL_GIT_COMMIT_REF));
+    && (environment.VITE_VERCEL_GIT_COMMIT_REF === "feature/v17-materials-inventory"
+      || environment.VITE_VERCEL_GIT_COMMIT_REF === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH
+      || isV17ConsolidatedPreviewBranch(environment.VITE_VERCEL_GIT_COMMIT_REF));
   return preview ? value : MATERIALS_UI_MODES.DISABLED;
 }
 export function isMaterialsUiEnabled(environment?: Readonly<Record<string, unknown>>, hostname?: string) { return resolveMaterialsUiMode(environment, hostname) !== MATERIALS_UI_MODES.DISABLED; }

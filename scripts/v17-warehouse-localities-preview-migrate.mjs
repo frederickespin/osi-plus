@@ -121,8 +121,11 @@ export async function normalizePreviewSnapshotSchema(tx) {
 }
 
 export function previewMigrationManifest(root = process.cwd()) {
-  const names = validateMigrationFiles(root);
-  requireCondition(names.length === 41 && names.at(-1) === WAREHOUSE_LOCALITIES_MIGRATION, "SOURCE_INVENTORY_INVALID");
+  const complete = validateMigrationFiles(root);
+  const checkpoint = complete.indexOf(WAREHOUSE_LOCALITIES_MIGRATION);
+  const names = complete.slice(0, checkpoint + 1);
+  requireCondition(complete.length === 46 && complete.at(-1) === "20261110030000_v17_customer_custody_authorizations"
+    && names.length === 41 && names.at(-1) === WAREHOUSE_LOCALITIES_MIGRATION, "SOURCE_INVENTORY_INVALID");
   const manifest = Object.fromEntries(names.map((name) => [name,
     sha256(readFileSync(resolve(root, "prisma/migrations", name, "migration.sql"))),
   ]));

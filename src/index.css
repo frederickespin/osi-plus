@@ -89,6 +89,23 @@
   }
 }
 
+@media (min-width: 1280px) {
+  [data-testid="commercial-crm-inbox"]:has([data-testid="commercial-master-detail-layout"]) {
+    height: calc(100vh - 4rem);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  [data-testid="commercial-master-detail-layout"],
+  [data-testid="commercial-master-detail-layout"] > div,
+  [data-testid="commercial-master-detail-layout"] > main,
+  [data-testid="commercial-master-detail-layout"] [aria-label="Cola comercial"] {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

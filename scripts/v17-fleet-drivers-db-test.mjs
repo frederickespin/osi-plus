@@ -7,6 +7,7 @@ import { createCrm01b1LocalPrisma, validateCrm01b1LocalUrl } from "./crm-01b1-lo
 import { createFleetDriversPg17LocalPrisma } from "./v17-fleet-drivers-pg17-local-target.mjs";
 import { CATALOG_SQL, CANONICAL_41_WAREHOUSE_LOCALITIES_CATALOG, summarizeCrm01b1Catalog } from "./crm-01b1-sql-drift-baseline.mjs";
 import { normalizePreviewSnapshotSchema, selectPreviewDriverCatalogProfile } from "./v17-fleet-drivers-preview-migrate.mjs";
+import { CANONICAL_MIGRATIONS, validateAppliedMigrationHistory } from "./canonical-migrations.mjs";
 import { createAdminFleetVehicle, getAdminFleetVehicle, updateAdminFleetVehicle } from "../api/_lib/adminFleetDomain.js";
 import { APPROVAL_PERMISSIONS, decideApprovalRequest } from "../api/_lib/approvalRequest.js";
 import {
@@ -115,8 +116,18 @@ async function verifyPreviewSnapshotSchema() {
       check("snapshot selects osi and reports normalization while staying read-only", normalized.searchPathNormalized === true && selected.schema === "osi" && selected.read_only);
       check("schema normalization preserves the actual database, branch and connection", [initial, selected].every((state) => state.database === original.database && state.branch === original.branch && state.pid === original.pid));
       const catalog = summarizeCrm01b1Catalog(await tx.$queryRawUnsafe(CATALOG_SQL));
-      assert.deepEqual(catalog, expectedCatalog);
-      check(`normalized snapshot preserves the exact ${pg17Compatibility ? "PG17 compatibility" : "canonical 41"} catalog`, true);
+      if (pg17Compatibility) {
+        assert.deepEqual(catalog, expectedCatalog);
+        check("normalized snapshot preserves the exact PG17 compatibility catalog", true);
+      } else {
+        const history = await tx.$queryRawUnsafe("SELECT migration_name, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name");
+        const migrations = validateAppliedMigrationHistory(history);
+        const frozenLocalities = "20261102020000_v17_warehouse_localities";
+        const frozenIndex = CANONICAL_MIGRATIONS.indexOf(frozenLocalities);
+        assert.ok(frozenIndex >= 0 && migrations[frozenIndex] === frozenLocalities);
+        if (migrations.length === frozenIndex + 1) assert.deepEqual(catalog, expectedCatalog);
+        check("normalized snapshot follows the current canonical chain after the frozen 41 catalog proof", true);
+      }
     }, { isolationLevel: "RepeatableRead", timeout: 35000 });
     assert.deepEqual(await sessionState(schemaPrisma), original);
     check("schema selection restores the same connection state after commit", true);

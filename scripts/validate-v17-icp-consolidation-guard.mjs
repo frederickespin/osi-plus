@@ -45,6 +45,7 @@ export function validateV17IcpConsolidationGuard({ root = process.cwd(), overrid
   }
   if (!/productionApiEnabled:\s*false/.test(domain)
     || !/CRM_ICP_V2_UI_PREVIEW_BRANCH = "feature\/v17-auth-users-tenant-first"/.test(mode)
+    || !/V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH/.test(mode)
     || !/CRM_ICP_V2_UI_PREVIEW_BATCH = "V17-ICP-CONSOLIDATION-02A-PREVIEW"/.test(mode)) {
     fail("las compuertas no permanecen cerradas y acotadas al Preview consolidado");
   }

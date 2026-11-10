@@ -56,6 +56,7 @@ const inbox = read("src/commercial-crm/CommercialInboxModule.tsx");
 const caseDetail = read("src/commercial-crm/CommercialCaseDetail.tsx");
 const erpShell = read("src/commercial-crm/AdvancedErpShell.tsx");
 const presentation = read("src/commercial-crm/presentation.ts");
+const styles = read("src/index.css");
 invariant(/Inbox Comercial/.test(inbox) && /commercial-case-focused-header/.test(caseDetail), "presentación canónica de Inbox y Ficha incompleta");
 invariant(/APPROVED[\s\S]*legacy congelado/.test(presentation) && /OPS_HANDOFF[\s\S]*terminal/.test(presentation)
   && /Legacy congelado/.test(caseDetail) && /Estado terminal/.test(caseDetail), "semántica terminal/legacy ausente");
@@ -71,6 +72,16 @@ invariant(/aria-label={`Seleccionar caso/.test(inbox) && /aria-pressed={selected
 invariant(/commercial-case-summary/.test(inbox) && /commercial-full-case-workspace/.test(inbox)
   && /Sin cotización/.test(inbox) && /Sin comunicación registrada/.test(inbox) && /Pendiente de definir/.test(inbox),
   "resumen compacto inventa autoridad o no separa la Ficha completa");
+for (const stage of ["Servicios", "Survey", "Costos", "Cotización", "Aprobación", "Coordinación"]) {
+  invariant(inbox.includes(`label: "${stage}"`), `flujo compacto perdió la etapa ${stage}`);
+}
+invariant(/commercial-case-progress/.test(inbox) && /role="list"/.test(inbox)
+  && /aria-label=\{`\$\{label\}: \$\{state\}\. Ver en la Ficha del Caso`\}/.test(inbox),
+  "flujo compacto no conserva iconos o accesibilidad");
+invariant(!/SummaryRow label="Volumen"|Volumen pendiente/.test(inbox + caseDetail),
+  "volumen no autoritativo reapareció antes del Survey");
+invariant(/commercial-master-detail-layout/.test(styles) && /commercial-queue-scroll/.test(inbox)
+  && /overflow:\s*hidden/.test(styles), "lista y resumen perdieron su desplazamiento independiente");
 invariant(!/Abrir ficha|Volver al Pipeline/.test(inbox + caseDetail), "etiquetas históricas de navegación reaparecieron");
 invariant(/role="tablist"/.test(caseDetail), "Ficha sin pestañas accesibles");
 validateV17ConsolidatedPreviewGuard({ root, overrides });

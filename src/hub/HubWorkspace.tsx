@@ -18,6 +18,7 @@ import { isSurveyUiEnabled } from "@/survey/mode";
 import { resolveSurveySchedulingUiAccess } from "@/survey/schedulingAccess";
 import { isMaterialsUiEnabled } from "@/materials-inventory/mode";
 import { isWarehouseConfigurationUiEnabled } from "@/warehouses/configurationMode";
+import { isCustomerCustodyUiEnabled } from "@/customer-custody/mode";
 import { isToolsEquipmentUiEnabled } from "@/tools-equipment/mode";
 import { resolveLogisticsUiAccess } from "@/logistics-engine/access";
 import { isLogisticsUiEnabled } from "@/logistics-engine/mode";
@@ -169,12 +170,13 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const surveyEnabled = isSurveyUiEnabled();
   const materialsEnabled = isMaterialsUiEnabled();
   const toolsEnabled = isToolsEquipmentUiEnabled();
+  const customerCustodyEnabled = isCustomerCustodyUiEnabled();
   const surveyAuthorized = visible.some((application) => application.appId === "osi-survey");
   const materialsAuthorized = visible.some((application) => application.appId === "materials-equipment");
   const toolsAuthorized = visible.some((application) => application.appId === "tools-equipment");
   const materialsAvailable = materialsEnabled && materialsAuthorized;
   const toolsAvailable = toolsEnabled && Boolean(toolsAuthorized);
-  const warehouseSections = availableWarehouseSections({ spaces: materialsEnabled, configuration: materialsEnabled && isWarehouseConfigurationUiEnabled(), materials: materialsEnabled, equipment: toolsEnabled }, accessContext.effectivePermissions, accessContext.deniedPermissions);
+  const warehouseSections = availableWarehouseSections({ spaces: materialsEnabled, configuration: materialsEnabled && isWarehouseConfigurationUiEnabled(), materials: materialsEnabled, equipment: toolsEnabled, "customer-custody": customerCustodyEnabled }, accessContext.effectivePermissions, accessContext.deniedPermissions);
   const warehousesAvailable = warehouseSections.length > 0;
   const logisticsAccess = resolveLogisticsUiAccess(accessContext.effectivePermissions, accessContext.deniedPermissions);
   const logisticsAdminAvailable = isLogisticsUiEnabled() && logisticsAccess.canRulesView;
@@ -190,6 +192,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const costingAdminAvailable = isCostingUiEnabled() && costingAccess.canRulesView;
   const administrationSections = availableAdministrationSections({
     access: adminMembershipAvailable,
+    "warehouse-access": customerCustodyEnabled,
     fleet: isAdminFleetEnabled() && resolveFleetAccess(accessContext.role, accessContext.effectivePermissions, accessContext.deniedPermissions).canView,
     services: servicesAdminAvailable,
     logistics: logisticsAdminAvailable,

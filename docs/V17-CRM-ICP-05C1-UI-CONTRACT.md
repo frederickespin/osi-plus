@@ -37,7 +37,7 @@ El formulario no contiene entrada de volumen ni CBM y el JSON enviado no incluye
 
 - `VITE_CRM_ICP_V2_UI_MODE` falla cerrado y admite sólo `DISABLED`, `LOCAL_ONLY` o `PREVIEW_REHEARSAL`.
 - Local exige loopback real y ausencia de señales Vercel.
-- Preview consolidado exige rama `feature/v17-auth-users-tenant-first` y batch `V17-ICP-CONSOLIDATION-02A-PREVIEW`.
+- Preview consolidado exige la rama histórica autorizada `feature/v17-auth-users-tenant-first`, la rama integrada vigente `feature/v17-customer-custody-21a` o la rama canónica consolidada, siempre con el batch `V17-ICP-CONSOLIDATION-02A-PREVIEW`.
 - El navegador usa rutas same-origin, el token de la sesión autenticada, `credentials: same-origin`, respuestas privadas y no almacena consultas, direcciones, casos ni comandos.
 - Sólo A y V pueden entrar al CRM; crear exige el grant explícito `pipeline:create`, los denies prevalecen y un 401 limpia la sesión mediante el límite canónico de autenticación.
 - Production, `main` y cualquier configuración parcial permanecen deshabilitados.

@@ -1,4 +1,5 @@
 import { isV17ConsolidatedPreviewBranch } from "./v17ConsolidatedPreview.js";
+import { V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH } from "./v17CommercialCrmPreview.js";
 
 export const ADMIN_MEMBERSHIP_PREVIEW_BATCH = "V17-ADMINISTRATION-USERS-ROLES-19B";
 export const ADMIN_MEMBERSHIP_PREVIEW_BRANCH = "feature/v17-administration-users-roles-19b";
@@ -6,6 +7,7 @@ export const ADMIN_MEMBERSHIP_PREVIEW_BRANCH = "feature/v17-administration-users
 export function isAdminMembershipPreviewBranch(branch) {
   return branch === ADMIN_MEMBERSHIP_PREVIEW_BRANCH
     || branch === "feature/v17-administration-identity-19c"
+    || branch === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH
     || isV17ConsolidatedPreviewBranch(branch);
 }
 

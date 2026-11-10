@@ -29,7 +29,13 @@ const cases = [
   ["detalle omite destino Preview", "api/_lib/adminMembershipHttp.js", (s) => s.replace('await assertAdminMembershipPreviewDatabase(prisma, mode, env);', '')],
   ["catálogo desconectado de RBAC servidor", "api/_lib/adminMembershipDomain.js", (s) => s.replace('new Set(permsForRole(code))', 'new Set([])')],
   ["roles limitados a A/V", "api/_lib/adminMembershipDomain.js", (s) => s.replace('new Set(ADMIN_MEMBERSHIP_ROLE_OPTIONS.map(({ code }) => code))', 'new Set(["A", "V"])')],
-  ["PATCH omite lectura", "api/_lib/adminMembershipDomain.js", (s) => s.replace('export async function updateTenantMembership(prisma, context, membershipRef, input, { auditWriter = appendCommercialAudit } = {}) {\n  requireAdminPermission(context, PERMS.MEMBERSHIP_VIEW);', 'export async function updateTenantMembership(prisma, context, membershipRef, input, { auditWriter = appendCommercialAudit } = {}) {')],
+  ["PATCH omite lectura", "api/_lib/adminMembershipDomain.js", (s) => {
+    const signature = 'export async function updateTenantMembership(prisma, context, membershipRef, input, { auditWriter = appendCommercialAudit } = {}) {';
+    const start = s.indexOf(signature);
+    const permission = '  requireAdminPermission(context, PERMS.MEMBERSHIP_VIEW);';
+    const permissionAt = start < 0 ? -1 : s.indexOf(permission, start + signature.length);
+    return permissionAt < 0 ? s : `${s.slice(0, permissionAt)}${s.slice(permissionAt + permission.length)}`;
+  }],
   ["permisos desconocidos admitidos", "api/_lib/adminMembershipDomain.js", (s) => s.replace('!KNOWN_PERMISSIONS.has(permission) && !existing.has(permission)', 'false')],
   ["intersección nueva de permisos admitida", "api/_lib/adminMembershipDomain.js", (s) => s.replace('next.denied_permissions.includes(permission) && !existingOverlap.has(permission)', 'false')],
 ];

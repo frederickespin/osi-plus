@@ -10,6 +10,7 @@ import {
 import { createIcpV2ClientSearchHandler } from "../api/crm/icp-v2/clients/search.js";
 import { createIcpV2PipelineCaseHandler } from "../api/crm/icp-v2/pipeline-cases/index.js";
 import { createIcpV2PipelineCaseDetailHandler } from "../api/crm/icp-v2/pipeline-cases/[caseKey]/index.js";
+import { V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH } from "../shared/v17CommercialCrmPreview.js";
 
 const assertions = [];
 function check(name, condition) {
@@ -215,6 +216,18 @@ const uiSearchResponse = await invoke(uiSearch, request({
 }));
 check("Preview UI exacto consume API sin habilitar Production", uiSearchResponse.statusCode === 200
   && uiSearchResponse.body?.total === 0);
+const integratedUiSearch = createIcpV2ClientSearchHandler({
+  env: { ...uiPreview, VERCEL_GIT_COMMIT_REF: V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH, CRM_PIPELINE_MUTATION_MODE: "PREVIEW_REHEARSAL" },
+  prismaClient: {},
+  resolveContext: async () => context,
+  execute: async ({ input }) => ({ total: 0, page: input.page, pageSize: input.pageSize, data: [] }),
+});
+const integratedUiSearchResponse = await invoke(integratedUiSearch, request({
+  body: { query: "Cliente", page: 1, pageSize: 10 },
+  localAddress: "10.0.0.8", remoteAddress: "10.0.0.9",
+}));
+check("Preview integrado vigente habilita ICP sin ampliar Production", integratedUiSearchResponse.statusCode === 200
+  && integratedUiSearchResponse.body?.total === 0);
 const uiHistoricalMutation = await invoke(createIcpV2ClientSearchHandler({ env: {
   ...uiPreview, CRM_PIPELINE_MUTATION_MODE: "PREVIEW_REHEARSAL",
 } }), request({ localAddress: "10.0.0.8", remoteAddress: "10.0.0.9" }));

@@ -172,6 +172,41 @@ test("busca Client por POST y permite destino pendiente sólo con permiso explí
   await expect(dialog.getByRole("option", { name: "Pendiente" })).toHaveCount(1);
 });
 
+test("una coincidencia parcial exige revisión o confirmación explícita antes de crear el cliente", async ({ page }) => {
+  await authenticate(page);
+  await mockCreatedCaseReads(page);
+  const fingerprint = "a".repeat(64);
+  const bodies: Record<string, unknown>[] = [];
+  await page.route("**/api/crm/icp-v2/pipeline-cases", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    bodies.push(body);
+    if (bodies.length === 1) {
+      await route.fulfill({ status: 409, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: false, error: "CRM_ICP_CLIENT_DUPLICATE_CONFIRMATION_REQUIRED", data: { matchFingerprint: fingerprint } }) });
+      return;
+    }
+    await route.fulfill({ status: 201, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, version: 1, routeRevision: 1, clientRef: CLIENT_REF }, replayed: false }) });
+  });
+  await page.goto("/commercial");
+  await page.getByRole("button", { name: "Nuevo caso", exact: true }).click();
+  const dialog = await fillInlineClient(page);
+  const origin = dialog.locator("fieldset").filter({ hasText: "Origen" });
+  const destination = dialog.locator("fieldset").filter({ hasText: "Destino" });
+  await origin.getByLabel("Provincia / estado *").fill("Distrito Nacional");
+  await origin.getByLabel("Ciudad / municipio *").fill("Santo Domingo");
+  await origin.getByLabel("Dirección *").fill("Av. Principal 10");
+  await destination.getByLabel("Provincia / estado *").fill("Santiago");
+  await destination.getByLabel("Ciudad / municipio *").fill("Santiago de los Caballeros");
+  await destination.getByLabel("Dirección *").fill("Calle Destino 20");
+  await dialog.getByRole("button", { name: "Crear caso" }).click();
+  await expect(dialog.getByText("Verifica el cliente antes de continuar")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Buscar cliente existente" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Confirmar cliente nuevo" }).click();
+  await expect(page).toHaveURL(new RegExp(`/commercial/cases/${CASE_REF}$`));
+  expect(bodies).toHaveLength(2);
+  expect((bodies[0].client as Record<string, unknown>).duplicateConfirmation).toBeNull();
+  expect((bodies[1].client as Record<string, unknown>).duplicateConfirmation).toEqual({ confirmed: true, matchFingerprint: fingerprint });
+});
+
 test("Administrador y Ventas requieren grant explícito; un deny prevalece y otros roles no acceden", async ({ browser }) => {
   for (const scenario of [
     { role: "A", permissions: ["pipeline:view", "pipeline:create"], deniedPermissions: [], expected: true },

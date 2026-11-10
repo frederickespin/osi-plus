@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, ArrowLeft, Check, LoaderCircle, Plus, Search, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, Check, LoaderCircle, Plus, Search, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -25,6 +25,7 @@ type Props = Readonly<{
 
 type Step = 1 | 2;
 type ClientOverlay = "SEARCH" | "CREATE" | null;
+type DuplicateConflict = Readonly<{ kind: "EXACT" }> | Readonly<{ kind: "PARTIAL"; fingerprint: string }>;
 
 const inputClass = "mt-1 h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none focus:border-[#0b5b91] focus:ring-2 focus:ring-sky-100";
 const labelClass = "text-[11px] font-bold uppercase tracking-[.06em] text-slate-500";
@@ -137,6 +138,7 @@ export default function IcpIntakeForm({ open, api, canCreatePendingDestination, 
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [duplicateConflict, setDuplicateConflict] = useState<DuplicateConflict | null>(null);
   const requestId = useRef<string | null>(null);
 
   const phoneValid = (value: string) => /^\+[1-9][0-9\s()-]{7,20}$/.test(value.trim());
@@ -149,16 +151,18 @@ export default function IcpIntakeForm({ open, api, canCreatePendingDestination, 
   const reset = () => {
     setStep(1); setOverlay(null); setSelected(null); setInline(null); setProfile("INDIVIDUAL");
     setContact({ displayName: "", phone: "", email: "" }); setChannel("WHATSAPP");
-    setOrigin(blankAddress()); setDestination(blankAddress()); setDestinationStatus("CONFIRMED"); setNotes(""); setError(""); requestId.current = null;
+    setOrigin(blankAddress()); setDestination(blankAddress()); setDestinationStatus("CONFIRMED"); setNotes(""); setError(""); setDuplicateConflict(null); requestId.current = null;
   };
   const close = () => { if (!saving) { reset(); onOpenChange(false); } };
-  const submit = async () => {
+  const submit = async (duplicateFingerprint: string | null = null) => {
     if (!stepTwoValid || (!selected && !inline)) return;
-    setSaving(true); setError("");
+    setSaving(true); setError(""); setDuplicateConflict(null);
     try {
-      requestId.current ||= crypto.randomUUID();
+      requestId.current = duplicateFingerprint ? crypto.randomUUID() : requestId.current || crypto.randomUUID();
       const draft: IcpDraft = {
-        client: selected ? { kind: "EXISTING", clientRef: selected.clientRef } : { kind: "INLINE", ...inline! },
+        client: selected
+          ? { kind: "EXISTING", clientRef: selected.clientRef }
+          : { kind: "INLINE", ...inline!, duplicateFingerprint },
         clientProfileType: profile, caseContact: contact, intakeChannel: channel, requirementNotes: notes,
         destinationStatus, origin, destination,
       };
@@ -166,7 +170,17 @@ export default function IcpIntakeForm({ open, api, canCreatePendingDestination, 
       reset(); onCommitted(receipt); onOpenChange(false);
     } catch (cause) {
       if (cause instanceof CrmIcpV2ClientError && cause.status === 401) onUnauthorized();
-      setError(normalizeError(cause));
+      if (cause instanceof CrmIcpV2ClientError && cause.code === "CRM_ICP_CLIENT_DUPLICATE_CONFIRMATION_REQUIRED" && cause.matchFingerprint) {
+        requestId.current = null;
+        setDuplicateConflict({ kind: "PARTIAL", fingerprint: cause.matchFingerprint });
+        setError("Encontramos un cliente parecido. Revisa las coincidencias o confirma expresamente que se trata de una persona u organización diferente.");
+      } else if (cause instanceof CrmIcpV2ClientError && cause.code === "CRM_ICP_CLIENT_DUPLICATE") {
+        requestId.current = null;
+        setDuplicateConflict({ kind: "EXACT" });
+        setError("Este cliente ya está registrado. Debes seleccionarlo para mantener una única ficha comercial.");
+      } else {
+        setError(normalizeError(cause));
+      }
     } finally { setSaving(false); }
   };
 
@@ -176,11 +190,12 @@ export default function IcpIntakeForm({ open, api, canCreatePendingDestination, 
         <DialogHeader className="border-b border-slate-200 px-4 py-3 text-left"><DialogTitle className="text-xl font-black text-[#003366]">Nuevo Caso (ICP mínimo)</DialogTitle><DialogDescription>Captura comercial inicial, precisa y rápida.</DialogDescription></DialogHeader>
         <div role="tablist" aria-label="Pasos del ICP" className="grid gap-2 px-4 pt-3 sm:grid-cols-2"><button type="button" role="tab" aria-selected={step === 1} onClick={() => setStep(1)} className={`rounded-lg border px-3 py-2 text-left text-sm ${step === 1 ? "border-[#0b5b91] bg-sky-50 font-bold text-[#003366]" : "border-slate-200 text-slate-500"}`}>Paso 1 · Definición rápida</button><button type="button" role="tab" aria-selected={step === 2} disabled={!stepOneValid} onClick={() => setStep(2)} className={`rounded-lg border px-3 py-2 text-left text-sm disabled:opacity-50 ${step === 2 ? "border-[#0b5b91] bg-sky-50 font-bold text-[#003366]" : "border-slate-200 text-slate-500"}`}>Paso 2 · Origen, destino y notas</button></div>
         <div className="p-4">
-          {error && <Alert variant="destructive" className="mb-4"><AlertCircle /><AlertTitle>No fue posible crear el ICP</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+          {duplicateConflict && <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-950"><AlertTriangle /><AlertTitle>Verifica el cliente antes de continuar</AlertTitle><AlertDescription><p>{error}</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={() => { setStep(1); setOverlay("SEARCH"); setDuplicateConflict(null); setError(""); }}>Buscar cliente existente</Button>{duplicateConflict.kind === "PARTIAL" && <Button type="button" size="sm" disabled={saving} onClick={() => void submit(duplicateConflict.fingerprint)}>{saving ? <LoaderCircle className="animate-spin" /> : <Check />}{saving ? "Confirmando…" : "Confirmar cliente nuevo"}</Button>}</div></AlertDescription></Alert>}
+          {error && !duplicateConflict && <Alert variant="destructive" className="mb-4"><AlertCircle /><AlertTitle>No fue posible crear el ICP</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
           {step === 1 ? <div role="tabpanel" className="grid gap-3 sm:grid-cols-12">
             <div className="sm:col-span-6"><span className={labelClass}>Cliente *</span><div className="mt-1 flex min-h-16 flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"><div className="min-w-40 flex-1"><strong className="block text-sm text-slate-900">{selected?.displayName || inline?.displayName || "Seleccionar cliente"}</strong><span className="text-xs text-slate-500">{selected ? "Cliente existente" : inline ? "Cliente nuevo" : "Busca uno existente o créalo inline"}</span></div><Button type="button" size="sm" variant="outline" onClick={() => setOverlay("SEARCH")}><Search />Buscar</Button><Button type="button" size="sm" variant="outline" onClick={() => setOverlay("CREATE")}><Plus />Nuevo</Button></div></div>
             <div className="sm:col-span-6"><TextField label="Contacto del caso" value={contact.displayName} onChange={(next) => setContact({ ...contact, displayName: next })} placeholder="Nombre de la persona de contacto" required maxLength={160} /></div>
-            <div className="sm:col-span-4"><SelectField label="Tipo de cliente *" value={profile} onChange={(next) => setProfile(next as IcpClientProfile)}><option value="INDIVIDUAL">Individual</option><option value="CORPORATE">Corporativo</option><option value="DIPLOMATIC">Diplomático</option><option value="COMMERCIAL">Comercial</option><option value="LEAD_ACCOUNT">Cuenta prospecto</option></SelectField></div>
+            <div className="sm:col-span-4"><SelectField label="Tipo de cliente *" value={profile} onChange={(next) => setProfile(next as IcpClientProfile)}><option value="INDIVIDUAL">Individual</option><option value="CORPORATE">Corporativo</option><option value="DIPLOMATIC">Diplomático</option><option value="COMMERCIAL">Comercial</option></SelectField></div>
             <div className="sm:col-span-4"><TextField label="Teléfono / WhatsApp" value={contact.phone} onChange={(next) => setContact({ ...contact, phone: next })} placeholder="+1 809…" required type="tel" maxLength={40} /></div>
             <div className="sm:col-span-4"><TextField label="Correo" value={contact.email} onChange={(next) => setContact({ ...contact, email: next })} placeholder="cliente@correo.com" type="email" /></div>
             <div className="sm:col-span-4"><SelectField label="Canal *" value={channel} onChange={(next) => setChannel(next as IcpChannel)}>{CHANNELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</SelectField></div>
@@ -190,8 +205,8 @@ export default function IcpIntakeForm({ open, api, canCreatePendingDestination, 
             <label className={`${labelClass} sm:col-span-2`}>Notas del requerimiento<textarea aria-label="Notas del requerimiento" className="mt-1 min-h-24 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none focus:border-[#0b5b91] focus:ring-2 focus:ring-sky-100" value={notes} maxLength={2000} onChange={(event) => setNotes(event.target.value)} placeholder="Particularidades, fechas deseadas, restricciones, tipo de bienes o cualquier requerimiento expresado por el cliente" /></label>
           </div>}
         </div>
-        <DialogFooter className="flex-row items-center justify-between border-t border-slate-200 px-4 py-3"><span className="hidden text-xs text-slate-500 sm:block">ICP inicial · captura comercial mínima</span><div className="ml-auto flex gap-2"><Button type="button" variant="outline" disabled={saving} onClick={step === 1 ? close : () => setStep(1)}>{step === 2 && <ArrowLeft />}{step === 1 ? "Cancelar" : "Anterior"}</Button>{step === 1 ? <Button type="button" disabled={!stepOneValid} onClick={() => setStep(2)}>Continuar</Button> : <Button type="button" disabled={!stepTwoValid || saving} onClick={() => void submit()}>{saving ? <LoaderCircle className="animate-spin" /> : <Check />}{saving ? "Creando caso…" : "Crear caso"}</Button>}</div></DialogFooter>
-        <ClientOverlayDialog value={overlay} api={api} selected={selected} onSelect={(item) => { setSelected(item); setInline(null); setOverlay(null); }} onStartInline={() => setOverlay("CREATE")} onSaveInline={(item) => { setInline(item); setSelected(null); setOverlay(null); }} onClose={() => setOverlay(null)} onUnauthorized={onUnauthorized} />
+        <DialogFooter className="flex-row items-center justify-between border-t border-slate-200 px-4 py-3"><span className="hidden text-xs text-slate-500 sm:block">ICP inicial · captura comercial mínima</span><div className="ml-auto flex gap-2"><Button type="button" variant="outline" disabled={saving} onClick={step === 1 ? close : () => setStep(1)}>{step === 2 && <ArrowLeft />}{step === 1 ? "Cancelar" : "Anterior"}</Button>{step === 1 ? <Button type="button" disabled={!stepOneValid} onClick={() => setStep(2)}>Continuar</Button> : <Button type="button" disabled={!stepTwoValid || saving || duplicateConflict !== null} onClick={() => void submit()}>{saving ? <LoaderCircle className="animate-spin" /> : <Check />}{saving ? "Creando caso…" : "Crear caso"}</Button>}</div></DialogFooter>
+        <ClientOverlayDialog value={overlay} api={api} selected={selected} onSelect={(item) => { setSelected(item); setInline(null); setDuplicateConflict(null); setError(""); setOverlay(null); }} onStartInline={() => setOverlay("CREATE")} onSaveInline={(item) => { setInline(item); setSelected(null); setDuplicateConflict(null); setError(""); setOverlay(null); }} onClose={() => setOverlay(null)} onUnauthorized={onUnauthorized} />
       </DialogContent>
     </Dialog>
   </>;

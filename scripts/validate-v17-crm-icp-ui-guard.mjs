@@ -19,9 +19,11 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
     'DISABLED: "DISABLED"', 'LOCAL_ONLY: "LOCAL_ONLY"', 'PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL"',
     'CRM_ICP_V2_UI_PREVIEW_BRANCH = "feature/v17-auth-users-tenant-first"',
     'CRM_ICP_V2_UI_PREVIEW_BATCH = "V17-ICP-CONSOLIDATION-02A-PREVIEW"',
-    'runtime.vercelEnvironment === "preview"', 'runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH',
+    'V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH', 'runtime.vercelEnvironment === "preview"',
+    'runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH', 'runtime.gitBranch === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH',
   ]) requireText(mode, value, `compuerta UI incompleta: ${value}`);
-  if (mode.split("runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH").length - 1 !== 2) {
+  if (mode.split("runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH").length - 1 !== 2
+    || mode.split("runtime.gitBranch === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH").length - 1 !== 2) {
     fail("compuerta UI o Preview visual no fijan la rama exacta");
   }
   forbid(mode, /PRODUCTION|main|localStorage|sessionStorage/i, "compuerta UI contiene autoridad productiva o storage");
@@ -46,12 +48,16 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
   for (const value of ["Nuevo Caso (ICP mínimo)", "Paso 1 · Definición rápida", "Paso 2 · Origen, destino y notas", "Notas del requerimiento", "País (ISO)", "Crear caso"]) {
     requireText(form, value, `formulario ICP incompleto: ${value}`);
   }
+  for (const value of ["CRM_ICP_CLIENT_DUPLICATE_CONFIRMATION_REQUIRED", "Buscar cliente existente", "Confirmar cliente nuevo"]) {
+    requireText(form, value, `control de duplicados incompleto: ${value}`);
+  }
   forbid(form, /estimatedCbm|type="number"|localStorage|sessionStorage|rnc|cédula|volumen|cbm|paradas adicionales|servicio principal|requiere Survey/i, "formulario aprobado volvió a capturar datos excluidos");
+  forbid(form, /LEAD_ACCOUNT|Cuenta prospecto/i, "formulario confunde al cliente con una relación comercial");
   requireText(api, 'serviceType: "PENDING_DEFINITION"', "servicio no queda pendiente internamente");
   requireText(api, 'surveyMethod: "NO_APLICA"', "Survey no queda pendiente fuera del ICP");
   requireText(form, "canCreatePendingDestination", "destino pendiente no depende del permiso UI");
 
-  for (const value of ['pathname === "/experience-preview/icp"', 'runtime.vercelEnvironment === "preview"', "runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH"]) {
+  for (const value of ['pathname === "/experience-preview/icp"', 'runtime.vercelEnvironment === "preview"', "runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH", "runtime.gitBranch === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH"]) {
     requireText(mode, value, `Preview visual no exige build exacto: ${value}`);
   }
   const visual = read("src/crm-icp-v2/IcpVisualPreview.tsx");
@@ -80,6 +86,7 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
   for (const value of [
     'CRM_ICP_V2_UI_PREVIEW_BRANCH = "feature/v17-auth-users-tenant-first"',
     'CRM_ICP_V2_UI_PREVIEW_BATCH = "V17-ICP-CONSOLIDATION-02A-PREVIEW"',
+    "V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH",
     "isExactV17CommercialCrmPreviewServerEnvironment(env)",
   ]) requireText(server, value, `perfil Preview UI incompleto: ${value}`);
   const sharedPreview = read("shared/v17CommercialCrmPreview.js");
@@ -88,7 +95,7 @@ export function validateV17CrmIcpUiGuard({ root = process.cwd(), overrides = {} 
   requireText(sharedPreview, "environment.CRM_PIPELINE_MUTATION_MODE === DISABLED", "Preview UI no fija mutación histórica en DISABLED");
 
   const docs = read("docs/V17-CRM-ICP-05C1-UI-CONTRACT.md");
-  for (const value of ["productionApiEnabled=false", "no contiene entrada de volumen ni CBM", "cero paradas", "Production, `main`", "Fuera de alcance"]) {
+  for (const value of ["productionApiEnabled=false", "no contiene entrada de volumen ni CBM", "cero paradas", "feature/v17-customer-custody-21a", "Production, `main`", "Fuera de alcance"]) {
     requireText(docs, value, `documentación UI incompleta: ${value}`);
   }
   const packageJson = read("package.json");

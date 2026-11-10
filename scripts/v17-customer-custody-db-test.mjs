@@ -9,6 +9,7 @@ const suffix = crypto.randomUUID().slice(0, 8);
 const permissions = ["customer-custody:view", "customer-custody:receive", "customer-custody:operate", "warehouse-access:manage"];
 const context = { tenantId: `tenant-custody-${suffix}`, membershipId: `membership-custody-${suffix}`, userId: `user-custody-${suffix}`, role: "A", effectivePermissions: permissions, deniedPermissions: [] };
 function signed(operation, payload, requestId = crypto.randomUUID()) { return { requestId, payloadHash: custodyPayloadHash({ operation, requestId, ...payload }), ...payload }; }
+function reception(payload) { return normalizeCustodyReceptionAction(signed("CUSTOMER_CUSTODY_RECEPTION_ACTION", { itemRef: null, scanCode: null, locationRef: null, unitType: null, genericContents: null, inspectionResult: null, locationStatus: null, notes: null, evidence: null, expectedItemVersion: null, ...payload })); }
 
 try {
   await prisma.tenant.create({ data: { id: context.tenantId, code: `CST-${suffix}`.toUpperCase(), name: "Tenant Customer Custody Test" } });
@@ -33,10 +34,10 @@ try {
   assert.equal(lot.items[0].status, "EXPECTED");
   assert.equal(await prisma.customerStorageLot.count({ where: { tenantId: context.tenantId } }), 1);
 
-  const arrived = await applyCustomerCustodyReceptionAction(prisma, context, normalizeCustodyReceptionAction(signed("CUSTOMER_CUSTODY_RECEPTION_ACTION", { storageRef: lot.storageRef, action: "ARRIVE", itemRef: null, scanCode: null, occurredAt: "2026-11-06T12:30:00.000Z", notes: null, evidence: null, expectedLotVersion: lot.version, expectedItemVersion: null })));
-  const handedOff = await applyCustomerCustodyReceptionAction(prisma, context, normalizeCustodyReceptionAction(signed("CUSTOMER_CUSTODY_RECEPTION_ACTION", { storageRef: lot.storageRef, action: "CONFIRM_HANDOFF", itemRef: null, scanCode: null, occurredAt: "2026-11-06T12:35:00.000Z", notes: null, evidence: null, expectedLotVersion: arrived.version, expectedItemVersion: null })));
+  const arrived = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "ARRIVE", occurredAt: "2026-11-06T12:30:00.000Z", expectedLotVersion: lot.version }));
+  const handedOff = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "CONFIRM_HANDOFF", occurredAt: "2026-11-06T12:35:00.000Z", expectedLotVersion: arrived.version }));
   let scanned = handedOff;
-  for (const expected of handedOff.items) scanned = await applyCustomerCustodyReceptionAction(prisma, context, normalizeCustodyReceptionAction(signed("CUSTOMER_CUSTODY_RECEPTION_ACTION", { storageRef: scanned.storageRef, action: "SCAN_ITEM", itemRef: null, scanCode: expected.externalCode, occurredAt: "2026-11-06T12:40:00.000Z", notes: null, evidence: null, expectedLotVersion: scanned.version, expectedItemVersion: expected.version })));
+  for (const expected of handedOff.items) scanned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: scanned.storageRef, action: "SCAN_ITEM", scanCode: expected.externalCode, occurredAt: "2026-11-06T12:40:00.000Z", expectedLotVersion: scanned.version, expectedItemVersion: expected.version }));
   assert.equal(scanned.receptionStage, "PUT_AWAY");
   const item = scanned.items[0];
   const moved = await moveCustomerStorage(prisma, context, normalizeCustodyMovement(signed("CUSTOMER_CUSTODY_MOVE", { storageRef: scanned.storageRef, itemRef: item.itemRef, movementType: "TRANSFER", destinationLocationRef: locationB.locationRef, quantity: item.quantity, occurredAt: "2026-11-06T13:00:00.000Z", notes: "Traslado sintético", expectedVersion: item.version })));
@@ -56,7 +57,7 @@ try {
   const command = await prisma.customerCustodyCommand.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   await assert.rejects(() => prisma.customerCustodyMovement.update({ where: { id: movement.id }, data: { notes: "illegal edit" } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
   await assert.rejects(() => prisma.customerCustodyCommand.update({ where: { id: command.id }, data: { resultJson: { rewritten: true } } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
-  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "44/44", lots: 1, items: 2, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "45/45", lots: 1, items: 2, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true }) + "\n");
 } finally {
   await prisma.$disconnect();
 }

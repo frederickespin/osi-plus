@@ -233,6 +233,8 @@ model Tenant {
   customerStoredItems               CustomerStoredItem[]
   customerCustodyCommands           CustomerCustodyCommand[]
   customerCustodyMovements          CustomerCustodyMovement[]
+  customerCustodyLocationStates     CustomerCustodyLocationState[]
+  customerCustodyLocationEvents     CustomerCustodyLocationStateEvent[]
   memberships                       TenantMembership[]
   vehicle_import_batches            vehicle_import_batches[]
   vehicle_import_items              vehicle_import_items[]
@@ -248,6 +250,7 @@ model TenantMembership {
   warehouseAccessGrants                                                                                                                         WarehouseAccessGrant[]             @relation("WarehouseAccessGrantMembership")
   customerCustodyCommandsAsActor                                                                                                                CustomerCustodyCommand[]           @relation("CustomerCustodyCommandActor")
   customerCustodyMovementsAsActor                                                                                                               CustomerCustodyMovement[]          @relation("CustomerCustodyMovementActor")
+  customerCustodyLocationEventsAsActor                                                                                                          CustomerCustodyLocationStateEvent[] @relation("CustomerCustodyLocationStateEventActor")
   fleetPrimaryDriverEvents                                                                                                                      FleetDriverPrimaryEvent[]          @relation("FleetPrimaryDriver")
   fleetPrimaryAssignedEvents                                                                                                                    FleetDriverPrimaryEvent[]          @relation("FleetPrimaryAssigner")
   fleetTemporaryDriverAuthorizations                                                                                                            FleetDriverAuthorization[]         @relation("FleetTemporaryDriver")
@@ -4154,6 +4157,7 @@ model MaterialWarehouse {
   sheetProfile        WarehouseSheetProfile?
   accessGrants        WarehouseAccessGrant[]
   customerStorageLots CustomerStorageLot[]
+  custodyLocationStates CustomerCustodyLocationState[]
 
   @@unique([tenantId, id], map: "material_warehouses_tenant_id_key")
   @@unique([tenantId, warehouseRef], map: "material_warehouses_tenant_ref_key")
@@ -4193,6 +4197,8 @@ model MaterialLocation {
   customerStorageReceptionLots CustomerStorageLot[]            @relation("CustomerStorageReceptionLocation")
   custodyMovementOrigins       CustomerCustodyMovement[]       @relation("CustomerCustodyMovementOrigin")
   custodyMovementDestinations  CustomerCustodyMovement[]       @relation("CustomerCustodyMovementDestination")
+  custodyOccupancyState        CustomerCustodyLocationState?
+  custodyOccupancyEvents       CustomerCustodyLocationStateEvent[]
 
   @@unique([tenantId, id], map: "material_locations_tenant_id_key")
   @@unique([tenantId, warehouseId, id], map: "material_locations_tenant_warehouse_id_key")
@@ -4464,6 +4470,10 @@ model CustomerStoredItem {
   currentLocationId String?                   @map("current_location_id")
   itemCode          String                    @map("item_code") @db.VarChar(80)
   externalCode      String?                   @map("external_code") @db.VarChar(120)
+  unitType          CustomerCustodyUnitType   @default(OTHER) @map("unit_type")
+  genericContents   String[]                  @default([]) @map("generic_contents")
+  identitySource    CustomerCustodyIdentitySource @default(MANIFEST) @map("identity_source")
+  inspectionStatus CustomerCustodyInspectionStatus @default(CLEARED) @map("inspection_status")
   description       String                    @db.VarChar(240)
   category          String?                   @db.VarChar(120)
   quantity          Decimal                   @db.Decimal(14, 3)
@@ -4488,6 +4498,29 @@ model CustomerStoredItem {
   @@unique([tenantId, storageLotId, itemCode], map: "customer_stored_items_code_key")
   @@index([tenantId, currentLocationId, status], map: "customer_stored_items_location_idx")
   @@map("customer_stored_items")
+}
+
+enum CustomerCustodyUnitType {
+  BOX
+  PACKAGE
+  BUNDLE
+  PALLET
+  LOOSE_ITEM
+  CRATE
+  OTHER
+}
+
+enum CustomerCustodyIdentitySource {
+  MANIFEST
+  GENERATED_AT_RECEPTION
+}
+
+enum CustomerCustodyInspectionStatus {
+  PREVERIFIED
+  VISUAL_REQUIRED
+  FULL_REQUIRED
+  CLEARED
+  HOLD
 }
 
 enum CustomerStoredCondition {
@@ -4519,11 +4552,72 @@ model CustomerCustodyCommand {
   tenant            Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_commands_tenant_fkey")
   actorMembership   TenantMembership          @relation("CustomerCustodyCommandActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_commands_actor_fkey")
   movements         CustomerCustodyMovement[]
+  locationStateEvents CustomerCustodyLocationStateEvent[]
 
   @@unique([tenantId, id], map: "customer_custody_commands_tenant_id_key")
   @@unique([tenantId, requestId], map: "customer_custody_commands_request_key")
   @@index([tenantId, targetRef, createdAt(sort: Desc)], map: "customer_custody_commands_target_idx")
   @@map("customer_custody_commands")
+}
+
+model CustomerCustodyLocationState {
+  id          String                                 @id @default(cuid())
+  stateRef    String                                 @default(dbgenerated("gen_random_uuid()")) @map("state_ref") @db.Uuid
+  tenantId    String                                 @map("tenant_id")
+  warehouseId String                                 @map("warehouse_id")
+  locationId  String                                 @map("location_id")
+  status      CustomerCustodyLocationOccupancyStatus @default(AVAILABLE)
+  notes       String?                                @db.VarChar(1000)
+  evidence    Json?
+  version     Int                                    @default(1)
+  createdAt   DateTime                               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant      Tenant                                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_location_states_tenant_fkey")
+  warehouse   MaterialWarehouse                      @relation(fields: [tenantId, warehouseId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_location_states_warehouse_fkey")
+  location    MaterialLocation                       @relation(fields: [tenantId, warehouseId, locationId], references: [tenantId, warehouseId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_location_states_location_fkey")
+  events      CustomerCustodyLocationStateEvent[]
+
+  @@unique([tenantId, id], map: "customer_custody_location_states_tenant_id_key")
+  @@unique([tenantId, stateRef], map: "customer_custody_location_states_tenant_ref_key")
+  @@unique([tenantId, warehouseId, locationId], map: "customer_custody_location_states_location_key")
+  @@index([tenantId, warehouseId, status], map: "customer_custody_location_states_status_idx")
+  @@map("customer_custody_location_states")
+}
+
+model CustomerCustodyLocationStateEvent {
+  id                String                                  @id @default(cuid())
+  eventRef          String                                  @default(dbgenerated("gen_random_uuid()")) @map("event_ref") @db.Uuid
+  tenantId          String                                  @map("tenant_id")
+  locationStateId   String                                  @map("location_state_id")
+  locationId        String                                  @map("location_id")
+  commandId         String                                  @map("command_id") @db.Uuid
+  previousStatus    CustomerCustodyLocationOccupancyStatus? @map("previous_status")
+  nextStatus        CustomerCustodyLocationOccupancyStatus  @map("next_status")
+  notes             String?                                 @db.VarChar(1000)
+  evidence          Json?
+  actorMembershipId String                                  @map("actor_membership_id")
+  actorUserId       String                                  @map("actor_user_id")
+  occurredAt        DateTime                                @map("occurred_at") @db.Timestamptz(6)
+  createdAt         DateTime                                @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant            Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_location_state_events_tenant_fkey")
+  locationState     CustomerCustodyLocationState            @relation(fields: [tenantId, locationStateId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_location_state_events_state_fkey")
+  location          MaterialLocation                        @relation(fields: [tenantId, locationId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_location_state_events_location_fkey")
+  command           CustomerCustodyCommand                  @relation(fields: [tenantId, commandId], references: [tenantId, id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_location_state_events_command_fkey")
+  actorMembership   TenantMembership                        @relation("CustomerCustodyLocationStateEventActor", fields: [tenantId, actorMembershipId, actorUserId], references: [tenantId, id, userId], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_location_state_events_actor_fkey")
+
+  @@unique([tenantId, id], map: "customer_custody_location_state_events_tenant_id_key")
+  @@unique([tenantId, eventRef], map: "customer_custody_location_state_events_tenant_ref_key")
+  @@index([tenantId, locationId, occurredAt(sort: Desc)], map: "customer_custody_location_state_events_location_idx")
+  @@map("customer_custody_location_state_events")
+}
+
+enum CustomerCustodyLocationOccupancyStatus {
+  AVAILABLE
+  IN_USE
+  FULL
+  BLOCKED
+  RESERVED_EXIT
+  REVIEW_REQUIRED
 }
 
 model CustomerCustodyMovement {

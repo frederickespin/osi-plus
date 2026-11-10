@@ -8,7 +8,10 @@ const CONDITIONS = new Set(["UNSPECIFIED", "GOOD", "USED", "DAMAGED"]);
 const STORAGE_TYPES = new Set(["PERSONAL_EFFECTS", "IMPORT_STORAGE", "INTERNATIONAL_DISPATCH", "COMMERCIAL_STORAGE"]);
 const INTAKE_SOURCES = new Set(["OWN_PICKUP", "EXTERNAL_ORIGIN", "COMMERCIAL_PRE_ADVICE", "DIRECT_WAREHOUSE"]);
 const MOVEMENTS = new Set(["PUT_AWAY", "TRANSFER", "COUNT", "PREPARE_EXIT", "DISPATCH", "RETURN", "ADJUST", "HOLD", "RELEASE_HOLD"]);
-const RECEPTION_ACTIONS = new Set(["ARRIVE", "CONFIRM_HANDOFF", "SCAN_ITEM", "REPORT_EXCEPTION", "RESOLVE_EXCEPTION", "CLOSE"]);
+const RECEPTION_ACTIONS = new Set(["ARRIVE", "CONFIRM_HANDOFF", "SCAN_ITEM", "REGISTER_UNLABELED_ITEM", "CONFIRM_INSPECTION", "PUT_AWAY_SCAN", "SET_LOCATION_STATUS", "REPORT_EXCEPTION", "RESOLVE_EXCEPTION", "CLOSE"]);
+const UNIT_TYPES = new Set(["BOX", "PACKAGE", "BUNDLE", "PALLET", "LOOSE_ITEM", "CRATE", "OTHER"]);
+const INSPECTION_RESULTS = new Set(["CLEARED", "HOLD"]);
+const LOCATION_STATUSES = new Set(["AVAILABLE", "IN_USE", "FULL", "BLOCKED", "RESERVED_EXIT", "REVIEW_REQUIRED"]);
 
 export class CustomerCustodyError extends Error {
   constructor(code, status = 400) { super(code); this.name = "CustomerCustodyError"; this.code = code; this.status = status; }
@@ -29,25 +32,31 @@ function decimal(value, optional = false) { if (optional && (value === null || v
 function enumeration(value, allowed) { const result = text(value, 80); if (!allowed.has(result)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
 function instant(value, optional = false) { const result = text(value, 40, optional); if (result === null) return null; if (new Date(result).toISOString() !== result) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
 function evidence(value) { if (value === null) return null; if (!Array.isArray(value) || value.length > 12 || value.some((item) => typeof item !== "string" || item.length < 1 || item.length > 500)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return Object.freeze([...value]); }
+function textList(value, maxItems = 12) { if (!Array.isArray(value) || value.length < 1 || value.length > maxItems) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); const rows = value.map((item) => text(item, 120)); if (new Set(rows).size !== rows.length) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return Object.freeze(rows); }
 function command(value, operation, payload) { const requestId = text(value.requestId, 191); const payloadHash = text(value.payloadHash, 64); const body = Object.fromEntries(Object.entries(value).filter(([key]) => !["requestId", "payloadHash"].includes(key))); if (!SHA.test(payloadHash) || payloadHash !== custodyPayloadHash({ operation, requestId, ...body })) custodyFail("CUSTOMER_CUSTODY_PAYLOAD_HASH_MISMATCH"); return Object.freeze({ operation, requestId, payloadHash, ...payload }); }
 
 export function normalizeCustodyReceipt(input) {
   const value = object(input); exact(value, ["requestId", "payloadHash", "clientRef", "caseRef", "warehouseRef", "destinationLocationRef", "storageType", "intakeSource", "manifestCode", "expectedUnits", "groupLeadName", "driverName", "vehicleCode", "sealNumber", "departedAt", "arrivedAt", "receivedAt", "billingStartAt", "notes", "items"]);
-  if (!Array.isArray(value.items) || value.items.length < 1 || value.items.length > 500) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (!Array.isArray(value.items) || value.items.length > 500) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   const items = value.items.map((entry, index) => { const row = object(entry); exact(row, ["externalCode", "description", "category", "quantity", "unit", "volumeM3", "weightKg", "condition", "evidence", "notes"]); return Object.freeze({ position: index + 1, externalCode: text(row.externalCode, 120, true), description: text(row.description), category: text(row.category, 120, true), quantity: decimal(row.quantity), unit: text(row.unit, 24), volumeM3: decimal(row.volumeM3, true), weightKg: decimal(row.weightKg, true), condition: enumeration(row.condition, CONDITIONS), evidence: evidence(row.evidence), notes: text(row.notes, 2000, true) }); });
   const externalCodes = items.map((item) => item.externalCode).filter(Boolean); if (new Set(externalCodes).size !== externalCodes.length) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   const receivedAt = instant(value.receivedAt); const billingStartAt = value.billingStartAt ? instant(value.billingStartAt) : null;
-  const expectedUnits = integer(value.expectedUnits, 1, 100_000, true); if (expectedUnits !== null && expectedUnits !== items.length) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  const expectedUnits = integer(value.expectedUnits, 1, 100_000, true); if (items.length > 0 && expectedUnits !== null && expectedUnits !== items.length) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   return command(value, "CUSTOMER_CUSTODY_RECEIVE", { clientRef: uuid(value.clientRef), caseRef: uuid(value.caseRef, true), warehouseRef: uuid(value.warehouseRef), destinationLocationRef: uuid(value.destinationLocationRef), storageType: enumeration(value.storageType, STORAGE_TYPES), intakeSource: enumeration(value.intakeSource, INTAKE_SOURCES), manifestCode: text(value.manifestCode, 80, true), expectedUnits, groupLeadName: text(value.groupLeadName, 160, true), driverName: text(value.driverName, 160, true), vehicleCode: text(value.vehicleCode, 64, true), sealNumber: text(value.sealNumber, 80, true), departedAt: instant(value.departedAt, true), arrivedAt: instant(value.arrivedAt, true), receivedAt, billingStartAt, notes: text(value.notes, 2000, true), items: Object.freeze(items) });
 }
 
 export function normalizeCustodyReceptionAction(input) {
-  const value = object(input); exact(value, ["requestId", "payloadHash", "storageRef", "action", "itemRef", "scanCode", "occurredAt", "notes", "evidence", "expectedLotVersion", "expectedItemVersion"]);
-  const action = enumeration(value.action, RECEPTION_ACTIONS); const itemRef = uuid(value.itemRef, true); const scanCode = text(value.scanCode, 120, true); const expectedItemVersion = integer(value.expectedItemVersion, 1, 1_000_000, true); const normalizedEvidence = evidence(value.evidence);
+  const value = object(input); exact(value, ["requestId", "payloadHash", "storageRef", "action", "itemRef", "scanCode", "locationRef", "unitType", "genericContents", "inspectionResult", "locationStatus", "occurredAt", "notes", "evidence", "expectedLotVersion", "expectedItemVersion"]);
+  const action = enumeration(value.action, RECEPTION_ACTIONS); const itemRef = uuid(value.itemRef, true); const scanCode = text(value.scanCode, 120, true); const locationRef = uuid(value.locationRef, true); const expectedItemVersion = integer(value.expectedItemVersion, 1, 1_000_000, true); const normalizedEvidence = evidence(value.evidence);
+  const unitType = value.unitType === null ? null : enumeration(value.unitType, UNIT_TYPES); const genericContents = value.genericContents === null ? null : textList(value.genericContents); const inspectionResult = value.inspectionResult === null ? null : enumeration(value.inspectionResult, INSPECTION_RESULTS); const locationStatus = value.locationStatus === null ? null : enumeration(value.locationStatus, LOCATION_STATUSES);
   if (action === "SCAN_ITEM" && (!scanCode || expectedItemVersion === null || itemRef !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action === "REGISTER_UNLABELED_ITEM" && (!unitType || !genericContents || itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action === "CONFIRM_INSPECTION" && (!itemRef || expectedItemVersion === null || !inspectionResult || scanCode !== null || locationRef !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action === "PUT_AWAY_SCAN" && (!scanCode || !locationRef || itemRef !== null || expectedItemVersion === null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action === "SET_LOCATION_STATUS" && (!locationRef || !locationStatus || itemRef !== null || scanCode !== null || expectedItemVersion !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (["REPORT_EXCEPTION", "RESOLVE_EXCEPTION"].includes(action) && (!itemRef || expectedItemVersion === null || scanCode !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
-  if (["ARRIVE", "CONFIRM_HANDOFF", "CLOSE"].includes(action) && (itemRef !== null || scanCode !== null || expectedItemVersion !== null || normalizedEvidence !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
-  return command(value, "CUSTOMER_CUSTODY_RECEPTION_ACTION", { storageRef: uuid(value.storageRef), action, itemRef, scanCode, occurredAt: instant(value.occurredAt), notes: text(value.notes, 1000, true), evidence: normalizedEvidence, expectedLotVersion: integer(value.expectedLotVersion), expectedItemVersion });
+  if (["ARRIVE", "CONFIRM_HANDOFF", "CLOSE"].includes(action) && (itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null || normalizedEvidence !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  return command(value, "CUSTOMER_CUSTODY_RECEPTION_ACTION", { storageRef: uuid(value.storageRef), action, itemRef, scanCode, locationRef, unitType, genericContents, inspectionResult, locationStatus, occurredAt: instant(value.occurredAt), notes: text(value.notes, 1000, true), evidence: normalizedEvidence, expectedLotVersion: integer(value.expectedLotVersion), expectedItemVersion });
 }
 
 export function normalizeCustodyMovement(input) {

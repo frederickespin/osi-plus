@@ -4419,6 +4419,7 @@ model CustomerStorageLot {
   billingStartAt      DateTime?                     @map("billing_start_at") @db.Timestamptz(6)
   releasedAt          DateTime?                     @map("released_at") @db.Timestamptz(6)
   notes               String?                       @db.VarChar(2000)
+  nextItemNumber      Int                           @default(1) @map("next_item_number")
   version             Int                           @default(1)
   createdAt           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -4628,6 +4629,7 @@ model CustomerStoredItem {
   tenantId          String                          @map("tenant_id")
   storageLotId      String                          @map("storage_lot_id")
   currentLocationId String?                         @map("current_location_id")
+  inventoryNumber   Int                             @map("inventory_number")
   itemCode          String                          @map("item_code") @db.VarChar(80)
   externalCode      String?                         @map("external_code") @db.VarChar(120)
   unitType          CustomerCustodyUnitType         @default(OTHER) @map("unit_type")
@@ -4656,6 +4658,7 @@ model CustomerStoredItem {
   @@unique([tenantId, id], map: "customer_stored_items_tenant_id_key")
   @@unique([tenantId, itemRef], map: "customer_stored_items_tenant_ref_key")
   @@unique([tenantId, storageLotId, itemCode], map: "customer_stored_items_code_key")
+  @@unique([tenantId, storageLotId, inventoryNumber], map: "customer_stored_items_inventory_number_key")
   @@index([tenantId, currentLocationId, status], map: "customer_stored_items_location_idx")
   @@map("customer_stored_items")
 }

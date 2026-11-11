@@ -22,6 +22,8 @@ test("warehouse receipt is driven by a commercial order", () => { const source =
 test("warehouse desktop and mobile share the same label print workflow", () => { const desktop = readFileSync("src/customer-custody/CustomerCustodyApp.tsx", "utf8"); const mobile = readFileSync("src/customer-custody/CustomerCustodyMobileApp.tsx", "utf8"); const labels = readFileSync("src/customer-custody/PrintableCustodyLabels.tsx", "utf8"); assert.match(desktop, /PrintableCustodyLabels/); assert.match(desktop, /onLabelsGenerated=/); assert.match(mobile, /PrintableCustodyLabels/); assert.match(labels, /Maco ML-1000/); assert.match(labels, /Cantidad a imprimir/); assert.match(labels, /window\.print\(\)/); });
 test("QR scans address custody items only by the scanned code", () => { const workflow = readFileSync("src/customer-custody/CustodyReceptionWorkflow.tsx", "utf8"); assert.match(workflow, /function isScanAddressedAction\(action: string\)/); assert.match(workflow, /action === "SCAN_ITEM" \|\| action === "PUT_AWAY_SCAN"/); assert.match(workflow, /itemRef: isScanAddressedAction\(input\.action\) \? null : input\.item\?\.itemRef \?\? null/); assert.match(workflow, /expectedItemVersion: input\.item\?\.version \?\? null/); });
 test("external keyboard scanners keep working when the visible field loses focus", () => { const workflow = readFileSync("src/customer-custody/CustodyReceptionWorkflow.tsx", "utf8"); assert.match(workflow, /window\.addEventListener\("keydown", captureExternalScan\)/); assert.match(workflow, /event\.key === "Enter" \|\| event\.key === "Tab"/); assert.match(workflow, /externalScanBufferRef\.current \+= event\.key/); assert.match(workflow, /autoFocus=\{external\}/); assert.doesNotMatch(workflow, /inputMode=\{external \? "none" : "text"\}/); });
+test("description recovers missing conditions and returns to the scanner", () => { const workflow = readFileSync("src/customer-custody/CustodyReceptionWorkflow.tsx", "utf8"); assert.match(workflow, /descriptionNeedsCondition/); assert.match(workflow, /Complete la condición/); assert.match(workflow, /actionInFlightRef/); assert.match(workflow, /setDescriptionItemRef\(null\)/); assert.match(workflow, /focusScanner\(\)/); const search = readFileSync("src/customer-custody/CustodyDescriptionSearch.tsx", "utf8"); assert.match(search, /datalist/); assert.match(search, /Escriba: caja, paquete/); assert.doesNotMatch(search, /type="checkbox"/); });
+test("stage queries expose only the numbers relevant to each reception screen", () => { const source = readFileSync("src/customer-custody/CustodyStageQuery.tsx", "utf8"); for (const label of ["Sin escanear", "Sin condición", "Sin describir", "Descritos", "Sin ubicación"]) assert.match(source, new RegExp(label)); assert.match(source, /locationGroups/); assert.match(source, /inventoryNumber/); });
 test("custody routes are explicitly classified as protected same-origin APIs", () => {
   const inventory = JSON.parse(readFileSync("scripts/protected-cors-route-inventory.json", "utf8"));
   for (const route of [
@@ -64,6 +66,14 @@ test("scan-first migration keeps visual occupancy independent from volume", () =
   for (const authority of ["CustomerCustodyUnitType", "GENERATED_AT_RECEPTION", "CustomerCustodyLocationOccupancyStatus", "REVIEW_REQUIRED", "customer_custody_location_state_events_append_only"]) assert.match(sql, new RegExp(authority));
   assert.match(sql, /capacity is confirmed visually/i);
   assert.doesNotMatch(sql, /volume_m3[^\n]+FULL/i);
+});
+test("custody inventory numbers remain stable across printed batches", () => {
+  const sql = readFileSync("prisma/migrations/20261111020000_v17_customer_custody_inventory_numbers/migration.sql", "utf8");
+  for (const authority of ["inventory_number", "next_item_number", "customer_stored_items_inventory_number_key", "ROW_NUMBER"]) assert.match(sql, new RegExp(authority, "i"));
+  const domain = readFileSync("api/_lib/customerCustodyDomain.js", "utf8");
+  assert.match(domain, /inventoryNumber: lot\.nextItemNumber \+ index/);
+  const labels = readFileSync("src/customer-custody/PrintableCustodyLabels.tsx", "utf8");
+  assert.match(labels, /ART\. \{formatInventoryNumber\(item\.inventoryNumber\)\}/);
 });
 test("missing custody evidence is persisted as SQL NULL", () => {
   const source = readFileSync("api/_lib/customerCustodyDomain.js", "utf8");

@@ -23,6 +23,7 @@ function stepFor(lot: CustomerStorageLot): WorkflowStep { if (["PLANNED", "IN_TR
 function formatDateTime(value: string | null) { return value ? new Intl.DateTimeFormat("es-DO", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "Pendiente"; }
 function itemLabel(item: CustomerStoredItem) { return item.externalCode || item.itemCode; }
 function lookupLabel(rows: readonly (readonly [string, string])[], value: string) { return rows.find(([code]) => code === value)?.[1] || value; }
+function isScanAddressedAction(action: string) { return action === "SCAN_ITEM" || action === "PUT_AWAY_SCAN"; }
 
 export default function CustodyReceptionWorkflow({ lot, api, canOperate, onSaved, onLabelsGenerated }: Props) {
   const [step, setStep] = useState<WorkflowStep>(() => stepFor(lot));
@@ -51,7 +52,7 @@ export default function CustodyReceptionWorkflow({ lot, api, canOperate, onSaved
   const act = async (input: ActionInput): Promise<CustomerStorageLot | null> => {
     setSaving(true); setError(null); setNotice(null);
     try {
-      const saved = await api.receptionAction({ storageRef: lot.storageRef, action: input.action, itemRef: input.item?.itemRef ?? null, scanCode: input.scanCode ?? null, locationRef: input.locationRef ?? null, unitType: input.unitType ?? null, genericContents: input.genericContents ?? null, inspectionResult: input.inspectionResult ?? null, locationStatus: input.locationStatus ?? null, labelQuantity: input.labelQuantity ?? null, occurredAt: new Date().toISOString(), notes: input.notes ?? null, evidence: input.evidence ?? null, expectedLotVersion: lot.version, expectedItemVersion: input.item?.version ?? null });
+      const saved = await api.receptionAction({ storageRef: lot.storageRef, action: input.action, itemRef: isScanAddressedAction(input.action) ? null : input.item?.itemRef ?? null, scanCode: input.scanCode ?? null, locationRef: input.locationRef ?? null, unitType: input.unitType ?? null, genericContents: input.genericContents ?? null, inspectionResult: input.inspectionResult ?? null, locationStatus: input.locationStatus ?? null, labelQuantity: input.labelQuantity ?? null, occurredAt: new Date().toISOString(), notes: input.notes ?? null, evidence: input.evidence ?? null, expectedLotVersion: lot.version, expectedItemVersion: input.item?.version ?? null });
       onSaved(saved);
       if (input.action === "PREPARE_LABEL") { const known = new Set(lot.items.map((item) => item.itemRef)); const generated = saved.items.filter((item) => !known.has(item.itemRef)).sort((left, right) => left.itemCode.localeCompare(right.itemCode)); if (generated.length) onLabelsGenerated?.(generated, input.declaredContentQuantity ?? null); setLabelOpen(false); setLabelQuantity(1); setDeclaredContentQuantity(""); feedback(`${generated.length} ${generated.length === 1 ? "etiqueta preparada" : "etiquetas preparadas"}. Cada QR debe escanearse al descargar.`); }
       if (input.action === "DISCARD_UNUSED_LABELS") { setDiscardOpen(false); feedback("Las etiquetas no usadas quedaron anuladas y ya no cuentan como bultos pendientes."); setStep(stepFor(saved)); }

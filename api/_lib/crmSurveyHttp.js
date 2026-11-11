@@ -7,6 +7,7 @@ import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPrev
 
 export const CRM_SURVEY_API_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" });
 export const CRM_SURVEY_PREVIEW_BRANCH = "feature/v17-survey-foundation";
+export const CRM_SURVEY_CUSTOMER_CUSTODY_PREVIEW_BRANCH = "feature/v17-storage-commercial-contract-22a";
 export const CRM_SURVEY_PREVIEW_BATCH = "V17-SURVEY-FOUNDATION-04A-PREVIEW";
 
 function fail(code, status) { throw new CrmSurveyError(code, status); }
@@ -20,7 +21,9 @@ export function resolveCrmSurveyApiMode(env = process.env, req = undefined) {
     return mode;
   }
   const validPreview = env.VERCEL === "1" && env.VERCEL_ENV === "preview"
-    && (env.VERCEL_GIT_COMMIT_REF === CRM_SURVEY_PREVIEW_BRANCH || isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF))
+    && (env.VERCEL_GIT_COMMIT_REF === CRM_SURVEY_PREVIEW_BRANCH
+      || env.VERCEL_GIT_COMMIT_REF === CRM_SURVEY_CUSTOMER_CUSTODY_PREVIEW_BRANCH
+      || isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF))
     && env.CRM_SURVEY_API_BATCH === CRM_SURVEY_PREVIEW_BATCH
     && env.MT01B_AUTH_MODE === "LEGACY" && env.MT01B_TENANT_SWITCH_ENABLED === "false"
     && env.VITE_MT01B2_CLIENT_ENABLED === "false";

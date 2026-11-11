@@ -208,7 +208,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     administration: administrationAvailable || catalogPreview.has("administration"),
     warehouses: warehousesAvailable || catalogPreview.has("warehouses"),
     "osi-survey": surveyEnabled || catalogPreview.has("osi-survey"),
-    "visual-inventory": catalogPreview.has("visual-inventory"),
+    "visual-inventory": true,
     "materials-equipment": materialsEnabled,
     "tools-equipment": toolsEnabled,
     "archaeological-packing": true,

@@ -40,8 +40,12 @@ test("OSi Custodia reuses the authorized reception and scan workflow", () => {
   assert.match(workflow, /Scanner externo/);
   assert.match(workflow, /\$\{prefix\}:\$\{code\}/);
   assert.match(workflow, /DLOC/);
-  assert.match(workflow, /No se escriben cantidades/);
+  assert.match(workflow, /Cantidad de etiquetas/);
+  assert.match(workflow, /QR únicos/);
   assert.match(workflow, /Conciliación de recepción/);
+  assert.match(mobile, /Maco ML-1000/);
+  assert.match(mobile, /Primera posición disponible/);
+  assert.match(mobile, /sequenceText/);
 });
 
 test("the approved OSi Survey experience is the one mounted by Mobile", () => {

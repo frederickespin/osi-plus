@@ -20,6 +20,8 @@ type Props = Readonly<{
   onBack(): void;
   onUnauthorized(): void;
 }>;
+type LabelBatch = Readonly<{ items: readonly CustomerStoredItem[]; declaredContentQuantity: number | null }>;
+type LabelFormat = "THERMAL" | "MACO_ML1000";
 
 const PRIMARY = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#003b70] px-4 text-sm font-bold text-white shadow-sm hover:bg-[#002d57] disabled:opacity-40";
 const SECONDARY = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40";
@@ -43,7 +45,7 @@ export default function CustomerCustodyMobileApp({ authorization, effectivePermi
   const [selectedAuthorizationRef, setSelectedAuthorizationRef] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [labelItem, setLabelItem] = useState<CustomerStoredItem | null>(null);
+  const [labelBatch, setLabelBatch] = useState<LabelBatch | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -87,9 +89,9 @@ export default function CustomerCustodyMobileApp({ authorization, effectivePermi
         canOperate={canOperate}
         onMove={() => undefined}
         onSaved={replaceLot}
-        onLabelGenerated={setLabelItem}
+        onLabelsGenerated={(items, declaredContentQuantity) => setLabelBatch({ items, declaredContentQuantity })}
       />
-      {labelItem && <PrintableCustodyLabel lot={selectedLot} item={labelItem} onClose={() => setLabelItem(null)} />}
+      {labelBatch && <PrintableCustodyLabels lot={selectedLot} batch={labelBatch} onClose={() => setLabelBatch(null)} />}
     </MobileShell>;
   }
 
@@ -211,18 +213,47 @@ function CompactInput({ label, value, onChange }: { label: string; value: string
   return <label className="text-xs font-bold text-slate-700">{label}<input value={value} onChange={(event) => onChange(event.target.value)} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label>;
 }
 
-function PrintableCustodyLabel({ lot, item, onClose }: { lot: CustomerStorageLot; item: CustomerStoredItem; onClose(): void }) {
-  const qrValue = item.itemCode;
-  return <div role="dialog" aria-modal="true" aria-label="Etiqueta de custodia" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4">
-    <style>{`@media print { body * { visibility: hidden !important; } .custody-label-print, .custody-label-print * { visibility: visible !important; } .custody-label-print { position: fixed !important; inset: 0 auto auto 0 !important; width: 100mm !important; min-height: 65mm !important; border: 0 !important; box-shadow: none !important; } .custody-label-actions { display: none !important; } }`}</style>
-    <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-2xl">
-      <div className="custody-label-print rounded-xl border-2 border-[#003b70] bg-white p-4 text-slate-950">
-        <div className="flex items-center justify-between border-b border-[#003b70] pb-2"><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#003b70]">OSi Plus · Custodia</p><h3 className="text-lg font-black">{item.itemCode}</h3></div><QRCodeSVG value={qrValue} size={94} level="M" /></div>
-        <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]"><div><dt className="text-slate-500">Lote</dt><dd className="font-bold">{lot.lotCode}</dd></div><div><dt className="text-slate-500">Tipo</dt><dd className="font-bold">{item.unitType}</dd></div><div className="col-span-2"><dt className="text-slate-500">Contenido general</dt><dd className="font-bold">{item.genericContents.join(" · ") || "Sin detalle"}</dd></div></dl>
-        <p className="mt-3 border-t pt-2 text-center font-mono text-[10px]">{qrValue}</p>
-      </div>
-      <div className="custody-label-actions mt-3 grid grid-cols-[1fr_auto] gap-2"><button type="button" className={PRIMARY} onClick={() => window.print()}><Printer className="h-4 w-4" />Imprimir etiqueta</button><button type="button" className={SECONDARY} aria-label="Cerrar etiqueta" onClick={onClose}><X className="h-4 w-4" /></button></div>
-      <p className="custody-label-actions mt-2 text-center text-[10px] text-slate-500"><CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />El QR contiene solamente el identificador interno de la unidad.</p>
+function PrintableCustodyLabels({ lot, batch, onClose }: { lot: CustomerStorageLot; batch: LabelBatch; onClose(): void }) {
+  const [format, setFormat] = useState<LabelFormat>("MACO_ML1000");
+  const [startPosition, setStartPosition] = useState(1);
+  const sheets = useMemo(() => buildMacoSheets(batch.items, startPosition), [batch.items, startPosition]);
+  const previewItem = batch.items[0];
+  const sheetCount = format === "MACO_ML1000" ? sheets.length : batch.items.length;
+  return <div role="dialog" aria-modal="true" aria-label="Imprimir etiquetas de custodia" className="fixed inset-0 z-50 overflow-auto bg-slate-950/60 p-3 sm:p-6">
+    <style>{`@media print {
+      @page { size: ${format === "MACO_ML1000" ? "Letter" : "100mm 65mm"}; margin: 0; }
+      body * { visibility: hidden !important; }
+      .custody-label-print-area, .custody-label-print-area * { visibility: visible !important; }
+      .custody-label-print-area { position: absolute !important; inset: 0 !important; width: auto !important; background: white !important; }
+      .custody-label-actions, .custody-label-preview { display: none !important; }
+      .custody-maco-sheet { width: 8.5in !important; height: 11in !important; padding: .5in .15625in !important; display: grid !important; grid-template-columns: repeat(2, 4in) !important; grid-template-rows: repeat(5, 2in) !important; column-gap: .1875in !important; row-gap: 0 !important; break-after: page !important; page-break-after: always !important; box-sizing: border-box !important; }
+      .custody-thermal-label { width: 100mm !important; height: 65mm !important; break-after: page !important; page-break-after: always !important; box-sizing: border-box !important; }
+    }`}</style>
+    <div className="custody-label-actions mx-auto mb-3 max-w-3xl rounded-2xl bg-white p-4 shadow-2xl">
+      <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-sky-700">Impresión de custodia</p><h2 className="text-lg font-black text-[#003b70]">{batch.items.length} {batch.items.length === 1 ? "etiqueta preparada" : "etiquetas preparadas"}</h2></div><button type="button" className={SECONDARY} aria-label="Cerrar etiquetas" onClick={onClose}><X className="h-4 w-4" /></button></div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold text-slate-700">Formato<select value={format} onChange={(event) => setFormat(event.target.value as LabelFormat)} className={`${COMPACT_FORM_FIELD} mt-1 w-full`}><option value="MACO_ML1000">Maco ML-1000 · Carta · 10 por hoja</option><option value="THERMAL">Individual térmica · 100 × 65 mm</option></select></label>{format === "MACO_ML1000" && <label className="text-xs font-bold text-slate-700">Primera posición disponible<select value={startPosition} onChange={(event) => setStartPosition(Number(event.target.value))} className={`${COMPACT_FORM_FIELD} mt-1 w-full`}>{Array.from({ length: 10 }, (_, index) => index + 1).map((position) => <option key={position} value={position}>Posición {position}</option>)}</select></label>}</div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-xs"><span><b>{sheetCount}</b> {format === "MACO_ML1000" ? sheetCount === 1 ? "hoja Carta" : "hojas Carta" : sheetCount === 1 ? "página individual" : "páginas individuales"}</span><span>Serie <b>001 / {String(batch.items.length).padStart(3, "0")}</b>{batch.declaredContentQuantity ? ` · ${batch.declaredContentQuantity} unidades declaradas` : ""}</span><button type="button" className={PRIMARY} onClick={() => window.print()}><Printer className="h-4 w-4" />Imprimir</button></div>
+      <p className="mt-2 text-[10px] text-slate-500"><CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />El QR contiene solamente el identificador interno de un bulto físico. Seleccione escala 100 % o tamaño real y desactive encabezados y pies del navegador.</p>
+      {previewItem && <div className="custody-label-preview mt-3 overflow-hidden rounded-xl border bg-slate-100 p-3"><p className="mb-2 text-[10px] font-bold uppercase text-slate-500">Vista previa</p><div className="mx-auto aspect-[2/1] max-w-md bg-white"><CustodyLabel lot={lot} item={previewItem} sequence={1} total={batch.items.length} declaredContentQuantity={batch.declaredContentQuantity} compact /></div></div>}
+    </div>
+    <div className="custody-label-print-area absolute -left-[10000px] top-0">
+      {format === "MACO_ML1000" ? sheets.map((sheet, sheetIndex) => <div key={`sheet-${sheetIndex}`} className="custody-maco-sheet bg-white">{sheet.map((entry, position) => entry ? <CustodyLabel key={entry.item.itemRef} lot={lot} item={entry.item} sequence={entry.sequence} total={batch.items.length} declaredContentQuantity={batch.declaredContentQuantity} compact /> : <div key={`blank-${sheetIndex}-${position}`} aria-hidden="true" />)}</div>) : batch.items.map((item, index) => <div key={item.itemRef} className="custody-thermal-label bg-white"><CustodyLabel lot={lot} item={item} sequence={index + 1} total={batch.items.length} declaredContentQuantity={batch.declaredContentQuantity} /></div>)}
     </div>
   </div>;
+}
+
+function buildMacoSheets(items: readonly CustomerStoredItem[], startPosition: number) {
+  const slots: Array<{ item: CustomerStoredItem; sequence: number } | null> = Array.from({ length: Math.max(0, startPosition - 1) }, () => null);
+  items.forEach((item, index) => slots.push({ item, sequence: index + 1 }));
+  while (slots.length % 10 !== 0) slots.push(null);
+  const sheets: Array<typeof slots> = [];
+  for (let index = 0; index < slots.length; index += 10) sheets.push(slots.slice(index, index + 10));
+  return sheets;
+}
+
+function CustodyLabel({ lot, item, sequence, total, declaredContentQuantity, compact = false }: { lot: CustomerStorageLot; item: CustomerStoredItem; sequence: number; total: number; declaredContentQuantity: number | null; compact?: boolean }) {
+  const sequenceText = `${String(sequence).padStart(3, "0")} / ${String(total).padStart(3, "0")}`;
+  return <article className={`h-full w-full overflow-hidden border border-slate-400 bg-white text-slate-950 ${compact ? "p-[.125in]" : "p-3"}`}>
+    <div className="grid h-full grid-cols-[1fr_auto] gap-2"><div className="min-w-0"><p className="text-[8px] font-black uppercase tracking-[.12em] text-[#003b70]">International Packers · OSi Custodia</p><p className="mt-1 truncate text-[12px] font-black">{lot.client.name}</p><dl className="mt-1 grid gap-0.5 text-[8px]"><div><dt className="inline text-slate-500">Lote: </dt><dd className="inline font-bold">{lot.lotCode}</dd></div><div><dt className="inline text-slate-500">Bulto: </dt><dd className="inline font-bold">{item.unitType}</dd></div>{declaredContentQuantity && <div><dt className="inline text-slate-500">Declarado: </dt><dd className="inline font-bold">{declaredContentQuantity} unidades</dd></div>}</dl><p className="mt-1 font-mono text-[7px] leading-tight">{item.itemCode}</p></div><div className="flex flex-col items-center justify-between"><QRCodeSVG value={item.itemCode} size={compact ? 78 : 104} level="M" /><b className="text-[9px] text-[#003b70]">{sequenceText}</b></div></div>
+  </article>;
 }

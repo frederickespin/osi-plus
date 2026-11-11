@@ -471,13 +471,16 @@ test("denegar Survey no descarga el módulo destino", async ({ page }) => {
   expect(requests.some((path) => /HubWorkspace|OsiSurveyInactive|SurveyApp/i.test(path))).toBe(false);
 });
 
-test("OSi Survey exige autorización explícita y, con compuerta OFF, permanece sin API ni persistencia", async ({ page }) => {
+test("OSi Survey exige autorización explícita y abre la experiencia visual aprobada sin API ni persistencia", async ({ page }) => {
   const apiRequests: string[] = [];
   page.on("request", (request) => { const path = new URL(request.url()).pathname; if (path.startsWith("/api/")) apiRequests.push(path); });
   await authenticate(page, { role: "D", permissions: ["survey:assignment:view"] });
   await page.goto("/survey");
-  await expect(page.getByRole("heading", { name: "OSi Survey", exact: true })).toBeVisible();
-  await expect(page.getByText("Pendiente de habilitación", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("crm-survey-visual-preview")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visitas programadas", exact: true })).toBeVisible();
+  await expect(page.getByText("Ana Evaluadora", { exact: true })).toBeVisible();
+  await expect(page.getByText("15 visitas asignadas", { exact: true })).toBeVisible();
+  await expect(page.getByText("Pendiente de habilitación", { exact: true })).toHaveCount(0);
   expect(apiRequests).toEqual(["/api/auth/me"]);
   const stored = await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }));
   expect(stored.session).toEqual([]);
@@ -487,6 +490,11 @@ test("OSi Survey exige autorización explícita y, con compuerta OFF, permanece 
 test("Herramientas queda fuera de OSi Plus Mobile y reúne las dos calculadoras de escritorio", async ({ page }) => {
   await authenticate(page, { role: "A", permissions: ["pipeline:view", "survey:assignment:view"] });
   await page.goto("/mobile");
+  await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
+  await expect(page.getByRole("button", { name: /OSi Survey/ })).toBeVisible();
+  await page.getByRole("button", { name: /OSi Survey/ }).click();
+  await expect(page.getByTestId("crm-survey-visual-preview")).toBeVisible();
+  await page.getByRole("button", { name: "Volver a OSi Plus Mobile" }).click();
   await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
   await expect(page.getByText("Calculadora de empaque arqueológico", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Calculadora de empaque y cajas de madera", { exact: true })).toHaveCount(0);

@@ -72,7 +72,10 @@ try {
   assert.deepEqual(generated.genericContents, []);
   const generatedReceived = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: prepared.storageRef, action: "SCAN_ITEM", scanCode: generated.itemCode, occurredAt: "2026-11-06T12:46:00.000Z", expectedLotVersion: prepared.version, expectedItemVersion: generated.version }));
   const receivedGenerated = generatedReceived.items.find((row) => row.itemRef === generated.itemRef);
-  const conditioned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: generatedReceived.storageRef, action: "RECORD_CONDITION", itemRef: receivedGenerated.itemRef, evidence: ["COND|LEFT|SCRATCHED"], notes: "Lado izquierdo: Rayado", occurredAt: "2026-11-06T12:47:00.000Z", expectedLotVersion: generatedReceived.version, expectedItemVersion: receivedGenerated.version }));
+  const discarded = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: generatedReceived.storageRef, action: "DISCARD_UNUSED_LABELS", notes: "Se anuló una etiqueta generada que nunca fue escaneada", occurredAt: "2026-11-06T12:46:30.000Z", expectedLotVersion: generatedReceived.version }));
+  assert.equal(discarded.items.filter((row) => row.identitySource === "GENERATED_AT_RECEPTION").length, 1);
+  assert.equal(discarded.movements.find((row) => row.movementType === "ADJUST" && row.itemRef === null)?.quantity, 1);
+  const conditioned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: discarded.storageRef, action: "RECORD_CONDITION", itemRef: receivedGenerated.itemRef, evidence: ["COND|LEFT|SCRATCHED"], notes: "Lado izquierdo: Rayado", occurredAt: "2026-11-06T12:47:00.000Z", expectedLotVersion: discarded.version, expectedItemVersion: receivedGenerated.version }));
   const conditionedItem = conditioned.items.find((row) => row.itemRef === generated.itemRef);
   assert.equal(conditionedItem.condition, "DAMAGED");
   const described = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: conditioned.storageRef, action: "DESCRIBE_ITEM", itemRef: conditionedItem.itemRef, unitType: "PACKAGE", genericContents: ["Mobiliario"], notes: "Contenido descrito después de descargar", occurredAt: "2026-11-06T12:48:00.000Z", expectedLotVersion: conditioned.version, expectedItemVersion: conditionedItem.version }));
@@ -93,8 +96,8 @@ try {
   assert.deepEqual(await listCustomerStorageLots(prisma, outsider), [], "membership without a grant cannot enumerate custody");
   const commandCount = await prisma.customerCustodyCommand.count({ where: { tenantId: context.tenantId } });
   const movementCount = await prisma.customerCustodyMovement.count({ where: { tenantId: context.tenantId } });
-  assert.equal(commandCount, 15);
-  assert.equal(movementCount, 7);
+  assert.equal(commandCount, 16);
+  assert.equal(movementCount, 8);
   const movement = await prisma.customerCustodyMovement.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   const command = await prisma.customerCustodyCommand.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   await assert.rejects(() => prisma.customerCustodyMovement.update({ where: { id: movement.id }, data: { notes: "illegal edit" } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);

@@ -31,26 +31,30 @@ test("OSi Custodia reuses the authorized reception and scan workflow", () => {
     "Iniciar recepción por escaneo",
     "CustodyReceptionWorkflow",
     "QRCodeSVG",
-    "El QR contiene solamente el identificador interno",
+    "Cada hoja se imprime completa",
   ]) assert.match(mobile, new RegExp(authority.replace(/[{}()[\]]/g, "\\$&")));
   assert.match(workflow, /QRScanner/);
-  assert.match(workflow, /Ubicación por doble lectura/);
-  assert.match(workflow, /Descarga, etiqueta y condición/);
+  assert.match(workflow, /Escanee primero la ubicación y después cada artículo/);
+  assert.match(workflow, /Pegue una etiqueta, escanéela/);
   assert.match(workflow, /Catálogo QR/);
-  assert.match(workflow, /Scanner externo/);
+  assert.match(workflow, /Usar scanner/);
   assert.match(workflow, /\$\{prefix\}:\$\{code\}/);
   assert.match(workflow, /DLOC/);
   assert.match(workflow, /Cantidad de etiquetas/);
   assert.match(workflow, /QR únicos/);
   assert.match(workflow, /tipo físico se registra al describir/);
-  assert.match(workflow, /Imprimir \{labelCount\} preparadas/);
-  assert.match(workflow, /prepare las etiquetas antes de abrir el vehículo/);
-  assert.match(workflow, /Preparar adicionales/);
-  assert.match(workflow, /Conciliación de recepción/);
+  assert.match(workflow, /Imprimir lote/);
+  assert.match(workflow, /deje impresas las etiquetas antes de abrir el vehículo/);
+  assert.match(workflow, /Más etiquetas/);
+  assert.match(workflow, /Todo conciliado/);
   assert.match(mobile, /Maco ML-1000/);
-  assert.match(mobile, /Primera posición disponible/);
+  assert.match(mobile, /Hoja nueva · Posición 1/);
   assert.match(mobile, /sequenceText/);
+  assert.match(mobile, /body > \*:not\(\.custody-label-dialog\) \{ display: none !important/);
+  assert.match(mobile, /break-inside: avoid-page !important/);
   assert.match(mobile, /custody-label-print-area \{ position: static !important/);
+  assert.match(workflow, /DISCARD_UNUSED_LABELS/);
+  assert.match(workflow, /Anular sobrantes/);
 });
 
 test("the approved OSi Survey experience is the one mounted by Mobile", () => {

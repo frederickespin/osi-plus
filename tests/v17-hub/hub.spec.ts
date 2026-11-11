@@ -479,7 +479,7 @@ test("OSi Survey exige autorización explícita y abre la experiencia visual apr
   await expect(page.getByTestId("crm-survey-visual-preview")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Visitas programadas", exact: true })).toBeVisible();
   await expect(page.getByText("Ana Evaluadora", { exact: true })).toBeVisible();
-  await expect(page.getByText("15 visitas asignadas", { exact: true })).toBeVisible();
+  await expect(page.getByText("15 visitas asignadas", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Pendiente de habilitación", { exact: true })).toHaveCount(0);
   expect(apiRequests).toEqual(["/api/auth/me"]);
   const stored = await page.evaluate(() => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage) }));

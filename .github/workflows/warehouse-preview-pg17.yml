@@ -117,8 +117,8 @@ jobs:
           import { join } from 'node:path';
           import { validateMigrationFiles } from './scripts/canonical-migrations.mjs';
           const source = validateMigrationFiles();
-          assert.equal(source.length, 47);
-          assert.equal(source.at(-1), '20261111010000_v17_storage_commercial_agreements');
+          assert.equal(source.length, 48);
+          assert.equal(source.at(-1), '20261111020000_v17_customer_custody_inventory_numbers');
           assert.equal(source[40], '20261102020000_v17_warehouse_localities');
           assert.equal(source[39], '20261102010000_v17_warehouse_routes');
           assert.equal(source[38], '20261101020000_v17_warehouse_sheet');

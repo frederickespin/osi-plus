@@ -60,6 +60,22 @@ try {
   let scanned = handedOff;
   for (const expected of handedOff.items) scanned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: scanned.storageRef, action: "SCAN_ITEM", scanCode: expected.externalCode, occurredAt: "2026-11-06T12:40:00.000Z", expectedLotVersion: scanned.version, expectedItemVersion: expected.version }));
   assert.equal(scanned.receptionStage, "PUT_AWAY");
+  const prepared = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: scanned.storageRef, action: "PREPARE_LABEL", unitType: "PACKAGE", occurredAt: "2026-11-06T12:45:00.000Z", expectedLotVersion: scanned.version }));
+  const generated = prepared.items.find((row) => row.identitySource === "GENERATED_AT_RECEPTION");
+  assert.ok(generated);
+  assert.equal(generated.status, "EXPECTED");
+  assert.deepEqual(generated.genericContents, []);
+  const generatedReceived = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: prepared.storageRef, action: "SCAN_ITEM", scanCode: generated.itemCode, occurredAt: "2026-11-06T12:46:00.000Z", expectedLotVersion: prepared.version, expectedItemVersion: generated.version }));
+  const receivedGenerated = generatedReceived.items.find((row) => row.itemRef === generated.itemRef);
+  const conditioned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: generatedReceived.storageRef, action: "RECORD_CONDITION", itemRef: receivedGenerated.itemRef, evidence: ["COND|LEFT|SCRATCHED"], notes: "Lado izquierdo: Rayado", occurredAt: "2026-11-06T12:47:00.000Z", expectedLotVersion: generatedReceived.version, expectedItemVersion: receivedGenerated.version }));
+  const conditionedItem = conditioned.items.find((row) => row.itemRef === generated.itemRef);
+  assert.equal(conditionedItem.condition, "DAMAGED");
+  const described = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: conditioned.storageRef, action: "DESCRIBE_ITEM", itemRef: conditionedItem.itemRef, unitType: "PACKAGE", genericContents: ["Mobiliario"], notes: "Contenido descrito después de descargar", occurredAt: "2026-11-06T12:48:00.000Z", expectedLotVersion: conditioned.version, expectedItemVersion: conditionedItem.version }));
+  const describedItem = described.items.find((row) => row.itemRef === generated.itemRef);
+  assert.equal(describedItem.inspectionStatus, "CLEARED");
+  assert.deepEqual(describedItem.genericContents, ["Mobiliario"]);
+  const generatedLocated = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: described.storageRef, action: "PUT_AWAY_SCAN", scanCode: describedItem.itemCode, locationRef: locationB.locationRef, occurredAt: "2026-11-06T12:49:00.000Z", expectedLotVersion: described.version, expectedItemVersion: describedItem.version }));
+  assert.equal(generatedLocated.items.find((row) => row.itemRef === generated.itemRef)?.location?.locationRef, locationB.locationRef);
   const item = scanned.items[0];
   const moved = await moveCustomerStorage(prisma, context, normalizeCustodyMovement(signed("CUSTOMER_CUSTODY_MOVE", { authorizationRef: null, storageRef: scanned.storageRef, itemRef: item.itemRef, movementType: "TRANSFER", destinationLocationRef: locationB.locationRef, quantity: item.quantity, occurredAt: "2026-11-06T13:00:00.000Z", notes: "Traslado sintético", expectedVersion: item.version })));
   assert.equal(moved.items.find((row) => row.itemRef === item.itemRef)?.location?.locationRef, locationB.locationRef);
@@ -72,13 +88,13 @@ try {
   assert.deepEqual(await listCustomerStorageLots(prisma, outsider), [], "membership without a grant cannot enumerate custody");
   const commandCount = await prisma.customerCustodyCommand.count({ where: { tenantId: context.tenantId } });
   const movementCount = await prisma.customerCustodyMovement.count({ where: { tenantId: context.tenantId } });
-  assert.equal(commandCount, 10);
-  assert.equal(movementCount, 5);
+  assert.equal(commandCount, 15);
+  assert.equal(movementCount, 7);
   const movement = await prisma.customerCustodyMovement.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   const command = await prisma.customerCustodyCommand.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   await assert.rejects(() => prisma.customerCustodyMovement.update({ where: { id: movement.id }, data: { notes: "illegal edit" } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
   await assert.rejects(() => prisma.customerCustodyCommand.update({ where: { id: command.id }, data: { resultJson: { rewritten: true } } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
-  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "47/47", lots: 1, items: 2, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, acceptedProposal: true, signedStorageAgreement: true, commercialAuthorization: true }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "47/47", lots: 1, items: 3, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, unknownInventoryFlow: true, conditionQrCatalog: true, acceptedProposal: true, signedStorageAgreement: true, commercialAuthorization: true }) + "\n");
 } finally {
   await prisma.$disconnect();
 }

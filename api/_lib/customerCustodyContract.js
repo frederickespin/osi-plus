@@ -8,7 +8,7 @@ const CONDITIONS = new Set(["UNSPECIFIED", "GOOD", "USED", "DAMAGED"]);
 const STORAGE_TYPES = new Set(["PERSONAL_EFFECTS", "IMPORT_STORAGE", "INTERNATIONAL_DISPATCH", "COMMERCIAL_STORAGE"]);
 const INTAKE_SOURCES = new Set(["OWN_PICKUP", "EXTERNAL_ORIGIN", "COMMERCIAL_PRE_ADVICE", "DIRECT_WAREHOUSE"]);
 const MOVEMENTS = new Set(["PUT_AWAY", "TRANSFER", "COUNT", "PREPARE_EXIT", "DISPATCH", "RETURN", "ADJUST", "HOLD", "RELEASE_HOLD"]);
-const RECEPTION_ACTIONS = new Set(["ARRIVE", "CONFIRM_HANDOFF", "SCAN_ITEM", "REGISTER_UNLABELED_ITEM", "CONFIRM_INSPECTION", "PUT_AWAY_SCAN", "SET_LOCATION_STATUS", "REPORT_EXCEPTION", "RESOLVE_EXCEPTION", "CLOSE"]);
+const RECEPTION_ACTIONS = new Set(["ARRIVE", "CONFIRM_HANDOFF", "PREPARE_LABEL", "SCAN_ITEM", "RECORD_CONDITION", "DESCRIBE_ITEM", "REGISTER_UNLABELED_ITEM", "CONFIRM_INSPECTION", "PUT_AWAY_SCAN", "SET_LOCATION_STATUS", "REPORT_EXCEPTION", "RESOLVE_EXCEPTION", "CLOSE"]);
 const UNIT_TYPES = new Set(["BOX", "PACKAGE", "BUNDLE", "PALLET", "LOOSE_ITEM", "CRATE", "OTHER"]);
 const INSPECTION_RESULTS = new Set(["CLEARED", "HOLD"]);
 const LOCATION_STATUSES = new Set(["AVAILABLE", "IN_USE", "FULL", "BLOCKED", "RESERVED_EXIT", "REVIEW_REQUIRED"]);
@@ -80,6 +80,9 @@ export function normalizeCustodyReceptionAction(input) {
   const action = enumeration(value.action, RECEPTION_ACTIONS); const itemRef = uuid(value.itemRef, true); const scanCode = text(value.scanCode, 120, true); const locationRef = uuid(value.locationRef, true); const expectedItemVersion = integer(value.expectedItemVersion, 1, 1_000_000, true); const normalizedEvidence = evidence(value.evidence);
   const unitType = value.unitType === null ? null : enumeration(value.unitType, UNIT_TYPES); const genericContents = value.genericContents === null ? null : textList(value.genericContents); const inspectionResult = value.inspectionResult === null ? null : enumeration(value.inspectionResult, INSPECTION_RESULTS); const locationStatus = value.locationStatus === null ? null : enumeration(value.locationStatus, LOCATION_STATUSES);
   if (action === "SCAN_ITEM" && (!scanCode || expectedItemVersion === null || itemRef !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action === "PREPARE_LABEL" && (!unitType || genericContents !== null || itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action === "RECORD_CONDITION" && (!itemRef || expectedItemVersion === null || normalizedEvidence === null || normalizedEvidence.length < 1 || scanCode !== null || locationRef !== null || unitType !== null || genericContents !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action === "DESCRIBE_ITEM" && (!itemRef || expectedItemVersion === null || !unitType || !genericContents || scanCode !== null || locationRef !== null || normalizedEvidence !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "REGISTER_UNLABELED_ITEM" && (!unitType || !genericContents || itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "CONFIRM_INSPECTION" && (!itemRef || expectedItemVersion === null || !inspectionResult || scanCode !== null || locationRef !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "PUT_AWAY_SCAN" && (!scanCode || !locationRef || itemRef !== null || expectedItemVersion === null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");

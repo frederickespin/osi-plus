@@ -35,6 +35,13 @@ test("OSi Custodia reuses the authorized reception and scan workflow", () => {
   ]) assert.match(mobile, new RegExp(authority.replace(/[{}()[\]]/g, "\\$&")));
   assert.match(workflow, /QRScanner/);
   assert.match(workflow, /Ubicación por doble lectura/);
+  assert.match(workflow, /Descarga, etiqueta y condición/);
+  assert.match(workflow, /Catálogo QR/);
+  assert.match(workflow, /Scanner externo/);
+  assert.match(workflow, /\$\{prefix\}:\$\{code\}/);
+  assert.match(workflow, /DLOC/);
+  assert.match(workflow, /No se escriben cantidades/);
+  assert.match(workflow, /Conciliación de recepción/);
 });
 
 test("the approved OSi Survey experience is the one mounted by Mobile", () => {

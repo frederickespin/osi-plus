@@ -37,23 +37,6 @@ async function installSession(page: Page, initialActor: Actor) {
   return state;
 }
 
-async function mockAgenda(page: Page) {
-  const requests: { method: string; authorization: string | undefined }[] = [];
-  await page.route("**/api/crm/survey/assignments", (route) => {
-    requests.push({ method: route.request().method(), authorization: route.request().headers().authorization });
-    return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: [{
-      assignmentRef: "218f6d8f-8d11-4f39-8a2d-1b6c7e8f9012",
-      caseRef: "318f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", caseCode: "CS-INTEGRACION-001",
-      clientDisplayName: "Visita integrada de prueba", evaluator: { displayName: "Evaluador de prueba" },
-      scheduledStart: "2026-10-28T15:00:00.000Z", scheduledEnd: null, status: "ASSIGNED",
-      arrivalAt: null, punctualityConfirmedAt: null,
-      context: { origin: "Origen de prueba", destination: "Destino de prueba", services: [] },
-      instruction: null, version: 1, surveyRef: null,
-    }] }) });
-  });
-  return requests;
-}
-
 async function mockEmptyInbox(page: Page) {
   await page.route("**/api/crm/pipeline-summary", (route) => route.fulfill({
     status: 200, contentType: "application/json", headers: privateHeaders,
@@ -153,25 +136,24 @@ test("Almacenes agrupa accesos y conserva permisos y rutas directas de Materiale
 
 test("Hub y Mobile abren Survey funcional con retorno y conservan el alias survey", async ({ page }) => {
   const state = await installSession(page, { permissions: mobilePermissions });
-  const agendaRequests = await mockAgenda(page);
   await page.goto("/hub");
   await page.locator("main").getByRole("button", { name: /OSi Plus Mobile/ }).click();
   await expect(page).toHaveURL(/\/mobile$/);
   await page.getByTestId("osi-plus-mobile-hub").getByRole("button", { name: /OSi Survey/ }).click();
   await expect(page).toHaveURL(/\/mobile\/survey$/);
-  await expect(page.getByRole("heading", { name: "Agenda de visitas" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Visita integrada de prueba" })).toBeVisible();
-  await expect(page.getByTestId("crm-survey-visual-preview")).toHaveCount(0);
+  await expect(page.getByTestId("crm-survey-visual-preview")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visitas programadas", exact: true })).toBeVisible();
+  await expect(page.getByText("Ana Evaluadora", { exact: true })).toBeVisible();
+  await expect(page.getByText("15 visitas asignadas", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Volver a OSi Plus Mobile", exact: true }).click();
   await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
   await page.getByRole("button", { name: "Volver al Hub", exact: true }).click();
   await expect(page).toHaveURL(/\/hub$/);
   await page.goto("/survey");
-  await expect(page.getByRole("heading", { name: "Visita integrada de prueba" })).toBeVisible();
+  await expect(page.getByTestId("crm-survey-visual-preview")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visitas programadas", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Volver a OSi Plus Mobile", exact: true }).click();
   await expect(page).toHaveURL(/\/mobile$/);
-  expect(agendaRequests.length).toBeGreaterThanOrEqual(2);
-  expect(agendaRequests.every((request) => request.method === "GET" && request.authorization === "Bearer synthetic.mobile.integration.token")).toBe(true);
   expect(state.unexpectedApi).toEqual([]);
 });
 

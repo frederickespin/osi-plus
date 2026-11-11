@@ -14,7 +14,6 @@ import { availableAdministrationSections } from "@/administration/administration
 import { isAdminFleetEnabled } from "@/admin-fleet/mode";
 import { resolveFleetAccess } from "@/admin-fleet/access";
 import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resolveAdminIdentityInvitationMode } from "@/admin-tenant/adminMode";
-import { isSurveyUiEnabled } from "@/survey/mode";
 import { resolveSurveySchedulingUiAccess } from "@/survey/schedulingAccess";
 import { isMaterialsUiEnabled } from "@/materials-inventory/mode";
 import { isWarehouseConfigurationUiEnabled } from "@/warehouses/configurationMode";
@@ -41,7 +40,7 @@ import { redirectToPreviewHub, rememberPreviewHubReturn } from "./previewHubRetu
 const AdministrationWorkspace = lazy(() => import("@/administration/AdministrationWorkspace"));
 const WarehouseWorkspace = lazy(() => import("@/warehouses/WarehouseWorkspace"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
-const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
+const SurveyVisualPreview = lazy(() => import("@/crm-survey-preview/SurveyVisualPreview"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
 const ArchaeologicalPackingTool = lazy(() => import("./ArchaeologicalPackingTool"));
@@ -167,7 +166,6 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const adminMembershipAvailable = adminEnabled && accessContext.role === "A" && effectivePermissions.has("membership:view") && !deniedPermissions.has("membership:view");
   const adminInvitationsEnabled = isAdminIdentityInvitationEnabled();
   const adminInvitationMode = resolveAdminIdentityInvitationMode();
-  const surveyEnabled = isSurveyUiEnabled();
   const materialsEnabled = isMaterialsUiEnabled();
   const toolsEnabled = isToolsEquipmentUiEnabled();
   const customerCustodyEnabled = isCustomerCustodyUiEnabled();
@@ -207,7 +205,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     "commercial-crm": crmReadEnabled || catalogPreview.has("commercial-crm"),
     administration: administrationAvailable || catalogPreview.has("administration"),
     warehouses: warehousesAvailable || catalogPreview.has("warehouses"),
-    "osi-survey": surveyEnabled || catalogPreview.has("osi-survey"),
+    "osi-survey": surveyAuthorized || catalogPreview.has("osi-survey"),
     "visual-inventory": true,
     "materials-equipment": materialsEnabled,
     "tools-equipment": toolsEnabled,
@@ -299,9 +297,9 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       <WarehouseWorkspace authorization={authorization} pathname={pathname} sections={warehouseSections} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={navigate} onUnauthorized={onLogout} />
     </Suspense>;
   }
-  if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {
+  if (selected?.appId === "osi-survey" && surveyAuthorized) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
-      <SurveyApp authorization={authorization} onUnauthorized={onLogout} onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
+      <SurveyVisualPreview onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
     </Suspense>;
   }
   if (selected?.appId === "visual-inventory" && available.includes(selected)) {

@@ -238,7 +238,7 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   {
     appId: "osi-survey",
     name: "OSi Survey",
-    description: "Agenda, inventario observado y publicaciones inmutables.",
+    description: "Agenda del visitador, inventario, accesos, revisión, detalle técnico y firma.",
     icon: "clipboard",
     route: "/mobile/survey",
     routeAliases: ["/survey"],

@@ -10,6 +10,7 @@ test("OSi Plus Mobile stays inside the canonical Hub", () => {
   const catalog = read("src/hub/appCatalog.ts");
 
   assert.match(workspace, /SurveyVisualPreview/);
+  assert.match(workspace, /const surveyEnabled = isSurveyUiEnabled\(\)/);
   assert.match(workspace, /navigate\("\/mobile"\)/);
   assert.doesNotMatch(workspace, /@\/survey\/SurveyApp/);
   assert.match(mobileHub, /onNavigate\("\/hub"\)/);

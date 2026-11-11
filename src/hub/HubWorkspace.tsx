@@ -14,6 +14,7 @@ import { availableAdministrationSections } from "@/administration/administration
 import { isAdminFleetEnabled } from "@/admin-fleet/mode";
 import { resolveFleetAccess } from "@/admin-fleet/access";
 import { isAdminIdentityInvitationEnabled, isAdminTenantMembershipEnabled, resolveAdminIdentityInvitationMode } from "@/admin-tenant/adminMode";
+import { isSurveyUiEnabled } from "@/survey/mode";
 import { resolveSurveySchedulingUiAccess } from "@/survey/schedulingAccess";
 import { isMaterialsUiEnabled } from "@/materials-inventory/mode";
 import { isWarehouseConfigurationUiEnabled } from "@/warehouses/configurationMode";
@@ -166,6 +167,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const adminMembershipAvailable = adminEnabled && accessContext.role === "A" && effectivePermissions.has("membership:view") && !deniedPermissions.has("membership:view");
   const adminInvitationsEnabled = isAdminIdentityInvitationEnabled();
   const adminInvitationMode = resolveAdminIdentityInvitationMode();
+  const surveyEnabled = isSurveyUiEnabled();
   const materialsEnabled = isMaterialsUiEnabled();
   const toolsEnabled = isToolsEquipmentUiEnabled();
   const customerCustodyEnabled = isCustomerCustodyUiEnabled();

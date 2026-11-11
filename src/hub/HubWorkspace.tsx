@@ -41,7 +41,7 @@ import { redirectToPreviewHub, rememberPreviewHubReturn } from "./previewHubRetu
 const AdministrationWorkspace = lazy(() => import("@/administration/AdministrationWorkspace"));
 const WarehouseWorkspace = lazy(() => import("@/warehouses/WarehouseWorkspace"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
-const SurveyVisualPreview = lazy(() => import("@/crm-survey-preview/SurveyVisualPreview"));
+const SurveyApp = lazy(() => import("@/crm-survey-preview/SurveyVisualPreview"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
 const ArchaeologicalPackingTool = lazy(() => import("./ArchaeologicalPackingTool"));
@@ -301,9 +301,9 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       <WarehouseWorkspace authorization={authorization} pathname={pathname} sections={warehouseSections} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={navigate} onUnauthorized={onLogout} />
     </Suspense>;
   }
-  if (selected?.appId === "osi-survey" && surveyAuthorized) {
+  if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
-      <SurveyVisualPreview onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
+      <SurveyApp onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
     </Suspense>;
   }
   if (selected?.appId === "visual-inventory" && available.includes(selected)) {

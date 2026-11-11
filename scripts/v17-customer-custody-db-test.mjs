@@ -55,12 +55,14 @@ try {
   assert.equal(lot.items[0].status, "EXPECTED");
   assert.equal(await prisma.customerStorageLot.count({ where: { tenantId: context.tenantId } }), 1);
 
-  const arrived = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "ARRIVE", occurredAt: "2026-11-06T12:30:00.000Z", expectedLotVersion: lot.version }));
+  const preprinted = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "PREPARE_LABEL", unitType: "PACKAGE", labelQuantity: 2, occurredAt: "2026-11-06T12:20:00.000Z", expectedLotVersion: lot.version }));
+  assert.equal(preprinted.receptionStage, "IN_TRANSIT", "printing labels before unloading must not advance the reception stage");
+  const arrived = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: preprinted.storageRef, action: "ARRIVE", occurredAt: "2026-11-06T12:30:00.000Z", expectedLotVersion: preprinted.version }));
   const handedOff = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "CONFIRM_HANDOFF", occurredAt: "2026-11-06T12:35:00.000Z", expectedLotVersion: arrived.version }));
   let scanned = handedOff;
-  for (const expected of handedOff.items) scanned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: scanned.storageRef, action: "SCAN_ITEM", scanCode: expected.externalCode, occurredAt: "2026-11-06T12:40:00.000Z", expectedLotVersion: scanned.version, expectedItemVersion: expected.version }));
-  assert.equal(scanned.receptionStage, "PUT_AWAY");
-  const prepared = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: scanned.storageRef, action: "PREPARE_LABEL", unitType: "PACKAGE", labelQuantity: 2, occurredAt: "2026-11-06T12:45:00.000Z", expectedLotVersion: scanned.version }));
+  for (const expected of handedOff.items.filter((row) => row.externalCode)) scanned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: scanned.storageRef, action: "SCAN_ITEM", scanCode: expected.externalCode, occurredAt: "2026-11-06T12:40:00.000Z", expectedLotVersion: scanned.version, expectedItemVersion: expected.version }));
+  assert.equal(scanned.receptionStage, "RECEIVING");
+  const prepared = scanned;
   const generatedBatch = prepared.items.filter((row) => row.identitySource === "GENERATED_AT_RECEPTION").sort((left, right) => left.itemCode.localeCompare(right.itemCode));
   assert.equal(generatedBatch.length, 2);
   assert.notEqual(generatedBatch[0].itemCode, generatedBatch[1].itemCode);
@@ -96,7 +98,7 @@ try {
   const command = await prisma.customerCustodyCommand.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   await assert.rejects(() => prisma.customerCustodyMovement.update({ where: { id: movement.id }, data: { notes: "illegal edit" } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
   await assert.rejects(() => prisma.customerCustodyCommand.update({ where: { id: command.id }, data: { resultJson: { rewritten: true } } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
-  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "47/47", lots: 1, items: 4, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, unknownInventoryFlow: true, batchLabels: true, conditionQrCatalog: true, acceptedProposal: true, signedStorageAgreement: true, commercialAuthorization: true }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "47/47", lots: 1, items: 4, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, unknownInventoryFlow: true, batchLabels: true, preUnloadLabels: true, conditionQrCatalog: true, acceptedProposal: true, signedStorageAgreement: true, commercialAuthorization: true }) + "\n");
 } finally {
   await prisma.$disconnect();
 }

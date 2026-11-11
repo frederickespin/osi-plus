@@ -219,15 +219,19 @@ function PrintableCustodyLabels({ lot, batch, onClose }: { lot: CustomerStorageL
   const sheets = useMemo(() => buildMacoSheets(batch.items, startPosition), [batch.items, startPosition]);
   const previewItem = batch.items[0];
   const sheetCount = format === "MACO_ML1000" ? sheets.length : batch.items.length;
-  return <div role="dialog" aria-modal="true" aria-label="Imprimir etiquetas de custodia" className="fixed inset-0 z-50 overflow-auto bg-slate-950/60 p-3 sm:p-6">
+  return <div role="dialog" aria-modal="true" aria-label="Imprimir etiquetas de custodia" className="custody-label-dialog fixed inset-0 z-50 overflow-auto bg-slate-950/60 p-3 sm:p-6">
     <style>{`@media print {
       @page { size: ${format === "MACO_ML1000" ? "Letter" : "100mm 65mm"}; margin: 0; }
+      html, body { overflow: visible !important; }
       body * { visibility: hidden !important; }
       .custody-label-print-area, .custody-label-print-area * { visibility: visible !important; }
-      .custody-label-print-area { position: absolute !important; inset: 0 !important; width: auto !important; background: white !important; }
+      .custody-label-dialog { position: static !important; inset: auto !important; overflow: visible !important; padding: 0 !important; background: white !important; }
+      .custody-label-print-area { position: static !important; inset: auto !important; display: block !important; width: 100% !important; height: auto !important; overflow: visible !important; background: white !important; }
       .custody-label-actions, .custody-label-preview { display: none !important; }
       .custody-maco-sheet { width: 8.5in !important; height: 11in !important; padding: .5in .15625in !important; display: grid !important; grid-template-columns: repeat(2, 4in) !important; grid-template-rows: repeat(5, 2in) !important; column-gap: .1875in !important; row-gap: 0 !important; break-after: page !important; page-break-after: always !important; box-sizing: border-box !important; }
+      .custody-maco-sheet:last-child { break-after: auto !important; page-break-after: auto !important; }
       .custody-thermal-label { width: 100mm !important; height: 65mm !important; break-after: page !important; page-break-after: always !important; box-sizing: border-box !important; }
+      .custody-thermal-label:last-child { break-after: auto !important; page-break-after: auto !important; }
     }`}</style>
     <div className="custody-label-actions mx-auto mb-3 max-w-3xl rounded-2xl bg-white p-4 shadow-2xl">
       <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-sky-700">Impresión de custodia</p><h2 className="text-lg font-black text-[#003b70]">{batch.items.length} {batch.items.length === 1 ? "etiqueta preparada" : "etiquetas preparadas"}</h2></div><button type="button" className={SECONDARY} aria-label="Cerrar etiquetas" onClick={onClose}><X className="h-4 w-4" /></button></div>
@@ -236,7 +240,7 @@ function PrintableCustodyLabels({ lot, batch, onClose }: { lot: CustomerStorageL
       <p className="mt-2 text-[10px] text-slate-500"><CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />El QR contiene solamente el identificador interno de un bulto físico. Seleccione escala 100 % o tamaño real y desactive encabezados y pies del navegador.</p>
       {previewItem && <div className="custody-label-preview mt-3 overflow-hidden rounded-xl border bg-slate-100 p-3"><p className="mb-2 text-[10px] font-bold uppercase text-slate-500">Vista previa</p><div className="mx-auto aspect-[2/1] max-w-md bg-white"><CustodyLabel lot={lot} item={previewItem} sequence={1} total={batch.items.length} declaredContentQuantity={batch.declaredContentQuantity} compact /></div></div>}
     </div>
-    <div className="custody-label-print-area absolute -left-[10000px] top-0">
+    <div className="custody-label-print-area absolute -left-[10000px] top-0 h-0 overflow-hidden print:h-auto print:overflow-visible">
       {format === "MACO_ML1000" ? sheets.map((sheet, sheetIndex) => <div key={`sheet-${sheetIndex}`} className="custody-maco-sheet bg-white">{sheet.map((entry, position) => entry ? <CustodyLabel key={entry.item.itemRef} lot={lot} item={entry.item} sequence={entry.sequence} total={batch.items.length} declaredContentQuantity={batch.declaredContentQuantity} compact /> : <div key={`blank-${sheetIndex}-${position}`} aria-hidden="true" />)}</div>) : batch.items.map((item, index) => <div key={item.itemRef} className="custody-thermal-label bg-white"><CustodyLabel lot={lot} item={item} sequence={index + 1} total={batch.items.length} declaredContentQuantity={batch.declaredContentQuantity} /></div>)}
     </div>
   </div>;
@@ -254,6 +258,6 @@ function buildMacoSheets(items: readonly CustomerStoredItem[], startPosition: nu
 function CustodyLabel({ lot, item, sequence, total, declaredContentQuantity, compact = false }: { lot: CustomerStorageLot; item: CustomerStoredItem; sequence: number; total: number; declaredContentQuantity: number | null; compact?: boolean }) {
   const sequenceText = `${String(sequence).padStart(3, "0")} / ${String(total).padStart(3, "0")}`;
   return <article className={`h-full w-full overflow-hidden border border-slate-400 bg-white text-slate-950 ${compact ? "p-[.125in]" : "p-3"}`}>
-    <div className="grid h-full grid-cols-[1fr_auto] gap-2"><div className="min-w-0"><p className="text-[8px] font-black uppercase tracking-[.12em] text-[#003b70]">International Packers · OSi Custodia</p><p className="mt-1 truncate text-[12px] font-black">{lot.client.name}</p><dl className="mt-1 grid gap-0.5 text-[8px]"><div><dt className="inline text-slate-500">Lote: </dt><dd className="inline font-bold">{lot.lotCode}</dd></div><div><dt className="inline text-slate-500">Bulto: </dt><dd className="inline font-bold">{item.unitType}</dd></div>{declaredContentQuantity && <div><dt className="inline text-slate-500">Declarado: </dt><dd className="inline font-bold">{declaredContentQuantity} unidades</dd></div>}</dl><p className="mt-1 font-mono text-[7px] leading-tight">{item.itemCode}</p></div><div className="flex flex-col items-center justify-between"><QRCodeSVG value={item.itemCode} size={compact ? 78 : 104} level="M" /><b className="text-[9px] text-[#003b70]">{sequenceText}</b></div></div>
+    <div className="grid h-full grid-cols-[1fr_auto] gap-2"><div className="min-w-0"><p className="text-[8px] font-black uppercase tracking-[.12em] text-[#003b70]">International Packers · OSi Custodia</p><p className="mt-1 truncate text-[12px] font-black">{lot.client.name}</p><dl className="mt-1 grid gap-0.5 text-[8px]"><div><dt className="inline text-slate-500">Lote: </dt><dd className="inline font-bold">{lot.lotCode}</dd></div>{declaredContentQuantity && <div><dt className="inline text-slate-500">Declarado: </dt><dd className="inline font-bold">{declaredContentQuantity} unidades</dd></div>}</dl><p className="mt-1 font-mono text-[7px] leading-tight">{item.itemCode}</p></div><div className="flex flex-col items-center justify-between"><QRCodeSVG value={item.itemCode} size={compact ? 78 : 104} level="M" /><b className="text-[9px] text-[#003b70]">{sequenceText}</b></div></div>
   </article>;
 }

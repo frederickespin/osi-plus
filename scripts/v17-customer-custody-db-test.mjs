@@ -55,8 +55,9 @@ try {
   assert.equal(lot.items[0].status, "EXPECTED");
   assert.equal(await prisma.customerStorageLot.count({ where: { tenantId: context.tenantId } }), 1);
 
-  const preprinted = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "PREPARE_LABEL", unitType: "PACKAGE", labelQuantity: 2, occurredAt: "2026-11-06T12:20:00.000Z", expectedLotVersion: lot.version }));
+  const preprinted = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "PREPARE_LABEL", unitType: null, labelQuantity: 2, occurredAt: "2026-11-06T12:20:00.000Z", expectedLotVersion: lot.version }));
   assert.equal(preprinted.receptionStage, "IN_TRANSIT", "printing labels before unloading must not advance the reception stage");
+  assert.ok(preprinted.items.filter((row) => row.identitySource === "GENERATED_AT_RECEPTION").every((row) => row.unitType === "OTHER"));
   const arrived = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: preprinted.storageRef, action: "ARRIVE", occurredAt: "2026-11-06T12:30:00.000Z", expectedLotVersion: preprinted.version }));
   const handedOff = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "CONFIRM_HANDOFF", occurredAt: "2026-11-06T12:35:00.000Z", expectedLotVersion: arrived.version }));
   let scanned = handedOff;

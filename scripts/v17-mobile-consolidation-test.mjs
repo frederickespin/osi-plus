@@ -42,12 +42,15 @@ test("OSi Custodia reuses the authorized reception and scan workflow", () => {
   assert.match(workflow, /DLOC/);
   assert.match(workflow, /Cantidad de etiquetas/);
   assert.match(workflow, /QR únicos/);
+  assert.match(workflow, /tipo físico se registra al describir/);
+  assert.match(workflow, /Imprimir \{labelCount\} preparadas/);
   assert.match(workflow, /prepare las etiquetas antes de abrir el vehículo/);
-  assert.match(workflow, /Preparar etiquetas/);
+  assert.match(workflow, /Preparar adicionales/);
   assert.match(workflow, /Conciliación de recepción/);
   assert.match(mobile, /Maco ML-1000/);
   assert.match(mobile, /Primera posición disponible/);
   assert.match(mobile, /sequenceText/);
+  assert.match(mobile, /custody-label-print-area \{ position: static !important/);
 });
 
 test("the approved OSi Survey experience is the one mounted by Mobile", () => {

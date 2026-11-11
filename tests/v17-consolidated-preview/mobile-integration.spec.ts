@@ -144,7 +144,7 @@ test("Hub y Mobile abren Survey funcional con retorno y conservan el alias surve
   await expect(page.getByTestId("crm-survey-visual-preview")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Visitas programadas", exact: true })).toBeVisible();
   await expect(page.getByText("Ana Evaluadora", { exact: true })).toBeVisible();
-  await expect(page.getByText("15 visitas asignadas", { exact: true })).toBeVisible();
+  await expect(page.getByText("15 visitas asignadas", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Volver a OSi Plus Mobile", exact: true }).click();
   await expect(page.getByTestId("osi-plus-mobile-hub")).toBeVisible();
   await page.getByRole("button", { name: "Volver al Hub", exact: true }).click();

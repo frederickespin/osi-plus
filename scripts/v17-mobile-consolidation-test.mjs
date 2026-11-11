@@ -12,7 +12,8 @@ test("OSi Plus Mobile stays inside the canonical Hub", () => {
   assert.match(workspace, /SurveyVisualPreview/);
   assert.match(workspace, /@\/survey\/SurveyApp/);
   assert.match(workspace, /const surveyEnabled = isSurveyUiEnabled\(\)/);
-  assert.match(workspace, /visualSurveyEnabled/);
+  assert.match(workspace, /selected\?\.appId === "osi-survey" && surveyEnabled && surveyAuthorized && surveyRuntimeMode === "LOCAL_ONLY"/);
+  assert.match(workspace, /selected\?\.appId === "osi-survey" && surveyAuthorized/);
   assert.match(workspace, /navigate\("\/mobile"\)/);
   assert.match(mobileHub, /onNavigate\("\/hub"\)/);
   assert.match(catalog, /route: "\/mobile\/survey"/);

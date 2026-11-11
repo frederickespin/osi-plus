@@ -171,7 +171,6 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const adminInvitationMode = resolveAdminIdentityInvitationMode();
   const surveyEnabled = isSurveyUiEnabled();
   const surveyRuntimeMode = String(import.meta.env.VITE_CRM_SURVEY_UI_MODE || "").trim();
-  const visualSurveyEnabled = mode === "PREVIEW_REHEARSAL" || surveyRuntimeMode.length === 0;
   const materialsEnabled = isMaterialsUiEnabled();
   const toolsEnabled = isToolsEquipmentUiEnabled();
   const customerCustodyEnabled = isCustomerCustodyUiEnabled();
@@ -304,11 +303,14 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       <WarehouseWorkspace authorization={authorization} pathname={pathname} sections={warehouseSections} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={navigate} onUnauthorized={onLogout} />
     </Suspense>;
   }
-  if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {
+  if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized && surveyRuntimeMode === "LOCAL_ONLY") {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
-      {visualSurveyEnabled
-        ? <SurveyVisualPreview onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
-        : <SurveyApp authorization={authorization} onUnauthorized={onLogout} onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />}
+      <SurveyApp authorization={authorization} onUnauthorized={onLogout} onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
+    </Suspense>;
+  }
+  if (selected?.appId === "osi-survey" && surveyAuthorized) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
+      <SurveyVisualPreview onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
     </Suspense>;
   }
   if (selected?.appId === "visual-inventory" && available.includes(selected)) {

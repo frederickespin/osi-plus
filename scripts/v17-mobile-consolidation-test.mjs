@@ -16,6 +16,23 @@ test("OSi Plus Mobile stays inside the canonical Hub", () => {
   assert.match(mobileHub, /onNavigate\("\/hub"\)/);
   assert.match(catalog, /route: "\/mobile\/survey"/);
   assert.match(catalog, /route: "\/mobile\/visual-inventory"/);
+  assert.match(catalog, /route: "\/mobile\/custody"/);
+  assert.match(workspace, /CustomerCustodyMobileApp/);
+});
+
+test("OSi Custodia reuses the authorized reception and scan workflow", () => {
+  const mobile = read("src/customer-custody/CustomerCustodyMobileApp.tsx");
+  const workflow = read("src/customer-custody/CustodyReceptionWorkflow.tsx");
+
+  for (const authority of [
+    "authorizations({ movementType: \"ENTRY\", available: true })",
+    "Iniciar recepción por escaneo",
+    "CustodyReceptionWorkflow",
+    "QRCodeSVG",
+    "El QR contiene solamente el identificador interno",
+  ]) assert.match(mobile, new RegExp(authority.replace(/[{}()[\]]/g, "\\$&")));
+  assert.match(workflow, /QRScanner/);
+  assert.match(workflow, /Ubicación por doble lectura/);
 });
 
 test("the approved OSi Survey experience is the one mounted by Mobile", () => {

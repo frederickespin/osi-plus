@@ -47,6 +47,7 @@ const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp
 const ArchaeologicalPackingTool = lazy(() => import("./ArchaeologicalPackingTool"));
 const GeneralPackingTool = lazy(() => import("./GeneralPackingTool"));
 const VisualInventoryApp = lazy(() => import("./VisualInventoryApp"));
+const CustomerCustodyMobileApp = lazy(() => import("@/customer-custody/CustomerCustodyMobileApp"));
 const RecoveredCommercialPreview = lazy(() => import("./RecoveredCommercialPreview"));
 
 const ICONS: Record<HubIconId, ElementType> = {
@@ -209,6 +210,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     warehouses: warehousesAvailable || catalogPreview.has("warehouses"),
     "osi-survey": surveyAuthorized || catalogPreview.has("osi-survey"),
     "visual-inventory": true,
+    "osi-custody": customerCustodyEnabled,
     "materials-equipment": materialsEnabled,
     "tools-equipment": toolsEnabled,
     "archaeological-packing": true,
@@ -307,6 +309,11 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   if (selected?.appId === "visual-inventory" && available.includes(selected)) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Inventario Visual…</div>}>
       <VisualInventoryApp onBack={() => navigate("/mobile")} />
+    </Suspense>;
+  }
+  if (selected?.appId === "osi-custody" && customerCustodyEnabled && available.includes(selected)) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando OSi Custodia…</div>}>
+      <CustomerCustodyMobileApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onBack={() => navigate("/mobile")} onUnauthorized={onLogout} />
     </Suspense>;
   }
   if (selected?.appId === "materials-equipment" && materialsEnabled) {

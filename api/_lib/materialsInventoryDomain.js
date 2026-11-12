@@ -125,6 +125,12 @@ function automaticWarehouseCode(prefix, context, input, warehouseRef = null) {
 async function lockWarehouse(tx, tenantId, warehouseId) {
   await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`warehouse:${tenantId}:${warehouseId}`}, 0))`);
 }
+function rawSqlState(error) {
+  const metadataCode = String(error?.meta?.code ?? "");
+  if (/^\d{5}$/.test(metadataCode)) return metadataCode;
+  const message = String(error?.meta?.message ?? error?.message ?? "");
+  return message.match(/\b(23505|40001)\b/)?.[1] ?? null;
+}
 async function warehouseMutation(prisma, context, input, execute) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
@@ -135,12 +141,15 @@ async function warehouseMutation(prisma, context, input, execute) {
         return execute(tx);
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 20000 });
     } catch (error) {
-      if (!["P2002", "P2034"].includes(error?.code)) throw error;
+      const sqlState = rawSqlState(error);
+      const duplicate = error?.code === "P2002" || sqlState === "23505";
+      const serialization = error?.code === "P2034" || sqlState === "40001";
+      if (!duplicate && !serialization) throw error;
       // A waiter can hold a Serializable snapshot from before the first command
       // committed. Read its receipt outside that failed transaction before retrying.
       const replay = await commandReplay(prisma, context.tenantId, input.requestId, input.payloadHash);
       if (replay) return replay;
-      if (error.code === "P2002") fail("MATERIALS_CODE_CONFLICT", 409);
+      if (duplicate) fail("MATERIALS_CODE_CONFLICT", 409);
       if (attempt === 4) fail("MATERIALS_WRITE_CONFLICT", 409);
     }
   }

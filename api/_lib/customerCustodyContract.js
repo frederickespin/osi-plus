@@ -8,7 +8,7 @@ const CONDITIONS = new Set(["UNSPECIFIED", "GOOD", "USED", "DAMAGED"]);
 const STORAGE_TYPES = new Set(["PERSONAL_EFFECTS", "IMPORT_STORAGE", "INTERNATIONAL_DISPATCH", "COMMERCIAL_STORAGE"]);
 const INTAKE_SOURCES = new Set(["OWN_PICKUP", "EXTERNAL_ORIGIN", "COMMERCIAL_PRE_ADVICE", "DIRECT_WAREHOUSE"]);
 const MOVEMENTS = new Set(["PUT_AWAY", "TRANSFER", "COUNT", "PREPARE_EXIT", "DISPATCH", "RETURN", "ADJUST", "HOLD", "RELEASE_HOLD"]);
-const RECEPTION_ACTIONS = new Set(["ARRIVE", "CONFIRM_HANDOFF", "PREPARE_LABEL", "DISCARD_UNUSED_LABELS", "SCAN_ITEM", "RECORD_CONDITION", "DESCRIBE_ITEM", "REGISTER_UNLABELED_ITEM", "CONFIRM_INSPECTION", "PUT_AWAY_SCAN", "SET_LOCATION_STATUS", "REPORT_EXCEPTION", "RESOLVE_EXCEPTION", "CLOSE"]);
+const RECEPTION_ACTIONS = new Set(["ARRIVE", "CONFIRM_HANDOFF", "RECORD_VEHICLE_PHOTO", "PREPARE_LABEL", "DISCARD_UNUSED_LABELS", "FINISH_UNLOADING", "SCAN_ITEM", "RECORD_CONDITION", "DESCRIBE_ITEM", "REGISTER_UNLABELED_ITEM", "CONFIRM_INSPECTION", "PUT_AWAY_SCAN", "SET_LOCATION_STATUS", "REPORT_EXCEPTION", "RESOLVE_EXCEPTION", "CLOSE"]);
 const UNIT_TYPES = new Set(["BOX", "PACKAGE", "BUNDLE", "PALLET", "LOOSE_ITEM", "CRATE", "OTHER"]);
 const INSPECTION_RESULTS = new Set(["CLEARED", "HOLD"]);
 const LOCATION_STATUSES = new Set(["AVAILABLE", "IN_USE", "FULL", "BLOCKED", "RESERVED_EXIT", "REVIEW_REQUIRED"]);
@@ -38,7 +38,7 @@ function decimal(value, optional = false) { if (optional && (value === null || v
 function enumeration(value, allowed) { const result = text(value, 80); if (!allowed.has(result)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
 function instant(value, optional = false) { const result = text(value, 40, optional); if (result === null) return null; if (new Date(result).toISOString() !== result) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
 function dateOnly(value) { const result = text(value, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(result) || new Date(`${result}T00:00:00.000Z`).toISOString().slice(0, 10) !== result) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
-function evidence(value) { if (value === null) return null; if (!Array.isArray(value) || value.length > 64 || value.some((item) => typeof item !== "string" || item.length < 1 || item.length > 500)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return Object.freeze([...value]); }
+function evidence(value, maxLength = 500) { if (value === null) return null; if (!Array.isArray(value) || value.length > 64 || value.some((item) => typeof item !== "string" || item.length < 1 || item.length > maxLength)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return Object.freeze([...value]); }
 function textList(value, maxItems = 12) { if (!Array.isArray(value) || value.length < 1 || value.length > maxItems) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); const rows = value.map((item) => text(item, 120)); if (new Set(rows).size !== rows.length) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return Object.freeze(rows); }
 function command(value, operation, payload) { const requestId = text(value.requestId, 191); const payloadHash = text(value.payloadHash, 64); const body = Object.fromEntries(Object.entries(value).filter(([key]) => !["requestId", "payloadHash"].includes(key))); if (!SHA.test(payloadHash) || payloadHash !== custodyPayloadHash({ operation, requestId, ...body })) custodyFail("CUSTOMER_CUSTODY_PAYLOAD_HASH_MISMATCH"); return Object.freeze({ operation, requestId, payloadHash, ...payload }); }
 
@@ -79,11 +79,11 @@ export function normalizeStorageAgreementActivate(input, agreementRef) {
 
 export function normalizeCustodyReceptionAction(input) {
   const value = object(input); exact(value, ["requestId", "payloadHash", "storageRef", "action", "itemRef", "scanCode", "locationRef", "unitType", "packageFormCode", "genericContents", "inspectionResult", "locationStatus", "labelQuantity", "occurredAt", "notes", "evidence", "expectedLotVersion", "expectedItemVersion"]);
-  const action = enumeration(value.action, RECEPTION_ACTIONS); const itemRef = uuid(value.itemRef, true); const scanCode = text(value.scanCode, 120, true); const locationRef = uuid(value.locationRef, true); const expectedItemVersion = integer(value.expectedItemVersion, 1, 1_000_000, true); const normalizedEvidence = evidence(value.evidence);
+  const action = enumeration(value.action, RECEPTION_ACTIONS); const itemRef = uuid(value.itemRef, true); const scanCode = text(value.scanCode, 120, true); const locationRef = uuid(value.locationRef, true); const expectedItemVersion = integer(value.expectedItemVersion, 1, 1_000_000, true); const normalizedEvidence = evidence(value.evidence, action === "RECORD_VEHICLE_PHOTO" ? 400_000 : 500);
   const unitType = value.unitType === null ? null : enumeration(value.unitType, UNIT_TYPES); const packageFormCode = text(value.packageFormCode, 64, true); const genericContents = value.genericContents === null ? null : textList(value.genericContents); const inspectionResult = value.inspectionResult === null ? null : enumeration(value.inspectionResult, INSPECTION_RESULTS); const locationStatus = value.locationStatus === null ? null : enumeration(value.locationStatus, LOCATION_STATUSES); const labelQuantity = integer(value.labelQuantity, 1, 250, true);
   if (action === "SCAN_ITEM" && (!scanCode || expectedItemVersion === null || itemRef !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "PREPARE_LABEL" && (unitType !== null || packageFormCode !== null || genericContents !== null || itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
-  if (action === "DISCARD_UNUSED_LABELS" && (unitType !== null || packageFormCode !== null || genericContents !== null || itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null || normalizedEvidence !== null || inspectionResult !== null || locationStatus !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (["DISCARD_UNUSED_LABELS", "FINISH_UNLOADING"].includes(action) && (unitType !== null || packageFormCode !== null || genericContents !== null || itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null || normalizedEvidence !== null || inspectionResult !== null || locationStatus !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action !== "PREPARE_LABEL" && labelQuantity !== null) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "RECORD_CONDITION" && (!itemRef || expectedItemVersion === null || normalizedEvidence === null || normalizedEvidence.length < 1 || scanCode !== null || locationRef !== null || unitType !== null || packageFormCode !== null || genericContents !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "DESCRIBE_ITEM" && (!itemRef || expectedItemVersion === null || !packageFormCode || unitType !== null || !genericContents || scanCode !== null || locationRef !== null || normalizedEvidence !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
@@ -96,7 +96,13 @@ export function normalizeCustodyReceptionAction(input) {
   if (action === "SET_LOCATION_STATUS" && (!locationRef || !locationStatus || itemRef !== null || scanCode !== null || expectedItemVersion !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (["REPORT_EXCEPTION", "RESOLVE_EXCEPTION"].includes(action) && (!itemRef || expectedItemVersion === null || scanCode !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (["ARRIVE", "CONFIRM_HANDOFF", "CLOSE"].includes(action) && (itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null || normalizedEvidence !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action === "RECORD_VEHICLE_PHOTO" && (itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null || normalizedEvidence === null || normalizedEvidence.length !== 1 || !normalizedEvidence[0].startsWith("data:image/"))) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   return command(value, "CUSTOMER_CUSTODY_RECEPTION_ACTION", { storageRef: uuid(value.storageRef), action, itemRef, scanCode, locationRef, unitType, packageFormCode, genericContents, inspectionResult, locationStatus, labelQuantity: action === "PREPARE_LABEL" ? labelQuantity ?? 1 : null, occurredAt: instant(value.occurredAt), notes: text(value.notes, 1000, true), evidence: normalizedEvidence, expectedLotVersion: integer(value.expectedLotVersion), expectedItemVersion });
+}
+
+export function normalizeCustodyWarehouseSetting(input) {
+  const value = object(input); exact(value, ["requestId", "payloadHash", "warehouseRef", "unloadTargetMinutes", "expectedVersion"]);
+  return command(value, "CUSTOMER_CUSTODY_WAREHOUSE_SETTING_UPDATE", { warehouseRef: uuid(value.warehouseRef), unloadTargetMinutes: integer(value.unloadTargetMinutes, 15, 1440), expectedVersion: integer(value.expectedVersion) });
 }
 
 export function normalizeCustodyMovement(input) {

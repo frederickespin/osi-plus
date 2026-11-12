@@ -124,7 +124,7 @@ export function previewMigrationManifest(root = process.cwd()) {
   const complete = validateMigrationFiles(root);
   const checkpoint = complete.indexOf(WAREHOUSE_LOCALITIES_MIGRATION);
   const names = complete.slice(0, checkpoint + 1);
-  requireCondition(complete.length === 49 && complete.at(-1) === "20261112010000_v17_customer_custody_catalogs"
+  requireCondition(complete.length === 50 && complete.at(-1) === "20261112020000_v17_customer_custody_receiving_sessions"
     && names.length === 41 && names.at(-1) === WAREHOUSE_LOCALITIES_MIGRATION, "SOURCE_INVENTORY_INVALID");
   const manifest = Object.fromEntries(names.map((name) => [name,
     sha256(readFileSync(resolve(root, "prisma/migrations", name, "migration.sql"))),

@@ -14,7 +14,16 @@ function addressSelect(routesEnabled) { return routesEnabled ? { ...legacyAddres
 // Locality is an additive20E field. OFF must not read it, including on CREATE.
 const legacyProfileSelect = Object.freeze({ id: true, tenantId: true, warehouseId: true, warehouseNumber: true, managerMembershipId: true, managerUserId: true, version: true, createdAt: true, updatedAt: true });
 function profileSelect(localitiesEnabled) { return localitiesEnabled ? { ...legacyProfileSelect, localityNumber: true } : legacyProfileSelect; }
-function sheetInclude(routesEnabled, localitiesEnabled) { return { sheetProfile: { select: profileSelect(localitiesEnabled) }, locations: { include: { configuration: { include: { areaUse: { select: { useRef: true } } } }, address: { select: addressSelect(routesEnabled) } }, orderBy: [{ depth: "asc" }, { code: "asc" }] } }; }
+// The worksheet owns only the stable warehouse identity fields. Selecting them
+// explicitly keeps older migration checkpoints readable when newer custody
+// settings have not been deployed yet.
+function sheetSelect(routesEnabled, localitiesEnabled) {
+  return {
+    id: true, tenantId: true, warehouseRef: true, code: true, name: true, status: true, version: true,
+    sheetProfile: { select: profileSelect(localitiesEnabled) },
+    locations: { include: { configuration: { include: { areaUse: { select: { useRef: true } } } }, address: { select: addressSelect(routesEnabled) } }, orderBy: [{ depth: "asc" }, { code: "asc" }] },
+  };
+}
 const addressFields = { ZONE: "zoneNumber", AISLE: "aisleNumber", RACK: "rackCode", LEVEL: "levelNumber", BIN: "positionNumber" };
 function requirePermission(context, write = false) {
   if (permissions.slice(0, write ? 2 : 1).some((permission) => !context?.effectivePermissions?.includes(permission) || context?.deniedPermissions?.includes(permission))) warehouseSheetFail("WAREHOUSE_SHEET_FORBIDDEN", 403);
@@ -99,7 +108,7 @@ export async function listWarehouseSheets(prisma, context, { routesEnabled = fal
   if (localitiesEnabled && !routesEnabled) warehouseSheetFail("WAREHOUSE_LOCALITIES_CONFIGURATION_INVALID", 503);
   return prisma.$transaction(async (tx) => {
     await revalidateActor(tx, context, false);
-    const rows = await tx.materialWarehouse.findMany({ where: { tenantId: context.tenantId }, include: sheetInclude(routesEnabled, localitiesEnabled), orderBy: { code: "asc" } });
+    const rows = await tx.materialWarehouse.findMany({ where: { tenantId: context.tenantId }, select: sheetSelect(routesEnabled, localitiesEnabled), orderBy: { code: "asc" } });
     const people = await managersById(tx, context.tenantId, rows.map((row) => row.sheetProfile?.managerMembershipId));
     return { warehouses: rows.map((row) => publicSheet(row, people, routesEnabled, localitiesEnabled)) };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxWait: 5000, timeout: 15000 });
@@ -259,17 +268,17 @@ export async function saveWarehouseSheet(prisma, context, raw, { routesEnabled =
   if (!routesEnabled && input.rows.some((row) => Object.hasOwn(row, "identifier"))) warehouseSheetFail("WAREHOUSE_ROUTES_DISABLED", 409);
   const hasLocality = Object.hasOwn(input, "localityNumber");
   if (!localitiesEnabled && hasLocality) warehouseSheetFail("WAREHOUSE_LOCALITIES_DISABLED", 409);
-  const include = sheetInclude(routesEnabled, localitiesEnabled);
+  const select = sheetSelect(routesEnabled, localitiesEnabled);
   return mutate(prisma, context, input, async (tx, actor) => {
     let warehouse;
     if (input.warehouseRef) {
-      warehouse = await tx.materialWarehouse.findFirst({ where: { tenantId: actor.tenantId, warehouseRef: input.warehouseRef }, include });
+      warehouse = await tx.materialWarehouse.findFirst({ where: { tenantId: actor.tenantId, warehouseRef: input.warehouseRef }, select });
       if (!warehouse) warehouseSheetFail("WAREHOUSE_SHEET_NOT_FOUND", 404);
       await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`warehouse:${actor.tenantId}:${warehouse.id}`}, 0))`);
       assertVersion(warehouse.version, input.expectedWarehouseVersion);
       assertVersion(warehouse.sheetProfile?.version ?? 0, input.expectedProfileVersion);
     } else {
-      warehouse = await tx.materialWarehouse.create({ data: { tenantId: actor.tenantId, code: generatedCode("ALM", actor, input), name: input.name }, include });
+      warehouse = await tx.materialWarehouse.create({ data: { tenantId: actor.tenantId, code: generatedCode("ALM", actor, input), name: input.name }, select });
       const root = await tx.materialLocation.create({ data: { tenantId: actor.tenantId, warehouseId: warehouse.id, code: warehouse.code, name: input.name, kind: "WAREHOUSE_ROOT", depth: 0, path: warehouse.code } });
       warehouse.locations.push({ ...root, configuration: null, address: null });
     }
@@ -352,7 +361,7 @@ export async function saveWarehouseSheet(prisma, context, raw, { routesEnabled =
       await ensureAddress(tx, actor, location, state, { required: true, identifier: row.identifier });
       recordResult(row, location);
     }
-    const saved = await tx.materialWarehouse.findFirst({ where: { tenantId: actor.tenantId, id: warehouse.id }, include });
+    const saved = await tx.materialWarehouse.findFirst({ where: { tenantId: actor.tenantId, id: warehouse.id }, select });
     const people = await managersById(tx, actor.tenantId, [saved.sheetProfile.managerMembershipId]);
     const result = { warehouse: publicSheet(saved, people, routesEnabled, localitiesEnabled), rowResults: input.rows.map((row) => ({ rowId: row.rowId, locationRef: resultRows.get(row.rowId).locationRef })) };
     await tx.materialInventoryCommand.create({ data: { tenantId: actor.tenantId, requestId: input.requestId, operation: input.operation, payloadHash: input.payloadHash, targetRef: warehouse.warehouseRef, resultJson: result, actorMembershipId: actor.membershipId, actorUserId: actor.userId } });

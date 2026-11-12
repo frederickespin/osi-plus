@@ -19,6 +19,7 @@ export const CANONICAL_MIGRATION_CHECKSUMS = Object.freeze({
   "prisma/migrations/20261110030000_v17_customer_custody_authorizations/migration.sql": "7b2a7c7626fcf4e773ee851a9b996436505d56758900b8cc63606ec86d53e331",
   "prisma/migrations/20261111010000_v17_storage_commercial_agreements/migration.sql": "c316a0dc56c74ed0267f43e87347364bf6768375cc552e6e8d53036fd49a1c1c",
   "prisma/migrations/20261111020000_v17_customer_custody_inventory_numbers/migration.sql": "e238d66e5f18f03016d294424100c5e1daf46fc248e96a2d0c48f3c59177069e",
+  "prisma/migrations/20261112010000_v17_customer_custody_catalogs/migration.sql": "6b68b3d86d1e91a90afaca65a08b4ea79d7065b7b281cbb5dc3d70880de832e3",
 });
 
 export function sha256(buffer) {

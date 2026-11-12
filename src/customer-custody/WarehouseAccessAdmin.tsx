@@ -4,6 +4,7 @@ import { AdminTenantApi, type AdminMembership } from "@/admin-tenant/adminApi";
 import { materialsApi, type WarehouseRow } from "@/materials-inventory/api";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { CustomerCustodyApi, customerCustodyErrorText, type WarehouseAccessGrant } from "./api";
+import CustodyCatalogAdmin from "./CustodyCatalogAdmin";
 
 const OPERATIONS = Object.freeze([
   { code: "VIEW", label: "Consultar" },
@@ -99,5 +100,6 @@ export default function WarehouseAccessAdmin({ authorization, onUnauthorized }: 
       <div className="mt-4 flex justify-end"><button type="button" disabled={saving || !membershipRef || operations.length === 0 || Boolean(locationRef && !warehouseRef)} onClick={() => void save()} className={`${BUTTON} border-[#003366] bg-[#003366] text-white`}><Plus className="h-4 w-4" />{saving ? "Guardando…" : "Asignar acceso"}</button></div>
     </div>
     <div className="overflow-x-auto rounded-xl border bg-white"><table className="w-full min-w-[820px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Usuario</th><th className="px-3 py-2">Inventario</th><th className="px-3 py-2">Alcance</th><th className="px-3 py-2">Trabajos</th><th className="px-3 py-2">Estado</th><th className="px-3 py-2 text-right">Acción</th></tr></thead><tbody>{grants.map((grant) => <tr key={grant.grantRef} className="border-t"><td className="px-3 py-2"><strong className="block">{grant.membership.name}</strong><span className="text-[10px] text-slate-500">{grant.membership.email}</span></td><td className="px-3 py-2">{SCOPES.find((row) => row.code === grant.inventoryScope)?.label || grant.inventoryScope}</td><td className="px-3 py-2">{grant.location?.path || grant.warehouse?.name || "Todos los almacenes"}</td><td className="px-3 py-2">{grant.operations.map((code) => OPERATIONS.find((row) => row.code === code)?.label || code).join(" · ")}</td><td className="px-3 py-2"><span className={`inline-flex items-center gap-1 ${grant.status === "ACTIVE" ? "text-emerald-700" : "text-slate-500"}`}>{grant.status === "ACTIVE" ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldOff className="h-3.5 w-3.5" />}{grant.status === "ACTIVE" ? "Activo" : "Inactivo"}</span></td><td className="px-3 py-2 text-right"><button type="button" className={BUTTON} disabled={changingRef === grant.grantRef} onClick={() => void toggleGrant(grant)} aria-label={`${grant.status === "ACTIVE" ? "Desactivar" : "Activar"} acceso de ${grant.membership.name}`}>{grant.status === "ACTIVE" ? "Desactivar" : "Activar"}</button></td></tr>)}</tbody></table></div>
+    <CustodyCatalogAdmin authorization={authorization} onUnauthorized={onUnauthorized} />
   </section>;
 }

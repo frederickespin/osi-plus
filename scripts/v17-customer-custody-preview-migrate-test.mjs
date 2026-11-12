@@ -42,8 +42,8 @@ assert.equal(manifest[CUSTOMER_CUSTODY_MIGRATION], CUSTOMER_CUSTODY_MIGRATION_CH
 const row = (migration_name, checksum) => ({ migration_name, checksum, finished_at: new Date(), rolled_back_at: null, applied_steps_count: 1 });
 const before = Object.entries(manifest).filter(([name]) => name !== CUSTOMER_CUSTODY_MIGRATION).map(([name, checksum]) => row(name, checksum));
 before.push(row(RETAINED_PREVIEW_EXTENSION.name, RETAINED_PREVIEW_EXTENSION.checksum));
-assert.deepEqual(validatePreviewHistory(before, manifest), { alreadyApplied: false, applied: 48 });
-assert.deepEqual(validatePreviewHistory([...before, row(CUSTOMER_CUSTODY_MIGRATION, CUSTOMER_CUSTODY_MIGRATION_CHECKSUM)], manifest), { alreadyApplied: true, applied: 49 });
+assert.deepEqual(validatePreviewHistory(before, manifest), { alreadyApplied: false, applied: 49 });
+assert.deepEqual(validatePreviewHistory([...before, row(CUSTOMER_CUSTODY_MIGRATION, CUSTOMER_CUSTODY_MIGRATION_CHECKSUM)], manifest), { alreadyApplied: true, applied: 50 });
 assert.throws(() => validatePreviewHistory(before.slice(1), manifest), /HISTORY_INVALID/u);
 assert.throws(() => validatePreviewHistory([...before, row("unexpected", "0".repeat(64))], manifest), /HISTORY_INVALID/u);
 
@@ -52,10 +52,11 @@ const baseRelations = {
   movements_exists: true, storage_groups_exists: true, reception_workflow_exists: true,
   scan_first_exists: true, authorizations_exists: true, lot_authorization_exists: true,
   agreements_exists: true, authorization_agreement_exists: true,
-  inventory_number_exists: false, next_item_number_exists: false,
+  inventory_number_exists: true, next_item_number_exists: true,
+  catalog_exists: false, package_form_code_exists: false, package_form_label_exists: false,
 };
 assert.doesNotThrow(() => validatePreviewRelationState(baseRelations, false));
-assert.doesNotThrow(() => validatePreviewRelationState({ ...baseRelations, inventory_number_exists: true, next_item_number_exists: true }, true));
+assert.doesNotThrow(() => validatePreviewRelationState({ ...baseRelations, catalog_exists: true, package_form_code_exists: true, package_form_label_exists: true }, true));
 assert.throws(() => validatePreviewRelationState({ ...baseRelations, scan_first_exists: false }, false), /RELATION_STATE_INVALID/u);
 
 process.stdout.write("v17 customer custody preview migration: ok\n");

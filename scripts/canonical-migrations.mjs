@@ -52,6 +52,7 @@ export const CANONICAL_MIGRATIONS = Object.freeze([
   "20261110030000_v17_customer_custody_authorizations",
   "20261111010000_v17_storage_commercial_agreements",
   "20261111020000_v17_customer_custody_inventory_numbers",
+  "20261112010000_v17_customer_custody_catalogs",
 ]);
 
 function invariant(condition, message) {

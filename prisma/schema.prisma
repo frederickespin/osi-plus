@@ -234,6 +234,7 @@ model Tenant {
   customerStorageAgreements         CustomerStorageAgreement[]
   customerStoredItems               CustomerStoredItem[]
   customerCustodyCommands           CustomerCustodyCommand[]
+  customerCustodyCatalogItems       CustomerCustodyCatalogItem[]
   customerCustodyMovements          CustomerCustodyMovement[]
   customerCustodyLocationStates     CustomerCustodyLocationState[]
   customerCustodyLocationEvents     CustomerCustodyLocationStateEvent[]
@@ -4633,6 +4634,8 @@ model CustomerStoredItem {
   itemCode          String                          @map("item_code") @db.VarChar(80)
   externalCode      String?                         @map("external_code") @db.VarChar(120)
   unitType          CustomerCustodyUnitType         @default(OTHER) @map("unit_type")
+  packageFormCode   String?                         @map("package_form_code") @db.VarChar(64)
+  packageFormLabel  String?                         @map("package_form_label") @db.VarChar(120)
   genericContents   String[]                        @default([]) @map("generic_contents")
   identitySource    CustomerCustodyIdentitySource   @default(MANIFEST) @map("identity_source")
   inspectionStatus  CustomerCustodyInspectionStatus @default(CLEARED) @map("inspection_status")
@@ -4661,6 +4664,28 @@ model CustomerStoredItem {
   @@unique([tenantId, storageLotId, inventoryNumber], map: "customer_stored_items_inventory_number_key")
   @@index([tenantId, currentLocationId, status], map: "customer_stored_items_location_idx")
   @@map("customer_stored_items")
+}
+
+model CustomerCustodyCatalogItem {
+  id         String   @id @default(cuid())
+  catalogRef String   @default(dbgenerated("gen_random_uuid()")) @map("catalog_ref") @db.Uuid
+  tenantId   String   @map("tenant_id")
+  kind       String   @db.VarChar(32)
+  code       String   @db.VarChar(64)
+  label      String   @db.VarChar(120)
+  baseValue  String?  @map("base_value") @db.VarChar(80)
+  status     String   @default("ACTIVE") @db.VarChar(16)
+  sortOrder  Int      @default(100) @map("sort_order")
+  version    Int      @default(1)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "customer_custody_catalog_items_tenant_fkey")
+
+  @@unique([tenantId, id], map: "customer_custody_catalog_items_tenant_id_id_key")
+  @@unique([tenantId, catalogRef], map: "customer_custody_catalog_items_tenant_ref_key")
+  @@unique([tenantId, kind, code], map: "customer_custody_catalog_items_kind_code_key")
+  @@index([tenantId, kind, status, sortOrder], map: "customer_custody_catalog_items_lookup_idx")
+  @@map("customer_custody_catalog_items")
 }
 
 enum CustomerCustodyUnitType {

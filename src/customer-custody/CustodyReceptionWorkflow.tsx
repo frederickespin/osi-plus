@@ -30,12 +30,12 @@ function isScanAddressedAction(action: string) { return action === "SCAN_ITEM" |
 export default function CustodyReceptionWorkflow({ lot, api, canOperate, onSaved, onLabelsGenerated }: Props) {
   const [step, setStep] = useState<WorkflowStep>(() => stepFor(lot));
   const [scannerTarget, setScannerTarget] = useState<ScannerTarget | null>(null);
-  const [externalScanner, setExternalScanner] = useState(false);
+  const [externalScanner, setExternalScanner] = useState(true);
   const [dockCode, setDockCode] = useState(""); const [activeItemRef, setActiveItemRef] = useState<string | null>(null); const [damageLocation, setDamageLocation] = useState<string | null>(null);
   const [labelOpen, setLabelOpen] = useState(false); const [catalogOpen, setCatalogOpen] = useState(false); const [discardOpen, setDiscardOpen] = useState(false); const [unitType, setUnitType] = useState("BOX"); const [labelQuantity, setLabelQuantity] = useState(1); const [declaredContentQuantity, setDeclaredContentQuantity] = useState("");
   const [descriptionCode, setDescriptionCode] = useState(""); const [descriptionItemRef, setDescriptionItemRef] = useState<string | null>(null); const [contents, setContents] = useState<readonly string[]>([]); const [note, setNote] = useState("");
   const [locationCode, setLocationCode] = useState(""); const [putAwayCode, setPutAwayCode] = useState("");
-  const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const scanRef = useRef<HTMLInputElement>(null); const externalScanBufferRef = useRef(""); const actionInFlightRef = useRef(false);
+  const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null); const scanRef = useRef<HTMLInputElement>(null); const externalScanBufferRef = useRef(""); const externalScanCommitTimerRef = useRef<number | null>(null); const actionInFlightRef = useRef(false);
 
   useEffect(() => { setStep((current) => current === "handoff" || lot.receptionStage === "CLOSED" ? stepFor(lot) : current); }, [lot]);
   const expected = useMemo(() => lot.items.filter((item) => item.status === "EXPECTED"), [lot.items]);
@@ -106,30 +106,34 @@ export default function CustodyReceptionWorkflow({ lot, api, canOperate, onSaved
   }, [externalScanner, step]);
 
   useEffect(() => {
-    if (!externalScanner) { externalScanBufferRef.current = ""; return; }
-    const updatePreview = (value: string) => {
-      if (step === "unloading") setDockCode(value);
-      if (step === "description") setDescriptionCode(value);
-      if (step === "putaway") { if (locationCode) setPutAwayCode(value); else setLocationCode(value); }
+    if (!externalScanner) { externalScanBufferRef.current = ""; if (externalScanCommitTimerRef.current !== null) window.clearTimeout(externalScanCommitTimerRef.current); externalScanCommitTimerRef.current = null; return; }
+    const commitExternalScan = () => {
+      if (externalScanCommitTimerRef.current !== null) window.clearTimeout(externalScanCommitTimerRef.current);
+      externalScanCommitTimerRef.current = null;
+      const code = externalScanBufferRef.current.trim();
+      externalScanBufferRef.current = "";
+      if (!code) return;
+      if (step === "unloading") handleDockCode(code);
+      if (step === "description") handleDescriptionCode(code);
+      if (step === "putaway") { if (locationCode) putAway(code); else { setLocationCode(code); feedback("Ubicación seleccionada. Escanee el primer artículo."); } }
     };
     const captureExternalScan = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      const scannerField = target?.getAttribute("data-custody-scanner") === "true";
+      if (target?.matches("input, textarea, select, [contenteditable='true']") && !scannerField) return;
       if (event.key === "Enter" || event.key === "Tab") {
-        const code = externalScanBufferRef.current.trim();
-        if (!code) return;
-        event.preventDefault(); externalScanBufferRef.current = ""; updatePreview("");
-        if (step === "unloading") handleDockCode(code);
-        if (step === "description") handleDescriptionCode(code);
-        if (step === "putaway") { if (locationCode) putAway(code); else { setLocationCode(code); feedback("Ubicación seleccionada. Escanee el primer artículo."); } }
+        if (!externalScanBufferRef.current.trim()) return;
+        event.preventDefault(); event.stopPropagation(); commitExternalScan();
         return;
       }
-      if (event.key === "Backspace") { event.preventDefault(); externalScanBufferRef.current = externalScanBufferRef.current.slice(0, -1); updatePreview(externalScanBufferRef.current); return; }
+      if (event.key === "Backspace") { event.preventDefault(); event.stopPropagation(); externalScanBufferRef.current = externalScanBufferRef.current.slice(0, -1); return; }
       if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return;
-      event.preventDefault(); externalScanBufferRef.current += event.key; updatePreview(externalScanBufferRef.current);
+      event.preventDefault(); event.stopPropagation(); externalScanBufferRef.current += event.key;
+      if (externalScanCommitTimerRef.current !== null) window.clearTimeout(externalScanCommitTimerRef.current);
+      externalScanCommitTimerRef.current = window.setTimeout(commitExternalScan, 120);
     };
-    window.addEventListener("keydown", captureExternalScan);
-    return () => window.removeEventListener("keydown", captureExternalScan);
+    window.addEventListener("keydown", captureExternalScan, true);
+    return () => { window.removeEventListener("keydown", captureExternalScan, true); if (externalScanCommitTimerRef.current !== null) window.clearTimeout(externalScanCommitTimerRef.current); externalScanCommitTimerRef.current = null; };
   });
 
   const preparedLabels = expected.filter((item) => item.identitySource === "GENERATED_AT_RECEPTION");
@@ -137,7 +141,7 @@ export default function CustodyReceptionWorkflow({ lot, api, canOperate, onSaved
   return <section className="overflow-hidden rounded-2xl border bg-white shadow-sm" aria-label="Recepción y cadena de custodia">
     <div className="flex flex-wrap items-center justify-between gap-2 bg-[#003366] px-3 py-3 text-white">
       <div><p className="text-[9px] font-bold uppercase tracking-[.15em] text-sky-200">Recepción activa</p><h4 className="text-sm font-bold">{lot.client.name}</h4><p className="text-[10px] text-sky-100">{lot.manifestCode || lot.lotCode} · {lot.warehouse.name}</p></div>
-      <button type="button" aria-pressed={externalScanner} onClick={() => { setExternalScanner((value) => !value); focusScanner(); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-sky-300/50 px-3 text-[11px] font-bold"><Bluetooth className="h-4 w-4" />{externalScanner ? "Scanner activo" : "Usar scanner"}</button>
+      <button type="button" aria-pressed={externalScanner} onClick={() => { setExternalScanner((value) => !value); focusScanner(); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-sky-300/50 px-3 text-[11px] font-bold"><Bluetooth className="h-4 w-4" />{externalScanner ? "Scanner activo" : "Activar scanner"}</button>
     </div>
     <nav className="grid grid-cols-4 border-b bg-slate-50 p-1" aria-label="Etapas de recepción">
       {STEPS.map((row, index) => { const active = step === row.id; return <button key={row.id} type="button" aria-pressed={active} onClick={() => setStep(row.id)} className={`flex min-h-12 items-center justify-center gap-1.5 rounded-lg px-1 text-[10px] font-bold sm:text-xs ${active ? "bg-[#003366] text-white" : "text-slate-500 hover:bg-slate-100"}`}><span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[9px] ${active ? "border-white/50" : "border-slate-300"}`}>{index + 1}</span>{row.label}</button>; })}
@@ -154,8 +158,8 @@ export default function CustodyReceptionWorkflow({ lot, api, canOperate, onSaved
   </section>;
 }
 
-function ScannerInput({ inputRef, value, onChange, onEnter, external, placeholder }: { inputRef?: Ref<HTMLInputElement>; value: string; onChange(value: string): void; onEnter(value: string): void; external: boolean; placeholder: string }) { return <label className="relative min-w-[210px] flex-1"><span className="sr-only">Código escaneado</span>{external ? <Keyboard className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-emerald-700" /> : <ScanLine className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-sky-700" />}<input ref={inputRef} value={value} inputMode="text" enterKeyHint="done" onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === "Tab") { event.preventDefault(); onEnter(event.currentTarget.value); } }} placeholder={placeholder} className={`${COMPACT_FORM_FIELD} w-full border-2 ${external ? "border-emerald-600" : "border-sky-600"} pl-9`} autoComplete="off" autoFocus={external} /></label>; }
-function ScanField({ label, value, placeholder, external, onChange, onCamera, onEnter }: { label: string; value: string; placeholder: string; external: boolean; onChange(value: string): void; onCamera(): void; onEnter?(): void }) { return <label className="text-xs font-semibold">{label}<span className="mt-1 flex gap-1"><input value={value} inputMode="text" enterKeyHint="done" onChange={(event) => onChange(event.target.value.trim())} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === "Tab") && onEnter) { event.preventDefault(); onEnter(); } }} placeholder={placeholder} className={`${COMPACT_FORM_FIELD} min-w-0 flex-1 border-2 ${external ? "border-emerald-600" : "border-sky-600"}`} /><button type="button" className={PRIMARY} onClick={onCamera} aria-label={`Abrir cámara: ${label}`}><Camera className="h-4 w-4" /></button></span></label>; }
+function ScannerInput({ inputRef, value, onChange, onEnter, external, placeholder }: { inputRef?: Ref<HTMLInputElement>; value: string; onChange(value: string): void; onEnter(value: string): void; external: boolean; placeholder: string }) { return <label className="relative min-w-[210px] flex-1"><span className="sr-only">Código escaneado</span>{external ? <Keyboard className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-emerald-700" /> : <ScanLine className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-sky-700" />}<input ref={inputRef} data-custody-scanner="true" value={value} inputMode="text" enterKeyHint="done" onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => { if (!external && (event.key === "Enter" || event.key === "Tab")) { event.preventDefault(); onEnter(event.currentTarget.value); } }} placeholder={placeholder} className={`${COMPACT_FORM_FIELD} w-full border-2 ${external ? "border-emerald-600" : "border-sky-600"} pl-9`} autoComplete="off" autoFocus={external} /></label>; }
+function ScanField({ label, value, placeholder, external, onChange, onCamera, onEnter }: { label: string; value: string; placeholder: string; external: boolean; onChange(value: string): void; onCamera(): void; onEnter?(): void }) { return <label className="text-xs font-semibold">{label}<span className="mt-1 flex gap-1"><input data-custody-scanner="true" value={value} inputMode="text" enterKeyHint="done" onChange={(event) => onChange(event.target.value.trim())} onKeyDown={(event) => { if (!external && (event.key === "Enter" || event.key === "Tab") && onEnter) { event.preventDefault(); onEnter(); } }} placeholder={placeholder} className={`${COMPACT_FORM_FIELD} min-w-0 flex-1 border-2 ${external ? "border-emerald-600" : "border-sky-600"}`} /><button type="button" className={PRIMARY} onClick={onCamera} aria-label={`Abrir cámara: ${label}`}><Camera className="h-4 w-4" /></button></span></label>; }
 function PrepareLabel({ labelQuantity, declaredContentQuantity, saving, onLabelQuantity, onDeclaredContentQuantity, onCancel, onSave }: { labelQuantity: number; declaredContentQuantity: string; saving: boolean; onLabelQuantity(value: number): void; onDeclaredContentQuantity(value: string): void; onCancel(): void; onSave(): void }) { return <div className="mt-3 rounded border border-sky-200 bg-sky-50 p-3"><div className="grid gap-2 sm:grid-cols-2"><label className="text-xs font-semibold">Cantidad de etiquetas<input type="number" min={1} max={250} value={labelQuantity} onChange={(event) => onLabelQuantity(Math.min(250, Math.max(1, Number(event.target.value) || 1)))} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label><label className="text-xs font-semibold">Cantidad declarada <span className="font-normal text-slate-500">(opcional)</span><input type="number" min={1} max={9999} value={declaredContentQuantity} onChange={(event) => onDeclaredContentQuantity(event.target.value)} placeholder="Ej. 12 unidades" className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label></div><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><p className="max-w-lg text-[10px] text-slate-600">Se preparan {labelQuantity} QR únicos sin clasificar. El tipo físico se registra al describir cada unidad después de escanearla.</p><div className="flex gap-1"><button type="button" className={SECONDARY} onClick={onCancel}>Cancelar</button><button type="button" className={PRIMARY} disabled={saving || labelQuantity < 1 || labelQuantity > 250 || (!!declaredContentQuantity && (Number(declaredContentQuantity) < 1 || Number(declaredContentQuantity) > 9999))} onClick={onSave}><Printer className="h-4 w-4" />Preparar {labelQuantity} {labelQuantity === 1 ? "etiqueta" : "etiquetas"}</button></div></div></div>; }
 function ConditionPanel({ item, location, saving, onLocation, onCondition }: { item: CustomerStoredItem; location: string | null; saving: boolean; onLocation(value: string): void; onCondition(value: string): void }) { return <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3"><div className="flex flex-wrap items-baseline justify-between gap-1"><p className="text-xs font-bold text-amber-950">{itemLabel(item)} · inspección rápida</p><code className="text-[8px] text-amber-800">{item.itemCode}</code></div><p className="mt-0.5 text-[10px] text-amber-800">Escanee los QR del catálogo o toque una opción. Primero la zona y luego la condición.</p><div className="mt-2 flex flex-wrap gap-1">{DAMAGE_LOCATIONS.map(([code, label]) => <button key={code} type="button" aria-pressed={location === code} onClick={() => onLocation(code)} className={`rounded border px-2 py-1 text-[10px] font-semibold ${location === code ? "border-amber-700 bg-amber-700 text-white" : "border-amber-300 bg-white"}`}>{label}</button>)}</div><div className="mt-2 flex flex-wrap gap-1">{CONDITIONS.map(([code, label]) => <button key={code} type="button" disabled={saving || (!location && code !== "NO_VISIBLE_DAMAGE")} onClick={() => onCondition(code)} className={`rounded border px-2 py-1 text-[10px] font-semibold ${code === "NO_VISIBLE_DAMAGE" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-red-200 bg-white text-red-800"}`}>{label}</button>)}</div></div>; }
 function DescriptionForm({ item, unitType, contents, note, saving, onUnitType, onContents, onNote, onCancel, onSave }: { item: CustomerStoredItem; unitType: string; contents: readonly string[]; note: string; saving: boolean; onUnitType(value: string): void; onContents(value: readonly string[]): void; onNote(value: string): void; onCancel(): void; onSave(): void }) { return <div className="mt-3 rounded border border-sky-200 bg-sky-50 p-3"><div className="mb-2 flex flex-wrap items-baseline justify-between gap-1"><p className="text-xs font-bold text-[#003366]">{itemLabel(item)}</p><code className="text-[8px] text-slate-500">{item.itemCode}</code></div><CustodyDescriptionSearch unitType={unitType} contents={contents} onUnitType={onUnitType} onContents={onContents} /><label className="mt-2 block text-xs font-semibold">Nota opcional<input value={note} onChange={(event) => onNote(event.target.value)} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label><div className="mt-2 flex justify-end gap-1"><button type="button" className={SECONDARY} onClick={onCancel}>Cancelar</button><button type="button" className={PRIMARY} disabled={saving || !unitType || contents.length === 0} onClick={onSave}>{saving ? "Guardando…" : "Guardar descripción"}</button></div></div>; }

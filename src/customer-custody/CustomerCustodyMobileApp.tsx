@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Clock3, PackageCheck, RefreshCw, ScanLine, ShieldCheck, Truck } from "lucide-react";
+import { ArrowLeft, Clock3, PackageCheck, RefreshCw, RotateCcw, ScanLine, ShieldCheck, Truck } from "lucide-react";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { materialsApi, type WarehouseRow } from "@/materials-inventory/api";
 import CustodyReceptionWorkflow from "./CustodyReceptionWorkflow";
 import PrintableCustodyLabels, { type LabelBatch } from "./PrintableCustodyLabels";
+import { resolveCustomerCustodyUiMode } from "./mode";
 import {
   CustomerCustodyApi,
   CustomerCustodyApiError,
@@ -41,6 +42,8 @@ export default function CustomerCustodyMobileApp({ authorization, effectivePermi
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [labelBatch, setLabelBatch] = useState<LabelBatch | null>(null);
+  const [resetArmed, setResetArmed] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -76,6 +79,14 @@ export default function CustomerCustodyMobileApp({ authorization, effectivePermi
   const selectedOrder = orders.find((order) => order.authorizationRef === selectedAuthorizationRef) ?? null;
   const activeLots = lots.filter(isOpenReception);
 
+  const resetPreviewReception = async () => {
+    if (!selectedLot) return;
+    setResetting(true); setError(null);
+    try { await api.resetPreviewReception(selectedLot.storageRef, selectedLot.lotCode); setResetArmed(false); await refresh(); }
+    catch (cause) { setError(customerCustodyErrorText(cause)); }
+    finally { setResetting(false); }
+  };
+
   if (selectedLot) {
     return <MobileShell onBack={() => setSelectedLotRef(null)} title="Recepción activa" subtitle={`${selectedLot.lotCode} · ${selectedLot.warehouse.name}`}>
       <CustodyReceptionWorkflow
@@ -86,6 +97,12 @@ export default function CustomerCustodyMobileApp({ authorization, effectivePermi
         onSaved={replaceLot}
         onLabelsGenerated={(items, declaredContentQuantity) => setLabelBatch({ items, declaredContentQuantity })}
       />
+      {error && <p role="alert" className="mx-auto mt-3 max-w-4xl rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {resolveCustomerCustodyUiMode() === "PREVIEW_REHEARSAL" && selectedLot.items.length > 0 && <div className="mx-auto mt-3 flex max-w-4xl items-center justify-end gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+        <p className="mr-auto text-xs text-amber-900">Solo prueba: elimina etiquetas y lecturas de esta recepción.</p>
+        {resetArmed && <button type="button" className="min-h-10 rounded-lg border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900" onClick={() => setResetArmed(false)}>Cancelar</button>}
+        <button type="button" disabled={resetting} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-amber-700 px-3 text-xs font-bold text-white disabled:opacity-40" onClick={() => resetArmed ? void resetPreviewReception() : setResetArmed(true)}><RotateCcw className="h-4 w-4" />{resetting ? "Reiniciando…" : resetArmed ? "Confirmar eliminación" : "Reiniciar prueba"}</button>
+      </div>}
       {labelBatch && <PrintableCustodyLabels lot={selectedLot} batch={labelBatch} onClose={() => setLabelBatch(null)} />}
     </MobileShell>;
   }

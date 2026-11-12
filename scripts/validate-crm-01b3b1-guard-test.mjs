@@ -18,7 +18,7 @@ const domain = readFileSync("api/_lib/pipelineCaseDomain.js", "utf8");
 try {
   const baseline = validateCrm01b3b1Guard({ env: {} });
   check("baseline CRM-01B3B1", baseline.ok && baseline.routes === 12 && baseline.historicalRoutes === 9 && baseline.isolatedApiRoutes === 3 && baseline.frontendConsumers === 4);
-  rejected("migración adicional rechazada", { migrationNames: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /50 migraciones canónicas/);
+  rejected("migración adicional rechazada", { migrationNames: [...CANONICAL_MIGRATIONS, "20260901010000_unexpected"] }, /51 migraciones canónicas/);
   rejected("producción CRM en CI rechazada", { env: { CRM_PIPELINE_RUNTIME_MODE: "PRODUCTION_READ" } }, /lectura CRM/);
   rejected("batch residual en CI rechazado", { env: { CRM_PIPELINE_ACTIVATION_BATCH: "CRM-01B3B1-PRODUCTION-V1" } }, /batch CRM/);
   rejected("HYBRID rechazado", { env: { MT01B_AUTH_MODE: "HYBRID" } }, /LEGACY/);
@@ -53,7 +53,7 @@ try {
       ["gate ampliado a Production", (source) => source.replace('env.VERCEL_ENV === "preview"', 'env.VERCEL_ENV === "production"'), /VERCEL_PREVIEW/],
       ["contexto central sustituido", (source) => source.replace('resolveContext = resolveCrmPipelineContext', 'resolveContext = unsafeContext'), /delegar al resolver CRM central/],
       ["autorización central omitida", (source) => source.replace('await resolveContext(req,', 'await unsafeContext(req,'), /autorización CRM central/],
-      ["rechazo del gate eliminado", (source) => source.replace(`fail("${prefix}_CONFIGURATION_INVALID", 503);\n  }\n  return mode;`, `void 0;\n  }\n  return mode;`), /rechazo cerrado/],
+      ["rechazo del gate eliminado", (source) => source.replace(new RegExp(`    fail\\("${prefix}_CONFIGURATION_INVALID", 503\\);\\r?\\n  }\\r?\\n  return mode;`), `    void 0;\n  }\n  return mode;`), /rechazo cerrado/],
       ["otra lectura CRM añadida", (source) => `${source}\nconst unsafe = env.CRM_PIPELINE_MUTATION_MODE;`, /fuera del resolver único/],
     ];
     for (const [name, mutate, pattern] of mutations) {

@@ -102,6 +102,11 @@ export function normalizeCustodyMovement(input) {
   return command(value, "CUSTOMER_CUSTODY_MOVE", { authorizationRef, storageRef: uuid(value.storageRef), itemRef: uuid(value.itemRef, true), movementType, destinationLocationRef, quantity: decimal(value.quantity, true), occurredAt: instant(value.occurredAt), notes: text(value.notes, 1000, true), expectedVersion: integer(value.expectedVersion) });
 }
 
+export function normalizeCustodyPreviewReset(input) {
+  const value = object(input); exact(value, ["requestId", "payloadHash", "storageRef", "confirmLotCode"]);
+  return command(value, "CUSTOMER_CUSTODY_PREVIEW_RESET", { storageRef: uuid(value.storageRef), confirmLotCode: text(value.confirmLotCode, 64) });
+}
+
 export function normalizeWarehouseGrant(input) {
   const value = object(input); exact(value, ["requestId", "payloadHash", "membershipRef", "warehouseRef", "locationRef", "inventoryScope", "operations"]);
   if (!Array.isArray(value.operations) || value.operations.length < 1 || value.operations.length > OPERATIONS.size) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");

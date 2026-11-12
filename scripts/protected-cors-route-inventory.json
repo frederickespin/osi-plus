@@ -82,6 +82,7 @@
       "/api/customer-custody/authorizations",
       "/api/customer-custody/lots",
       "/api/customer-custody/movements",
+      "/api/customer-custody/preview-reset",
       "/api/customer-custody/reception-actions",
       "/api/customer-custody/storage-agreements",
       "/api/customer-custody/storage-agreements/[agreementRef]",

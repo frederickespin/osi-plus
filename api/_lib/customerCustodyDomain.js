@@ -148,6 +148,26 @@ export async function applyCustomerCustodyReceptionAction(prisma, context, input
   }, { enabled: isWarehouseConfigurationEnabled(), isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
 
+export async function resetCustomerCustodyReceptionForPreview(prisma, context, input) {
+  if (String(context.role) !== "A") custodyFail("CUSTOMER_CUSTODY_FORBIDDEN", 403);
+  return prisma.$transaction(async (tx) => {
+    const prior = await replay(tx, context, input); if (prior) return prior;
+    const lot = await tx.customerStorageLot.findFirst({ where: { tenantId: context.tenantId, storageRef: input.storageRef }, include: { items: true, movements: true } });
+    if (!lot) custodyFail("CUSTOMER_CUSTODY_RESOURCE_NOT_FOUND", 404);
+    if (lot.lotCode !== input.confirmLotCode || ["CLOSED"].includes(lot.receptionStage) || ["STORED", "PARTIALLY_RELEASED", "RELEASE_PREPARED", "RELEASED"].includes(lot.status)) custodyFail("CUSTOMER_CUSTODY_RECEPTION_TRANSITION_INVALID", 409);
+    if (lot.items.some((item) => item.currentLocationId && item.currentLocationId !== lot.receptionLocationId)) custodyFail("CUSTOMER_CUSTODY_RECEPTION_BLOCKED", 409);
+    const itemIds = lot.items.map((item) => item.id); const itemRefs = lot.items.map((item) => item.itemRef);
+    const retainedMovements = lot.movements.filter((movement) => ["ARRIVAL", "HANDOFF"].includes(movement.movementType)); const retainedCommandIds = retainedMovements.map((movement) => movement.commandId);
+    const removedMovements = await tx.customerCustodyMovement.deleteMany({ where: { tenantId: context.tenantId, storageLotId: lot.id, movementType: { notIn: ["ARRIVAL", "HANDOFF"] } } });
+    const removedItems = await tx.customerStoredItem.deleteMany({ where: { tenantId: context.tenantId, storageLotId: lot.id, id: { in: itemIds } } });
+    const removedCommands = await tx.customerCustodyCommand.deleteMany({ where: { tenantId: context.tenantId, operation: "CUSTOMER_CUSTODY_RECEPTION_ACTION", id: { notIn: retainedCommandIds }, targetRef: { in: [lot.storageRef, ...itemRefs] } } });
+    await tx.customerStorageLot.update({ where: { id: lot.id }, data: { receptionStage: "RECEIVING", status: "RECEIVED", nextItemNumber: 1, receptionClosedAt: null, releasedAt: null, version: { increment: 1 } } });
+    const result = Object.freeze({ storageRef: lot.storageRef, lotCode: lot.lotCode, receptionStage: "RECEIVING", nextItemNumber: 1, retainedArrivalMovements: retainedMovements.length, removedItems: removedItems.count, removedMovements: removedMovements.count, removedCommands: removedCommands.count });
+    await tx.customerCustodyCommand.create({ data: { tenantId: context.tenantId, requestId: input.requestId, operation: input.operation, payloadHash: input.payloadHash, targetRef: lot.storageRef, resultJson: result, ...actor(context) } });
+    return result;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 const MOVEMENT_OPERATION = Object.freeze({ PUT_AWAY: "PUT_AWAY", TRANSFER: "TRANSFER", COUNT: "COUNT", PREPARE_EXIT: "PREPARE_EXIT", DISPATCH: "DISPATCH", RETURN: "RETURN", ADJUST: "ADJUST", HOLD: "ADJUST", RELEASE_HOLD: "ADJUST" });
 export async function moveCustomerStorage(prisma, context, input) {
   return withWarehousePolicyTransaction(prisma, context.tenantId, async (tx, policyEnabled) => {

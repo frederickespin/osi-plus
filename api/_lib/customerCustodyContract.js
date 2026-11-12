@@ -8,11 +8,14 @@ const CONDITIONS = new Set(["UNSPECIFIED", "GOOD", "USED", "DAMAGED"]);
 const STORAGE_TYPES = new Set(["PERSONAL_EFFECTS", "IMPORT_STORAGE", "INTERNATIONAL_DISPATCH", "COMMERCIAL_STORAGE"]);
 const INTAKE_SOURCES = new Set(["OWN_PICKUP", "EXTERNAL_ORIGIN", "COMMERCIAL_PRE_ADVICE", "DIRECT_WAREHOUSE"]);
 const MOVEMENTS = new Set(["PUT_AWAY", "TRANSFER", "COUNT", "PREPARE_EXIT", "DISPATCH", "RETURN", "ADJUST", "HOLD", "RELEASE_HOLD"]);
-const RECEPTION_ACTIONS = new Set(["ARRIVE", "CONFIRM_HANDOFF", "RECORD_VEHICLE_PHOTO", "PREPARE_LABEL", "DISCARD_UNUSED_LABELS", "FINISH_UNLOADING", "SCAN_ITEM", "RECORD_CONDITION", "DESCRIBE_ITEM", "REGISTER_UNLABELED_ITEM", "CONFIRM_INSPECTION", "PUT_AWAY_SCAN", "SET_LOCATION_STATUS", "REPORT_EXCEPTION", "RESOLVE_EXCEPTION", "CLOSE"]);
+const RECEPTION_ACTIONS = new Set(["ARRIVE", "CONFIRM_HANDOFF", "RECORD_VEHICLE_PHOTO", "PREPARE_LABEL", "DISCARD_UNUSED_LABELS", "FINISH_UNLOADING", "SCAN_ITEM", "RECORD_CONDITION", "DESCRIBE_ITEM", "REGISTER_UNLABELED_ITEM", "CONFIRM_INSPECTION", "PUT_AWAY_SCAN", "STAGE_EXCESS", "SET_LOCATION_STATUS", "REPORT_EXCEPTION", "RESOLVE_EXCEPTION", "CLOSE"]);
 const UNIT_TYPES = new Set(["BOX", "PACKAGE", "BUNDLE", "PALLET", "LOOSE_ITEM", "CRATE", "OTHER"]);
 const INSPECTION_RESULTS = new Set(["CLEARED", "HOLD"]);
 const LOCATION_STATUSES = new Set(["AVAILABLE", "IN_USE", "FULL", "BLOCKED", "RESERVED_EXIT", "REVIEW_REQUIRED"]);
 const AUTHORIZATION_TYPES = new Set(["ENTRY", "EXIT"]);
+const EXIT_REASONS = new Set(["NORMAL", "OVERFLOW_RETURN"]);
+const PAYMENT_CLEARANCES = new Set(["NOT_APPLICABLE", "CURRENT", "OVERRIDE_APPROVED"]);
+const EXCESS_REASONS = new Set(["CONTRACTED_CAPACITY_FULL", "UNDECLARED_ADDITIONAL_ITEMS", "CUSTOMER_DECLINED_EXPANSION", "COMPANY_ESTIMATION_ERROR", "WAREHOUSE_CAPACITY_FAILURE", "OTHER_AUTHORIZED"]);
 const BILLING_PARTY_TYPES = new Set(["CLIENT", "COMPANY", "THIRD_PARTY"]);
 const BILLING_FREQUENCIES = new Set(["MONTHLY", "WEEKLY", "QUARTERLY", "CUSTOM"]);
 const STORAGE_CAPACITY_BASES = new Set(["TWENTY_FOOT_CONTAINER", "FORTY_FOOT_CONTAINER", "CUBIC_METER", "FIXED_SPACE", "CUSTOM"]);
@@ -35,6 +38,7 @@ function text(value, max = 240, optional = false) { if (optional && (value === n
 function uuid(value, optional = false) { const result = text(value, 36, optional); if (result === null) return null; if (!UUID.test(result)) custodyFail("CUSTOMER_CUSTODY_RESOURCE_NOT_FOUND", 404); return result; }
 function integer(value, min = 1, max = 1_000_000, optional = false) { if (optional && (value === null || value === undefined)) return null; if (!Number.isSafeInteger(value) || value < min || value > max) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return value; }
 function decimal(value, optional = false) { if (optional && (value === null || value === undefined)) return null; if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1_000_000_000) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return value; }
+function nonnegativeDecimal(value) { if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1_000_000_000) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return value; }
 function enumeration(value, allowed) { const result = text(value, 80); if (!allowed.has(result)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
 function instant(value, optional = false) { const result = text(value, 40, optional); if (result === null) return null; if (new Date(result).toISOString() !== result) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
 function dateOnly(value) { const result = text(value, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(result) || new Date(`${result}T00:00:00.000Z`).toISOString().slice(0, 10) !== result) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID"); return result; }
@@ -53,13 +57,22 @@ export function normalizeCustodyReceipt(input) {
 }
 
 export function normalizeStorageAuthorizationCreate(input) {
-  const value = object(input); exact(value, ["requestId", "payloadHash", "agreementRef", "caseRef", "serviceSelectionRef", "movementType", "storageType", "intakeSource", "warehouseRef", "plannedAt", "validUntil", "manifestCode", "originText", "destinationText", "instructions"]);
+  const value = object(input); exact(value, ["requestId", "payloadHash", "agreementRef", "caseRef", "serviceSelectionRef", "movementType", "storageType", "intakeSource", "exitReason", "paymentClearance", "paymentVerifiedAt", "paymentReference", "warehouseRef", "plannedAt", "validUntil", "manifestCode", "originText", "destinationText", "instructions"]);
   const movementType = enumeration(value.movementType, AUTHORIZATION_TYPES);
   const intakeSource = value.intakeSource === null ? null : enumeration(value.intakeSource, INTAKE_SOURCES);
   if ((movementType === "ENTRY") !== Boolean(intakeSource)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  const exitReason = value.exitReason === null ? null : enumeration(value.exitReason, EXIT_REASONS);
+  const paymentClearance = enumeration(value.paymentClearance, PAYMENT_CLEARANCES);
+  const paymentVerifiedAt = instant(value.paymentVerifiedAt, true);
+  const paymentReference = text(value.paymentReference, 191, true);
+  if (movementType === "ENTRY" && (exitReason !== null || paymentClearance !== "NOT_APPLICABLE" || paymentVerifiedAt !== null || paymentReference !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (movementType === "EXIT" && !exitReason) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (exitReason === "OVERFLOW_RETURN" && (paymentClearance !== "NOT_APPLICABLE" || paymentVerifiedAt !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (exitReason === "NORMAL" && (!new Set(["CURRENT", "OVERRIDE_APPROVED"]).has(paymentClearance) || paymentVerifiedAt === null)) custodyFail("CUSTOMER_CUSTODY_PAYMENT_CLEARANCE_REQUIRED", 409);
+  if (paymentClearance === "OVERRIDE_APPROVED" && !paymentReference) custodyFail("CUSTOMER_CUSTODY_PAYMENT_CLEARANCE_REQUIRED", 409);
   const plannedAt = instant(value.plannedAt); const validUntil = instant(value.validUntil);
   if (new Date(validUntil) <= new Date(plannedAt)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
-  return command(value, "CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { agreementRef: uuid(value.agreementRef), caseRef: uuid(value.caseRef), serviceSelectionRef: uuid(value.serviceSelectionRef), movementType, storageType: enumeration(value.storageType, STORAGE_TYPES), intakeSource, warehouseRef: uuid(value.warehouseRef), plannedAt, validUntil, manifestCode: text(value.manifestCode, 80, true), originText: text(value.originText, 500, true), destinationText: text(value.destinationText, 500, true), instructions: text(value.instructions, 2000, true) });
+  return command(value, "CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { agreementRef: uuid(value.agreementRef), caseRef: uuid(value.caseRef), serviceSelectionRef: uuid(value.serviceSelectionRef), movementType, storageType: enumeration(value.storageType, STORAGE_TYPES), intakeSource, exitReason, paymentClearance, paymentVerifiedAt, paymentReference, warehouseRef: uuid(value.warehouseRef), plannedAt, validUntil, manifestCode: text(value.manifestCode, 80, true), originText: text(value.originText, 500, true), destinationText: text(value.destinationText, 500, true), instructions: text(value.instructions, 2000, true) });
 }
 
 export function normalizeStorageAgreementSave(input) {
@@ -78,9 +91,9 @@ export function normalizeStorageAgreementActivate(input, agreementRef) {
 }
 
 export function normalizeCustodyReceptionAction(input) {
-  const value = object(input); exact(value, ["requestId", "payloadHash", "storageRef", "action", "itemRef", "scanCode", "locationRef", "unitType", "packageFormCode", "genericContents", "inspectionResult", "locationStatus", "labelQuantity", "occurredAt", "notes", "evidence", "expectedLotVersion", "expectedItemVersion"]);
+  const value = object(input); exact(value, ["requestId", "payloadHash", "storageRef", "action", "itemRef", "scanCode", "locationRef", "unitType", "packageFormCode", "genericContents", "inspectionResult", "locationStatus", "excessReason", "labelQuantity", "occurredAt", "notes", "evidence", "expectedLotVersion", "expectedItemVersion"]);
   const action = enumeration(value.action, RECEPTION_ACTIONS); const itemRef = uuid(value.itemRef, true); const scanCode = text(value.scanCode, 120, true); const locationRef = uuid(value.locationRef, true); const expectedItemVersion = integer(value.expectedItemVersion, 1, 1_000_000, true); const normalizedEvidence = evidence(value.evidence, action === "RECORD_VEHICLE_PHOTO" ? 400_000 : 500);
-  const unitType = value.unitType === null ? null : enumeration(value.unitType, UNIT_TYPES); const packageFormCode = text(value.packageFormCode, 64, true); const genericContents = value.genericContents === null ? null : textList(value.genericContents); const inspectionResult = value.inspectionResult === null ? null : enumeration(value.inspectionResult, INSPECTION_RESULTS); const locationStatus = value.locationStatus === null ? null : enumeration(value.locationStatus, LOCATION_STATUSES); const labelQuantity = integer(value.labelQuantity, 1, 250, true);
+  const unitType = value.unitType === null ? null : enumeration(value.unitType, UNIT_TYPES); const packageFormCode = text(value.packageFormCode, 64, true); const genericContents = value.genericContents === null ? null : textList(value.genericContents); const inspectionResult = value.inspectionResult === null ? null : enumeration(value.inspectionResult, INSPECTION_RESULTS); const locationStatus = value.locationStatus === null ? null : enumeration(value.locationStatus, LOCATION_STATUSES); const excessReason = value.excessReason === null ? null : enumeration(value.excessReason, EXCESS_REASONS); const labelQuantity = integer(value.labelQuantity, 1, 250, true);
   if (action === "SCAN_ITEM" && (!scanCode || expectedItemVersion === null || itemRef !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "PREPARE_LABEL" && (unitType !== null || packageFormCode !== null || genericContents !== null || itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (["DISCARD_UNUSED_LABELS", "FINISH_UNLOADING"].includes(action) && (unitType !== null || packageFormCode !== null || genericContents !== null || itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null || normalizedEvidence !== null || inspectionResult !== null || locationStatus !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
@@ -93,16 +106,19 @@ export function normalizeCustodyReceptionAction(input) {
   if (!["DESCRIBE_ITEM", "REGISTER_UNLABELED_ITEM"].includes(action) && genericContents !== null) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "CONFIRM_INSPECTION" && (!itemRef || expectedItemVersion === null || !inspectionResult || scanCode !== null || locationRef !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "PUT_AWAY_SCAN" && (!scanCode || !locationRef || itemRef !== null || expectedItemVersion === null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action === "STAGE_EXCESS" && (!scanCode || !locationRef || itemRef !== null || expectedItemVersion === null || !excessReason)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  if (action !== "STAGE_EXCESS" && excessReason !== null) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "SET_LOCATION_STATUS" && (!locationRef || !locationStatus || itemRef !== null || scanCode !== null || expectedItemVersion !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (["REPORT_EXCEPTION", "RESOLVE_EXCEPTION"].includes(action) && (!itemRef || expectedItemVersion === null || scanCode !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (["ARRIVE", "CONFIRM_HANDOFF", "CLOSE"].includes(action) && (itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null || normalizedEvidence !== null)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   if (action === "RECORD_VEHICLE_PHOTO" && (itemRef !== null || scanCode !== null || locationRef !== null || expectedItemVersion !== null || normalizedEvidence === null || normalizedEvidence.length !== 1 || !normalizedEvidence[0].startsWith("data:image/"))) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
-  return command(value, "CUSTOMER_CUSTODY_RECEPTION_ACTION", { storageRef: uuid(value.storageRef), action, itemRef, scanCode, locationRef, unitType, packageFormCode, genericContents, inspectionResult, locationStatus, labelQuantity: action === "PREPARE_LABEL" ? labelQuantity ?? 1 : null, occurredAt: instant(value.occurredAt), notes: text(value.notes, 1000, true), evidence: normalizedEvidence, expectedLotVersion: integer(value.expectedLotVersion), expectedItemVersion });
+  return command(value, "CUSTOMER_CUSTODY_RECEPTION_ACTION", { storageRef: uuid(value.storageRef), action, itemRef, scanCode, locationRef, unitType, packageFormCode, genericContents, inspectionResult, locationStatus, excessReason, labelQuantity: action === "PREPARE_LABEL" ? labelQuantity ?? 1 : null, occurredAt: instant(value.occurredAt), notes: text(value.notes, 1000, true), evidence: normalizedEvidence, expectedLotVersion: integer(value.expectedLotVersion), expectedItemVersion });
 }
 
 export function normalizeCustodyWarehouseSetting(input) {
-  const value = object(input); exact(value, ["requestId", "payloadHash", "warehouseRef", "unloadTargetMinutes", "expectedVersion"]);
-  return command(value, "CUSTOMER_CUSTODY_WAREHOUSE_SETTING_UPDATE", { warehouseRef: uuid(value.warehouseRef), unloadTargetMinutes: integer(value.unloadTargetMinutes, 15, 1440), expectedVersion: integer(value.expectedVersion) });
+  const value = object(input); exact(value, ["requestId", "payloadHash", "warehouseRef", "unloadTargetMinutes", "excessExitLocationRef", "excessGraceHours", "excessDailyRate", "excessCurrency", "expectedVersion"]);
+  const excessCurrency = text(value.excessCurrency, 3); if (!/^[A-Z]{3}$/u.test(excessCurrency)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
+  return command(value, "CUSTOMER_CUSTODY_WAREHOUSE_SETTING_UPDATE", { warehouseRef: uuid(value.warehouseRef), unloadTargetMinutes: integer(value.unloadTargetMinutes, 15, 1440), excessExitLocationRef: uuid(value.excessExitLocationRef), excessGraceHours: integer(value.excessGraceHours, 0, 720), excessDailyRate: nonnegativeDecimal(value.excessDailyRate), excessCurrency, expectedVersion: integer(value.expectedVersion) });
 }
 
 export function normalizeCustodyMovement(input) {

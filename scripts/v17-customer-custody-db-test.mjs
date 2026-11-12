@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
-import { custodyPayloadHash, normalizeCustodyMovement, normalizeCustodyReceipt, normalizeCustodyReceptionAction, normalizeStorageAgreementActivate, normalizeStorageAgreementSave, normalizeStorageAuthorizationCreate, normalizeWarehouseGrant } from "../api/_lib/customerCustodyContract.js";
-import { applyCustomerCustodyReceptionAction, createCustomerStorageAuthorization, createWarehouseAccessGrant, listCustomerStorageAuthorizations, listCustomerStorageLots, moveCustomerStorage, receiveCustomerStorage } from "../api/_lib/customerCustodyDomain.js";
+import { custodyPayloadHash, normalizeCustodyMovement, normalizeCustodyReceipt, normalizeCustodyReceptionAction, normalizeCustodyWarehouseSetting, normalizeStorageAgreementActivate, normalizeStorageAgreementSave, normalizeStorageAuthorizationCreate, normalizeWarehouseGrant } from "../api/_lib/customerCustodyContract.js";
+import { applyCustomerCustodyReceptionAction, createCustomerStorageAuthorization, createWarehouseAccessGrant, listCustomerStorageAuthorizations, listCustomerStorageLots, moveCustomerStorage, receiveCustomerStorage, updateCustodyWarehouseSetting } from "../api/_lib/customerCustodyDomain.js";
 import { activateStorageAgreement, saveStorageAgreement } from "../api/_lib/storageAgreementDomain.js";
 
 assert.ok(process.env.DATABASE_URL?.includes("127.0.0.1"), "CUSTOMER_CUSTODY_DB_TEST_REQUIRES_LOOPBACK");
@@ -10,7 +10,7 @@ const suffix = crypto.randomUUID().slice(0, 8);
 const permissions = ["customer-custody:view", "customer-custody:receive", "customer-custody:operate", "customer-custody:authorize", "warehouse-access:manage"];
 const context = { tenantId: `tenant-custody-${suffix}`, membershipId: `membership-custody-${suffix}`, userId: `user-custody-${suffix}`, role: "A", effectivePermissions: permissions, deniedPermissions: [] };
 function signed(operation, payload, requestId = crypto.randomUUID()) { return { requestId, payloadHash: custodyPayloadHash({ operation, requestId, ...payload }), ...payload }; }
-function reception(payload) { return normalizeCustodyReceptionAction(signed("CUSTOMER_CUSTODY_RECEPTION_ACTION", { itemRef: null, scanCode: null, locationRef: null, unitType: null, packageFormCode: null, genericContents: null, inspectionResult: null, locationStatus: null, labelQuantity: null, notes: null, evidence: null, expectedItemVersion: null, ...payload })); }
+function reception(payload) { return normalizeCustodyReceptionAction(signed("CUSTOMER_CUSTODY_RECEPTION_ACTION", { itemRef: null, scanCode: null, locationRef: null, unitType: null, packageFormCode: null, genericContents: null, inspectionResult: null, locationStatus: null, excessReason: null, labelQuantity: null, notes: null, evidence: null, expectedItemVersion: null, ...payload })); }
 
 try {
   await prisma.tenant.create({ data: { id: context.tenantId, code: `CST-${suffix}`.toUpperCase(), name: "Tenant Customer Custody Test" } });
@@ -44,9 +44,12 @@ try {
   const warehouse = await prisma.materialWarehouse.create({ data: { tenantId: context.tenantId, code: "CUSTODY", name: "Almacén de efectos" } });
   const locationA = await prisma.materialLocation.create({ data: { tenantId: context.tenantId, warehouseId: warehouse.id, code: "A-01", name: "Posición A-01", kind: "BIN", path: "CUSTODY/A-01" } });
   const locationB = await prisma.materialLocation.create({ data: { tenantId: context.tenantId, warehouseId: warehouse.id, code: "B-02", name: "Posición B-02", kind: "BIN", path: "CUSTODY/B-02" } });
+  const exitLocation = await prisma.materialLocation.create({ data: { tenantId: context.tenantId, warehouseId: warehouse.id, code: "EXIT-01", name: "Salida temporal de excedentes", kind: "DISPATCH", path: "CUSTODY/EXIT-01" } });
 
   await createWarehouseAccessGrant(prisma, context, normalizeWarehouseGrant(signed("WAREHOUSE_ACCESS_GRANT_CREATE", { membershipRef: membership.publicRef, warehouseRef: warehouse.warehouseRef, locationRef: null, inventoryScope: "CUSTOMER_CUSTODY", operations: ["VIEW", "RECEIVE", "PUT_AWAY", "TRANSFER", "COUNT", "PREPARE_EXIT", "DISPATCH", "RETURN", "ADJUST"] })));
-  const entryAuthorization = await createCustomerStorageAuthorization(prisma, context, normalizeStorageAuthorizationCreate(signed("CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { agreementRef: agreement.agreementRef, caseRef: pipelineCase.publicRef, serviceSelectionRef: serviceRevision.selectionRef, movementType: "ENTRY", storageType: "PERSONAL_EFFECTS", intakeSource: "OWN_PICKUP", warehouseRef: warehouse.warehouseRef, plannedAt: "2026-11-06T10:00:00.000Z", validUntil: "2099-11-30T23:59:00.000Z", manifestCode: `MAN-${suffix}`, originText: "Origen sintético", destinationText: "Almacén sintético", instructions: "Recibir por lectura" })));
+  const warehouseSetting = await updateCustodyWarehouseSetting(prisma, context, normalizeCustodyWarehouseSetting(signed("CUSTOMER_CUSTODY_WAREHOUSE_SETTING_UPDATE", { warehouseRef: warehouse.warehouseRef, unloadTargetMinutes: 90, excessExitLocationRef: exitLocation.locationRef, excessGraceHours: 24, excessDailyRate: 350, excessCurrency: "DOP", expectedVersion: warehouse.version })));
+  assert.equal(warehouseSetting.excessExitLocation.locationRef, exitLocation.locationRef);
+  const entryAuthorization = await createCustomerStorageAuthorization(prisma, context, normalizeStorageAuthorizationCreate(signed("CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { agreementRef: agreement.agreementRef, caseRef: pipelineCase.publicRef, serviceSelectionRef: serviceRevision.selectionRef, movementType: "ENTRY", storageType: "PERSONAL_EFFECTS", intakeSource: "OWN_PICKUP", exitReason: null, paymentClearance: "NOT_APPLICABLE", paymentVerifiedAt: null, paymentReference: null, warehouseRef: warehouse.warehouseRef, plannedAt: "2026-11-06T10:00:00.000Z", validUntil: "2099-11-30T23:59:00.000Z", manifestCode: `MAN-${suffix}`, originText: "Origen sintético", destinationText: "Almacén sintético", instructions: "Recibir por lectura" })));
   assert.equal(entryAuthorization.agreement.agreementRef, agreement.agreementRef);
   assert.equal((await listCustomerStorageAuthorizations(prisma, context, { movementType: "ENTRY", available: "true" })).length, 1);
   const receiptPayload = { authorizationRef: entryAuthorization.authorizationRef, clientRef: client.publicRef, caseRef: pipelineCase.publicRef, warehouseRef: warehouse.warehouseRef, destinationLocationRef: locationA.locationRef, storageType: "PERSONAL_EFFECTS", intakeSource: "OWN_PICKUP", manifestCode: `MAN-${suffix}`, expectedUnits: 2, groupLeadName: "Jefe de grupo", driverName: "Chofer sintético", vehicleCode: "IP-07", sealNumber: "04781", departedAt: "2026-11-06T11:00:00.000Z", arrivedAt: null, receivedAt: "2026-11-06T12:00:00.000Z", billingStartAt: "2026-11-06T12:00:00.000Z", notes: "Recepción sintética", items: [{ externalCode: "EXT-001", description: "Juego de sala", category: "MOBILIARIO", quantity: 1, unit: "juego", volumeM3: 4.2, weightKg: 180, condition: "GOOD", evidence: ["memory://custody/photo-1"], notes: "Cinco piezas" }, { externalCode: "EXT-002", description: "Cajas selladas", category: "CAJAS", quantity: 12, unit: "caja", volumeM3: 2.4, weightKg: 96, condition: "USED", evidence: null, notes: null }] };
@@ -99,20 +102,40 @@ try {
   assert.equal(moved.items.find((row) => row.itemRef === item.itemRef)?.location?.locationRef, locationB.locationRef);
   assert.equal(moved.status, "STORED");
   assert.equal(moved.movements[0].movementType, "TRANSFER");
-  assert.equal((await listCustomerStorageLots(prisma, context, { q: "custodia", status: "STORED" })).length, 1);
+  const movedItem = moved.items.find((row) => row.itemRef === item.itemRef);
+  const staged = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: moved.storageRef, action: "STAGE_EXCESS", scanCode: movedItem.itemCode, locationRef: exitLocation.locationRef, excessReason: "CONTRACTED_CAPACITY_FULL", occurredAt: "2026-11-06T13:10:00.000Z", expectedLotVersion: moved.version, expectedItemVersion: movedItem.version }));
+  const stagedItem = staged.items.find((row) => row.itemRef === item.itemRef);
+  assert.equal(stagedItem.excessStatus, "PENDING_COMMERCIAL");
+  assert.equal(stagedItem.excessReason, "CONTRACTED_CAPACITY_FULL");
+  assert.equal(stagedItem.location.locationRef, exitLocation.locationRef);
+  assert.equal(stagedItem.excessCurrency, "DOP");
+  assert.equal(stagedItem.excessDailyRate, 350);
+  const overflowAuthorization = await createCustomerStorageAuthorization(prisma, context, normalizeStorageAuthorizationCreate(signed("CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { agreementRef: agreement.agreementRef, caseRef: pipelineCase.publicRef, serviceSelectionRef: serviceRevision.selectionRef, movementType: "EXIT", storageType: "PERSONAL_EFFECTS", intakeSource: null, exitReason: "OVERFLOW_RETURN", paymentClearance: "NOT_APPLICABLE", paymentVerifiedAt: null, paymentReference: null, warehouseRef: warehouse.warehouseRef, plannedAt: "2026-11-06T14:00:00.000Z", validUntil: "2099-11-30T23:59:00.000Z", manifestCode: `RETURN-${suffix}`, originText: "Salida temporal", destinationText: "Entrega al cliente", instructions: "Devolver únicamente excedentes" })));
+  assert.equal(overflowAuthorization.exitReason, "OVERFLOW_RETURN");
+  const authorizedLot = (await listCustomerStorageLots(prisma, context, { q: lot.lotCode }))[0];
+  const authorizedItem = authorizedLot.items.find((row) => row.itemRef === item.itemRef);
+  assert.equal(authorizedItem.excessStatus, "AUTHORIZED");
+  const preparedExit = await moveCustomerStorage(prisma, context, normalizeCustodyMovement(signed("CUSTOMER_CUSTODY_MOVE", { authorizationRef: overflowAuthorization.authorizationRef, storageRef: authorizedLot.storageRef, itemRef: authorizedItem.itemRef, movementType: "PREPARE_EXIT", destinationLocationRef: null, quantity: authorizedItem.quantity, occurredAt: "2026-11-06T14:10:00.000Z", notes: "Excedente preparado para devolución", expectedVersion: authorizedItem.version })));
+  const preparedItem = preparedExit.items.find((row) => row.itemRef === item.itemRef);
+  const dispatched = await moveCustomerStorage(prisma, context, normalizeCustodyMovement(signed("CUSTOMER_CUSTODY_MOVE", { authorizationRef: overflowAuthorization.authorizationRef, storageRef: preparedExit.storageRef, itemRef: preparedItem.itemRef, movementType: "DISPATCH", destinationLocationRef: null, quantity: preparedItem.quantity, occurredAt: "2026-11-06T14:20:00.000Z", notes: "Excedente devuelto al cliente", expectedVersion: preparedItem.version })));
+  const dispatchedItem = dispatched.items.find((row) => row.itemRef === item.itemRef);
+  assert.equal(dispatchedItem.status, "RELEASED");
+  assert.equal(dispatchedItem.excessStatus, "RELEASED");
+  assert.equal(dispatchedItem.excessCharge, 0);
+  assert.equal((await listCustomerStorageLots(prisma, context, { q: "custodia", status: "PARTIALLY_RELEASED" })).length, 1);
   assert.equal((await listCustomerStorageLots(prisma, context, { storageType: "PERSONAL_EFFECTS" })).length, 1);
   assert.equal((await listCustomerStorageLots(prisma, context, { storageType: "COMMERCIAL_STORAGE" })).length, 0);
   const outsider = { ...context, membershipId: `outsider-${suffix}`, userId: `outsider-user-${suffix}` };
   assert.deepEqual(await listCustomerStorageLots(prisma, outsider), [], "membership without a grant cannot enumerate custody");
   const commandCount = await prisma.customerCustodyCommand.count({ where: { tenantId: context.tenantId } });
   const movementCount = await prisma.customerCustodyMovement.count({ where: { tenantId: context.tenantId } });
-  assert.equal(commandCount, 16);
-  assert.equal(movementCount, 8);
+  assert.equal(commandCount, 21);
+  assert.equal(movementCount, 11);
   const movement = await prisma.customerCustodyMovement.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   const command = await prisma.customerCustodyCommand.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   await assert.rejects(() => prisma.customerCustodyMovement.update({ where: { id: movement.id }, data: { notes: "illegal edit" } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
   await assert.rejects(() => prisma.customerCustodyCommand.update({ where: { id: command.id }, data: { resultJson: { rewritten: true } } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
-  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "49/49", lots: 1, items: 4, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, unknownInventoryFlow: true, batchLabels: true, preUnloadLabels: true, conditionQrCatalog: true, configurableCatalogs: true, inventoryNumbers: true, acceptedProposal: true, signedStorageAgreement: true, commercialAuthorization: true }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "51/51", lots: 1, items: 4, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, unknownInventoryFlow: true, batchLabels: true, preUnloadLabels: true, conditionQrCatalog: true, configurableCatalogs: true, inventoryNumbers: true, acceptedProposal: true, signedStorageAgreement: true, commercialAuthorization: true, overflowStaging: true, commercialOverflowReturn: true, graceChargeSnapshot: true }) + "\n");
 } finally {
   await prisma.$disconnect();
 }

@@ -4162,6 +4162,9 @@ model MaterialWarehouse {
   name                          String                         @db.VarChar(160)
   status                        MaterialRecordStatus           @default(ACTIVE)
   custodyUnloadTargetMinutes    Int                            @default(90) @map("custody_unload_target_minutes")
+  custodyExcessGraceHours       Int                            @default(24) @map("custody_excess_grace_hours")
+  custodyExcessDailyRate        Decimal                        @default(0) @map("custody_excess_daily_rate") @db.Decimal(12, 2)
+  custodyExcessCurrency         String                         @default("DOP") @map("custody_excess_currency") @db.Char(3)
   version                       Int                            @default(1)
   createdAt                     DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                     DateTime                       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -4460,6 +4463,10 @@ model CustomerStorageAuthorization {
   storageAgreementId       String?                            @map("storage_agreement_id")
   authorizationCode        String                             @map("authorization_code") @db.VarChar(64)
   movementType             CustomerStorageAuthorizationType   @map("movement_type")
+  exitReason               CustomerStorageExitReason?         @map("exit_reason")
+  paymentClearance         CustomerStoragePaymentClearance    @default(NOT_APPLICABLE) @map("payment_clearance")
+  paymentVerifiedAt        DateTime?                          @map("payment_verified_at") @db.Timestamptz(6)
+  paymentReference         String?                            @map("payment_reference") @db.VarChar(191)
   storageType              CustomerStorageType                @map("storage_type")
   intakeSource             CustomerCustodyIntakeSource?       @map("intake_source")
   status                   CustomerStorageAuthorizationStatus @default(AUTHORIZED)
@@ -4586,6 +4593,17 @@ enum CustomerStorageAuthorizationType {
   EXIT
 }
 
+enum CustomerStorageExitReason {
+  NORMAL
+  OVERFLOW_RETURN
+}
+
+enum CustomerStoragePaymentClearance {
+  NOT_APPLICABLE
+  CURRENT
+  OVERRIDE_APPROVED
+}
+
 enum CustomerStorageAuthorizationStatus {
   AUTHORIZED
   PARTIALLY_USED
@@ -4654,6 +4672,13 @@ model CustomerStoredItem {
   evidence          Json?
   notes             String?                         @db.VarChar(2000)
   status            CustomerStoredItemStatus        @default(IN_CUSTODY)
+  excessStatus      CustomerCustodyExcessStatus?    @map("excess_status")
+  excessReason      CustomerCustodyExcessReason?    @map("excess_reason")
+  excessGraceUntil  DateTime?                       @map("excess_grace_until") @db.Timestamptz(6)
+  excessDailyRate   Decimal?                        @map("excess_daily_rate") @db.Decimal(12, 2)
+  excessCurrency    String?                         @map("excess_currency") @db.Char(3)
+  excessReleasedAt  DateTime?                       @map("excess_released_at") @db.Timestamptz(6)
+  excessFinalCharge Decimal?                        @map("excess_final_charge") @db.Decimal(12, 2)
   receivedAt        DateTime?                       @map("received_at") @db.Timestamptz(6)
   version           Int                             @default(1)
   createdAt         DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -4729,6 +4754,22 @@ enum CustomerStoredItemStatus {
   EXIT_PREPARED
   RELEASED
   HOLD
+}
+
+enum CustomerCustodyExcessStatus {
+  PENDING_COMMERCIAL
+  AUTHORIZED
+  RELEASED
+  CANCELLED
+}
+
+enum CustomerCustodyExcessReason {
+  CONTRACTED_CAPACITY_FULL
+  UNDECLARED_ADDITIONAL_ITEMS
+  CUSTOMER_DECLINED_EXPANSION
+  COMPANY_ESTIMATION_ERROR
+  WAREHOUSE_CAPACITY_FAILURE
+  OTHER_AUTHORIZED
 }
 
 model CustomerCustodyCommand {
@@ -4858,6 +4899,7 @@ enum CustomerCustodyMovementType {
   HOLD
   RELEASE_HOLD
   CLOSE_RECEIPT
+  STAGE_EXCESS
 }
 
 model MaterialInventoryCommand {

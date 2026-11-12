@@ -19,17 +19,40 @@ export function catalogLabel(catalog: readonly CustomerCustodyCatalogItem[], kin
 
 export function parseObservation(entry: string) {
   if (entry.startsWith("OBS|")) {
-    const [, locationCode, conditionCode, locationLabel, conditionLabel] = entry.split("|");
-    return { locationCode, conditionCode, locationLabel: decodeURIComponent(locationLabel || locationCode), conditionLabel: decodeURIComponent(conditionLabel || conditionCode) };
+    const [, locationCode, conditionCode, locationLabel, conditionLabel, observationRef] = entry.split("|");
+    return { locationCode, conditionCode, locationLabel: decodeURIComponent(locationLabel || locationCode), conditionLabel: decodeURIComponent(conditionLabel || conditionCode), observationRef: observationRef || null };
   }
   if (entry.startsWith("COND|")) {
     const [, locationCode, conditionCode] = entry.split("|");
-    if (conditionCode) return { locationCode, conditionCode, locationLabel: locationCode, conditionLabel: conditionCode };
-    return { locationCode: "GENERAL", conditionCode: locationCode, locationLabel: "General", conditionLabel: locationCode };
+    if (conditionCode) return { locationCode, conditionCode, locationLabel: locationCode, conditionLabel: conditionCode, observationRef: null };
+    return { locationCode: "GENERAL", conditionCode: locationCode, locationLabel: "General", conditionLabel: locationCode, observationRef: null };
   }
   return null;
 }
 
-export function observationToken(location: CustomerCustodyCatalogItem, condition: CustomerCustodyCatalogItem) {
-  return `OBS|${location.code}|${condition.code}|${encodeURIComponent(location.label)}|${encodeURIComponent(condition.label)}`;
+export function observationToken(location: CustomerCustodyCatalogItem, condition: CustomerCustodyCatalogItem, observationRef?: string) {
+  return `OBS|${location.code}|${condition.code}|${encodeURIComponent(location.label)}|${encodeURIComponent(condition.label)}${observationRef ? `|${observationRef}` : ""}`;
+}
+
+export function damagePhotoToken(observationRef: string, dataUrl: string) {
+  return `DIMG|${observationRef}|${dataUrl}`;
+}
+
+export function parseDamagePhoto(entry: string) {
+  if (!entry.startsWith("DIMG|")) return null;
+  const separator = entry.indexOf("|", 5);
+  if (separator < 0) return null;
+  const observationRef = entry.slice(5, separator);
+  const dataUrl = entry.slice(separator + 1);
+  return observationRef && dataUrl.startsWith("data:image/") ? { observationRef, dataUrl } : null;
+}
+
+export function damageNoteToken(observationRef: string, note: string) {
+  return `DNOTE|${observationRef}|${encodeURIComponent(note)}`;
+}
+
+export function parseDamageNote(entry: string) {
+  if (!entry.startsWith("DNOTE|")) return null;
+  const [, observationRef, encodedNote] = entry.split("|");
+  return observationRef && encodedNote ? { observationRef, note: decodeURIComponent(encodedNote) } : null;
 }

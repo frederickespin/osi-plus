@@ -86,7 +86,7 @@ try {
   const discarded = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: generatedReceived.storageRef, action: "DISCARD_UNUSED_LABELS", notes: "Se anuló una etiqueta generada que nunca fue escaneada", occurredAt: "2026-11-06T12:46:30.000Z", expectedLotVersion: generatedReceived.version }));
   assert.equal(discarded.items.filter((row) => row.identitySource === "GENERATED_AT_RECEPTION").length, 1);
   assert.equal(discarded.movements.find((row) => row.movementType === "ADJUST" && row.itemRef === null)?.quantity, 1);
-  const conditioned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: discarded.storageRef, action: "RECORD_CONDITION", itemRef: receivedGenerated.itemRef, evidence: ["COND|LEFT|SCRATCHED"], notes: "Lado izquierdo: Rayado", occurredAt: "2026-11-06T12:47:00.000Z", expectedLotVersion: discarded.version, expectedItemVersion: receivedGenerated.version }));
+  const conditioned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: discarded.storageRef, action: "RECORD_CONDITION", itemRef: receivedGenerated.itemRef, evidence: ["OBS|LEFT|SCRATCHED|Lado%20izquierdo|Rayado|damage-db-1", "DIMG|damage-db-1|data:image/jpeg;base64,AA=="], notes: "EVIDENCE:damage-db-1|Lado izquierdo: Rayado", occurredAt: "2026-11-06T12:47:00.000Z", expectedLotVersion: discarded.version, expectedItemVersion: receivedGenerated.version }));
   const conditionedItem = conditioned.items.find((row) => row.itemRef === generated.itemRef);
   assert.equal(conditionedItem.condition, "DAMAGED");
   const described = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: conditioned.storageRef, action: "DESCRIBE_ITEM", itemRef: conditionedItem.itemRef, packageFormCode: "PACKAGE", genericContents: ["Mobiliario"], notes: "Contenido descrito después de descargar", occurredAt: "2026-11-06T12:48:00.000Z", expectedLotVersion: conditioned.version, expectedItemVersion: conditionedItem.version }));
@@ -130,12 +130,12 @@ try {
   const commandCount = await prisma.customerCustodyCommand.count({ where: { tenantId: context.tenantId } });
   const movementCount = await prisma.customerCustodyMovement.count({ where: { tenantId: context.tenantId } });
   assert.equal(commandCount, 21);
-  assert.equal(movementCount, 11);
+  assert.equal(movementCount, 12);
   const movement = await prisma.customerCustodyMovement.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   const command = await prisma.customerCustodyCommand.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   await assert.rejects(() => prisma.customerCustodyMovement.update({ where: { id: movement.id }, data: { notes: "illegal edit" } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
   await assert.rejects(() => prisma.customerCustodyCommand.update({ where: { id: command.id }, data: { resultJson: { rewritten: true } } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
-  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "51/51", lots: 1, items: 4, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, unknownInventoryFlow: true, batchLabels: true, preUnloadLabels: true, conditionQrCatalog: true, configurableCatalogs: true, inventoryNumbers: true, acceptedProposal: true, signedStorageAgreement: true, commercialAuthorization: true, overflowStaging: true, commercialOverflowReturn: true, graceChargeSnapshot: true }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "51/51", lots: 1, items: 4, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, unknownInventoryFlow: true, batchLabels: true, preUnloadLabels: true, conditionQrCatalog: true, damagePhotoEvidence: true, damageAuditMovement: true, configurableCatalogs: true, inventoryNumbers: true, acceptedProposal: true, signedStorageAgreement: true, commercialAuthorization: true, overflowStaging: true, commercialOverflowReturn: true, graceChargeSnapshot: true }) + "\n");
 } finally {
   await prisma.$disconnect();
 }

@@ -29,7 +29,7 @@ async function epoch(context = ctx) { return (await prisma.warehouseLocationPoli
 const label = (warehouse, segments) => `${warehouse.warehouseLabel}-${segments}`;
 let use, otherUse, foreignUse, reference, foreignWarehouse;
 async function storedLocations(warehouse) {
-  const record = await prisma.materialWarehouse.findFirst({ where: { tenantId: ctx.tenantId, warehouseRef: warehouse.warehouseRef } });
+  const record = await prisma.materialWarehouse.findFirst({ where: { tenantId: ctx.tenantId, warehouseRef: warehouse.warehouseRef }, select: { id: true } });
   return prisma.materialLocation.findMany({ where: { tenantId: ctx.tenantId, warehouseId: record.id }, include: { address: true, configuration: true }, orderBy: { id: "asc" } });
 }
 before(async () => {

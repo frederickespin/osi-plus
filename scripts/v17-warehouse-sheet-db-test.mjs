@@ -81,7 +81,7 @@ test("request/hash conflicts are rejected and different concurrent warehouses re
   await assert.rejects(() => saveWarehouseSheet(prisma, ctx, command("WAREHOUSE_SHEET_SAVE", { ...body, name: "Conflicto" }, {}, requestId)), /IDEMPOTENCY_CONFLICT/);
   const values = await Promise.all(["Uno", "Dos"].map((name) => save(createBody({ name }))));
   assert.deepEqual(values.map((row) => row.warehouse.warehouseNumber).sort(), [2, 3]);
-  await prisma.materialWarehouse.update({ where: { id: (await prisma.materialWarehouse.findFirst({ where: { tenantId: ctx.tenantId, warehouseRef: values[0].warehouse.warehouseRef } })).id }, data: { status: "INACTIVE", version: { increment: 1 } } });
+  await prisma.materialWarehouse.update({ where: { id: (await prisma.materialWarehouse.findFirst({ where: { tenantId: ctx.tenantId, warehouseRef: values[0].warehouse.warehouseRef }, select: { id: true } })).id }, data: { status: "INACTIVE", version: { increment: 1 } }, select: { id: true } });
   assert.equal((await save(createBody({ name: "No reutiliza inactivo" }))).warehouse.warehouseNumber, 4);
 });
 test("explicit legacy edit adopts supported addresses, preserves unsupported rows and all stock identities", async () => {

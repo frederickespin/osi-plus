@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardCheck, Images, Smartphone } from "lucide-react";
+import { ArrowLeft, ClipboardCheck, Images, PackageCheck, Smartphone } from "lucide-react";
 import type { HubApplication } from "./appCatalog";
 
 type Props = Readonly<{
@@ -22,7 +22,7 @@ export default function OsiPlusMobileHub({ applications, onNavigate }: Props) {
       </div>
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {applications.map((application) => {
-          const Icon = application.appId === "visual-inventory" ? Images : ClipboardCheck;
+          const Icon = application.appId === "visual-inventory" ? Images : application.appId === "osi-custody" ? PackageCheck : ClipboardCheck;
           return (
             <button key={application.appId} type="button" onClick={() => onNavigate(application.route)} className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-sky-100 text-[#003b70]"><Icon className="h-5 w-5" aria-hidden="true" /></span>

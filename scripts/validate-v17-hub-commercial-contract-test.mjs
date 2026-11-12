@@ -25,9 +25,9 @@ function sourceNegative(name, guard, path, before, after, expected) {
 
 positive("catálogo completo vigente", () => {
   const actual = validateHubCatalog(catalog);
-  assert.equal(actual.applications.length, 13);
+  assert.equal(actual.applications.length, 14);
   assert.equal(actual.suites.length, 2);
-  assert.equal(actual.routes.length, 33);
+  assert.equal(actual.routes.length, 34);
   assert.equal(validateCommercialCatalog(catalog).appId, "commercial-crm");
 });
 positive("formato del catálogo no concede autoridad", () => {

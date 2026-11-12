@@ -201,6 +201,23 @@ assert.equal(
   ),
   "LOCAL_ONLY",
 );
+const previewEnv = {
+  CRM_SURVEY_API_MODE: CRM_SURVEY_API_MODES.PREVIEW_REHEARSAL,
+  CRM_SURVEY_API_BATCH: "V17-SURVEY-FOUNDATION-04A-PREVIEW",
+  VERCEL: "1",
+  VERCEL_ENV: "preview",
+  MT01B_AUTH_MODE: "LEGACY",
+  MT01B_TENANT_SWITCH_ENABLED: "false",
+  VITE_MT01B2_CLIENT_ENABLED: "false",
+};
+assert.equal(
+  resolveCrmSurveyApiMode({ ...previewEnv, VERCEL_GIT_COMMIT_REF: "feature/v17-storage-commercial-contract-22a" }, {}),
+  "PREVIEW_REHEARSAL",
+);
+assert.throws(
+  () => resolveCrmSurveyApiMode({ ...previewEnv, VERCEL_GIT_COMMIT_REF: "main" }, {}),
+  /CRM_SURVEY_CONFIGURATION_INVALID/,
+);
 process.stdout.write(
-  `${JSON.stringify({ ok: true, assertions: 21 }, null, 2)}\n`,
+  `${JSON.stringify({ ok: true, assertions: 23 }, null, 2)}\n`,
 );

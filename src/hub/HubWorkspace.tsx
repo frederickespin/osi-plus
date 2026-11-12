@@ -42,11 +42,13 @@ const AdministrationWorkspace = lazy(() => import("@/administration/Administrati
 const WarehouseWorkspace = lazy(() => import("@/warehouses/WarehouseWorkspace"));
 const AdvancedErpShell = lazy(() => import("@/commercial-crm/AdvancedErpShell"));
 const SurveyApp = lazy(() => import("@/survey/SurveyApp"));
+const SurveyVisualPreview = lazy(() => import("@/crm-survey-preview/SurveyVisualPreview"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
 const ArchaeologicalPackingTool = lazy(() => import("./ArchaeologicalPackingTool"));
 const GeneralPackingTool = lazy(() => import("./GeneralPackingTool"));
 const VisualInventoryApp = lazy(() => import("./VisualInventoryApp"));
+const CustomerCustodyMobileApp = lazy(() => import("@/customer-custody/CustomerCustodyMobileApp"));
 const RecoveredCommercialPreview = lazy(() => import("./RecoveredCommercialPreview"));
 
 const ICONS: Record<HubIconId, ElementType> = {
@@ -168,6 +170,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
   const adminInvitationsEnabled = isAdminIdentityInvitationEnabled();
   const adminInvitationMode = resolveAdminIdentityInvitationMode();
   const surveyEnabled = isSurveyUiEnabled();
+  const surveyRuntimeMode = String(import.meta.env.VITE_CRM_SURVEY_UI_MODE || "").trim();
   const materialsEnabled = isMaterialsUiEnabled();
   const toolsEnabled = isToolsEquipmentUiEnabled();
   const customerCustodyEnabled = isCustomerCustodyUiEnabled();
@@ -207,8 +210,9 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     "commercial-crm": crmReadEnabled || catalogPreview.has("commercial-crm"),
     administration: administrationAvailable || catalogPreview.has("administration"),
     warehouses: warehousesAvailable || catalogPreview.has("warehouses"),
-    "osi-survey": surveyEnabled || catalogPreview.has("osi-survey"),
-    "visual-inventory": catalogPreview.has("visual-inventory"),
+    "osi-survey": surveyAuthorized || catalogPreview.has("osi-survey"),
+    "visual-inventory": true,
+    "osi-custody": customerCustodyEnabled,
     "materials-equipment": materialsEnabled,
     "tools-equipment": toolsEnabled,
     "archaeological-packing": true,
@@ -299,14 +303,24 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
       <WarehouseWorkspace authorization={authorization} pathname={pathname} sections={warehouseSections} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onNavigate={navigate} onUnauthorized={onLogout} />
     </Suspense>;
   }
-  if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized) {
+  if (selected?.appId === "osi-survey" && surveyEnabled && surveyAuthorized && surveyRuntimeMode === "LOCAL_ONLY") {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
       <SurveyApp authorization={authorization} onUnauthorized={onLogout} onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
+    </Suspense>;
+  }
+  if (selected?.appId === "osi-survey" && surveyAuthorized) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Survey…</div>}>
+      <SurveyVisualPreview onBack={() => navigate("/mobile")} backLabel="Volver a OSi Plus Mobile" />
     </Suspense>;
   }
   if (selected?.appId === "visual-inventory" && available.includes(selected)) {
     return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando Inventario Visual…</div>}>
       <VisualInventoryApp onBack={() => navigate("/mobile")} />
+    </Suspense>;
+  }
+  if (selected?.appId === "osi-custody" && customerCustodyEnabled && available.includes(selected)) {
+    return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50 text-sm font-semibold text-slate-600">Cargando OSi Custodia…</div>}>
+      <CustomerCustodyMobileApp authorization={authorization} effectivePermissions={accessContext.effectivePermissions || []} deniedPermissions={accessContext.deniedPermissions} onBack={() => navigate("/mobile")} onUnauthorized={onLogout} />
     </Suspense>;
   }
   if (selected?.appId === "materials-equipment" && materialsEnabled) {

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
-import { custodyPayloadHash, normalizeCustodyMovement, normalizeCustodyReceipt, normalizeCustodyReceptionAction, normalizeStorageAuthorizationCreate, normalizeWarehouseGrant } from "../api/_lib/customerCustodyContract.js";
-import { applyCustomerCustodyReceptionAction, createCustomerStorageAuthorization, createWarehouseAccessGrant, listCustomerStorageAuthorizations, listCustomerStorageLots, moveCustomerStorage, receiveCustomerStorage } from "../api/_lib/customerCustodyDomain.js";
+import { custodyPayloadHash, normalizeCustodyMovement, normalizeCustodyReceipt, normalizeCustodyReceptionAction, normalizeCustodyWarehouseSetting, normalizeStorageAgreementActivate, normalizeStorageAgreementSave, normalizeStorageAuthorizationCreate, normalizeWarehouseGrant } from "../api/_lib/customerCustodyContract.js";
+import { applyCustomerCustodyReceptionAction, createCustomerStorageAuthorization, createWarehouseAccessGrant, listCustomerStorageAuthorizations, listCustomerStorageLots, moveCustomerStorage, receiveCustomerStorage, updateCustodyWarehouseSetting } from "../api/_lib/customerCustodyDomain.js";
+import { activateStorageAgreement, saveStorageAgreement } from "../api/_lib/storageAgreementDomain.js";
 
 assert.ok(process.env.DATABASE_URL?.includes("127.0.0.1"), "CUSTOMER_CUSTODY_DB_TEST_REQUIRES_LOOPBACK");
 const prisma = new PrismaClient();
@@ -9,22 +10,47 @@ const suffix = crypto.randomUUID().slice(0, 8);
 const permissions = ["customer-custody:view", "customer-custody:receive", "customer-custody:operate", "customer-custody:authorize", "warehouse-access:manage"];
 const context = { tenantId: `tenant-custody-${suffix}`, membershipId: `membership-custody-${suffix}`, userId: `user-custody-${suffix}`, role: "A", effectivePermissions: permissions, deniedPermissions: [] };
 function signed(operation, payload, requestId = crypto.randomUUID()) { return { requestId, payloadHash: custodyPayloadHash({ operation, requestId, ...payload }), ...payload }; }
-function reception(payload) { return normalizeCustodyReceptionAction(signed("CUSTOMER_CUSTODY_RECEPTION_ACTION", { itemRef: null, scanCode: null, locationRef: null, unitType: null, genericContents: null, inspectionResult: null, locationStatus: null, notes: null, evidence: null, expectedItemVersion: null, ...payload })); }
+function reception(payload) { return normalizeCustodyReceptionAction(signed("CUSTOMER_CUSTODY_RECEPTION_ACTION", { itemRef: null, scanCode: null, locationRef: null, unitType: null, packageFormCode: null, genericContents: null, inspectionResult: null, locationStatus: null, excessReason: null, labelQuantity: null, notes: null, evidence: null, expectedItemVersion: null, ...payload })); }
 
 try {
   await prisma.tenant.create({ data: { id: context.tenantId, code: `CST-${suffix}`.toUpperCase(), name: "Tenant Customer Custody Test" } });
+  await prisma.customerCustodyCatalogItem.createMany({ data: [
+    { tenantId: context.tenantId, kind: "DAMAGE_LOCATION", code: "LEFT", label: "Lado izquierdo", sortOrder: 10 },
+    { tenantId: context.tenantId, kind: "CONDITION", code: "SCRATCHED", label: "Rayado", sortOrder: 10 },
+    { tenantId: context.tenantId, kind: "PACKAGE_FORM", code: "PACKAGE", label: "Paquete", baseValue: "PACKAGE", sortOrder: 10 },
+    { tenantId: context.tenantId, kind: "ITEM_NAME", code: "FURNITURE", label: "Mobiliario", sortOrder: 10 },
+  ] });
   await prisma.user.create({ data: { id: context.userId, code: `CST-USR-${suffix}`, name: "Custody Actor", email: `custody-${suffix}@example.test`, phone: "000", role: "A", status: "ACTIVE", joinDate: "2026-11-06", passwordHash: "synthetic-not-authenticatable" } });
   const membership = await prisma.tenantMembership.create({ data: { id: context.membershipId, tenantId: context.tenantId, userId: context.userId, role: "A", status: "ACTIVE", isDefault: true, grantedPermissions: permissions } });
   const client = await prisma.client.create({ data: { tenantId: context.tenantId, code: `CST-CLI-${suffix}`, name: "Cliente de custodia sintético", email: `client-${suffix}@example.test`, phone: "000", address: "Dirección sintética", type: "PERSON", status: "ACTIVE", createdAt: "2026-11-06" } });
   const pipelineCase = await prisma.pipelineCase.create({ data: { tenantId: context.tenantId, clientId: client.id, caseCode: `CST-CASE-${suffix}`, clientName: client.name, mode: "LOCAL", serviceType: "ALMACENAJE", customerType: "L4_PERSONAL", ownerName: "Custody Actor", originLocation: "Origen sintético", destinationLocation: "Almacén sintético" } });
   const storageService = await prisma.serviceCatalogItem.create({ data: { tenantId: context.tenantId, code: "ALMACENAJE", name: "Almacenaje", category: "STORAGE", usage: "PRIMARY", compatibleModes: ["LOCAL"], status: "ACTIVE", sortOrder: 1, version: 1 } });
   const serviceRevision = await prisma.pipelineCaseServiceRevision.create({ data: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, revision: 1, modeSnapshot: "LOCAL", source: "MANUAL", createdByMembershipId: membership.id, createdByUserId: context.userId, items: { create: [{ kind: "PRIMARY", source: "MANUAL", position: 0, serviceId: storageService.id, serviceRefSnapshot: storageService.serviceRef, codeSnapshot: storageService.code, nameSnapshot: storageService.name, categorySnapshot: storageService.category, catalogVersionSnapshot: storageService.version }] } } });
+  const hash = "0".repeat(64);
+  const logisticsCalculation = await prisma.logisticsCalculation.create({ data: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, routeVersion: 1, serviceSelectionRef: serviceRevision.selectionRef, serviceRevision: serviceRevision.revision, availabilityObservedAt: "2026-11-06T08:00:00.000Z", intervalStart: "2026-11-06T08:00:00.000Z", intervalEnd: "2027-07-06T23:59:59.000Z", inputSnapshot: {}, rulesSnapshot: {}, resultSnapshot: {}, inputHash: hash, resultHash: hash, requestId: `logistics-${suffix}`, payloadHash: hash, actorMembershipId: membership.id, actorUserId: context.userId } });
+  const logisticsPlan = await prisma.logisticsPlan.create({ data: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id } });
+  const logisticsRevision = await prisma.logisticsPlanRevision.create({ data: { tenantId: context.tenantId, planId: logisticsPlan.id, calculationId: logisticsCalculation.id, revision: 1, inputSnapshot: {}, rulesSnapshot: {}, resultSnapshot: {}, logicalSha256: hash, publishedByMembershipId: membership.id, publishedByUserId: context.userId } });
+  const costingCalculation = await prisma.costingCalculation.create({ data: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, logisticsRevisionId: logisticsRevision.id, baseCurrency: "DOP", inputSnapshot: {}, rulesSnapshot: {}, ratesSnapshot: {}, resultSnapshot: {}, inputHash: hash, resultHash: hash, requestId: `costing-${suffix}`, payloadHash: hash, actorMembershipId: membership.id, actorUserId: context.userId } });
+  const costingRevision = await prisma.costingRevision.create({ data: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, logisticsRevisionId: logisticsRevision.id, calculationId: costingCalculation.id, revision: 1, baseCurrency: "DOP", inputSnapshot: {}, rulesSnapshot: {}, ratesSnapshot: {}, totalsSnapshot: { total: 160000 }, logicalSha256: hash, publishedByMembershipId: membership.id, publishedByUserId: context.userId } });
+  const quote = await prisma.pipelineCaseQuote.create({ data: { tenantId: context.tenantId, caseId: pipelineCase.id, costingRevisionId: costingRevision.id, level: "STANDARD", status: "ACCEPTED" } });
+  const proposal = await prisma.quoteProposal.create({ data: { tenantId: context.tenantId, quoteId: quote.id, pipelineCaseId: pipelineCase.id, position: 1, reference: "Q-2026-000001-A", state: "ACCEPTED", currentRevision: 1 } });
+  const proposalRevision = await prisma.quoteProposalRevision.create({ data: { tenantId: context.tenantId, proposalId: proposal.id, costingRevisionId: costingRevision.id, revision: 1, state: "ACCEPTED", proposalName: "Almacenaje contenedor 20 pies por 8 meses", costingLogicalSha256: hash, currency: "DOP", issueDate: "2026-11-01T00:00:00.000Z", validUntil: "2026-11-30T00:00:00.000Z", commercialContextSnapshot: { service: "ALMACENAJE" }, payerSnapshot: { name: client.name }, termsSnapshot: { durationMonths: 8 }, totalsSnapshot: { total: 160000 }, internalSnapshot: {}, clientSnapshot: { clientRef: client.publicRef }, logicalSha256: hash, createdByMembershipId: membership.id, createdByUserId: context.userId } });
+  await prisma.quoteClientDecision.create({ data: { tenantId: context.tenantId, proposalId: proposal.id, revisionId: proposalRevision.id, decision: "ACCEPTED", method: "SIGNED_PROPOSAL", decidedBySnapshot: { name: client.name }, evidenceRef: `evidence://accepted-proposal/${suffix}`, actorMembershipId: membership.id, actorUserId: context.userId, decidedAt: "2026-11-05T15:00:00.000Z" } });
+  const draftAgreement = await saveStorageAgreement(prisma, context, normalizeStorageAgreementSave(signed("CUSTOMER_STORAGE_AGREEMENT_SAVE", { caseRef: pipelineCase.publicRef, serviceSelectionRef: serviceRevision.selectionRef, acceptedProposalRevisionRef: proposalRevision.revisionRef, holderName: client.name, identityType: "CEDULA", identityNumberMasked: "***-*******-*", identityEvidenceRef: `evidence://identity/${suffix}`, billingPartyType: "CLIENT", billingName: client.name, billingTaxId: null, billingEmail: client.email, billingAddress: client.address, billingCurrency: "DOP", billingFrequency: "MONTHLY", invoiceDay: 5, startDate: "2026-11-06", estimatedDurationMonths: 8, estimatedEndDate: "2027-07-06", capacityBasis: "TWENTY_FOOT_CONTAINER", capacityQuantity: 1, termsVersion: "STORAGE-2026-01" })));
+  const agreement = await activateStorageAgreement(prisma, context, normalizeStorageAgreementActivate(signed("CUSTOMER_STORAGE_AGREEMENT_ACTIVATE", { expectedVersion: draftAgreement.version, acceptedAt: "2026-11-05T15:00:00.000Z", signedAt: "2026-11-05T15:05:00.000Z", acceptanceEvidenceRef: `evidence://signed-storage-contract/${suffix}` }), draftAgreement.agreementRef));
+  assert.equal(agreement.status, "ACTIVE");
+  assert.equal(agreement.estimatedDurationMonths, 8);
+  assert.equal(agreement.capacityBasis, "TWENTY_FOOT_CONTAINER");
   const warehouse = await prisma.materialWarehouse.create({ data: { tenantId: context.tenantId, code: "CUSTODY", name: "Almacén de efectos" } });
   const locationA = await prisma.materialLocation.create({ data: { tenantId: context.tenantId, warehouseId: warehouse.id, code: "A-01", name: "Posición A-01", kind: "BIN", path: "CUSTODY/A-01" } });
   const locationB = await prisma.materialLocation.create({ data: { tenantId: context.tenantId, warehouseId: warehouse.id, code: "B-02", name: "Posición B-02", kind: "BIN", path: "CUSTODY/B-02" } });
+  const exitLocation = await prisma.materialLocation.create({ data: { tenantId: context.tenantId, warehouseId: warehouse.id, code: "EXIT-01", name: "Salida temporal de excedentes", kind: "DISPATCH", path: "CUSTODY/EXIT-01" } });
 
   await createWarehouseAccessGrant(prisma, context, normalizeWarehouseGrant(signed("WAREHOUSE_ACCESS_GRANT_CREATE", { membershipRef: membership.publicRef, warehouseRef: warehouse.warehouseRef, locationRef: null, inventoryScope: "CUSTOMER_CUSTODY", operations: ["VIEW", "RECEIVE", "PUT_AWAY", "TRANSFER", "COUNT", "PREPARE_EXIT", "DISPATCH", "RETURN", "ADJUST"] })));
-  const entryAuthorization = await createCustomerStorageAuthorization(prisma, context, normalizeStorageAuthorizationCreate(signed("CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { caseRef: pipelineCase.publicRef, serviceSelectionRef: serviceRevision.selectionRef, movementType: "ENTRY", storageType: "PERSONAL_EFFECTS", intakeSource: "OWN_PICKUP", warehouseRef: warehouse.warehouseRef, plannedAt: "2026-11-06T10:00:00.000Z", validUntil: "2099-11-30T23:59:00.000Z", manifestCode: `MAN-${suffix}`, originText: "Origen sintético", destinationText: "Almacén sintético", instructions: "Recibir por lectura" })));
+  const warehouseSetting = await updateCustodyWarehouseSetting(prisma, context, normalizeCustodyWarehouseSetting(signed("CUSTOMER_CUSTODY_WAREHOUSE_SETTING_UPDATE", { warehouseRef: warehouse.warehouseRef, unloadTargetMinutes: 90, excessExitLocationRef: exitLocation.locationRef, excessGraceHours: 24, excessDailyRate: 350, excessCurrency: "DOP", expectedVersion: warehouse.version })));
+  assert.equal(warehouseSetting.excessExitLocation.locationRef, exitLocation.locationRef);
+  const entryAuthorization = await createCustomerStorageAuthorization(prisma, context, normalizeStorageAuthorizationCreate(signed("CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { agreementRef: agreement.agreementRef, caseRef: pipelineCase.publicRef, serviceSelectionRef: serviceRevision.selectionRef, movementType: "ENTRY", storageType: "PERSONAL_EFFECTS", intakeSource: "OWN_PICKUP", exitReason: null, paymentClearance: "NOT_APPLICABLE", paymentVerifiedAt: null, paymentReference: null, warehouseRef: warehouse.warehouseRef, plannedAt: "2026-11-06T10:00:00.000Z", validUntil: "2099-11-30T23:59:00.000Z", manifestCode: `MAN-${suffix}`, originText: "Origen sintético", destinationText: "Almacén sintético", instructions: "Recibir por lectura" })));
+  assert.equal(entryAuthorization.agreement.agreementRef, agreement.agreementRef);
   assert.equal((await listCustomerStorageAuthorizations(prisma, context, { movementType: "ENTRY", available: "true" })).length, 1);
   const receiptPayload = { authorizationRef: entryAuthorization.authorizationRef, clientRef: client.publicRef, caseRef: pipelineCase.publicRef, warehouseRef: warehouse.warehouseRef, destinationLocationRef: locationA.locationRef, storageType: "PERSONAL_EFFECTS", intakeSource: "OWN_PICKUP", manifestCode: `MAN-${suffix}`, expectedUnits: 2, groupLeadName: "Jefe de grupo", driverName: "Chofer sintético", vehicleCode: "IP-07", sealNumber: "04781", departedAt: "2026-11-06T11:00:00.000Z", arrivedAt: null, receivedAt: "2026-11-06T12:00:00.000Z", billingStartAt: "2026-11-06T12:00:00.000Z", notes: "Recepción sintética", items: [{ externalCode: "EXT-001", description: "Juego de sala", category: "MOBILIARIO", quantity: 1, unit: "juego", volumeM3: 4.2, weightKg: 180, condition: "GOOD", evidence: ["memory://custody/photo-1"], notes: "Cinco piezas" }, { externalCode: "EXT-002", description: "Cajas selladas", category: "CAJAS", quantity: 12, unit: "caja", volumeM3: 2.4, weightKg: 96, condition: "USED", evidence: null, notes: null }] };
   const requestId = crypto.randomUUID();
@@ -38,30 +64,78 @@ try {
   assert.equal(lot.items[0].status, "EXPECTED");
   assert.equal(await prisma.customerStorageLot.count({ where: { tenantId: context.tenantId } }), 1);
 
-  const arrived = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "ARRIVE", occurredAt: "2026-11-06T12:30:00.000Z", expectedLotVersion: lot.version }));
+  const preprinted = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "PREPARE_LABEL", unitType: null, labelQuantity: 2, occurredAt: "2026-11-06T12:20:00.000Z", expectedLotVersion: lot.version }));
+  assert.equal(preprinted.receptionStage, "IN_TRANSIT", "printing labels before unloading must not advance the reception stage");
+  assert.ok(preprinted.items.filter((row) => row.identitySource === "GENERATED_AT_RECEPTION").every((row) => row.unitType === "OTHER"));
+  const arrived = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: preprinted.storageRef, action: "ARRIVE", occurredAt: "2026-11-06T12:30:00.000Z", expectedLotVersion: preprinted.version }));
   const handedOff = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: lot.storageRef, action: "CONFIRM_HANDOFF", occurredAt: "2026-11-06T12:35:00.000Z", expectedLotVersion: arrived.version }));
   let scanned = handedOff;
-  for (const expected of handedOff.items) scanned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: scanned.storageRef, action: "SCAN_ITEM", scanCode: expected.externalCode, occurredAt: "2026-11-06T12:40:00.000Z", expectedLotVersion: scanned.version, expectedItemVersion: expected.version }));
-  assert.equal(scanned.receptionStage, "PUT_AWAY");
+  for (const expected of handedOff.items.filter((row) => row.externalCode)) scanned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: scanned.storageRef, action: "SCAN_ITEM", scanCode: expected.externalCode, occurredAt: "2026-11-06T12:40:00.000Z", expectedLotVersion: scanned.version, expectedItemVersion: expected.version }));
+  assert.equal(scanned.receptionStage, "RECEIVING");
+  const prepared = scanned;
+  const generatedBatch = prepared.items.filter((row) => row.identitySource === "GENERATED_AT_RECEPTION").sort((left, right) => left.itemCode.localeCompare(right.itemCode));
+  assert.equal(generatedBatch.length, 2);
+  assert.notEqual(generatedBatch[0].itemCode, generatedBatch[1].itemCode);
+  assert.deepEqual(generatedBatch.map((row) => row.inventoryNumber).sort((left, right) => left - right), [3, 4]);
+  const generated = generatedBatch[0];
+  assert.equal(generated.status, "EXPECTED");
+  assert.deepEqual(generated.genericContents, []);
+  const generatedReceived = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: prepared.storageRef, action: "SCAN_ITEM", scanCode: generated.itemCode, occurredAt: "2026-11-06T12:46:00.000Z", expectedLotVersion: prepared.version, expectedItemVersion: generated.version }));
+  const receivedGenerated = generatedReceived.items.find((row) => row.itemRef === generated.itemRef);
+  await assert.rejects(() => applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: generatedReceived.storageRef, action: "DESCRIBE_ITEM", itemRef: receivedGenerated.itemRef, packageFormCode: "PACKAGE", genericContents: ["Mobiliario"], occurredAt: "2026-11-06T12:46:15.000Z", expectedLotVersion: generatedReceived.version, expectedItemVersion: receivedGenerated.version })), /CUSTOMER_CUSTODY_CONDITION_REQUIRED/u);
+  const discarded = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: generatedReceived.storageRef, action: "DISCARD_UNUSED_LABELS", notes: "Se anuló una etiqueta generada que nunca fue escaneada", occurredAt: "2026-11-06T12:46:30.000Z", expectedLotVersion: generatedReceived.version }));
+  assert.equal(discarded.items.filter((row) => row.identitySource === "GENERATED_AT_RECEPTION").length, 1);
+  assert.equal(discarded.movements.find((row) => row.movementType === "ADJUST" && row.itemRef === null)?.quantity, 1);
+  const conditioned = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: discarded.storageRef, action: "RECORD_CONDITION", itemRef: receivedGenerated.itemRef, evidence: ["OBS|LEFT|SCRATCHED|Lado%20izquierdo|Rayado|damage-db-1", "DIMG|damage-db-1|data:image/jpeg;base64,AA=="], notes: "EVIDENCE:damage-db-1|Lado izquierdo: Rayado", occurredAt: "2026-11-06T12:47:00.000Z", expectedLotVersion: discarded.version, expectedItemVersion: receivedGenerated.version }));
+  const conditionedItem = conditioned.items.find((row) => row.itemRef === generated.itemRef);
+  assert.equal(conditionedItem.condition, "DAMAGED");
+  const described = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: conditioned.storageRef, action: "DESCRIBE_ITEM", itemRef: conditionedItem.itemRef, packageFormCode: "PACKAGE", genericContents: ["Mobiliario"], notes: "Contenido descrito después de descargar", occurredAt: "2026-11-06T12:48:00.000Z", expectedLotVersion: conditioned.version, expectedItemVersion: conditionedItem.version }));
+  const describedItem = described.items.find((row) => row.itemRef === generated.itemRef);
+  assert.equal(describedItem.inspectionStatus, "CLEARED");
+  assert.equal(describedItem.packageFormCode, "PACKAGE");
+  assert.equal(describedItem.packageFormLabel, "Paquete");
+  assert.deepEqual(describedItem.genericContents, ["Mobiliario"]);
+  const generatedLocated = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: described.storageRef, action: "PUT_AWAY_SCAN", scanCode: describedItem.itemCode, locationRef: locationB.locationRef, occurredAt: "2026-11-06T12:49:00.000Z", expectedLotVersion: described.version, expectedItemVersion: describedItem.version }));
+  assert.equal(generatedLocated.items.find((row) => row.itemRef === generated.itemRef)?.location?.locationRef, locationB.locationRef);
   const item = scanned.items[0];
   const moved = await moveCustomerStorage(prisma, context, normalizeCustodyMovement(signed("CUSTOMER_CUSTODY_MOVE", { authorizationRef: null, storageRef: scanned.storageRef, itemRef: item.itemRef, movementType: "TRANSFER", destinationLocationRef: locationB.locationRef, quantity: item.quantity, occurredAt: "2026-11-06T13:00:00.000Z", notes: "Traslado sintético", expectedVersion: item.version })));
   assert.equal(moved.items.find((row) => row.itemRef === item.itemRef)?.location?.locationRef, locationB.locationRef);
   assert.equal(moved.status, "STORED");
   assert.equal(moved.movements[0].movementType, "TRANSFER");
-  assert.equal((await listCustomerStorageLots(prisma, context, { q: "custodia", status: "STORED" })).length, 1);
+  const movedItem = moved.items.find((row) => row.itemRef === item.itemRef);
+  const staged = await applyCustomerCustodyReceptionAction(prisma, context, reception({ storageRef: moved.storageRef, action: "STAGE_EXCESS", scanCode: movedItem.itemCode, locationRef: exitLocation.locationRef, excessReason: "CONTRACTED_CAPACITY_FULL", occurredAt: "2026-11-06T13:10:00.000Z", expectedLotVersion: moved.version, expectedItemVersion: movedItem.version }));
+  const stagedItem = staged.items.find((row) => row.itemRef === item.itemRef);
+  assert.equal(stagedItem.excessStatus, "PENDING_COMMERCIAL");
+  assert.equal(stagedItem.excessReason, "CONTRACTED_CAPACITY_FULL");
+  assert.equal(stagedItem.location.locationRef, exitLocation.locationRef);
+  assert.equal(stagedItem.excessCurrency, "DOP");
+  assert.equal(stagedItem.excessDailyRate, 350);
+  const overflowAuthorization = await createCustomerStorageAuthorization(prisma, context, normalizeStorageAuthorizationCreate(signed("CUSTOMER_STORAGE_AUTHORIZATION_CREATE", { agreementRef: agreement.agreementRef, caseRef: pipelineCase.publicRef, serviceSelectionRef: serviceRevision.selectionRef, movementType: "EXIT", storageType: "PERSONAL_EFFECTS", intakeSource: null, exitReason: "OVERFLOW_RETURN", paymentClearance: "NOT_APPLICABLE", paymentVerifiedAt: null, paymentReference: null, warehouseRef: warehouse.warehouseRef, plannedAt: "2026-11-06T14:00:00.000Z", validUntil: "2099-11-30T23:59:00.000Z", manifestCode: `RETURN-${suffix}`, originText: "Salida temporal", destinationText: "Entrega al cliente", instructions: "Devolver únicamente excedentes" })));
+  assert.equal(overflowAuthorization.exitReason, "OVERFLOW_RETURN");
+  const authorizedLot = (await listCustomerStorageLots(prisma, context, { q: lot.lotCode }))[0];
+  const authorizedItem = authorizedLot.items.find((row) => row.itemRef === item.itemRef);
+  assert.equal(authorizedItem.excessStatus, "AUTHORIZED");
+  const preparedExit = await moveCustomerStorage(prisma, context, normalizeCustodyMovement(signed("CUSTOMER_CUSTODY_MOVE", { authorizationRef: overflowAuthorization.authorizationRef, storageRef: authorizedLot.storageRef, itemRef: authorizedItem.itemRef, movementType: "PREPARE_EXIT", destinationLocationRef: null, quantity: authorizedItem.quantity, occurredAt: "2026-11-06T14:10:00.000Z", notes: "Excedente preparado para devolución", expectedVersion: authorizedItem.version })));
+  const preparedItem = preparedExit.items.find((row) => row.itemRef === item.itemRef);
+  const dispatched = await moveCustomerStorage(prisma, context, normalizeCustodyMovement(signed("CUSTOMER_CUSTODY_MOVE", { authorizationRef: overflowAuthorization.authorizationRef, storageRef: preparedExit.storageRef, itemRef: preparedItem.itemRef, movementType: "DISPATCH", destinationLocationRef: null, quantity: preparedItem.quantity, occurredAt: "2026-11-06T14:20:00.000Z", notes: "Excedente devuelto al cliente", expectedVersion: preparedItem.version })));
+  const dispatchedItem = dispatched.items.find((row) => row.itemRef === item.itemRef);
+  assert.equal(dispatchedItem.status, "RELEASED");
+  assert.equal(dispatchedItem.excessStatus, "RELEASED");
+  assert.equal(dispatchedItem.excessCharge, 0);
+  assert.equal((await listCustomerStorageLots(prisma, context, { q: "custodia", status: "PARTIALLY_RELEASED" })).length, 1);
   assert.equal((await listCustomerStorageLots(prisma, context, { storageType: "PERSONAL_EFFECTS" })).length, 1);
   assert.equal((await listCustomerStorageLots(prisma, context, { storageType: "COMMERCIAL_STORAGE" })).length, 0);
   const outsider = { ...context, membershipId: `outsider-${suffix}`, userId: `outsider-user-${suffix}` };
   assert.deepEqual(await listCustomerStorageLots(prisma, outsider), [], "membership without a grant cannot enumerate custody");
   const commandCount = await prisma.customerCustodyCommand.count({ where: { tenantId: context.tenantId } });
   const movementCount = await prisma.customerCustodyMovement.count({ where: { tenantId: context.tenantId } });
-  assert.equal(commandCount, 8);
-  assert.equal(movementCount, 5);
+  assert.equal(commandCount, 21);
+  assert.equal(movementCount, 12);
   const movement = await prisma.customerCustodyMovement.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   const command = await prisma.customerCustodyCommand.findFirstOrThrow({ where: { tenantId: context.tenantId } });
   await assert.rejects(() => prisma.customerCustodyMovement.update({ where: { id: movement.id }, data: { notes: "illegal edit" } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
   await assert.rejects(() => prisma.customerCustodyCommand.update({ where: { id: command.id }, data: { resultJson: { rewritten: true } } }), /V17_CUSTOMER_CUSTODY_APPEND_ONLY/);
-  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "46/46", lots: 1, items: 2, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, commercialAuthorization: true }) + "\n");
+  process.stdout.write(JSON.stringify({ ok: true, postgres: 18, migrations: "51/51", lots: 1, items: 4, movements: movementCount, commands: commandCount, idempotent: true, appendOnly: true, tenantFirst: true, scopedAccess: true, storageGroups: true, receptionWorkflow: true, scanFirst: true, unknownInventoryFlow: true, batchLabels: true, preUnloadLabels: true, conditionQrCatalog: true, damagePhotoEvidence: true, damageAuditMovement: true, configurableCatalogs: true, inventoryNumbers: true, acceptedProposal: true, signedStorageAgreement: true, commercialAuthorization: true, overflowStaging: true, commercialOverflowReturn: true, graceChargeSnapshot: true }) + "\n");
 } finally {
   await prisma.$disconnect();
 }

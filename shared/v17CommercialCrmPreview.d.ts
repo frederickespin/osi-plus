@@ -2,7 +2,7 @@ export const V17_COMMERCIAL_CRM_PREVIEW_MODE: "PREVIEW_REHEARSAL";
 export const V17_COMMERCIAL_CRM_PREVIEW_BATCH: "V17-COMMERCIAL-CRM-PREVIEW-01";
 export const V17_COMMERCIAL_CRM_PREVIEW_BRANCH: "feature/v17-commercial-crm-preview";
 export const V17_COMMERCIAL_CRM_ICP_UI_PREVIEW_BRANCH: "feature/v17-auth-users-tenant-first";
-export const V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH: "feature/v17-customer-custody-21a";
+export const V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH: "feature/v17-storage-commercial-contract-22a";
 
 export type V17CommercialCrmPreviewClientConfiguration = Readonly<{
   hubMode?: unknown;

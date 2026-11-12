@@ -45,6 +45,7 @@ const CONTRACTS = Object.freeze([
   { appId: "human-resources", route: "/hr", permissions: ["hr:view"], mode: "ALL", roles: ["A", "I"] },
   { appId: "osi-survey", route: "/mobile/survey", aliases: ["/survey"], permissions: ["survey:assignment:view"], mode: "ALL", roles: [], explicit: true, suite: "osi-plus-mobile" },
   { appId: "visual-inventory", route: "/mobile/visual-inventory", permissions: ["survey:assignment:view"], mode: "ALL", roles: [], explicit: true, suite: "osi-plus-mobile" },
+  { appId: "osi-custody", route: "/mobile/custody", permissions: ["customer-custody:view"], mode: "ALL", roles: [], explicit: true, suite: "osi-plus-mobile" },
   { appId: "archaeological-packing", route: "/tools/archaeological-packing", permissions: ["pipeline:view"], mode: "ALL", roles: [], explicit: true, suite: "tools" },
   { appId: "packing-calculator", route: "/tools/packing", aliases: ["/mobile/packing"], permissions: ["pipeline:view"], mode: "ALL", roles: [], explicit: true, suite: "tools" },
 ]);

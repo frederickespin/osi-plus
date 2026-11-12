@@ -4499,6 +4499,7 @@ model CustomerStorageAuthorization {
   @@index([tenantId, pipelineCaseId, authorizedAt(sort: Desc)], map: "customer_storage_authorizations_case_idx")
   @@index([tenantId, warehouseId, movementType, status], map: "customer_storage_authorizations_warehouse_idx")
   @@index([tenantId, storageAgreementId, movementType, status], map: "customer_storage_authorizations_agreement_idx")
+  @@index([tenantId, exitReason, status, validUntil], map: "customer_storage_authorizations_exit_reason_idx")
   @@map("customer_storage_authorizations")
 }
 
@@ -4693,6 +4694,7 @@ model CustomerStoredItem {
   @@unique([tenantId, storageLotId, itemCode], map: "customer_stored_items_code_key")
   @@unique([tenantId, storageLotId, inventoryNumber], map: "customer_stored_items_inventory_number_key")
   @@index([tenantId, currentLocationId, status], map: "customer_stored_items_location_idx")
+  @@index([tenantId, excessStatus, excessGraceUntil], map: "customer_stored_items_excess_status_idx")
   @@map("customer_stored_items")
 }
 

@@ -278,7 +278,13 @@ export async function saveWarehouseSheet(prisma, context, raw, { routesEnabled =
       assertVersion(warehouse.version, input.expectedWarehouseVersion);
       assertVersion(warehouse.sheetProfile?.version ?? 0, input.expectedProfileVersion);
     } else {
-      warehouse = await tx.materialWarehouse.create({ data: { tenantId: actor.tenantId, code: generatedCode("ALM", actor, input), name: input.name }, select });
+      // A stable-field insert keeps this legacy worksheet path usable while a
+      // later custody migration is pending. Current databases still apply the
+      // custody defaults themselves.
+      const warehouseId = crypto.randomUUID();
+      await tx.$executeRaw(Prisma.sql`INSERT INTO "osi"."material_warehouses" ("id", "tenant_id", "code", "name") VALUES (${warehouseId}, ${actor.tenantId}, ${generatedCode("ALM", actor, input)}, ${input.name})`);
+      warehouse = await tx.materialWarehouse.findFirst({ where: { tenantId: actor.tenantId, id: warehouseId }, select });
+      if (!warehouse) warehouseSheetFail("WAREHOUSE_SHEET_NOT_FOUND", 404);
       const root = await tx.materialLocation.create({ data: { tenantId: actor.tenantId, warehouseId: warehouse.id, code: warehouse.code, name: input.name, kind: "WAREHOUSE_ROOT", depth: 0, path: warehouse.code } });
       warehouse.locations.push({ ...root, configuration: null, address: null });
     }

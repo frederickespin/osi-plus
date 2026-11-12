@@ -99,9 +99,9 @@ export default function CustomerCustodyMobileApp({ authorization, effectivePermi
       />
       {error && <p role="alert" className="mx-auto mt-3 max-w-4xl rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       {resolveCustomerCustodyUiMode() === "PREVIEW_REHEARSAL" && selectedLot.items.length > 0 && <div className="mx-auto mt-3 flex max-w-4xl items-center justify-end gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-        <p className="mr-auto text-xs text-amber-900">Solo prueba: elimina etiquetas y lecturas de esta recepción.</p>
+        <p className="mr-auto text-xs text-amber-900">Solo prueba: archiva esta recepción y crea otra limpia para repetir el proceso.</p>
         {resetArmed && <button type="button" className="min-h-10 rounded-lg border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900" onClick={() => setResetArmed(false)}>Cancelar</button>}
-        <button type="button" disabled={resetting} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-amber-700 px-3 text-xs font-bold text-white disabled:opacity-40" onClick={() => resetArmed ? void resetPreviewReception() : setResetArmed(true)}><RotateCcw className="h-4 w-4" />{resetting ? "Reiniciando…" : resetArmed ? "Confirmar eliminación" : "Reiniciar prueba"}</button>
+        <button type="button" disabled={resetting} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-amber-700 px-3 text-xs font-bold text-white disabled:opacity-40" onClick={() => resetArmed ? void resetPreviewReception() : setResetArmed(true)}><RotateCcw className="h-4 w-4" />{resetting ? "Reiniciando…" : resetArmed ? "Confirmar reinicio" : "Reiniciar prueba"}</button>
       </div>}
       {labelBatch && <PrintableCustodyLabels lot={selectedLot} batch={labelBatch} onClose={() => setLabelBatch(null)} />}
     </MobileShell>;

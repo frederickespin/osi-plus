@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Archive, ChevronDown, Container, Plus, RefreshCw, Search, ShieldCheck, Store, Timer, Truck, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, ChevronDown, Container, Plus, RefreshCw, Search, ShieldCheck, Store, Timer, Truck, X } from "lucide-react";
 import { materialsApi, type WarehouseRow } from "@/materials-inventory/api";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { CustomerCustodyApi, customerCustodyErrorText, type CustomerStorageAuthorization, type CustomerStorageLot, type CustomerStorageType, type CustomerStoredItem } from "./api";
@@ -42,6 +42,30 @@ export default function CustomerCustodyApp({ authorization, effectivePermissions
   const upcomingExit = lots.filter((lot) => ["RELEASE_PREPARED", "PARTIALLY_RELEASED"].includes(lot.status)).length;
   const alerts = lots.filter((lot) => lotAlert(lot)).length;
 
+  if (selected) {
+    const closeReception = () => {
+      setSelectedRef(null);
+      setMoveItem(null);
+      setLabelBatch(null);
+    };
+
+    return <section className="space-y-3" data-testid="customer-custody-reception-screen">
+      <header className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white px-3 py-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[.18em] text-sky-700">Almacenajes de clientes</p>
+          <h2 className="text-lg font-black text-[#003366]">Recepción activa</h2>
+          <p className="text-[11px] text-slate-500">{selected.lotCode} · {selected.client.name} · {selected.warehouse.name}</p>
+        </div>
+        <button type="button" className={BUTTON} onClick={closeReception}>
+          <ArrowLeft className="h-4 w-4" />Volver a almacenajes
+        </button>
+      </header>
+      <CustodyDetail lot={selected} api={api} canOperate={allowed("customer-custody:operate")} onMove={setMoveItem} onSaved={replace} onLabelsGenerated={(items, declaredContentQuantity) => setLabelBatch({ items, declaredContentQuantity })} />
+      {labelBatch && <PrintableCustodyLabels lot={selected} batch={labelBatch} onClose={() => setLabelBatch(null)} />}
+      {moveItem && <MovementDialog lot={selected} item={moveItem} api={api} authorization={authorization} onClose={() => setMoveItem(null)} onSaved={(lot) => { replace(lot); setMoveItem(null); }} />}
+    </section>;
+  }
+
   return <section className="space-y-3" data-testid="customer-custody-app">
     <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-sky-700">Custodia de bienes de terceros</p><h2 className="text-xl font-black text-[#003366]">Almacenajes de clientes</h2><p className="mt-1 max-w-4xl text-xs text-slate-500">Pantalla independiente para bienes bajo custodia. No altera materiales, herramientas ni equipos propios.</p></div><div className="flex gap-2"><button type="button" className={BUTTON} onClick={() => void refresh()} disabled={loading} aria-label="Actualizar almacenajes"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></button>{allowed("customer-custody:receive") && <button type="button" className={PRIMARY} onClick={() => setReceiptOpen(true)}><Plus className="h-4 w-4" />Nueva recepción</button>}</div></div>
     <nav aria-label="Grupos de almacenajes de clientes" className="flex gap-1 overflow-x-auto rounded-xl border bg-white p-1">{STORAGE_GROUPS.map((group) => { const Icon = group.icon; const active = storageType === group.id; return <button key={group.id} type="button" aria-pressed={active} onClick={() => { setStorageType(group.id); setSelectedRef(null); }} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-bold ${active ? "bg-[#003366] text-white" : "text-slate-600 hover:bg-slate-50"}`}><Icon className="h-4 w-4" />{group.shortLabel}</button>; })}</nav>
@@ -49,10 +73,7 @@ export default function CustomerCustodyApp({ authorization, effectivePermissions
     <div className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-[minmax(0,1fr)_180px]"><label className="relative"><span className="sr-only">Buscar almacenaje</span><Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, lote, expediente o código" className={`${COMPACT_FORM_FIELD} w-full pl-9`} /></label><select aria-label="Estado de almacenaje" value={status} onChange={(event) => setStatus(event.target.value)} className={COMPACT_FORM_FIELD}><option value="ALL">Todos los estados</option>{Object.entries(STATUS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
     {error && <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{error}</p>}
     <div className="overflow-hidden rounded-xl border bg-white"><div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Alerta</th><th className="px-3 py-2">Lote / cliente</th><th className="px-3 py-2">Entrada</th><th className="px-3 py-2">Inventario</th><th className="px-3 py-2">Ubicación</th><th className="px-3 py-2">Almacén</th><th className="px-3 py-2">Estado</th><th className="px-3 py-2">Próxima acción</th><th className="px-3 py-2"></th></tr></thead><tbody>{lots.map((lot) => { const alert = lotAlert(lot); const locations = [...new Set(lot.items.map((item) => item.location?.path).filter((value): value is string => Boolean(value)))]; return <tr key={lot.storageRef} className={`border-t hover:bg-sky-50 ${selectedRef === lot.storageRef ? "bg-sky-50" : ""}`}><td className="px-3 py-2">{alert ? <AlertBadge tone={alert.tone}>{alert.label}</AlertBadge> : <span className="text-slate-400">Sin alerta</span>}</td><td className="px-3 py-2"><strong className="block font-mono text-[#003366]">{lot.lotCode}</strong><span>{lot.client.name}</span><span className="block text-[10px] text-slate-500">{lot.case?.caseNumber || "Sin expediente"}</span></td><td className="whitespace-nowrap px-3 py-2">{formatDate(lot.receivedAt)}</td><td className="px-3 py-2"><strong>{lot.items.length}</strong> líneas · {totalQuantity(lot)} unidades</td><td className="max-w-44 truncate px-3 py-2" title={locations.join(", ")}>{locations.length ? locations.join(", ") : "Pendiente"}</td><td className="px-3 py-2">{lot.warehouse.name}</td><td className="px-3 py-2"><StatusBadge status={lot.status} /></td><td className="px-3 py-2">{nextAction(lot)}</td><td className="px-3 py-2"><button type="button" className={BUTTON} onClick={() => setSelectedRef((current) => current === lot.storageRef ? null : lot.storageRef)}>{selectedRef === lot.storageRef ? "Cerrar" : "Abrir"}</button></td></tr>; })}</tbody></table></div>{!loading && lots.length === 0 && <p className="p-8 text-center text-sm text-slate-500">{activeGroup.empty}</p>}</div>
-    {selected && <CustodyDetail lot={selected} api={api} canOperate={allowed("customer-custody:operate")} onMove={setMoveItem} onSaved={replace} onLabelsGenerated={(items, declaredContentQuantity) => setLabelBatch({ items, declaredContentQuantity })} />}
-    {selected && labelBatch && <PrintableCustodyLabels lot={selected} batch={labelBatch} onClose={() => setLabelBatch(null)} />}
     {receiptOpen && <ReceiptDialog authorization={authorization} api={api} initialStorageType={storageType} onClose={() => setReceiptOpen(false)} onSaved={(lot) => { replace(lot); setReceiptOpen(false); }} />}
-    {selected && moveItem && <MovementDialog lot={selected} item={moveItem} api={api} authorization={authorization} onClose={() => setMoveItem(null)} onSaved={(lot) => { replace(lot); setMoveItem(null); }} />}
   </section>;
 }
 

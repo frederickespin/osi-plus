@@ -82,7 +82,7 @@ export default function CustomerCustodyMobileApp({ authorization, effectivePermi
   const resetPreviewReception = async () => {
     if (!selectedLot) return;
     setResetting(true); setError(null);
-    try { await api.resetPreviewReception(selectedLot.storageRef, selectedLot.lotCode); setResetArmed(false); await refresh(); }
+    try { const replacement = await api.resetPreviewReception(selectedLot.storageRef, selectedLot.lotCode); setResetArmed(false); await refresh(); setSelectedLotRef(replacement.storageRef); }
     catch (cause) { setError(customerCustodyErrorText(cause)); }
     finally { setResetting(false); }
   };

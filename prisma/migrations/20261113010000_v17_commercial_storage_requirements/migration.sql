@@ -1,3 +1,5 @@
+BEGIN;
+
 CREATE TYPE "osi"."StorageRequirementSource" AS ENUM (
   'CLIENT_DECLARED',
   'COMMERCIAL_ESTIMATE',
@@ -45,8 +47,10 @@ ALTER TABLE "osi"."customer_storage_requirement_revisions"
   ADD CONSTRAINT "customer_storage_requirements_tenant_fkey"
   FOREIGN KEY ("tenant_id") REFERENCES "osi"."tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "customer_storage_requirements_case_fkey"
-  FOREIGN KEY ("tenant_id", "pipeline_case_id") REFERENCES "osi"."pipeline_cases"("tenant_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  FOREIGN KEY ("tenant_id", "pipeline_case_id") REFERENCES "osi"."osi_pipeline_cases"("tenant_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "customer_storage_requirements_service_revision_fkey"
   FOREIGN KEY ("tenant_id", "service_revision_id") REFERENCES "osi"."pipeline_case_service_revisions"("tenant_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE,
   ADD CONSTRAINT "customer_storage_requirements_actor_fkey"
   FOREIGN KEY ("tenant_id", "created_by_membership_id", "created_by_user_id") REFERENCES "osi"."tenant_memberships"("tenant_id", "id", "user_id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+COMMIT;

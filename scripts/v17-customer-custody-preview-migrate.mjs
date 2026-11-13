@@ -13,7 +13,8 @@ import { isV17ConsolidatedPreviewBranch } from "../shared/v17ConsolidatedPreview
 
 export const CUSTOMER_CUSTODY_PREVIEW_MIGRATION_OPERATION = "V17_CUSTOMER_CUSTODY_PREVIEW_MIGRATION";
 export const CUSTOMER_CUSTODY_MIGRATION = "20261113010000_v17_commercial_storage_requirements";
-export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "9ee15ae496a5c260388a66b521a5fed39f6295c13474070d48d3e0895bed68fe";
+export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "389acd799c903f94d8e3cf02ba6e83ca73df8f7cf715bd73b952c6c0942a2eeb";
+export const CUSTOMER_CUSTODY_FAILED_ATTEMPT_CHECKSUM = "9ee15ae496a5c260388a66b521a5fed39f6295c13474070d48d3e0895bed68fe";
 export const RETAINED_PREVIEW_EXTENSION = Object.freeze({
   name: "20260917010000_v17_engineering_crating",
   checksum: "b437aae3600a23c655d97e674c3bfaa9a1721e0d54a26dcccc1181d90fdf2d0f",
@@ -137,12 +138,45 @@ async function snapshot(prisma, manifest) {
       && [17, 18].includes(Math.floor(Number(identity.server_version_num) / 10000)), "DATABASE_IDENTITY_INVALID");
     const tenants = await tx.$queryRawUnsafe("SELECT status::text AS status FROM osi.tenants WHERE code = 'V17-CONSOLIDATED-PREVIEW-10B'");
     requireCondition(tenants.length === 1 && tenants[0].status === "ACTIVE", "TENANT_INVALID");
-    const history = await tx.$queryRawUnsafe("SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name");
+    const history = await tx.$queryRawUnsafe("SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations WHERE rolled_back_at IS NULL ORDER BY migration_name");
     const plan = validatePreviewHistory(history, manifest);
     const [relations] = await tx.$queryRawUnsafe("SELECT to_regclass('osi.warehouse_access_grants') IS NOT NULL AS grants_exists, to_regclass('osi.customer_storage_lots') IS NOT NULL AS lots_exists, to_regclass('osi.customer_stored_items') IS NOT NULL AS items_exists, to_regclass('osi.customer_custody_commands') IS NOT NULL AS commands_exists, to_regclass('osi.customer_custody_movements') IS NOT NULL AS movements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'storage_type') AS storage_groups_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'reception_stage') AS reception_workflow_exists, to_regclass('osi.customer_custody_location_states') IS NOT NULL AS scan_first_exists, to_regclass('osi.customer_storage_authorizations') IS NOT NULL AS authorizations_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'authorization_id') AS lot_authorization_exists, to_regclass('osi.customer_storage_agreements') IS NOT NULL AS agreements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_authorizations' AND column_name = 'storage_agreement_id') AS authorization_agreement_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'inventory_number') AS inventory_number_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'next_item_number') AS next_item_number_exists, to_regclass('osi.customer_custody_catalog_items') IS NOT NULL AS catalog_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'package_form_code') AS package_form_code_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'package_form_label') AS package_form_label_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'material_warehouses' AND column_name = 'custody_unload_target_minutes') AS warehouse_unload_target_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unload_target_minutes') AS lot_unload_target_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unloading_started_at') AS unloading_started_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unloading_finished_at') AS unloading_finished_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'vehicle_evidence') AS vehicle_evidence_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'material_warehouses' AND column_name = 'custody_excess_grace_hours') AS warehouse_excess_settings_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_authorizations' AND column_name = 'exit_reason') AS authorization_exit_governance_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'excess_status') AS item_excess_state_exists, to_regclass('osi.customer_storage_requirement_revisions') IS NOT NULL AS storage_requirements_exists");
     validatePreviewRelationState(relations, plan.alreadyApplied);
     return { plan, history, serverVersionNum: Number(identity.server_version_num) };
   }, { maxWait: 5000, timeout: 35000, isolationLevel: "RepeatableRead" });
+}
+
+async function repairKnownFailedAttempt(prisma, env, root) {
+  const state = await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL statement_timeout = '30s'");
+    await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+    await tx.$executeRawUnsafe("SET LOCAL search_path = osi");
+    const [identity] = await tx.$queryRawUnsafe("SELECT current_database() AS database, current_setting('neon.branch_id', true) AS branch");
+    requireCondition(identity?.database === "v17_consolidated_preview_10b"
+      && identity.branch === "br-bitter-mountain-ahs311pu", "REPAIR_DATABASE_IDENTITY_INVALID");
+    const rows = await tx.$queryRawUnsafe("SELECT id, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations WHERE migration_name = $1 ORDER BY started_at DESC", CUSTOMER_CUSTODY_MIGRATION);
+    const active = rows.find((row) => row.rolled_back_at === null);
+    if (!active || active.finished_at) return { repair: false };
+    requireCondition(active.checksum === CUSTOMER_CUSTODY_FAILED_ATTEMPT_CHECKSUM
+      && Number(active.applied_steps_count) === 0, "REPAIR_ATTEMPT_INVALID");
+    await tx.$executeRawUnsafe("DROP TABLE IF EXISTS osi.customer_storage_requirement_revisions CASCADE");
+    await tx.$executeRawUnsafe("DROP TYPE IF EXISTS osi.\"StorageVisitDecision\"");
+    await tx.$executeRawUnsafe("DROP TYPE IF EXISTS osi.\"StorageRequirementSource\"");
+    return { repair: true };
+  }, { maxWait: 5000, timeout: 35000 });
+  if (!state.repair) return false;
+  try {
+    await executeFile(process.execPath, [resolve(root, "node_modules/prisma/build/index.js"), "migrate", "resolve", "--rolled-back", CUSTOMER_CUSTODY_MIGRATION, "--schema", resolve(root, "prisma/schema.prisma")], {
+      cwd: root,
+      env: { ...env, DATABASE_URL: env.DIRECT_URL, DIRECT_URL: env.DIRECT_URL },
+      timeout: 120000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    });
+  } catch {
+    requireCondition(false, "REPAIR_RESOLVE_FAILED");
+  }
+  return true;
 }
 
 export async function runCustomerCustodyPreviewMigration({ env = process.env, root = process.cwd() } = {}) {
@@ -153,6 +187,7 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
   requireCondition(prismaVersion === "6.19.2", "PRISMA_VERSION_INVALID");
   const prisma = new PrismaClient({ datasources: { db: { url: env.DIRECT_URL } }, log: [] });
   try {
+    await repairKnownFailedAttempt(prisma, env, root);
     let before;
     try {
       before = await snapshot(prisma, manifest);

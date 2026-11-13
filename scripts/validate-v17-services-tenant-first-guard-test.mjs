@@ -20,6 +20,9 @@ const cases = [
   ["sin selector de catálogo", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Agregar desde el catálogo", "Agregar manualmente")],
   ["sin listado compacto", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Base tarifaria", "Observación")],
   ["frontera económica mezclada", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Costos aplica el tarifario versionado", "Servicios fija el precio")],
+  ["sin flujo guiado", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('label: "Movimientos"', 'label: "Todo junto"')],
+  ["sin pestaña activa", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('bg-[#003366] text-white', 'bg-white text-slate-600')],
+  ["procesos reunificados", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('activeView={activeStage === "agreement" ? "agreement" : activeStage === "movements" ? "authorization" : "requirement"}', 'activeView="requirement"')],
 ];
 assert.equal(validateV17ServicesTenantFirst().ok, true);
 for (const [name, path, mutate] of cases) {

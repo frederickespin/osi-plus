@@ -53,6 +53,9 @@ export function validateV17ServicesTenantFirst({ root = process.cwd(), overrides
   need(panel, /Agregar desde el catálogo[\s\S]*availableCatalog\.map[\s\S]*addCatalogService/, "Servicios asociados no se seleccionan desde el catálogo compatible");
   need(panel, /<table[\s\S]*Base tarifaria[\s\S]*Volumen, peso o unidad del tarifario[\s\S]*removeCatalogService/, "selección no se presenta como listado compacto editable");
   need(panel, /Servicios conserva la selección[\s\S]*Costos aplica el tarifario versionado[\s\S]*monto sugerido[\s\S]*comparación, motivo, margen y aprobación/, "se perdió la frontera Servicios → Costos → Cotización");
+  need(panel, /label: "Plan"[\s\S]*label: "Contrato"[\s\S]*label: "Movimientos"[\s\S]*label: "Configuración"/, "flujo guiado no conserva las cuatro pantallas aprobadas");
+  need(panel, /role="tablist"[\s\S]*grid-cols-4[\s\S]*activeStage === stage\.id \? "bg-\[#003366\] text-white/, "pestañas compactas no resaltan la pantalla activa");
+  need(panel, /activeView=\{activeStage === "agreement" \? "agreement" : activeStage === "movements" \? "authorization" : "requirement"\}[\s\S]*compactRequirement=\{activeStage === "plan"\}/, "procesos de almacenaje volvieron a una sola pantalla larga");
   need(detail, /activeTab === "SERVICES" && servicesEnabled[\s\S]*ServiceCasePanel/, "UI carga Servicios sin autorización previa");
 
   const forbiddenDomain = ["estimatedCbm", "requiresSurvey", "surveyMethod", "QuoteLineItem", "unitPrice", "cost"].filter((term) => new RegExp(`\\b${term}\\b`, "i").test(api + contract));

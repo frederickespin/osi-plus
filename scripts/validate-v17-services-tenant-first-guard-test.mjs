@@ -17,6 +17,9 @@ const cases = [
   ["deny no prevalece", "api/_lib/crmServicesApiDomain.js", (s) => s.replace("denied.has(permission) || !effective.has(permission)", "!effective.has(permission)")],
   ["snapshot mutable", "prisma/migrations/20260904010000_v17_services_tenant_first/migration.sql", (s) => s.replace("BEFORE UPDATE OR DELETE ON \"osi\".\"pipeline_case_service_revisions\"", "BEFORE INSERT ON \"osi\".\"pipeline_case_service_revisions\"")],
   ["sin confirmación", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("window.confirm", "Boolean")],
+  ["sin selector de catálogo", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Agregar desde el catálogo", "Agregar manualmente")],
+  ["sin listado compacto", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Base tarifaria", "Observación")],
+  ["frontera económica mezclada", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Costos aplica el tarifario versionado", "Servicios fija el precio")],
 ];
 assert.equal(validateV17ServicesTenantFirst().ok, true);
 for (const [name, path, mutate] of cases) {

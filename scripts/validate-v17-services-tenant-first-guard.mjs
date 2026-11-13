@@ -50,6 +50,9 @@ export function validateV17ServicesTenantFirst({ root = process.cwd(), overrides
   need(panel, /readOnly value=\{workspace\.mode/, "Servicios permite alterar modo ICP");
   need(panel, /window\.confirm\([\s\S]*Cambiar la necesidad principal/, "cambio de necesidad principal pierde decisiones sin confirmar");
   need(panel, /Plan vigente V[\s\S]*Historial del plan de servicios[\s\S]*Guardar Plan V/, "plan de servicios versionado no es visible");
+  need(panel, /Agregar desde el catálogo[\s\S]*availableCatalog\.map[\s\S]*addCatalogService/, "Servicios asociados no se seleccionan desde el catálogo compatible");
+  need(panel, /<table[\s\S]*Base tarifaria[\s\S]*Volumen, peso o unidad del tarifario[\s\S]*removeCatalogService/, "selección no se presenta como listado compacto editable");
+  need(panel, /Servicios conserva la selección[\s\S]*Costos aplica el tarifario versionado[\s\S]*monto sugerido[\s\S]*comparación, motivo, margen y aprobación/, "se perdió la frontera Servicios → Costos → Cotización");
   need(detail, /activeTab === "SERVICES" && servicesEnabled[\s\S]*ServiceCasePanel/, "UI carga Servicios sin autorización previa");
 
   const forbiddenDomain = ["estimatedCbm", "requiresSurvey", "surveyMethod", "QuoteLineItem", "unitPrice", "cost"].filter((term) => new RegExp(`\\b${term}\\b`, "i").test(api + contract));

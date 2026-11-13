@@ -46,10 +46,11 @@ export function validateV17ServicesTenantFirst({ root = process.cwd(), overrides
   need(http, /resolveCrmServicesApiMode\(env, req\); sameOrigin\(req\);[\s\S]*resolveContext[\s\S]*readJsonObject/, "gate/origin/auth/body fuera de orden");
   if (/PRODUCTION_(?:READ|WRITE|PILOT)/.test(http) || /PRODUCTION_(?:READ|WRITE|PILOT)/.test(mode)) fail("Servicios habilita Production");
   need(mode, /return preview \? value : CRM_SERVICES_UI_MODES\.DISABLED/, "frontend no falla cerrado");
-  need(panel, /Modo \/ Alcance[\s\S]*Servicio principal[\s\S]*Servicios que incluye/, "orden visual aprobado ausente");
+  need(panel, /Modo \/ Alcance[\s\S]*Necesidad principal[\s\S]*Servicios asociados al caso/, "orden visual aprobado ausente");
   need(panel, /readOnly value=\{workspace\.mode/, "Servicios permite alterar modo ICP");
-  need(panel, /window\.confirm\([\s\S]*Cambiar el servicio principal/, "cambio de principal pierde decisiones sin confirmar");
-  need(detail, /tab === "SERVICES" && servicesEnabled[\s\S]*ServiceCasePanel/, "UI carga Servicios sin autorización previa");
+  need(panel, /window\.confirm\([\s\S]*Cambiar la necesidad principal/, "cambio de necesidad principal pierde decisiones sin confirmar");
+  need(panel, /Plan vigente V[\s\S]*Historial del plan de servicios[\s\S]*Guardar Plan V/, "plan de servicios versionado no es visible");
+  need(detail, /activeTab === "SERVICES" && servicesEnabled[\s\S]*ServiceCasePanel/, "UI carga Servicios sin autorización previa");
 
   const forbiddenDomain = ["estimatedCbm", "requiresSurvey", "surveyMethod", "QuoteLineItem", "unitPrice", "cost"].filter((term) => new RegExp(`\\b${term}\\b`, "i").test(api + contract));
   if (forbiddenDomain.length) fail(`Servicios absorbió ICP/Survey/Costing/Quote: ${forbiddenDomain.join(",")}`);

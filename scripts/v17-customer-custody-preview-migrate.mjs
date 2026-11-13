@@ -9,10 +9,11 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { PrismaClient } from "@prisma/client";
 import { validateMigrationFiles } from "./canonical-migrations.mjs";
+import { isV17ConsolidatedPreviewBranch } from "../shared/v17ConsolidatedPreview.js";
 
 export const CUSTOMER_CUSTODY_PREVIEW_MIGRATION_OPERATION = "V17_CUSTOMER_CUSTODY_PREVIEW_MIGRATION";
-export const CUSTOMER_CUSTODY_MIGRATION = "20261112030000_v17_customer_custody_excess_returns";
-export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "f24602f9e8c3c62604c2d0554608ee20baaf876f44abc899c503b5927e9ac171";
+export const CUSTOMER_CUSTODY_MIGRATION = "20261113010000_v17_commercial_storage_requirements";
+export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "9ee15ae496a5c260388a66b521a5fed39f6295c13474070d48d3e0895bed68fe";
 export const RETAINED_PREVIEW_EXTENSION = Object.freeze({
   name: "20260917010000_v17_engineering_crating",
   checksum: "b437aae3600a23c655d97e674c3bfaa9a1721e0d54a26dcccc1181d90fdf2d0f",
@@ -61,7 +62,7 @@ export function previewMigrationOperation(env = process.env) {
   requireCondition(match
     && env.VERCEL === "1"
     && env.VERCEL_ENV === "preview"
-    && env.VERCEL_GIT_COMMIT_REF === "feature/v17-storage-commercial-contract-22a"
+    && isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF)
     && env.VERCEL_GIT_COMMIT_SHA === match[1], "OPERATION_TARGET_INVALID");
   requireCondition(env.PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK === undefined, "MIGRATION_LOCK_REQUIRED");
   requireCondition(env.CUSTOMER_CUSTODY_API_MODE === "PREVIEW_REHEARSAL"
@@ -74,7 +75,7 @@ export function previewMigrationOperation(env = process.env) {
 
 export function previewMigrationManifest(root = process.cwd()) {
   const names = validateMigrationFiles(root);
-  requireCondition(names.length === 51 && names.at(-1) === CUSTOMER_CUSTODY_MIGRATION, "SOURCE_INVENTORY_INVALID");
+  requireCondition(names.length === 52 && names.at(-1) === CUSTOMER_CUSTODY_MIGRATION, "SOURCE_INVENTORY_INVALID");
   const manifest = Object.fromEntries(names.map((name) => [name,
     sha256(readFileSync(resolve(root, "prisma/migrations", name, "migration.sql"))),
   ]));
@@ -117,10 +118,11 @@ export function validatePreviewRelationState(relations, alreadyApplied) {
     && relations.unloading_started_exists === true
     && relations.unloading_finished_exists === true
     && relations.vehicle_evidence_exists === true
-    && relations.warehouse_excess_settings_exists === alreadyApplied
-    && relations.authorization_exit_governance_exists === alreadyApplied
-    && relations.item_excess_state_exists === alreadyApplied
-    && Object.values(relations).filter(Boolean).length === (alreadyApplied ? 25 : 22), "RELATION_STATE_INVALID");
+    && relations.warehouse_excess_settings_exists === true
+    && relations.authorization_exit_governance_exists === true
+    && relations.item_excess_state_exists === true
+    && relations.storage_requirements_exists === alreadyApplied
+    && Object.values(relations).filter(Boolean).length === (alreadyApplied ? 26 : 25), "RELATION_STATE_INVALID");
 }
 
 async function snapshot(prisma, manifest) {
@@ -137,7 +139,7 @@ async function snapshot(prisma, manifest) {
     requireCondition(tenants.length === 1 && tenants[0].status === "ACTIVE", "TENANT_INVALID");
     const history = await tx.$queryRawUnsafe("SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name");
     const plan = validatePreviewHistory(history, manifest);
-    const [relations] = await tx.$queryRawUnsafe("SELECT to_regclass('osi.warehouse_access_grants') IS NOT NULL AS grants_exists, to_regclass('osi.customer_storage_lots') IS NOT NULL AS lots_exists, to_regclass('osi.customer_stored_items') IS NOT NULL AS items_exists, to_regclass('osi.customer_custody_commands') IS NOT NULL AS commands_exists, to_regclass('osi.customer_custody_movements') IS NOT NULL AS movements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'storage_type') AS storage_groups_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'reception_stage') AS reception_workflow_exists, to_regclass('osi.customer_custody_location_states') IS NOT NULL AS scan_first_exists, to_regclass('osi.customer_storage_authorizations') IS NOT NULL AS authorizations_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'authorization_id') AS lot_authorization_exists, to_regclass('osi.customer_storage_agreements') IS NOT NULL AS agreements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_authorizations' AND column_name = 'storage_agreement_id') AS authorization_agreement_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'inventory_number') AS inventory_number_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'next_item_number') AS next_item_number_exists, to_regclass('osi.customer_custody_catalog_items') IS NOT NULL AS catalog_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'package_form_code') AS package_form_code_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'package_form_label') AS package_form_label_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'material_warehouses' AND column_name = 'custody_unload_target_minutes') AS warehouse_unload_target_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unload_target_minutes') AS lot_unload_target_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unloading_started_at') AS unloading_started_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unloading_finished_at') AS unloading_finished_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'vehicle_evidence') AS vehicle_evidence_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'material_warehouses' AND column_name = 'custody_excess_grace_hours') AS warehouse_excess_settings_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_authorizations' AND column_name = 'exit_reason') AS authorization_exit_governance_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'excess_status') AS item_excess_state_exists");
+    const [relations] = await tx.$queryRawUnsafe("SELECT to_regclass('osi.warehouse_access_grants') IS NOT NULL AS grants_exists, to_regclass('osi.customer_storage_lots') IS NOT NULL AS lots_exists, to_regclass('osi.customer_stored_items') IS NOT NULL AS items_exists, to_regclass('osi.customer_custody_commands') IS NOT NULL AS commands_exists, to_regclass('osi.customer_custody_movements') IS NOT NULL AS movements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'storage_type') AS storage_groups_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'reception_stage') AS reception_workflow_exists, to_regclass('osi.customer_custody_location_states') IS NOT NULL AS scan_first_exists, to_regclass('osi.customer_storage_authorizations') IS NOT NULL AS authorizations_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'authorization_id') AS lot_authorization_exists, to_regclass('osi.customer_storage_agreements') IS NOT NULL AS agreements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_authorizations' AND column_name = 'storage_agreement_id') AS authorization_agreement_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'inventory_number') AS inventory_number_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'next_item_number') AS next_item_number_exists, to_regclass('osi.customer_custody_catalog_items') IS NOT NULL AS catalog_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'package_form_code') AS package_form_code_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'package_form_label') AS package_form_label_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'material_warehouses' AND column_name = 'custody_unload_target_minutes') AS warehouse_unload_target_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unload_target_minutes') AS lot_unload_target_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unloading_started_at') AS unloading_started_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unloading_finished_at') AS unloading_finished_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'vehicle_evidence') AS vehicle_evidence_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'material_warehouses' AND column_name = 'custody_excess_grace_hours') AS warehouse_excess_settings_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_authorizations' AND column_name = 'exit_reason') AS authorization_exit_governance_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'excess_status') AS item_excess_state_exists, to_regclass('osi.customer_storage_requirement_revisions') IS NOT NULL AS storage_requirements_exists");
     validatePreviewRelationState(relations, plan.alreadyApplied);
     return { plan, history, serverVersionNum: Number(identity.server_version_num) };
   }, { maxWait: 5000, timeout: 35000, isolationLevel: "RepeatableRead" });
@@ -159,7 +161,7 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
       classifyUnexpectedFailure(error, "SNAPSHOT_FAILED");
     }
     if (before.plan.alreadyApplied) {
-      return { commit: operation.commit, status: "VERIFIED_22A_APPLIED", applied: before.plan.applied,
+      return { commit: operation.commit, status: "VERIFIED_23A_APPLIED", applied: before.plan.applied,
         serverVersionNum: before.serverVersionNum, retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name };
     }
     try {
@@ -184,7 +186,7 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
     const previousAfter = after.history.filter((row) => row.migration_name !== CUSTOMER_CUSTODY_MIGRATION);
     requireCondition(after.plan.alreadyApplied && after.plan.applied === before.plan.applied + 1
       && JSON.stringify(previousAfter) === JSON.stringify(previousBefore), "PREVIOUS_STATE_CHANGED");
-    return { commit: operation.commit, status: "VERIFIED_22A_APPLIED", applied: after.plan.applied,
+    return { commit: operation.commit, status: "VERIFIED_23A_APPLIED", applied: after.plan.applied,
       previousHistoryPreserved: true, serverVersionNum: after.serverVersionNum,
       retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name };
   } finally {

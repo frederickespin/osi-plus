@@ -88,6 +88,7 @@
       "/api/customer-custody/reception-actions",
       "/api/customer-custody/storage-agreements",
       "/api/customer-custody/storage-agreements/[agreementRef]",
+      "/api/customer-custody/storage-requirements",
       "/api/customer-custody/warehouse-settings",
       "/api/crm/client-options",
       "/api/crm/icp-v2/clients/search",

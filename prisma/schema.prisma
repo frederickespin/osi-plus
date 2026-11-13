@@ -4452,6 +4452,44 @@ model CustomerStorageLot {
   @@map("customer_storage_lots")
 }
 
+model CustomerStorageRequirementRevision {
+  id                      String                   @id @default(cuid())
+  requirementRef          String                   @default(dbgenerated("gen_random_uuid()")) @map("requirement_ref") @db.Uuid
+  tenantId                String                   @map("tenant_id")
+  pipelineCaseId          String                   @map("pipeline_case_id")
+  serviceRevisionId       String                   @map("service_revision_id")
+  revision                Int
+  storageType             CustomerStorageType      @map("storage_type")
+  capacityBasis           StorageCapacityBasis     @map("capacity_basis")
+  capacityQuantity        Decimal                  @map("capacity_quantity") @db.Decimal(12, 3)
+  estimatedDurationMonths Int                      @map("estimated_duration_months")
+  plannedEntryDate        DateTime?                @map("planned_entry_date") @db.Date
+  dataSource              StorageRequirementSource @map("data_source")
+  visitDecision           StorageVisitDecision     @map("visit_decision")
+  notes                   String?                  @db.VarChar(2000)
+  createdByMembershipId   String                   @map("created_by_membership_id")
+  createdByUserId         String                   @map("created_by_user_id")
+  createdAt               DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, requirementRef], map: "customer_storage_requirements_tenant_ref_key")
+  @@unique([tenantId, pipelineCaseId, revision], map: "customer_storage_requirements_case_revision_key")
+  @@index([tenantId, pipelineCaseId, createdAt(sort: Desc)], map: "customer_storage_requirements_case_created_idx")
+  @@map("customer_storage_requirement_revisions")
+}
+
+enum StorageRequirementSource {
+  CLIENT_DECLARED
+  COMMERCIAL_ESTIMATE
+  SURVEY_VERIFIED
+  WAREHOUSE_CONFIRMED
+}
+
+enum StorageVisitDecision {
+  TO_CONFIRM
+  REQUIRED
+  NOT_REQUIRED
+}
+
 model CustomerStorageAuthorization {
   id                       String                             @id @default(cuid())
   authorizationRef         String                             @default(dbgenerated("gen_random_uuid()")) @map("authorization_ref") @db.Uuid

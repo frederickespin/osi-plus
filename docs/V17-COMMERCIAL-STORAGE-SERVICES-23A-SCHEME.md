@@ -50,8 +50,8 @@ Almacén no selecciona clientes ni crea precios. Ejecuta una autorización vigen
 
 ## Entregas por partes
 
-1. Reconocer Almacenaje como servicio principal o secundario.
-2. Configurar modalidad, estimaciones, fuente y necesidad de visita.
+1. Reconocer Almacenaje como servicio principal o secundario. **Implementado.**
+2. Configurar modalidad, estimaciones, fuente y necesidad de visita. **Implementado en revisión versionada previa a Survey/Cotización.**
 3. Publicar tarifarios por m³/espacio y conceptos de movimiento.
 4. Aplicar Relaciones Comerciales y Referidos sobre la tarifa base.
 5. Contrato transparente, permanencia y liquidación anticipada.

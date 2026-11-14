@@ -80,7 +80,7 @@ test("acceso temporal ejecuta visita, Mini, carga y QR sin montar el ERP", async
   await expect(page.getByText("Destino sintético", { exact: false })).toBeVisible();
   await expect(page.getByText("OSi Plus Hub")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Confirmar visita" }).click();
+  await page.getByRole("button", { name: "Autorizar costo y confirmar" }).click();
   await expect(page.getByText("Visita confirmada")).toBeVisible();
   await page.reload();
   await expect(page.getByText("Visita confirmada")).toBeVisible();

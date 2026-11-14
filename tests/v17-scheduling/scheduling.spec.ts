@@ -654,7 +654,7 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Pendiente de cálculo por Motor Logístico y Costing. Scheduling no estima importes.",
+      "Zona metropolitana · sin cargo publicado",
     ),
   ).toBeVisible();
   await expect(page.getByText("Visita programada")).toBeVisible();

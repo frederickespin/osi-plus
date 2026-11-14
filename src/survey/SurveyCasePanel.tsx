@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
   ClipboardCheck,
@@ -35,15 +35,11 @@ import {
   type CommercialCaseSnapshot,
 } from "@/commercial-relationships/api";
 import { isCommercialRelationshipsUiEnabled } from "@/commercial-relationships/mode";
-import LogisticsVisitSummary from "@/logistics-engine/LogisticsVisitSummary";
 import type { TransportUiAccess } from "@/logistics-engine/transportAccess";
-import { isTransportUnauthorized, transportApi, type TransportPublication } from "@/logistics-engine/transportApi";
 import type { CommunicationsAccess } from "@/communications/access";
 import { createPersonnelPoliciesApi } from "@/personnel-policies/api";
 import type { ClientTemporaryAccessUi } from "@/client-portal/access";
 import ClientTemporaryAccessPanel from "@/client-portal/ClientTemporaryAccessPanel";
-
-const TransportCalculationPanel = lazy(() => import("@/logistics-engine/TransportCalculationPanel"));
 
 type Props = Readonly<{
   caseRef: string;
@@ -158,8 +154,6 @@ export default function SurveyCasePanel({
   access,
   communicationsEnabled = false,
   communicationsAccess,
-  logisticsSummaryEnabled = false,
-  transportAccess,
   clientTemporaryAccessEnabled = false,
   clientTemporaryAccess,
   onOpenCommunications,
@@ -181,9 +175,6 @@ export default function SurveyCasePanel({
   const [workspace, setWorkspace] = useState<SchedulingWorkspace | null>(null);
   const [commercialContext, setCommercialContext] =
     useState<CommercialCaseSnapshot | null>(null);
-  const [transportPublication, setTransportPublication] =
-    useState<TransportPublication | null>(null);
-  const [transportError, setTransportError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,20 +213,6 @@ export default function SurveyCasePanel({
         setWorkspace(nextWorkspace);
         if (nextWorkspace.decision) setMethod(nextWorkspace.decision.method);
         setCommercialContext(nextCommercial);
-        setTransportPublication(null);
-        setTransportError(null);
-        if (logisticsSummaryEnabled && transportAccess?.canView && nextWorkspace.decision?.method === "IN_PERSON") {
-          try {
-            const publication = await transportApi.publication(authorization, { caseRef, purpose: "VISIT", contextRef: nextWorkspace.decision.decisionRef });
-            if (version !== loadVersion.current) return;
-            setTransportPublication(publication);
-          } catch (cause) {
-            if (version !== loadVersion.current) return;
-            const code = cause instanceof Error ? cause.message : "TRANSPORT_REQUEST_FAILED";
-            if (isTransportUnauthorized(cause) || /UNAUTHORIZED|AUTH_REQUIRED/.test(code)) onUnauthorized();
-            else setTransportError("No se pudo consultar el transporte de esta visita. Actualice para intentarlo nuevamente.");
-          }
-        }
       } catch (cause) {
         if (version !== loadVersion.current) return;
         const code =
@@ -248,11 +225,8 @@ export default function SurveyCasePanel({
     },
     [
       api,
-      authorization,
       caseRef,
       commercialApi,
-      logisticsSummaryEnabled,
-      transportAccess?.canView,
       onUnauthorized,
     ],
   );
@@ -396,7 +370,7 @@ export default function SurveyCasePanel({
         slotKey,
         instruction: instruction.trim() || null,
         saturdayApprovalReason: saturday ? reason || null : null,
-        ...(selectedVisitLocation
+        ...(workspace.decision.method === "IN_PERSON" && selectedVisitLocation
           ? {
               visitRouteRole: selectedVisitLocation.role,
               visitRouteOrder: selectedVisitLocation.order,
@@ -562,7 +536,7 @@ export default function SurveyCasePanel({
             Comercial · Survey / Scheduling
           </p>
           <h2 className="text-lg font-black text-[#003366]">
-            Solicitud y programación de Survey
+            Coordinar Survey
           </h2>
         </div>
         <Button size="sm" variant="outline" onClick={() => void load()}>
@@ -757,23 +731,13 @@ export default function SurveyCasePanel({
                     </div>
                     <Button disabled={saving} onClick={() => void saveDecision()}>{saving ? "Guardando…" : workspace.decision ? "Actualizar solicitud" : "Crear solicitud"}</Button></div>
                     <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2" data-testid="survey-method-guidance">
-                      <p className="border-l-2 border-sky-400 pl-2"><strong>Presencial:</strong> agenda, evaluador, zona, buffers, traslado y Visit Fee.</p>
-                      <p className="border-l-2 border-violet-400 pl-2"><strong>Virtual:</strong> cita remota con evaluador y duración; sin traslado físico.</p>
-                      <p className="border-l-2 border-amber-400 pl-2"><strong>Listado + fotografías:</strong> artículos, fotos, documentos y medidas aportados por el cliente.</p>
-                      <p className="border-l-2 border-emerald-500 pl-2"><strong>Mini-visita:</strong> captura rápida por teléfono, email, WhatsApp o conversación comercial; máximo 10 tipos.</p>
+                      <p className="border-l-2 border-sky-400 pl-2"><strong>Presencial o especial:</strong> usa la dirección del caso, calcula zona/costo y reserva traslado.</p>
+                      <p className="border-l-2 border-violet-400 pl-2"><strong>Virtual:</strong> reserva evaluador y hora, sin tiempo ni costo de traslado.</p>
                     </div>
                   </div>
                 )}
             </section>
 
-            {clientTemporaryAccessEnabled && clientTemporaryAccess && workspace.assignment && commercialContext && (clientTemporaryAccess.canView || clientTemporaryAccess.canCreate) && <ClientTemporaryAccessPanel
-              caseRef={caseRef}
-              assignmentRef={workspace.assignment.assignmentRef}
-              contacts={commercialContext.parties.flatMap((party) => party.contacts.map((contact) => ({ contactRef: contact.contactRef, displayName: contact.displayName })))}
-              authorization={authorization}
-              access={clientTemporaryAccess}
-              onUnauthorized={onUnauthorized}
-            />}
             </div>}
 
             {activeView === "SCHEDULE" && <div className="divide-y">
@@ -1003,30 +967,28 @@ export default function SurveyCasePanel({
               </section>
             )}
 
-            {workspace.decision?.method === "IN_PERSON" &&
-              logisticsSummaryEnabled && (
-                <>
-                  {transportAccess?.canView && <div className="p-4"><Suspense fallback={<p className="text-sm text-slate-500">Cargando transporte de la visita…</p>}><TransportCalculationPanel caseRef={caseRef} purpose="VISIT" contextRef={workspace.decision.decisionRef} authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized} onPublished={() => { void load(date || undefined); }} /></Suspense></div>}
-                  {transportError && <p role="alert" className="mx-4 mb-3 text-sm text-red-700">{transportError}</p>}
-                  <LogisticsVisitSummary
-                    publication={transportAccess?.canView && transportPublication?.context.contextRef === workspace.decision.decisionRef ? transportPublication : null}
-                    schedulingContext={workspace.schedulingContext}
-                    visitFee={access.canViewFee ? workspace.visitFee : null}
-                    canViewFee={access.canViewFee}
-                    commercialContext={commercialContext}
-                  />
-                </>
-              )}
+            {clientTemporaryAccessEnabled && clientTemporaryAccess && workspace.assignment && commercialContext && (clientTemporaryAccess.canView || clientTemporaryAccess.canCreate) && <ClientTemporaryAccessPanel
+              caseRef={caseRef}
+              assignmentRef={workspace.assignment.assignmentRef}
+              contacts={commercialContext.parties.flatMap((party) => party.contacts.map((contact) => ({ contactRef: contact.contactRef, displayName: contact.displayName })))}
+              authorization={authorization}
+              access={clientTemporaryAccess}
+              onUnauthorized={onUnauthorized}
+            />}
 
-            <section className="grid gap-4 p-4 sm:grid-cols-2">
+            <section className="grid gap-3 bg-slate-50 p-4 sm:grid-cols-3" data-testid="survey-visit-readiness">
               <div>
                 <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
                   <MapPin className="h-4 w-4" />
-                  Visit Fee
+                  Zona y costo
                 </h3>
-                {!access.canViewFee ? (
+                {workspace.decision?.method === "VIRTUAL" ? (
+                  <p className="mt-2 text-sm font-bold text-emerald-700">Virtual · sin tiempo ni costo de traslado</p>
+                ) : !workspace.schedulingContext ? (
+                  <p className="mt-2 text-sm font-semibold text-amber-700">Clasificando la dirección del caso</p>
+                ) : !access.canViewFee ? (
                   <p className="mt-2 text-sm text-slate-500">
-                    Sin permiso de consulta.
+                    {workspace.schedulingContext.zoneType === "METRO" ? "Zona metropolitana" : "Fuera de zona metropolitana"}
                   </p>
                 ) : workspace.visitFee ? (
                   <div className="mt-2 space-y-1 text-sm">
@@ -1039,30 +1001,35 @@ export default function SurveyCasePanel({
                             ? "Pendiente de cálculo"
                             : `${workspace.visitFee.currency} ${workspace.visitFee.suggestedAmount.toLocaleString("es-DO")}`}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      Comunicación: {workspace.visitFee.communicationStatus} ·
-                      aprobación: {workspace.visitFee.approvalStatus} · pago:{" "}
-                      {workspace.visitFee.paymentStatus}
-                    </p>
                   </div>
                 ) : (
                   <p className="mt-2 text-sm text-slate-500">
-                    Pendiente de cálculo por Motor Logístico y Costing.
-                    Scheduling no estima importes.
+                    {workspace.schedulingContext.zoneType === "METRO"
+                      ? "Zona metropolitana · sin cargo publicado"
+                      : "Costo pendiente de publicar"}
                   </p>
                 )}
               </div>
               <div>
                 <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
-                  <MessageSquareText className="h-4 w-4" />
-                  Comunicación PIC
+                  <CalendarClock className="h-4 w-4" />
+                  Reserva
                 </h3>
                 <p className="mt-2 text-sm text-slate-600">
-                  Plantillas publicadas y destinatarios explícitos para cliente
-                  y evaluador.
+                  {workspace.availability
+                    ? `${workspace.availability.dayOccupied}/${workspace.availability.dayCapacity} visitas en la fecha consultada`
+                    : "Seleccione una fecha para consultar disponibilidad"}
                 </p>
-                <p className="mt-2 text-[11px] text-slate-500">
-                  PREPARED no envía mensajes externos.
+              </div>
+              <div>
+                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
+                  <MessageSquareText className="h-4 w-4" />
+                  Confirmaciones
+                </h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  {workspace.assignment
+                    ? `Cliente: ${workspace.assignment.clientConfirmation} · Evaluador: ${workspace.assignment.evaluatorConfirmation}`
+                    : "Al reservar se preparan los avisos versionados para cliente y evaluador"}
                 </p>
               </div>
             </section>
@@ -1259,6 +1226,7 @@ function ScheduleEditor({
   reprogramming = false,
   onSave,
 }: ScheduleEditorProps) {
+  const physicalVisit = workspace.decision?.method === "IN_PERSON";
   const slots =
     workspace.policy?.slots.filter(
       (slot) => slot.profile === workspace.schedulingContext?.profile,
@@ -1380,7 +1348,7 @@ function ScheduleEditor({
       className="mt-4 space-y-4 rounded border border-slate-200 bg-slate-50 p-3"
       data-testid="survey-schedule-editor"
     >
-      {!reprogramming && workspace.visitLocations.length > 0 && (
+      {!reprogramming && physicalVisit && workspace.visitLocations.length > 0 && (
         <div>
           <Label>Lugar de la visita</Label>
           <Select
@@ -1485,7 +1453,7 @@ function ScheduleEditor({
               ))}
             </SelectContent>
           </Select>
-          {workspace.schedulingContext.zoneType !== "METRO" && (
+          {physicalVisit && workspace.schedulingContext.zoneType !== "METRO" && (
             <p
               className={`mt-1 text-[11px] font-semibold ${evaluatorDailyLimitReached ? "text-red-700" : "text-slate-500"}`}
             >
@@ -1505,7 +1473,7 @@ function ScheduleEditor({
                 Seleccione la hora exacta que se confirmará con el cliente.
               </p>
             </div>
-            {workspace.operationalPolicy && (
+            {workspace.operationalPolicy && physicalVisit && (
               <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-slate-600">
                 Traslado mínimo entre visitas: {workspace.operationalPolicy.minimumTravelBufferMinutes} min
               </span>
@@ -1545,12 +1513,12 @@ function ScheduleEditor({
       {!reprogramming && (
         <div>
           <Label htmlFor="survey-evaluator-instruction">
-            Instrucciones para el evaluador
+            Notas y alcance para el evaluador
           </Label>
           <Input
             id="survey-evaluator-instruction"
             value={instruction}
-            placeholder="Preferencias del cliente, acceso o indicación importante"
+            placeholder="Qué debe revisar, preferencias del cliente, acceso o indicación importante"
             onChange={(event) => setInstruction?.(event.target.value)}
           />
         </div>
@@ -1584,7 +1552,7 @@ function ScheduleEditor({
             (!reprogramming &&
               Boolean(workspace.operationalPolicy) &&
               !visitReasonRef) ||
-            (!reprogramming && workspace.visitLocations.length > 0 && !visitLocationKey) ||
+            (!reprogramming && physicalVisit && workspace.visitLocations.length > 0 && !visitLocationKey) ||
             ((extraordinary || needsException) && !reason) ||
             (reprogramming && !reason)
           }

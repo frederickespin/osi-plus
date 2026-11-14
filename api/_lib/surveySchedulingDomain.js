@@ -128,6 +128,12 @@ async function caseByRef(tx, who, caseRef) {
           { stopOrder: "asc" },
         ],
       },
+      commercialContexts: {
+        where: { state: "PUBLISHED" },
+        orderBy: { version: "desc" },
+        take: 1,
+        include: { parties: { include: { entity: true } } },
+      },
     },
   });
   if (!row) schedulingFail("CRM_SURVEY_RESOURCE_NOT_FOUND", 404);
@@ -153,6 +159,12 @@ async function decisionByRef(tx, who, decisionRef) {
           { role: "asc" },
           { stopOrder: "asc" },
         ],
+      },
+      commercialContexts: {
+        where: { state: "PUBLISHED" },
+        orderBy: { version: "desc" },
+        take: 1,
+        include: { parties: { include: { entity: true } } },
       },
     },
   });
@@ -338,12 +350,16 @@ function evaluatorContext(
   const routes = pipelineCase.routeSnapshots.filter(
     (route) => route.routeVersion === pipelineCase.routeRevision,
   );
+  const commercialParties = pipelineCase.commercialContexts?.[0]?.parties || [];
+  const partyName = (role) =>
+    commercialParties.find((party) => party.role === role)?.entity?.displayName ||
+    null;
   return Object.freeze({
     caseCode: pipelineCase.caseCode,
     clientDisplayName: pipelineCase.client?.displayName || null,
-    company: null,
-    leadAccount: null,
-    booker: null,
+    company: partyName("COMPANY"),
+    leadAccount: partyName("LEAD_ACCOUNT"),
+    booker: partyName("BOOKER"),
     origin: routeSummary(routes.find((route) => route.role === "ORIGIN")),
     destination: routeSummary(
       routes.find((route) => route.role === "DESTINATION"),
@@ -892,7 +908,10 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
             ),
             dailyAssigned: dailyInteriorCounts.get(row.membershipId) || 0,
             dailyLimit:
-              schedulingContext?.zoneType !== "METRO" ? 1 : null,
+              decision?.method === "IN_PERSON" &&
+              schedulingContext?.zoneType !== "METRO"
+                ? 1
+                : null,
           }))
         : candidates.map((row) => ({
             membershipRef: row.publicRef,
@@ -904,7 +923,10 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
               )?.capabilities || [],
             dailyAssigned: 0,
             dailyLimit:
-              schedulingContext?.zoneType !== "METRO" ? 1 : null,
+              decision?.method === "IN_PERSON" &&
+              schedulingContext?.zoneType !== "METRO"
+                ? 1
+                : null,
           })),
       visitFee: fee
         ? {

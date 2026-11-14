@@ -6,6 +6,8 @@ const read = (path) => readFileSync(path, "utf8");
 export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   const source = (path) => overrides[path] ?? read(path);
   const detail = source("src/commercial-crm/CommercialCaseDetail.tsx");
+  const inbox = source("src/commercial-crm/CommercialInboxModule.tsx");
+  const shell = source("src/commercial-crm/AdvancedErpShell.tsx");
   const overview = source("src/commercial-crm/CaseWorkflowOverview.tsx");
   const survey = source("src/survey/SurveyCasePanel.tsx");
   const summary = source("src/logistics-engine/LogisticsVisitSummary.tsx");
@@ -21,11 +23,18 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.doesNotMatch(tabs, /LOGISTICS|Motor Logístico/, "Motor no puede ser tab de Comercial");
   assert.doesNotMatch(detail, /LogisticsPlanPanel/, "Comercial no puede importar el workspace operativo del Motor");
   assert.doesNotMatch(overview, /onSelectTab\(["']LOGISTICS["']\)|Motor Logístico[^\n]*button/, "el resumen no puede abrir Motor manualmente");
-  assert.match(tabs, /\["SUMMARY", "Resumen"[\s\S]*\["SERVICES", "Servicios"[\s\S]*\["SURVEY", "Survey"[\s\S]*\["QUOTE", "Cotización"/, "flujo comercial consolidado ausente");
+  assert.match(tabs, /\["SERVICES", "Servicios"[\s\S]*\["SURVEY", "Survey"[\s\S]*\["QUOTE", "Cotización"/, "flujo comercial consolidado ausente");
+  assert.doesNotMatch(tabs, /SUMMARY|Resumen/, "Resumen pertenece al selector de casos y no a la Ficha completa");
+  assert.doesNotMatch(detail, /CaseWorkflowOverview/, "la Ficha no puede duplicar el flujo anterior");
   assert.doesNotMatch(tabs, /\["COSTING", "Costos"/, "Costos debe permanecer dentro de Cotización");
   assert.match(detail, /Etapas de Cotización/);
   assert.match(detail, /Costos internos/);
   assert.match(detail, /FUTURE_TABS[\s\S]*Contrato[\s\S]*Ejecución[\s\S]*Cambios[\s\S]*Facturación/);
+  assert.match(inbox, /Resumen general de servicios/);
+  assert.match(inbox, /Alertas generales/);
+  assert.doesNotMatch(inbox, /Control del equipo/);
+  assert.match(inbox, /label: "Servicios"[\s\S]*label: "Survey"[\s\S]*label: "Cotización"[\s\S]*label: "Contrato"[\s\S]*label: "Ejecución"[\s\S]*label: "Cambios"[\s\S]*label: "Facturación"/);
+  assert.match(shell, /flex h-screen overflow-hidden/);
   assert.match(overview, /Tablero operativo del caso/);
   assert.match(overview, /Próxima acción/);
   assert.match(overview, /Próxima cita/);

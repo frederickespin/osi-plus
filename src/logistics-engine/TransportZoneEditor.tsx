@@ -6,7 +6,7 @@ import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { cn } from "@/lib/utils";
 import type { TransportBasis, TransportComponentInput, TransportComponentKind, TransportCoordinate, TransportPurpose, TransportZone, TransportZoneInput } from "./transportApi";
-import { BASIS_LABELS, INCLUDED_KINDS, KIND_LABELS, PURPOSE_LABELS, STATE_LABELS, TRANSPORT_PURPOSES } from "./transportPresentation";
+import { BASIS_LABELS, INCLUDED_KINDS, KIND_LABELS, PURPOSE_LABELS, STATE_LABELS } from "./transportPresentation";
 
 const TransportZoneMap = lazy(() => import("./TransportZoneMap"));
 const field = cn(COMPACT_FORM_FIELD, "mt-1 block w-full text-sm font-normal leading-4");
@@ -25,6 +25,7 @@ type Props = Readonly<{
   onSave(input: TransportZoneInput): void; onClose(): void; onRefresh(): void;
 }>;
 const ALLOWED_BASES: Record<TransportComponentKind, readonly TransportBasis[]> = { BASE: ["TRIP"], FUEL: ["GALLON"], TOLL: ["PASS", "FIXED"], PER_DIEM: ["PERSON_DAY"], ALLOWANCE: ["PERSON_DAY", "FIXED", "TRIP"], OTHER: ["TRIP", "PASS", "PERSON_DAY", "FIXED", "KM"] };
+const CONFIGURABLE_ZONE_PURPOSES: readonly TransportPurpose[] = ["VISIT", "SERVICE"];
 
 function newComponent(kind: TransportComponentKind = "OTHER"): ComponentDraft {
   const basis: TransportBasis = kind === "FUEL" ? "GALLON" : kind === "TOLL" ? "PASS" : kind === "PER_DIEM" ? "PERSON_DAY" : kind === "BASE" ? "TRIP" : "FIXED";
@@ -36,7 +37,7 @@ function fromZone(zone: TransportZone | null): Draft {
   const ring = zone.geometry.coordinates[0] || [];
   return {
     code: zone.code, name: zone.name, zoneType: zone.zoneType, priority: String(zone.priority), vehicleType: zone.vehicleType || "",
-    purposes: [...zone.purposes], points: ring.slice(0, -1).map(([longitude, latitude]) => ({ longitude: String(longitude), latitude: String(latitude) })),
+    purposes: zone.purposes.filter((purpose) => purpose !== "QUOTE"), points: ring.slice(0, -1).map(([longitude, latitude]) => ({ longitude: String(longitude), latitude: String(latitude) })),
     mode: zone.mode, factor: zone.factor || "", currency: zone.currency, kmPerGallon: zone.kmPerGallon || "", gallonUnit: zone.gallonUnit,
     fuelType: zone.fuelType || "", includedConcepts: [...zone.includedConcepts], state: zone.state,
     components: zone.components.map((component) => ({ ...component, key: crypto.randomUUID(), unitCost: component.unitCost ?? "", minimumMargin: component.minimumMarginBps === null ? "" : String(component.minimumMarginBps / 100), recommendedMargin: component.recommendedMarginBps === null ? "" : String(component.recommendedMarginBps / 100) })),
@@ -106,7 +107,7 @@ export default function TransportZoneEditor({ zone, vehicleTypes, saving, error,
             </div>
             <section className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
               <div className="flex items-center gap-1"><h3 className="text-xs font-semibold text-slate-700">Aplicación de la geocerca *</h3><AdministrationHelp title="Visitas y servicios por separado"><p>Marque cada uso de forma independiente. La geocerca clasifica el destino y calcula el costo operativo; no decide por sí sola si ese costo se cobrará al cliente.</p><p>Puede repetir el mismo perímetro en dos zonas: una para visitas con automóvil y otra para servicios con camión.</p></AdministrationHelp></div>
-              <div className="grid gap-2 sm:grid-cols-3">{TRANSPORT_PURPOSES.map((purpose) => <label key={purpose} className={`flex min-h-11 items-center gap-2 rounded border bg-white px-3 text-xs font-medium ${draft.purposes.includes(purpose) ? "border-[#003366] text-[#003366]" : "border-slate-200 text-slate-600"}`}><input type="checkbox" checked={draft.purposes.includes(purpose)} onChange={(event) => change("purposes", event.target.checked ? [...draft.purposes, purpose] : draft.purposes.filter((value) => value !== purpose))} className="h-4 w-4 accent-[#003366]" />{PURPOSE_LABELS[purpose]}</label>)}</div>
+              <div className="grid gap-2 sm:grid-cols-2">{CONFIGURABLE_ZONE_PURPOSES.map((purpose) => <label key={purpose} className={`flex min-h-11 items-center gap-2 rounded border bg-white px-3 text-xs font-medium ${draft.purposes.includes(purpose) ? "border-[#003366] text-[#003366]" : "border-slate-200 text-slate-600"}`}><input type="checkbox" checked={draft.purposes.includes(purpose)} onChange={(event) => change("purposes", event.target.checked ? [...draft.purposes, purpose] : draft.purposes.filter((value) => value !== purpose))} className="h-4 w-4 accent-[#003366]" />{PURPOSE_LABELS[purpose]}</label>)}</div>
               <p className="text-[11px] leading-5 text-slate-600">Una visita puede quedar sin cargo para el cliente y aun así conservar su costo operativo. Los servicios en camión usan su propio perfil de vehículo, distancia vial, combustible, peajes y viáticos.</p>
               {draft.purposes.includes("VISIT") && draft.purposes.includes("SERVICE") && <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900">Visitas y servicios compartirán este mismo vehículo y estructura de costos. Si se movilizan por rutas o vehículos distintos, cree dos zonas con el mismo perímetro y marque un solo uso en cada una.</p>}
             </section>

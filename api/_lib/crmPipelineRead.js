@@ -70,6 +70,31 @@ const ROUTE_SELECT = Object.freeze({
 });
 
 const LOGISTICS_ZONE_SELECT = Object.freeze({ planRef: true });
+const SLA_COMPLETED_STATUSES = new Set(["WON", "LOST", "OPS_HANDOFF"]);
+const SLA_HOURS_BY_STATUS = Object.freeze({
+  NEW_INBOX: 1, AWAITING_ICP: 4, GOVERNANCE_CONFIRMED: 8, REQUIREMENTS_CONFIRMED: 8,
+  SURVEY_PLANNING: 24, SURVEY_SCHEDULED: 72, SURVEY_COMPLETED: 24,
+  CRATING_ESTIMATE_PENDING: 24, PRICING_IN_PROGRESS: 24, QUOTE_DRAFT: 24,
+  INTERNAL_REVIEW: 12, QUOTE_SENT: 48, NEGOTIATION: 72, CHANGE_CONTROL: 24, APPROVED: 24,
+});
+
+function caseSla(row, now = Date.now()) {
+  if (SLA_COMPLETED_STATUSES.has(row.status)) {
+    return Object.freeze({ state: "COMPLETED", dueAt: null, remainingMinutes: null, basis: "STATUS_POLICY" });
+  }
+  const hours = SLA_HOURS_BY_STATUS[row.status] || 24;
+  const parsedStartedAt = new Date(row.statusChangedAt || row.createdAt || row.updatedAt || now).getTime();
+  const startedAt = Number.isFinite(parsedStartedAt) ? parsedStartedAt : now;
+  const dueTime = startedAt + (hours * 60 * 60 * 1000);
+  const remainingMinutes = Math.ceil((dueTime - now) / 60_000);
+  const warningMinutes = Math.max(60, Math.round(hours * 60 * 0.25));
+  return Object.freeze({
+    state: remainingMinutes < 0 ? "OVERDUE" : remainingMinutes <= warningMinutes ? "AT_RISK" : "ON_TRACK",
+    dueAt: new Date(dueTime).toISOString(),
+    remainingMinutes,
+    basis: "STATUS_POLICY",
+  });
+}
 
 const CASE_SELECT = Object.freeze({
   publicRef: true,
@@ -85,6 +110,7 @@ const CASE_SELECT = Object.freeze({
   destinationLocation: true,
   destinationContracted: true,
   assetsCount: true,
+  statusChangedAt: true,
   createdAt: true,
   updatedAt: true,
   routeRevision: true,
@@ -111,6 +137,7 @@ const CASE_DETAIL_SELECT = Object.freeze({
   destinationLocation: true,
   destinationContracted: true,
   assetsCount: true,
+  statusChangedAt: true,
   createdAt: true,
   updatedAt: true,
   routeRevision: true,
@@ -327,6 +354,7 @@ function safeCase(row) {
     owner: safeOwner(row.enterpriseOwner),
     quoteCount: Number(row._count?.quotes || 0),
     eventCount: Number(row._count?.events || 0),
+    sla: caseSla(row),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -351,6 +379,7 @@ function safeCaseDetail(row, membershipId) {
     assetsCount: row.assetsCount,
     quoteCount: Number(row._count?.quotes || 0),
     eventCount: Number(row._count?.events || 0),
+    sla: caseSla(row),
     client: safeClient(row.client),
     owner: row.enterpriseOwner?.user?.name
       ? Object.freeze({ displayName: String(row.enterpriseOwner.user.name), isCurrentActor: row.ownerMembershipId === membershipId })
@@ -407,13 +436,8 @@ export async function summarizeCrmPipelineCases(prisma, { tenantId, role, member
   const where = resolveCrmPipelineReadScope({ tenantId, role, membershipId, userId });
   const personalScope = typeof where.ownerMembershipId === "string" && typeof where.ownerUserId === "string";
   try {
-    const [groups, assigned, unassigned] = await prisma.$transaction([
-      prisma.pipelineCase.groupBy({
-        by: ["status"],
-        where,
-        _count: { _all: true },
-        orderBy: { status: "asc" },
-      }),
+    const [rows, assigned, unassigned] = await prisma.$transaction([
+      prisma.pipelineCase.findMany({ where, select: { status: true, statusChangedAt: true, createdAt: true } }),
       prisma.pipelineCase.count({
         where: personalScope ? where : { ...where, ownerMembershipId: { not: null }, ownerUserId: { not: null } },
       }),
@@ -422,13 +446,21 @@ export async function summarizeCrmPipelineCases(prisma, { tenantId, role, member
       }),
     ]);
     const byStatus = Object.fromEntries(PIPELINE_STATUSES.map((status) => [status, 0]));
-    for (const group of groups) byStatus[group.status] = Number(group._count?._all || 0);
+    let overdue = 0;
+    let atRisk = 0;
+    const now = Date.now();
+    for (const row of rows) {
+      byStatus[row.status] += 1;
+      const sla = caseSla(row, now);
+      if (sla.state === "OVERDUE") overdue += 1;
+      if (sla.state === "AT_RISK") atRisk += 1;
+    }
     return Object.freeze({
       total: assigned + unassigned,
       assigned,
       unassigned,
       byStatus: Object.freeze(byStatus),
-      sla: Object.freeze({ overdue: null, basis: "UNAVAILABLE" }),
+      sla: Object.freeze({ overdue, atRisk, basis: "STATUS_POLICY" }),
     });
   } catch (cause) {
     throw commercialDatabaseUnavailable(cause);

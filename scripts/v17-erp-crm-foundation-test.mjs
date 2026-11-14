@@ -7,7 +7,7 @@ const TENANT = "tenant-synthetic-foundation";
 const EXPECTED_DETAIL_KEYS = [
   "assetsCount", "caseCode", "caseRef", "client", "createdAt", "customerType", "destinationContracted",
   "destinationLocation", "estimatedCbm", "eventCount", "mode", "originLocation", "owner", "quoteCount",
-  "requiresSurvey", "serviceType", "status", "surveyMethod", "updatedAt", "version",
+  "requiresSurvey", "route", "serviceType", "sla", "status", "surveyMethod", "updatedAt", "version",
 ].sort();
 
 let assertions = 0;

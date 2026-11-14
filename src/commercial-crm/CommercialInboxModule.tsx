@@ -13,6 +13,7 @@ import {
   type CrmPipelineList,
   type CrmPipelineSummary,
   type CrmRouteEndpoint,
+  type CrmOwnerOption,
   type PipelineCaseStatus,
   type PipelineMode,
 } from "@/crm-relational/types";
@@ -88,9 +89,23 @@ function SummaryStrip({ value, role }: { value: CrmPipelineSummary | null; role:
     `${value?.total ?? 0} ${role === "V" ? "casos propios" : "casos"}`,
     `${value?.assigned ?? 0} asignados`,
     `${value?.unassigned ?? 0} sin asignar`,
-    "SLA sin configurar",
+    `${value?.sla.overdue ?? 0} SLA vencidos`,
   ];
   return <div data-testid="commercial-summary-strip" className="flex min-h-9 items-center overflow-x-auto border-b border-slate-200 bg-slate-50 px-3 text-[11px] font-bold text-[#003366] sm:text-xs" aria-label="Resumen del alcance comercial">{values.map((label, index) => <span key={label} className={`shrink-0 py-2 ${index ? "ml-3 border-l border-slate-300 pl-3" : ""}`}>{label}</span>)}</div>;
+}
+
+function slaLabel(item: Pick<CrmPipelineCase, "sla">) {
+  if (item.sla.state === "COMPLETED") return "SLA completado";
+  if (item.sla.state === "OVERDUE") return `SLA vencido ${Math.abs(item.sla.remainingMinutes || 0)} min`;
+  if (item.sla.state === "AT_RISK") return `SLA en riesgo · ${item.sla.remainingMinutes || 0} min`;
+  return `SLA en tiempo · ${item.sla.remainingMinutes || 0} min`;
+}
+
+function slaClass(item: Pick<CrmPipelineCase, "sla">) {
+  if (item.sla.state === "OVERDUE") return "bg-red-50 text-red-700";
+  if (item.sla.state === "AT_RISK") return "bg-amber-50 text-amber-800";
+  if (item.sla.state === "COMPLETED") return "bg-emerald-50 text-emerald-700";
+  return "bg-sky-50 text-sky-700";
 }
 
 function EmptyState() {
@@ -132,7 +147,7 @@ function QueueItem({ item, selected, onSelect, onOpen }: {
         <RouteEndpoint label="Dir. destino" item={item.route?.destination || null} mode={item.mode} />
         <span className="mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden">
         <Badge variant="outline" className="shrink-0 px-1.5 text-[9px]">{item.mode ? MODE_LABELS[item.mode] : "Modo pendiente"}</Badge>
-        <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">SLA sin configurar</span>
+        <span className={`shrink-0 rounded px-1.5 py-0.5 ${slaClass(item)}`}>{slaLabel(item)}</span>
         {alerts.slice(0, 1).map((alert) => <span key={alert} className="max-w-32 truncate rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-800">{alert}</span>)}
         <span className="max-w-32 truncate text-slate-600">{item.owner?.displayName || "Sin asignar"}</span>
         {item.eventCount > 0 && <span className="shrink-0 text-slate-500">Act. {item.eventCount}</span>}
@@ -162,7 +177,7 @@ function GeneralServicesPanel({ summary, role }: { summary: CrmPipelineSummary |
     </div>
     <div className="grid divide-y divide-slate-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
       <div className="p-5"><h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Servicios por etapa</h3><div className="mt-3 divide-y divide-slate-100">{statuses.length ? statuses.map((status) => <div key={status} className="flex items-center justify-between py-2 text-sm"><span>{STATUS_LABELS[status]}</span><strong className="text-[#003366]">{summary?.byStatus[status] ?? 0}</strong></div>) : <p className="py-5 text-sm text-slate-500">Sin casos en el alcance actual.</p>}</div></div>
-      <div className="p-5"><h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500"><BellRing className="h-4 w-4" />Alertas generales</h3><div className="mt-3 divide-y divide-slate-100"><div className="flex items-center justify-between py-3 text-sm"><span>Casos sin responsable</span><strong className={summary?.unassigned ? "text-amber-700" : "text-emerald-700"}>{summary?.unassigned ?? 0}</strong></div><div className="flex items-center justify-between py-3 text-sm"><span>Survey pendientes o programados</span><strong>{surveyAttention}</strong></div><div className="flex items-center justify-between py-3 text-sm"><span>Propuestas en preparación o decisión</span><strong>{quoteAttention}</strong></div><div className="flex items-center justify-between py-3 text-sm"><span>Servicios listos para operación</span><strong>{operationalAttention}</strong></div><p className="py-3 text-xs leading-5 text-slate-500">Los conteos muestran únicamente estados publicados; las alertas particulares aparecen al seleccionar cada caso.</p></div></div>
+      <div className="p-5"><h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500"><BellRing className="h-4 w-4" />Alertas generales</h3><div className="mt-3 divide-y divide-slate-100"><div className="flex items-center justify-between py-3 text-sm"><span>Casos sin responsable</span><strong className={summary?.unassigned ? "text-amber-700" : "text-emerald-700"}>{summary?.unassigned ?? 0}</strong></div><div className="flex items-center justify-between py-3 text-sm"><span>SLA vencidos</span><strong className={summary?.sla.overdue ? "text-red-700" : "text-emerald-700"}>{summary?.sla.overdue ?? 0}</strong></div><div className="flex items-center justify-between py-3 text-sm"><span>SLA próximos a vencer</span><strong className={summary?.sla.atRisk ? "text-amber-700" : "text-emerald-700"}>{summary?.sla.atRisk ?? 0}</strong></div><div className="flex items-center justify-between py-3 text-sm"><span>Survey pendientes o programados</span><strong>{surveyAttention}</strong></div><div className="flex items-center justify-between py-3 text-sm"><span>Propuestas en preparación o decisión</span><strong>{quoteAttention}</strong></div><div className="flex items-center justify-between py-3 text-sm"><span>Servicios listos para operación</span><strong>{operationalAttention}</strong></div><p className="py-3 text-xs leading-5 text-slate-500">La política de atención mide el tiempo desde el último cambio de etapa. Toda asignación o rescate conserva su historial.</p></div></div>
     </div>
   </section>;
 }
@@ -212,8 +227,9 @@ function CaseProgressHeader({ item, onOpenCase }: { item: CrmPipelineCaseDetail;
   </div>;
 }
 
-function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, mutationApi, onClear, onReload, onOpenCase }: {
+function CaseSummaryPanel({ state, role, mutationEnvironmentEnabled, mutationAccess, mutationApi, onClear, onReload, onOpenCase }: {
   state: DetailState;
+  role: string;
   mutationEnvironmentEnabled: boolean;
   mutationAccess: CrmCaseMutationUiAccess;
   mutationApi: CrmCaseMutationApi;
@@ -222,10 +238,30 @@ function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, m
   onOpenCase(caseRef: string, tab?: CaseWorkspaceTab): void;
 }) {
   const [editOpen, setEditOpen] = useState(false);
+  const [ownerOptions, setOwnerOptions] = useState<readonly CrmOwnerOption[]>([]);
+  const [selectedOwnerRef, setSelectedOwnerRef] = useState("");
+  const [ownerBusy, setOwnerBusy] = useState(false);
+  const [ownerError, setOwnerError] = useState<string | null>(null);
   const item = state.value;
   const alerts = item ? factualAlerts(item) : [];
   const canEdit = Boolean(item && mutationEnvironmentEnabled && !["APPROVED", "OPS_HANDOFF"].includes(item.status) && (mutationAccess.canUpdateAny || (mutationAccess.canUpdateOwn && item.owner?.isCurrentActor)));
   const initial = useMemo<CrmCaseFields | undefined>(() => item ? ({ clientRef: item.client?.clientRef || null, mode: item.mode || "LOCAL", serviceType: item.serviceType || "", customerType: (item.customerType || "L4_PERSONAL") as CrmCaseFields["customerType"], estimatedCbm: item.estimatedCbm || 0, requiresSurvey: item.requiresSurvey, surveyMethod: (item.surveyMethod || "NO_APLICA") as CrmCaseFields["surveyMethod"], originLocation: item.originLocation || "", destinationLocation: item.destinationLocation || "", destinationContracted: item.destinationContracted ?? true }) : undefined, [item]);
+  useEffect(() => {
+    if (!item || role !== "A" || ["APPROVED", "OPS_HANDOFF"].includes(item.status)) { setOwnerOptions([]); return undefined; }
+    const controller = new AbortController();
+    setOwnerError(null);
+    void mutationApi.ownerOptions(item.caseRef)
+      .then((options) => { if (!controller.signal.aborted) { setOwnerOptions(options); setSelectedOwnerRef(options[0]?.ownerRef || ""); } })
+      .catch((cause) => { if (!controller.signal.aborted) setOwnerError(cause instanceof Error ? cause.message : "No se pudo consultar la carga del equipo."); });
+    return () => controller.abort();
+  }, [item, mutationApi, role]);
+  const assignOwner = async (ownerRef: string) => {
+    if (!item || !ownerRef) return;
+    setOwnerBusy(true); setOwnerError(null);
+    try { await mutationApi.assignOwner(item.caseRef, item.version, ownerRef); onReload(); }
+    catch (cause) { setOwnerError(cause instanceof Error ? cause.message : "No se pudo confirmar la asignación."); }
+    finally { setOwnerBusy(false); }
+  };
   return <section data-testid="commercial-case-summary" className="h-full overflow-y-auto bg-white" aria-labelledby="case-summary-heading">
     <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
       <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#0070a8]">Caso seleccionado</p><h2 id="case-summary-heading" className="mt-1 text-xl font-black text-[#003366]">Resumen comercial</h2></div>
@@ -235,10 +271,11 @@ function CaseSummaryPanel({ state, mutationEnvironmentEnabled, mutationAccess, m
     {state.loading && <div className="grid min-h-[40vh] place-items-center text-sm text-slate-500">Cargando resumen autorizado…</div>}
     {state.error && <Alert variant="destructive" role="alert" className="m-4"><AlertCircle /><AlertTitle>{state.error.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(state.error)}<Button className="mt-3" size="sm" variant="outline" onClick={onReload}>Reintentar lectura</Button></AlertDescription></Alert>}
     {item && <div className="divide-y divide-slate-200">
-      <section className="px-4 py-3"><p className="font-mono text-sm font-black text-[#003366]">{item.caseCode}</p><p className="mt-1 text-base font-bold text-slate-900">{item.client?.displayName || "Sin Client vinculado"}</p><div className="mt-2 flex flex-wrap gap-2"><Badge data-status={item.status} variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">Etapa no publicada</span><span className="rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">SLA sin autoridad</span></div></section>
+      <section className="px-4 py-3"><p className="font-mono text-sm font-black text-[#003366]">{item.caseCode}</p><p className="mt-1 text-base font-bold text-slate-900">{item.client?.displayName || "Sin Client vinculado"}</p><div className="mt-2 flex flex-wrap gap-2"><Badge data-status={item.status} variant="outline" className={statusClass(item.status)}>{STATUS_LABELS[item.status]}</Badge><span className={`rounded px-2 py-1 text-[10px] font-semibold ${slaClass(item)}`}>{slaLabel(item)}</span></div></section>
       <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Identidad y servicio</h3><dl className="mt-1"><SummaryRow label="Vendedor" value={item.owner?.displayName || "Sin asignar"} /><SummaryRow label="Dir. origen" value={item.route?.origin?.compactAddress || "Dirección estructurada pendiente"} note={item.mode === "LOCAL" && item.route?.origin?.area === "INTERIOR" ? "⚠ Fuera de área METRO según clasificación publicada." : undefined} /><SummaryRow label="Dir. destino" value={item.route?.destination?.compactAddress || "Dirección estructurada pendiente"} note={item.mode === "LOCAL" && item.route?.destination?.area === "INTERIOR" ? "⚠ Fuera de área METRO según clasificación publicada." : undefined} /><SummaryRow label="Servicio" value={`${item.mode ? MODE_LABELS[item.mode] : "Modo no disponible"} · ${item.serviceType || "Tipo no disponible"}`} /></dl></section>
       <section className="px-4 py-2"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Valor y seguimiento</h3><dl className="mt-1"><SummaryRow label="Precio" value="Sin cotización" note="No se infiere desde CBM, tarifas o borradores." /><SummaryRow label="Comunicación" value="Sin comunicación registrada" note="updatedAt no se utiliza como comunicación." /><SummaryRow label="Próximo paso" value="Pendiente de definir" note="Requiere una tarea o regla de workflow explícita." /></dl></section>
-      <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Alertas</h3><div className="mt-2 flex flex-wrap gap-1.5">{alerts.length ? alerts.map((alert) => <span key={alert} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">{alert}</span>) : <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">Sin alertas deterministas · SLA no calculable</span>}</div></section>
+      <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Alertas</h3><div className="mt-2 flex flex-wrap gap-1.5">{alerts.map((alert) => <span key={alert} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">{alert}</span>)}<span className={`rounded px-2 py-1 text-[10px] font-semibold ${slaClass(item)}`}>{slaLabel(item)}</span></div></section>
+      {role === "A" && !["APPROVED", "OPS_HANDOFF"].includes(item.status) && <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Responsable y carga del equipo</h3><div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><select aria-label="Responsable comercial elegible" value={selectedOwnerRef} onChange={(event) => setSelectedOwnerRef(event.target.value)} disabled={ownerBusy || !ownerOptions.length} className="h-10 rounded border px-3 text-xs"><option value="">Sin usuarios elegibles</option>{ownerOptions.map((option) => <option key={option.presentationKey} value={option.ownerRef}>{option.recommended ? "★ " : ""}{option.displayName} · {option.activeCases}/{option.maxActiveCases} casos · {option.loadPercent}%</option>)}</select><Button disabled={ownerBusy || !selectedOwnerRef} onClick={() => void assignOwner(selectedOwnerRef)}>{item.owner ? item.sla.state === "OVERDUE" || item.sla.state === "AT_RISK" ? "Atender ahora" : "Reasignar" : "Asignar recomendado"}</Button></div>{ownerOptions[0] && <p className="mt-2 text-[11px] text-slate-500">Recomendado: {ownerOptions[0].displayName}, con {ownerOptions[0].activeCases} de {ownerOptions[0].maxActiveCases} casos activos. La reasignación queda auditada con el responsable anterior.</p>}{ownerError && <p role="alert" className="mt-2 text-xs font-semibold text-red-700">{ownerError}</p>}</section>}
       <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Conteos publicados</h3><div className="mt-2 grid grid-cols-3 divide-x divide-slate-200 border-y border-slate-200 py-2 text-center"><div><strong className="block text-sm text-[#003366]">—</strong><span className="text-[10px] text-slate-500">Survey sin conteo</span></div><div><strong className="block text-sm text-[#003366]">{item.quoteCount}</strong><span className="text-[10px] text-slate-500">Cotizaciones</span></div><div><strong className="block text-sm text-[#003366]">{item.eventCount}</strong><span className="text-[10px] text-slate-500">Actividad</span></div></div></section>
       <section className="px-4 py-3"><h3 className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0070a8]">Acciones autorizadas</h3><div className="mt-2 flex flex-wrap items-center gap-2">{canEdit && <Button onClick={() => setEditOpen(true)}><Pencil />Editar</Button>}<span className="text-xs text-slate-500">{canEdit ? "La edición general se inicia únicamente desde el Inbox." : "Consulta en modo de sólo lectura."}</span></div></section>
       {canEdit && initial && <CommercialCaseForm open={editOpen} mode="UPDATE" api={mutationApi} caseRef={item.caseRef} expectedVersion={item.version} initial={initial} initialClient={item.client ? { clientRef: item.client.clientRef, displayName: item.client.displayName, type: item.client.type, status: item.client.status } : undefined} onOpenChange={setEditOpen} onCommitted={() => { setEditOpen(false); onReload(); }} />}
@@ -313,6 +350,6 @@ export default function CommercialInboxModule({ authorization, mutationAccess, s
     {summaryError && <Alert variant="destructive" className="m-3"><AlertCircle /><AlertTitle>{summaryError.code}</AlertTitle><AlertDescription>{commercialReadErrorCopy(summaryError)}</AlertDescription></Alert>}
     {fullCaseWorkspace
       ? <main className="min-h-0 flex-1 overflow-y-auto bg-white" data-testid="commercial-full-case-workspace"><Suspense fallback={<div className="grid min-h-[50vh] place-items-center text-sm font-semibold text-slate-500">Cargando Ficha del Caso…</div>}><CommercialCaseDetail state={detail} authorization={authorization} servicesAccess={servicesAccess} logisticsAccess={logisticsAccess} logisticsEnabled={logisticsEnabled} costingAccess={costingAccess} costingEnabled={costingEnabled} quoteAccess={quoteAccess} quoteEnabled={quoteEnabled} surveyEnabled={surveyEnabled} surveySchedulingAccess={surveySchedulingAccess} commercialRelationshipsEnabled={commercialRelationshipsEnabled} commercialRelationshipsAccess={commercialRelationshipsAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} clientTemporaryAccessEnabled={clientTemporaryAccessEnabled} clientTemporaryAccess={clientTemporaryAccess} onNavigate={onNavigate} onUnauthorized={onUnauthorized} onOpenNavigation={onOpenNavigation} onBack={onReturnToInbox} onReload={() => setDetailRefresh((value) => value + 1)} /></Suspense></main>
-      : <div data-testid="commercial-master-detail-layout" className="min-h-0 flex-1 overflow-hidden xl:grid" style={{ gridTemplateColumns: "clamp(560px, 40%, 720px) minmax(0, 1fr)" }}><div className={selectedCaseRef ? "hidden min-h-0 xl:block" : "block min-h-0"}>{queue}</div><main className={selectedCaseRef ? "block min-h-0 min-w-0 bg-white" : "hidden min-h-0 min-w-0 bg-white xl:block"}>{selectedCaseRef ? <CaseSummaryPanel state={detail} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onClear={() => setSelectedCaseRef(null)} onOpenCase={openFullCase} onReload={() => { setDetailRefresh((value) => value + 1); setRefresh((value) => value + 1); }} /> : <GeneralServicesPanel summary={summary} role={role} />}</main></div>}
+      : <div data-testid="commercial-master-detail-layout" className="min-h-0 flex-1 overflow-hidden xl:grid" style={{ gridTemplateColumns: "clamp(560px, 40%, 720px) minmax(0, 1fr)" }}><div className={selectedCaseRef ? "hidden min-h-0 xl:block" : "block min-h-0"}>{queue}</div><main className={selectedCaseRef ? "block min-h-0 min-w-0 bg-white" : "hidden min-h-0 min-w-0 bg-white xl:block"}>{selectedCaseRef ? <CaseSummaryPanel state={detail} role={role} mutationEnvironmentEnabled={mutationEnvironmentEnabled} mutationAccess={mutationAccess} mutationApi={mutationApi} onClear={() => setSelectedCaseRef(null)} onOpenCase={openFullCase} onReload={() => { setDetailRefresh((value) => value + 1); setRefresh((value) => value + 1); }} /> : <GeneralServicesPanel summary={summary} role={role} />}</main></div>}
   </section>;
 }

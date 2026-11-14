@@ -2,7 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   CalendarClock,
   ClipboardCheck,
+  FileCheck2,
   History,
+  ListChecks,
   MapPin,
   MessageSquareText,
   RefreshCw,
@@ -11,6 +13,7 @@ import {
   UserCog,
   UserRound,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +59,8 @@ type Props = Readonly<{
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
+
+type SurveyWorkspaceView = "REQUEST" | "SCHEDULE" | "RESULT";
 
 const METHOD_LABELS: Readonly<Record<EvaluationMethod, string>> = Object.freeze(
   {
@@ -150,9 +155,12 @@ export default function SurveyCasePanel({
   const [evaluatorRef, setEvaluatorRef] = useState("");
   const [visitReasonRef, setVisitReasonRef] = useState("");
   const [reason, setReason] = useState("");
+  const [instruction, setInstruction] = useState("");
   const [editingSchedule, setEditingSchedule] = useState(false);
   const [editingEvaluator, setEditingEvaluator] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [activeView, setActiveView] =
+    useState<SurveyWorkspaceView>("REQUEST");
   const loadVersion = useRef(0);
 
   const load = useCallback(
@@ -170,6 +178,7 @@ export default function SurveyCasePanel({
           ]);
         if (version !== loadVersion.current) return;
         setWorkspace(nextWorkspace);
+        if (nextWorkspace.decision) setMethod(nextWorkspace.decision.method);
         setCommercialContext(nextCommercial);
         setTransportPublication(null);
         setTransportError(null);
@@ -224,18 +233,20 @@ export default function SurveyCasePanel({
     try {
       await operation();
       await load();
+      return true;
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
           : "CRM_SURVEY_SCHEDULING_REQUEST_FAILED",
       );
+      return false;
     } finally {
       setSaving(false);
     }
   };
-  const saveDecision = () =>
-    mutate(() =>
+  const saveDecision = async () => {
+    const saved = await mutate(() =>
       api.decide({
         caseRef,
         expectedVersion: workspace?.decision?.version || null,
@@ -252,6 +263,10 @@ export default function SurveyCasePanel({
         rationaleCode: method === "NONE" ? "COMMERCIAL_DECISION" : null,
       }),
     );
+    if (saved && ["IN_PERSON", "VIRTUAL", "MINI"].includes(method)) {
+      setActiveView("SCHEDULE");
+    }
+  };
   const saveSchedule = async () => {
     if (!workspace?.decision || !selectedSlot || !date || !evaluatorRef) return;
     const saturday = new Date(`${date}T12:00:00`).getDay() === 6;
@@ -267,7 +282,7 @@ export default function SurveyCasePanel({
         scheduledStart: localDateTime(date, selectedSlot.startTime),
         scheduledEnd: localDateTime(date, selectedSlot.endTime),
         slotKey,
-        instruction: null,
+        instruction: instruction.trim() || null,
         saturdayApprovalReason: saturday ? reason || null : null,
         visitReasonRef: workspace.operationalPolicy
           ? visitReasonRef || null
@@ -377,6 +392,29 @@ export default function SurveyCasePanel({
       setReason("");
     });
   };
+  const recordClientConfirmation = (
+    confirmation: "CONFIRMED" | "CHANGE_REQUESTED",
+  ) => {
+    if (!workspace?.assignment) return;
+    void mutate(() =>
+      personnelApi.mutate("RECORD_CLIENT_CONFIRMATION", {
+        assignmentRef: workspace.assignment!.assignmentRef,
+        expectedVersion: workspace.assignment!.version,
+        confirmation,
+      }),
+    );
+  };
+  const canOpenSchedule = Boolean(
+    workspace?.decision &&
+      [
+        "READY_TO_SCHEDULE",
+        "SCHEDULED",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "CANCELLED",
+      ].includes(workspace.decision.state),
+  );
+  const canOpenResult = Boolean(workspace?.assignment || workspace?.publication);
   if (!access.canView)
     return (
       <section role="status" className="border border-slate-200 bg-white p-6">
@@ -397,7 +435,9 @@ export default function SurveyCasePanel({
           <p className="text-[10px] font-bold uppercase tracking-[.18em] text-indigo-600">
             Comercial · Survey / Scheduling
           </p>
-          <h2 className="text-lg font-black text-[#003366]">Survey</h2>
+          <h2 className="text-lg font-black text-[#003366]">
+            Solicitud y programación de Survey
+          </h2>
         </div>
         <Button size="sm" variant="outline" onClick={() => void load()}>
           <RefreshCw />
@@ -441,8 +481,45 @@ export default function SurveyCasePanel({
         </p>
       )}
       {!loading && workspace && (
-        <div className="grid min-w-0 gap-0 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]">
+        <>
+          <nav
+            aria-label="Etapas de Survey"
+            className="grid border-b bg-white sm:grid-cols-3"
+            data-testid="survey-workspace-views"
+          >
+            <SurveyViewButton
+              active={activeView === "REQUEST"}
+              complete={Boolean(workspace.decision)}
+              icon={ListChecks}
+              label="Solicitud"
+              onClick={() => setActiveView("REQUEST")}
+            />
+            <SurveyViewButton
+              active={activeView === "SCHEDULE"}
+              complete={Boolean(workspace.assignment)}
+              disabled={!canOpenSchedule}
+              icon={CalendarClock}
+              label="Programación"
+              onClick={() => setActiveView("SCHEDULE")}
+            />
+            <SurveyViewButton
+              active={activeView === "RESULT"}
+              complete={Boolean(workspace.publication)}
+              disabled={!canOpenResult}
+              icon={FileCheck2}
+              label="Resultado"
+              onClick={() => setActiveView("RESULT")}
+            />
+          </nav>
+          <div
+            className={
+              activeView === "RESULT"
+                ? "grid min-w-0 gap-0 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]"
+                : "min-w-0"
+            }
+          >
           <div className="min-w-0 divide-y">
+            {activeView === "REQUEST" && <div className="divide-y">
             {commercialContext && (
               <section
                 className="bg-sky-50/50 p-4"
@@ -505,7 +582,7 @@ export default function SurveyCasePanel({
                     id="evaluation-decision-title"
                     className="text-xs font-black uppercase tracking-wide text-slate-500"
                   >
-                    Decisión y método
+                    Solicitud y método
                   </h3>
                   <p className="mt-1 text-lg font-black text-[#003366]">
                     {workspace.decision
@@ -552,7 +629,7 @@ export default function SurveyCasePanel({
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button disabled={saving} onClick={() => void saveDecision()}>{saving ? "Guardando…" : "Guardar decisión"}</Button></div>
+                    <Button disabled={saving} onClick={() => void saveDecision()}>{saving ? "Guardando…" : workspace.decision ? "Actualizar solicitud" : "Crear solicitud"}</Button></div>
                     <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2" data-testid="survey-method-guidance">
                       <p className="border-l-2 border-sky-400 pl-2"><strong>Presencial:</strong> agenda, evaluador, zona, buffers, traslado y Visit Fee.</p>
                       <p className="border-l-2 border-violet-400 pl-2"><strong>Virtual:</strong> cita remota con evaluador y duración; sin traslado físico.</p>
@@ -571,7 +648,9 @@ export default function SurveyCasePanel({
               access={clientTemporaryAccess}
               onUnauthorized={onUnauthorized}
             />}
+            </div>}
 
+            {activeView === "SCHEDULE" && <div className="divide-y">
             <section className="p-4" aria-labelledby="evaluation-agenda-title">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
@@ -664,6 +743,8 @@ export default function SurveyCasePanel({
                     setVisitReasonRef={setVisitReasonRef}
                     reason={reason}
                     setReason={setReason}
+                    instruction={instruction}
+                    setInstruction={setInstruction}
                     saving={saving}
                     onSave={saveSchedule}
                   />
@@ -751,6 +832,41 @@ export default function SurveyCasePanel({
               )}
             </section>
 
+            {workspace.assignment && (
+              <section className="grid gap-3 p-4 sm:grid-cols-2" data-testid="survey-confirmation-status">
+                <div>
+                  <ConfirmationStatus
+                    label="Confirmación del cliente"
+                    value={workspace.assignment.clientConfirmation}
+                  />
+                  {access.canManage && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={saving || workspace.assignment.clientConfirmation === "CONFIRMED"}
+                        onClick={() => recordClientConfirmation("CONFIRMED")}
+                      >
+                        Confirmar con cliente
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={saving}
+                        onClick={() => recordClientConfirmation("CHANGE_REQUESTED")}
+                      >
+                        Solicitó cambio
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <ConfirmationStatus
+                  label="Confirmación del evaluador"
+                  value={workspace.assignment.evaluatorConfirmation}
+                />
+              </section>
+            )}
+
             {workspace.decision?.method === "IN_PERSON" &&
               logisticsSummaryEnabled && (
                 <>
@@ -820,7 +936,9 @@ export default function SurveyCasePanel({
                 <Button size="sm" variant="outline" onClick={() => { if (workspace.assignment) onOpenCommunications(workspace.assignment.assignmentRef); }}><MessageSquareText />Ver comunicaciones de Survey</Button>
               </section>
             )}
+            </div>}
 
+            {activeView === "RESULT" && <div className="divide-y">
             <section className="p-4">
               <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
                 <ClipboardCheck className="h-4 w-4" />
@@ -856,8 +974,10 @@ export default function SurveyCasePanel({
                 </Button>
               )}
             </section>
+            </div>}
           </div>
 
+          {activeView === "RESULT" && (
           <aside className="min-w-0 border-t bg-slate-50 p-4 xl:border-l xl:border-t-0">
             <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
               <History className="h-4 w-4" />
@@ -891,9 +1011,69 @@ export default function SurveyCasePanel({
               </ol>
             )}
           </aside>
-        </div>
+          )}
+          </div>
+        </>
       )}
     </section>
+  );
+}
+
+type SurveyViewButtonProps = Readonly<{
+  active: boolean;
+  complete: boolean;
+  disabled?: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick(): void;
+}>;
+
+function SurveyViewButton({
+  active,
+  complete,
+  disabled = false,
+  icon: Icon,
+  label,
+  onClick,
+}: SurveyViewButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-current={active ? "step" : undefined}
+      className={`flex min-h-14 items-center justify-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors sm:border-b-4 ${
+        active
+          ? "border-[#0070a8] bg-sky-50 text-[#003366]"
+          : "border-transparent text-slate-600 hover:bg-slate-50"
+      } disabled:cursor-not-allowed disabled:opacity-40`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+      {complete && (
+        <span className="h-2 w-2 rounded-full bg-emerald-500" aria-label="Completado" />
+      )}
+    </button>
+  );
+}
+
+function ConfirmationStatus({
+  label,
+  value,
+}: Readonly<{ label: string; value: string }>) {
+  const confirmed = /CONFIRMED|ACCEPTED|APPROVED/.test(value);
+  return (
+    <div className="rounded border border-slate-200 bg-slate-50 p-3">
+      <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-sm font-bold ${confirmed ? "text-emerald-700" : "text-amber-700"}`}
+      >
+        {confirmed ? "Confirmada" : "Pendiente"}
+      </p>
+      <p className="mt-1 text-[11px] text-slate-500">Estado: {value}</p>
+    </div>
   );
 }
 
@@ -909,6 +1089,8 @@ type ScheduleEditorProps = Readonly<{
   setVisitReasonRef?(value: string): void;
   reason: string;
   setReason(value: string): void;
+  instruction?: string;
+  setInstruction?(value: string): void;
   saving: boolean;
   reprogramming?: boolean;
   onSave(): void;
@@ -925,6 +1107,8 @@ function ScheduleEditor({
   setVisitReasonRef,
   reason,
   setReason,
+  instruction = "",
+  setInstruction,
   saving,
   reprogramming = false,
   onSave,
@@ -1035,6 +1219,19 @@ function ScheduleEditor({
               ))}
             </SelectContent>
           </Select>
+        </div>
+      )}
+      {!reprogramming && (
+        <div className="sm:col-span-2">
+          <Label htmlFor="survey-evaluator-instruction">
+            Instrucciones para el evaluador
+          </Label>
+          <Input
+            id="survey-evaluator-instruction"
+            value={instruction}
+            placeholder="Preferencias del cliente, acceso o indicación importante"
+            onChange={(event) => setInstruction?.(event.target.value)}
+          />
         </div>
       )}
       <div>

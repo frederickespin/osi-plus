@@ -21,9 +21,18 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.doesNotMatch(tabs, /LOGISTICS|Motor Logístico/, "Motor no puede ser tab de Comercial");
   assert.doesNotMatch(detail, /LogisticsPlanPanel/, "Comercial no puede importar el workspace operativo del Motor");
   assert.doesNotMatch(overview, /onSelectTab\(["']LOGISTICS["']\)|Motor Logístico[^\n]*button/, "el resumen no puede abrir Motor manualmente");
-  assert.match(tabs, /\["SUMMARY", "Resumen"[\s\S]*\["SURVEY", "Survey"[\s\S]*\["SERVICES", "Servicios"[\s\S]*\["COSTING", "Costos"[\s\S]*\["QUOTE", "Cotización"/, "flujo comercial consolidado ausente");
+  assert.match(tabs, /\["SUMMARY", "Resumen"[\s\S]*\["SERVICES", "Servicios"[\s\S]*\["SURVEY", "Survey"[\s\S]*\["QUOTE", "Cotización"/, "flujo comercial consolidado ausente");
+  assert.doesNotMatch(tabs, /\["COSTING", "Costos"/, "Costos debe permanecer dentro de Cotización");
+  assert.match(detail, /Etapas de Cotización/);
+  assert.match(detail, /Costos internos/);
+  assert.match(detail, /FUTURE_TABS[\s\S]*Contrato[\s\S]*Ejecución[\s\S]*Cambios[\s\S]*Facturación/);
+  assert.match(overview, /Tablero operativo del caso/);
+  assert.match(overview, /Próxima acción/);
+  assert.match(overview, /Próxima cita/);
+  assert.match(overview, /Alertas y bloqueos/);
+  assert.match(overview, /Cambios \/ adendas/);
   assert.match(survey, /<LogisticsVisitSummary/);
-  assert.match(survey, /logisticsApi\.plan\(authorization, caseRef\)/, "Evaluación debe leer la revisión publicada");
+  assert.match(survey, /transportApi\.publication\(authorization, \{ caseRef, purpose: "VISIT"/, "Evaluación debe leer la publicación logística de la visita");
   assert.doesNotMatch(survey + summary, /logisticsApi\.(?:calculate|publish|versionRule)|calculateLogisticsPlan|ruleMatches/, "Evaluación no puede calcular ni administrar el Motor");
   assert.doesNotMatch(summary, /fetch\(|axios|XMLHttpRequest|localStorage|sessionStorage/, "el resumen debe ser presentacional");
   assert.doesNotMatch(costing, /logisticsApi\.(?:calculate|publish)|calculateLogisticsPlan|ruleMatches/, "Costos no puede duplicar fórmulas logísticas");
@@ -43,7 +52,7 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.match(rules, /<AdministrationHelp title="Motor Logístico">/);
   assert.doesNotMatch(http, /PRODUCTION_(?:READ|WRITE|PILOT)/, "12C no activa Production");
   const migrationCount = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
-  assert.ok(migrationCount === 34 || migrationCount === 35 && existsSync("prisma/migrations/20260916010000_v17_client_temporary_portal/migration.sql"), "linaje consolidado debe conservar 34 migraciones o la extensión 16A exacta");
+  assert.ok(migrationCount === 52 && existsSync("prisma/migrations/20261113010000_v17_commercial_storage_requirements/migration.sql"), "el linaje consolidado debe conservar las 52 migraciones publicadas hasta Almacenaje comercial");
   return Object.freeze({ ok: true, commercialMotorTabs: 0, adminLazyBoundary: true, independentAdminSurfaces: true, publishedResultOnly: true, productionApiEnabled: false, migrations: migrationCount });
 }
 

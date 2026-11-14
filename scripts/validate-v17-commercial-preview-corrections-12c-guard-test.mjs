@@ -10,9 +10,11 @@ function rejects(path, mutate) {
 }
 
 assert.equal(validateCommercialPreviewCorrections12cGuard().productionApiEnabled, false);
-rejects("src/commercial-crm/CommercialCaseDetail.tsx", (value) => value.replace('["COSTING", "Costos", Calculator]', '["LOGISTICS", "Motor Logístico", Calculator], ["COSTING", "Costos", Calculator]'));
+rejects("src/commercial-crm/CommercialCaseDetail.tsx", (value) => value.replace('["QUOTE", "Cotización", BriefcaseBusiness]', '["LOGISTICS", "Motor Logístico", Calculator], ["QUOTE", "Cotización", BriefcaseBusiness]'));
 rejects("src/commercial-crm/CommercialCaseDetail.tsx", (value) => `${value}\nconst LogisticsPlanPanel = lazy(() => import(\"@/logistics-engine/LogisticsPlanPanel\"));`);
 rejects("src/commercial-crm/CaseWorkflowOverview.tsx", (value) => `${value}\nonSelectTab(\"LOGISTICS\");`);
+rejects("src/commercial-crm/CaseWorkflowOverview.tsx", (value) => value.replace("Próxima acción", "Acción removida"));
+rejects("src/commercial-crm/CaseWorkflowOverview.tsx", (value) => value.replace("Cambios / adendas", "Cambios eliminados"));
 rejects("src/survey/SurveyCasePanel.tsx", (value) => `${value}\nlogisticsApi.calculate({});`);
 rejects("src/logistics-engine/LogisticsVisitSummary.tsx", (value) => `${value}\nfetch(\"/api/logistics/plans/calculate\");`);
 rejects("src/costing/CostingPanel.tsx", (value) => `${value}\nlogisticsApi.publish({});`);

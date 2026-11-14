@@ -14,7 +14,7 @@ const base = {
   V17_CUSTOMER_CUSTODY_PREVIEW_MIGRATION: `APPLY:${sha}`,
   VERCEL: "1",
   VERCEL_ENV: "preview",
-  VERCEL_GIT_COMMIT_REF: "feature/v17-storage-commercial-contract-22a",
+  VERCEL_GIT_COMMIT_REF: "feature/v17-commercial-storage-services-23a",
   VERCEL_GIT_COMMIT_SHA: sha,
   CUSTOMER_CUSTODY_API_MODE: "PREVIEW_REHEARSAL",
   CUSTOMER_CUSTODY_API_BATCH: "V17-STORAGE-COMMERCIAL-CONTRACT-22A-PREVIEW",
@@ -42,8 +42,8 @@ assert.equal(manifest[CUSTOMER_CUSTODY_MIGRATION], CUSTOMER_CUSTODY_MIGRATION_CH
 const row = (migration_name, checksum) => ({ migration_name, checksum, finished_at: new Date(), rolled_back_at: null, applied_steps_count: 1 });
 const before = Object.entries(manifest).filter(([name]) => name !== CUSTOMER_CUSTODY_MIGRATION).map(([name, checksum]) => row(name, checksum));
 before.push(row(RETAINED_PREVIEW_EXTENSION.name, RETAINED_PREVIEW_EXTENSION.checksum));
-assert.deepEqual(validatePreviewHistory(before, manifest), { alreadyApplied: false, applied: 51 });
-assert.deepEqual(validatePreviewHistory([...before, row(CUSTOMER_CUSTODY_MIGRATION, CUSTOMER_CUSTODY_MIGRATION_CHECKSUM)], manifest), { alreadyApplied: true, applied: 52 });
+assert.deepEqual(validatePreviewHistory(before, manifest), { alreadyApplied: false, applied: 52 });
+assert.deepEqual(validatePreviewHistory([...before, row(CUSTOMER_CUSTODY_MIGRATION, CUSTOMER_CUSTODY_MIGRATION_CHECKSUM)], manifest), { alreadyApplied: true, applied: 53 });
 assert.throws(() => validatePreviewHistory(before.slice(1), manifest), /HISTORY_INVALID/u);
 assert.throws(() => validatePreviewHistory([...before, row("unexpected", "0".repeat(64))], manifest), /HISTORY_INVALID/u);
 
@@ -55,11 +55,11 @@ const baseRelations = {
   inventory_number_exists: true, next_item_number_exists: true,
   catalog_exists: true, package_form_code_exists: true, package_form_label_exists: true,
   warehouse_unload_target_exists: true, lot_unload_target_exists: true, unloading_started_exists: true,
-  unloading_finished_exists: true, vehicle_evidence_exists: true, warehouse_excess_settings_exists: false,
-  authorization_exit_governance_exists: false, item_excess_state_exists: false,
+  unloading_finished_exists: true, vehicle_evidence_exists: true, warehouse_excess_settings_exists: true,
+  authorization_exit_governance_exists: true, item_excess_state_exists: true, storage_requirements_exists: false,
 };
 assert.doesNotThrow(() => validatePreviewRelationState(baseRelations, false));
-assert.doesNotThrow(() => validatePreviewRelationState({ ...baseRelations, warehouse_excess_settings_exists: true, authorization_exit_governance_exists: true, item_excess_state_exists: true }, true));
+assert.doesNotThrow(() => validatePreviewRelationState({ ...baseRelations, storage_requirements_exists: true }, true));
 assert.throws(() => validatePreviewRelationState({ ...baseRelations, scan_first_exists: false }, false), /RELATION_STATE_INVALID/u);
 
 process.stdout.write("v17 customer custody preview migration: ok\n");

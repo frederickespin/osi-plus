@@ -36,6 +36,17 @@ function signed(operation, payload, requestId = uuid(9)) { const body = { operat
 check("decisión presencial queda lista para agenda", () => assert.equal(normalizeSchedulingMutation(signed("DECIDE_METHOD", { caseRef: uuid(4), expectedVersion: null, method: "IN_PERSON", commercialState: "READY_TO_SCHEDULE", informationSource: "COMMERCIAL", rationaleCode: null })).method, "IN_PERSON"));
 check("métodos remotos no crean visita implícita", () => assert.equal(normalizeSchedulingMutation(signed("DECIDE_METHOD", { caseRef: uuid(4), expectedVersion: null, method: "CLIENT_PHOTOS_DOCUMENTS", commercialState: "WAITING_CLIENT_INFO", informationSource: "CLIENT", rationaleCode: null })).commercialState, "WAITING_CLIENT_INFO"));
 check("visita virtual permite cita sin traslado", () => assert.equal(normalizeSchedulingMutation(signed("DECIDE_METHOD", { caseRef: uuid(4), expectedVersion: null, method: "VIRTUAL", commercialState: "READY_TO_SCHEDULE", informationSource: "COMMERCIAL", rationaleCode: null })).commercialState, "READY_TO_SCHEDULE"));
+check("agenda conserva lugar estructurado y duración exacta de la visita", () => {
+  const command = normalizeSchedulingMutation(signed("SCHEDULE", {
+    decisionRef: uuid(14), expectedDecisionVersion: 1, evaluatorMembershipRef: uuid(15),
+    scheduledStart: "2030-09-16T13:00:00.000Z", scheduledEnd: "2030-09-16T13:45:00.000Z",
+    slotKey: "MORNING", instruction: null, saturdayApprovalReason: null,
+    visitReasonRef: uuid(16), visitRouteRole: "ORIGIN", visitRouteOrder: 0,
+  }));
+  assert.equal(command.visitRouteRole, "ORIGIN");
+  assert.equal(command.visitRouteOrder, 0);
+  assert.equal(new Date(command.scheduledEnd) - new Date(command.scheduledStart), 45 * 60_000);
+});
 fails("hash recibido se recalcula en servidor", () => normalizeSchedulingMutation({ ...signed("DECIDE_METHOD", { caseRef: uuid(4), expectedVersion: null, method: "NONE", commercialState: "NOT_REQUIRED", informationSource: null, rationaleCode: null }), payloadHash: "0".repeat(64) }), "CRM_SURVEY_PAYLOAD_HASH_MISMATCH");
 
 check("Visit Fee gratuito no inventa importe", () => assert.equal(validateVisitFeeSource({ disposition: "FREE", suggestedAmount: null }).suggestedAmount, null));

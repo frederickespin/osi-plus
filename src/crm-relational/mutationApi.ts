@@ -5,7 +5,7 @@ import {
   resolveCrmPipelineClientMode,
   resolveCrmPipelineReadClientMode,
 } from "./clientMode";
-import type { PipelineMode } from "./types";
+import type { CrmOwnerOption, PipelineMode } from "./types";
 import { V17_PRODUCTION_PILOT_MODE, isV17ProductionPilotClientEnvironment } from "../../shared/v17ProductionPilot.js";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -155,6 +155,41 @@ export class CrmCaseMutationApi {
   update(caseRef: string, expectedVersion: number, fields: CrmCaseFields, requestId: string = crypto.randomUUID()) {
     if (!UUID_V4.test(caseRef)) throw new CrmCaseMutationClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
     return this.mutation("PATCH", `/pipeline-cases/${encodeURIComponent(caseRef)}`, "UPDATE", fields, expectedVersion, requestId);
+  }
+
+  async ownerOptions(caseRef: string): Promise<readonly CrmOwnerOption[]> {
+    if (!UUID_V4.test(caseRef)) throw new CrmCaseMutationClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+    const token = this.tokenProvider();
+    const membershipRef = this.membershipRefProvider();
+    if (!token) throw new CrmCaseMutationClientError(401, "COMMERCIAL_AUTH_REQUIRED");
+    if (!membershipRef) throw new CrmCaseMutationClientError(400, "MT01B_MEMBERSHIP_SELECTION_INVALID");
+    const query = new URLSearchParams({ page: "1", pageSize: "100", caseRef });
+    const response = await this.fetchImpl(`${API}/pipeline-owner-options?${query}`, { headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "X-OSI-Membership-Ref": membershipRef }, credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
+    const root = object(await json(response));
+    if (!response.ok) throw new CrmCaseMutationClientError(response.status, typeof root.error === "string" ? root.error : "CRM_PIPELINE_REQUEST_FAILED");
+    exact(root, ["ok", "total", "page", "pageSize", "data"]);
+    if (root.ok !== true || !Array.isArray(root.data)) throw new CrmCaseMutationClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    return Object.freeze(root.data.map((candidate) => {
+      const row = object(candidate);
+      exact(row, ["ownerRef", "displayName", "role", "activeCases", "maxActiveCases", "loadPercent", "availabilityStatus", "recommended"]);
+      if (row.role !== "V" || !["AVAILABLE", "LIMITED"].includes(String(row.availabilityStatus)) || typeof row.recommended !== "boolean") throw new CrmCaseMutationClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+      const activeCases = Number(row.activeCases); const maxActiveCases = Number(row.maxActiveCases); const loadPercent = Number(row.loadPercent);
+      if (![activeCases, maxActiveCases, loadPercent].every(Number.isSafeInteger) || activeCases < 0 || maxActiveCases < 1 || loadPercent < 0) throw new CrmCaseMutationClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+      return Object.freeze({ presentationKey: crypto.randomUUID(), ownerRef: safeText(row.ownerRef)!, displayName: safeText(row.displayName)!, role: "V" as const, activeCases, maxActiveCases, loadPercent, availabilityStatus: row.availabilityStatus as CrmOwnerOption["availabilityStatus"], recommended: row.recommended as boolean });
+    }));
+  }
+
+  async assignOwner(caseRef: string, expectedVersion: number, ownerRef: string) {
+    if (!UUID_V4.test(caseRef) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1 || !ownerRef) throw new CrmCaseMutationClientError(400, "CRM_PIPELINE_COMMAND_INVALID");
+    const token = this.tokenProvider();
+    const membershipRef = this.membershipRefProvider();
+    if (!token) throw new CrmCaseMutationClientError(401, "COMMERCIAL_AUTH_REQUIRED");
+    if (!membershipRef) throw new CrmCaseMutationClientError(400, "MT01B_MEMBERSHIP_SELECTION_INVALID");
+    const response = await this.fetchImpl(`${API}/pipeline-cases/${encodeURIComponent(caseRef)}/assign-owner`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${token}`, "X-OSI-Membership-Ref": membershipRef, "Idempotency-Key": crypto.randomUUID() }, credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", body: JSON.stringify({ expectedVersion, ownerRef }) });
+    const root = object(await json(response));
+    if (!response.ok) throw new CrmCaseMutationClientError(response.status, typeof root.error === "string" ? root.error : "CRM_PIPELINE_REQUEST_FAILED");
+    exact(root, ["ok", "command"]);
+    if (root.ok !== true) throw new CrmCaseMutationClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   }
 
   async clients(search = "", page = 1): Promise<Readonly<{ total: number; data: readonly CrmClientOption[] }>> {

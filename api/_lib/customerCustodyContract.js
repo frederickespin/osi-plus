@@ -19,6 +19,8 @@ const EXCESS_REASONS = new Set(["CONTRACTED_CAPACITY_FULL", "UNDECLARED_ADDITION
 const BILLING_PARTY_TYPES = new Set(["CLIENT", "COMPANY", "THIRD_PARTY"]);
 const BILLING_FREQUENCIES = new Set(["MONTHLY", "WEEKLY", "QUARTERLY", "CUSTOM"]);
 const STORAGE_CAPACITY_BASES = new Set(["TWENTY_FOOT_CONTAINER", "FORTY_FOOT_CONTAINER", "CUBIC_METER", "FIXED_SPACE", "CUSTOM"]);
+const STORAGE_REQUIREMENT_SOURCES = new Set(["CLIENT_DECLARED", "COMMERCIAL_ESTIMATE", "SURVEY_VERIFIED", "WAREHOUSE_CONFIRMED"]);
+const STORAGE_VISIT_DECISIONS = new Set(["TO_CONFIRM", "REQUIRED", "NOT_REQUIRED"]);
 const CATALOG_KINDS = new Set(["DAMAGE_LOCATION", "CONDITION", "ITEM_NAME", "PACKAGE_FORM"]);
 const CATALOG_STATUSES = new Set(["ACTIVE", "INACTIVE"]);
 
@@ -82,6 +84,24 @@ export function normalizeStorageAgreementSave(input) {
   const billingEmail = text(value.billingEmail, 320); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   const billingCurrency = text(value.billingCurrency, 3); if (!/^[A-Z]{3}$/.test(billingCurrency)) custodyFail("CUSTOMER_CUSTODY_INPUT_INVALID");
   return command(value, "CUSTOMER_STORAGE_AGREEMENT_SAVE", { caseRef: uuid(value.caseRef), serviceSelectionRef: uuid(value.serviceSelectionRef), acceptedProposalRevisionRef: uuid(value.acceptedProposalRevisionRef), holderName: text(value.holderName, 200), identityType: text(value.identityType, 40), identityNumberMasked: text(value.identityNumberMasked, 40), identityEvidenceRef: text(value.identityEvidenceRef, 191), billingPartyType: enumeration(value.billingPartyType, BILLING_PARTY_TYPES), billingName: text(value.billingName, 200), billingTaxId: text(value.billingTaxId, 40, true), billingEmail, billingAddress: text(value.billingAddress, 500), billingCurrency, billingFrequency: enumeration(value.billingFrequency, BILLING_FREQUENCIES), invoiceDay: integer(value.invoiceDay, 1, 28), startDate, estimatedDurationMonths: integer(value.estimatedDurationMonths, 1, 600), estimatedEndDate, capacityBasis: enumeration(value.capacityBasis, STORAGE_CAPACITY_BASES), capacityQuantity: decimal(value.capacityQuantity), termsVersion: text(value.termsVersion, 80) });
+}
+
+export function normalizeStorageRequirementSave(input) {
+  const value = object(input); exact(value, ["requestId", "payloadHash", "caseRef", "serviceSelectionRef", "expectedRevision", "storageType", "capacityBasis", "capacityQuantity", "estimatedDurationMonths", "plannedEntryDate", "dataSource", "visitDecision", "notes"]);
+  const plannedEntryDate = value.plannedEntryDate === null ? null : dateOnly(value.plannedEntryDate);
+  return command(value, "CUSTOMER_STORAGE_REQUIREMENT_SAVE", {
+    caseRef: uuid(value.caseRef),
+    serviceSelectionRef: uuid(value.serviceSelectionRef),
+    expectedRevision: integer(value.expectedRevision, 0, 1_000_000),
+    storageType: enumeration(value.storageType, STORAGE_TYPES),
+    capacityBasis: enumeration(value.capacityBasis, STORAGE_CAPACITY_BASES),
+    capacityQuantity: decimal(value.capacityQuantity),
+    estimatedDurationMonths: integer(value.estimatedDurationMonths, 1, 600),
+    plannedEntryDate,
+    dataSource: enumeration(value.dataSource, STORAGE_REQUIREMENT_SOURCES),
+    visitDecision: enumeration(value.visitDecision, STORAGE_VISIT_DECISIONS),
+    notes: text(value.notes, 2000, true),
+  });
 }
 
 export function normalizeStorageAgreementActivate(input, agreementRef) {

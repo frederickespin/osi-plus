@@ -63,7 +63,8 @@ export function resolveCrmIcpV2ApiMode(env = process.env, req = undefined) {
   const uiPreview = env.VERCEL === "1"
     && env.VERCEL_ENV === "preview"
     && (env.VERCEL_GIT_COMMIT_REF === CRM_ICP_V2_UI_PREVIEW_BRANCH
-      || env.VERCEL_GIT_COMMIT_REF === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH)
+      || env.VERCEL_GIT_COMMIT_REF === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH
+      || isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF))
     && env.CRM_ICP_V2_API_BATCH === CRM_ICP_V2_UI_PREVIEW_BATCH
     && env.VITE_CRM_ICP_V2_UI_MODE === "PREVIEW_REHEARSAL"
     && env.VITE_CRM_ICP_V2_UI_BATCH === CRM_ICP_V2_UI_PREVIEW_BATCH

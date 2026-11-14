@@ -53,6 +53,7 @@ export type CrmPipelineCase = Readonly<{
   owner: CrmOwner | null;
   quoteCount: number;
   eventCount: number;
+  sla: CrmCaseSla;
   createdAt: string;
   updatedAt: string;
 }>;
@@ -75,6 +76,7 @@ export type CrmPipelineCaseDetail = Readonly<{
   assetsCount: number;
   quoteCount: number;
   eventCount: number;
+  sla: CrmCaseSla;
   client: CrmServiceClient | null;
   owner: Readonly<{ displayName: string; isCurrentActor: boolean }> | null;
   createdAt: string;
@@ -93,7 +95,14 @@ export type CrmPipelineSummary = Readonly<{
   assigned: number;
   unassigned: number;
   byStatus: Readonly<Record<PipelineCaseStatus, number>>;
-  sla: Readonly<{ overdue: null; basis: "UNAVAILABLE" }>;
+  sla: Readonly<{ overdue: number; atRisk: number; basis: "STATUS_POLICY" }>;
+}>;
+
+export type CrmCaseSla = Readonly<{
+  state: "ON_TRACK" | "AT_RISK" | "OVERDUE" | "COMPLETED";
+  dueAt: string | null;
+  remainingMinutes: number | null;
+  basis: "STATUS_POLICY";
 }>;
 
 export type CrmOwnerOption = Readonly<{
@@ -101,6 +110,11 @@ export type CrmOwnerOption = Readonly<{
   ownerRef: string;
   displayName: string;
   role: "V";
+  activeCases: number;
+  maxActiveCases: number;
+  loadPercent: number;
+  availabilityStatus: "AVAILABLE" | "LIMITED";
+  recommended: boolean;
 }>;
 
 export type CrmOwnerCatalog = Readonly<{

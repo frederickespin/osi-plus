@@ -110,17 +110,28 @@ function parseClient(value: unknown): CrmPipelineCase["client"] {
 
 function parseOwnerOption(value: unknown): CrmOwnerOption {
   const row = object(value);
-  exactKeys(row, ["ownerRef", "displayName", "role"]);
+  const extended = Object.hasOwn(row, "activeCases");
+  exactKeys(row, extended ? ["ownerRef", "displayName", "role", "activeCases", "maxActiveCases", "loadPercent", "availabilityStatus", "recommended"] : ["ownerRef", "displayName", "role"]);
   if (row.role !== "V") throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   const ownerRef = text(row.ownerRef);
   const displayName = text(row.displayName);
   if (!ownerRef || !displayName) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
-  return Object.freeze({ presentationKey: crypto.randomUUID(), ownerRef, displayName, role: "V" });
+  if (extended && (!new Set(["AVAILABLE", "LIMITED"]).has(String(row.availabilityStatus)) || typeof row.recommended !== "boolean")) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  return Object.freeze({ presentationKey: crypto.randomUUID(), ownerRef, displayName, role: "V", activeCases: extended ? integer(row.activeCases) : 0, maxActiveCases: extended ? integer(row.maxActiveCases, 1) : 12, loadPercent: extended ? integer(row.loadPercent) : 0, availabilityStatus: extended ? row.availabilityStatus as CrmOwnerOption["availabilityStatus"] : "AVAILABLE", recommended: extended ? row.recommended as boolean : false });
+}
+
+function parseCaseSla(value: unknown): CrmPipelineCase["sla"] {
+  const row = object(value);
+  exactKeys(row, ["state", "dueAt", "remainingMinutes", "basis"]);
+  if (!new Set(["ON_TRACK", "AT_RISK", "OVERDUE", "COMPLETED"]).has(String(row.state)) || row.basis !== "STATUS_POLICY") throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+  return Object.freeze({ state: row.state as CrmPipelineCase["sla"]["state"], dueAt: row.dueAt === null ? null : iso(row.dueAt), remainingMinutes: row.remainingMinutes === null ? null : Math.trunc(finite(row.remainingMinutes)), basis: "STATUS_POLICY" });
 }
 
 function parseCase(value: unknown): CrmPipelineCase {
   const row = object(value);
-  exactKeys(row, ["caseRef", "caseCode", "client", "mode", "serviceType", "customerType", "status", "estimatedCbm", "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation", "destinationContracted", "assetsCount", "owner", "quoteCount", "eventCount", "createdAt", "updatedAt"]);
+  const caseKeys = ["caseRef", "caseCode", "client", "mode", "serviceType", "customerType", "status", "estimatedCbm", "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation", "destinationContracted", "assetsCount", "owner", "quoteCount", "eventCount", "createdAt", "updatedAt"];
+  if (Object.hasOwn(row, "sla")) caseKeys.push("sla");
+  exactKeys(row, caseKeys);
   if (typeof row.mode !== "string" || !MODE.has(row.mode)) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   if (typeof row.caseRef !== "string" || !PUBLIC_CASE_REF_PATTERN.test(row.caseRef)) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   return Object.freeze({
@@ -128,13 +139,15 @@ function parseCase(value: unknown): CrmPipelineCase {
     serviceType: text(row.serviceType)!, customerType: text(row.customerType)!, status: status(row.status), estimatedCbm: finite(row.estimatedCbm),
     requiresSurvey: bool(row.requiresSurvey), surveyMethod: text(row.surveyMethod)!, originLocation: text(row.originLocation)!, destinationLocation: text(row.destinationLocation)!,
     destinationContracted: bool(row.destinationContracted), assetsCount: integer(row.assetsCount), owner: parseOwner(row.owner), quoteCount: integer(row.quoteCount),
-    eventCount: integer(row.eventCount), createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
+    eventCount: integer(row.eventCount), sla: Object.hasOwn(row, "sla") ? parseCaseSla(row.sla) : Object.freeze({ state: "ON_TRACK", dueAt: null, remainingMinutes: null, basis: "STATUS_POLICY" }), createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
   });
 }
 
 function parseCaseDetail(value: unknown): CrmPipelineCaseDetail {
   const row = object(value);
-  exactKeys(row, ["caseRef", "caseCode", "version", "status", "mode", "serviceType", "customerType", "estimatedCbm", "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation", "destinationContracted", "assetsCount", "quoteCount", "eventCount", "client", "owner", "createdAt", "updatedAt"]);
+  const detailKeys = ["caseRef", "caseCode", "version", "status", "mode", "serviceType", "customerType", "estimatedCbm", "requiresSurvey", "surveyMethod", "originLocation", "destinationLocation", "destinationContracted", "assetsCount", "quoteCount", "eventCount", "client", "owner", "createdAt", "updatedAt"];
+  if (Object.hasOwn(row, "sla")) detailKeys.push("sla");
+  exactKeys(row, detailKeys);
   if (row.mode !== null && (typeof row.mode !== "string" || !MODE.has(row.mode))) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   let owner: CrmPipelineCaseDetail["owner"] = null;
   if (row.owner !== null) {
@@ -160,6 +173,7 @@ function parseCaseDetail(value: unknown): CrmPipelineCaseDetail {
     assetsCount: integer(row.assetsCount),
     quoteCount: integer(row.quoteCount),
     eventCount: integer(row.eventCount),
+    sla: Object.hasOwn(row, "sla") ? parseCaseSla(row.sla) : Object.freeze({ state: "ON_TRACK", dueAt: null, remainingMinutes: null, basis: "STATUS_POLICY" }),
     client: parseClient(row.client),
     owner,
     createdAt: iso(row.createdAt),
@@ -295,15 +309,16 @@ export class CrmPipelineApi {
     exactKeys(byStatus, [...PIPELINE_CASE_STATUSES]);
     const counts = Object.fromEntries(PIPELINE_CASE_STATUSES.map((item) => [item, integer(byStatus[item])])) as Record<PipelineCaseStatus, number>;
     const sla = object(data.sla);
-    exactKeys(sla, ["overdue", "basis"]);
-    if (sla.overdue !== null || sla.basis !== "UNAVAILABLE") throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    const legacySla = sla.overdue === null && sla.basis === "UNAVAILABLE";
+    exactKeys(sla, legacySla ? ["overdue", "basis"] : ["overdue", "atRisk", "basis"]);
+    if (!legacySla && sla.basis !== "STATUS_POLICY") throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
     const total = integer(data.total);
     const assigned = integer(data.assigned);
     const unassigned = integer(data.unassigned);
     if (assigned + unassigned !== total || Object.values(counts).reduce((sum, value) => sum + value, 0) !== total) {
       throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");
     }
-    return Object.freeze({ total, assigned, unassigned, byStatus: Object.freeze(counts), sla: Object.freeze({ overdue: null, basis: "UNAVAILABLE" }) });
+    return Object.freeze({ total, assigned, unassigned, byStatus: Object.freeze(counts), sla: Object.freeze({ overdue: legacySla ? 0 : integer(sla.overdue), atRisk: legacySla ? 0 : integer(sla.atRisk), basis: "STATUS_POLICY" }) });
   }
 
   async allowedTransitions(caseId: string, signal?: AbortSignal): Promise<CrmAllowedTransitions> {
@@ -322,9 +337,10 @@ export class CrmPipelineApi {
   }
 
 
-  async ownerOptions(filters: { page: number; pageSize: number; search?: string }, signal?: AbortSignal): Promise<CrmOwnerCatalog> {
+  async ownerOptions(filters: { page: number; pageSize: number; search?: string; caseRef?: string }, signal?: AbortSignal): Promise<CrmOwnerCatalog> {
     const params = new URLSearchParams({ page: String(filters.page), pageSize: String(Math.min(filters.pageSize, 100)) });
     if (filters.search) params.set("q", filters.search);
+    if (filters.caseRef) params.set("caseRef", filters.caseRef);
     const root = object(await this.request(`/pipeline-owner-options?${params}`, { signal }));
     exactKeys(root, ["ok", "total", "page", "pageSize", "data"]);
     if (root.ok !== true || !Array.isArray(root.data)) throw new CrmPipelineError(502, "CRM_PIPELINE_RESPONSE_INVALID");

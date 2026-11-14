@@ -208,9 +208,13 @@ export function normalizeSchedulingMutation(input) {
   if (operation === "SCHEDULE") {
     const keys = ["requestId", "payloadHash", "operation", "decisionRef", "expectedDecisionVersion", "evaluatorMembershipRef", "scheduledStart", "scheduledEnd", "slotKey", "instruction", "saturdayApprovalReason"];
     if ("visitReasonRef" in value) keys.push("visitReasonRef");
+    if ("visitRouteRole" in value) keys.push("visitRouteRole");
+    if ("visitRouteOrder" in value) keys.push("visitRouteOrder");
     exact(value, keys);
     const scheduledStart = timestamp(value.scheduledStart); const scheduledEnd = timestamp(value.scheduledEnd); if (scheduledEnd <= scheduledStart) schedulingFail("CRM_SURVEY_SCHEDULING_INPUT_INVALID");
-    return command(value, operation, { decisionRef: uuid(value.decisionRef), expectedDecisionVersion: integer(value.expectedDecisionVersion, 1), evaluatorMembershipRef: uuid(value.evaluatorMembershipRef), scheduledStart, scheduledEnd, slotKey: text(value.slotKey, 64), instruction: text(value.instruction, 1000, true), saturdayApprovalReason: text(value.saturdayApprovalReason, 500, true), ...("visitReasonRef" in value ? { visitReasonRef: value.visitReasonRef == null ? null : uuid(value.visitReasonRef) } : {}) });
+    const visitRouteRole = "visitRouteRole" in value ? enumValue(value.visitRouteRole, new Set(["ORIGIN", "DESTINATION", "ADDITIONAL"])) : null;
+    const visitRouteOrder = "visitRouteOrder" in value ? integer(value.visitRouteOrder, 0, 100) : 0;
+    return command(value, operation, { decisionRef: uuid(value.decisionRef), expectedDecisionVersion: integer(value.expectedDecisionVersion, 1), evaluatorMembershipRef: uuid(value.evaluatorMembershipRef), scheduledStart, scheduledEnd, slotKey: text(value.slotKey, 64), instruction: text(value.instruction, 1000, true), saturdayApprovalReason: text(value.saturdayApprovalReason, 500, true), ...(visitRouteRole ? { visitRouteRole, visitRouteOrder } : {}), ...("visitReasonRef" in value ? { visitReasonRef: value.visitReasonRef == null ? null : uuid(value.visitReasonRef) } : {}) });
   }
   if (["RESCHEDULE", "CHANGE_EVALUATOR", "CANCEL"].includes(operation)) {
     const keys = operation === "RESCHEDULE" ? ["requestId", "payloadHash", "operation", "assignmentRef", "expectedVersion", "scheduledStart", "scheduledEnd", "slotKey", "reasonCode", "notificationRequired", "saturdayApprovalReason"] : operation === "CHANGE_EVALUATOR" ? ["requestId", "payloadHash", "operation", "assignmentRef", "expectedVersion", "evaluatorMembershipRef", "reasonCode", "notificationRequired"] : ["requestId", "payloadHash", "operation", "assignmentRef", "expectedVersion", "reasonCode", "notificationRequired"];

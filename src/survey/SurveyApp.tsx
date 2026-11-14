@@ -172,12 +172,16 @@ function Agenda({
               </div>
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="text-xs font-bold text-slate-500">Origen</dt>
-                  <dd>{row.context.origin || "No disponible"}</dd>
+                  <dt className="text-xs font-bold text-slate-500">Lugar de la visita</dt>
+                  <dd>{row.context.visitLocation?.compactAddress || row.context.origin || "No disponible"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs font-bold text-slate-500">Destino</dt>
-                  <dd>{row.context.destination || "No disponible"}</dd>
+                  <dt className="text-xs font-bold text-slate-500">Empresa / Booker</dt>
+                  <dd>{[row.context.company, row.context.booker || row.context.leadAccount].filter(Boolean).join(" · ") || "Cliente directo"}</dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="text-xs font-bold text-slate-500">Alcance esperado</dt>
+                  <dd>{row.context.services?.map((service) => service.name).join(" · ") || "Levantamiento general"}</dd>
                 </div>
               </dl>
               {row.instruction && (

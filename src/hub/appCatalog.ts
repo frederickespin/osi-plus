@@ -12,6 +12,7 @@ export type HubAppId =
   | "human-resources"
   | "osi-survey"
   | "visual-inventory"
+  | "osi-custody"
   | "archaeological-packing"
   | "packing-calculator";
 
@@ -238,7 +239,7 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   {
     appId: "osi-survey",
     name: "OSi Survey",
-    description: "Agenda, inventario observado y publicaciones inmutables.",
+    description: "Agenda del visitador, inventario, accesos, revisión, detalle técnico y firma.",
     icon: "clipboard",
     route: "/mobile/survey",
     routeAliases: ["/survey"],
@@ -260,6 +261,22 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     route: "/mobile/visual-inventory",
     status: "INTERNAL_STANDALONE",
     requiredPermissions: ["survey:assignment:view"],
+    permissionMode: "ALL",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
+    mobileAvailability: "MOBILE_PRIMARY",
+    directAccessAllowed: true,
+    lazy: true,
+    suiteId: "osi-plus-mobile",
+  },
+  {
+    appId: "osi-custody",
+    name: "OSi Custodia",
+    description: "Recepción por escaneo, etiquetas, inspección y ubicación de bienes de clientes.",
+    icon: "warehouse",
+    route: "/mobile/custody",
+    status: "INTERNAL_AVAILABLE",
+    requiredPermissions: ["customer-custody:view"],
     permissionMode: "ALL",
     requiresExplicitPermissions: true,
     baselineRoles: [],

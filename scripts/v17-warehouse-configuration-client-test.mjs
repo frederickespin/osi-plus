@@ -26,7 +26,7 @@ test("configuration UI is default OFF and LOCAL_ONLY requires a genuine local en
 test("Preview UI requires exact batch, approved branch and preview environment", () => {
   const preview = { VITE_WAREHOUSE_CONFIGURATION_UI_MODE: "PREVIEW_REHEARSAL", VITE_WAREHOUSE_CONFIGURATION_UI_BATCH: "V17-WAREHOUSE-CONFIGURATION-20B-PREVIEW", VITE_VERCEL_ENV: "preview", VITE_VERCEL_GIT_COMMIT_REF: "feature/v17-consolidated-preview" };
   assert.equal(mode(preview, "example.vercel.app"), "PREVIEW_REHEARSAL");
-  assert.equal(mode({ ...preview, VITE_VERCEL_GIT_COMMIT_REF: "feature/v17-customer-custody-21a" }, "example.vercel.app"), "PREVIEW_REHEARSAL");
+  assert.equal(mode({ ...preview, VITE_VERCEL_GIT_COMMIT_REF: "feature/v17-storage-commercial-contract-22a" }, "example.vercel.app"), "PREVIEW_REHEARSAL");
   for (const field of Object.keys(preview)) assert.equal(mode({ ...preview, [field]: "invalid" }, "example.vercel.app"), "DISABLED", field);
   for (const branch of ["main", "feature/v17-consolidated-preview-other", "feature/v17-warehouses-spaces-20a", "feature/v17-warehouses-configuration-20b"]) assert.equal(mode({ ...preview, VITE_VERCEL_GIT_COMMIT_REF: branch }, "example.vercel.app"), "DISABLED");
   assert.equal(mode({ ...preview, VITE_VERCEL_ENV: "production" }, "example.test"), "DISABLED");

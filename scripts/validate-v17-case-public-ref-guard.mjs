@@ -83,6 +83,7 @@ export const PUBLIC_REFERENCE_CONTRACTS = Object.freeze({
   "api/_lib/crmServicesApiDomain.js": ["CASE"],
   "api/_lib/crmSurveyDomain.js": ["CASE", "MEMBERSHIP"],
   "api/_lib/customerCustodyDomain.js": ["CASE", "CLIENT", "MEMBERSHIP", "CUSTODY_AUTHORIZATION"],
+  "api/_lib/storageAgreementDomain.js": ["CASE", "CLIENT"],
   "api/_lib/fleetActor.js": ["MEMBERSHIP"],
   "api/_lib/fleetDriversDomain.js": ["MEMBERSHIP"],
   "api/_lib/logisticsEngineDomain.js": ["CASE"],

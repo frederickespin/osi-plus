@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, ShieldCheck, ShieldOff } from "lucide-react";
+import { Check, Plus, ShieldCheck, ShieldOff } from "lucide-react";
 import { AdminTenantApi, type AdminMembership } from "@/admin-tenant/adminApi";
 import { materialsApi, type WarehouseRow } from "@/materials-inventory/api";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
-import { CustomerCustodyApi, customerCustodyErrorText, type WarehouseAccessGrant } from "./api";
+import { CustomerCustodyApi, customerCustodyErrorText, type CustodyWarehouseSetting, type WarehouseAccessGrant } from "./api";
+import CustodyCatalogAdmin from "./CustodyCatalogAdmin";
 
 const OPERATIONS = Object.freeze([
   { code: "VIEW", label: "Consultar" },
@@ -37,19 +38,34 @@ export default function WarehouseAccessAdmin({ authorization, onUnauthorized }: 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [changingRef, setChangingRef] = useState<string | null>(null);
+  const [warehouseSettings, setWarehouseSettings] = useState<readonly CustodyWarehouseSetting[]>([]);
+  const [settingRef, setSettingRef] = useState("");
+  const [unloadMinutes, setUnloadMinutes] = useState(90);
+  const [excessExitLocationRef, setExcessExitLocationRef] = useState("");
+  const [excessGraceHours, setExcessGraceHours] = useState(24);
+  const [excessDailyRate, setExcessDailyRate] = useState(0);
+  const [excessCurrency, setExcessCurrency] = useState("DOP");
 
   const refresh = useCallback(async () => {
     try {
-      const [grantRows, memberRows, warehouseRows] = await Promise.all([
+      const [grantRows, memberRows, warehouseRows, settingRows] = await Promise.all([
         api.grants(),
         membershipApi.list({ status: "ACTIVE", pageSize: 100 }),
         materialsApi.warehouses(authorization),
+        api.warehouseSettings(),
       ]);
       setGrants(grantRows);
       setMemberships(memberRows.data);
       setWarehouses(warehouseRows);
+      setWarehouseSettings(settingRows);
       setMembershipRef((current) => current || memberRows.data[0]?.membershipRef || "");
       setWarehouseRef((current) => current || warehouseRows[0]?.warehouseRef || "");
+      setSettingRef((current) => current || settingRows[0]?.warehouseRef || "");
+      setUnloadMinutes((current) => current === 90 ? settingRows[0]?.unloadTargetMinutes ?? 90 : current);
+      setExcessExitLocationRef((current) => current || settingRows[0]?.excessExitLocation?.locationRef || "");
+      setExcessGraceHours((current) => current === 24 ? settingRows[0]?.excessGraceHours ?? 24 : current);
+      setExcessDailyRate((current) => current === 0 ? settingRows[0]?.excessDailyRate ?? 0 : current);
+      setExcessCurrency((current) => current === "DOP" ? settingRows[0]?.excessCurrency ?? "DOP" : current);
     } catch (cause) {
       if (cause instanceof Error && "status" in cause && cause.status === 401) onUnauthorized();
       else setError(customerCustodyErrorText(cause));
@@ -85,6 +101,16 @@ export default function WarehouseAccessAdmin({ authorization, onUnauthorized }: 
     }
   };
 
+  const saveWarehouseTiming = async () => {
+    const current = warehouseSettings.find((row) => row.warehouseRef === settingRef);
+    if (!current) return;
+    setSaving(true); setError(null);
+    try {
+      const updated = await api.updateWarehouseSetting({ warehouseRef: current.warehouseRef, unloadTargetMinutes: unloadMinutes, excessExitLocationRef, excessGraceHours, excessDailyRate, excessCurrency, expectedVersion: current.version });
+      setWarehouseSettings((rows) => rows.map((row) => row.warehouseRef === updated.warehouseRef ? updated : row));
+    } catch (cause) { setError(customerCustodyErrorText(cause)); } finally { setSaving(false); }
+  };
+
   return <section className="mt-5 space-y-4" data-testid="warehouse-access-admin">
     <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-sky-700">Autoridad operativa</p><h2 className="text-xl font-black text-[#003366]">Accesos a almacenes e inventarios</h2><p className="mt-1 max-w-4xl text-xs text-slate-500">Asigne explícitamente quién puede trabajar en cada inventario, almacén y ubicación. El rol general no concede recepción, traslado ni salida.</p></div>
     <div className="rounded-xl border bg-white p-4">
@@ -99,5 +125,7 @@ export default function WarehouseAccessAdmin({ authorization, onUnauthorized }: 
       <div className="mt-4 flex justify-end"><button type="button" disabled={saving || !membershipRef || operations.length === 0 || Boolean(locationRef && !warehouseRef)} onClick={() => void save()} className={`${BUTTON} border-[#003366] bg-[#003366] text-white`}><Plus className="h-4 w-4" />{saving ? "Guardando…" : "Asignar acceso"}</button></div>
     </div>
     <div className="overflow-x-auto rounded-xl border bg-white"><table className="w-full min-w-[820px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="px-3 py-2">Usuario</th><th className="px-3 py-2">Inventario</th><th className="px-3 py-2">Alcance</th><th className="px-3 py-2">Trabajos</th><th className="px-3 py-2">Estado</th><th className="px-3 py-2 text-right">Acción</th></tr></thead><tbody>{grants.map((grant) => <tr key={grant.grantRef} className="border-t"><td className="px-3 py-2"><strong className="block">{grant.membership.name}</strong><span className="text-[10px] text-slate-500">{grant.membership.email}</span></td><td className="px-3 py-2">{SCOPES.find((row) => row.code === grant.inventoryScope)?.label || grant.inventoryScope}</td><td className="px-3 py-2">{grant.location?.path || grant.warehouse?.name || "Todos los almacenes"}</td><td className="px-3 py-2">{grant.operations.map((code) => OPERATIONS.find((row) => row.code === code)?.label || code).join(" · ")}</td><td className="px-3 py-2"><span className={`inline-flex items-center gap-1 ${grant.status === "ACTIVE" ? "text-emerald-700" : "text-slate-500"}`}>{grant.status === "ACTIVE" ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldOff className="h-3.5 w-3.5" />}{grant.status === "ACTIVE" ? "Activo" : "Inactivo"}</span></td><td className="px-3 py-2 text-right"><button type="button" className={BUTTON} disabled={changingRef === grant.grantRef} onClick={() => void toggleGrant(grant)} aria-label={`${grant.status === "ACTIVE" ? "Desactivar" : "Activar"} acceso de ${grant.membership.name}`}>{grant.status === "ACTIVE" ? "Desactivar" : "Activar"}</button></td></tr>)}</tbody></table></div>
+    <section className="rounded-xl border bg-white p-4" aria-labelledby="custody-unload-settings-title"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-sky-700">Control de recepción</p><h3 id="custody-unload-settings-title" className="text-lg font-black text-[#003366]">Descarga y excedentes</h3><p className="mt-1 text-xs text-slate-500">Defina el tiempo esperado de descarga y la ubicación temporal donde se retienen los bultos que no caben en el espacio contratado. El cargo comienza después del período de gracia.</p><div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-6"><label className="text-xs font-semibold xl:col-span-2">Almacén<select value={settingRef} onChange={(event) => { const ref = event.target.value; const setting = warehouseSettings.find((row) => row.warehouseRef === ref); setSettingRef(ref); setUnloadMinutes(setting?.unloadTargetMinutes ?? 90); setExcessExitLocationRef(setting?.excessExitLocation?.locationRef ?? ""); setExcessGraceHours(setting?.excessGraceHours ?? 24); setExcessDailyRate(setting?.excessDailyRate ?? 0); setExcessCurrency(setting?.excessCurrency ?? "DOP"); }} className={`${COMPACT_FORM_FIELD} mt-1 w-full`}>{warehouseSettings.map((row) => <option key={row.warehouseRef} value={row.warehouseRef}>{row.name}</option>)}</select></label><label className="text-xs font-semibold">Descarga (min)<input type="number" min={15} max={1440} value={unloadMinutes} onChange={(event) => setUnloadMinutes(Number(event.target.value))} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label><label className="text-xs font-semibold">Gracia (horas)<input type="number" min={0} max={720} value={excessGraceHours} onChange={(event) => setExcessGraceHours(Number(event.target.value))} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label><label className="text-xs font-semibold">Cargo diario<input type="number" min={0} step="0.01" value={excessDailyRate} onChange={(event) => setExcessDailyRate(Number(event.target.value))} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label><label className="text-xs font-semibold">Moneda<input value={excessCurrency} maxLength={3} onChange={(event) => setExcessCurrency(event.target.value.toUpperCase())} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label><label className="text-xs font-semibold md:col-span-2 xl:col-span-5">Salida temporal de excedentes<select value={excessExitLocationRef} onChange={(event) => setExcessExitLocationRef(event.target.value)} className={`${COMPACT_FORM_FIELD} mt-1 w-full`}><option value="">Seleccione una ubicación</option>{warehouses.find((row) => row.warehouseRef === settingRef)?.locations.filter((row) => row.status === "ACTIVE").map((row) => <option key={row.locationRef} value={row.locationRef}>{row.path}</option>)}</select></label><button type="button" disabled={saving || !settingRef || !excessExitLocationRef || unloadMinutes < 15 || unloadMinutes > 1440 || excessGraceHours < 0 || excessGraceHours > 720 || excessDailyRate < 0 || !/^[A-Z]{3}$/.test(excessCurrency)} onClick={() => void saveWarehouseTiming()} className={`${BUTTON} self-end border-[#003366] bg-[#003366] text-white`} aria-label="Guardar configuración de recepción y excedentes"><Check className="h-4 w-4" />Guardar</button></div></section>
+    <CustodyCatalogAdmin authorization={authorization} onUnauthorized={onUnauthorized} />
   </section>;
 }

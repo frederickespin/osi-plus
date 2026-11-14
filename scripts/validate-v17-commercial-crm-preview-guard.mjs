@@ -114,7 +114,7 @@ export function validateV17CommercialCrmPreviewSnapshot(snapshot) {
     'V17_COMMERCIAL_CRM_PREVIEW_MODE = "PREVIEW_REHEARSAL"',
     'V17_COMMERCIAL_CRM_PREVIEW_BATCH = "V17-COMMERCIAL-CRM-PREVIEW-01"',
     'V17_COMMERCIAL_CRM_PREVIEW_BRANCH = "feature/v17-commercial-crm-preview"',
-    'V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH = "feature/v17-customer-custody-21a"',
+    'V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH = "feature/v17-storage-commercial-contract-22a"',
     'environment.VERCEL === "1"',
     'environment.VERCEL_ENV === "preview"',
     "environment.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_CRM_PREVIEW_BRANCH",

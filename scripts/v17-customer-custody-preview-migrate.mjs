@@ -9,10 +9,12 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { PrismaClient } from "@prisma/client";
 import { validateMigrationFiles } from "./canonical-migrations.mjs";
+import { isV17ConsolidatedPreviewBranch } from "../shared/v17ConsolidatedPreview.js";
 
 export const CUSTOMER_CUSTODY_PREVIEW_MIGRATION_OPERATION = "V17_CUSTOMER_CUSTODY_PREVIEW_MIGRATION";
-export const CUSTOMER_CUSTODY_MIGRATION = "20261110030000_v17_customer_custody_authorizations";
-export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "7b2a7c7626fcf4e773ee851a9b996436505d56758900b8cc63606ec86d53e331";
+export const CUSTOMER_CUSTODY_MIGRATION = "20261113010000_v17_commercial_storage_requirements";
+export const CUSTOMER_CUSTODY_MIGRATION_CHECKSUM = "389acd799c903f94d8e3cf02ba6e83ca73df8f7cf715bd73b952c6c0942a2eeb";
+export const CUSTOMER_CUSTODY_FAILED_ATTEMPT_CHECKSUM = "9ee15ae496a5c260388a66b521a5fed39f6295c13474070d48d3e0895bed68fe";
 export const RETAINED_PREVIEW_EXTENSION = Object.freeze({
   name: "20260917010000_v17_engineering_crating",
   checksum: "b437aae3600a23c655d97e674c3bfaa9a1721e0d54a26dcccc1181d90fdf2d0f",
@@ -40,18 +42,18 @@ function validateTargetUrls(env) {
     direct = new URL(env.DIRECT_URL);
     application = new URL(env.DATABASE_URL);
   } catch {
-    requireCondition(false, "DIRECT_TARGET_INVALID");
+    requireCondition(false, "DIRECT_TARGET_INVALID_URL");
   }
   requireCondition(["postgres:", "postgresql:"].includes(direct.protocol)
-    && ["postgres:", "postgresql:"].includes(application.protocol)
-    && Boolean(direct.hostname) && !direct.hostname.includes("-pooler.")
-    && direct.hostname === application.hostname.replace(/-pooler(?=\.)/u, "")
-    && (direct.port || "5432") === (application.port || "5432")
-    && decodeURIComponent(direct.pathname.slice(1)) === "v17_consolidated_preview_10b"
-    && decodeURIComponent(application.pathname.slice(1)) === "v17_consolidated_preview_10b"
-    && direct.searchParams.getAll("schema").length === 1 && direct.searchParams.get("schema") === "osi"
-    && application.searchParams.getAll("schema").length === 1 && application.searchParams.get("schema") === "osi"
-    && !direct.hash && !application.hash, "DIRECT_TARGET_INVALID");
+    && ["postgres:", "postgresql:"].includes(application.protocol), "DIRECT_TARGET_INVALID_PROTOCOL");
+  requireCondition(Boolean(direct.hostname) && !direct.hostname.includes("-pooler."), "DIRECT_TARGET_INVALID_DIRECT_HOST");
+  requireCondition(direct.hostname === application.hostname.replace(/-pooler(?=\.)/u, ""), "DIRECT_TARGET_INVALID_HOST_PAIR");
+  requireCondition((direct.port || "5432") === (application.port || "5432"), "DIRECT_TARGET_INVALID_PORT_PAIR");
+  requireCondition(decodeURIComponent(direct.pathname.slice(1)) === "v17_consolidated_preview_10b"
+    && decodeURIComponent(application.pathname.slice(1)) === "v17_consolidated_preview_10b", "DIRECT_TARGET_INVALID_DATABASE");
+  requireCondition(direct.searchParams.getAll("schema").length === 1 && direct.searchParams.get("schema") === "osi"
+    && application.searchParams.getAll("schema").length === 1 && application.searchParams.get("schema") === "osi", "DIRECT_TARGET_INVALID_SCHEMA");
+  requireCondition(!direct.hash && !application.hash, "DIRECT_TARGET_INVALID_FRAGMENT");
 }
 
 export function previewMigrationOperation(env = process.env) {
@@ -61,20 +63,20 @@ export function previewMigrationOperation(env = process.env) {
   requireCondition(match
     && env.VERCEL === "1"
     && env.VERCEL_ENV === "preview"
-    && env.VERCEL_GIT_COMMIT_REF === "feature/v17-customer-custody-21a"
+    && isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF)
     && env.VERCEL_GIT_COMMIT_SHA === match[1], "OPERATION_TARGET_INVALID");
   requireCondition(env.PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK === undefined, "MIGRATION_LOCK_REQUIRED");
   requireCondition(env.CUSTOMER_CUSTODY_API_MODE === "PREVIEW_REHEARSAL"
-    && env.CUSTOMER_CUSTODY_API_BATCH === "V17-CUSTOMER-CUSTODY-21A-PREVIEW"
+    && env.CUSTOMER_CUSTODY_API_BATCH === "V17-STORAGE-COMMERCIAL-CONTRACT-22A-PREVIEW"
     && env.VITE_CUSTOMER_CUSTODY_UI_MODE === "PREVIEW_REHEARSAL"
-    && env.VITE_CUSTOMER_CUSTODY_UI_BATCH === "V17-CUSTOMER-CUSTODY-21A-PREVIEW", "FEATURE_GATE_INVALID");
+    && env.VITE_CUSTOMER_CUSTODY_UI_BATCH === "V17-STORAGE-COMMERCIAL-CONTRACT-22A-PREVIEW", "FEATURE_GATE_INVALID");
   validateTargetUrls(env);
   return Object.freeze({ commit: match[1] });
 }
 
 export function previewMigrationManifest(root = process.cwd()) {
   const names = validateMigrationFiles(root);
-  requireCondition(names.length === 46 && names.at(-1) === CUSTOMER_CUSTODY_MIGRATION, "SOURCE_INVENTORY_INVALID");
+  requireCondition(names.length === 52 && names.at(-1) === CUSTOMER_CUSTODY_MIGRATION, "SOURCE_INVENTORY_INVALID");
   const manifest = Object.fromEntries(names.map((name) => [name,
     sha256(readFileSync(resolve(root, "prisma/migrations", name, "migration.sql"))),
   ]));
@@ -103,9 +105,25 @@ export function validatePreviewRelationState(relations, alreadyApplied) {
   const base = ["grants_exists", "lots_exists", "items_exists", "commands_exists", "movements_exists",
     "storage_groups_exists", "reception_workflow_exists", "scan_first_exists"];
   requireCondition(relations && base.every((name) => relations[name] === true)
-    && relations.authorizations_exists === alreadyApplied
-    && relations.lot_authorization_exists === alreadyApplied
-    && Object.values(relations).filter(Boolean).length === (alreadyApplied ? 10 : 8), "RELATION_STATE_INVALID");
+    && relations.authorizations_exists === true
+    && relations.lot_authorization_exists === true
+    && relations.agreements_exists === true
+    && relations.authorization_agreement_exists === true
+    && relations.inventory_number_exists === true
+    && relations.next_item_number_exists === true
+    && relations.catalog_exists === true
+    && relations.package_form_code_exists === true
+    && relations.package_form_label_exists === true
+    && relations.warehouse_unload_target_exists === true
+    && relations.lot_unload_target_exists === true
+    && relations.unloading_started_exists === true
+    && relations.unloading_finished_exists === true
+    && relations.vehicle_evidence_exists === true
+    && relations.warehouse_excess_settings_exists === true
+    && relations.authorization_exit_governance_exists === true
+    && relations.item_excess_state_exists === true
+    && relations.storage_requirements_exists === alreadyApplied
+    && Object.values(relations).filter(Boolean).length === (alreadyApplied ? 26 : 25), "RELATION_STATE_INVALID");
 }
 
 async function snapshot(prisma, manifest) {
@@ -120,12 +138,45 @@ async function snapshot(prisma, manifest) {
       && [17, 18].includes(Math.floor(Number(identity.server_version_num) / 10000)), "DATABASE_IDENTITY_INVALID");
     const tenants = await tx.$queryRawUnsafe("SELECT status::text AS status FROM osi.tenants WHERE code = 'V17-CONSOLIDATED-PREVIEW-10B'");
     requireCondition(tenants.length === 1 && tenants[0].status === "ACTIVE", "TENANT_INVALID");
-    const history = await tx.$queryRawUnsafe("SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations ORDER BY migration_name");
+    const history = await tx.$queryRawUnsafe("SELECT migration_name, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations WHERE rolled_back_at IS NULL ORDER BY migration_name");
     const plan = validatePreviewHistory(history, manifest);
-    const [relations] = await tx.$queryRawUnsafe("SELECT to_regclass('osi.warehouse_access_grants') IS NOT NULL AS grants_exists, to_regclass('osi.customer_storage_lots') IS NOT NULL AS lots_exists, to_regclass('osi.customer_stored_items') IS NOT NULL AS items_exists, to_regclass('osi.customer_custody_commands') IS NOT NULL AS commands_exists, to_regclass('osi.customer_custody_movements') IS NOT NULL AS movements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'storage_type') AS storage_groups_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'reception_stage') AS reception_workflow_exists, to_regclass('osi.customer_custody_location_states') IS NOT NULL AS scan_first_exists, to_regclass('osi.customer_storage_authorizations') IS NOT NULL AS authorizations_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'authorization_id') AS lot_authorization_exists");
+    const [relations] = await tx.$queryRawUnsafe("SELECT to_regclass('osi.warehouse_access_grants') IS NOT NULL AS grants_exists, to_regclass('osi.customer_storage_lots') IS NOT NULL AS lots_exists, to_regclass('osi.customer_stored_items') IS NOT NULL AS items_exists, to_regclass('osi.customer_custody_commands') IS NOT NULL AS commands_exists, to_regclass('osi.customer_custody_movements') IS NOT NULL AS movements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'storage_type') AS storage_groups_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'reception_stage') AS reception_workflow_exists, to_regclass('osi.customer_custody_location_states') IS NOT NULL AS scan_first_exists, to_regclass('osi.customer_storage_authorizations') IS NOT NULL AS authorizations_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'authorization_id') AS lot_authorization_exists, to_regclass('osi.customer_storage_agreements') IS NOT NULL AS agreements_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_authorizations' AND column_name = 'storage_agreement_id') AS authorization_agreement_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'inventory_number') AS inventory_number_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'next_item_number') AS next_item_number_exists, to_regclass('osi.customer_custody_catalog_items') IS NOT NULL AS catalog_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'package_form_code') AS package_form_code_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'package_form_label') AS package_form_label_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'material_warehouses' AND column_name = 'custody_unload_target_minutes') AS warehouse_unload_target_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unload_target_minutes') AS lot_unload_target_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unloading_started_at') AS unloading_started_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'unloading_finished_at') AS unloading_finished_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_lots' AND column_name = 'vehicle_evidence') AS vehicle_evidence_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'material_warehouses' AND column_name = 'custody_excess_grace_hours') AS warehouse_excess_settings_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_storage_authorizations' AND column_name = 'exit_reason') AS authorization_exit_governance_exists, EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'osi' AND table_name = 'customer_stored_items' AND column_name = 'excess_status') AS item_excess_state_exists, to_regclass('osi.customer_storage_requirement_revisions') IS NOT NULL AS storage_requirements_exists");
     validatePreviewRelationState(relations, plan.alreadyApplied);
     return { plan, history, serverVersionNum: Number(identity.server_version_num) };
   }, { maxWait: 5000, timeout: 35000, isolationLevel: "RepeatableRead" });
+}
+
+async function repairKnownFailedAttempt(prisma, env, root) {
+  const state = await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL statement_timeout = '30s'");
+    await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '3s'");
+    await tx.$executeRawUnsafe("SET LOCAL search_path = osi");
+    const [identity] = await tx.$queryRawUnsafe("SELECT current_database() AS database, current_setting('neon.branch_id', true) AS branch");
+    requireCondition(identity?.database === "v17_consolidated_preview_10b"
+      && identity.branch === "br-bitter-mountain-ahs311pu", "REPAIR_DATABASE_IDENTITY_INVALID");
+    const rows = await tx.$queryRawUnsafe("SELECT id, checksum, finished_at, rolled_back_at, applied_steps_count FROM osi._prisma_migrations WHERE migration_name = $1 ORDER BY started_at DESC", CUSTOMER_CUSTODY_MIGRATION);
+    const active = rows.find((row) => row.rolled_back_at === null);
+    if (!active || active.finished_at) return { repair: false };
+    requireCondition(active.checksum === CUSTOMER_CUSTODY_FAILED_ATTEMPT_CHECKSUM
+      && Number(active.applied_steps_count) === 0, "REPAIR_ATTEMPT_INVALID");
+    await tx.$executeRawUnsafe("DROP TABLE IF EXISTS osi.customer_storage_requirement_revisions CASCADE");
+    await tx.$executeRawUnsafe("DROP TYPE IF EXISTS osi.\"StorageVisitDecision\"");
+    await tx.$executeRawUnsafe("DROP TYPE IF EXISTS osi.\"StorageRequirementSource\"");
+    return { repair: true };
+  }, { maxWait: 5000, timeout: 35000 });
+  if (!state.repair) return false;
+  try {
+    await executeFile(process.execPath, [resolve(root, "node_modules/prisma/build/index.js"), "migrate", "resolve", "--rolled-back", CUSTOMER_CUSTODY_MIGRATION, "--schema", resolve(root, "prisma/schema.prisma")], {
+      cwd: root,
+      env: { ...env, DATABASE_URL: env.DIRECT_URL, DIRECT_URL: env.DIRECT_URL },
+      timeout: 120000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    });
+  } catch {
+    requireCondition(false, "REPAIR_RESOLVE_FAILED");
+  }
+  return true;
 }
 
 export async function runCustomerCustodyPreviewMigration({ env = process.env, root = process.cwd() } = {}) {
@@ -136,6 +187,7 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
   requireCondition(prismaVersion === "6.19.2", "PRISMA_VERSION_INVALID");
   const prisma = new PrismaClient({ datasources: { db: { url: env.DIRECT_URL } }, log: [] });
   try {
+    await repairKnownFailedAttempt(prisma, env, root);
     let before;
     try {
       before = await snapshot(prisma, manifest);
@@ -144,7 +196,7 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
       classifyUnexpectedFailure(error, "SNAPSHOT_FAILED");
     }
     if (before.plan.alreadyApplied) {
-      return { commit: operation.commit, status: "VERIFIED_21D_APPLIED", applied: before.plan.applied,
+      return { commit: operation.commit, status: "VERIFIED_23A_APPLIED", applied: before.plan.applied,
         serverVersionNum: before.serverVersionNum, retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name };
     }
     try {
@@ -169,7 +221,7 @@ export async function runCustomerCustodyPreviewMigration({ env = process.env, ro
     const previousAfter = after.history.filter((row) => row.migration_name !== CUSTOMER_CUSTODY_MIGRATION);
     requireCondition(after.plan.alreadyApplied && after.plan.applied === before.plan.applied + 1
       && JSON.stringify(previousAfter) === JSON.stringify(previousBefore), "PREVIOUS_STATE_CHANGED");
-    return { commit: operation.commit, status: "VERIFIED_21D_APPLIED", applied: after.plan.applied,
+    return { commit: operation.commit, status: "VERIFIED_23A_APPLIED", applied: after.plan.applied,
       previousHistoryPreserved: true, serverVersionNum: after.serverVersionNum,
       retainedHistoricalExtension: RETAINED_PREVIEW_EXTENSION.name };
   } finally {

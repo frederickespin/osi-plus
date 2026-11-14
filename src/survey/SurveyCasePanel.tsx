@@ -1,8 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarClock,
   ClipboardCheck,
+  FileCheck2,
   History,
+  ListChecks,
   MapPin,
   MessageSquareText,
   RefreshCw,
@@ -11,6 +13,7 @@ import {
   UserCog,
   UserRound,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -32,15 +35,11 @@ import {
   type CommercialCaseSnapshot,
 } from "@/commercial-relationships/api";
 import { isCommercialRelationshipsUiEnabled } from "@/commercial-relationships/mode";
-import LogisticsVisitSummary from "@/logistics-engine/LogisticsVisitSummary";
 import type { TransportUiAccess } from "@/logistics-engine/transportAccess";
-import { isTransportUnauthorized, transportApi, type TransportPublication } from "@/logistics-engine/transportApi";
 import type { CommunicationsAccess } from "@/communications/access";
 import { createPersonnelPoliciesApi } from "@/personnel-policies/api";
 import type { ClientTemporaryAccessUi } from "@/client-portal/access";
 import ClientTemporaryAccessPanel from "@/client-portal/ClientTemporaryAccessPanel";
-
-const TransportCalculationPanel = lazy(() => import("@/logistics-engine/TransportCalculationPanel"));
 
 type Props = Readonly<{
   caseRef: string;
@@ -56,6 +55,8 @@ type Props = Readonly<{
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
+
+type SurveyWorkspaceView = "REQUEST" | "SCHEDULE" | "RESULT";
 
 const METHOD_LABELS: Readonly<Record<EvaluationMethod, string>> = Object.freeze(
   {
@@ -99,6 +100,46 @@ function stateFor(method: EvaluationMethod) {
 function localDateTime(date: string, time: string) {
   return new Date(`${date}T${time}:00`).toISOString();
 }
+function localDateTimeAfter(date: string, time: string, minutes: number) {
+  const value = new Date(`${date}T${time}:00`);
+  value.setMinutes(value.getMinutes() + minutes);
+  return value.toISOString();
+}
+function timeMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+function clientTime(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return new Intl.DateTimeFormat("es-DO", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(2000, 0, 1, hours, minutes));
+}
+function locationKey(
+  location: SchedulingWorkspace["visitLocations"][number],
+) {
+  return `${location.role}:${location.order}`;
+}
+function locationRoleLabel(role: string) {
+  if (role === "ORIGIN") return "Origen";
+  if (role === "DESTINATION") return "Destino";
+  return "Parada adicional";
+}
+function defaultDuration(method: EvaluationMethod) {
+  return method === "IN_PERSON" ? 45 : 30;
+}
+function schedulingErrorMessage(code: string) {
+  if (code === "CRM_SURVEY_INTERIOR_DAILY_LIMIT")
+    return "Este evaluador ya tiene una visita fuera de la zona metropolitana en esa fecha. Seleccione otro evaluador o cambie el día.";
+  if (code === "PERSONNEL_AFTER_HOURS_REQUEST_REQUIRED")
+    return "El horario seleccionado requiere autorización extraordinaria.";
+  if (code === "PERSONNEL_EVALUATOR_UNAVAILABLE")
+    return "El evaluador no dispone del tiempo de visita y traslado necesario. Seleccione otro horario o evaluador.";
+  if (code === "CRM_SURVEY_SLOT_FULL")
+    return "Ese horario acaba de ocuparse. Seleccione otro disponible.";
+  return code;
+}
 function appointmentCopy(workspace: SchedulingWorkspace) {
   if (!workspace.assignment) return "Aún no existe una cita.";
   return new Intl.DateTimeFormat("es-DO", {
@@ -113,8 +154,6 @@ export default function SurveyCasePanel({
   access,
   communicationsEnabled = false,
   communicationsAccess,
-  logisticsSummaryEnabled = false,
-  transportAccess,
   clientTemporaryAccessEnabled = false,
   clientTemporaryAccess,
   onOpenCommunications,
@@ -136,9 +175,6 @@ export default function SurveyCasePanel({
   const [workspace, setWorkspace] = useState<SchedulingWorkspace | null>(null);
   const [commercialContext, setCommercialContext] =
     useState<CommercialCaseSnapshot | null>(null);
-  const [transportPublication, setTransportPublication] =
-    useState<TransportPublication | null>(null);
-  const [transportError, setTransportError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,10 +185,15 @@ export default function SurveyCasePanel({
   const [slotKey, setSlotKey] = useState("");
   const [evaluatorRef, setEvaluatorRef] = useState("");
   const [visitReasonRef, setVisitReasonRef] = useState("");
+  const [visitLocationKey, setVisitLocationKey] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState(45);
   const [reason, setReason] = useState("");
+  const [instruction, setInstruction] = useState("");
   const [editingSchedule, setEditingSchedule] = useState(false);
   const [editingEvaluator, setEditingEvaluator] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [activeView, setActiveView] =
+    useState<SurveyWorkspaceView>("REQUEST");
   const loadVersion = useRef(0);
 
   const load = useCallback(
@@ -170,21 +211,8 @@ export default function SurveyCasePanel({
           ]);
         if (version !== loadVersion.current) return;
         setWorkspace(nextWorkspace);
+        if (nextWorkspace.decision) setMethod(nextWorkspace.decision.method);
         setCommercialContext(nextCommercial);
-        setTransportPublication(null);
-        setTransportError(null);
-        if (logisticsSummaryEnabled && transportAccess?.canView && nextWorkspace.decision?.method === "IN_PERSON") {
-          try {
-            const publication = await transportApi.publication(authorization, { caseRef, purpose: "VISIT", contextRef: nextWorkspace.decision.decisionRef });
-            if (version !== loadVersion.current) return;
-            setTransportPublication(publication);
-          } catch (cause) {
-            if (version !== loadVersion.current) return;
-            const code = cause instanceof Error ? cause.message : "TRANSPORT_REQUEST_FAILED";
-            if (isTransportUnauthorized(cause) || /UNAUTHORIZED|AUTH_REQUIRED/.test(code)) onUnauthorized();
-            else setTransportError("No se pudo consultar el transporte de esta visita. Actualice para intentarlo nuevamente.");
-          }
-        }
       } catch (cause) {
         if (version !== loadVersion.current) return;
         const code =
@@ -197,11 +225,8 @@ export default function SurveyCasePanel({
     },
     [
       api,
-      authorization,
       caseRef,
       commercialApi,
-      logisticsSummaryEnabled,
-      transportAccess?.canView,
       onUnauthorized,
     ],
   );
@@ -218,24 +243,92 @@ export default function SurveyCasePanel({
     [workspace],
   );
   const selectedSlot = slots.find((slot) => slot.key === slotKey);
+  const selectedVisitLocation = workspace?.visitLocations.find(
+    (location) => locationKey(location) === visitLocationKey,
+  );
+  useEffect(() => {
+    if (!workspace) return;
+    const availableKeys = new Set(
+      workspace.availability?.slots
+        .filter((slot) => slot.available)
+        .map((slot) => slot.key) || [],
+    );
+    const recommendedSlot = slots.find(
+      (slot) => !workspace.availability || availableKeys.has(slot.key),
+    );
+    const selectedAvailability = workspace.availability?.slots.find(
+      (slot) => slot.key === slotKey,
+    );
+    if (
+      !slotKey ||
+      !slots.some((slot) => slot.key === slotKey) ||
+      selectedAvailability?.available === false
+    )
+      setSlotKey(recommendedSlot?.key || "");
+    const currentEvaluator = workspace.evaluatorCandidates.find(
+      (candidate) => candidate.membershipRef === evaluatorRef,
+    );
+    if (
+      !currentEvaluator ||
+      (currentEvaluator.dailyLimit !== null &&
+        currentEvaluator.dailyAssigned >= currentEvaluator.dailyLimit)
+    )
+      setEvaluatorRef(
+        (workspace.evaluatorCandidates.find(
+          (candidate) =>
+            candidate.dailyLimit === null ||
+            candidate.dailyAssigned < candidate.dailyLimit,
+        ) || workspace.evaluatorCandidates[0])?.membershipRef || "",
+      );
+    if (
+      !visitReasonRef ||
+      !workspace.visitReasons.some(
+        (visitReason) => visitReason.reasonRef === visitReasonRef,
+      )
+    )
+      setVisitReasonRef(workspace.visitReasons[0]?.reasonRef || "");
+    if (
+      !visitLocationKey ||
+      !workspace.visitLocations.some(
+        (location) => locationKey(location) === visitLocationKey,
+      )
+    ) {
+      const location =
+        workspace.visitLocations.find((entry) => entry.role === "ORIGIN") ||
+        workspace.visitLocations[0];
+      setVisitLocationKey(location ? locationKey(location) : "");
+    }
+  }, [
+    evaluatorRef,
+    slotKey,
+    slots,
+    visitLocationKey,
+    visitReasonRef,
+    workspace,
+  ]);
+  useEffect(() => {
+    setDurationMinutes(defaultDuration(workspace?.decision?.method || method));
+  }, [method, workspace?.decision?.method]);
   const mutate = async (operation: () => Promise<unknown>) => {
     setSaving(true);
     setError(null);
     try {
       await operation();
       await load();
+      return true;
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
           : "CRM_SURVEY_SCHEDULING_REQUEST_FAILED",
       );
+      return false;
     } finally {
       setSaving(false);
     }
   };
-  const saveDecision = () =>
-    mutate(() =>
+  const saveDecision = async () => {
+    const saved = await mutate(() =>
       api.decide({
         caseRef,
         expectedVersion: workspace?.decision?.version || null,
@@ -252,6 +345,10 @@ export default function SurveyCasePanel({
         rationaleCode: method === "NONE" ? "COMMERCIAL_DECISION" : null,
       }),
     );
+    if (saved && ["IN_PERSON", "VIRTUAL", "MINI"].includes(method)) {
+      setActiveView("SCHEDULE");
+    }
+  };
   const saveSchedule = async () => {
     if (!workspace?.decision || !selectedSlot || !date || !evaluatorRef) return;
     const saturday = new Date(`${date}T12:00:00`).getDay() === 6;
@@ -265,10 +362,20 @@ export default function SurveyCasePanel({
         expectedDecisionVersion: workspace.decision.version,
         evaluatorMembershipRef: evaluatorRef,
         scheduledStart: localDateTime(date, selectedSlot.startTime),
-        scheduledEnd: localDateTime(date, selectedSlot.endTime),
+        scheduledEnd: localDateTimeAfter(
+          date,
+          selectedSlot.startTime,
+          durationMinutes,
+        ),
         slotKey,
-        instruction: null,
+        instruction: instruction.trim() || null,
         saturdayApprovalReason: saturday ? reason || null : null,
+        ...(workspace.decision.method === "IN_PERSON" && selectedVisitLocation
+          ? {
+              visitRouteRole: selectedVisitLocation.role,
+              visitRouteOrder: selectedVisitLocation.order,
+            }
+          : {}),
         visitReasonRef: workspace.operationalPolicy
           ? visitReasonRef || null
           : null,
@@ -314,7 +421,11 @@ export default function SurveyCasePanel({
         reasonRef: visitReasonRef,
         method: workspace.decision.method,
         requestedStart: localDateTime(date, selectedSlot.startTime),
-        requestedEnd: localDateTime(date, selectedSlot.endTime),
+        requestedEnd: localDateTimeAfter(
+          date,
+          selectedSlot.startTime,
+          durationMinutes,
+        ),
         requesterOrigin: "SALES",
         reasonDescription: reason,
       });
@@ -340,7 +451,11 @@ export default function SurveyCasePanel({
         assignmentRef: workspace.assignment!.assignmentRef,
         expectedVersion: workspace.assignment!.version,
         scheduledStart: localDateTime(date, selectedSlot.startTime),
-        scheduledEnd: localDateTime(date, selectedSlot.endTime),
+        scheduledEnd: localDateTimeAfter(
+          date,
+          selectedSlot.startTime,
+          durationMinutes,
+        ),
         slotKey,
         reasonCode: reason,
         notificationRequired: true,
@@ -377,6 +492,29 @@ export default function SurveyCasePanel({
       setReason("");
     });
   };
+  const recordClientConfirmation = (
+    confirmation: "CONFIRMED" | "CHANGE_REQUESTED",
+  ) => {
+    if (!workspace?.assignment) return;
+    void mutate(() =>
+      personnelApi.mutate("RECORD_CLIENT_CONFIRMATION", {
+        assignmentRef: workspace.assignment!.assignmentRef,
+        expectedVersion: workspace.assignment!.version,
+        confirmation,
+      }),
+    );
+  };
+  const canOpenSchedule = Boolean(
+    workspace?.decision &&
+      [
+        "READY_TO_SCHEDULE",
+        "SCHEDULED",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "CANCELLED",
+      ].includes(workspace.decision.state),
+  );
+  const canOpenResult = Boolean(workspace?.assignment || workspace?.publication);
   if (!access.canView)
     return (
       <section role="status" className="border border-slate-200 bg-white p-6">
@@ -397,7 +535,9 @@ export default function SurveyCasePanel({
           <p className="text-[10px] font-bold uppercase tracking-[.18em] text-indigo-600">
             Comercial · Survey / Scheduling
           </p>
-          <h2 className="text-lg font-black text-[#003366]">Survey</h2>
+          <h2 className="text-lg font-black text-[#003366]">
+            Coordinar Survey
+          </h2>
         </div>
         <Button size="sm" variant="outline" onClick={() => void load()}>
           <RefreshCw />
@@ -414,7 +554,7 @@ export default function SurveyCasePanel({
           role="alert"
           className="m-4 border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800"
         >
-          {error}
+          {schedulingErrorMessage(error)}
         </p>
       )}
       {scheduleNeedsException &&
@@ -441,8 +581,45 @@ export default function SurveyCasePanel({
         </p>
       )}
       {!loading && workspace && (
-        <div className="grid min-w-0 gap-0 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]">
+        <>
+          <nav
+            aria-label="Etapas de Survey"
+            className="grid border-b bg-white sm:grid-cols-3"
+            data-testid="survey-workspace-views"
+          >
+            <SurveyViewButton
+              active={activeView === "REQUEST"}
+              complete={Boolean(workspace.decision)}
+              icon={ListChecks}
+              label="Solicitud"
+              onClick={() => setActiveView("REQUEST")}
+            />
+            <SurveyViewButton
+              active={activeView === "SCHEDULE"}
+              complete={Boolean(workspace.assignment)}
+              disabled={!canOpenSchedule}
+              icon={CalendarClock}
+              label="Programación"
+              onClick={() => setActiveView("SCHEDULE")}
+            />
+            <SurveyViewButton
+              active={activeView === "RESULT"}
+              complete={Boolean(workspace.publication)}
+              disabled={!canOpenResult}
+              icon={FileCheck2}
+              label="Resultado"
+              onClick={() => setActiveView("RESULT")}
+            />
+          </nav>
+          <div
+            className={
+              activeView === "RESULT"
+                ? "grid min-w-0 gap-0 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]"
+                : "min-w-0"
+            }
+          >
           <div className="min-w-0 divide-y">
+            {activeView === "REQUEST" && <div className="divide-y">
             {commercialContext && (
               <section
                 className="bg-sky-50/50 p-4"
@@ -505,7 +682,7 @@ export default function SurveyCasePanel({
                     id="evaluation-decision-title"
                     className="text-xs font-black uppercase tracking-wide text-slate-500"
                   >
-                    Decisión y método
+                    Solicitud y método
                   </h3>
                   <p className="mt-1 text-lg font-black text-[#003366]">
                     {workspace.decision
@@ -552,26 +729,18 @@ export default function SurveyCasePanel({
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button disabled={saving} onClick={() => void saveDecision()}>{saving ? "Guardando…" : "Guardar decisión"}</Button></div>
+                    <Button disabled={saving} onClick={() => void saveDecision()}>{saving ? "Guardando…" : workspace.decision ? "Actualizar solicitud" : "Crear solicitud"}</Button></div>
                     <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2" data-testid="survey-method-guidance">
-                      <p className="border-l-2 border-sky-400 pl-2"><strong>Presencial:</strong> agenda, evaluador, zona, buffers, traslado y Visit Fee.</p>
-                      <p className="border-l-2 border-violet-400 pl-2"><strong>Virtual:</strong> cita remota con evaluador y duración; sin traslado físico.</p>
-                      <p className="border-l-2 border-amber-400 pl-2"><strong>Listado + fotografías:</strong> artículos, fotos, documentos y medidas aportados por el cliente.</p>
-                      <p className="border-l-2 border-emerald-500 pl-2"><strong>Mini-visita:</strong> captura rápida por teléfono, email, WhatsApp o conversación comercial; máximo 10 tipos.</p>
+                      <p className="border-l-2 border-sky-400 pl-2"><strong>Presencial o especial:</strong> usa la dirección del caso, calcula zona/costo y reserva traslado.</p>
+                      <p className="border-l-2 border-violet-400 pl-2"><strong>Virtual:</strong> reserva evaluador y hora, sin tiempo ni costo de traslado.</p>
                     </div>
                   </div>
                 )}
             </section>
 
-            {clientTemporaryAccessEnabled && clientTemporaryAccess && workspace.assignment && commercialContext && (clientTemporaryAccess.canView || clientTemporaryAccess.canCreate) && <ClientTemporaryAccessPanel
-              caseRef={caseRef}
-              assignmentRef={workspace.assignment.assignmentRef}
-              contacts={commercialContext.parties.flatMap((party) => party.contacts.map((contact) => ({ contactRef: contact.contactRef, displayName: contact.displayName })))}
-              authorization={authorization}
-              access={clientTemporaryAccess}
-              onUnauthorized={onUnauthorized}
-            />}
+            </div>}
 
+            {activeView === "SCHEDULE" && <div className="divide-y">
             <section className="p-4" aria-labelledby="evaluation-agenda-title">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
@@ -658,13 +827,20 @@ export default function SurveyCasePanel({
                     }}
                     slotKey={slotKey}
                     setSlotKey={setSlotKey}
+                    visitLocationKey={visitLocationKey}
+                    setVisitLocationKey={setVisitLocationKey}
+                    durationMinutes={durationMinutes}
+                    setDurationMinutes={setDurationMinutes}
                     evaluatorRef={evaluatorRef}
                     setEvaluatorRef={setEvaluatorRef}
                     visitReasonRef={visitReasonRef}
                     setVisitReasonRef={setVisitReasonRef}
                     reason={reason}
                     setReason={setReason}
+                    instruction={instruction}
+                    setInstruction={setInstruction}
                     saving={saving}
+                    needsException={scheduleNeedsException}
                     onSave={saveSchedule}
                   />
                 )}
@@ -678,11 +854,16 @@ export default function SurveyCasePanel({
                   }}
                   slotKey={slotKey}
                   setSlotKey={setSlotKey}
+                  visitLocationKey={visitLocationKey}
+                  setVisitLocationKey={setVisitLocationKey}
+                  durationMinutes={durationMinutes}
+                  setDurationMinutes={setDurationMinutes}
                   evaluatorRef={evaluatorRef}
                   setEvaluatorRef={setEvaluatorRef}
                   reason={reason}
                   setReason={setReason}
                   saving={saving}
+                  needsException={scheduleNeedsException}
                   reprogramming
                   onSave={reschedule}
                 />
@@ -751,30 +932,63 @@ export default function SurveyCasePanel({
               )}
             </section>
 
-            {workspace.decision?.method === "IN_PERSON" &&
-              logisticsSummaryEnabled && (
-                <>
-                  {transportAccess?.canView && <div className="p-4"><Suspense fallback={<p className="text-sm text-slate-500">Cargando transporte de la visita…</p>}><TransportCalculationPanel caseRef={caseRef} purpose="VISIT" contextRef={workspace.decision.decisionRef} authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized} onPublished={() => { void load(date || undefined); }} /></Suspense></div>}
-                  {transportError && <p role="alert" className="mx-4 mb-3 text-sm text-red-700">{transportError}</p>}
-                  <LogisticsVisitSummary
-                    publication={transportAccess?.canView && transportPublication?.context.contextRef === workspace.decision.decisionRef ? transportPublication : null}
-                    schedulingContext={workspace.schedulingContext}
-                    visitFee={access.canViewFee ? workspace.visitFee : null}
-                    canViewFee={access.canViewFee}
-                    commercialContext={commercialContext}
+            {workspace.assignment && (
+              <section className="grid gap-3 p-4 sm:grid-cols-2" data-testid="survey-confirmation-status">
+                <div>
+                  <ConfirmationStatus
+                    label="Confirmación del cliente"
+                    value={workspace.assignment.clientConfirmation}
                   />
-                </>
-              )}
+                  {access.canManage && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={saving || workspace.assignment.clientConfirmation === "CONFIRMED"}
+                        onClick={() => recordClientConfirmation("CONFIRMED")}
+                      >
+                        Confirmar con cliente
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={saving}
+                        onClick={() => recordClientConfirmation("CHANGE_REQUESTED")}
+                      >
+                        Solicitó cambio
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <ConfirmationStatus
+                  label="Confirmación del evaluador"
+                  value={workspace.assignment.evaluatorConfirmation}
+                />
+              </section>
+            )}
 
-            <section className="grid gap-4 p-4 sm:grid-cols-2">
+            {clientTemporaryAccessEnabled && clientTemporaryAccess && workspace.assignment && commercialContext && (clientTemporaryAccess.canView || clientTemporaryAccess.canCreate) && <ClientTemporaryAccessPanel
+              caseRef={caseRef}
+              assignmentRef={workspace.assignment.assignmentRef}
+              contacts={commercialContext.parties.flatMap((party) => party.contacts.map((contact) => ({ contactRef: contact.contactRef, displayName: contact.displayName })))}
+              authorization={authorization}
+              access={clientTemporaryAccess}
+              onUnauthorized={onUnauthorized}
+            />}
+
+            <section className="grid gap-3 bg-slate-50 p-4 sm:grid-cols-3" data-testid="survey-visit-readiness">
               <div>
                 <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
                   <MapPin className="h-4 w-4" />
-                  Visit Fee
+                  Zona y costo
                 </h3>
-                {!access.canViewFee ? (
+                {workspace.decision?.method === "VIRTUAL" ? (
+                  <p className="mt-2 text-sm font-bold text-emerald-700">Virtual · sin tiempo ni costo de traslado</p>
+                ) : !workspace.schedulingContext ? (
+                  <p className="mt-2 text-sm font-semibold text-amber-700">Clasificando la dirección del caso</p>
+                ) : !access.canViewFee ? (
                   <p className="mt-2 text-sm text-slate-500">
-                    Sin permiso de consulta.
+                    {workspace.schedulingContext.zoneType === "METRO" ? "Zona metropolitana" : "Fuera de zona metropolitana"}
                   </p>
                 ) : workspace.visitFee ? (
                   <div className="mt-2 space-y-1 text-sm">
@@ -787,30 +1001,35 @@ export default function SurveyCasePanel({
                             ? "Pendiente de cálculo"
                             : `${workspace.visitFee.currency} ${workspace.visitFee.suggestedAmount.toLocaleString("es-DO")}`}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      Comunicación: {workspace.visitFee.communicationStatus} ·
-                      aprobación: {workspace.visitFee.approvalStatus} · pago:{" "}
-                      {workspace.visitFee.paymentStatus}
-                    </p>
                   </div>
                 ) : (
                   <p className="mt-2 text-sm text-slate-500">
-                    Pendiente de cálculo por Motor Logístico y Costing.
-                    Scheduling no estima importes.
+                    {workspace.schedulingContext.zoneType === "METRO"
+                      ? "Zona metropolitana · sin cargo publicado"
+                      : "Costo pendiente de publicar"}
                   </p>
                 )}
               </div>
               <div>
                 <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
-                  <MessageSquareText className="h-4 w-4" />
-                  Comunicación PIC
+                  <CalendarClock className="h-4 w-4" />
+                  Reserva
                 </h3>
                 <p className="mt-2 text-sm text-slate-600">
-                  Plantillas publicadas y destinatarios explícitos para cliente
-                  y evaluador.
+                  {workspace.availability
+                    ? `${workspace.availability.dayOccupied}/${workspace.availability.dayCapacity} visitas en la fecha consultada`
+                    : "Seleccione una fecha para consultar disponibilidad"}
                 </p>
-                <p className="mt-2 text-[11px] text-slate-500">
-                  PREPARED no envía mensajes externos.
+              </div>
+              <div>
+                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
+                  <MessageSquareText className="h-4 w-4" />
+                  Confirmaciones
+                </h3>
+                <p className="mt-2 text-sm text-slate-600">
+                  {workspace.assignment
+                    ? `Cliente: ${workspace.assignment.clientConfirmation} · Evaluador: ${workspace.assignment.evaluatorConfirmation}`
+                    : "Al reservar se preparan los avisos versionados para cliente y evaluador"}
                 </p>
               </div>
             </section>
@@ -820,7 +1039,9 @@ export default function SurveyCasePanel({
                 <Button size="sm" variant="outline" onClick={() => { if (workspace.assignment) onOpenCommunications(workspace.assignment.assignmentRef); }}><MessageSquareText />Ver comunicaciones de Survey</Button>
               </section>
             )}
+            </div>}
 
+            {activeView === "RESULT" && <div className="divide-y">
             <section className="p-4">
               <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
                 <ClipboardCheck className="h-4 w-4" />
@@ -856,8 +1077,10 @@ export default function SurveyCasePanel({
                 </Button>
               )}
             </section>
+            </div>}
           </div>
 
+          {activeView === "RESULT" && (
           <aside className="min-w-0 border-t bg-slate-50 p-4 xl:border-l xl:border-t-0">
             <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
               <History className="h-4 w-4" />
@@ -891,9 +1114,69 @@ export default function SurveyCasePanel({
               </ol>
             )}
           </aside>
-        </div>
+          )}
+          </div>
+        </>
       )}
     </section>
+  );
+}
+
+type SurveyViewButtonProps = Readonly<{
+  active: boolean;
+  complete: boolean;
+  disabled?: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick(): void;
+}>;
+
+function SurveyViewButton({
+  active,
+  complete,
+  disabled = false,
+  icon: Icon,
+  label,
+  onClick,
+}: SurveyViewButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-current={active ? "step" : undefined}
+      className={`flex min-h-14 items-center justify-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors sm:border-b-4 ${
+        active
+          ? "border-[#0070a8] bg-sky-50 text-[#003366]"
+          : "border-transparent text-slate-600 hover:bg-slate-50"
+      } disabled:cursor-not-allowed disabled:opacity-40`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+      {complete && (
+        <span className="h-2 w-2 rounded-full bg-emerald-500" aria-label="Completado" />
+      )}
+    </button>
+  );
+}
+
+function ConfirmationStatus({
+  label,
+  value,
+}: Readonly<{ label: string; value: string }>) {
+  const confirmed = /CONFIRMED|ACCEPTED|APPROVED/.test(value);
+  return (
+    <div className="rounded border border-slate-200 bg-slate-50 p-3">
+      <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p
+        className={`mt-1 text-sm font-bold ${confirmed ? "text-emerald-700" : "text-amber-700"}`}
+      >
+        {confirmed ? "Confirmada" : "Pendiente"}
+      </p>
+      <p className="mt-1 text-[11px] text-slate-500">Estado: {value}</p>
+    </div>
   );
 }
 
@@ -903,13 +1186,20 @@ type ScheduleEditorProps = Readonly<{
   setDate(value: string): void;
   slotKey: string;
   setSlotKey(value: string): void;
+  visitLocationKey: string;
+  setVisitLocationKey(value: string): void;
+  durationMinutes: number;
+  setDurationMinutes(value: number): void;
   evaluatorRef: string;
   setEvaluatorRef(value: string): void;
   visitReasonRef?: string;
   setVisitReasonRef?(value: string): void;
   reason: string;
   setReason(value: string): void;
+  instruction?: string;
+  setInstruction?(value: string): void;
   saving: boolean;
+  needsException?: boolean;
   reprogramming?: boolean;
   onSave(): void;
 }>;
@@ -919,86 +1209,226 @@ function ScheduleEditor({
   setDate,
   slotKey,
   setSlotKey,
+  visitLocationKey,
+  setVisitLocationKey,
+  durationMinutes,
+  setDurationMinutes,
   evaluatorRef,
   setEvaluatorRef,
   visitReasonRef = "",
   setVisitReasonRef,
   reason,
   setReason,
+  instruction = "",
+  setInstruction,
   saving,
+  needsException = false,
   reprogramming = false,
   onSave,
 }: ScheduleEditorProps) {
+  const physicalVisit = workspace.decision?.method === "IN_PERSON";
   const slots =
     workspace.policy?.slots.filter(
       (slot) => slot.profile === workspace.schedulingContext?.profile,
     ) || [];
+  const selectedSlot = slots.find((slot) => slot.key === slotKey);
+  const selectedEvaluator = workspace.evaluatorCandidates.find(
+    (candidate) => candidate.membershipRef === evaluatorRef,
+  );
+  const evaluatorDailyLimitReached = Boolean(
+    selectedEvaluator?.dailyLimit !== null &&
+      selectedEvaluator?.dailyLimit !== undefined &&
+      selectedEvaluator.dailyAssigned >= selectedEvaluator.dailyLimit,
+  );
+  const selectedSlotAvailability = workspace.availability?.slots.find(
+    (slot) => slot.key === slotKey,
+  );
+  const selectedStart = selectedSlot
+    ? timeMinutes(selectedSlot.startTime)
+    : null;
+  const selectedEnd =
+    selectedStart === null ? null : selectedStart + durationMinutes;
+  const weekday = date
+    ? new Date(`${date}T12:00:00`).getDay()
+    : null;
+  const policyWindows = workspace.operationalPolicy?.windows.filter(
+    (window) =>
+      window.method === workspace.decision?.method &&
+      weekday === window.weekday &&
+      (!window.calendarDate || window.calendarDate === date),
+  );
+  const matchingWindow = policyWindows?.find(
+    (window) =>
+      selectedStart !== null &&
+      selectedEnd !== null &&
+      window.startMinute <= selectedStart &&
+      window.endMinute >= selectedEnd,
+  );
+  const extraordinary = Boolean(
+    selectedStart !== null &&
+      (selectedStart < 9 * 60 ||
+        selectedStart > 16 * 60 ||
+        (workspace.operationalPolicy &&
+          (!matchingWindow || matchingWindow.requiresApproval))),
+  );
+  const morningSlots = slots.filter(
+    (slot) => timeMinutes(slot.startTime) < 12 * 60,
+  );
+  const afternoonSlots = slots.filter(
+    (slot) => timeMinutes(slot.startTime) >= 12 * 60,
+  );
   if (!workspace.policy || !workspace.schedulingContext)
     return (
       <p className="mt-4 border border-dashed border-slate-300 p-3 text-sm text-slate-600">
-        Motor Logístico debe publicar zona y distancia antes de habilitar la
-        agenda.
+        Confirme primero la zona de la dirección. La agenda utilizará la ciudad
+        y el sector del caso; la distancia vial se conserva para calcular el
+        traslado y los cargos que correspondan.
       </p>
     );
   const availability = workspace.availability;
+  const availabilityFor = (key: string) =>
+    availability?.slots.find((item) => item.key === key);
+  const renderSlotGroup = (
+    title: string,
+    group: typeof slots,
+  ) => (
+    <div>
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-slate-500">
+        {title}
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {group.map((slot) => {
+          const observed = availabilityFor(slot.key);
+          const active = slot.key === slotKey;
+          const starts = timeMinutes(slot.startTime);
+          const outsideNormal = starts < 9 * 60 || starts > 16 * 60;
+          return (
+            <button
+              key={slot.key}
+              type="button"
+              disabled={
+                !date ||
+                evaluatorDailyLimitReached ||
+                (observed ? !observed.available : false)
+              }
+              aria-pressed={active}
+              onClick={() => setSlotKey(slot.key)}
+              className={`min-h-16 rounded border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                active
+                  ? "border-[#003366] bg-[#003366] text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-800 hover:border-sky-400"
+              }`}
+            >
+              <span className="block text-sm font-black">
+                {clientTime(slot.startTime)}
+              </span>
+              <span
+                className={`mt-1 block text-[10px] ${active ? "text-sky-100" : "text-slate-500"}`}
+              >
+                {durationMinutes} min · {slot.label}
+                {observed
+                  ? ` · ${observed.occupied}/${observed.capacity}`
+                  : ""}
+              </span>
+              {outsideNormal && (
+                <span
+                  className={`mt-1 block text-[10px] font-bold ${active ? "text-amber-200" : "text-amber-700"}`}
+                >
+                  Requiere autorización
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
   return (
     <div
-      className="mt-4 grid gap-3 rounded border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"
+      className="mt-4 space-y-4 rounded border border-slate-200 bg-slate-50 p-3"
       data-testid="survey-schedule-editor"
     >
-      <div>
-        <Label htmlFor="survey-date">Fecha</Label>
-        <Input
-          id="survey-date"
-          type="date"
-          value={date}
-          onChange={(event) => setDate(event.target.value)}
-        />
-        {availability?.date === date && (
-          <p
-            className={`mt-1 text-[11px] font-semibold ${availability.closed ? "text-red-700" : "text-slate-500"}`}
-          >
-            {availability.closed
-              ? "Día cerrado"
-              : `${availability.dayOccupied}/${availability.dayCapacity} citas en el perfil`}
-            {availability.saturdayApprovalRequired
-              ? " · sábado sujeto a validación"
-              : ""}
-          </p>
-        )}
-      </div>
-      <div>
-        <Label>Slot</Label>
-        <Select value={slotKey} onValueChange={setSlotKey}>
-          <SelectTrigger aria-label="Slot">
-            <SelectValue placeholder="Seleccione" />
-          </SelectTrigger>
-          <SelectContent>
-            {slots.map((slot) => {
-              const observed = availability?.slots.find(
-                (item) => item.key === slot.key,
-              );
-              return (
-                <SelectItem
-                  key={slot.key}
-                  value={slot.key}
-                  disabled={observed ? !observed.available : false}
-                >
-                  {slot.label} · {slot.startTime}–{slot.endTime}
-                  {observed
-                    ? ` · ${observed.occupied}/${observed.capacity}`
-                    : ""}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </div>
-      {!reprogramming && (
+      {!reprogramming && physicalVisit && workspace.visitLocations.length > 0 && (
         <div>
-          <Label>Evaluador</Label>
+          <Label>Lugar de la visita</Label>
+          <Select
+            value={visitLocationKey}
+            onValueChange={setVisitLocationKey}
+          >
+            <SelectTrigger aria-label="Lugar de la visita">
+              <SelectValue placeholder="Seleccione origen o destino" />
+            </SelectTrigger>
+            <SelectContent>
+              {workspace.visitLocations.map((location) => (
+                <SelectItem key={locationKey(location)} value={locationKey(location)}>
+                  {locationRoleLabel(location.role)} · {location.sector || location.cityMunicipality}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {workspace.visitLocations
+            .filter((location) => locationKey(location) === visitLocationKey)
+            .map((location) => (
+              <div
+                key={locationKey(location)}
+                className="mt-2 rounded border border-sky-100 bg-white px-3 py-2"
+              >
+                <p className="text-xs font-bold text-[#003366]">
+                  {location.compactAddress}
+                </p>
+                {location.arrivalReference && (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Referencia: {location.arrivalReference}
+                  </p>
+                )}
+              </div>
+            ))}
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <Label htmlFor="survey-date">Fecha</Label>
+          <Input
+            id="survey-date"
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+          />
+          {availability?.date === date && (
+            <p
+              className={`mt-1 text-[11px] font-semibold ${availability.closed ? "text-red-700" : "text-slate-500"}`}
+            >
+              {availability.closed
+                ? "Día cerrado"
+                : `${availability.dayOccupied}/${availability.dayCapacity} visitas programadas`}
+              {availability.saturdayApprovalRequired
+                ? " · requiere autorización"
+                : ""}
+            </p>
+          )}
+        </div>
+        <div>
+          <Label>Duración estimada</Label>
+          <div className="grid grid-cols-3 gap-1" role="group" aria-label="Duración estimada">
+            {[30, 45, 60].map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                aria-pressed={durationMinutes === minutes}
+                onClick={() => setDurationMinutes(minutes)}
+                className={`h-10 rounded border text-xs font-bold ${durationMinutes === minutes ? "border-[#003366] bg-[#003366] text-white" : "border-slate-200 bg-white text-slate-700"}`}
+              >
+                {minutes} min
+              </button>
+            ))}
+          </div>
+        </div>
+        {!reprogramming && (
+          <div>
+            <Label>Evaluador recomendado</Label>
           <Select value={evaluatorRef} onValueChange={setEvaluatorRef}>
-            <SelectTrigger aria-label="Evaluador">
+            <SelectTrigger aria-label="Evaluador recomendado">
               <SelectValue placeholder="Seleccione" />
             </SelectTrigger>
             <SelectContent>
@@ -1006,26 +1436,69 @@ function ScheduleEditor({
                 <SelectItem
                   key={candidate.membershipRef}
                   value={candidate.membershipRef}
+                  disabled={
+                    candidate.dailyLimit !== null &&
+                    candidate.dailyAssigned >= candidate.dailyLimit
+                  }
                 >
                   <span className="flex items-center gap-2">
                     <UserRound className="h-3.5 w-3.5" />
                     {candidate.displayName}
+                    {candidate.dailyLimit !== null &&
+                    candidate.dailyAssigned >= candidate.dailyLimit
+                      ? " · exterior completo"
+                      : ""}
                   </span>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {physicalVisit && workspace.schedulingContext.zoneType !== "METRO" && (
+            <p
+              className={`mt-1 text-[11px] font-semibold ${evaluatorDailyLimitReached ? "text-red-700" : "text-slate-500"}`}
+            >
+              Fuera de zona metropolitana: máximo 1 visita diaria por evaluador.
+            </p>
+          )}
+          </div>
+        )}
+      </div>
+
+      {date && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <Label>Hora de llegada al cliente</Label>
+              <p className="text-[11px] text-slate-500">
+                Seleccione la hora exacta que se confirmará con el cliente.
+              </p>
+            </div>
+            {workspace.operationalPolicy && physicalVisit && (
+              <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-slate-600">
+                Traslado mínimo entre visitas: {workspace.operationalPolicy.minimumTravelBufferMinutes} min
+              </span>
+            )}
+          </div>
+          {morningSlots.length > 0 && renderSlotGroup("Mañana", morningSlots)}
+          {afternoonSlots.length > 0 && renderSlotGroup("Tarde", afternoonSlots)}
+          {slots.length === 0 && (
+            <p className="rounded border border-dashed p-3 text-sm text-slate-500">
+              No hay horarios configurados para esta zona.
+            </p>
+          )}
         </div>
       )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
       {!reprogramming && workspace.operationalPolicy && (
         <div>
-          <Label>Razón de la visita</Label>
+          <Label>Tipo de visita</Label>
           <Select
             value={visitReasonRef}
             onValueChange={(value) => setVisitReasonRef?.(value)}
           >
-            <SelectTrigger aria-label="Razón de la visita">
-              <SelectValue placeholder="Seleccione un motivo" />
+            <SelectTrigger aria-label="Tipo de visita">
+              <SelectValue placeholder="Seleccione" />
             </SelectTrigger>
             <SelectContent>
               {workspace.visitReasons.map((item) => (
@@ -1037,28 +1510,50 @@ function ScheduleEditor({
           </Select>
         </div>
       )}
-      <div>
+      {!reprogramming && (
+        <div>
+          <Label htmlFor="survey-evaluator-instruction">
+            Notas y alcance para el evaluador
+          </Label>
+          <Input
+            id="survey-evaluator-instruction"
+            value={instruction}
+            placeholder="Qué debe revisar, preferencias del cliente, acceso o indicación importante"
+            onChange={(event) => setInstruction?.(event.target.value)}
+          />
+        </div>
+      )}
+      {(reprogramming || extraordinary || needsException) && <div className="sm:col-span-2">
         <Label htmlFor="schedule-reason">
           {reprogramming
             ? "Motivo obligatorio"
-            : "Motivo para sábado o excepción"}
+            : "Motivo para autorización extraordinaria"}
         </Label>
         <Input
           id="schedule-reason"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
         />
-      </div>
+        {extraordinary && !needsException && (
+          <p className="mt-1 text-[11px] font-semibold text-amber-700">
+            Este horario queda fuera de la jornada normal o requiere aprobación.
+          </p>
+        )}
+      </div>}
       <div className="sm:col-span-2">
         <Button
           disabled={
             saving ||
             !date ||
             !slotKey ||
+            selectedSlotAvailability?.available === false ||
             (!reprogramming && !evaluatorRef) ||
+            (!reprogramming && evaluatorDailyLimitReached) ||
             (!reprogramming &&
               Boolean(workspace.operationalPolicy) &&
               !visitReasonRef) ||
+            (!reprogramming && physicalVisit && workspace.visitLocations.length > 0 && !visitLocationKey) ||
+            ((extraordinary || needsException) && !reason) ||
             (reprogramming && !reason)
           }
           onClick={onSave}
@@ -1067,8 +1562,15 @@ function ScheduleEditor({
             ? "Guardando…"
             : reprogramming
               ? "Confirmar reprogramación"
-              : "Programar evaluación"}
+              : "Confirmar visita"}
         </Button>
+        {selectedSlot && (
+          <p className="mt-2 text-xs text-slate-600">
+            Llegada: <strong>{clientTime(selectedSlot.startTime)}</strong> · duración: {durationMinutes} min
+            {extraordinary ? " · autorización requerida" : " · horario regular"}
+          </p>
+        )}
+      </div>
       </div>
     </div>
   );

@@ -104,6 +104,46 @@ function stateFor(method: EvaluationMethod) {
 function localDateTime(date: string, time: string) {
   return new Date(`${date}T${time}:00`).toISOString();
 }
+function localDateTimeAfter(date: string, time: string, minutes: number) {
+  const value = new Date(`${date}T${time}:00`);
+  value.setMinutes(value.getMinutes() + minutes);
+  return value.toISOString();
+}
+function timeMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+function clientTime(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return new Intl.DateTimeFormat("es-DO", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(2000, 0, 1, hours, minutes));
+}
+function locationKey(
+  location: SchedulingWorkspace["visitLocations"][number],
+) {
+  return `${location.role}:${location.order}`;
+}
+function locationRoleLabel(role: string) {
+  if (role === "ORIGIN") return "Origen";
+  if (role === "DESTINATION") return "Destino";
+  return "Parada adicional";
+}
+function defaultDuration(method: EvaluationMethod) {
+  return method === "IN_PERSON" ? 45 : 30;
+}
+function schedulingErrorMessage(code: string) {
+  if (code === "CRM_SURVEY_INTERIOR_DAILY_LIMIT")
+    return "Este evaluador ya tiene una visita fuera de la zona metropolitana en esa fecha. Seleccione otro evaluador o cambie el día.";
+  if (code === "PERSONNEL_AFTER_HOURS_REQUEST_REQUIRED")
+    return "El horario seleccionado requiere autorización extraordinaria.";
+  if (code === "PERSONNEL_EVALUATOR_UNAVAILABLE")
+    return "El evaluador no dispone del tiempo de visita y traslado necesario. Seleccione otro horario o evaluador.";
+  if (code === "CRM_SURVEY_SLOT_FULL")
+    return "Ese horario acaba de ocuparse. Seleccione otro disponible.";
+  return code;
+}
 function appointmentCopy(workspace: SchedulingWorkspace) {
   if (!workspace.assignment) return "Aún no existe una cita.";
   return new Intl.DateTimeFormat("es-DO", {
@@ -154,6 +194,8 @@ export default function SurveyCasePanel({
   const [slotKey, setSlotKey] = useState("");
   const [evaluatorRef, setEvaluatorRef] = useState("");
   const [visitReasonRef, setVisitReasonRef] = useState("");
+  const [visitLocationKey, setVisitLocationKey] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState(45);
   const [reason, setReason] = useState("");
   const [instruction, setInstruction] = useState("");
   const [editingSchedule, setEditingSchedule] = useState(false);
@@ -227,6 +269,72 @@ export default function SurveyCasePanel({
     [workspace],
   );
   const selectedSlot = slots.find((slot) => slot.key === slotKey);
+  const selectedVisitLocation = workspace?.visitLocations.find(
+    (location) => locationKey(location) === visitLocationKey,
+  );
+  useEffect(() => {
+    if (!workspace) return;
+    const availableKeys = new Set(
+      workspace.availability?.slots
+        .filter((slot) => slot.available)
+        .map((slot) => slot.key) || [],
+    );
+    const recommendedSlot = slots.find(
+      (slot) => !workspace.availability || availableKeys.has(slot.key),
+    );
+    const selectedAvailability = workspace.availability?.slots.find(
+      (slot) => slot.key === slotKey,
+    );
+    if (
+      !slotKey ||
+      !slots.some((slot) => slot.key === slotKey) ||
+      selectedAvailability?.available === false
+    )
+      setSlotKey(recommendedSlot?.key || "");
+    const currentEvaluator = workspace.evaluatorCandidates.find(
+      (candidate) => candidate.membershipRef === evaluatorRef,
+    );
+    if (
+      !currentEvaluator ||
+      (currentEvaluator.dailyLimit !== null &&
+        currentEvaluator.dailyAssigned >= currentEvaluator.dailyLimit)
+    )
+      setEvaluatorRef(
+        (workspace.evaluatorCandidates.find(
+          (candidate) =>
+            candidate.dailyLimit === null ||
+            candidate.dailyAssigned < candidate.dailyLimit,
+        ) || workspace.evaluatorCandidates[0])?.membershipRef || "",
+      );
+    if (
+      !visitReasonRef ||
+      !workspace.visitReasons.some(
+        (visitReason) => visitReason.reasonRef === visitReasonRef,
+      )
+    )
+      setVisitReasonRef(workspace.visitReasons[0]?.reasonRef || "");
+    if (
+      !visitLocationKey ||
+      !workspace.visitLocations.some(
+        (location) => locationKey(location) === visitLocationKey,
+      )
+    ) {
+      const location =
+        workspace.visitLocations.find((entry) => entry.role === "ORIGIN") ||
+        workspace.visitLocations[0];
+      setVisitLocationKey(location ? locationKey(location) : "");
+    }
+  }, [
+    evaluatorRef,
+    slotKey,
+    slots,
+    visitLocationKey,
+    visitReasonRef,
+    workspace,
+  ]);
+  useEffect(() => {
+    setDurationMinutes(defaultDuration(workspace?.decision?.method || method));
+  }, [method, workspace?.decision?.method]);
   const mutate = async (operation: () => Promise<unknown>) => {
     setSaving(true);
     setError(null);
@@ -280,10 +388,20 @@ export default function SurveyCasePanel({
         expectedDecisionVersion: workspace.decision.version,
         evaluatorMembershipRef: evaluatorRef,
         scheduledStart: localDateTime(date, selectedSlot.startTime),
-        scheduledEnd: localDateTime(date, selectedSlot.endTime),
+        scheduledEnd: localDateTimeAfter(
+          date,
+          selectedSlot.startTime,
+          durationMinutes,
+        ),
         slotKey,
         instruction: instruction.trim() || null,
         saturdayApprovalReason: saturday ? reason || null : null,
+        ...(selectedVisitLocation
+          ? {
+              visitRouteRole: selectedVisitLocation.role,
+              visitRouteOrder: selectedVisitLocation.order,
+            }
+          : {}),
         visitReasonRef: workspace.operationalPolicy
           ? visitReasonRef || null
           : null,
@@ -329,7 +447,11 @@ export default function SurveyCasePanel({
         reasonRef: visitReasonRef,
         method: workspace.decision.method,
         requestedStart: localDateTime(date, selectedSlot.startTime),
-        requestedEnd: localDateTime(date, selectedSlot.endTime),
+        requestedEnd: localDateTimeAfter(
+          date,
+          selectedSlot.startTime,
+          durationMinutes,
+        ),
         requesterOrigin: "SALES",
         reasonDescription: reason,
       });
@@ -355,7 +477,11 @@ export default function SurveyCasePanel({
         assignmentRef: workspace.assignment!.assignmentRef,
         expectedVersion: workspace.assignment!.version,
         scheduledStart: localDateTime(date, selectedSlot.startTime),
-        scheduledEnd: localDateTime(date, selectedSlot.endTime),
+        scheduledEnd: localDateTimeAfter(
+          date,
+          selectedSlot.startTime,
+          durationMinutes,
+        ),
         slotKey,
         reasonCode: reason,
         notificationRequired: true,
@@ -454,7 +580,7 @@ export default function SurveyCasePanel({
           role="alert"
           className="m-4 border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800"
         >
-          {error}
+          {schedulingErrorMessage(error)}
         </p>
       )}
       {scheduleNeedsException &&
@@ -737,6 +863,10 @@ export default function SurveyCasePanel({
                     }}
                     slotKey={slotKey}
                     setSlotKey={setSlotKey}
+                    visitLocationKey={visitLocationKey}
+                    setVisitLocationKey={setVisitLocationKey}
+                    durationMinutes={durationMinutes}
+                    setDurationMinutes={setDurationMinutes}
                     evaluatorRef={evaluatorRef}
                     setEvaluatorRef={setEvaluatorRef}
                     visitReasonRef={visitReasonRef}
@@ -746,6 +876,7 @@ export default function SurveyCasePanel({
                     instruction={instruction}
                     setInstruction={setInstruction}
                     saving={saving}
+                    needsException={scheduleNeedsException}
                     onSave={saveSchedule}
                   />
                 )}
@@ -759,11 +890,16 @@ export default function SurveyCasePanel({
                   }}
                   slotKey={slotKey}
                   setSlotKey={setSlotKey}
+                  visitLocationKey={visitLocationKey}
+                  setVisitLocationKey={setVisitLocationKey}
+                  durationMinutes={durationMinutes}
+                  setDurationMinutes={setDurationMinutes}
                   evaluatorRef={evaluatorRef}
                   setEvaluatorRef={setEvaluatorRef}
                   reason={reason}
                   setReason={setReason}
                   saving={saving}
+                  needsException={scheduleNeedsException}
                   reprogramming
                   onSave={reschedule}
                 />
@@ -1083,6 +1219,10 @@ type ScheduleEditorProps = Readonly<{
   setDate(value: string): void;
   slotKey: string;
   setSlotKey(value: string): void;
+  visitLocationKey: string;
+  setVisitLocationKey(value: string): void;
+  durationMinutes: number;
+  setDurationMinutes(value: number): void;
   evaluatorRef: string;
   setEvaluatorRef(value: string): void;
   visitReasonRef?: string;
@@ -1092,6 +1232,7 @@ type ScheduleEditorProps = Readonly<{
   instruction?: string;
   setInstruction?(value: string): void;
   saving: boolean;
+  needsException?: boolean;
   reprogramming?: boolean;
   onSave(): void;
 }>;
@@ -1101,6 +1242,10 @@ function ScheduleEditor({
   setDate,
   slotKey,
   setSlotKey,
+  visitLocationKey,
+  setVisitLocationKey,
+  durationMinutes,
+  setDurationMinutes,
   evaluatorRef,
   setEvaluatorRef,
   visitReasonRef = "",
@@ -1110,6 +1255,7 @@ function ScheduleEditor({
   instruction = "",
   setInstruction,
   saving,
+  needsException = false,
   reprogramming = false,
   onSave,
 }: ScheduleEditorProps) {
@@ -1117,72 +1263,204 @@ function ScheduleEditor({
     workspace.policy?.slots.filter(
       (slot) => slot.profile === workspace.schedulingContext?.profile,
     ) || [];
+  const selectedSlot = slots.find((slot) => slot.key === slotKey);
+  const selectedEvaluator = workspace.evaluatorCandidates.find(
+    (candidate) => candidate.membershipRef === evaluatorRef,
+  );
+  const evaluatorDailyLimitReached = Boolean(
+    selectedEvaluator?.dailyLimit !== null &&
+      selectedEvaluator?.dailyLimit !== undefined &&
+      selectedEvaluator.dailyAssigned >= selectedEvaluator.dailyLimit,
+  );
+  const selectedSlotAvailability = workspace.availability?.slots.find(
+    (slot) => slot.key === slotKey,
+  );
+  const selectedStart = selectedSlot
+    ? timeMinutes(selectedSlot.startTime)
+    : null;
+  const selectedEnd =
+    selectedStart === null ? null : selectedStart + durationMinutes;
+  const weekday = date
+    ? new Date(`${date}T12:00:00`).getDay()
+    : null;
+  const policyWindows = workspace.operationalPolicy?.windows.filter(
+    (window) =>
+      window.method === workspace.decision?.method &&
+      weekday === window.weekday &&
+      (!window.calendarDate || window.calendarDate === date),
+  );
+  const matchingWindow = policyWindows?.find(
+    (window) =>
+      selectedStart !== null &&
+      selectedEnd !== null &&
+      window.startMinute <= selectedStart &&
+      window.endMinute >= selectedEnd,
+  );
+  const extraordinary = Boolean(
+    selectedStart !== null &&
+      (selectedStart < 9 * 60 ||
+        selectedStart > 16 * 60 ||
+        (workspace.operationalPolicy &&
+          (!matchingWindow || matchingWindow.requiresApproval))),
+  );
+  const morningSlots = slots.filter(
+    (slot) => timeMinutes(slot.startTime) < 12 * 60,
+  );
+  const afternoonSlots = slots.filter(
+    (slot) => timeMinutes(slot.startTime) >= 12 * 60,
+  );
   if (!workspace.policy || !workspace.schedulingContext)
     return (
       <p className="mt-4 border border-dashed border-slate-300 p-3 text-sm text-slate-600">
-        Motor Logístico debe publicar zona y distancia antes de habilitar la
-        agenda.
+        Confirme primero la zona de la dirección. La agenda utilizará la ciudad
+        y el sector del caso; la distancia vial se conserva para calcular el
+        traslado y los cargos que correspondan.
       </p>
     );
   const availability = workspace.availability;
+  const availabilityFor = (key: string) =>
+    availability?.slots.find((item) => item.key === key);
+  const renderSlotGroup = (
+    title: string,
+    group: typeof slots,
+  ) => (
+    <div>
+      <p className="mb-2 text-[10px] font-black uppercase tracking-[.14em] text-slate-500">
+        {title}
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {group.map((slot) => {
+          const observed = availabilityFor(slot.key);
+          const active = slot.key === slotKey;
+          const starts = timeMinutes(slot.startTime);
+          const outsideNormal = starts < 9 * 60 || starts > 16 * 60;
+          return (
+            <button
+              key={slot.key}
+              type="button"
+              disabled={
+                !date ||
+                evaluatorDailyLimitReached ||
+                (observed ? !observed.available : false)
+              }
+              aria-pressed={active}
+              onClick={() => setSlotKey(slot.key)}
+              className={`min-h-16 rounded border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                active
+                  ? "border-[#003366] bg-[#003366] text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-800 hover:border-sky-400"
+              }`}
+            >
+              <span className="block text-sm font-black">
+                {clientTime(slot.startTime)}
+              </span>
+              <span
+                className={`mt-1 block text-[10px] ${active ? "text-sky-100" : "text-slate-500"}`}
+              >
+                {durationMinutes} min · {slot.label}
+                {observed
+                  ? ` · ${observed.occupied}/${observed.capacity}`
+                  : ""}
+              </span>
+              {outsideNormal && (
+                <span
+                  className={`mt-1 block text-[10px] font-bold ${active ? "text-amber-200" : "text-amber-700"}`}
+                >
+                  Requiere autorización
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
   return (
     <div
-      className="mt-4 grid gap-3 rounded border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"
+      className="mt-4 space-y-4 rounded border border-slate-200 bg-slate-50 p-3"
       data-testid="survey-schedule-editor"
     >
-      <div>
-        <Label htmlFor="survey-date">Fecha</Label>
-        <Input
-          id="survey-date"
-          type="date"
-          value={date}
-          onChange={(event) => setDate(event.target.value)}
-        />
-        {availability?.date === date && (
-          <p
-            className={`mt-1 text-[11px] font-semibold ${availability.closed ? "text-red-700" : "text-slate-500"}`}
-          >
-            {availability.closed
-              ? "Día cerrado"
-              : `${availability.dayOccupied}/${availability.dayCapacity} citas en el perfil`}
-            {availability.saturdayApprovalRequired
-              ? " · sábado sujeto a validación"
-              : ""}
-          </p>
-        )}
-      </div>
-      <div>
-        <Label>Slot</Label>
-        <Select value={slotKey} onValueChange={setSlotKey}>
-          <SelectTrigger aria-label="Slot">
-            <SelectValue placeholder="Seleccione" />
-          </SelectTrigger>
-          <SelectContent>
-            {slots.map((slot) => {
-              const observed = availability?.slots.find(
-                (item) => item.key === slot.key,
-              );
-              return (
-                <SelectItem
-                  key={slot.key}
-                  value={slot.key}
-                  disabled={observed ? !observed.available : false}
-                >
-                  {slot.label} · {slot.startTime}–{slot.endTime}
-                  {observed
-                    ? ` · ${observed.occupied}/${observed.capacity}`
-                    : ""}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </div>
-      {!reprogramming && (
+      {!reprogramming && workspace.visitLocations.length > 0 && (
         <div>
-          <Label>Evaluador</Label>
+          <Label>Lugar de la visita</Label>
+          <Select
+            value={visitLocationKey}
+            onValueChange={setVisitLocationKey}
+          >
+            <SelectTrigger aria-label="Lugar de la visita">
+              <SelectValue placeholder="Seleccione origen o destino" />
+            </SelectTrigger>
+            <SelectContent>
+              {workspace.visitLocations.map((location) => (
+                <SelectItem key={locationKey(location)} value={locationKey(location)}>
+                  {locationRoleLabel(location.role)} · {location.sector || location.cityMunicipality}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {workspace.visitLocations
+            .filter((location) => locationKey(location) === visitLocationKey)
+            .map((location) => (
+              <div
+                key={locationKey(location)}
+                className="mt-2 rounded border border-sky-100 bg-white px-3 py-2"
+              >
+                <p className="text-xs font-bold text-[#003366]">
+                  {location.compactAddress}
+                </p>
+                {location.arrivalReference && (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Referencia: {location.arrivalReference}
+                  </p>
+                )}
+              </div>
+            ))}
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <Label htmlFor="survey-date">Fecha</Label>
+          <Input
+            id="survey-date"
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+          />
+          {availability?.date === date && (
+            <p
+              className={`mt-1 text-[11px] font-semibold ${availability.closed ? "text-red-700" : "text-slate-500"}`}
+            >
+              {availability.closed
+                ? "Día cerrado"
+                : `${availability.dayOccupied}/${availability.dayCapacity} visitas programadas`}
+              {availability.saturdayApprovalRequired
+                ? " · requiere autorización"
+                : ""}
+            </p>
+          )}
+        </div>
+        <div>
+          <Label>Duración estimada</Label>
+          <div className="grid grid-cols-3 gap-1" role="group" aria-label="Duración estimada">
+            {[30, 45, 60].map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                aria-pressed={durationMinutes === minutes}
+                onClick={() => setDurationMinutes(minutes)}
+                className={`h-10 rounded border text-xs font-bold ${durationMinutes === minutes ? "border-[#003366] bg-[#003366] text-white" : "border-slate-200 bg-white text-slate-700"}`}
+              >
+                {minutes} min
+              </button>
+            ))}
+          </div>
+        </div>
+        {!reprogramming && (
+          <div>
+            <Label>Evaluador recomendado</Label>
           <Select value={evaluatorRef} onValueChange={setEvaluatorRef}>
-            <SelectTrigger aria-label="Evaluador">
+            <SelectTrigger aria-label="Evaluador recomendado">
               <SelectValue placeholder="Seleccione" />
             </SelectTrigger>
             <SelectContent>
@@ -1190,26 +1468,69 @@ function ScheduleEditor({
                 <SelectItem
                   key={candidate.membershipRef}
                   value={candidate.membershipRef}
+                  disabled={
+                    candidate.dailyLimit !== null &&
+                    candidate.dailyAssigned >= candidate.dailyLimit
+                  }
                 >
                   <span className="flex items-center gap-2">
                     <UserRound className="h-3.5 w-3.5" />
                     {candidate.displayName}
+                    {candidate.dailyLimit !== null &&
+                    candidate.dailyAssigned >= candidate.dailyLimit
+                      ? " · exterior completo"
+                      : ""}
                   </span>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {workspace.schedulingContext.zoneType !== "METRO" && (
+            <p
+              className={`mt-1 text-[11px] font-semibold ${evaluatorDailyLimitReached ? "text-red-700" : "text-slate-500"}`}
+            >
+              Fuera de zona metropolitana: máximo 1 visita diaria por evaluador.
+            </p>
+          )}
+          </div>
+        )}
+      </div>
+
+      {date && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <Label>Hora de llegada al cliente</Label>
+              <p className="text-[11px] text-slate-500">
+                Seleccione la hora exacta que se confirmará con el cliente.
+              </p>
+            </div>
+            {workspace.operationalPolicy && (
+              <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-slate-600">
+                Traslado mínimo entre visitas: {workspace.operationalPolicy.minimumTravelBufferMinutes} min
+              </span>
+            )}
+          </div>
+          {morningSlots.length > 0 && renderSlotGroup("Mañana", morningSlots)}
+          {afternoonSlots.length > 0 && renderSlotGroup("Tarde", afternoonSlots)}
+          {slots.length === 0 && (
+            <p className="rounded border border-dashed p-3 text-sm text-slate-500">
+              No hay horarios configurados para esta zona.
+            </p>
+          )}
         </div>
       )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
       {!reprogramming && workspace.operationalPolicy && (
         <div>
-          <Label>Razón de la visita</Label>
+          <Label>Tipo de visita</Label>
           <Select
             value={visitReasonRef}
             onValueChange={(value) => setVisitReasonRef?.(value)}
           >
-            <SelectTrigger aria-label="Razón de la visita">
-              <SelectValue placeholder="Seleccione un motivo" />
+            <SelectTrigger aria-label="Tipo de visita">
+              <SelectValue placeholder="Seleccione" />
             </SelectTrigger>
             <SelectContent>
               {workspace.visitReasons.map((item) => (
@@ -1222,7 +1543,7 @@ function ScheduleEditor({
         </div>
       )}
       {!reprogramming && (
-        <div className="sm:col-span-2">
+        <div>
           <Label htmlFor="survey-evaluator-instruction">
             Instrucciones para el evaluador
           </Label>
@@ -1234,28 +1555,37 @@ function ScheduleEditor({
           />
         </div>
       )}
-      <div>
+      {(reprogramming || extraordinary || needsException) && <div className="sm:col-span-2">
         <Label htmlFor="schedule-reason">
           {reprogramming
             ? "Motivo obligatorio"
-            : "Motivo para sábado o excepción"}
+            : "Motivo para autorización extraordinaria"}
         </Label>
         <Input
           id="schedule-reason"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
         />
-      </div>
+        {extraordinary && !needsException && (
+          <p className="mt-1 text-[11px] font-semibold text-amber-700">
+            Este horario queda fuera de la jornada normal o requiere aprobación.
+          </p>
+        )}
+      </div>}
       <div className="sm:col-span-2">
         <Button
           disabled={
             saving ||
             !date ||
             !slotKey ||
+            selectedSlotAvailability?.available === false ||
             (!reprogramming && !evaluatorRef) ||
+            (!reprogramming && evaluatorDailyLimitReached) ||
             (!reprogramming &&
               Boolean(workspace.operationalPolicy) &&
               !visitReasonRef) ||
+            (!reprogramming && workspace.visitLocations.length > 0 && !visitLocationKey) ||
+            ((extraordinary || needsException) && !reason) ||
             (reprogramming && !reason)
           }
           onClick={onSave}
@@ -1264,8 +1594,15 @@ function ScheduleEditor({
             ? "Guardando…"
             : reprogramming
               ? "Confirmar reprogramación"
-              : "Programar evaluación"}
+              : "Confirmar visita"}
         </Button>
+        {selectedSlot && (
+          <p className="mt-2 text-xs text-slate-600">
+            Llegada: <strong>{clientTime(selectedSlot.startTime)}</strong> · duración: {durationMinutes} min
+            {extraordinary ? " · autorización requerida" : " · horario regular"}
+          </p>
+        )}
+      </div>
       </div>
     </div>
   );

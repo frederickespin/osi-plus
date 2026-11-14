@@ -269,12 +269,71 @@ function routeSummary(route) {
       .join(", ") || null
   );
 }
+function routeDto(route) {
+  return Object.freeze({
+    role: route.role,
+    order: route.stopOrder,
+    countryCode: route.countryCode,
+    provinceState: route.provinceState,
+    cityMunicipality: route.cityMunicipality,
+    sector: route.sector,
+    streetAndNumber: route.streetAndNumber,
+    buildingResidential: route.buildingResidential,
+    floorUnit: route.floorUnit,
+    arrivalReference: route.arrivalReference,
+    compactAddress: routeSummary(route),
+  });
+}
+function localCalendarDate(value, timezone) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
+}
+async function assertInteriorDailyEvaluatorLimit(
+  tx,
+  who,
+  {
+    evaluatorMembershipId,
+    start,
+    timezone,
+    interiorProfiles,
+    excludeAssignmentId = null,
+  },
+) {
+  if (!interiorProfiles.length) return;
+  const rows = await tx.surveyAssignment.findMany({
+    where: {
+      tenantId: who.tenantId,
+      evaluatorMembershipId,
+      ...(excludeAssignmentId ? { id: { not: excludeAssignmentId } } : {}),
+      scheduleProfile: { in: interiorProfiles },
+      status: { not: "CANCELLED" },
+      scheduledStart: {
+        gte: new Date(start.getTime() - 36 * 60 * 60 * 1000),
+        lt: new Date(start.getTime() + 36 * 60 * 60 * 1000),
+      },
+    },
+    select: { scheduledStart: true },
+  });
+  const date = localCalendarDate(start, timezone);
+  if (
+    rows.some(
+      (assignment) =>
+        localCalendarDate(assignment.scheduledStart, timezone) === date,
+    )
+  )
+    schedulingFail("CRM_SURVEY_INTERIOR_DAILY_LIMIT", 409);
+}
 function evaluatorContext(
   pipelineCase,
   serviceRevision,
   decision,
   policy,
   zone,
+  visitLocation = null,
 ) {
   const routes = pipelineCase.routeSnapshots.filter(
     (route) => route.routeVersion === pipelineCase.routeRevision,
@@ -289,6 +348,7 @@ function evaluatorContext(
     destination: routeSummary(
       routes.find((route) => route.role === "DESTINATION"),
     ),
+    visitLocation: visitLocation ? routeDto(visitLocation) : null,
     routeVersion: pipelineCase.routeRevision,
     serviceSelectionRef: serviceRevision.selectionRef,
     services: serviceRevision.items.map((item) => ({
@@ -471,6 +531,9 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
     );
     const caseRef = String(query?.caseRef || "");
     const pipelineCase = await caseByRef(tx, who, caseRef);
+    const currentRoutes = pipelineCase.routeSnapshots.filter(
+      (route) => route.routeVersion === pipelineCase.routeRevision,
+    );
     const decision = await tx.surveyEvaluationDecision.findFirst({
       where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id },
       orderBy: { version: "desc" },
@@ -538,6 +601,8 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       }),
       latestMotor(tx, who.tenantId, pipelineCase.id, decision?.decisionRef),
     ]);
+    const requestedDate =
+      query?.date == null || query.date === "" ? null : String(query.date);
     let schedulingContext = null;
     let availability = null;
     if (
@@ -563,6 +628,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
           : policy.configuration.profiles[0];
         schedulingContext = {
           profile: profile.code,
+          zoneType: zone.zoneType,
           zoneCode: zone.zoneCode,
           distanceStatus: zone.distanceKm == null ? "PENDING" : "KNOWN",
           distanceKm: zone.distanceKm,
@@ -573,8 +639,6 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       }
       if (resolved) {
         const { zone, profile } = resolved;
-        const requestedDate =
-          query?.date == null || query.date === "" ? null : String(query.date);
         if (requestedDate) {
           if (
             !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ||
@@ -684,6 +748,47 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
             orderBy: { user: { name: "asc" } },
           })
         : [];
+    const interiorProfiles = policy
+      ? policy.configuration.profiles
+          .filter((profile) => profile.zoneType !== "METRO")
+          .map((profile) => profile.code)
+      : [];
+    const dailyInteriorCounts = new Map();
+    if (
+      requestedDate &&
+      schedulingContext?.zoneType !== "METRO" &&
+      operationalProfiles.length &&
+      interiorProfiles.length
+    ) {
+      const rows = await tx.surveyAssignment.findMany({
+        where: {
+          tenantId: who.tenantId,
+          evaluatorMembershipId: {
+            in: operationalProfiles.map((profile) => profile.membershipId),
+          },
+          scheduleProfile: { in: interiorProfiles },
+          status: { not: "CANCELLED" },
+          scheduledStart: {
+            gte: new Date(`${requestedDate}T00:00:00.000Z`),
+            lt: new Date(`${requestedDate}T23:59:59.999Z`),
+          },
+        },
+        select: { evaluatorMembershipId: true, scheduledStart: true },
+      });
+      for (const row of rows) {
+        if (
+          localCalendarDate(
+            row.scheduledStart,
+            operationalPolicy.timezone,
+          ) !== requestedDate
+        )
+          continue;
+        dailyInteriorCounts.set(
+          row.evaluatorMembershipId,
+          (dailyInteriorCounts.get(row.evaluatorMembershipId) || 0) + 1,
+        );
+      }
+    }
     return Object.freeze({
       caseRef: pipelineCase.publicRef,
       caseCode: pipelineCase.caseCode,
@@ -746,6 +851,18 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
               operationalPolicy.minimumTravelBufferMinutes,
             virtualPreparationMinutes:
               operationalPolicy.virtualPreparationMinutes,
+            defaultVisitMinutes: operationalPolicy.defaultVisitMinutes,
+            windows: operationalPolicy.windows.map((window) => ({
+              weekday: window.weekday,
+              startMinute: window.startMinute,
+              endMinute: window.endMinute,
+              method: window.method,
+              requiresApproval: window.requiresApproval,
+              kind: window.kind,
+              calendarDate: window.calendarDate
+                ? window.calendarDate.toISOString().slice(0, 10)
+                : null,
+            })),
             canRequestException: who.effective.has(
               PERMS.SCHEDULING_EXCEPTIONS_REQUEST,
             ),
@@ -762,6 +879,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
         code: row.code,
         name: row.name,
       })),
+      visitLocations: currentRoutes.map(routeDto),
       schedulingContext,
       availability,
       evaluatorCandidates: operationalPolicy
@@ -772,6 +890,9 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
             capabilities: row.capabilityAssignments.map(
               (entry) => entry.capability.code,
             ),
+            dailyAssigned: dailyInteriorCounts.get(row.membershipId) || 0,
+            dailyLimit:
+              schedulingContext?.zoneType !== "METRO" ? 1 : null,
           }))
         : candidates.map((row) => ({
             membershipRef: row.publicRef,
@@ -781,6 +902,9 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
               policy.configuration.evaluatorCapabilities.find(
                 (entry) => entry.membershipRef === row.publicRef,
               )?.capabilities || [],
+            dailyAssigned: 0,
+            dailyLimit:
+              schedulingContext?.zoneType !== "METRO" ? 1 : null,
           })),
       visitFee: fee
         ? {
@@ -969,6 +1093,20 @@ async function schedule(tx, who, command) {
     include: { items: { orderBy: { position: "asc" } } },
   });
   if (!serviceRevision) schedulingFail("CRM_SURVEY_RESOURCE_NOT_FOUND", 404);
+  const currentRoutes = pipelineCase.routeSnapshots.filter(
+    (route) => route.routeVersion === pipelineCase.routeRevision,
+  );
+  const visitLocation = command.visitRouteRole
+    ? currentRoutes.find(
+        (route) =>
+          route.role === command.visitRouteRole &&
+          route.stopOrder === command.visitRouteOrder,
+      )
+    : currentRoutes.find((route) => route.role === "ORIGIN") ||
+      currentRoutes[0] ||
+      null;
+  if (command.visitRouteRole && !visitLocation)
+    schedulingFail("CRM_SURVEY_ROUTE_LOCATION_INVALID", 409);
   const policy = await activePolicy(tx, who.tenantId);
   const motor = await latestMotor(tx, who.tenantId, pipelineCase.id, decision.decisionRef);
   const physical = decision.method === "IN_PERSON";
@@ -1041,6 +1179,15 @@ async function schedule(tx, who, command) {
       schedulingFail("CRM_SURVEY_SCHEDULE_POLICY_NOT_READY", 409);
     travelBufferMinutes = authority.buffer;
   }
+  if (physical && profileConfig.zoneType !== "METRO")
+    await assertInteriorDailyEvaluatorLimit(tx, who, {
+      evaluatorMembershipId: evaluatorRow.id,
+      start,
+      timezone: operationalPolicy?.timezone || policy.timezone,
+      interiorProfiles: policy.configuration.profiles
+        .filter((profile) => profile.zoneType !== "METRO")
+        .map((profile) => profile.code),
+    });
   const saturdayApproved = Boolean(command.saturdayApprovalReason);
   await scheduleCapacity(
     tx,
@@ -1109,6 +1256,7 @@ async function schedule(tx, who, command) {
         nextDecision,
         policy,
         zone,
+        visitLocation,
       ),
       instructionSnapshot: command.instruction,
       evaluationDecisionId: nextDecision.id,
@@ -1259,6 +1407,23 @@ async function changeAssignment(tx, who, command) {
         new Date(current.row.scheduledStart.getTime() + 60 * 60 * 1000),
       current.row.id,
     );
+    const profileConfig = current.policy.configuration.profiles.find(
+      (profile) => profile.code === current.row.scheduleProfile,
+    );
+    if (
+      current.decision.method === "IN_PERSON" &&
+      profileConfig &&
+      profileConfig.zoneType !== "METRO"
+    )
+      await assertInteriorDailyEvaluatorLimit(tx, who, {
+        evaluatorMembershipId: evaluatorRow.id,
+        start: current.row.scheduledStart,
+        timezone: current.policy.timezone,
+        interiorProfiles: current.policy.configuration.profiles
+          .filter((profile) => profile.zoneType !== "METRO")
+          .map((profile) => profile.code),
+        excludeAssignmentId: current.row.id,
+      });
     data = {
       evaluatorMembershipId: evaluatorRow.id,
       evaluatorUserId: evaluatorRow.userId,
@@ -1271,6 +1436,23 @@ async function changeAssignment(tx, who, command) {
       schedulingFail("CRM_SURVEY_ROUTE_REVALIDATION_REQUIRED", 409);
     const start = new Date(command.scheduledStart);
     const end = new Date(command.scheduledEnd);
+    const profileConfig = current.policy.configuration.profiles.find(
+      (profile) => profile.code === current.row.scheduleProfile,
+    );
+    if (
+      current.decision.method === "IN_PERSON" &&
+      profileConfig &&
+      profileConfig.zoneType !== "METRO"
+    )
+      await assertInteriorDailyEvaluatorLimit(tx, who, {
+        evaluatorMembershipId: current.row.evaluatorMembershipId,
+        start,
+        timezone: current.policy.timezone,
+        interiorProfiles: current.policy.configuration.profiles
+          .filter((profile) => profile.zoneType !== "METRO")
+          .map((profile) => profile.code),
+        excludeAssignmentId: current.row.id,
+      });
     await scheduleCapacity(
       tx,
       who,

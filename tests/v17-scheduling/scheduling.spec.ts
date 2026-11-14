@@ -315,10 +315,41 @@ function workspace(communications = 0) {
     },
     schedulingContext: {
       profile: "METRO",
+      zoneType: "METRO",
       zoneCode: "METRO_SANTO_DOMINGO",
       distanceStatus: "KNOWN",
       distanceKm: 15,
     },
+    visitLocations: [
+      {
+        role: "ORIGIN",
+        order: 0,
+        countryCode: "DO",
+        provinceState: "Distrito Nacional",
+        cityMunicipality: "Santo Domingo",
+        sector: "Piantini",
+        streetAndNumber: "Av. Abraham Lincoln 456",
+        buildingResidential: "Torre Central",
+        floorUnit: "8-B",
+        arrivalReference: "Entrada principal",
+        compactAddress:
+          "Av. Abraham Lincoln 456, Piantini, Santo Domingo, Distrito Nacional, DO",
+      },
+      {
+        role: "DESTINATION",
+        order: 0,
+        countryCode: "DO",
+        provinceState: "Distrito Nacional",
+        cityMunicipality: "Santo Domingo",
+        sector: "Naco",
+        streetAndNumber: "Av. Tiradentes 12",
+        buildingResidential: null,
+        floorUnit: null,
+        arrivalReference: null,
+        compactAddress:
+          "Av. Tiradentes 12, Naco, Santo Domingo, Distrito Nacional, DO",
+      },
+    ],
     availability: {
       date: "2026-09-14",
       profile: "METRO",
@@ -339,6 +370,8 @@ function workspace(communications = 0) {
         profileRef: null,
         displayName: "Evaluadora sintética",
         capabilities: ["CAN_PERFORM_IN_PERSON_SURVEY"],
+        dailyAssigned: 0,
+        dailyLimit: null,
       },
     ],
     visitFee: null,
@@ -412,8 +445,20 @@ function readyWorkspace() {
       policyRef: "938f6d8f-8d11-4f39-8a2d-1b6c7e8f9012",
       version: 1,
       timezone: "America/Santo_Domingo",
+      defaultVisitMinutes: 45,
       minimumTravelBufferMinutes: 45,
       virtualPreparationMinutes: 15,
+      windows: [
+        {
+          weekday: 1,
+          startMinute: 540,
+          endMinute: 1020,
+          method: "IN_PERSON",
+          requiresApproval: false,
+          kind: "REGULAR",
+          calendarDate: null,
+        },
+      ],
       canRequestException: true,
       precedence: [
         "EMPLOYEE_OVERRIDE",
@@ -445,6 +490,8 @@ function readyWorkspace() {
         profileRef: "b38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012",
         displayName: "Evaluadora sintética",
         capabilities: ["CAN_PERFORM_IN_PERSON_SURVEY"],
+        dailyAssigned: 0,
+        dailyLimit: null,
       },
     ],
   };
@@ -737,16 +784,15 @@ test("fuera de horario ofrece solicitud excepcional tenant-first", async ({
   await (await availabilityResponse).finished();
   await expect(page.getByText("Consultando decisión, agenda e historial…", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("survey-schedule-editor")).toBeVisible();
-  await page.getByLabel("Slot").click();
-  await page.getByRole("option", { name: /Tarde/ }).click();
-  await page.getByLabel("Evaluador").click();
+  await page.getByRole("button", { name: /2:00/ }).click();
+  await page.getByLabel("Evaluador recomendado").click();
   await page.getByRole("option", { name: /Evaluadora sintética/ }).click();
-  await page.getByLabel("Razón de la visita").click();
+  await page.getByLabel("Tipo de visita").click();
   await page.getByRole("option", { name: "Evaluación inicial" }).click();
+  await page.getByRole("button", { name: "Confirmar visita" }).click();
   await page
-    .getByLabel("Motivo para sábado o excepción")
+    .getByLabel("Motivo para autorización extraordinaria")
     .fill("Cliente requiere horario extraordinario");
-  await page.getByRole("button", { name: "Programar evaluación" }).click();
   await expect(
     page.getByRole("button", { name: "Solicitar excepción" }),
   ).toBeVisible();

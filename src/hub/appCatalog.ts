@@ -11,9 +11,12 @@ export type HubAppId =
   | "administration"
   | "human-resources"
   | "osi-survey"
+  | "visual-inventory"
+  | "osi-custody"
+  | "archaeological-packing"
   | "packing-calculator";
 
-export type HubSuiteId = "osi-plus-mobile";
+export type HubSuiteId = "osi-plus-mobile" | "tools";
 
 export type HubIconId =
   | "briefcase"
@@ -24,8 +27,9 @@ export type HubIconId =
   | "settings"
   | "users"
   | "clipboard"
+  | "smartphone"
   | "calculator";
-export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED" | "EXTERNAL_AVAILABLE";
+export type HubAppStatus = "REGISTERED_INACTIVE" | "PLANNED" | "EXTERNAL_AVAILABLE" | "INTERNAL_STANDALONE" | "INTERNAL_AVAILABLE";
 export type HubMobileAvailability =
   "RESPONSIVE" | "MOBILE_PRIMARY" | "DESKTOP_PRIMARY";
 
@@ -65,6 +69,13 @@ export const HUB_SUITES: readonly HubSuite[] = Object.freeze([
     description: "Aplicaciones móviles disponibles según los permisos y las asignaciones del usuario.",
     icon: "clipboard",
     route: "/mobile",
+  },
+  {
+    suiteId: "tools",
+    name: "Herramientas",
+    description: "Calculadoras y utilidades especializadas para trabajo de escritorio.",
+    icon: "calculator",
+    route: "/tools",
   },
 ]);
 
@@ -117,12 +128,12 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   {
     appId: "warehouses",
     name: "Almacenes",
-    description: "Espacios, ubicaciones, materiales de embalaje y equipos.",
+    description: "Espacios, inventarios internos y efectos de clientes bajo custodia.",
     icon: "warehouse",
     route: "/warehouses",
-    routeAliases: ["/warehouses/spaces", "/warehouses/configuration", "/warehouses/materials", "/warehouses/equipment"],
+    routeAliases: ["/warehouses/spaces", "/warehouses/configuration", "/warehouses/materials", "/warehouses/equipment", "/warehouses/customer-custody"],
     status: "REGISTERED_INACTIVE",
-    requiredPermissions: ["inventory:stock:view", "assets:instance:view"],
+    requiredPermissions: ["inventory:stock:view", "assets:instance:view", "customer-custody:view"],
     permissionMode: "ANY",
     denyScope: "PERMISSION",
     requiresExplicitPermissions: true,
@@ -184,10 +195,11 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
       "Acceso, flota, personal, agenda, plantillas y reglas transversales de la empresa.",
     icon: "settings",
     route: "/administration",
-    routeAliases: ["/administration/access", "/administration/fleet", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"],
+    routeAliases: ["/administration/access", "/administration/warehouse-access", "/administration/fleet", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"],
     status: "REGISTERED_INACTIVE",
     requiredPermissions: [
       "membership:view",
+      "warehouse-access:manage",
       "fleet:view",
       "services:catalog:view",
       "services:packages:view",
@@ -227,7 +239,7 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   {
     appId: "osi-survey",
     name: "OSi Survey",
-    description: "Agenda, inventario observado y publicaciones inmutables.",
+    description: "Agenda del visitador, inventario, accesos, revisión, detalle técnico y firma.",
     icon: "clipboard",
     route: "/mobile/survey",
     routeAliases: ["/survey"],
@@ -242,21 +254,69 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     suiteId: "osi-plus-mobile",
   },
   {
-    appId: "packing-calculator",
-    name: "Calculadora de Empaque",
-    description: "Medidas, materiales, costos y reportes de cajas, huacales y pallets.",
+    appId: "visual-inventory",
+    name: "Inventario Visual",
+    description: "Registro móvil independiente de artículos, fotografías, medidas, etiquetas y ubicaciones.",
+    icon: "smartphone",
+    route: "/mobile/visual-inventory",
+    status: "INTERNAL_STANDALONE",
+    requiredPermissions: ["survey:assignment:view"],
+    permissionMode: "ALL",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
+    mobileAvailability: "MOBILE_PRIMARY",
+    directAccessAllowed: true,
+    lazy: true,
+    suiteId: "osi-plus-mobile",
+  },
+  {
+    appId: "osi-custody",
+    name: "OSi Custodia",
+    description: "Recepción por escaneo, etiquetas, inspección y ubicación de bienes de clientes.",
+    icon: "warehouse",
+    route: "/mobile/custody",
+    status: "INTERNAL_AVAILABLE",
+    requiredPermissions: ["customer-custody:view"],
+    permissionMode: "ALL",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
+    mobileAvailability: "MOBILE_PRIMARY",
+    directAccessAllowed: true,
+    lazy: true,
+    suiteId: "osi-plus-mobile",
+  },
+  {
+    appId: "archaeological-packing",
+    name: "Calculadora de empaque arqueológico",
+    description: "Inventario, embalaje, medidas, reportes y etiquetas para piezas arqueológicas.",
     icon: "calculator",
-    route: "/mobile/packing",
-    externalHref: "https://ip-suite-inventario-empaquee.vercel.app/empaque/index.html",
-    status: "EXTERNAL_AVAILABLE",
+    route: "/tools/archaeological-packing",
+    status: "INTERNAL_STANDALONE",
     requiredPermissions: ["pipeline:view"],
     permissionMode: "ALL",
     requiresExplicitPermissions: true,
     baselineRoles: [],
-    mobileAvailability: "RESPONSIVE",
+    mobileAvailability: "DESKTOP_PRIMARY",
     directAccessAllowed: true,
     lazy: true,
-    suiteId: "osi-plus-mobile",
+    suiteId: "tools",
+  },
+  {
+    appId: "packing-calculator",
+    name: "Calculadora de empaque y cajas de madera",
+    description: "Diseño, agrupación, materiales, ingeniería, costos y reportes de cajas y huacales.",
+    icon: "hammer",
+    route: "/tools/packing",
+    routeAliases: ["/mobile/packing"],
+    status: "INTERNAL_STANDALONE",
+    requiredPermissions: ["pipeline:view"],
+    permissionMode: "ALL",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
+    mobileAvailability: "DESKTOP_PRIMARY",
+    directAccessAllowed: true,
+    lazy: true,
+    suiteId: "tools",
   },
 ]);
 

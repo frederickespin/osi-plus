@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+const useExternalServer = process.env.PLAYWRIGHT_EXTERNAL_SERVER === "1";
+
 const preview = {
   VERCEL_ENV: "preview",
   VERCEL_GIT_COMMIT_REF: "feature/v17-consolidated-preview",
@@ -46,7 +48,7 @@ export default defineConfig({
   forbidOnly: true,
   reporter: "list",
   use: { baseURL: "http://preview.localhost:4202", trace: "retain-on-failure", screenshot: "only-on-failure", video: "off", serviceWorkers: "block" },
-  webServer: { command: "npm run dev -- --host 0.0.0.0 --port 4202", url: "http://127.0.0.1:4202/", reuseExistingServer: false, timeout: 120_000, env: { ...preview, VITE_API_PROXY: "http://127.0.0.1:59999" } },
+  webServer: useExternalServer ? undefined : { command: "npm run dev -- --host 0.0.0.0 --port 4202", url: "http://127.0.0.1:4202/", reuseExistingServer: false, timeout: 120_000, env: { ...preview, VITE_API_PROXY: "http://127.0.0.1:59999" } },
   projects: [
     { name: "chromium-desktop", use: { ...devices["Desktop Chrome"] } },
     { name: "firefox-desktop", use: { ...devices["Desktop Firefox"] } },

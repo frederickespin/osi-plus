@@ -140,10 +140,10 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
   const goResource = (pathname: string) => { setMobileOpen(false); onNavigate(pathname); };
   const sidebar = <Sidebar collapsed={collapsed} userName={userName} role={role} applications={navigationApplications} mobileAvailable={mobileAvailable} commercialRelationshipsEnabled={commercialRelationshipsEnabled && commercialRelationshipsAccess.canView} commercialRelationshipsAdmin={commercialRelationshipsAdmin} onCollapse={() => setCollapsed((value) => !value)} onNavigate={goResource} onLogout={onLogout} />;
 
-  return <div className="flex min-h-screen bg-[#f4f7fb]" data-testid="advanced-erp-shell">
+  return <div className="flex h-screen overflow-hidden bg-[#f4f7fb]" data-testid="advanced-erp-shell">
     <div className="sticky top-0 hidden h-screen lg:block">{sidebar}</div>
     {mobileOpen && <div className="fixed inset-0 z-50 flex lg:hidden"><div className="h-full">{sidebar}</div><button type="button" aria-label="Cerrar navegación ERP" className="flex-1 bg-slate-950/55" onClick={() => setMobileOpen(false)} /></div>}
-    <div className="min-w-0 flex-1">
+    <div className="min-h-0 min-w-0 flex-1">
       {!caseRef && !commercialRelationshipsAdmin && <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6">
         <div className="flex items-center gap-3">
           <button type="button" aria-label="Abrir navegación ERP" className="rounded-lg border border-slate-200 p-2 text-[#003366] lg:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></button>
@@ -151,7 +151,7 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
         </div>
         <div className="flex items-center gap-2"><span className="hidden rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[#003366] sm:inline">ERP avanzado</span><button type="button" aria-label="Cerrar navegación ERP" className="hidden"><X /></button></div>
       </header>}
-      <main className={caseRef ? "min-h-screen" : undefined}>
+      <main className={caseRef || commercialRelationshipsAdmin ? "h-screen min-h-0 overflow-hidden" : "h-[calc(100vh-4rem)] min-h-0 overflow-hidden"}>
         {commercialRelationshipsAdmin && commercialRelationshipsEnabled && commercialRelationshipsAccess.canView ? <Suspense fallback={<div className="grid min-h-[60vh] place-items-center text-sm text-slate-500">Cargando Relaciones Comerciales…</div>}><CommercialRelationshipsAdmin authorization={authorization} access={commercialRelationshipsAccess} onBack={goCommercial} onUnauthorized={onUnauthorized} /></Suspense> : <CommercialInboxModule
           authorization={authorization}
           mutationAccess={mutationAccess}

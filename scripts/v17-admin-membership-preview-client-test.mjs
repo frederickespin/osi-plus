@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { build } from "esbuild";
 import { ADMIN_MEMBERSHIP_PREVIEW_BATCH, ADMIN_MEMBERSHIP_PREVIEW_BRANCH } from "../shared/adminMembershipPreview.js";
+import { V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH } from "../shared/v17CommercialCrmPreview.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const bundled = await build({
@@ -28,10 +29,12 @@ test("Preview de membresías requiere ambiente, rama, batch y cliente de sesión
   assert.equal(mode(), "PREVIEW_REHEARSAL");
   assert.equal(mode(environment, { ...runtime, gitBranch: "feature/v17-consolidated-preview" }), "PREVIEW_REHEARSAL");
   assert.equal(mode(environment, { ...runtime, gitBranch: "feature/v17-administration-identity-19c" }), "PREVIEW_REHEARSAL");
+  assert.equal(mode(environment, { ...runtime, gitBranch: V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH }), "PREVIEW_REHEARSAL");
   assert.equal(api.isAdminTenantMembershipEnabled(environment, runtime.hostname, runtime), true);
   for (const patch of [{ vercelEnvironment: "production" }, { vercelEnvironment: null }, { gitBranch: "main" },
     { gitBranch: `${ADMIN_MEMBERSHIP_PREVIEW_BRANCH}-suffix` },
     { gitBranch: "feature/v17-administration-identity-19c-suffix" }, { hostname: "localhost" },
+    { gitBranch: `${V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH}-suffix` },
     { hostname: "osi-test-preview.vercel.app.attacker.test" }]) {
     assert.equal(mode(environment, { ...runtime, ...patch }), "DISABLED", JSON.stringify(patch));
   }

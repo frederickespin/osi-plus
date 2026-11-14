@@ -1,4 +1,5 @@
 import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
+import { V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH } from "../../shared/v17CommercialCrmPreview.js";
 
 export const CRM_ICP_V2_UI_MODES = Object.freeze({
   DISABLED: "DISABLED",
@@ -42,7 +43,9 @@ export function resolveCrmIcpV2UiMode(
   }
   const enabled = environment.VITE_CRM_ICP_V2_UI_BATCH === CRM_ICP_V2_UI_PREVIEW_BATCH
     && runtime.vercelEnvironment === "preview"
-    && (runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH || isV17ConsolidatedPreviewBranch(runtime.gitBranch))
+    && (runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH
+      || runtime.gitBranch === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH
+      || isV17ConsolidatedPreviewBranch(runtime.gitBranch))
     && !isLoopback(runtime.hostname);
   return Object.freeze({ mode: enabled ? requested : CRM_ICP_V2_UI_MODES.DISABLED, enabled, valid: enabled });
 }
@@ -58,5 +61,7 @@ export function isCrmIcpV2VisualPreviewRoute(
 ) {
   return pathname === "/experience-preview/icp"
     && runtime.vercelEnvironment === "preview"
-    && (runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH || isV17ConsolidatedPreviewBranch(runtime.gitBranch));
+    && (runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH
+      || runtime.gitBranch === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH
+      || isV17ConsolidatedPreviewBranch(runtime.gitBranch));
 }

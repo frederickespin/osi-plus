@@ -137,6 +137,9 @@ try {
   const updated = await updateServiceCatalogItem(admin, primary.item.serviceRef, signed("CATALOG_UPDATE", { requestId: request("svc-update"), expectedVersion: 1, name: "Mudanza residencial vigente", category: "Mudanzas", usage: "PRIMARY", compatibleModes: ["EXPORT", "LOCAL"], status: "ACTIVE", sortOrder: 10, allowedComplementaryRefs: [comp.item.serviceRef] }), prisma);
   const workspaceAfterRename = await getCaseServiceWorkspace(admin, pipelineCase.publicRef, prisma);
   check("snapshot histórico conserva nombre y versión anteriores", updated.item.version === 2 && workspaceAfterRename.selection.primary.name === "Mudanza residencial" && workspaceAfterRename.selection.primary.catalogVersion === 1);
+  check("plan vigente publica resumen versionado e inmutable", workspaceAfterRename.planHistory.length === 1 && workspaceAfterRename.planHistory[0].revision === 1
+    && workspaceAfterRename.planHistory[0].primary.name === "Mudanza residencial" && workspaceAfterRename.planHistory[0].associatedServices[0].name === "Empaque sintético"
+    && workspaceAfterRename.planHistory[0].otherServices[0] === "Servicio sintético por clasificar" && !Number.isNaN(Date.parse(workspaceAfterRename.planHistory[0].createdAt)));
   check("historial de catálogo está auditado", (await getServiceCatalogHistory(admin, primary.item.serviceRef, prisma)).events.length === 2);
 
   await rejects("V no consulta caso sin owner", "CRM_SERVICES_RESOURCE_NOT_FOUND", () => getCaseServiceWorkspace(seller, pipelineCase.publicRef, prisma));
@@ -150,6 +153,9 @@ try {
   ]);
   check("concurrencia optimista produce un ganador", concurrency.filter((item) => item.status === "fulfilled").length === 1 && concurrency.filter((item) => item.status === "rejected").length === 1);
   check("revisiones siguen append-only y consecutivas", (await prisma.pipelineCaseServiceRevision.findMany({ where: { tenantId, pipelineCaseId: caseId }, orderBy: { revision: "asc" }, select: { revision: true } })).map((item) => item.revision).join(",") === "1,2");
+  const versionedPlan = await getCaseServiceWorkspace(admin, pipelineCase.publicRef, prisma);
+  check("historial del plan conserva vigente y anterior", versionedPlan.selection.revision === 2 && versionedPlan.selection.historyCount === 2
+    && versionedPlan.planHistory.map((item) => item.revision).join(",") === "2,1" && versionedPlan.planHistory[1].primary.name === "Mudanza residencial");
   const automaticInput = signed("CATALOG_CREATE", { ...compInput, requestId: request("auto-catalog"), code: null, name: "Servicio de código automático" });
   const automatic = await createServiceCatalogItem(admin, automaticInput, prisma);
   const automaticReplay = await createServiceCatalogItem(admin, automaticInput, prisma);

@@ -17,7 +17,7 @@ const cases = [
   ["material manual", { ui: `${base.ui}\n<select name="materials"></select>` }],
   ["pdf private", { pdf: base.pdf.replace("price|cost|margin|internal", "internal") }],
   ["lazy", { hub: base.hub.replace("const SurveyApp = lazy(", "const SurveyApp = eager(") }],
-  ["permission", { catalog: base.catalog.replace("survey:assignment:view", "survey:assigned:view") }],
+  ["permission", { catalog: base.catalog.replaceAll("survey:assignment:view", "survey:assigned:view") }],
 ];
 for (const [name, change] of cases) assert.ok(validateSurveyFoundationSources({ ...base, ...change }).length > 0, `negative guard: ${name}`);
 process.stdout.write(`${JSON.stringify({ ok: true, negativeCases: cases.length }, null, 2)}\n`);

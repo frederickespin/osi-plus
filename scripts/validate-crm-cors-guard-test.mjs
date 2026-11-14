@@ -87,6 +87,7 @@ check("tres rutas Identity protegidas", [
   "/api/auth/admin-invitations/activate",
 ].every((route) => inventory.categories.protectedSameOrigin.includes(route)));
 check("Scheduling protegido same-origin", inventory.categories.protectedSameOrigin.includes("/api/crm/survey/scheduling"));
+check("Configuración de custodia protegida same-origin", inventory.categories.protectedSameOrigin.includes("/api/customer-custody/warehouse-settings"));
 check("Flota mantiene ambas rutas privadas same-origin", ["/api/admin/fleet/vehicles", "/api/admin/fleet/vehicles/[vehicleRef]"]
   .every((route) => inventory.categories.protectedSameOrigin.includes(route)));
 check("Choferes mantiene exactamente sus cinco rutas privadas same-origin", fleetDriverRoutes.length === 5

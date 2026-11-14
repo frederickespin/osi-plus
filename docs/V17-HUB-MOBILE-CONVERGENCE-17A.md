@@ -35,8 +35,9 @@ Antes de implementar se revisaron la referencia, el inventario histórico, los c
 | Hub o menú ERP → OSi Plus Mobile | Mini-hub `/mobile`. |
 | Mobile → OSi Survey | `SurveyApp` funcional en `/mobile/survey`; `/survey` sigue siendo alias. |
 | Survey → Mobile | Botón en Agenda, deshabilitado durante una operación en curso. |
-| Mobile → Calculadora de Empaque | Lanzador `/mobile/packing`, con retorno a Mobile. |
-| Abrir Calculadora de Empaque | Nueva pestaña en la calculadora publicada. |
+| Hub → Herramientas | Mini-hub de calculadoras de escritorio en `/tools`. |
+| Herramientas → Calculadora de Empaque | Aplicación interna en `/tools/packing`; `/mobile/packing` queda como alias histórico. |
+| Herramientas → Empaque arqueológico | Aplicación interna en `/tools/archaeological-packing`. |
 
 El Inbox y la Ficha conservan su implementación consolidada, incluido el flujo de ICP, la programación, Servicios, Costos, Cotización y comunicaciones. Este incremento no reescribe sus reglas ni sus APIs.
 
@@ -50,14 +51,14 @@ La disponibilidad se aplica después de obtener el catálogo autorizado. Nunca c
 - Las rutas históricas de aplicaciones no disponibles muestran un estado explícito con retorno al Hub. No montan módulos heredados como sustituto.
 - `/mobile` requiere al menos una hija autorizada. La tarjeta aparece cuando al menos una hija está también disponible.
 - Survey conserva `survey:assignment:view`; el permiso antiguo del MVP visual, `survey:assigned:view`, no habilita el consumidor funcional.
-- Empaque requiere `pipeline:view`, `permissionMode: ALL`, permisos explícitos y ningún rol baseline.
+- Las dos calculadoras de escritorio requieren `pipeline:view`, `permissionMode: ALL`, permisos explícitos y ningún rol baseline.
 - Los denies conservan prioridad. El comportamiento conservador de los denies de Administración no cambia.
 - La sesión se sigue revalidando antes de navegar, con abort/fencing y control de historial en `App`.
 - El origen externo recibe una URL fija, sin credenciales ni contexto añadido, con `noopener noreferrer` y `referrerPolicy=no-referrer`.
 
 ## Qué se conserva, mejora y sustituye
 
-**Conservado:** Hub autenticado, ERP azul y compacto, consumidores funcionales consolidados, aislamiento por empresa, cinco pestañas canónicas de Ficha, permisos, Survey con persistencia y publicación, calculadora externa y sus archivos actuales.
+**Conservado:** Hub autenticado, ERP azul y compacto, consumidores funcionales consolidados, aislamiento por empresa, cinco pestañas canónicas de Ficha, permisos, Survey con persistencia y publicación, y las dos calculadoras fijadas como recursos internos.
 
 **Mejorado:** navegación compartida entre ERP y Mobile, retorno desde Survey y Administración, visibilidad basada en disponibilidad real y compatibilidad de `/survey`.
 

@@ -82,6 +82,8 @@ export const PUBLIC_REFERENCE_CONTRACTS = Object.freeze({
   "api/_lib/crmPipelineRead.js": ["CASE", "CLIENT"],
   "api/_lib/crmServicesApiDomain.js": ["CASE"],
   "api/_lib/crmSurveyDomain.js": ["CASE", "MEMBERSHIP"],
+  "api/_lib/customerCustodyDomain.js": ["CASE", "CLIENT", "MEMBERSHIP", "CUSTODY_AUTHORIZATION"],
+  "api/_lib/storageAgreementDomain.js": ["CASE", "CLIENT"],
   "api/_lib/fleetActor.js": ["MEMBERSHIP"],
   "api/_lib/fleetDriversDomain.js": ["MEMBERSHIP"],
   "api/_lib/logisticsEngineDomain.js": ["CASE"],
@@ -101,6 +103,7 @@ const REFERENCE_MODELS = Object.freeze({
   pipelineCaseCommand: "CASE", costingCalculation: "CASE", costingRevision: "CASE",
   costingOverride: "CASE", logisticsCalculation: "CASE", logisticsPlanRevision: "CASE",
   communicationRecord: "CASE", afterHoursVisitRequest: "CASE",
+  customerStorageAuthorization: "CUSTODY_AUTHORIZATION",
 });
 const REFERENCE_TABLES = Object.freeze({
   osi_pipeline_cases: "CASE", osi_clients: "CLIENT", tenant_memberships: "MEMBERSHIP",

@@ -45,6 +45,17 @@ export const CANONICAL_MIGRATIONS = Object.freeze([
   "20261101020000_v17_warehouse_sheet",
   "20261102010000_v17_warehouse_routes",
   "20261102020000_v17_warehouse_localities",
+  "20261106010000_v17_customer_custody",
+  "20261109010000_v17_customer_storage_groups",
+  "20261110010000_v17_customer_custody_reception",
+  "20261110020000_v17_customer_custody_scan_first",
+  "20261110030000_v17_customer_custody_authorizations",
+  "20261111010000_v17_storage_commercial_agreements",
+  "20261111020000_v17_customer_custody_inventory_numbers",
+  "20261112010000_v17_customer_custody_catalogs",
+  "20261112020000_v17_customer_custody_receiving_sessions",
+  "20261112030000_v17_customer_custody_excess_returns",
+  "20261113010000_v17_commercial_storage_requirements",
 ]);
 
 function invariant(condition, message) {

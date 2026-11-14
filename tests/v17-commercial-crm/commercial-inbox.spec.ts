@@ -282,17 +282,29 @@ test("seleccionar una fila abre el resumen y Ficha del caso usa el workspace com
   await expect(page.getByText("Cotizaciones", { exact: true })).toBeVisible();
   await expect(page.getByText("Actividad", { exact: true })).toBeVisible();
   await expect(page.getByText("updatedAt no se utiliza como comunicación.", { exact: true })).toBeVisible();
+  const progress = page.getByTestId("commercial-case-progress");
+  await expect(progress).toBeVisible();
+  await expect(progress.getByRole("listitem")).toHaveCount(6);
+  await expect(progress.getByRole("button", { name: /Servicios:/ })).toBeVisible();
+  await expect(progress.getByRole("button", { name: /Survey:/ })).toBeVisible();
+  await expect(progress.getByRole("button", { name: /Cotización:/ })).toBeVisible();
+  await expect(page.getByTestId("commercial-case-summary").getByText("Volumen", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Abrir ficha", { exact: true })).toHaveCount(0);
   if (testInfo.project.name.endsWith("desktop")) await expect(page.getByRole("region", { name: "Cola comercial" })).toBeVisible();
   else await expect(page.getByRole("region", { name: "Cola comercial" })).toBeHidden();
 
   await showCommercialQueue(page);
-  await page.evaluate(() => globalThis.scrollTo(0, Math.min(180, document.documentElement.scrollHeight - innerHeight)));
+  const queueViewport = page.getByTestId("commercial-queue-scroll");
+  await queueViewport.evaluate((element) => { element.scrollTop = Math.min(180, element.scrollHeight - element.clientHeight); });
   await fullCaseAction.scrollIntoViewIfNeeded();
   await expect(fullCaseAction).toBeVisible();
   await expect(fullCaseAction).toBeInViewport();
   const scrollBefore = await page.evaluate(() => globalThis.scrollY);
-  if (testInfo.project.name.endsWith("desktop")) expect(scrollBefore).toBeGreaterThan(0);
+  const queueScrollBefore = await queueViewport.evaluate((element) => element.scrollTop);
+  if (testInfo.project.name.endsWith("desktop")) {
+    expect(scrollBefore).toBe(0);
+    expect(queueScrollBefore).toBeGreaterThan(0);
+  }
   await fullCaseAction.click();
   await expect(page).toHaveURL(new RegExp(`/commercial/cases/${rows[10].caseRef}$`));
   await expect(page.getByTestId("commercial-full-case-workspace")).toBeVisible();
@@ -310,7 +322,8 @@ test("seleccionar una fila abre el resumen y Ficha del caso usa el workspace com
   await expect(row).toHaveAttribute("data-selected", "true");
   await expect(rowSelector).toHaveAttribute("aria-pressed", "true");
   if (testInfo.project.name.endsWith("desktop")) {
-    await expect.poll(() => page.evaluate(() => globalThis.scrollY)).toBe(scrollBefore);
+    await expect.poll(() => page.evaluate(() => globalThis.scrollY)).toBe(0);
+    await expect.poll(() => queueViewport.evaluate((element) => element.scrollTop)).toBe(queueScrollBefore);
   } else {
     // The selected summary is shorter than the queue, so native scrolling clamps at its end.
     const maxScroll = await page.evaluate(() => {

@@ -225,7 +225,11 @@ test("physical stock and stored assets alone allow controls without altering cod
   await recordMovement(prisma, ctx, command("INVENTORY_MOVEMENT", { movementType: "RECEIPT", materialRef: material.materialRef, locationRef: leaf.locationRef, counterpartLocationRef: null, quantity: 10, lotCode: null, reasonCode: "SYNTHETIC_RECEIPT", reservationRef: null, requirementRef: null }));
   const snapshot = async () => ({
     locations: await prisma.materialLocation.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { id: "asc" } }),
-    warehouses: await prisma.materialWarehouse.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { id: "asc" } }),
+    warehouses: await prisma.materialWarehouse.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { id: "asc" },
+      select: { id: true, warehouseRef: true, tenantId: true, code: true, name: true, status: true, version: true, createdAt: true, updatedAt: true },
+    }),
     movements: await prisma.materialInventoryMovement.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { id: "asc" } }),
     assets: await prisma.assetInstance.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { id: "asc" } }),
     assignments: await prisma.assetAssignment.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { id: "asc" } }),

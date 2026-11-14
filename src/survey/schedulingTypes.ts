@@ -69,18 +69,42 @@ export type SchedulingWorkspace = Readonly<{
     policyRef: string;
     version: number;
     timezone: string;
+    defaultVisitMinutes: number;
     minimumTravelBufferMinutes: number;
     virtualPreparationMinutes: number;
     canRequestException: boolean;
     precedence: readonly string[];
+    windows: readonly Readonly<{
+      weekday: number;
+      startMinute: number;
+      endMinute: number;
+      method: string;
+      requiresApproval: boolean;
+      kind: string;
+      calendarDate: string | null;
+    }>[];
   }>;
   visitReasons: readonly Readonly<{
     reasonRef: string;
     code: string;
     name: string;
   }>[];
+  visitLocations: readonly Readonly<{
+    role: "ORIGIN" | "DESTINATION" | "ADDITIONAL";
+    order: number;
+    countryCode: string;
+    provinceState: string | null;
+    cityMunicipality: string;
+    sector: string | null;
+    streetAndNumber: string | null;
+    buildingResidential: string | null;
+    floorUnit: string | null;
+    arrivalReference: string | null;
+    compactAddress: string | null;
+  }>[];
   schedulingContext: null | Readonly<{
     profile: string;
+    zoneType: string;
     zoneCode: string;
     distanceStatus: "KNOWN" | "PENDING";
     distanceKm: number | null;
@@ -104,6 +128,8 @@ export type SchedulingWorkspace = Readonly<{
     profileRef: string | null;
     displayName: string;
     capabilities: readonly string[];
+    dailyAssigned: number;
+    dailyLimit: number | null;
   }>[];
   visitFee: null | Readonly<{
     feeRef: string;

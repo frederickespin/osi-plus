@@ -256,7 +256,7 @@ export function createAssignOwnerHandler(options) {
       caseId: command.caseId,
       requestId: command.requestId,
       expectedVersion: command.expectedVersion,
-      ownerMembershipId: await resolveOwnerRef(context, command.ownerRef, dependencies),
+      ownerMembershipId: await resolveOwnerRef(context, command.ownerRef, { ...dependencies, caseRef: command.caseId }),
     }),
   });
 }

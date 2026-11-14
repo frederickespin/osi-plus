@@ -145,6 +145,26 @@ export function validateSchedulingConvergence(overrides = {}) {
     "integración con Survey App 04A ausente",
   );
   assert.match(
+    panel,
+    /Solicitud y programación de Survey[\s\S]*survey-workspace-views/,
+    "Solicitud y Programación dejaron de estar sectorizadas",
+  );
+  assert.match(
+    panel,
+    /Solicitud[\s\S]*Programación[\s\S]*Resultado/,
+    "flujo guiado de Survey incompleto",
+  );
+  assert.match(
+    panel,
+    /RECORD_CLIENT_CONFIRMATION[\s\S]*Confirmar con cliente/,
+    "confirmación del cliente sin acción trazable",
+  );
+  assert.match(
+    panel,
+    /Instrucciones para el evaluador/,
+    "instrucciones operativas del Survey ausentes",
+  );
+  assert.match(
     access,
     /denied\.has\(permission\)/,
     "deniedPermissions dejó de prevalecer",
@@ -178,9 +198,9 @@ export function validateSchedulingConvergence(overrides = {}) {
     /createCrmSurveyHandler/,
     "API no reutiliza AuthorizationContext/guardia 04A",
   );
-  return 32;
+  return 36;
 }
 if (import.meta.url === `file:///${process.argv[1]?.replaceAll("\\", "/")}`)
   process.stdout.write(
-    `Scheduling 11B guard: ${validateSchedulingConvergence()}/32\n`,
+    `Scheduling 11B guard: ${validateSchedulingConvergence()}/36\n`,
   );

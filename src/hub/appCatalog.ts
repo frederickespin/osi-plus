@@ -12,6 +12,7 @@ export type HubAppId =
   | "human-resources"
   | "osi-survey"
   | "visual-inventory"
+  | "osi-custody"
   | "archaeological-packing"
   | "packing-calculator";
 
@@ -127,12 +128,12 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   {
     appId: "warehouses",
     name: "Almacenes",
-    description: "Espacios, ubicaciones, materiales de embalaje y equipos.",
+    description: "Espacios, inventarios internos y efectos de clientes bajo custodia.",
     icon: "warehouse",
     route: "/warehouses",
-    routeAliases: ["/warehouses/spaces", "/warehouses/configuration", "/warehouses/materials", "/warehouses/equipment"],
+    routeAliases: ["/warehouses/spaces", "/warehouses/configuration", "/warehouses/materials", "/warehouses/equipment", "/warehouses/customer-custody"],
     status: "REGISTERED_INACTIVE",
-    requiredPermissions: ["inventory:stock:view", "assets:instance:view"],
+    requiredPermissions: ["inventory:stock:view", "assets:instance:view", "customer-custody:view"],
     permissionMode: "ANY",
     denyScope: "PERMISSION",
     requiresExplicitPermissions: true,
@@ -194,10 +195,11 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
       "Acceso, flota, personal, agenda, plantillas y reglas transversales de la empresa.",
     icon: "settings",
     route: "/administration",
-    routeAliases: ["/administration/access", "/administration/fleet", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"],
+    routeAliases: ["/administration/access", "/administration/warehouse-access", "/administration/fleet", "/administration/services", "/administration/logistics", "/administration/costing", "/administration/communications", "/administration/policies"],
     status: "REGISTERED_INACTIVE",
     requiredPermissions: [
       "membership:view",
+      "warehouse-access:manage",
       "fleet:view",
       "services:catalog:view",
       "services:packages:view",
@@ -237,7 +239,7 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
   {
     appId: "osi-survey",
     name: "OSi Survey",
-    description: "Agenda, inventario observado y publicaciones inmutables.",
+    description: "Agenda del visitador, inventario, accesos, revisión, detalle técnico y firma.",
     icon: "clipboard",
     route: "/mobile/survey",
     routeAliases: ["/survey"],
@@ -259,6 +261,22 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     route: "/mobile/visual-inventory",
     status: "INTERNAL_STANDALONE",
     requiredPermissions: ["survey:assignment:view"],
+    permissionMode: "ALL",
+    requiresExplicitPermissions: true,
+    baselineRoles: [],
+    mobileAvailability: "MOBILE_PRIMARY",
+    directAccessAllowed: true,
+    lazy: true,
+    suiteId: "osi-plus-mobile",
+  },
+  {
+    appId: "osi-custody",
+    name: "OSi Custodia",
+    description: "Recepción por escaneo, etiquetas, inspección y ubicación de bienes de clientes.",
+    icon: "warehouse",
+    route: "/mobile/custody",
+    status: "INTERNAL_AVAILABLE",
+    requiredPermissions: ["customer-custody:view"],
     permissionMode: "ALL",
     requiresExplicitPermissions: true,
     baselineRoles: [],

@@ -221,7 +221,7 @@ test("otras aplicaciones conservan la denegación global, incluso para permisos 
 
 test("catálogo y secciones coinciden en rutas y permisos explícitos", () => {
   const routes = ADMINISTRATION_SECTIONS.map((section) => section.route);
-  assert.equal(new Set(routes).size, 7);
+  assert.equal(new Set(routes).size, 8);
   assert.deepEqual(new Set(administration.routeAliases), new Set(routes));
   assert.deepEqual(new Set(administration.requiredPermissions), new Set(ADMINISTRATION_SECTIONS.flatMap((section) => section.permissions)));
   assert.equal(administration.requiresExplicitPermissions, true);

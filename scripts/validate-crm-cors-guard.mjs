@@ -243,6 +243,7 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
     if (route.path.startsWith("/api/communications/") && (route.source.includes("createCommunicationsHandler") || route.source.includes("createTransportDisabledHandler"))) continue;
     if (route.path.startsWith("/api/personnel/") && route.source.includes("createPersonnelPoliciesHandler")) continue;
     if (route.path.startsWith("/api/client-access/") && (route.source.includes("createInternalClientTemporaryHandler") || route.source.includes("createExternalClientTemporaryHandler"))) continue;
+    if (route.path.startsWith("/api/customer-custody/") && route.source.includes("createCustomerCustodyHandler")) continue;
     invariant(/^\/api\/(?:auth|crm|admin)\//u.test(route.path), `${route.path} no usa wrapper privado ni adaptador canónico`);
   }
 
@@ -250,7 +251,7 @@ export function validateCrmCorsGuard({ root = process.cwd(), overrides = new Map
     "api/_lib/warehouseSheetHttp.js",
     "api/_lib/adminIdentityInvitationHttp.js", "api/_lib/adminMembershipHttp.js", "api/_lib/adminUserIdentityHttp.js", "api/_lib/adminFleetHttp.js", "api/_lib/fleetDriversHttp.js", "api/_lib/authHttp.js", "api/_lib/authOrigin.js",
     "api/_lib/crmCaseMutationHttp.js", "api/_lib/crmIcpV2ApiHttp.js", "api/_lib/crmOwnerCatalogHttp.js", "api/_lib/crmPipelineReadHttp.js",
-    "api/_lib/crmServicesHttp.js", "api/_lib/crmSurveyHttp.js", "api/_lib/materialsInventoryHttp.js", "api/_lib/warehouseConfigurationHttp.js", "api/_lib/toolsEquipmentHttp.js", "api/_lib/logisticsEngineHttp.js", "api/_lib/logisticsTransportHttp.js", "api/_lib/costingHttp.js", "api/_lib/quoteHttp.js", "api/_lib/commercialRelationshipsHttp.js", "api/_lib/communicationsHttp.js", "api/_lib/personnelPoliciesHttp.js", "api/_lib/clientTemporaryAccessHttp.js", "api/_lib/pipelineCaseMutationHttp.js",
+    "api/_lib/crmServicesHttp.js", "api/_lib/crmSurveyHttp.js", "api/_lib/materialsInventoryHttp.js", "api/_lib/warehouseConfigurationHttp.js", "api/_lib/toolsEquipmentHttp.js", "api/_lib/logisticsEngineHttp.js", "api/_lib/logisticsTransportHttp.js", "api/_lib/costingHttp.js", "api/_lib/quoteHttp.js", "api/_lib/commercialRelationshipsHttp.js", "api/_lib/communicationsHttp.js", "api/_lib/personnelPoliciesHttp.js", "api/_lib/clientTemporaryAccessHttp.js", "api/_lib/customerCustodyHttp.js", "api/_lib/pipelineCaseMutationHttp.js",
   ]) {
     const wrapper = source(root, relativePath, overrides);
     invariant(!WILDCARD_ORIGIN.test(wrapper), `${relativePath} declara wildcard`);

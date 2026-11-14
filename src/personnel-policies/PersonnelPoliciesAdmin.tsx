@@ -88,6 +88,11 @@ export default function PersonnelPoliciesAdmin({
     notes: "",
     validFrom: "",
     validTo: "",
+    commercialEnabled: true,
+    maxActiveCases: "12",
+    authorizedModes: ["LOCAL", "EXPORT", "IMPORT"] as string[],
+    authorizedServiceTypes: "",
+    originalRestrictions: {} as Record<string, unknown>,
   });
   const [capabilityAssignment, setCapabilityAssignment] = useState({
     profileRef: "",
@@ -262,12 +267,26 @@ export default function PersonnelPoliciesAdmin({
                   <select
                     aria-label="Personal"
                     value={profileEdit.profileRef}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const selected = workspace.personnel.find((row) => row.profileRef === event.target.value);
+                      const restrictions = selected?.restrictions || {};
+                      const commercial = restrictions.commercial && typeof restrictions.commercial === "object" && !Array.isArray(restrictions.commercial)
+                        ? restrictions.commercial as Record<string, unknown> : {};
                       setProfileEdit({
-                        ...profileEdit,
                         profileRef: event.target.value,
-                      })
-                    }
+                        jobTitle: selected?.jobTitle || "",
+                        availabilityStatus: selected?.availabilityStatus || "AVAILABLE",
+                        restrictionSummary: typeof restrictions.summary === "string" ? restrictions.summary : "",
+                        notes: selected?.notes || "",
+                        validFrom: selected?.validFrom ? selected.validFrom.slice(0, 10) : "",
+                        validTo: selected?.validTo ? selected.validTo.slice(0, 10) : "",
+                        commercialEnabled: commercial.enabled !== false,
+                        maxActiveCases: String(typeof commercial.maxActiveCases === "number" ? commercial.maxActiveCases : 12),
+                        authorizedModes: Array.isArray(commercial.authorizedModes) ? commercial.authorizedModes.filter((value): value is string => typeof value === "string") : ["LOCAL", "EXPORT", "IMPORT"],
+                        authorizedServiceTypes: Array.isArray(commercial.authorizedServiceTypes) ? commercial.authorizedServiceTypes.filter((value): value is string => typeof value === "string").join(", ") : "",
+                        originalRestrictions: restrictions,
+                      });
+                    }}
                     className="rounded border px-3 py-2 text-xs"
                   >
                     <option value="">Seleccionar personal</option>
@@ -289,6 +308,15 @@ export default function PersonnelPoliciesAdmin({
                     }
                     className="rounded border px-3 py-2 text-xs"
                   />
+                  <div className="rounded border bg-white p-3 md:col-span-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-xs text-[#003366]">Atención comercial</strong><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={profileEdit.commercialEnabled} onChange={(event) => setProfileEdit({ ...profileEdit, commercialEnabled: event.target.checked })} />Puede recibir casos</label></div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      <label className="text-xs text-slate-600">Capacidad máxima de casos activos<input type="number" min="1" max="500" value={profileEdit.maxActiveCases} onChange={(event) => setProfileEdit({ ...profileEdit, maxActiveCases: event.target.value })} className="mt-1 block w-full rounded border px-3 py-2" /></label>
+                      <div className="text-xs text-slate-600"><span>Alcances autorizados</span><div className="mt-1 flex min-h-9 flex-wrap items-center gap-3 rounded border px-3">{["LOCAL", "EXPORT", "IMPORT"].map((mode) => <label key={mode} className="flex items-center gap-1"><input type="checkbox" checked={profileEdit.authorizedModes.includes(mode)} onChange={(event) => setProfileEdit({ ...profileEdit, authorizedModes: event.target.checked ? [...profileEdit.authorizedModes, mode] : profileEdit.authorizedModes.filter((value) => value !== mode) })} />{mode}</label>)}</div></div>
+                      <label className="text-xs text-slate-600">Servicios autorizados<input value={profileEdit.authorizedServiceTypes} onChange={(event) => setProfileEdit({ ...profileEdit, authorizedServiceTypes: event.target.value })} placeholder="Vacío = todos; o ALMACENAJE, MUDANZA" className="mt-1 block w-full rounded border px-3 py-2" /></label>
+                    </div>
+                    <p className="mt-2 text-[11px] leading-5 text-slate-500">La asignación automática respeta disponibilidad, capacidad, alcance y servicios autorizados. Los casos se recomiendan al usuario con menor carga proporcional.</p>
+                  </div>
                   <select
                     aria-label="Disponibilidad"
                     value={profileEdit.availabilityStatus}
@@ -361,9 +389,16 @@ export default function PersonnelPoliciesAdmin({
                         profileRef: profileEdit.profileRef,
                         jobTitle: profileEdit.jobTitle || null,
                         availabilityStatus: profileEdit.availabilityStatus,
-                        restrictions: profileEdit.restrictionSummary
-                          ? { summary: profileEdit.restrictionSummary }
-                          : {},
+                        restrictions: {
+                          ...profileEdit.originalRestrictions,
+                          ...(profileEdit.restrictionSummary ? { summary: profileEdit.restrictionSummary } : {}),
+                          commercial: {
+                            enabled: profileEdit.commercialEnabled,
+                            maxActiveCases: Math.max(1, Math.min(500, Number(profileEdit.maxActiveCases) || 12)),
+                            authorizedModes: profileEdit.authorizedModes,
+                            authorizedServiceTypes: profileEdit.authorizedServiceTypes.split(",").map((value) => value.trim()).filter(Boolean),
+                          },
+                        },
                         notes: profileEdit.notes || null,
                         validFrom: dateStart(profileEdit.validFrom),
                         validTo: dateStart(profileEdit.validTo),

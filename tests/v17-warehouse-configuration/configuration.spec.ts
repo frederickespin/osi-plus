@@ -189,7 +189,7 @@ test("lost use response survives other sections and reload and retries exactly o
   await page.getByRole("button", { name: "Reintentar guardado", exact: true }).click();
   await expect(page.getByTestId("warehouse-use-row")).toHaveCount(1);
   expect(commands).toHaveLength(2); expect(commands[1]).toEqual(commands[0]);
-  expect(await page.evaluate(() => Object.keys(sessionStorage).filter((key) => key.startsWith("osi-plus.warehouses.pending.v1:")).length)).toBe(0);
+  await expect.poll(() => page.evaluate(() => Object.keys(sessionStorage).filter((key) => key.startsWith("osi-plus.warehouses.pending.v1:")).length)).toBe(0);
   expect(fixture.unexpected).toEqual([]);
 });
 

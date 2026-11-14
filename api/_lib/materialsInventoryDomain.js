@@ -88,7 +88,33 @@ function publicWarehouse(row) {
   const references = new Map(row.locations.map((location) => [location.id, location.locationRef]));
   return { warehouseRef: row.warehouseRef, code: row.code, name: row.name, status: row.status, version: row.version, locations: row.locations.map((location) => publicWarehouseLocation(location, location.parentLocationId ? references.get(location.parentLocationId) ?? null : null)) };
 }
-const warehouseLocations = { locations: { orderBy: [{ depth: "asc" }, { code: "asc" }] } };
+const warehouseScalarSelect = {
+  id: true,
+  warehouseRef: true,
+  tenantId: true,
+  code: true,
+  name: true,
+  status: true,
+  version: true,
+};
+const warehouseWithLocationsSelect = {
+  ...warehouseScalarSelect,
+  locations: {
+    orderBy: [{ depth: "asc" }, { code: "asc" }],
+    select: {
+      id: true,
+      locationRef: true,
+      parentLocationId: true,
+      code: true,
+      name: true,
+      kind: true,
+      depth: true,
+      path: true,
+      status: true,
+      version: true,
+    },
+  },
+};
 function requireWarehouseManagement(context) {
   requirePermission(context, "inventory:stock:view");
   requirePermission(context, "inventory:catalog:manage");
@@ -98,6 +124,12 @@ function automaticWarehouseCode(prefix, context, input, warehouseRef = null) {
 }
 async function lockWarehouse(tx, tenantId, warehouseId) {
   await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`warehouse:${tenantId}:${warehouseId}`}, 0))`);
+}
+function rawSqlState(error) {
+  const metadataCode = String(error?.meta?.code ?? "");
+  if (/^\d{5}$/.test(metadataCode)) return metadataCode;
+  const message = String(error?.meta?.message ?? error?.message ?? "");
+  return message.match(/\b(23505|40001)\b/)?.[1] ?? null;
 }
 async function warehouseMutation(prisma, context, input, execute) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -109,12 +141,15 @@ async function warehouseMutation(prisma, context, input, execute) {
         return execute(tx);
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 20000 });
     } catch (error) {
-      if (!["P2002", "P2034"].includes(error?.code)) throw error;
+      const sqlState = rawSqlState(error);
+      const duplicate = error?.code === "P2002" || sqlState === "23505";
+      const serialization = error?.code === "P2034" || sqlState === "40001";
+      if (!duplicate && !serialization) throw error;
       // A waiter can hold a Serializable snapshot from before the first command
       // committed. Read its receipt outside that failed transaction before retrying.
       const replay = await commandReplay(prisma, context.tenantId, input.requestId, input.payloadHash);
       if (replay) return replay;
-      if (error.code === "P2002") fail("MATERIALS_CODE_CONFLICT", 409);
+      if (duplicate) fail("MATERIALS_CODE_CONFLICT", 409);
       if (attempt === 4) fail("MATERIALS_WRITE_CONFLICT", 409);
     }
   }
@@ -127,7 +162,7 @@ async function recordWarehouseCommand(tx, context, input, targetRef, entity, res
 
 export async function listWarehouses(prisma, context) {
   requirePermission(context, "inventory:stock:view");
-  const rows = await prisma.materialWarehouse.findMany({ where: { tenantId: context.tenantId }, include: warehouseLocations, orderBy: { code: "asc" } });
+  const rows = await prisma.materialWarehouse.findMany({ where: { tenantId: context.tenantId }, select: warehouseWithLocationsSelect, orderBy: { code: "asc" } });
   return Object.freeze(rows.map(publicWarehouse));
 }
 
@@ -135,7 +170,13 @@ export async function createWarehouse(prisma, context, raw) {
   requireWarehouseManagement(context); const input = normalizeWarehouseCreate(raw);
   return warehouseMutation(prisma, context, input, async (tx) => {
     const code = input.code ?? automaticWarehouseCode("ALM", context, input);
-    const warehouse = await tx.materialWarehouse.create({ data: { tenantId: context.tenantId, code, name: input.name } });
+    const warehouseId = randomUUID();
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "osi"."material_warehouses" ("id", "tenant_id", "code", "name")
+      VALUES (${warehouseId}, ${context.tenantId}, ${code}, ${input.name})
+    `);
+    const warehouse = await tx.materialWarehouse.findFirst({ where: { tenantId: context.tenantId, id: warehouseId }, select: warehouseScalarSelect });
+    if (!warehouse) fail("MATERIALS_RESOURCE_NOT_FOUND", 404);
     const nodes = input.locations ?? [{ code, name: input.name, kind: "WAREHOUSE_ROOT", parentCode: null }];
     const byCode = new Map(); const locations = [];
     for (const node of nodes) {
@@ -152,7 +193,7 @@ export async function createWarehouse(prisma, context, raw) {
 export async function createWarehouseLocation(prisma, context, raw) {
   requireWarehouseManagement(context); const input = normalizeWarehouseLocationCreate(raw);
   return warehouseMutation(prisma, context, input, async (tx) => {
-    const warehouse = await tx.materialWarehouse.findFirst({ where: { tenantId: context.tenantId, warehouseRef: input.warehouseRef } });
+    const warehouse = await tx.materialWarehouse.findFirst({ where: { tenantId: context.tenantId, warehouseRef: input.warehouseRef }, select: warehouseScalarSelect });
     if (!warehouse) fail("MATERIALS_RESOURCE_NOT_FOUND", 404);
     await lockWarehouse(tx, context.tenantId, warehouse.id);
     if (warehouse.status !== "ACTIVE") fail("MATERIALS_RESOURCE_INACTIVE", 409);
@@ -180,7 +221,7 @@ export async function createWarehouseLocation(prisma, context, raw) {
 export async function updateWarehouse(prisma, context, warehouseRef, raw) {
   requireWarehouseManagement(context); const input = normalizeWarehouseUpdate(raw, warehouseRef);
   return warehouseMutation(prisma, context, input, async (tx) => {
-    const current = await tx.materialWarehouse.findFirst({ where: { tenantId: context.tenantId, warehouseRef: input.warehouseRef } });
+    const current = await tx.materialWarehouse.findFirst({ where: { tenantId: context.tenantId, warehouseRef: input.warehouseRef }, select: warehouseScalarSelect });
     if (!current) fail("MATERIALS_RESOURCE_NOT_FOUND", 404);
     await lockWarehouse(tx, context.tenantId, current.id);
     if (current.version !== input.expectedVersion) fail("MATERIALS_VERSION_CONFLICT", 409);
@@ -189,7 +230,7 @@ export async function updateWarehouse(prisma, context, warehouseRef, raw) {
     // The root represents the warehouse itself and has no independent name editor.
     const roots = await tx.materialLocation.updateMany({ where: { tenantId: context.tenantId, warehouseId: current.id, parentLocationId: null }, data: { name: input.name, version: { increment: 1 } } });
     if (roots.count !== 1) fail("MATERIALS_LOCATION_TREE_INVALID", 409);
-    const row = await tx.materialWarehouse.findFirst({ where: { tenantId: context.tenantId, id: current.id }, include: warehouseLocations });
+    const row = await tx.materialWarehouse.findFirst({ where: { tenantId: context.tenantId, id: current.id }, select: warehouseWithLocationsSelect });
     return recordWarehouseCommand(tx, context, input, row.warehouseRef, "MaterialWarehouse", publicWarehouse(row));
   });
 }

@@ -20,6 +20,7 @@ const crm01aGuard = read("scripts/validate-crm-01a-guard.mjs");
 
 rejected("UI productiva", { "src/crm-icp-v2/clientMode.ts": `${mode}\nconst PRODUCTION = true;` }, /productiva/);
 rejected("rama Preview relajada", { "src/crm-icp-v2/clientMode.ts": mode.replace("runtime.gitBranch === CRM_ICP_V2_UI_PREVIEW_BRANCH", "true") }, /compuerta UI/);
+rejected("rama integrada retirada", { "src/crm-icp-v2/clientMode.ts": mode.replaceAll("runtime.gitBranch === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH", "false") }, /compuerta UI/);
 rejected("API remoto", { "src/crm-icp-v2/api.ts": api.replace('const API_ROOT = "/api/crm/icp-v2"', 'const API_ROOT = "https://example.invalid/api/crm/icp-v2"') }, /same-origin|origen remoto/);
 rejected("credenciales omitidas", { "src/crm-icp-v2/api.ts": api.replace('credentials: "same-origin"', 'credentials: "omit"') }, /protección cliente/);
 rejected("membershipRef omitida", { "src/crm-icp-v2/api.ts": api.replace('"X-OSI-Membership-Ref": membershipRef', '"X-Removed-Ref": membershipRef') }, /protección cliente/);
@@ -27,6 +28,7 @@ rejected("tenant desde navegador", { "src/crm-icp-v2/api.ts": `${api}\nconst ten
 rejected("volumen enviado", { "src/crm-icp-v2/api.ts": api.replace("const unsigned = {", "const unsigned = { estimatedCbm: 12,") }, /payload enviado/);
 rejected("campo numérico", { "src/crm-icp-v2/IcpIntakeForm.tsx": `${form}\nconst unsafe = <input type=\"number\" />;` }, /datos excluidos/);
 rejected("paradas reintroducidas", { "src/crm-icp-v2/IcpIntakeForm.tsx": `${form}\nconst unsafe = "Paradas adicionales";` }, /datos excluidos/);
+rejected("lead account mezclado con cliente", { "src/crm-icp-v2/IcpIntakeForm.tsx": `${form}\nconst unsafe = "LEAD_ACCOUNT";` }, /relación comercial/);
 rejected("permiso pendiente retirado", { "src/crm-relational/mutationAccess.ts": access.replace('const CREATE_PENDING_DESTINATION = "pipeline:create:pending-destination";', 'const CREATE_PENDING_DESTINATION = "pipeline:create";') }, /permiso explícito/);
 rejected("Inbox desconectado", { "src/commercial-crm/CommercialInboxModule.tsx": inbox.replace("<IcpIntakeForm", "<LegacyForm") }, /integración Inbox/);
 rejected("API Preview UI desconectada", { "api/_lib/crmIcpV2ApiHttp.js": server.replace("isExactV17CommercialCrmPreviewServerEnvironment(env)", "true") }, /perfil Preview UI/);

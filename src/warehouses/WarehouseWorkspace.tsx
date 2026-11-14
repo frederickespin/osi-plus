@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, type MouseEvent } from "react";
-import { ArrowLeft, Boxes, ChevronDown, ChevronRight, Hammer, Settings, Warehouse } from "lucide-react";
+import { Archive, ArrowLeft, Boxes, ChevronDown, ChevronRight, Hammer, Settings, Warehouse } from "lucide-react";
 import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { isWarehouseSectionAllowed, warehouseSectionFromRoute, WAREHOUSE_SECTION_GROUPS, type WarehouseSection, type WarehouseSectionGroupId, type WarehouseSectionId } from "./warehouseSections";
@@ -8,8 +8,9 @@ const WarehouseSpaces = lazy(() => import("./WarehouseSpaces"));
 const WarehouseConfiguration = lazy(() => import("./WarehouseConfiguration"));
 const MaterialsInventoryApp = lazy(() => import("@/materials-inventory/MaterialsInventoryApp"));
 const ToolsEquipmentApp = lazy(() => import("@/tools-equipment/ToolsEquipmentApp"));
+const CustomerCustodyApp = lazy(() => import("@/customer-custody/CustomerCustodyApp"));
 
-const ICONS = { spaces: Warehouse, configuration: Settings, materials: Boxes, equipment: Hammer };
+const ICONS = { spaces: Warehouse, configuration: Settings, materials: Boxes, equipment: Hammer, "customer-custody": Archive };
 
 type Props = Readonly<{
   authorization?: string;
@@ -40,6 +41,7 @@ export default function WarehouseWorkspace({ authorization, pathname, sections, 
       case "configuration": return <WarehouseConfiguration {...consumerProps} onNavigate={onNavigate} />;
       case "materials": return <MaterialsInventoryApp {...consumerProps} onNavigate={onNavigate} embedded />;
       case "equipment": return <ToolsEquipmentApp {...consumerProps} onNavigate={onNavigate} embedded />;
+      case "customer-custody": return <CustomerCustodyApp authorization={authorization} effectivePermissions={effectivePermissions} deniedPermissions={deniedPermissions} onUnauthorized={onUnauthorized} />;
     }
   };
 

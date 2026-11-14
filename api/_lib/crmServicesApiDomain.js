@@ -239,18 +239,34 @@ function publicSelection(row, historyCount) {
     complementaries: Object.freeze(row.items.filter((item) => item.kind === "COMPLEMENTARY").map(base)),
     otherServices: Object.freeze(row.items.filter((item) => item.kind === "OTHER").map((item) => Object.freeze({ description: item.nameSnapshot, classificationStatus: item.classificationStatus }))), historyCount });
 }
+function publicServicePlanSummary(row) {
+  const primary = row.items.find((item) => item.kind === "PRIMARY");
+  const associated = row.items.filter((item) => item.kind === "COMPLEMENTARY");
+  const otherServices = row.items.filter((item) => item.kind === "OTHER");
+  return Object.freeze({
+    selectionRef: row.selectionRef,
+    revision: row.revision,
+    mode: row.modeSnapshot,
+    primary: primary ? Object.freeze({ code: primary.codeSnapshot, name: primary.nameSnapshot }) : null,
+    associatedServices: Object.freeze(associated.map((item) => Object.freeze({ code: item.codeSnapshot, name: item.nameSnapshot }))),
+    otherServices: Object.freeze(otherServices.map((item) => item.nameSnapshot)),
+    createdAt: row.createdAt.toISOString(),
+  });
+}
 
 export async function getCaseServiceWorkspace(context, caseReference, database = prisma) {
   try {
     return await database.$transaction(async (tx) => {
       const who = await actor(tx, context, PERMS.SERVICES_CASE_VIEW);
       const pipelineCase = await scopedCase(tx, who, caseReference);
-      const revisions = await tx.pipelineCaseServiceRevision.findMany({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id }, orderBy: { revision: "desc" }, take: 1, include: { items: { orderBy: { position: "asc" } } } });
+      const revisions = await tx.pipelineCaseServiceRevision.findMany({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id }, orderBy: { revision: "desc" }, take: 20, include: { items: { orderBy: { position: "asc" } } } });
+      const historyCount = await tx.pipelineCaseServiceRevision.count({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id } });
       const primaries = await tx.serviceCatalogItem.findMany({ where: { tenantId: who.tenantId, status: "ACTIVE", usage: { in: ["PRIMARY", "BOTH"] }, compatibleModes: { has: pipelineCase.mode } }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }] });
       const primaryIds = primaries.map((item) => item.id);
       const links = await tx.serviceCatalogCompatibility.findMany({ where: { tenantId: who.tenantId, primaryServiceId: { in: primaryIds }, complementaryService: { status: "ACTIVE" } }, include: { complementaryService: true } });
       const defaults = await tx.serviceDefaultCombination.findMany({ where: { tenantId: who.tenantId, primaryServiceId: { in: primaryIds }, status: "ACTIVE" }, include: { items: { orderBy: { position: "asc" }, include: { service: true } } } });
-      return Object.freeze({ caseRef: pipelineCase.publicRef, mode: pipelineCase.mode, selection: publicSelection(revisions[0], await tx.pipelineCaseServiceRevision.count({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id } })),
+      return Object.freeze({ caseRef: pipelineCase.publicRef, mode: pipelineCase.mode, selection: publicSelection(revisions[0], historyCount),
+        planHistory: Object.freeze(revisions.map(publicServicePlanSummary)),
         primaries: Object.freeze(primaries.map((item) => publicCatalog(item))),
         allowedComplementaries: Object.freeze(links.map((link) => Object.freeze({ primaryServiceRef: primaries.find((item) => item.id === link.primaryServiceId)?.serviceRef, service: publicCatalog(link.complementaryService) }))),
         defaults: Object.freeze(defaults.map((row) => Object.freeze({ combinationRef: row.combinationRef, primaryServiceRef: primaries.find((item) => item.id === row.primaryServiceId)?.serviceRef, name: row.name, isDefault: row.isDefault, version: row.version, complementaryRefs: Object.freeze(row.items.map((item) => item.service.serviceRef)) }))),

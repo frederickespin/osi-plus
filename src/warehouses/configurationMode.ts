@@ -1,4 +1,5 @@
 import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
+import { V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH } from "../../shared/v17CommercialCrmPreview.js";
 
 export const WAREHOUSE_CONFIGURATION_UI_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" } as const);
 export type WarehouseConfigurationUiMode = typeof WAREHOUSE_CONFIGURATION_UI_MODES[keyof typeof WAREHOUSE_CONFIGURATION_UI_MODES];
@@ -13,7 +14,8 @@ export function resolveWarehouseConfigurationUiMode(environment: Readonly<Record
   const preview = value === WAREHOUSE_CONFIGURATION_UI_MODES.PREVIEW_REHEARSAL
     && environment.VITE_WAREHOUSE_CONFIGURATION_UI_BATCH === "V17-WAREHOUSE-CONFIGURATION-20B-PREVIEW"
     && environment.VITE_VERCEL_ENV === "preview"
-    && isV17ConsolidatedPreviewBranch(environment.VITE_VERCEL_GIT_COMMIT_REF);
+    && (environment.VITE_VERCEL_GIT_COMMIT_REF === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH
+      || isV17ConsolidatedPreviewBranch(environment.VITE_VERCEL_GIT_COMMIT_REF));
   return preview ? value : WAREHOUSE_CONFIGURATION_UI_MODES.DISABLED;
 }
 

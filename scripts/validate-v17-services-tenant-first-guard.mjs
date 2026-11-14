@@ -46,10 +46,17 @@ export function validateV17ServicesTenantFirst({ root = process.cwd(), overrides
   need(http, /resolveCrmServicesApiMode\(env, req\); sameOrigin\(req\);[\s\S]*resolveContext[\s\S]*readJsonObject/, "gate/origin/auth/body fuera de orden");
   if (/PRODUCTION_(?:READ|WRITE|PILOT)/.test(http) || /PRODUCTION_(?:READ|WRITE|PILOT)/.test(mode)) fail("Servicios habilita Production");
   need(mode, /return preview \? value : CRM_SERVICES_UI_MODES\.DISABLED/, "frontend no falla cerrado");
-  need(panel, /Modo \/ Alcance[\s\S]*Servicio principal[\s\S]*Servicios que incluye/, "orden visual aprobado ausente");
+  need(panel, /Modo \/ Alcance[\s\S]*Necesidad principal[\s\S]*Servicios asociados al caso/, "orden visual aprobado ausente");
   need(panel, /readOnly value=\{workspace\.mode/, "Servicios permite alterar modo ICP");
-  need(panel, /window\.confirm\([\s\S]*Cambiar el servicio principal/, "cambio de principal pierde decisiones sin confirmar");
-  need(detail, /tab === "SERVICES" && servicesEnabled[\s\S]*ServiceCasePanel/, "UI carga Servicios sin autorización previa");
+  need(panel, /window\.confirm\([\s\S]*Cambiar la necesidad principal/, "cambio de necesidad principal pierde decisiones sin confirmar");
+  need(panel, /Plan vigente V[\s\S]*Historial del plan de servicios[\s\S]*Guardar Plan V/, "plan de servicios versionado no es visible");
+  need(panel, /Agregar desde el catálogo[\s\S]*availableCatalog\.map[\s\S]*addCatalogService/, "Servicios asociados no se seleccionan desde el catálogo compatible");
+  need(panel, /<table[\s\S]*Base tarifaria[\s\S]*Volumen, peso o unidad del tarifario[\s\S]*removeCatalogService/, "selección no se presenta como listado compacto editable");
+  need(panel, /Servicios conserva la selección[\s\S]*Costos aplica el tarifario versionado[\s\S]*monto sugerido[\s\S]*comparación, motivo, margen y aprobación/, "se perdió la frontera Servicios → Costos → Cotización");
+  need(panel, /label: "Plan"[\s\S]*label: "Contrato"[\s\S]*label: "Movimientos"[\s\S]*label: "Configuración"/, "flujo guiado no conserva las cuatro pantallas aprobadas");
+  need(panel, /role="tablist"[\s\S]*grid-cols-4[\s\S]*activeStage === stage\.id \? "bg-\[#003366\] text-white/, "pestañas compactas no resaltan la pantalla activa");
+  need(panel, /activeView=\{activeStage === "agreement" \? "agreement" : activeStage === "movements" \? "authorization" : "requirement"\}[\s\S]*compactRequirement=\{activeStage === "plan"\}/, "procesos de almacenaje volvieron a una sola pantalla larga");
+  need(detail, /activeTab === "SERVICES" && servicesEnabled[\s\S]*ServiceCasePanel/, "UI carga Servicios sin autorización previa");
 
   const forbiddenDomain = ["estimatedCbm", "requiresSurvey", "surveyMethod", "QuoteLineItem", "unitPrice", "cost"].filter((term) => new RegExp(`\\b${term}\\b`, "i").test(api + contract));
   if (forbiddenDomain.length) fail(`Servicios absorbió ICP/Survey/Costing/Quote: ${forbiddenDomain.join(",")}`);

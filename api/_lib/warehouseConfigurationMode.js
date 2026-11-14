@@ -1,5 +1,6 @@
 import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
 import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
+import { V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH } from "../../shared/v17CommercialCrmPreview.js";
 import { warehouseConfigurationFail } from "./warehouseConfigurationContract.js";
 
 export const WAREHOUSE_CONFIGURATION_API_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" });
@@ -15,7 +16,7 @@ export function isWarehouseConfigurationEnabled(env = process.env) {
     if (Object.keys(env).some((key) => key.toUpperCase().startsWith("VERCEL"))) warehouseConfigurationFail("WAREHOUSE_CONFIGURATION_INVALID", 503);
     return true;
   }
-  const valid = env.VERCEL === "1" && env.VERCEL_ENV === "preview" && isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF)
+  const valid = env.VERCEL === "1" && env.VERCEL_ENV === "preview" && (env.VERCEL_GIT_COMMIT_REF === V17_CUSTOMER_CUSTODY_PREVIEW_BRANCH || isV17ConsolidatedPreviewBranch(env.VERCEL_GIT_COMMIT_REF))
     && env.WAREHOUSE_CONFIGURATION_API_BATCH === WAREHOUSE_CONFIGURATION_PREVIEW_BATCH && env.MT01B_AUTH_MODE === "LEGACY"
     && env.MT01B_TENANT_SWITCH_ENABLED === "false" && env.VITE_MT01B2_CLIENT_ENABLED === "false";
   if (!valid) warehouseConfigurationFail("WAREHOUSE_CONFIGURATION_INVALID", 503);

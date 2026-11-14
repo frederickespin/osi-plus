@@ -176,9 +176,11 @@ test("catálogo devuelve sólo contrato público en una consulta acotada", async
   // Random base64url ciphertext may contain a short fixture ID by chance.
   // Assert the exact public shape and authenticated reference instead.
   for (const [index, entry] of result.data.entries()) {
-    assert.deepEqual(Object.keys(entry).sort(), ["displayName", "ownerRef", "role"]);
+    assert.deepEqual(Object.keys(entry).sort(), ["activeCases", "availabilityStatus", "displayName", "loadPercent", "maxActiveCases", "ownerRef", "recommended", "role"]);
     assert.equal(entry.displayName, rows[index].display_name);
     assert.equal(entry.role, "V");
+    assert.equal(entry.maxActiveCases, 12);
+    assert.equal(entry.recommended, index === 0);
     assert.deepEqual(readCrmOwnerRef(entry.ownerRef, { env: ENV, now: () => 1_000_000 }), {
       tenantId: ADMIN.tenantId, membershipId: rows[index].membership_id, userId: rows[index].user_id,
       issuedAt: 1_000, expiresAt: 1_000 + CRM_OWNER_REF_TTL_SECONDS,

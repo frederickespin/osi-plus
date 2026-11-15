@@ -18,6 +18,7 @@ const DATABASE = "v17_consolidated_preview_10b";
 const DATABASE_BRANCH = "br-bitter-mountain-ahs311pu";
 const TENANT_CODE = "V17-CONSOLIDATED-PREVIEW-10B";
 const DEMO_FLAG = "DEMO_OPERATIONAL_FLOW";
+let activeStage = "BOOT";
 
 function requireCondition(condition, code) {
   if (!condition) throw new Error(`OPERATIONAL_DEMO_FLOWS_SEED_${code}`);
@@ -392,6 +393,7 @@ const serviceDefinitions = [
 ];
 
 async function seed(prisma) {
+  activeStage = "DATABASE_IDENTITY";
   const [identity] = await prisma.$queryRawUnsafe("SELECT current_database() AS database, current_setting('neon.branch_id', true) AS branch");
   requireCondition(identity?.database === DATABASE && identity.branch === DATABASE_BRANCH, "DATABASE_IDENTITY_INVALID");
   const tenant = await prisma.tenant.findUnique({ where: { code: TENANT_CODE } });
@@ -403,21 +405,35 @@ async function seed(prisma) {
   const evaluator = { membership: evaluatorMembership, user: evaluatorMembership.user };
   const schedulePolicy = await prisma.surveySchedulePolicyVersion.findFirst({ where: { tenantId: tenant.id, state: "ACTIVE" }, orderBy: { version: "desc" } });
   const catalog = new Map();
+  activeStage = "SERVICE_CATALOG";
   for (const definition of serviceDefinitions) catalog.set(definition.code, await ensureService(prisma, tenant.id, definition));
   const created = [];
-  for (const definition of scenarios) created.push(await ensureCase(prisma, tenant, actor, definition, definition.services.map((code) => catalog.get(code))));
+  for (let index = 0; index < scenarios.length; index += 1) {
+    activeStage = `CASE_${index + 1}`;
+    const definition = scenarios[index];
+    created.push(await ensureCase(prisma, tenant, actor, definition, definition.services.map((code) => catalog.get(code))));
+  }
 
+  activeStage = "SURVEY_METRO";
   await ensureScheduledSurvey(prisma, tenant, actor, evaluator, schedulePolicy, created[0], { start: "2026-11-17T13:00:00Z", end: "2026-11-17T13:45:00Z", outsideMetro: false, distanceKm: 8, zoneCode: "METRO-PIANTINI", slotKey: "MORNING-09", travelBufferMinutes: 45, instructions: "Confirmar accesos, volumen, peso estimado y materiales de empaque." });
+  activeStage = "SURVEY_INTERIOR";
   await ensureScheduledSurvey(prisma, tenant, actor, evaluator, schedulePolicy, created[1], { start: "2026-11-18T13:00:00Z", end: "2026-11-18T14:00:00Z", outsideMetro: true, distanceKm: 155, zoneCode: "SANTIAGO-LOS-JARDINES", slotKey: "FULL-DAY", travelBufferMinutes: 180, instructions: "Visita fuera de zona metro. Un solo Survey para el evaluador durante el día." });
+  activeStage = "SURVEY_EXPORT";
   await ensureCompletedSurvey(prisma, tenant, actor, evaluator, created[4], { start: "2026-11-14T14:00:00Z", end: "2026-11-14T14:45:00Z", distanceKm: 10, shipmentMode: "SEA", quantity: 14, unitVolumeM3: "1.43", unitWeightKg: "52", flags: ["FRAGILE", "CRATING_CANDIDATE"], notes: "Survey completo para exportación a Miami." });
 
   const context = { tenantId: tenant.id, membershipId: actor.membership.id, userId: actor.user.id, role: actor.membership.role, effectivePermissions: actor.membership.grantedPermissions, deniedPermissions: actor.membership.deniedPermissions };
+  activeStage = "QUOTE_STORAGE";
   const storageQuote = await ensurePlansAndQuote(prisma, context, created[2], "ACCEPTED", "Almacenaje 8 meses — 20 pies");
+  activeStage = "QUOTE_IMPORT";
   const importQuote = await ensurePlansAndQuote(prisma, context, created[3], "ACCEPTED", "Importación puerta a puerta");
+  activeStage = "QUOTE_EXPORT";
   await ensurePlansAndQuote(prisma, context, created[4], "SENT", "Exportación marítima a Miami");
+  activeStage = "STORAGE_AUTHORITY";
   await ensureStorageReady(prisma, tenant, actor, created[2], storageQuote);
+  activeStage = "IMPORT_AGENT";
   await ensureImportAgentContext(prisma, tenant, actor, created[3]);
 
+  activeStage = "FINAL_STATUS";
   const desiredStatuses = ["SURVEY_SCHEDULED", "SURVEY_SCHEDULED", "OPS_HANDOFF", "OPS_HANDOFF", "QUOTE_SENT"];
   for (let index = 0; index < created.length; index += 1) await prisma.pipelineCase.update({ where: { id: created[index].id }, data: { status: desiredStatuses[index], statusChangedAt: new Date(), flags: { set: ["PREVIEW_SYNTHETIC", DEMO_FLAG, scenarios[index].demoFlag] } } });
 
@@ -445,7 +461,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const result = await runOperationalDemoFlowsPreviewSeed();
     if (result) process.stdout.write(`${JSON.stringify({ operationalDemoFlows: result })}\n`);
   } catch (error) {
-    const code = /^OPERATIONAL_DEMO_FLOWS_SEED_[A-Z0-9_-]+$/u.test(error?.message ?? "") ? error.message : "OPERATIONAL_DEMO_FLOWS_SEED_FAILED";
+    const safeError = String(error?.code || error?.name || "FAILED").replace(/[^A-Z0-9_]/giu, "_").toUpperCase();
+    const code = /^OPERATIONAL_DEMO_FLOWS_SEED_[A-Z0-9_-]+$/u.test(error?.message ?? "")
+      ? error.message : `OPERATIONAL_DEMO_FLOWS_SEED_${activeStage}_${safeError}`;
     process.stderr.write(`${JSON.stringify({ operationalDemoFlows: { status: "BLOCKED", code } })}\n`);
     process.exitCode = 1;
   }

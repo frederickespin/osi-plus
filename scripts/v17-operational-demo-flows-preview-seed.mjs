@@ -235,19 +235,27 @@ async function ensureScheduledSurvey(prisma, tenant, actor, evaluator, scheduleP
 }
 
 async function ensureCompletedSurvey(prisma, tenant, actor, evaluator, scenario, options) {
+  activeStage = "SURVEY_EXPORT_CATALOG";
   let catalog = await prisma.surveyCatalogVersion.findFirst({ where: { tenantId: tenant.id, status: "ACTIVE" }, orderBy: { version: "desc" } });
   if (!catalog) catalog = await prisma.surveyCatalogVersion.create({ data: { tenantId: tenant.id, version: 1, status: "ACTIVE", activatedAt: new Date(), createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
+  activeStage = "SURVEY_EXPORT_AREA";
   let area = await prisma.surveyAreaCatalogItem.findFirst({ where: { tenantId: tenant.id, catalogVersionId: catalog.id, code: "DEMO-LIVING" } });
   if (!area) area = await prisma.surveyAreaCatalogItem.create({ data: { tenantId: tenant.id, catalogVersionId: catalog.id, areaRef: stableUuid("demo-area-living"), code: "DEMO-LIVING", name: "Sala", sortOrder: 20 } });
+  activeStage = "SURVEY_EXPORT_ARTICLE";
   let article = await prisma.surveyArticleCatalogItem.findFirst({ where: { tenantId: tenant.id, catalogVersionId: catalog.id, code: "DEMO-HOUSEHOLD" } });
   if (!article) article = await prisma.surveyArticleCatalogItem.create({ data: { tenantId: tenant.id, catalogVersionId: catalog.id, articleRef: stableUuid("demo-household-article"), code: "DEMO-HOUSEHOLD", name: "Mobiliario y cajas", aliases: ["demo"], frequentAreaRefs: [area.areaRef], defaultVolumeM3: "1.5", defaultWeightKg: "45", weightSource: "CATALOG", sortOrder: 20 } });
+  activeStage = "SURVEY_EXPORT_DECISION";
   let decision = await prisma.surveyEvaluationDecision.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id, version: 1 } });
   if (!decision) decision = await prisma.surveyEvaluationDecision.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, routeVersion: 1, version: 1, method: "IN_PERSON", commercialState: "COMPLETED", informationSource: "EVALUATOR", rationaleCode: "DEMO_COMPLETED", createdByMembershipId: evaluator.membership.id, createdByUserId: evaluator.user.id } });
+  activeStage = "SURVEY_EXPORT_ASSIGNMENT";
   let assignment = await prisma.surveyAssignment.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id } });
   if (!assignment) assignment = await prisma.surveyAssignment.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, routeVersion: 1, evaluatorMembershipId: evaluator.membership.id, evaluatorUserId: evaluator.user.id, scheduledStart: new Date(options.start), scheduledEnd: new Date(options.end), status: "COMPLETED", arrivalAt: new Date(options.start), punctualityConfirmedAt: new Date(options.start), contextSnapshot: { synthetic: true, demo: true, distanceKm: options.distanceKm }, instructionSnapshot: options.instructions, evaluationDecisionId: decision.id, scheduleProfile: "METRO", zoneCode: "METRO", slotKey: "MORNING", travelBufferMinutes: 45, clientConfirmation: "CONFIRMED", evaluatorConfirmation: "CONFIRMED", createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
+  activeStage = "SURVEY_EXPORT_DRAFT";
   let draft = await prisma.surveyDraft.findFirst({ where: { tenantId: tenant.id, assignmentId: assignment.id, revision: 1 } });
   if (!draft) draft = await prisma.surveyDraft.create({ data: { tenantId: tenant.id, assignmentId: assignment.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, catalogVersionId: catalog.id, routeVersion: 1, revision: 1, status: "PUBLISHED", notes: options.notes } });
+  activeStage = "SURVEY_EXPORT_ITEM";
   if (!await prisma.surveyDraftItem.findFirst({ where: { tenantId: tenant.id, draftId: draft.id, sortOrder: 1 } })) await prisma.surveyDraftItem.create({ data: { tenantId: tenant.id, draftId: draft.id, catalogVersionId: catalog.id, catalogItemId: article.id, areaCatalogItemId: area.id, articleRefSnapshot: article.articleRef, articleCodeSnapshot: article.code, articleNameSnapshot: article.name, areaRefSnapshot: area.areaRef, areaCodeSnapshot: area.code, areaNameSnapshot: area.name, shipmentMode: options.shipmentMode, quantity: options.quantity, condition: "GOOD", flags: options.flags, unitVolumeM3: options.unitVolumeM3, unitWeightKg: options.unitWeightKg, volumeSource: "MEASURED", weightSource: "CATALOG", note: options.notes, sortOrder: 1 } });
+  activeStage = "SURVEY_EXPORT_PUBLICATION";
   let publication = await prisma.surveyPublication.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id, status: "CURRENT" } });
   if (!publication) {
     const pdf = await prisma.surveyBlobObject.create({ data: { tenantId: tenant.id, provider: "PREVIEW_LOCAL_GATED", storageKey: `preview/operational-demo/${scenario.caseCode}/survey.pdf`, mimeType: "application/pdf", sizeBytes: 256, sha256: sha(`demo-survey-pdf-${scenario.caseCode}`) } });

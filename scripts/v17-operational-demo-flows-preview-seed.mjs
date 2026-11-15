@@ -309,6 +309,7 @@ async function ensurePlansAndQuote(prisma, context, scenario, quoteState, amount
 async function ensureStorageReady(prisma, tenant, actor, scenario, acceptedProposal) {
   const revision = acceptedProposal.revisions[0];
   requireCondition(acceptedProposal.state === "ACCEPTED" && revision, "STORAGE_QUOTE_NOT_ACCEPTED");
+  activeStage = "STORAGE_REQUIREMENT";
   if (!await prisma.customerStorageRequirementRevision.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id, revision: 1 } })) await prisma.customerStorageRequirementRevision.create({ data: {
     tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, revision: 1,
     storageType: "PERSONAL_EFFECTS", capacityBasis: "TWENTY_FOOT_CONTAINER", capacityQuantity: "33",
@@ -316,8 +317,10 @@ async function ensureStorageReady(prisma, tenant, actor, scenario, acceptedPropo
     visitDecision: "REQUIRED", notes: "Ejemplo: almacenaje de efectos personales por ocho meses.",
     createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id,
   } });
+  activeStage = "STORAGE_WAREHOUSE";
   let warehouse = await prisma.materialWarehouse.findFirst({ where: { tenantId: tenant.id, code: "PREVIEW" } });
   if (!warehouse) warehouse = await prisma.materialWarehouse.create({ data: { tenantId: tenant.id, code: "PREVIEW", name: "Almacén Demo" } });
+  activeStage = "STORAGE_AGREEMENT";
   let agreement = await prisma.customerStorageAgreement.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id, status: "ACTIVE" } });
   if (!agreement) agreement = await prisma.customerStorageAgreement.create({ data: {
     tenantId: tenant.id, clientId: scenario.client.id, pipelineCaseId: scenario.id,
@@ -334,6 +337,7 @@ async function ensureStorageReady(prisma, tenant, actor, scenario, acceptedPropo
     createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id,
     activatedByMembershipId: actor.membership.id, activatedByUserId: actor.user.id,
   } });
+  activeStage = "STORAGE_ENTRY_AUTHORIZATION";
   let authorization = await prisma.customerStorageAuthorization.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id, movementType: "ENTRY", status: "AUTHORIZED" } });
   if (!authorization) authorization = await prisma.customerStorageAuthorization.create({ data: {
     tenantId: tenant.id, clientId: scenario.client.id, pipelineCaseId: scenario.id,

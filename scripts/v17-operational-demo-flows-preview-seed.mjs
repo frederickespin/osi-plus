@@ -138,11 +138,16 @@ function routeSnapshot(tenantId, pipelineCaseId, role, address, sourceAddressRef
 }
 
 async function ensureCase(prisma, tenant, actor, definition, services) {
+  activeStage = `${definition.caseCode}_LOOKUP`;
   let row = await prisma.pipelineCase.findFirst({ where: { tenantId: tenant.id, caseCode: definition.caseCode } });
+  activeStage = `${definition.caseCode}_CLIENT`;
   const client = await ensureClient(prisma, tenant.id, definition);
+  activeStage = `${definition.caseCode}_ORIGIN_ADDRESS`;
   const originAddress = await ensureAddress(prisma, tenant.id, client.id, `${definition.caseCode}-ORIGEN`, definition.origin);
+  activeStage = `${definition.caseCode}_DESTINATION_ADDRESS`;
   const destinationAddress = await ensureAddress(prisma, tenant.id, client.id, `${definition.caseCode}-DESTINO`, definition.destination);
   if (!row) {
+    activeStage = `${definition.caseCode}_PIPELINE_CASE`;
     row = await prisma.pipelineCase.create({ data: {
       tenantId: tenant.id, clientId: client.id, caseCode: definition.caseCode,
       clientName: definition.clientName, mode: definition.mode, serviceType: services[0].name,
@@ -161,6 +166,7 @@ async function ensureCase(prisma, tenant, actor, definition, services) {
     } });
   }
   if (await prisma.pipelineCaseRouteSnapshot.count({ where: { tenantId: tenant.id, pipelineCaseId: row.id, routeVersion: 1 } }) === 0) {
+    activeStage = `${definition.caseCode}_ROUTE_SNAPSHOTS`;
     await prisma.pipelineCaseRouteSnapshot.createMany({ data: [
       routeSnapshot(tenant.id, row.id, "ORIGIN", originAddress, originAddress.addressRef),
       routeSnapshot(tenant.id, row.id, "DESTINATION", destinationAddress, destinationAddress.addressRef),
@@ -170,6 +176,7 @@ async function ensureCase(prisma, tenant, actor, definition, services) {
     where: { tenantId: tenant.id, pipelineCaseId: row.id, revision: 1 }, include: { items: true },
   });
   if (!revision) {
+    activeStage = `${definition.caseCode}_SERVICE_REVISION`;
     revision = await prisma.pipelineCaseServiceRevision.create({ data: {
       tenantId: tenant.id, pipelineCaseId: row.id, revision: 1, modeSnapshot: definition.mode,
       source: "MANUAL", createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id,

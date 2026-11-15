@@ -13,10 +13,12 @@ import {
   type IcpCreateReceipt,
   type IcpDraft,
 } from "./api";
+import { CaseRouteApi, type CaseRouteOption } from "@/commercial-crm/caseRouteApi";
 
 type Props = Readonly<{
   open: boolean;
   api: Pick<CrmIcpV2Api, "searchClients" | "create">;
+  routeApi: CaseRouteApi;
   canCreatePendingDestination: boolean;
   onOpenChange(open: boolean): void;
   onCommitted(receipt: IcpCreateReceipt): void;
@@ -38,7 +40,7 @@ const CHANNELS: readonly Readonly<{ value: IcpChannel; label: string }>[] = [
 ];
 
 const blankAddress = (countryCode = "DO"): IcpAddressInput => ({
-  countryCode, provinceState: "", cityMunicipality: "", sector: "", streetAndNumber: "", saveForClient: false, label: "",
+  sourceAddressRef: null, countryCode, provinceState: "", cityMunicipality: "", sector: "", streetAndNumber: "", saveForClient: false, label: "",
 });
 
 function normalizeError(cause: unknown) {
@@ -66,16 +68,18 @@ function TextField({ label, value, onChange, placeholder, required = false, type
   return <label className={labelClass}>{label}{required ? " *" : ""}<input className={inputClass} type={type} value={value} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label>;
 }
 
-function AddressFields({ title, value, onChange, required }: Readonly<{ title: string; value: IcpAddressInput; onChange(value: IcpAddressInput): void; required: boolean }>) {
-  const update = <K extends keyof IcpAddressInput>(key: K, next: IcpAddressInput[K]) => onChange({ ...value, [key]: next });
+function AddressFields({ title, value, onChange, required, options, choice, onChoice, allowSaveForClient = false }: Readonly<{ title: string; value: IcpAddressInput; onChange(value: IcpAddressInput): void; required: boolean; options: readonly CaseRouteOption[]; choice: string; onChoice(value: string): void; allowSaveForClient?: boolean }>) {
+  const update = <K extends keyof IcpAddressInput>(key: K, next: IcpAddressInput[K]) => { onChoice("MANUAL"); onChange({ ...value, [key]: next, ...(key === "sourceAddressRef" ? {} : { sourceAddressRef: null }) }); };
   return <fieldset className="rounded-lg border border-slate-200 p-3">
     <legend className="px-1 text-sm font-black text-[#003366]">{title}{required ? " *" : ""}</legend>
     <div className="grid gap-2 sm:grid-cols-2">
+      {options.length > 0 && <label className={`${labelClass} sm:col-span-2`}>Tomar dirección de *<select className={inputClass} value={choice} onChange={(event) => onChoice(event.target.value)}><option value="">Seleccione la dirección correcta</option><optgroup label="Direcciones registradas">{options.filter((option) => option.source === "REGISTERED").map((option) => <option key={option.optionId} value={option.optionId}>{option.label} · {[option.address.streetAndNumber, option.address.sector, option.address.cityMunicipality].filter(Boolean).join(", ")}</option>)}</optgroup><optgroup label="Dos últimos servicios">{options.filter((option) => option.source === "RECENT_SERVICE").map((option) => <option key={option.optionId} value={option.optionId}>{option.label} · {option.serviceType || "Servicio anterior"} · {[option.address.streetAndNumber, option.address.sector, option.address.cityMunicipality].filter(Boolean).join(", ")}</option>)}</optgroup><option value="MANUAL">Otra dirección para este caso</option></select></label>}
       <TextField label="País (ISO)" value={value.countryCode} onChange={(next) => update("countryCode", next.toUpperCase())} placeholder="DO" required maxLength={2} />
       <TextField label="Provincia / estado" value={value.provinceState} onChange={(next) => update("provinceState", next)} placeholder="Provincia o estado" required={value.countryCode === "DO"} maxLength={160} />
       <TextField label="Ciudad / municipio" value={value.cityMunicipality} onChange={(next) => update("cityMunicipality", next)} placeholder="Ciudad / municipio" required maxLength={160} />
       <TextField label="Sector" value={value.sector} onChange={(next) => update("sector", next)} placeholder="Sector" maxLength={160} />
       <div className="sm:col-span-2"><TextField label="Dirección" value={value.streetAndNumber} onChange={(next) => update("streetAndNumber", next)} placeholder="Calle, edificio y referencia" required={value.countryCode === "DO"} maxLength={240} /></div>
+      {allowSaveForClient && !value.sourceAddressRef && <div className="sm:col-span-2 rounded-lg border border-sky-100 bg-sky-50 p-2"><label className="flex items-center gap-2 text-xs font-semibold text-[#003366]"><input type="checkbox" checked={value.saveForClient} onChange={(event) => onChange({ ...value, saveForClient: event.target.checked, label: event.target.checked ? value.label : "" })} />Guardar este origen como dirección registrada del cliente</label>{value.saveForClient && <input aria-label="Nombre de la dirección" className={inputClass} value={value.label} onChange={(event) => onChange({ ...value, label: event.target.value })} placeholder="Ej.: Casa, oficina principal" maxLength={80} />}</div>}
     </div>
   </fieldset>;
 }
@@ -124,7 +128,7 @@ function ClientOverlayDialog({ value, api, selected, onSelect, onStartInline, on
   </div>;
 }
 
-export default function IcpIntakeForm({ open, api, canCreatePendingDestination, onOpenChange, onCommitted, onUnauthorized }: Props) {
+export default function IcpIntakeForm({ open, api, routeApi, canCreatePendingDestination, onOpenChange, onCommitted, onUnauthorized }: Props) {
   const [step, setStep] = useState<Step>(1);
   const [overlay, setOverlay] = useState<ClientOverlay>(null);
   const [selected, setSelected] = useState<IcpClientSearchResult | null>(null);
@@ -135,6 +139,9 @@ export default function IcpIntakeForm({ open, api, canCreatePendingDestination, 
   const [origin, setOrigin] = useState(() => blankAddress());
   const [destination, setDestination] = useState(() => blankAddress());
   const [destinationStatus, setDestinationStatus] = useState<"CONFIRMED" | "APPROXIMATE" | "PENDING">("CONFIRMED");
+  const [routeOptions, setRouteOptions] = useState<readonly CaseRouteOption[]>([]);
+  const [originChoice, setOriginChoice] = useState("");
+  const [destinationChoice, setDestinationChoice] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -146,12 +153,27 @@ export default function IcpIntakeForm({ open, api, canCreatePendingDestination, 
     && (value.countryCode !== "DO" || (value.provinceState.trim().length >= 2 && value.streetAndNumber.trim().length >= 2));
   const stepOneValid = Boolean(selected || inline) && contact.displayName.trim().length >= 2 && phoneValid(contact.phone);
   const routeCountriesValid = destinationStatus === "PENDING" ? origin.countryCode === "DO" : origin.countryCode === "DO" || destination.countryCode === "DO";
-  const stepTwoValid = addressValid(origin) && (destinationStatus === "PENDING" || addressValid(destination)) && routeCountriesValid;
+  const choicesValid = routeOptions.length === 0 || Boolean(originChoice && (destinationStatus === "PENDING" || destinationChoice));
+  const stepTwoValid = choicesValid && addressValid(origin) && (destinationStatus === "PENDING" || addressValid(destination)) && routeCountriesValid;
+
+  useEffect(() => {
+    if (!selected) { setRouteOptions([]); setOriginChoice(""); setDestinationChoice(""); return undefined; }
+    let active = true;
+    setOrigin(blankAddress()); setDestination(blankAddress()); setOriginChoice(""); setDestinationChoice("");
+    void routeApi.clientOptions(selected.clientRef).then((result) => { if (active) setRouteOptions(result.options); }).catch(() => { if (active) setRouteOptions([]); });
+    return () => { active = false; };
+  }, [routeApi, selected]);
+
+  const chooseAddress = (choice: string, target: "origin" | "destination") => {
+    const option = routeOptions.find((candidate) => candidate.optionId === choice);
+    const next = option ? { sourceAddressRef: option.source === "REGISTERED" ? option.address.sourceAddressRef : null, countryCode: option.address.countryCode, provinceState: option.address.provinceState || "", cityMunicipality: option.address.cityMunicipality, sector: option.address.sector || "", streetAndNumber: option.address.streetAndNumber || "", saveForClient: false, label: "" } : blankAddress();
+    if (target === "origin") { setOriginChoice(choice); setOrigin(next); } else { setDestinationChoice(choice); setDestination(next); }
+  };
 
   const reset = () => {
     setStep(1); setOverlay(null); setSelected(null); setInline(null); setProfile("INDIVIDUAL");
     setContact({ displayName: "", phone: "", email: "" }); setChannel("WHATSAPP");
-    setOrigin(blankAddress()); setDestination(blankAddress()); setDestinationStatus("CONFIRMED"); setNotes(""); setError(""); setDuplicateConflict(null); requestId.current = null;
+    setOrigin(blankAddress()); setDestination(blankAddress()); setDestinationStatus("CONFIRMED"); setRouteOptions([]); setOriginChoice(""); setDestinationChoice(""); setNotes(""); setError(""); setDuplicateConflict(null); requestId.current = null;
   };
   const close = () => { if (!saving) { reset(); onOpenChange(false); } };
   const submit = async (duplicateFingerprint: string | null = null) => {
@@ -200,8 +222,8 @@ export default function IcpIntakeForm({ open, api, canCreatePendingDestination, 
             <div className="sm:col-span-4"><TextField label="Correo" value={contact.email} onChange={(next) => setContact({ ...contact, email: next })} placeholder="cliente@correo.com" type="email" /></div>
             <div className="sm:col-span-4"><SelectField label="Canal *" value={channel} onChange={(next) => setChannel(next as IcpChannel)}>{CHANNELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</SelectField></div>
           </div> : <div role="tabpanel" className="grid gap-3 sm:grid-cols-2">
-            <AddressFields title="Origen" value={origin} onChange={setOrigin} required />
-            <div className="space-y-3"><SelectField label="Estado del destino" value={destinationStatus} onChange={(next) => setDestinationStatus(next as typeof destinationStatus)}><option value="CONFIRMED">Confirmado</option><option value="APPROXIMATE">Aproximado</option>{canCreatePendingDestination && <option value="PENDING">Pendiente</option>}</SelectField>{destinationStatus !== "PENDING" && <AddressFields title="Destino" value={destination} onChange={setDestination} required />}</div>
+            <AddressFields title="Origen del caso" value={origin} onChange={setOrigin} required options={routeOptions} choice={originChoice} onChoice={(value) => chooseAddress(value, "origin")} allowSaveForClient />
+            <div className="space-y-3"><SelectField label="Estado del destino del caso" value={destinationStatus} onChange={(next) => setDestinationStatus(next as typeof destinationStatus)}><option value="CONFIRMED">Confirmado</option><option value="APPROXIMATE">Aproximado</option>{canCreatePendingDestination && <option value="PENDING">Pendiente</option>}</SelectField>{destinationStatus !== "PENDING" && <AddressFields title="Destino del caso" value={destination} onChange={setDestination} required options={routeOptions} choice={destinationChoice} onChoice={(value) => chooseAddress(value, "destination")} />}</div>
             <label className={`${labelClass} sm:col-span-2`}>Notas del requerimiento<textarea aria-label="Notas del requerimiento" className="mt-1 min-h-24 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900 outline-none focus:border-[#0b5b91] focus:ring-2 focus:ring-sky-100" value={notes} maxLength={2000} onChange={(event) => setNotes(event.target.value)} placeholder="Particularidades, fechas deseadas, restricciones, tipo de bienes o cualquier requerimiento expresado por el cliente" /></label>
           </div>}
         </div>

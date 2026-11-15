@@ -9,6 +9,7 @@ export type IcpChannel = "WHATSAPP" | "INSTAGRAM" | "FACEBOOK" | "RECOMMENDATION
 export type IcpDestinationStatus = "CONFIRMED" | "APPROXIMATE" | "PENDING";
 
 export type IcpAddressInput = Readonly<{
+  sourceAddressRef: string | null;
   countryCode: string;
   provinceState: string;
   cityMunicipality: string;
@@ -149,6 +150,7 @@ function normalizeAddress(input: IcpAddressInput) {
 }
 
 function rawSelection(input: IcpAddressInput) {
+  if (input.sourceAddressRef) return { kind: "CLIENT_ADDRESS", addressRef: input.sourceAddressRef };
   return {
     kind: "NEW_ADDRESS",
     saveForClient: input.saveForClient,

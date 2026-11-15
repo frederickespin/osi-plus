@@ -39,7 +39,6 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
     email: "",
     address: "",
     serviceOriginAddress: "",
-    serviceDestinationAddress: "",
     billingLegalName: "",
     billingTaxId: "",
     billingAddress: "",
@@ -214,8 +213,7 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
       !newCustomer.taxId.trim() ||
       !newCustomer.phone.trim() ||
       !newCustomer.email.trim() ||
-      !newCustomer.serviceOriginAddress.trim() ||
-      !newCustomer.serviceDestinationAddress.trim();
+      !newCustomer.serviceOriginAddress.trim();
 
     const missingBilling =
       !newCustomer.billingLegalName.trim() ||
@@ -242,7 +240,7 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
       email: newCustomer.email.trim(),
       address: newCustomer.address.trim() || undefined,
       serviceOriginAddress: newCustomer.serviceOriginAddress.trim(),
-      serviceDestinationAddress: newCustomer.serviceDestinationAddress.trim(),
+      serviceDestinationAddress: "",
       billingLegalName: newCustomer.billingLegalName.trim(),
       billingTaxId: newCustomer.billingTaxId.trim(),
       billingAddress: newCustomer.billingAddress.trim(),
@@ -287,7 +285,6 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
       email: "",
       address: "",
       serviceOriginAddress: "",
-      serviceDestinationAddress: "",
       billingLegalName: "",
       billingTaxId: "",
       billingAddress: "",
@@ -501,13 +498,6 @@ export function ClientsModule({ userRole = "A" as UserRole }) {
                 onChange={(e) => setNewCustomer((s) => ({ ...s, serviceOriginAddress: e.target.value }))}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Direccion del Servicio (Destino) <span className="text-red-500">*</span></Label>
-              <Input
-                value={newCustomer.serviceDestinationAddress}
-                onChange={(e) => setNewCustomer((s) => ({ ...s, serviceDestinationAddress: e.target.value }))}
-              />
-            </div>
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Datos de Facturación</CardTitle>
@@ -627,12 +617,6 @@ function ClientCard({
               <div className="flex items-center gap-2">
                 <MapPin className="h-3 w-3" />
                 <span className="truncate">{customer.address || "Sin direccion"}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <MapPin className="h-3 w-3" />
-                <span className="truncate">
-                  Destino: {customer.serviceDestinationAddress || "Sin destino"}
-                </span>
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-100">

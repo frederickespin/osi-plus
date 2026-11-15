@@ -309,6 +309,11 @@ async function ensurePlansAndQuote(prisma, context, scenario, quoteState, amount
 async function ensureStorageReady(prisma, tenant, actor, scenario, acceptedProposal) {
   const revision = acceptedProposal.revisions[0];
   requireCondition(acceptedProposal.state === "ACCEPTED" && revision, "STORAGE_QUOTE_NOT_ACCEPTED");
+  activeStage = "STORAGE_SCHEMA_PROBE";
+  const [storageSchema] = await prisma.$queryRawUnsafe("SELECT current_schema() AS current_schema, to_regclass('customer_storage_agreements')::text AS agreement_relation, to_regclass('osi.customer_storage_agreements')::text AS qualified_agreement_relation");
+  requireCondition(storageSchema?.current_schema === "osi", "STORAGE_CURRENT_SCHEMA_INVALID");
+  requireCondition(storageSchema?.agreement_relation === "customer_storage_agreements"
+    && storageSchema?.qualified_agreement_relation === "customer_storage_agreements", "STORAGE_AGREEMENT_RELATION_UNRESOLVED");
   activeStage = "STORAGE_REQUIREMENT";
   if (!await prisma.customerStorageRequirementRevision.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id, revision: 1 } })) await prisma.customerStorageRequirementRevision.create({ data: {
     tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, revision: 1,
@@ -488,8 +493,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (result) process.stdout.write(`${JSON.stringify({ operationalDemoFlows: result })}\n`);
   } catch (error) {
     const safeError = String(error?.code || error?.name || "FAILED").replace(/[^A-Z0-9_]/giu, "_").toUpperCase();
+    const safeTable = typeof error?.meta?.table === "string"
+      ? error.meta.table.replace(/[^A-Z0-9_.]/giu, "_").toUpperCase()
+      : null;
     const code = /^OPERATIONAL_DEMO_FLOWS_SEED_[A-Z0-9_-]+$/u.test(error?.message ?? "")
-      ? error.message : `OPERATIONAL_DEMO_FLOWS_SEED_${activeStage}_${safeError}`;
+      ? error.message : `OPERATIONAL_DEMO_FLOWS_SEED_${activeStage}_${safeError}${safeTable ? `_${safeTable}` : ""}`;
     process.stderr.write(`${JSON.stringify({ operationalDemoFlows: { status: "BLOCKED", code } })}\n`);
     process.exitCode = 1;
   }

@@ -458,7 +458,10 @@ async function seed(prisma) {
   activeStage = "QUOTE_EXPORT";
   await ensurePlansAndQuote(prisma, context, created[4], "SENT", "Exportación marítima a Miami");
   activeStage = "STORAGE_AUTHORITY";
-  await ensureStorageReady(prisma, tenant, actor, created[2], storageQuote);
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL search_path = osi");
+    return ensureStorageReady(tx, tenant, actor, created[2], storageQuote);
+  }, { maxWait: 5000, timeout: 30000 });
   activeStage = "IMPORT_AGENT";
   await ensureImportAgentContext(prisma, tenant, actor, created[3]);
 

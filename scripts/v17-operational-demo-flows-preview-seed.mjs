@@ -227,8 +227,8 @@ async function ensureScheduledSurvey(prisma, tenant, actor, evaluator, scheduleP
   if (options.outsideMetro && !await prisma.surveyVisitFee.findFirst({ where: { tenantId: tenant.id, evaluationDecisionId: decision.id } })) {
     await prisma.surveyVisitFee.create({ data: {
       tenantId: tenant.id, pipelineCaseId: scenario.id, evaluationDecisionId: decision.id, assignmentId: assignment.id,
-      disposition: "CHARGEABLE", suggestedAmount: "3500", currency: "DOP",
-      communicationStatus: "PREPARED", approvalStatus: "PENDING", paymentStatus: "PENDING",
+      disposition: "PENDING_CALCULATION", suggestedAmount: null, currency: null,
+      communicationStatus: "NOT_COMMUNICATED", approvalStatus: "NOT_REQUIRED", paymentStatus: "NOT_REQUIRED",
     } });
   }
   return { decision, assignment };

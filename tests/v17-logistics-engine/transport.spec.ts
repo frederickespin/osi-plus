@@ -11,8 +11,8 @@ const json = (data: unknown) => ({ status: 200, contentType: "application/json",
 
 function editableZone(): TransportZone {
   return {
-    ruleRef: ZONE, seriesRef: ZONE, version: 1, code: "SYNTHETIC_UI", name: "Zona de prueba", zoneType: "INTERIOR", priority: 100, vehicleType: null,
-    purposes: ["QUOTE"], geometry: { type: "Polygon", coordinates: [[[-70, 18], [-69, 18], [-69, 19], [-70, 18]]] }, mode: "ITEMIZED", factor: null, currency: "DOP",
+    ruleRef: ZONE, seriesRef: ZONE, version: 1, code: "SYNTHETIC_UI", name: "Zona de prueba", locationType: "CITY", city: "Ciudad de prueba", sector: null, baseName: "Base de prueba", baseAddress: "Dirección de prueba", referenceDistanceKm: "80", referenceDistanceSource: "Ruta de prueba", zoneType: "INTERIOR", priority: 100, vehicleType: null,
+    purposes: ["VISIT"], geometry: { type: "Polygon", coordinates: [[[-70, 18], [-69, 18], [-69, 19], [-70, 18]]] }, mode: "ITEMIZED", factor: null, currency: "DOP",
     kmPerGallon: null, gallonUnit: "US", fuelType: null, includedConcepts: [], state: "DRAFT", validFrom: null, validTo: null,
     components: [{ code: "BASE", label: "Base de prueba", kind: "BASE", basis: "TRIP", unitCost: "1000", classification: "PR", minimumMarginBps: 2000, recommendedMarginBps: 2500, includedConcepts: [], costRuleRef: ZONE, costRuleVersion: 1 }],
   };
@@ -32,7 +32,7 @@ async function session(page: Page, grants = permissions, denied: string[] = []) 
 function result(input: TransportCalculateInput): TransportResult {
   const journey = input.journeys[0];
   const toll = journey.quantities.TOLL ?? null;
-  const common = { journeyRef: journey.journeyRef, zoneRuleRef: ZONE, zoneVersion: 1, zoneCode: "SYNTHETIC_UI", zoneType: "INTERIOR" as const, currency: "DOP", costRuleRef: ZONE, costRuleVersion: 1, factor: null, distanceKm: "160.0000" };
+  const common = { journeyRef: journey.journeyRef, zoneRuleRef: ZONE, zoneVersion: 1, zoneCode: "SYNTHETIC_UI", zoneType: "INTERIOR" as const, currency: "DOP", costRuleRef: ZONE, costRuleVersion: 1, factor: null, distanceKm: "160.0000", distanceSource: "Ruta de prueba" };
   return {
     context: { contract: "V17_TRANSPORT_ZONES_V1", purpose: input.purpose, contextRef: input.contextRef },
     lines: [
@@ -105,7 +105,7 @@ async function fillJourney(page: Page) {
   await form.getByLabel("Añadir regreso").check();
 }
 
-test("una zona conserva perímetro real trazado y tarifas pendientes, con campos compactos", async ({ page }, testInfo) => {
+test("una ciudad o sector conserva perímetro real trazado y tarifas pendientes, con campos compactos", async ({ page }, testInfo) => {
   await session(page);
   const saved: TransportZone[] = [];
   let input: TransportZoneInput | null = null;
@@ -120,10 +120,13 @@ test("una zona conserva perímetro real trazado y tarifas pendientes, con campos
     return route.fulfill(json(saved));
   });
   await page.goto("/administration/logistics");
-  await page.getByRole("button", { name: "Nueva zona", exact: true }).click();
+  await page.getByRole("button", { name: "Nueva ciudad o sector", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("textbox", { name: /Código/ })).toHaveCount(0);
-  await dialog.getByLabel("Nombre *", { exact: true }).fill("Perímetro de prueba local");
+  await dialog.getByLabel("Nombre del perfil *", { exact: true }).fill("Perímetro de prueba local");
+  await dialog.getByLabel("Ciudad *", { exact: true }).fill("Santo Domingo");
+  await dialog.getByLabel("Dirección de la base *", { exact: true }).fill("Base principal de prueba");
+  await dialog.getByText("Visitas presenciales", { exact: true }).click();
   await dialog.getByRole("button", { name: "Trazar perímetro", exact: true }).click();
   const map = dialog.getByRole("region", { name: "Mapa de la geocerca" });
   await expect(map.getByRole("button", { name: "Acercar", exact: true })).toBeVisible();
@@ -136,14 +139,14 @@ test("una zona conserva perímetro real trazado y tarifas pendientes, con campos
   await dialog.getByLabel("Concepto del renglón 1").selectOption("FUEL");
   await dialog.getByLabel("Nombre del renglón 1").fill("Combustible pendiente");
   const expectedHeight = testInfo.project.name.includes("mobile") ? 32 : 28;
-  for (const control of [dialog.getByLabel("Nombre *", { exact: true }), dialog.getByLabel("Concepto del renglón 1"), dialog.getByLabel("Rendimiento km/gal")]) {
+  for (const control of [dialog.getByLabel("Nombre del perfil *", { exact: true }), dialog.getByLabel("Concepto del renglón 1"), dialog.getByLabel("Rendimiento km/gal")]) {
     const height = await control.evaluate((element) => element.getBoundingClientRect().height);
     expect(height).toBe(expectedHeight);
   }
   expect(await dialog.getByLabel("Rendimiento km/gal").evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(110);
   expect(await dialog.getByTestId("transport-zone-scroll").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   if (process.env.CAPTURE_TRANSPORT_UI === "true") await page.screenshot({ animations: "disabled", path: testInfo.outputPath("transport-zone-editor.png") });
-  await dialog.getByRole("button", { name: "Guardar zona", exact: true }).click();
+  await dialog.getByRole("button", { name: "Guardar ubicación", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(input).not.toBeNull();
   const submitted = input as unknown as TransportZoneInput;
@@ -153,7 +156,7 @@ test("una zona conserva perímetro real trazado y tarifas pendientes, con campos
   expect(submitted.geometry.coordinates[0][0]).toEqual(submitted.geometry.coordinates[0][3]);
   expect(submitted.components[0].unitCost).toBeNull();
   expect(submitted.kmPerGallon).toBeNull();
-  await expect(page.getByRole("cell", { name: "Perímetro de prueba local SYNTHETIC_UI" })).toBeVisible();
+  await expect(page.getByText("Perímetro de prueba local", { exact: true })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
   expect(overflow).toBe(false);
 });
@@ -171,12 +174,12 @@ test("los números se reemplazan completos sin flechas y conservan límites ante
     return route.fulfill(json([original]));
   });
   await page.goto("/administration/logistics");
-  await page.getByRole("button", { name: "Editar zona", exact: true }).click();
+  await page.getByRole("button", { name: "Editar", exact: true }).click();
   const dialog = page.getByRole("dialog");
   const priority = dialog.getByLabel("Prioridad", { exact: true });
   const save = dialog.getByRole("button", { name: "Guardar nueva versión", exact: true });
   await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
-  await dialog.getByLabel("Nombre *", { exact: true }).focus();
+  await dialog.getByLabel("Nombre del perfil *", { exact: true }).focus();
   await priority.click();
   expect(await priority.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 3]);
   await priority.pressSequentially("125");
@@ -235,8 +238,8 @@ test("las ayudas comparan parámetros con ejemplos sin cargar tarifas ni cambiar
     return route.fulfill(json([editableZone()]));
   });
   await page.goto("/administration/logistics");
-  await page.getByRole("button", { name: "Editar zona", exact: true }).click();
-  const editor = page.getByRole("dialog", { name: "Nueva versión de zona", exact: true });
+  await page.getByRole("button", { name: "Editar", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "Nueva versión de ubicación", exact: true });
   const closeHelp = async (title: string) => {
     const help = page.getByRole("dialog", { name: title, exact: true });
     await help.getByRole("button", { name: "Cerrar ayuda", exact: true }).click();
@@ -298,7 +301,7 @@ for (const purpose of ["QUOTE", "SERVICE", "VISIT"] as const) test(`${purpose}: 
   expect(backend.queries.some((query) => query.get("purpose") === purpose && query.get("contextRef") === (purpose === "VISIT" ? VISIT : null))).toBe(true);
   await expect(page.getByTestId("transport-publication")).toContainText(PURPOSE_LABEL[purpose]);
 });
-const PURPOSE_LABEL = { QUOTE: "Cotización", SERVICE: "Servicio", VISIT: "Visita presencial" };
+const PURPOSE_LABEL = { QUOTE: "Cotizaciones", SERVICE: "Servicios operativos", VISIT: "Visitas presenciales" };
 
 test("publicación con respuesta perdida se consulta sin repetir el envío", async ({ page }) => {
   await session(page);
@@ -331,7 +334,7 @@ test("los permisos monetarios denegados impiden cargar zonas y cálculos", async
   page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/logistics/transport/")) requests += 1; });
   await page.goto("/administration/logistics");
   await expect(page.getByTestId("logistics-rules-admin")).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Zonas y costos", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Ciudades y sectores", exact: true })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Calcular transporte", exact: true })).toHaveCount(0);
   expect(requests).toBe(0);
   expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => /TransportZoneMap|TransportZonesAdmin|TransportCalculationPanel|leaflet/.test(entry.name)))).toBe(false);
@@ -362,15 +365,15 @@ test("el guardado incierto de zona bloquea nuevas escrituras hasta consultar el 
     return route.fulfill(json([zone]));
   });
   await page.goto("/administration/logistics");
-  await page.getByRole("button", { name: "Editar zona", exact: true }).click();
+  await page.getByRole("button", { name: "Editar", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Guardar nueva versión", exact: true }).click();
   await expect(dialog.getByText(/No se confirmó el guardado/)).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Guardar nueva versión", exact: true })).toBeDisabled();
-  await dialog.getByRole("button", { name: "Cerrar zona", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Nueva zona", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "Actualizar zonas", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Nueva zona", exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cerrar ubicación", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Nueva ciudad o sector", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Actualizar ubicaciones", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Nueva ciudad o sector", exact: true })).toBeEnabled();
   await expect(page.getByRole("cell", { name: "v2", exact: true })).toBeVisible();
   expect(posts).toBe(1);
 });

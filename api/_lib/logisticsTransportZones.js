@@ -12,7 +12,8 @@ export const TRANSPORT_ZONE_PERMISSIONS = Object.freeze({
 const MAX_ZONES = 500;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ZONE_STATES = new Set(["DRAFT", "ACTIVE", "INACTIVE"]);
-const POLICY_KEYS = ["kind", "contract", "zoneType", "purposes", "geometry", "mode", "factor", "currency", "kmPerGallon", "gallonUnit", "fuelType", "includedConcepts", "components"];
+const LEGACY_POLICY_KEYS = ["kind", "contract", "zoneType", "purposes", "geometry", "mode", "factor", "currency", "kmPerGallon", "gallonUnit", "fuelType", "includedConcepts", "components"];
+const POLICY_KEYS = ["kind", "contract", "locationType", "city", "sector", "baseName", "baseAddress", "referenceDistanceKm", "referenceDistanceSource", ...LEGACY_POLICY_KEYS.slice(2)];
 const COMPONENT_KEYS = ["code", "label", "kind", "basis", "includedConcepts", "costRuleRef", "costRuleVersion"];
 
 function fail(code, status = 409) { logisticsFail(`LOGISTICS_TRANSPORT_${code}`, status); }
@@ -107,7 +108,7 @@ function assertZoneIdentity(row, tenantId) {
     || !exactKeys(row.conditions, ["transportContract", "zoneSeriesRef", "vehicleType"])
     || row.conditions.transportContract !== TRANSPORT_CONTRACT || row.conditions.zoneSeriesRef !== row.seriesRef
     || row.conditionHash !== canonicalHash(row.conditions)
-    || !exactKeys(row.result, POLICY_KEYS) || row.result.kind !== "TRANSPORT_ZONE_POLICY" || row.result.contract !== TRANSPORT_CONTRACT
+    || !(exactKeys(row.result, POLICY_KEYS) || exactKeys(row.result, LEGACY_POLICY_KEYS)) || row.result.kind !== "TRANSPORT_ZONE_POLICY" || row.result.contract !== TRANSPORT_CONTRACT
     || !Array.isArray(row.result.components)
     || row.result.components.some((component) => !exactKeys(component, COMPONENT_KEYS) || !UUID.test(component.costRuleRef)
       || !Number.isSafeInteger(component.costRuleVersion) || component.costRuleVersion < 1)
@@ -139,7 +140,11 @@ function zoneDto(row, tariffs, at = null) {
     return { ...component, unitCost: tariff.unitCost == null ? null : String(tariff.unitCost), classification: tariff.classification,
       minimumMarginBps: tariff.minimumMarginBps, recommendedMarginBps: tariff.recommendedMarginBps };
   });
-  const input = { seriesRef: row.seriesRef, expectedVersion: row.version, code: row.code, name: row.name, zoneType: policy.zoneType,
+  const input = { seriesRef: row.seriesRef, expectedVersion: row.version, code: row.code, name: row.name,
+    locationType: policy.locationType || "CITY", city: policy.city || row.name, sector: policy.locationType === "SECTOR" ? policy.sector : null,
+    baseName: policy.baseName || "Base operativa", baseAddress: policy.baseAddress || "Dirección pendiente de confirmar",
+    referenceDistanceKm: policy.referenceDistanceKm ?? null, referenceDistanceSource: policy.referenceDistanceSource || "",
+    zoneType: policy.zoneType,
     priority: row.priority, vehicleType: row.conditions.vehicleType, purposes: policy.purposes, geometry: policy.geometry,
     mode: policy.mode, factor: policy.factor, currency: policy.currency, kmPerGallon: policy.kmPerGallon, gallonUnit: policy.gallonUnit,
     fuelType: policy.fuelType, includedConcepts: policy.includedConcepts,
@@ -270,7 +275,10 @@ export async function versionTransportZone(prisma, context, raw) {
       tariffs.push(tariff);
     }
     const conditions = { transportContract: TRANSPORT_CONTRACT, zoneSeriesRef: seriesRef, vehicleType: input.vehicleType };
-    const policy = { kind: "TRANSPORT_ZONE_POLICY", contract: TRANSPORT_CONTRACT, zoneType: input.zoneType, purposes: input.purposes,
+    const policy = { kind: "TRANSPORT_ZONE_POLICY", contract: TRANSPORT_CONTRACT,
+      locationType: input.locationType, city: input.city, sector: input.sector, baseName: input.baseName, baseAddress: input.baseAddress,
+      referenceDistanceKm: input.referenceDistanceKm, referenceDistanceSource: input.referenceDistanceSource,
+      zoneType: input.zoneType, purposes: input.purposes,
       geometry: input.geometry, mode: input.mode, factor: input.factor, currency: input.currency, kmPerGallon: input.kmPerGallon,
       gallonUnit: input.gallonUnit, fuelType: input.fuelType, includedConcepts: input.includedConcepts,
       components: components.map((component, index) => ({ code: component.code, label: component.label, kind: component.kind,

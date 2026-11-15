@@ -36,7 +36,7 @@ function signed(operation, payload, requestId = randomUUID(), hash = canonicalHa
   return { requestId, payloadHash: hash({ operation, requestId, ...payload }), ...payload };
 }
 function zoneInput(changes = {}) {
-  return { seriesRef: null, expectedVersion: null, code: `SYNTHETIC_${suffix}`, name: "Zona sintética de integración", zoneType: "INTERIOR", priority: 100,
+  return { seriesRef: null, expectedVersion: null, code: `SYNTHETIC_${suffix}`, name: "Zona sintética de integración", locationType: "CITY", city: "Ciudad sintética", sector: null, baseName: "Base sintética", baseAddress: "Dirección sintética", referenceDistanceKm: "80", referenceDistanceSource: "Ruta sintética", zoneType: "INTERIOR", priority: 100,
     vehicleType: "TRUCK", purposes: ["QUOTE", "SERVICE", "VISIT"], geometry: { type: "Polygon", coordinates: [[[-70, 18], [-69.8, 18], [-69.8, 18.2], [-70, 18.2], [-70, 18]]] },
     mode: "ITEMIZED", factor: null, currency: "DOP", kmPerGallon: "20", gallonUnit: "US", fuelType: "SYNTHETIC_DIESEL", includedConcepts: [], state: "ACTIVE",
     components: [

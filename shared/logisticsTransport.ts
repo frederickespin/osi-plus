@@ -14,6 +14,9 @@ export type TransportComponentInput = Readonly<{
 export type TransportComponent = Omit<TransportComponentInput, "code"> & Readonly<{ code: string; costRuleRef: string; costRuleVersion: number }>;
 export type TransportZoneInput = Readonly<{
   seriesRef: string | null; expectedVersion: number | null; code: string | null; name: string;
+  locationType: "CITY" | "SECTOR"; city: string; sector: string | null;
+  baseName: string; baseAddress: string;
+  referenceDistanceKm: string | null; referenceDistanceSource: string;
   zoneType: "METRO" | "INTERIOR"; priority: number; vehicleType: string | null;
   purposes: readonly TransportPurpose[]; geometry: TransportPolygon;
   mode: "ITEMIZED" | "FACTOR"; factor: string | null; currency: string;
@@ -41,7 +44,7 @@ export type TransportLine = Readonly<{
   journeyRef: string; zoneRuleRef: string; zoneVersion: number; zoneCode: string; zoneType: "METRO" | "INTERIOR";
   componentCode: string; concept: string; kind: TransportComponentKind; basis: TransportBasis;
   quantity: string | null; unit: string; unitCost: string | null; baseUnitCost: string | null; totalCost: string | null; currency: string;
-  costRuleRef: string; costRuleVersion: number; factor: string | null; distanceKm: string | null;
+  costRuleRef: string; costRuleVersion: number; factor: string | null; distanceKm: string | null; distanceSource: string;
   kmPerGallon: string | null; gallonUnit: "US" | "IMPERIAL" | null; fuelType: string | null;
 }>;
 export type TransportResult = Readonly<{

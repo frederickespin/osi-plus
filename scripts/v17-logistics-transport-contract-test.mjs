@@ -9,7 +9,7 @@ function rejects(work, code) { assert.throws(work, new RegExp(code)); assertions
 function signed(operation, payload) { const requestId = randomUUID(); return { ...payload, requestId, payloadHash: canonicalHash({ operation, requestId, ...payload }) }; }
 const polygon = { type: "Polygon", coordinates: [[[-70, 18], [-69, 18], [-69, 19], [-70, 19], [-70, 18]]] };
 const tariff = (code, kind, basis, unitCost, extra = {}) => ({ code, label: code, kind, basis, unitCost, classification: "DE", minimumMarginBps: null, recommendedMarginBps: null, includedConcepts: [], ...extra });
-const payload = { seriesRef: null, expectedVersion: null, code: "TEST_ZONE", name: "Synthetic isolated zone", zoneType: "INTERIOR", priority: 10, vehicleType: null, purposes: ["QUOTE", "SERVICE", "VISIT"], geometry: polygon, mode: "ITEMIZED", factor: null, currency: "DOP", kmPerGallon: "9", gallonUnit: "US", fuelType: "Synthetic", includedConcepts: [], components: [tariff("FUEL", "FUEL", "GALLON", "10"), tariff("TOLL", "TOLL", "PASS", "5"), tariff("DIET", "PER_DIEM", "PERSON_DAY", "20")], state: "ACTIVE" };
+const payload = { seriesRef: null, expectedVersion: null, code: "TEST_ZONE", name: "Synthetic isolated zone", locationType: "CITY", city: "Synthetic city", sector: null, baseName: "Synthetic base", baseAddress: "Synthetic base address", referenceDistanceKm: "80", referenceDistanceSource: "Synthetic road route", zoneType: "INTERIOR", priority: 10, vehicleType: null, purposes: ["QUOTE", "SERVICE", "VISIT"], geometry: polygon, mode: "ITEMIZED", factor: null, currency: "DOP", kmPerGallon: "9", gallonUnit: "US", fuelType: "Synthetic", includedConcepts: [], components: [tariff("FUEL", "FUEL", "GALLON", "10"), tariff("TOLL", "TOLL", "PASS", "5"), tariff("DIET", "PER_DIEM", "PERSON_DAY", "20")], state: "ACTIVE" };
 function zoneFrom(value = payload) { return { ...value, ruleRef: randomUUID(), seriesRef: randomUUID(), version: 1, validFrom: null, validTo: null, components: value.components.map((row) => ({ ...row, costRuleRef: randomUUID(), costRuleVersion: 1 })) }; }
 const zone = zoneFrom();
 const journey = { journeyRef: randomUUID(), label: "Synthetic trip", vehicleType: "Synthetic truck", vehicleRef: null, origin: [-69.8, 18.2], destination: [-69.5, 18.5], distanceKm: "72", distanceSource: "Synthetic road distance", returnToOrigin: true, trips: 2, people: 2, days: "1.5", quantities: { TOLL: "4" } };
@@ -69,7 +69,9 @@ equal(factorResult.lines[0].totalCost, "247.218230");
 const missing = calculateTransportResult(input, [{ ...zone, components: zone.components.map((row) => row.kind === "TOLL" ? { ...row, unitCost: null } : row) }]);
 equal(missing.complete, false); equal(missing.lines[1].totalCost, null); equal(missing.totals[0].amount, null);
 const missingDistance = calculateTransportResult({ ...input, journeys: [{ ...journey, distanceKm: null, distanceSource: "" }] }, [zone]);
-equal(missingDistance.lines[0].quantity, null); equal(missingDistance.complete, false);
+equal(missingDistance.lines[0].quantity, "35.5556"); equal(missingDistance.lines[0].distanceSource, "Synthetic road route"); equal(missingDistance.complete, true);
+const noConfiguredDistance = calculateTransportResult({ ...input, journeys: [{ ...journey, distanceKm: null, distanceSource: "" }] }, [{ ...zone, referenceDistanceKm: null, referenceDistanceSource: "" }]);
+equal(noConfiguredDistance.lines[0].quantity, null); equal(noConfiguredDistance.complete, false);
 const missingFuel = calculateTransportResult(input, [{ ...zone, fuelType: null }]);
 equal(missingFuel.complete, false); equal(missingFuel.issues.some((row) => row.code === "TRANSPORT_FUEL_TYPE_PENDING"), true);
 const noSource = calculateTransportResult({ ...input, journeys: [{ ...journey, distanceSource: "" }] }, [zone]);

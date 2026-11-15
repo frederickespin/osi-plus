@@ -18,7 +18,7 @@ const fuel = { code: "FUEL", label: "Combustible sintético", kind: "FUEL", basi
   minimumMarginBps: null, recommendedMarginBps: null, includedConcepts: [] };
 const toll = { code: "TOLL", label: "Peaje sintético", kind: "TOLL", basis: "PASS", unitCost: "100", classification: "EX",
   minimumMarginBps: null, recommendedMarginBps: null, includedConcepts: [] };
-const zone = { seriesRef: null, expectedVersion: null, code: "SYNTHETIC_ZONE", name: "Zona sintética de prueba", zoneType: "INTERIOR", priority: 10,
+const zone = { seriesRef: null, expectedVersion: null, code: "SYNTHETIC_ZONE", name: "Zona sintética de prueba", locationType: "CITY", city: "Ciudad sintética", sector: null, baseName: "Base sintética", baseAddress: "Dirección sintética", referenceDistanceKm: "80", referenceDistanceSource: "Ruta sintética", zoneType: "INTERIOR", priority: 10,
   vehicleType: "TRUCK", purposes: ["SERVICE"], geometry: { type: "Polygon", coordinates: [[[-70, 18], [-69.8, 18], [-69.8, 18.2], [-70, 18.2], [-70, 18]]] },
   mode: "ITEMIZED", factor: null, currency: "DOP", kmPerGallon: "10", gallonUnit: "US", fuelType: "DIESEL", includedConcepts: [], components: [fuel, toll], state: "ACTIVE" };
 function command(changes = {}, requestId = randomUUID()) {

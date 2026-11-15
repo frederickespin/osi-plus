@@ -10,7 +10,7 @@ const KINDS = ["BASE", "FUEL", "TOLL", "PER_DIEM", "ALLOWANCE", "OTHER"];
 const BASES = ["TRIP", "GALLON", "PASS", "PERSON_DAY", "FIXED", "KM"];
 const BASIS_BY_KIND = { BASE: ["TRIP"], FUEL: ["GALLON"], TOLL: ["PASS", "FIXED"], PER_DIEM: ["PERSON_DAY"], ALLOWANCE: ["PERSON_DAY", "FIXED", "TRIP"], OTHER: BASES.filter((value) => value !== "GALLON") };
 const COMPONENT_KEYS = ["code", "label", "kind", "basis", "unitCost", "classification", "minimumMarginBps", "recommendedMarginBps", "includedConcepts"];
-const ZONE_KEYS = ["seriesRef", "expectedVersion", "code", "name", "zoneType", "priority", "vehicleType", "purposes", "geometry", "mode", "factor", "currency", "kmPerGallon", "gallonUnit", "fuelType", "includedConcepts", "components", "state"];
+const ZONE_KEYS = ["seriesRef", "expectedVersion", "code", "name", "locationType", "city", "sector", "baseName", "baseAddress", "referenceDistanceKm", "referenceDistanceSource", "zoneType", "priority", "vehicleType", "purposes", "geometry", "mode", "factor", "currency", "kmPerGallon", "gallonUnit", "fuelType", "includedConcepts", "components", "state"];
 const CALCULATE_KEYS = ["caseRef", "purpose", "contextRef", "intervalStart", "intervalEnd", "journeys"];
 const JOURNEY_KEYS = ["journeyRef", "label", "vehicleType", "vehicleRef", "origin", "destination", "distanceKm", "distanceSource", "returnToOrigin", "trips", "people", "days", "quantities"];
 const invalid = (code = "TRANSPORT_PAYLOAD_INVALID") => logisticsFail(code);
@@ -104,13 +104,18 @@ export function normalizeTransportZonePayload(raw, { allowAutomaticCodes = false
   if (new Set(suppliedCodes).size !== suppliedCodes.length || components.filter((row) => row.kind === "BASE").length > 1) invalid("TRANSPORT_COMPONENT_DUPLICATED");
   const zone = {
     seriesRef: value.seriesRef === null ? null : transportRef(value.seriesRef), expectedVersion: integer(value.expectedVersion, 1, 2147483647, true),
-    code, name: text(value.name, 180), zoneType: enumeration(value.zoneType, ["METRO", "INTERIOR"]), priority: integer(value.priority, 0, 9999),
+    code, name: text(value.name, 180), locationType: enumeration(value.locationType, ["CITY", "SECTOR"]), city: text(value.city, 160),
+    sector: text(value.sector, 160, true), baseName: text(value.baseName, 160), baseAddress: text(value.baseAddress, 240),
+    referenceDistanceKm: decimal(value.referenceDistanceKm, 4, "999999.9999"), referenceDistanceSource: text(value.referenceDistanceSource, 240, false, true),
+    zoneType: enumeration(value.zoneType, ["METRO", "INTERIOR"]), priority: integer(value.priority, 0, 9999),
     vehicleType: text(value.vehicleType, 80, true), purposes: uniqueEnums(value.purposes, PURPOSES, 1), geometry: normalizeTransportPolygon(value.geometry),
     mode: enumeration(value.mode, ["ITEMIZED", "FACTOR"]), factor: decimal(value.factor, 6, "9999.999999", true, true), currency: text(value.currency, 3),
     kmPerGallon: decimal(value.kmPerGallon, 4, "9999.9999", true, true), gallonUnit: enumeration(value.gallonUnit, ["US", "IMPERIAL"]), fuelType: text(value.fuelType, 80, true),
     includedConcepts: uniqueEnums(value.includedConcepts, KINDS.filter((kind) => kind !== "BASE")), components, state: enumeration(value.state, ["DRAFT", "ACTIVE", "INACTIVE"]),
   };
-  if ((zone.seriesRef === null) !== (zone.expectedVersion === null) || !/^[A-Z]{3}$/.test(zone.currency) || zone.mode === "ITEMIZED" && zone.factor !== null) invalid();
+  if ((zone.seriesRef === null) !== (zone.expectedVersion === null) || !/^[A-Z]{3}$/.test(zone.currency) || zone.mode === "ITEMIZED" && zone.factor !== null
+    || zone.locationType === "SECTOR" && zone.sector === null || zone.locationType === "CITY" && zone.sector !== null
+    || zone.referenceDistanceKm !== null && !zone.referenceDistanceSource) invalid();
   validateCoverage(zone);
   return zone;
 }
@@ -170,22 +175,25 @@ export function calculateTransportResult(input, zones) {
     if (!journey.origin) issue("TRANSPORT_ORIGIN_PENDING", "Indique el punto de salida del desplazamiento.", journey.journeyRef);
     if (!selected.zone) { issue(selected.reason, selected.reason === "TRANSPORT_ZONE_CONFLICT" ? "El destino coincide con zonas de igual prioridad. Ajuste el perímetro o la prioridad." : selected.reason === "TRANSPORT_DESTINATION_PENDING" ? "Indique el destino para resolver su zona." : "No hay una zona activa para este destino, propósito y tipo de vehículo.", journey.journeyRef); continue; }
     const zone = selected.zone;
+    const journeyForCalculation = journey.distanceKm === null && zone.referenceDistanceKm !== null
+      ? { ...journey, distanceKm: zone.referenceDistanceKm, distanceSource: zone.referenceDistanceSource }
+      : journey;
     if (!totals.has(zone.currency)) totals.set(zone.currency, { amount: new Decimal(0), pending: false });
     if (!zone.components.length) { issue("TRANSPORT_TARIFF_PENDING", "La zona no tiene renglones de transporte configurados.", journey.journeyRef); totals.get(zone.currency).pending = true; }
     if (zone.mode === "FACTOR" && !zone.components.some((row) => row.kind === "BASE")) { issue("TRANSPORT_BASE_PENDING", "El modo por factor necesita una tarifa base de transporte.", journey.journeyRef); totals.get(zone.currency).pending = true; }
     if (zone.components.some((row) => row.kind === "FUEL") && !zone.fuelType) issue("TRANSPORT_FUEL_TYPE_PENDING", "Indique el combustible al que corresponden el rendimiento y el precio por galón.", journey.journeyRef);
-    if (journey.distanceKm !== null && !journey.distanceSource || zone.components.some((row) => ["GALLON", "KM"].includes(row.basis)) && (journey.distanceKm === null || !journey.distanceSource)) issue("TRANSPORT_DISTANCE_PENDING", "Confirme los kilómetros de carretera y su fuente; el mapa no calcula esa distancia.", journey.journeyRef);
+    if (journeyForCalculation.distanceKm !== null && !journeyForCalculation.distanceSource || zone.components.some((row) => ["GALLON", "KM"].includes(row.basis)) && (journeyForCalculation.distanceKm === null || !journeyForCalculation.distanceSource)) issue("TRANSPORT_DISTANCE_PENDING", "Confirme los kilómetros de carretera y su fuente; el mapa no calcula esa distancia.", journey.journeyRef);
     const quantityCodes = new Set(zone.components.filter((row) => ["PASS", "FIXED"].includes(row.basis)).map((row) => row.code));
     if (Object.keys(journey.quantities).some((code) => !quantityCodes.has(code))) issue("TRANSPORT_QUANTITY_UNKNOWN", "Hay cantidades manuales que no pertenecen a los renglones de esta zona.", journey.journeyRef);
     for (const component of zone.components) {
-      const { quantity, distanceKm } = transportLineQuantity(component, journey, zone);
+      const { quantity, distanceKm } = transportLineQuantity(component, journeyForCalculation, zone);
       const factor = component.kind === "BASE" && zone.mode === "FACTOR" ? zone.factor : null;
       let unitCost = component.unitCost === null || component.kind === "BASE" && zone.mode === "FACTOR" && factor === null ? null : boundedDecimal(new Decimal(component.unitCost).mul(factor ?? 1), 6, "999999999999.999999");
       if (quantity === null) issue("TRANSPORT_QUANTITY_PENDING", `Complete la cantidad o los datos de cálculo de «${component.label}».`, journey.journeyRef);
       if (unitCost === null) issue("TRANSPORT_TARIFF_PENDING", `Complete la tarifa y, si corresponde, el factor de «${component.label}».`, journey.journeyRef);
       const totalCost = quantity === null || unitCost === null ? null : boundedDecimal(new Decimal(quantity).mul(unitCost), 6, "999999999999.999999");
       if (totalCost === null && quantity !== null && unitCost !== null) { issue("TRANSPORT_AMOUNT_LIMIT", `El importe de «${component.label}» supera el límite admitido.`, journey.journeyRef); unitCost = null; }
-      lines.push({ journeyRef: journey.journeyRef, zoneRuleRef: zone.ruleRef, zoneVersion: zone.version, zoneCode: zone.code, zoneType: zone.zoneType, componentCode: component.code, concept: component.label, kind: component.kind, basis: component.basis, quantity, unit: component.basis, unitCost, baseUnitCost: component.unitCost, totalCost, currency: zone.currency, costRuleRef: component.costRuleRef, costRuleVersion: component.costRuleVersion, factor, distanceKm, kmPerGallon: component.kind === "FUEL" ? zone.kmPerGallon : null, gallonUnit: component.kind === "FUEL" ? zone.gallonUnit : null, fuelType: component.kind === "FUEL" ? zone.fuelType : null });
+      lines.push({ journeyRef: journey.journeyRef, zoneRuleRef: zone.ruleRef, zoneVersion: zone.version, zoneCode: zone.code, zoneType: zone.zoneType, componentCode: component.code, concept: component.label, kind: component.kind, basis: component.basis, quantity, unit: component.basis, unitCost, baseUnitCost: component.unitCost, totalCost, currency: zone.currency, costRuleRef: component.costRuleRef, costRuleVersion: component.costRuleVersion, factor, distanceKm, distanceSource: journeyForCalculation.distanceSource, kmPerGallon: component.kind === "FUEL" ? zone.kmPerGallon : null, gallonUnit: component.kind === "FUEL" ? zone.gallonUnit : null, fuelType: component.kind === "FUEL" ? zone.fuelType : null });
       const total = totals.get(zone.currency);
       if (totalCost === null) total.pending = true; else total.amount = total.amount.plus(totalCost);
     }

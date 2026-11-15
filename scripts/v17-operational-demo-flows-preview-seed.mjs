@@ -157,10 +157,10 @@ async function ensureCase(prisma, tenant, actor, definition, services) {
       surveyMethod: definition.requiresSurvey ? "PRESENCIAL" : "NO_APLICA",
       flags: ["PREVIEW_SYNTHETIC", DEMO_FLAG, definition.demoFlag],
       originLocation: "SNAPSHOT_STRUCTURED", destinationLocation: "SNAPSHOT_STRUCTURED",
-      destinationContracted: true, destinationStatus: "CONFIRMED",
-      routeContractVersion: 2, routeRevision: 1,
+      destinationContracted: true,
+      routeContractVersion: 1, routeRevision: 0,
       caseContactName: definition.clientName, caseContactPhone: definition.phone,
-      caseContactPhoneNormalized: definition.phone.replace(/\D/gu, ""),
+      caseContactPhoneNormalized: definition.phone,
       caseContactEmail: definition.email, caseContactEmailNormalized: definition.email,
       intakeChannel: "CALL", clientProfileType: "INDIVIDUAL",
     } });
@@ -171,6 +171,12 @@ async function ensureCase(prisma, tenant, actor, definition, services) {
       routeSnapshot(tenant.id, row.id, "ORIGIN", originAddress, originAddress.addressRef),
       routeSnapshot(tenant.id, row.id, "DESTINATION", destinationAddress, destinationAddress.addressRef),
     ] });
+  }
+  if (row.routeRevision !== 1 || row.routeContractVersion !== 2 || row.destinationStatus !== "CONFIRMED") {
+    activeStage = `${definition.caseCode}_ROUTE_ACTIVATION`;
+    row = await prisma.pipelineCase.update({ where: { id: row.id }, data: {
+      routeRevision: 1, routeContractVersion: 2, destinationStatus: "CONFIRMED",
+    } });
   }
   let revision = await prisma.pipelineCaseServiceRevision.findFirst({
     where: { tenantId: tenant.id, pipelineCaseId: row.id, revision: 1 }, include: { items: true },

@@ -234,7 +234,7 @@ async function ensureScheduledSurvey(prisma, tenant, actor, evaluator, scheduleP
   return { decision, assignment };
 }
 
-async function ensureCompletedSurvey(prisma, tenant, actor, evaluator, scenario, options) {
+async function ensureCompletedSurvey(prisma, tenant, actor, evaluator, schedulePolicy, scenario, options) {
   activeStage = "SURVEY_EXPORT_CATALOG";
   let catalog = await prisma.surveyCatalogVersion.findFirst({ where: { tenantId: tenant.id, status: "ACTIVE" }, orderBy: { version: "desc" } });
   if (!catalog) catalog = await prisma.surveyCatalogVersion.create({ data: { tenantId: tenant.id, version: 1, status: "ACTIVE", activatedAt: new Date(), createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
@@ -249,7 +249,7 @@ async function ensureCompletedSurvey(prisma, tenant, actor, evaluator, scenario,
   if (!decision) decision = await prisma.surveyEvaluationDecision.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, routeVersion: 1, version: 1, method: "IN_PERSON", commercialState: "COMPLETED", informationSource: "EVALUATOR", rationaleCode: "DEMO_COMPLETED", createdByMembershipId: evaluator.membership.id, createdByUserId: evaluator.user.id } });
   activeStage = "SURVEY_EXPORT_ASSIGNMENT";
   let assignment = await prisma.surveyAssignment.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id } });
-  if (!assignment) assignment = await prisma.surveyAssignment.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, routeVersion: 1, evaluatorMembershipId: evaluator.membership.id, evaluatorUserId: evaluator.user.id, scheduledStart: new Date(options.start), scheduledEnd: new Date(options.end), status: "COMPLETED", arrivalAt: new Date(options.start), punctualityConfirmedAt: new Date(options.start), contextSnapshot: { synthetic: true, demo: true, distanceKm: options.distanceKm }, instructionSnapshot: options.instructions, evaluationDecisionId: decision.id, scheduleProfile: "METRO", zoneCode: "METRO", slotKey: "MORNING", travelBufferMinutes: 45, clientConfirmation: "CONFIRMED", evaluatorConfirmation: "CONFIRMED", createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
+  if (!assignment) assignment = await prisma.surveyAssignment.create({ data: { tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, routeVersion: 1, evaluatorMembershipId: evaluator.membership.id, evaluatorUserId: evaluator.user.id, scheduledStart: new Date(options.start), scheduledEnd: new Date(options.end), status: "COMPLETED", arrivalAt: new Date(options.start), punctualityConfirmedAt: new Date(options.start), contextSnapshot: { synthetic: true, demo: true, distanceKm: options.distanceKm }, instructionSnapshot: options.instructions, evaluationDecisionId: decision.id, schedulePolicyId: schedulePolicy.id, scheduleProfile: "METRO", zoneCode: "METRO", slotKey: "MORNING", travelBufferMinutes: 45, clientConfirmation: "CONFIRMED", evaluatorConfirmation: "CONFIRMED", createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id } });
   activeStage = "SURVEY_EXPORT_DRAFT";
   let draft = await prisma.surveyDraft.findFirst({ where: { tenantId: tenant.id, assignmentId: assignment.id, revision: 1 } });
   if (!draft) draft = await prisma.surveyDraft.create({ data: { tenantId: tenant.id, assignmentId: assignment.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, catalogVersionId: catalog.id, routeVersion: 1, revision: 1, status: "PUBLISHED", notes: options.notes } });
@@ -440,7 +440,8 @@ async function seed(prisma) {
   activeStage = "SURVEY_INTERIOR";
   await ensureScheduledSurvey(prisma, tenant, actor, evaluator, schedulePolicy, created[1], { start: "2026-11-18T13:00:00Z", end: "2026-11-18T14:00:00Z", outsideMetro: true, distanceKm: 155, zoneCode: "SANTIAGO-LOS-JARDINES", slotKey: "FULL-DAY", travelBufferMinutes: 180, instructions: "Visita fuera de zona metro. Un solo Survey para el evaluador durante el día." });
   activeStage = "SURVEY_EXPORT";
-  await ensureCompletedSurvey(prisma, tenant, actor, evaluator, created[4], { start: "2026-11-14T14:00:00Z", end: "2026-11-14T14:45:00Z", distanceKm: 10, shipmentMode: "SEA", quantity: 14, unitVolumeM3: "1.43", unitWeightKg: "52", flags: ["FRAGILE", "CRATING_CANDIDATE"], notes: "Survey completo para exportación a Miami." });
+  requireCondition(schedulePolicy, "SURVEY_SCHEDULE_POLICY_MISSING");
+  await ensureCompletedSurvey(prisma, tenant, actor, evaluator, schedulePolicy, created[4], { start: "2026-11-14T14:00:00Z", end: "2026-11-14T14:45:00Z", distanceKm: 10, shipmentMode: "SEA", quantity: 14, unitVolumeM3: "1.43", unitWeightKg: "52", flags: ["FRAGILE", "CRATING_CANDIDATE"], notes: "Survey completo para exportación a Miami." });
 
   const context = { tenantId: tenant.id, membershipId: actor.membership.id, userId: actor.user.id, role: actor.membership.role, effectivePermissions: actor.membership.grantedPermissions, deniedPermissions: actor.membership.deniedPermissions };
   activeStage = "QUOTE_STORAGE";

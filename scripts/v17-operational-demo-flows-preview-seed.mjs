@@ -157,7 +157,7 @@ async function ensureCase(prisma, tenant, actor, definition, services) {
       caseContactName: definition.clientName, caseContactPhone: definition.phone,
       caseContactPhoneNormalized: definition.phone.replace(/\D/gu, ""),
       caseContactEmail: definition.email, caseContactEmailNormalized: definition.email,
-      intakeChannel: "PHONE", clientProfileType: "INDIVIDUAL",
+      intakeChannel: "CALL", clientProfileType: "INDIVIDUAL",
     } });
   }
   if (await prisma.pipelineCaseRouteSnapshot.count({ where: { tenantId: tenant.id, pipelineCaseId: row.id, routeVersion: 1 } }) === 0) {

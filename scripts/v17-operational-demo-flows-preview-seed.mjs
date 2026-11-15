@@ -370,6 +370,35 @@ async function ensureImportAgentContext(prisma, tenant, actor, scenario) {
   } });
 }
 
+async function advanceDemoPipeline(prisma, tenant, actor, scenario, path, flags) {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL search_path = osi");
+    let current = await tx.pipelineCase.findUniqueOrThrow({ where: { id: scenario.id } });
+    const currentIndex = path.indexOf(current.status);
+    requireCondition(currentIndex >= 0, `FINAL_STATUS_SOURCE_INVALID_${scenario.caseCode}`);
+    for (const nextStatus of path.slice(currentIndex + 1)) {
+      const now = new Date();
+      const previousVersion = current.version;
+      const previousStatus = current.status;
+      current = await tx.pipelineCase.update({ where: { id: current.id }, data: {
+        version: { increment: 1 }, status: nextStatus, statusChangedAt: now,
+      } });
+      await tx.pipelineCaseCommand.create({ data: {
+        tenantId: tenant.id, pipelineCaseId: current.id,
+        requestId: stableUuid(`demo-transition-${scenario.caseCode}-${nextStatus}`),
+        commandType: "TRANSITION", payloadHash: sha({ caseCode: scenario.caseCode, previousStatus, nextStatus }),
+        expectedVersion: previousVersion, resultingVersion: current.version,
+        previousStatus, resultingStatus: nextStatus,
+        previousOwnerMembershipId: current.ownerMembershipId, previousOwnerUserId: current.ownerUserId,
+        resultingOwnerMembershipId: current.ownerMembershipId, resultingOwnerUserId: current.ownerUserId,
+        actorMembershipId: actor.membership.id, actorUserId: actor.user.id, actorRole: actor.membership.role,
+        reasonCode: null, evidenceType: null, evidenceId: null, createdAt: now,
+      } });
+    }
+    await tx.pipelineCase.update({ where: { id: current.id }, data: { flags: { set: flags } } });
+  }, { maxWait: 5000, timeout: 30000 });
+}
+
 const scenarios = [
   {
     caseCode: "DEMO-FLUJO-01-METRO", clientCode: "DEMO-CLI-01-METRO", clientName: "Familia Medina — Demo",
@@ -467,8 +496,17 @@ async function seed(prisma) {
   await ensureImportAgentContext(prisma, tenant, actor, created[3]);
 
   activeStage = "FINAL_STATUS";
-  const desiredStatuses = ["SURVEY_SCHEDULED", "SURVEY_SCHEDULED", "OPS_HANDOFF", "OPS_HANDOFF", "QUOTE_SENT"];
-  for (let index = 0; index < created.length; index += 1) await prisma.pipelineCase.update({ where: { id: created[index].id }, data: { status: desiredStatuses[index], statusChangedAt: new Date(), flags: { set: ["PREVIEW_SYNTHETIC", DEMO_FLAG, scenarios[index].demoFlag] } } });
+  const statusPaths = [
+    ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED"],
+    ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED"],
+    ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "WON", "OPS_HANDOFF"],
+    ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "WON", "OPS_HANDOFF"],
+    ["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT"],
+  ];
+  for (let index = 0; index < created.length; index += 1) {
+    activeStage = `FINAL_STATUS_CASE_${index + 1}`;
+    await advanceDemoPipeline(prisma, tenant, actor, created[index], statusPaths[index], ["PREVIEW_SYNTHETIC", DEMO_FLAG, scenarios[index].demoFlag]);
+  }
 
   const demoRows = await prisma.pipelineCase.findMany({ where: { tenantId: tenant.id, flags: { has: DEMO_FLAG } }, select: { caseCode: true, status: true }, orderBy: { caseCode: "asc" } });
   assert.deepEqual(demoRows.map((row) => row.caseCode), scenarios.map((item) => item.caseCode));

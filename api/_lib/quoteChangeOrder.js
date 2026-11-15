@@ -283,6 +283,22 @@ function normalizeItems(input) {
     if (previousLineTotal.lt(0) || newLineTotal.lt(0) || (kind === "ADDED" && !previousLineTotal.isZero()) || (kind === "REMOVED" && !newLineTotal.isZero())) {
       throw new QuoteChangeOrderError("Los importes de la partida no corresponden con su tipo.", { code: "CHANGE_ORDER_INPUT_INVALID", status: 400 });
     }
+    const regularLineTotalProvided = raw?.regularLineTotal != null;
+    const regularLineTotal = regularLineTotalProvided ? decimal(raw.regularLineTotal, `items[${index}].regularLineTotal`) : newLineTotal;
+    if (regularLineTotal.lt(newLineTotal)) throw new QuoteChangeOrderError("El valor regular no puede ser menor que el total a pagar.", { code: "CHANGE_ORDER_INPUT_INVALID", status: 400 });
+    if (kind === "ADDED" && newLineTotal.isZero() && !regularLineTotalProvided) throw new QuoteChangeOrderError("Un servicio adicional debe tener precio o indicar su valor regular para solicitar exoneración.", { code: "CHANGE_ORDER_WAIVER_VALUE_REQUIRED", status: 400 });
+    const waivedAmount = regularLineTotal.minus(newLineTotal).toDecimalPlaces(2);
+    const waiverReason = waivedAmount.gt(0) ? requiredText(raw?.waiverReason, `items[${index}].waiverReason`, 1000) : null;
+    const sourceAfter = raw?.after == null ? null : sanitizeCommercialAuditJson(raw.after);
+    const after = sanitizeCommercialAuditJson({
+      ...(sourceAfter && !Array.isArray(sourceAfter) && typeof sourceAfter === "object" ? sourceAfter : sourceAfter == null ? {} : { sourceSnapshot: sourceAfter }),
+      billing: {
+        regularLineTotal: regularLineTotal.toFixed(2),
+        payableLineTotal: newLineTotal.toFixed(2),
+        waivedAmount: waivedAmount.toFixed(2),
+        waiverReason,
+      },
+    });
     return {
       id: randomUUID(), lineKey, kind,
       classification: code(raw?.classification || "SCOPE_ADDITION", `items[${index}].classification`),
@@ -293,8 +309,9 @@ function normalizeItems(input) {
       previousUnitPrice: raw?.previousUnitPrice == null ? null : decimal(raw.previousUnitPrice, `items[${index}].previousUnitPrice`, 4),
       newUnitPrice: raw?.newUnitPrice == null ? null : decimal(raw.newUnitPrice, `items[${index}].newUnitPrice`, 4),
       previousLineTotal, newLineTotal,
+      regularLineTotal, waivedAmount, waiverReason,
       before: raw?.before == null ? null : sanitizeCommercialAuditJson(raw.before),
-      after: raw?.after == null ? null : sanitizeCommercialAuditJson(raw.after),
+      after,
     };
   });
 }
@@ -302,10 +319,14 @@ function normalizeItems(input) {
 function monetarySummary(items, input) {
   let increment = new Prisma.Decimal(0);
   let reduction = new Prisma.Decimal(0);
+  let regularAmount = new Prisma.Decimal(0);
+  let foregoneRevenue = new Prisma.Decimal(0);
   for (const item of items) {
     const delta = item.newLineTotal.minus(item.previousLineTotal);
     if (delta.gt(0)) increment = increment.plus(delta);
     else reduction = reduction.plus(delta.abs());
+    regularAmount = regularAmount.plus(item.regularLineTotal);
+    foregoneRevenue = foregoneRevenue.plus(item.waivedAmount);
   }
   const previousSubtotal = decimal(input?.previousSubtotal, "previousSubtotal");
   const previousTotal = decimal(input?.previousTotal, "previousTotal");
@@ -315,7 +336,7 @@ function monetarySummary(items, input) {
   if (newTotal.lt(0)) throw new QuoteChangeOrderError("El nuevo total no puede ser negativo.", { code: "CHANGE_ORDER_INPUT_INVALID", status: 400 });
   const variation = newTotal.minus(previousTotal).toDecimalPlaces(2);
   const variationPercent = previousTotal.isZero() ? new Prisma.Decimal(0) : variation.div(previousTotal).mul(100).toDecimalPlaces(4);
-  return { previousSubtotal, previousTotal, increment, reduction, taxAmount, newTotal, variation, variationPercent };
+  return { previousSubtotal, previousTotal, increment, reduction, taxAmount, newTotal, variation, variationPercent, regularAmount: regularAmount.toDecimalPlaces(2), foregoneRevenue: foregoneRevenue.toDecimalPlaces(2) };
 }
 
 async function activePolicy(tx, tenantId, policyCode) {
@@ -345,10 +366,16 @@ function approvalReasons(actor, policy, money, cumulativeIncrease, input, riskRe
   const marginAfter = input.marginAfter == null ? null : decimal(input.marginAfter, "marginAfter", 4);
   if (marginAfter && rules.minimumMarginPercent != null && marginAfter.lt(decimal(rules.minimumMarginPercent, "minimumMarginPercent", 4))) reasons.push("MARGIN_BELOW_AUTHORIZED");
   if (money.reduction.gt(0) && rules.requireApprovalForReduction !== false) reasons.push("EXCEPTIONAL_DISCOUNT");
+  if (money.foregoneRevenue.gt(0)) reasons.push("ADMIN_WAIVER_REQUIRED");
   if (input.contractuallySensitive === true) reasons.push("SENSITIVE_CONTRACT_CHANGE");
   if (riskResult === "REVIEW_REQUIRED" || riskResult === "BLOCKED") reasons.push("RISK_REVIEW_REQUIRED");
   if (!actor.permissions.has(CHANGE_ORDER_PERMISSIONS.AUTO_APPROVE)) reasons.push("ROLE_REQUIRES_APPROVAL");
   return { reasons: [...new Set(reasons)], capAmount };
+}
+
+function assertAdministrativeWaiverAuthority(actor, order, decision) {
+  if (decision !== "APPROVED" || !(order?.approval_reasons_json || []).includes("ADMIN_WAIVER_REQUIRED")) return;
+  if (actor?.role !== "A") throw new QuoteChangeOrderError("Solo Administración puede autorizar una exoneración económica.", { code: "CHANGE_ORDER_ADMIN_WAIVER_REQUIRED", status: 403 });
 }
 
 async function evaluateChangeRisk(prisma, context, id, input, requestId) {
@@ -605,6 +632,7 @@ export async function decideQuoteChangeOrderApproval(prisma, context, input, opt
     const cmd = await loadOrderCommand(tx, actor, input, "DECIDE", CHANGE_ORDER_PERMISSIONS.DECIDE, { payload: { decision, reason: input?.reason } });
     if (cmd.replay) return cmd.replay;
     if (cmd.order.status !== "PENDING_APPROVAL" || !cmd.order.approval_request_id) throw new QuoteChangeOrderError("La orden no espera aprobación.", { code: "CHANGE_ORDER_STATE_INVALID", status: 409 });
+    assertAdministrativeWaiverAuthority(actor, cmd.order, decision);
     const approvalRow = (await tx.$queryRaw(Prisma.sql`SELECT * FROM "osi"."approval_requests" WHERE "tenant_id"=${actor.tenantId} AND "id"=${cmd.order.approval_request_id} LIMIT 1`))[0];
     if (approvalRow?.evaluation_snapshot_json?.changeOrderHash !== cmd.order.payload_hash || Number(approvalRow?.evaluation_snapshot_json?.changeOrderVersion) !== Number(cmd.order.version)) {
       throw new QuoteChangeOrderError("La aprobación no corresponde a esta versión y hash.", { code: "CHANGE_ORDER_APPROVAL_SCOPE_MISMATCH", status: 409 });
@@ -790,4 +818,4 @@ export async function reviseQuoteChangeOrder(prisma, context, input, options = {
   });
 }
 
-export const __quoteChangeOrderInternals = Object.freeze({ canonicalJson, sha256, normalizeItems, monetarySummary });
+export const __quoteChangeOrderInternals = Object.freeze({ canonicalJson, sha256, normalizeItems, monetarySummary, assertAdministrativeWaiverAuthority });

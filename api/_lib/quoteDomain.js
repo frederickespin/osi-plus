@@ -207,7 +207,7 @@ function buildIssues(pipelineCase, costing, lines, totals, authorization) {
   for (const line of lines.filter((row) => row.priceStatus === "PENDING")) {
     issues.push({ code: "MANUAL_PRICE_PENDING", severity: "BLOCKER", message: "Un concepto manual continúa pendiente de autoridad económica.", status: "OPEN", sourceSnapshot: { position: line.position, sourceKind: line.sourceKind } });
   }
-  if (totals.totalQuotedPrice < totals.suggestedPrice && !authorization) issues.push({ code: "MARGIN_AUTHORIZATION_REQUIRED", severity: "BLOCKER", message: "El precio cotizado inferior al sugerido requiere autorización.", status: "OPEN", sourceSnapshot: { comparison: "BELOW_SUGGESTED" } });
+  if (totals.foregoneRevenue > 0 && !authorization) issues.push({ code: "MARGIN_AUTHORIZATION_REQUIRED", severity: "BLOCKER", message: "Todo descuento o exoneración de un servicio operativo requiere autorización de Administración.", status: "OPEN", sourceSnapshot: { comparison: "BELOW_SUGGESTED", regularPrice: totals.regularPrice, payablePrice: totals.payablePrice, foregoneRevenue: totals.foregoneRevenue } });
   return issues;
 }
 

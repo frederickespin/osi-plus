@@ -326,12 +326,16 @@ export function calculateQuoteTotals(lines, discount) {
   let discountAmount = 0;
   if (discount) discountAmount = discount.kind === "PERCENTAGE" ? quoteMoney(Number(discount.base) * Number(discount.value) / 100) : Number(discount.value);
   const totalQuotedPrice = quoteMoney(Math.max(0, grossQuotedPrice - discountAmount));
+  const foregoneRevenue = quoteMoney(Math.max(0, suggestedPrice - totalQuotedPrice));
   return {
     capturedCost,
     suggestedPrice,
     grossQuotedPrice,
     discountAmount,
     totalQuotedPrice,
+    regularPrice: suggestedPrice,
+    payablePrice: totalQuotedPrice,
+    foregoneRevenue,
     differenceVsSuggested: quoteMoney(totalQuotedPrice - suggestedPrice),
     marginAmount: quoteMoney(totalQuotedPrice - capturedCost),
     marginBps: totalQuotedPrice > 0 ? Math.round(((totalQuotedPrice - capturedCost) / totalQuotedPrice) * 10_000) : null,

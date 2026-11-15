@@ -1005,7 +1005,7 @@ export default function SurveyCasePanel({
                 ) : (
                   <p className="mt-2 text-sm text-slate-500">
                     {workspace.schedulingContext.zoneType === "METRO"
-                      ? "Zona metropolitana · sin cargo publicado"
+                      ? "Zona metropolitana · visita sin cargo. Los servicios operativos se cotizan por separado."
                       : "Costo pendiente de publicar"}
                   </p>
                 )}

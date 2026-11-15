@@ -311,7 +311,8 @@ async function ensureStorageReady(prisma, tenant, actor, scenario, acceptedPropo
   requireCondition(acceptedProposal.state === "ACCEPTED" && revision, "STORAGE_QUOTE_NOT_ACCEPTED");
   activeStage = "STORAGE_SCHEMA_PROBE";
   const [storageSchema] = await prisma.$queryRawUnsafe("SELECT to_regclass('osi.customer_storage_agreements')::text AS qualified_agreement_relation");
-  requireCondition(storageSchema?.qualified_agreement_relation === "osi.customer_storage_agreements", "STORAGE_AGREEMENT_RELATION_UNRESOLVED");
+  requireCondition(typeof storageSchema?.qualified_agreement_relation === "string"
+    && storageSchema.qualified_agreement_relation.endsWith("customer_storage_agreements"), "STORAGE_AGREEMENT_RELATION_UNRESOLVED");
   activeStage = "STORAGE_REQUIREMENT";
   if (!await prisma.customerStorageRequirementRevision.findFirst({ where: { tenantId: tenant.id, pipelineCaseId: scenario.id, revision: 1 } })) await prisma.customerStorageRequirementRevision.create({ data: {
     tenantId: tenant.id, pipelineCaseId: scenario.id, serviceRevisionId: scenario.serviceRevision.id, revision: 1,

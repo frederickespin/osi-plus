@@ -366,7 +366,7 @@ async function ensureImportAgentContext(prisma, tenant, actor, scenario) {
     version: 1, state: "PUBLISHED", associationsSnapshot: [], instructionsSnapshot: [{ category: "AGENT_ASSIGNMENT", content: "Mudanza de importación asignada por agente internacional." }],
     logicalSha256: sha(`commercial-context-${scenario.caseCode}`), publishedAt: new Date(),
     createdByMembershipId: actor.membership.id, createdByUserId: actor.user.id,
-    parties: { create: [{ tenantId: tenant.id, entityId: clientEntity.id, role: "PAYER" }, { tenantId: tenant.id, entityId: agent.id, role: "AGENT" }] },
+    parties: { create: [{ entityId: clientEntity.id, role: "PAYER" }, { entityId: agent.id, role: "AGENT" }] },
   } });
 }
 

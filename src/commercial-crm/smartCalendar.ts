@@ -154,7 +154,7 @@ export function calculateDayCapacity(date: string, plans: readonly SmartServiceP
   const confirmedPersonHours = dayPlans.filter((plan) => plan.state === "CONFIRMED" || plan.state === "LOCKED").reduce((sum, plan) => sum + plan.crew * activeHours(plan), 0);
   const vehiclesRequired = dayPlans.filter((plan) => plan.state !== "ESTIMATED").reduce((sum, plan) => sum + plan.vehicles, 0);
   const utilizationPercent = personHoursAvailable > 0 ? Math.round(weightedPersonHours / personHoursAvailable * 100) : weightedPersonHours > 0 ? 999 : 0;
-  const overloaded = utilizationPercent > 100 || vehiclesRequired > availableVehicles;
+  const critical = utilizationPercent >= 80 || vehiclesRequired > availableVehicles;
   return {
     date,
     plans: dayPlans,
@@ -164,7 +164,7 @@ export function calculateDayCapacity(date: string, plans: readonly SmartServiceP
     vehiclesRequired,
     vehiclesAvailable: availableVehicles,
     utilizationPercent,
-    status: overloaded ? "OVERLOADED" : utilizationPercent >= 85 ? "LIMITED" : "AVAILABLE",
+    status: critical ? "OVERLOADED" : utilizationPercent >= 50 ? "LIMITED" : "AVAILABLE",
   };
 }
 

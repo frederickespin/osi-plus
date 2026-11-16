@@ -149,7 +149,11 @@ test("calendario inteligente pondera casos por recursos y permite reprogramar", 
   await expect(page.getByRole("heading", { name: "Calendario inteligente" })).toBeVisible();
   await expect(page.getByTestId("smart-service-calendar")).toContainText("6");
   await expect(page.getByTestId("smart-service-calendar")).toContainText("Personal y flota disponibles");
+  await expect(page.getByRole("button", { name: "Semana", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("smart-service-calendar")).toContainText("50–79%");
+  await expect(page.getByTestId("smart-service-calendar")).toContainText("80% o más");
   await page.getByRole("button", { name: /lunes.*servicios/i }).click();
+  await expect(page.getByRole("button", { name: "Día", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: /PREVIEW-1-0/ }).click();
   await expect(page.getByText("Estimación preliminar; falta Survey, mini survey o listado.")).toBeVisible();
   await page.getByLabel("Personal", { exact: true }).fill("4");

@@ -2,6 +2,7 @@ import { Suspense, lazy, useState, type ElementType } from "react";
 import {
   Boxes,
   BriefcaseBusiness,
+  CalendarRange,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -26,6 +27,7 @@ import type { CommunicationsAccess } from "@/communications/access";
 import type { ClientTemporaryAccessUi } from "@/client-portal/access";
 
 const CommercialRelationshipsAdmin = lazy(() => import("@/commercial-relationships/CommercialRelationshipsAdmin"));
+const CommercialCapacityCalendar = lazy(() => import("./CommercialCapacityCalendar"));
 
 type Props = Readonly<{
   authorization?: string;
@@ -45,6 +47,7 @@ type Props = Readonly<{
   toolsEnabled: boolean;
   commercialRelationshipsEnabled: boolean;
   commercialRelationshipsAdmin: boolean;
+  commercialCalendarActive: boolean;
   commercialRelationshipsAccess: CommercialRelationshipsAccess;
   communicationsEnabled: boolean;
   communicationsAccess: CommunicationsAccess;
@@ -72,10 +75,11 @@ type NavigationProps = {
   mobileAvailable: boolean;
   commercialRelationshipsEnabled: boolean;
   commercialRelationshipsAdmin: boolean;
+  commercialCalendarActive: boolean;
   onNavigate(pathname: string): void;
 };
 
-function Navigation({ collapsed, applications, mobileAvailable, commercialRelationshipsEnabled, commercialRelationshipsAdmin, onNavigate }: NavigationProps) {
+function Navigation({ collapsed, applications, mobileAvailable, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialCalendarActive, onNavigate }: NavigationProps) {
   return <nav aria-label="Módulos del ERP" className="flex-1 overflow-y-auto px-3 py-4">
     <button type="button" onClick={() => onNavigate("/hub")} aria-label="OSi Plus Hub" className="mb-4 flex w-full items-center gap-3 rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-left text-sm text-blue-50 hover:bg-white/10">
       <Boxes className="h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
@@ -92,7 +96,8 @@ function Navigation({ collapsed, applications, mobileAvailable, commercialRelati
             {!collapsed && <span>{application.name}</span>}
           </button>
           {commercial && !collapsed && <div className="ml-7 mt-1 space-y-0.5 border-l border-blue-300/30 pl-3">
-            <button type="button" onClick={() => onNavigate("/commercial")} aria-current={!commercialRelationshipsAdmin ? "page" : undefined} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Pipeline</button>
+            <button type="button" onClick={() => onNavigate("/commercial")} aria-current={!commercialRelationshipsAdmin && !commercialCalendarActive ? "page" : undefined} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Pipeline</button>
+            <button type="button" onClick={() => onNavigate("/commercial/calendar")} aria-current={commercialCalendarActive ? "page" : undefined} className={`flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs font-semibold hover:bg-white/10 ${commercialCalendarActive ? "bg-white/10 text-amber-200" : "text-white"}`}><CalendarRange className="h-3.5 w-3.5" />Calendario</button>
             {commercialRelationshipsEnabled && <button type="button" onClick={() => onNavigate("/commercial/relationships")} aria-current={commercialRelationshipsAdmin ? "page" : undefined} className="block w-full rounded px-2 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10">Relaciones Comerciales</button>}
           </div>}
         </div>;
@@ -126,7 +131,7 @@ function Sidebar({ userName, role, onCollapse, onLogout, ...navigation }: Naviga
   </aside>;
 }
 
-export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, clientTemporaryAccessEnabled, clientTemporaryAccess, userName, navigationApplications, mobileAvailable, onNavigate, onLogout, onUnauthorized }: Props) {
+export default function AdvancedErpShell({ authorization, caseRef, role, mutationAccess, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, commercialRelationshipsEnabled, commercialRelationshipsAdmin, commercialCalendarActive, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, clientTemporaryAccessEnabled, clientTemporaryAccess, userName, navigationApplications, mobileAvailable, onNavigate, onLogout, onUnauthorized }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const goCommercial = () => {
@@ -138,21 +143,21 @@ export default function AdvancedErpShell({ authorization, caseRef, role, mutatio
     onNavigate("/hub");
   };
   const goResource = (pathname: string) => { setMobileOpen(false); onNavigate(pathname); };
-  const sidebar = <Sidebar collapsed={collapsed} userName={userName} role={role} applications={navigationApplications} mobileAvailable={mobileAvailable} commercialRelationshipsEnabled={commercialRelationshipsEnabled && commercialRelationshipsAccess.canView} commercialRelationshipsAdmin={commercialRelationshipsAdmin} onCollapse={() => setCollapsed((value) => !value)} onNavigate={goResource} onLogout={onLogout} />;
+  const sidebar = <Sidebar collapsed={collapsed} userName={userName} role={role} applications={navigationApplications} mobileAvailable={mobileAvailable} commercialRelationshipsEnabled={commercialRelationshipsEnabled && commercialRelationshipsAccess.canView} commercialRelationshipsAdmin={commercialRelationshipsAdmin} commercialCalendarActive={commercialCalendarActive} onCollapse={() => setCollapsed((value) => !value)} onNavigate={goResource} onLogout={onLogout} />;
 
   return <div className="flex h-screen overflow-hidden bg-[#f4f7fb]" data-testid="advanced-erp-shell">
     <div className="sticky top-0 hidden h-screen lg:block">{sidebar}</div>
     {mobileOpen && <div className="fixed inset-0 z-50 flex lg:hidden"><div className="h-full">{sidebar}</div><button type="button" aria-label="Cerrar navegación ERP" className="flex-1 bg-slate-950/55" onClick={() => setMobileOpen(false)} /></div>}
     <div className="min-h-0 min-w-0 flex-1">
-      {!caseRef && !commercialRelationshipsAdmin && <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6">
+      {!caseRef && !commercialRelationshipsAdmin && !commercialCalendarActive && <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 shadow-sm backdrop-blur sm:px-6">
         <div className="flex items-center gap-3">
           <button type="button" aria-label="Abrir navegación ERP" className="rounded-lg border border-slate-200 p-2 text-[#003366] lg:hidden" onClick={() => setMobileOpen(true)}><Menu className="h-5 w-5" /></button>
           <div><p className="text-sm font-black text-[#003366]">Comercial y CRM</p><p className="text-[10px] uppercase tracking-[.16em] text-slate-500">Control comercial relacional</p></div>
         </div>
         <div className="flex items-center gap-2"><span className="hidden rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[#003366] sm:inline">ERP avanzado</span><button type="button" aria-label="Cerrar navegación ERP" className="hidden"><X /></button></div>
       </header>}
-      <main className={caseRef || commercialRelationshipsAdmin ? "h-screen min-h-0 overflow-hidden" : "h-[calc(100vh-4rem)] min-h-0 overflow-hidden"}>
-        {commercialRelationshipsAdmin && commercialRelationshipsEnabled && commercialRelationshipsAccess.canView ? <Suspense fallback={<div className="grid min-h-[60vh] place-items-center text-sm text-slate-500">Cargando Relaciones Comerciales…</div>}><CommercialRelationshipsAdmin authorization={authorization} access={commercialRelationshipsAccess} onBack={goCommercial} onUnauthorized={onUnauthorized} /></Suspense> : <CommercialInboxModule
+      <main className={caseRef || commercialRelationshipsAdmin || commercialCalendarActive ? "h-screen min-h-0 overflow-hidden" : "h-[calc(100vh-4rem)] min-h-0 overflow-hidden"}>
+        {commercialCalendarActive ? <Suspense fallback={<div className="grid min-h-[60vh] place-items-center text-sm text-slate-500">Preparando calendario inteligente…</div>}><CommercialCapacityCalendar authorization={authorization} onNavigate={onNavigate} onUnauthorized={onUnauthorized} /></Suspense> : commercialRelationshipsAdmin && commercialRelationshipsEnabled && commercialRelationshipsAccess.canView ? <Suspense fallback={<div className="grid min-h-[60vh] place-items-center text-sm text-slate-500">Cargando Relaciones Comerciales…</div>}><CommercialRelationshipsAdmin authorization={authorization} access={commercialRelationshipsAccess} onBack={goCommercial} onUnauthorized={onUnauthorized} /></Suspense> : <CommercialInboxModule
           authorization={authorization}
           mutationAccess={mutationAccess}
           servicesAccess={servicesAccess}

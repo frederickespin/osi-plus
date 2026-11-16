@@ -263,6 +263,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
         toolsEnabled={toolsAvailable}
         commercialRelationshipsEnabled={commercialRelationshipsEnabled}
         commercialRelationshipsAdmin={pathname === "/commercial/relationships"}
+        commercialCalendarActive={pathname === "/commercial/calendar"}
         commercialRelationshipsAccess={commercialRelationshipsAccess}
         communicationsEnabled={communicationsEnabled}
         communicationsAccess={communicationsAccess}

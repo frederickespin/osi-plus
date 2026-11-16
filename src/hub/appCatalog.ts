@@ -86,7 +86,7 @@ export const HUB_APPLICATIONS: readonly HubApplication[] = Object.freeze([
     description: "Clientes, oportunidades y continuidad comercial.",
     icon: "briefcase",
     route: "/commercial",
-    routeAliases: ["/crm", "/sales/pipeline", "/commercial/relationships"],
+    routeAliases: ["/crm", "/sales/pipeline", "/commercial/relationships", "/commercial/calendar"],
     status: "REGISTERED_INACTIVE",
     requiredPermissions: ["pipeline:view"],
     permissionMode: "ALL",

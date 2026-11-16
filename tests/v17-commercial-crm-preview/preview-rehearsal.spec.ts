@@ -131,6 +131,32 @@ test("paginación conserva una sola lista GET por página y cero mutaciones", as
   expect(audit.every(({ method }) => method === "GET")).toBe(true);
 });
 
+test("calendario inteligente pondera casos por recursos y permite reprogramar", async ({ page }) => {
+  await authenticate(page, { role: "A", permissions: ["pipeline:view"] });
+  await mockReadApi(page, 6);
+  await page.route("**/api/personnel/policies", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    headers: privateHeaders,
+    body: JSON.stringify({ ok: true, data: {
+      personnel: Array.from({ length: 6 }, (_, index) => ({ profileRef: `person-${index}`, displayName: `Persona ${index}`, jobTitle: null, employmentStatus: "ACTIVE", availabilityStatus: "AVAILABLE", restrictions: {}, notes: null, validFrom: null, validTo: null, capabilities: [], zones: [], overrides: [] })),
+      capabilities: [], activePolicy: null, reasons: [], exceptions: [], zones: [], precedence: [], generatedAt: "2026-11-16T12:00:00.000Z",
+    } }),
+  }));
+  const vehicle = (index: number) => ({ vehicleRef: `vehicle-${index}`, businessCode: `TR-${index}`, plate: null, vin: null, vehicleType: "TRUCK", brand: null, model: null, modelYear: null, capacityWeight: 5000, capacityVolume: 25, usableLength: null, usableWidth: null, usableHeight: null, weightUnit: "KG", volumeUnit: "CBM", dimensionUnit: "M", operationalStatus: "AVAILABLE", availableForCalculation: true, effectiveFrom: "2026-01-01T00:00:00.000Z", effectiveTo: null, hubCode: null, rowVersion: 1, updatedAt: "2026-11-16T12:00:00.000Z", retiredAt: null, calculationLocked: false });
+  await page.route("**/api/admin/fleet/vehicles?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: [vehicle(1), vehicle(2)], total: 2, page: 1, pageSize: 100 }) }));
+  await page.goto("/commercial/calendar");
+  await expect(page.getByRole("heading", { name: "Calendario inteligente" })).toBeVisible();
+  await expect(page.getByTestId("smart-service-calendar")).toContainText("6");
+  await expect(page.getByTestId("smart-service-calendar")).toContainText("Personal y flota disponibles");
+  await page.getByRole("button", { name: /lunes.*servicios/i }).click();
+  await page.getByRole("button", { name: /PREVIEW-1-0/ }).click();
+  await expect(page.getByText("Estimación preliminar; falta Survey, mini survey o listado.")).toBeVisible();
+  await page.getByLabel("Personal", { exact: true }).fill("4");
+  await page.getByRole("button", { name: "Guardar planificación", exact: true }).click();
+  await expect(page.getByRole("button", { name: /PREVIEW-1-0/ })).toContainText("4 personas");
+});
+
 test("query, hash, storage y x-osi no alteran la autoridad del servidor", async ({ page }) => {
   await page.setExtraHTTPHeaders({ "x-osi-role": "A", "x-osi-userid": "forged" });
   await authenticate(page, { role: "G", permissions: [] });

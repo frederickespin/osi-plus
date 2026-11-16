@@ -26,6 +26,39 @@ async function session(page: Page, grants = permissions, denied: string[] = []) 
   await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { name: "Prueba transporte", role: "A", status: "ACTIVE", permissions: grants, deniedPermissions: denied, membership: { membershipRef: MEMBERSHIP, tenantName: "Empresa de prueba", role: "A" }, memberships: [{ membershipRef: MEMBERSHIP, tenantName: "Empresa de prueba", role: "A", preferred: true }] } }) }));
   await page.route("**/api/admin/memberships**", (route) => route.fulfill({ ...json([]), body: JSON.stringify({ ok: true, data: [], total: 0, page: 1, pageSize: 20 }) }));
   await page.route("https://tile.openstreetmap.org/**", (route) => route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==", "base64") }));
+  await page.route("https://nominatim.openstreetmap.org/search**", (route) => {
+    const query = new URL(route.request().url()).searchParams.get("q") || "";
+    const destination = /destino|santiago/i.test(query);
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        lat: destination ? "19.0" : "18.5",
+        lon: destination ? "-70.7" : "-69.9",
+        display_name: destination ? "Destino de prueba, Santiago, República Dominicana" : "Base de prueba, Santo Domingo, República Dominicana",
+        address: { country_code: "do" },
+      }]),
+    });
+  });
+  await page.route("https://nominatim.openstreetmap.org/reverse**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const destination = Number(params.get("lat")) > 18.75;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        lat: destination ? "19.0" : "18.5",
+        lon: destination ? "-70.7" : "-69.9",
+        display_name: destination ? "Destino de prueba, Santiago, República Dominicana" : "Base de prueba, Santo Domingo, República Dominicana",
+        address: { country_code: "do" },
+      }),
+    });
+  });
+  await page.route("https://router.project-osrm.org/route/v1/driving/**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ code: "Ok", routes: [{ distance: 80_000, duration: 5_400 }] }),
+  }));
   await page.route("**/api/logistics/rules", (route) => route.fulfill(json([])));
 }
 
@@ -96,12 +129,13 @@ async function fillJourney(page: Page) {
   await form.getByLabel("Inicio del desplazamiento *").fill("2026-11-10T08:00");
   await form.getByLabel("Fin del desplazamiento *").fill("2026-11-10T17:00");
   await form.getByRole("combobox", { name: "Vehículo de flota", exact: true }).selectOption(VEHICLE);
-  await form.getByLabel("Latitud de salida del recorrido 1", { exact: true }).fill("18.5");
-  await form.getByLabel("Longitud de salida del recorrido 1", { exact: true }).fill("-69.9");
-  await form.getByLabel("Latitud de destino del recorrido 1", { exact: true }).fill("19.0");
-  await form.getByLabel("Longitud de destino del recorrido 1", { exact: true }).fill("-70.7");
-  await form.getByLabel("Km viales", { exact: true }).fill("80");
-  await form.getByLabel("Fuente del recorrido vial").fill("Fuente sintética del escenario UI");
+  await expect(form.getByLabel(/Latitud|Longitud/)).toHaveCount(0);
+  await form.getByRole("button", { name: "Ubicar salida en mapa", exact: true }).click();
+  await form.getByLabel("Buscar dirección de salida", { exact: true }).fill("Base de prueba");
+  await form.getByRole("button", { name: "Base de prueba, Santo Domingo, República Dominicana", exact: true }).click();
+  await form.getByLabel("Buscar dirección de destino", { exact: true }).fill("Destino de prueba");
+  await form.getByRole("button", { name: "Destino de prueba, Santiago, República Dominicana", exact: true }).click();
+  await expect(form.getByText(/Distancia vial calculada/)).toContainText("80.00 km");
   await form.getByLabel("Añadir regreso").check();
 }
 
@@ -296,7 +330,7 @@ for (const purpose of ["QUOTE", "SERVICE", "VISIT"] as const) test(`${purpose}: 
   await page.getByRole("button", { name: "Publicar costo de transporte" }).click();
   await expect(page.getByRole("button", { name: "Publicado", exact: true })).toBeDisabled();
   expect(backend.calculations).toHaveLength(2);
-  expect(backend.calculations[1].input).toMatchObject({ caseRef: CASE, purpose, contextRef: purpose === "VISIT" ? VISIT : null, journeys: [{ vehicleRef: VEHICLE, vehicleType: "Camión de prueba", distanceKm: "80", returnToOrigin: true, trips: 1, quantities: { TOLL: "2" } }] });
+  expect(backend.calculations[1].input).toMatchObject({ caseRef: CASE, purpose, contextRef: purpose === "VISIT" ? VISIT : null, journeys: [{ vehicleRef: VEHICLE, vehicleType: "Camión de prueba", distanceKm: "80.00", distanceSource: "OSRM / OpenStreetMap · ruta vial automática", returnToOrigin: true, trips: 1, quantities: { TOLL: "2" } }] });
   expect(backend.publishes()).toBe(1);
   expect(backend.queries.some((query) => query.get("purpose") === purpose && query.get("contextRef") === (purpose === "VISIT" ? VISIT : null))).toBe(true);
   await expect(page.getByTestId("transport-publication")).toContainText(PURPOSE_LABEL[purpose]);

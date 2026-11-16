@@ -12,9 +12,11 @@ type Props = {
   mode?: "polygon" | "points";
   selectedPoint?: number;
   label?: string;
+  autoSelect?: boolean;
+  pointLabels?: readonly string[];
 };
 
-export default function TransportZoneMap({ points, onChange, disabled = false, mode = "polygon", selectedPoint, label = "Mapa de la geocerca" }: Props) {
+export default function TransportZoneMap({ points, onChange, disabled = false, mode = "polygon", selectedPoint, label = "Mapa de la geocerca", autoSelect = false, pointLabels = [] }: Props) {
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<LeafletMap | null>(null);
   const layers = useRef<FeatureGroup | null>(null);
@@ -23,8 +25,8 @@ export default function TransportZoneMap({ points, onChange, disabled = false, m
   const fitted = useRef(points.length === 0);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [drawing, setDrawing] = useState(false);
-  const drawingRef = useRef(false);
+  const [drawing, setDrawing] = useState(autoSelect && mode === "points");
+  const drawingRef = useRef(autoSelect && mode === "points");
 
   useEffect(() => { current.current = { points, onChange, disabled, mode, selectedPoint }; }, [points, onChange, disabled, mode, selectedPoint]);
   useEffect(() => { drawingRef.current = drawing; }, [drawing]);
@@ -42,7 +44,7 @@ export default function TransportZoneMap({ points, onChange, disabled = false, m
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
         maxZoom: 19,
         referrerPolicy: "strict-origin-when-cross-origin",
-      }).on("tileerror", () => { if (!stopped) setError("No se pudo cargar una parte del mapa base. Puede seguir utilizando las coordenadas del perímetro."); }).on("tileload", () => { if (!stopped) setError(null); }).addTo(instance);
+      }).on("tileerror", () => { if (!stopped) setError("No se pudo cargar una parte del mapa base. Intente nuevamente."); }).on("tileload", () => { if (!stopped) setError(null); }).addTo(instance);
       layers.current = L.featureGroup().addTo(instance);
       instance.on("click", (event) => {
         const value = current.current;
@@ -57,7 +59,7 @@ export default function TransportZoneMap({ points, onChange, disabled = false, m
       observer = new ResizeObserver(() => instance?.invalidateSize({ animate: false }));
       observer.observe(element.current);
       setReady(true);
-    }).catch(() => { if (!stopped) setError("El mapa no pudo cargar. Puede registrar el perímetro con las coordenadas de sus puntos."); });
+    }).catch(() => { if (!stopped) setError("El mapa no pudo cargar. Intente nuevamente o utilice la búsqueda de dirección."); });
     return () => { stopped = true; observer?.disconnect(); instance?.remove(); map.current = null; layers.current = null; leaflet.current = null; };
   }, []);
 
@@ -72,11 +74,12 @@ export default function TransportZoneMap({ points, onChange, disabled = false, m
       shape.addTo(group);
     }
     coordinates.forEach((coordinate, index) => {
+      const markerLabel = pointLabels[index] || String(index + 1);
       const marker = L.marker(coordinate, {
-        draggable: !disabled,
-        title: `Punto ${index + 1}`,
-        alt: `Punto ${index + 1}`,
-        icon: L.divIcon({ html: `<span style="display:grid;place-items:center;width:24px;height:24px;border:2px solid white;border-radius:50%;background:#003366;color:white;font:600 11px sans-serif;box-shadow:0 1px 3px #475569">${index + 1}</span>`, className: "", iconSize: [24, 24], iconAnchor: [12, 12] }),
+        draggable: !disabled && (mode !== "points" || selectedPoint === undefined || selectedPoint === index),
+        title: pointLabels[index] ? `Punto ${markerLabel}` : `Punto ${index + 1}`,
+        alt: pointLabels[index] ? `Punto ${markerLabel}` : `Punto ${index + 1}`,
+        icon: L.divIcon({ html: `<span style="display:grid;place-items:center;width:24px;height:24px;border:2px solid white;border-radius:50%;background:#003366;color:white;font:600 11px sans-serif;box-shadow:0 1px 3px #475569">${markerLabel}</span>`, className: "", iconSize: [24, 24], iconAnchor: [12, 12] }),
       }).addTo(group);
       marker.on("dragend", () => {
         const value = current.current;
@@ -89,7 +92,7 @@ export default function TransportZoneMap({ points, onChange, disabled = false, m
       map.current.fitBounds(group.getBounds(), { padding: [30, 30], maxZoom: 13 });
       fitted.current = true;
     }
-  }, [disabled, mode, points, ready]);
+  }, [disabled, mode, pointLabels, points, ready]);
 
   const fit = () => {
     const bounds = layers.current?.getBounds();
@@ -98,13 +101,13 @@ export default function TransportZoneMap({ points, onChange, disabled = false, m
 
   return <div className="min-w-0 space-y-2">
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      {!disabled && <button type="button" aria-pressed={drawing} onClick={() => setDrawing((value) => !value)} className={`min-h-9 rounded border px-3 font-medium ${drawing ? "border-[#003366] bg-[#003366] text-white" : "border-slate-300 bg-white text-slate-700"}`}>{drawing ? "Terminar trazado" : mode === "polygon" ? "Trazar perímetro" : "Elegir ubicación"}</button>}
+      {!disabled && !autoSelect && <button type="button" aria-pressed={drawing} onClick={() => setDrawing((value) => !value)} className={`min-h-9 rounded border px-3 font-medium ${drawing ? "border-[#003366] bg-[#003366] text-white" : "border-slate-300 bg-white text-slate-700"}`}>{drawing ? "Terminar trazado" : mode === "polygon" ? "Trazar perímetro" : "Elegir ubicación"}</button>}
       {!disabled && mode === "polygon" && <button type="button" disabled={!points.length} onClick={() => onChange(points.slice(0, -1))} className="inline-flex min-h-9 items-center gap-1 rounded border border-slate-300 px-2 text-slate-600 disabled:opacity-40"><Undo2 aria-hidden="true" className="h-3.5 w-3.5" />Quitar último punto</button>}
       <button type="button" disabled={!points.length || !ready} onClick={fit} className="inline-flex min-h-9 items-center gap-1 rounded border border-slate-300 px-2 text-slate-600 disabled:opacity-40"><LocateFixed aria-hidden="true" className="h-3.5 w-3.5" />Ver puntos</button>
       {drawing && !disabled && <span role="status" className="text-slate-500">{mode === "polygon" ? "Pulse el mapa para añadir puntos al perímetro." : "Pulse el mapa para ubicar el punto seleccionado."}</span>}
     </div>
     {error && <p role="alert" className="text-xs text-amber-800">{error}</p>}
     <div ref={element} role="region" aria-label={label} className="relative isolate z-0 h-72 w-full overflow-hidden rounded border border-slate-300 bg-slate-100 sm:h-80" />
-    <p className="text-[11px] text-slate-500">{disabled ? "Perímetro guardado." : "También puede ingresar o ajustar las coordenadas. Arrastre los puntos para corregirlos."}</p>
+    <p className="text-[11px] text-slate-500">{disabled ? "Ubicación guardada." : mode === "points" ? "Busque una dirección o pulse el mapa. Arrastre los puntos para corregirlos." : "Arrastre los puntos para corregir el perímetro."}</p>
   </div>;
 }

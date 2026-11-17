@@ -16,7 +16,7 @@ export const ADMINISTRATION_SECTIONS: readonly AdministrationSection[] = Object.
   { id: "services", label: "Servicios y combinaciones", route: "/administration/services", permissions: ["services:catalog:view", "services:packages:view", "services:materials:view"] },
   { id: "logistics", label: "Motor Logístico", route: "/administration/logistics", permissions: ["logistics:rules:view"] },
   { id: "costing", label: "Costos y monedas", route: "/administration/costing", permissions: ["costing:rules:view"] },
-  { id: "communications", label: "Plantillas y comunicaciones", route: "/administration/communications", permissions: ["communications:templates:view"] },
+  { id: "communications", label: "Centro de plantillas", route: "/administration/communications", permissions: ["communications:templates:view"] },
   { id: "policies", label: "Políticas operativas", route: "/administration/policies", permissions: [
     "personnel:profiles:view", "personnel:capabilities:view", "scheduling:policies:view",
     "scheduling:exceptions:request", "scheduling:exceptions:approve", "scheduling:exceptions:respond",

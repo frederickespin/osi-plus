@@ -24,8 +24,8 @@ test("catálogo compacto edita draft y genera preview sintético", async ({ page
   await page.route("**/api/communications/variables", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { catalogVersion: 1, variables } }) }));
   await page.route("**/api/communications/preview", async (route) => { previewCalls += 1; const body = await route.request().postDataJSON(); expect(body).not.toHaveProperty("tenantId"); return route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { context: "SYNTHETIC", rendered: { subject: "Caso DEMO-001", bodyText: "Hola Cliente de demostración", bodyHtml: null } } }) }); });
   await page.goto("/administration");
-  await expect(page.getByRole("heading", { name: "Plantillas y Comunicaciones" })).toBeVisible();
-  await expect(page.getByText("Envío externo desactivado en Preview").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Centro de plantillas" })).toBeVisible();
+  await expect(page.getByText(/Envío externo desactivado en Preview/).first()).toBeVisible();
   await expect(page.getByText("SURVEY.PIC")).toBeVisible();
   await page.getByRole("button", { name: "Editar" }).click();
   const variablesCatalog = page.getByRole("group", { name: "Variables disponibles · catálogo v1" });
@@ -37,6 +37,21 @@ test("catálogo compacto edita draft y genera preview sintético", async ({ page
   await expect(page.getByText("Hola Cliente de demostración")).toBeVisible();
   expect(previewCalls).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test("nueva plantilla ofrece máscaras y completa un contrato editable", async ({ page }) => {
+  await authorize(page);
+  await page.route("**/api/communications/templates", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [template] }) }));
+  await page.route("**/api/communications/variables", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { catalogVersion: 1, variables } }) }));
+  await page.goto("/administration/communications");
+  await page.getByRole("button", { name: "Nueva plantilla" }).click();
+  await expect(page.getByRole("heading", { name: "Elija una máscara inicial" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Contrato de almacenaje/ })).toBeVisible();
+  await page.getByRole("button", { name: /Contrato de almacenaje/ }).click();
+  await expect(page.getByLabel("Código")).toHaveValue("CTR.STORAGE.BASE");
+  await expect(page.getByLabel("Nombre")).toHaveValue("Contrato base de almacenaje");
+  await expect(page.getByLabel("Contenido editable")).toContainText("CONTRATO DE ALMACENAJE");
+  await expect(page.getByText("reemplace el texto entre [corchetes]", { exact: false })).toBeVisible();
 });
 
 test("deny ocurre en shell antes del lazy y de cualquier API de comunicaciones", async ({ page }) => {

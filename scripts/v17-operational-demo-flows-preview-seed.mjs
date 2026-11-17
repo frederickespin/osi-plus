@@ -458,19 +458,27 @@ async function seed(prisma) {
   requireCondition(identity?.database === DATABASE && identity.branch === DATABASE_BRANCH, "DATABASE_IDENTITY_INVALID");
   const tenant = await prisma.tenant.findUnique({ where: { code: TENANT_CODE } });
   requireCondition(tenant?.status === "ACTIVE", "TENANT_INVALID");
-  let actorMembership = await prisma.tenantMembership.findFirst({ where: { tenantId: tenant.id, user: { email: "admin-preview-10b@example.invalid" }, status: "ACTIVE" }, include: { user: true } });
+  const adminMemberships = await prisma.tenantMembership.findMany({ where: { tenantId: tenant.id, role: "A", status: "ACTIVE" }, include: { user: true } });
   const evaluatorMembership = await prisma.tenantMembership.findFirst({ where: { tenantId: tenant.id, user: { email: "evaluator-preview-10b@example.invalid" }, status: "ACTIVE" }, include: { user: true } });
-  requireCondition(actorMembership && evaluatorMembership, "ACTORS_INVALID");
-  requireCondition(COMMUNICATION_GRANTS.every((permission) => !actorMembership.deniedPermissions.includes(permission)), "COMMUNICATION_PERMISSION_DENIED");
-  const communicationGrants = [...new Set([...actorMembership.grantedPermissions, ...COMMUNICATION_GRANTS])].sort();
-  if (JSON.stringify([...actorMembership.grantedPermissions].sort()) !== JSON.stringify(communicationGrants)) {
-    activeStage = "COMMUNICATION_PERMISSIONS";
-    actorMembership = await prisma.tenantMembership.update({
-      where: { id: actorMembership.id },
-      data: { grantedPermissions: communicationGrants, authorizationVersion: { increment: 1 } },
-      include: { user: true },
-    });
+  requireCondition(adminMemberships.length > 0 && evaluatorMembership, "ACTORS_INVALID");
+  activeStage = "COMMUNICATION_PERMISSIONS";
+  const authorizedAdmins = [];
+  for (const membership of adminMemberships) {
+    if (COMMUNICATION_GRANTS.some((permission) => membership.deniedPermissions.includes(permission))) {
+      authorizedAdmins.push(membership);
+      continue;
+    }
+    const communicationGrants = [...new Set([...membership.grantedPermissions, ...COMMUNICATION_GRANTS])].sort();
+    authorizedAdmins.push(JSON.stringify([...membership.grantedPermissions].sort()) === JSON.stringify(communicationGrants)
+      ? membership
+      : await prisma.tenantMembership.update({
+        where: { id: membership.id },
+        data: { grantedPermissions: communicationGrants, authorizationVersion: { increment: 1 } },
+        include: { user: true },
+      }));
   }
+  const actorMembership = authorizedAdmins.find((membership) => membership.user.email === "admin-preview-10b@example.invalid");
+  requireCondition(actorMembership, "PRIMARY_ACTOR_INVALID");
   const actor = { membership: actorMembership, user: actorMembership.user };
   const evaluator = { membership: evaluatorMembership, user: evaluatorMembership.user };
   const schedulePolicy = await prisma.surveySchedulePolicyVersion.findFirst({ where: { tenantId: tenant.id, state: "ACTIVE" }, orderBy: { version: "desc" } });

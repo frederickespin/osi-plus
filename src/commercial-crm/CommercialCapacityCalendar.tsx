@@ -10,7 +10,9 @@ import { getMembershipRef } from "@/lib/sessionStore";
 import { createPersonnelPoliciesApi, type PersonnelPoliciesWorkspace } from "@/personnel-policies/api";
 import {
   calculateDayCapacity,
+  carryoverSourceForDate,
   deriveSmartPlans,
+  findCarryoverCapacityViolation,
   loadCalendarOverrides,
   nextAvailableDate,
   saveCalendarOverride,
@@ -47,7 +49,6 @@ const CAPACITY_BADGE = Object.freeze({
 });
 const CAPACITY_BAR = Object.freeze({ AVAILABLE: "bg-emerald-500", LIMITED: "bg-amber-500", OVERLOADED: "bg-red-500" });
 const FIELD = "mt-1 h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm outline-none focus:border-[#0070a8] focus:ring-1 focus:ring-[#0070a8]";
-const DAY_PAGE_SIZE = 6;
 const isoDate = (date: Date) => formatISO(date, { representation: "date" });
 type CalendarView = "DAY" | "WEEK";
 
@@ -91,7 +92,7 @@ export default function CommercialCapacityCalendar({ authorization, onNavigate, 
   const [error, setError] = useState<string | null>(null);
   const [selectedCaseRef, setSelectedCaseRef] = useState<string | null>(null);
   const [draft, setDraft] = useState<CalendarPlanOverride>({});
-  const [dayPage, setDayPage] = useState(0);
+  const [planningError, setPlanningError] = useState<string | null>(null);
 
   const requestWorkspace = useCallback(() => Promise.allSettled([
       api.list({ page: 1, pageSize: 100 }),
@@ -136,9 +137,7 @@ export default function CommercialCapacityCalendar({ authorization, onNavigate, 
     return calculateDayCapacity(date, plans, availablePersonnel(date, personnel), availableVehicles);
   }), [availableVehicles, days, personnel, plans]);
   const selectedCapacity = useMemo(() => calculateDayCapacity(selectedDate, plans, availablePersonnel(selectedDate, personnel), availableVehicles), [availableVehicles, personnel, plans, selectedDate]);
-  const dayPageCount = Math.max(1, Math.ceil(selectedCapacity.plans.length / DAY_PAGE_SIZE));
-  const currentDayPage = Math.min(dayPage, dayPageCount - 1);
-  const visibleDayPlans = selectedCapacity.plans.slice(currentDayPage * DAY_PAGE_SIZE, (currentDayPage + 1) * DAY_PAGE_SIZE);
+  const selectedCarryoverSource = useMemo(() => carryoverSourceForDate(selectedDate, plans, (candidate) => availablePersonnel(candidate, personnel), availableVehicles), [availableVehicles, personnel, plans, selectedDate]);
   const selectedPlan = useMemo(() => plans.find((plan) => plan.caseRef === selectedCaseRef) || null, [plans, selectedCaseRef]);
   const rangeLabel = view === "WEEK" ? `${format(weekStart, "d MMM", { locale: es })} – ${format(endOfWeek(weekStart, { weekStartsOn: 1 }), "d MMM yyyy", { locale: es })}` : format(parseISO(selectedDate), "EEEE d 'de' MMMM yyyy", { locale: es });
   const activePlans = plans.filter((plan) => plan.state !== "PAUSED");
@@ -148,17 +147,28 @@ export default function CommercialCapacityCalendar({ authorization, onNavigate, 
   const openPlan = (plan: SmartServicePlan) => {
     setSelectedCaseRef(plan.caseRef);
     setSelectedDate(plan.plannedDate);
+    setPlanningError(null);
     setDraft({ plannedDate: plan.plannedDate, crew: plan.crew, durationHours: plan.durationHours, vehicles: plan.vehicles, state: plan.state });
   };
-  const updateDraft = <K extends keyof CalendarPlanOverride>(key: K, value: CalendarPlanOverride[K]) => setDraft((current) => ({ ...current, [key]: value }));
+  const updateDraft = <K extends keyof CalendarPlanOverride>(key: K, value: CalendarPlanOverride[K]) => {
+    setPlanningError(null);
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
   const savePlan = () => {
     if (!selectedPlan || !draft.plannedDate || !draft.crew || !draft.durationHours || !draft.vehicles || !draft.state) return;
+    const candidatePlans = plans.map((plan) => plan.caseRef === selectedPlan.caseRef ? { ...plan, plannedDate: draft.plannedDate!, crew: draft.crew!, durationHours: draft.durationHours!, vehicles: draft.vehicles!, state: draft.state! } : plan);
+    const violation = findCarryoverCapacityViolation(candidatePlans, (candidate) => availablePersonnel(candidate, personnel), availableVehicles);
+    if (violation) {
+      setPlanningError(`No se puede guardar: después del día rojo ${format(parseISO(violation.sourceDate), "d MMM", { locale: es })}, el siguiente día laborable quedaría en ${violation.protectedUtilizationPercent}%. El máximo permitido es 80%.`);
+      return;
+    }
     const next = saveCalendarOverride(selectedPlan.caseRef, draft);
     setOverrides(next);
     setSelectedDate(draft.plannedDate);
   };
   const suggestDate = () => {
     if (!selectedPlan) return;
+    setPlanningError(null);
     const date = nextAvailableDate(selectedPlan, plans, (candidate) => availablePersonnel(candidate, personnel), availableVehicles, today);
     if (date) updateDraft("plannedDate", date);
   };
@@ -166,11 +176,11 @@ export default function CommercialCapacityCalendar({ authorization, onNavigate, 
     setWeekStart(planningAnchor);
     setSelectedDate(isoDate(today));
     setSelectedCaseRef(null);
-    setDayPage(0);
+    setPlanningError(null);
   };
   const movePeriod = (direction: -1 | 1) => {
     setSelectedCaseRef(null);
-    setDayPage(0);
+    setPlanningError(null);
     if (view === "WEEK") {
       setWeekStart((value) => direction < 0 ? subWeeks(value, 1) : addWeeks(value, 1));
       return;
@@ -180,12 +190,12 @@ export default function CommercialCapacityCalendar({ authorization, onNavigate, 
     setWeekStart(startOfWeek(nextDate, { weekStartsOn: 1 }));
   };
 
-  const planEditor = selectedPlan ? <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/20"><button type="button" aria-label="Cerrar edición" onClick={() => setSelectedCaseRef(null)} className="min-w-0 flex-1" /><aside className="h-full w-full max-w-sm border-l border-slate-200 bg-white p-4 shadow-2xl"><div className="mb-3 flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-wide text-[#0070a8]">{selectedPlan.caseCode}</p><h2 className="text-base font-black text-slate-900">{selectedPlan.clientName}</h2><p className="text-[11px] text-slate-500">{stateNote(selectedPlan)}</p></div><button type="button" aria-label="Cerrar edición" onClick={() => setSelectedCaseRef(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded border border-slate-200"><X className="h-4 w-4" /></button></div><div className="grid grid-cols-2 gap-2"><label className="col-span-2 text-[11px] font-bold text-slate-600">Fecha prevista<input type="date" value={draft.plannedDate || ""} onChange={(event) => updateDraft("plannedDate", event.target.value)} className={FIELD} /></label><label className="text-[11px] font-bold text-slate-600">Personal<NumericInput min="1" max="99" step="1" value={draft.crew || ""} onChange={(event) => updateDraft("crew", Number(event.target.value))} className={FIELD} /></label><label className="text-[11px] font-bold text-slate-600">Duración (h)<NumericInput min="0.5" max="72" step="0.5" value={draft.durationHours || ""} onChange={(event) => updateDraft("durationHours", Number(event.target.value))} className={FIELD} /></label><label className="text-[11px] font-bold text-slate-600">Vehículos<NumericInput min="1" max="20" step="1" value={draft.vehicles || ""} onChange={(event) => updateDraft("vehicles", Number(event.target.value))} className={FIELD} /></label><label className="text-[11px] font-bold text-slate-600">Reserva<select value={draft.state || ""} onChange={(event) => updateDraft("state", event.target.value as CalendarPlanState)} className={FIELD}>{Object.entries(SMART_CALENDAR_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div><div className="mt-3 rounded bg-slate-50 p-2 text-[11px] leading-5 text-slate-600"><p><strong>Origen:</strong> {selectedPlan.origin}</p><p><strong>Destino:</strong> {selectedPlan.destination}</p></div><div className="mt-3 flex flex-wrap justify-end gap-2"><button type="button" onClick={suggestDate} className="h-9 rounded border border-sky-200 px-3 text-xs font-bold text-[#0070a8]">Sugerir fecha</button><button type="button" onClick={savePlan} className="h-9 rounded bg-[#003366] px-3 text-xs font-bold text-white">Guardar planificación</button></div><button type="button" onClick={() => onNavigate(`/commercial/cases/${selectedPlan.caseRef}`)} className="mt-3 w-full text-center text-xs font-bold text-[#0070a8] hover:underline">Abrir ficha del caso</button></aside></div> : null;
+  const planEditor = selectedPlan ? <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/20"><button type="button" aria-label="Cerrar edición" onClick={() => setSelectedCaseRef(null)} className="min-w-0 flex-1" /><aside className="h-full w-full max-w-sm border-l border-slate-200 bg-white p-4 shadow-2xl"><div className="mb-3 flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-wide text-[#0070a8]">{selectedPlan.caseCode}</p><h2 className="text-base font-black text-slate-900">{selectedPlan.clientName}</h2><p className="text-[11px] text-slate-500">{stateNote(selectedPlan)}</p></div><button type="button" aria-label="Cerrar edición" onClick={() => setSelectedCaseRef(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded border border-slate-200"><X className="h-4 w-4" /></button></div>{planningError && <div role="alert" className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-[11px] leading-4 text-red-700">{planningError}</div>}<div className="grid grid-cols-2 gap-2"><label className="col-span-2 text-[11px] font-bold text-slate-600">Fecha prevista<input type="date" value={draft.plannedDate || ""} onChange={(event) => updateDraft("plannedDate", event.target.value)} className={FIELD} /></label><label className="text-[11px] font-bold text-slate-600">Personal<NumericInput min="1" max="99" step="1" value={draft.crew || ""} onChange={(event) => updateDraft("crew", Number(event.target.value))} className={FIELD} /></label><label className="text-[11px] font-bold text-slate-600">Duración (h)<NumericInput min="0.5" max="72" step="0.5" value={draft.durationHours || ""} onChange={(event) => updateDraft("durationHours", Number(event.target.value))} className={FIELD} /></label><label className="text-[11px] font-bold text-slate-600">Vehículos<NumericInput min="1" max="20" step="1" value={draft.vehicles || ""} onChange={(event) => updateDraft("vehicles", Number(event.target.value))} className={FIELD} /></label><label className="text-[11px] font-bold text-slate-600">Reserva<select value={draft.state || ""} onChange={(event) => updateDraft("state", event.target.value as CalendarPlanState)} className={FIELD}>{Object.entries(SMART_CALENDAR_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div><div className="mt-3 rounded bg-slate-50 p-2 text-[11px] leading-5 text-slate-600"><p><strong>Origen:</strong> {selectedPlan.origin}</p><p><strong>Destino:</strong> {selectedPlan.destination}</p></div><div className="mt-3 flex flex-wrap justify-end gap-2"><button type="button" onClick={suggestDate} className="h-9 rounded border border-sky-200 px-3 text-xs font-bold text-[#0070a8]">Sugerir fecha</button><button type="button" onClick={savePlan} className="h-9 rounded bg-[#003366] px-3 text-xs font-bold text-white">Guardar planificación</button></div><button type="button" onClick={() => onNavigate(`/commercial/cases/${selectedPlan.caseRef}`)} className="mt-3 w-full text-center text-xs font-bold text-[#0070a8] hover:underline">Abrir ficha del caso</button></aside></div> : null;
 
   return <section className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f4f7fb]" data-testid="smart-service-calendar">
     <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-2 sm:px-5">
       <div><p className="text-[9px] font-black uppercase tracking-[.18em] text-[#0070a8]">Planificación operativa</p><h1 className="text-lg font-black leading-tight text-[#003366]">Calendario inteligente</h1><p className="text-[10px] text-slate-500">Capacidad por volumen, etapa y recursos disponibles.</p></div>
-      <div className="flex items-center gap-2"><div className="flex rounded-lg bg-slate-100 p-1" aria-label="Vista del calendario"><button type="button" aria-pressed={view === "DAY"} onClick={() => { setView("DAY"); setDayPage(0); }} className={`h-8 rounded-md px-3 text-xs font-bold ${view === "DAY" ? "bg-white text-[#003366] shadow-sm" : "text-slate-500"}`}>Día</button><button type="button" aria-pressed={view === "WEEK"} onClick={() => setView("WEEK")} className={`h-8 rounded-md px-3 text-xs font-bold ${view === "WEEK" ? "bg-white text-[#003366] shadow-sm" : "text-slate-500"}`}>Semana</button></div><button type="button" onClick={() => void load()} disabled={loading} aria-label="Actualizar calendario" className="grid h-9 w-9 place-items-center rounded border border-slate-300 bg-white text-[#003366] disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></button></div>
+      <div className="flex items-center gap-2"><div className="flex rounded-lg bg-slate-100 p-1" aria-label="Vista del calendario"><button type="button" aria-pressed={view === "DAY"} onClick={() => setView("DAY")} className={`h-8 rounded-md px-3 text-xs font-bold ${view === "DAY" ? "bg-white text-[#003366] shadow-sm" : "text-slate-500"}`}>Día</button><button type="button" aria-pressed={view === "WEEK"} onClick={() => setView("WEEK")} className={`h-8 rounded-md px-3 text-xs font-bold ${view === "WEEK" ? "bg-white text-[#003366] shadow-sm" : "text-slate-500"}`}>Semana</button></div><button type="button" onClick={() => void load()} disabled={loading} aria-label="Actualizar calendario" className="grid h-9 w-9 place-items-center rounded border border-slate-300 bg-white text-[#003366] disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></button></div>
     </header>
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3">
       {error && <div role="alert" className="mb-2 shrink-0 rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">{error}</div>}
@@ -202,29 +212,30 @@ export default function CommercialCapacityCalendar({ authorization, onNavigate, 
           <strong className="text-sm capitalize text-[#003366]">{rangeLabel}</strong>
           <div className="flex flex-wrap items-center gap-1 text-[10px] font-bold"><span className="rounded bg-emerald-100 px-2 py-1 text-emerald-700">0–49%</span><span className="rounded bg-amber-100 px-2 py-1 text-amber-800">50–79%</span><span className="rounded bg-red-100 px-2 py-1 text-red-700">80% o más</span><span className="rounded bg-slate-100 px-2 py-1 text-slate-600">Reserva 15%</span></div>
         </div>
-        {view === "WEEK" ? <div className="grid min-h-0 flex-1 grid-cols-7 gap-px overflow-hidden bg-slate-200">
+        {view === "WEEK" ? <div className="grid min-h-0 flex-1 grid-cols-7 items-start gap-px overflow-hidden bg-white">
           {dayCapacities.map((capacity, index) => {
             const day = days[index];
             const selected = capacity.date === selectedDate;
-            return <article key={capacity.date} className={`min-h-0 overflow-hidden border ${DAY_STYLE[capacity.status]} ${selected ? "ring-2 ring-inset ring-[#0070a8]" : ""}`}>
-              <button type="button" onClick={() => { setSelectedDate(capacity.date); setSelectedCaseRef(null); setDayPage(0); setView("DAY"); }} aria-label={`${format(day, "EEEE d 'de' MMMM", { locale: es })}: ${capacity.plans.length} servicios, ${capacity.utilizationPercent}% de capacidad`} className="w-full p-2 text-left">
+            const carryoverSource = carryoverSourceForDate(capacity.date, plans, (candidate) => availablePersonnel(candidate, personnel), availableVehicles);
+            return <article key={capacity.date} className={`min-h-0 overflow-hidden rounded-b border border-slate-200 bg-white ${selected ? "ring-2 ring-inset ring-[#0070a8]" : ""}`}>
+              <button type="button" onClick={() => { setSelectedDate(capacity.date); setSelectedCaseRef(null); setView("DAY"); }} aria-label={`${format(day, "EEEE d 'de' MMMM", { locale: es })}: ${capacity.plans.length} servicios, ${capacity.utilizationPercent}% de capacidad`} className={`w-full p-2 text-left ${DAY_STYLE[capacity.status]}`}>
                 <div className="flex items-start justify-between gap-1"><span><strong className="block text-xs capitalize text-slate-800">{format(day, "EEE", { locale: es })}</strong><span className={`text-lg font-black ${isSameDay(day, today) ? "text-[#0070a8]" : "text-slate-800"}`}>{format(day, "d")}</span></span><span className={`rounded px-1.5 py-0.5 text-[10px] font-black ${CAPACITY_BADGE[capacity.status]}`}>{Math.min(capacity.utilizationPercent, 999)}%</span></div>
                 <div className="mt-2 h-1.5 overflow-hidden rounded bg-white/80"><span className={`block h-full ${CAPACITY_BAR[capacity.status]}`} style={{ width: `${Math.min(100, capacity.utilizationPercent)}%` }} /></div>
                 <p className="mt-2 text-[10px] text-slate-600">{Math.round(capacity.weightedPersonHours)}/{Math.round(capacity.personHoursAvailable)} h-persona</p><p className="text-[10px] text-slate-600">{capacity.vehiclesRequired}/{capacity.vehiclesAvailable} vehículos · {capacity.plans.length} servicios</p>
+                {carryoverSource && <span className="mt-1 inline-flex rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700">Tope 80% por arrastre</span>}
               </button>
-              <div className="space-y-1 border-t border-white/80 p-1.5">{capacity.plans.length === 0 ? <p className="py-2 text-center text-[10px] text-slate-400">Sin servicios</p> : capacity.plans.slice(0, 3).map((plan) => <button key={plan.caseRef} type="button" onClick={() => openPlan(plan)} className={`w-full rounded border border-white/90 bg-white/80 px-1.5 py-1 text-left hover:bg-white ${selectedCaseRef === plan.caseRef ? "ring-1 ring-[#0070a8]" : ""}`}><strong className="block truncate text-[10px] text-[#003366]">{plan.caseCode}</strong><span className="block truncate text-[9px] text-slate-600">{plan.clientName}</span></button>)}{capacity.plans.length > 3 && <button type="button" onClick={() => { setSelectedDate(capacity.date); setDayPage(0); setView("DAY"); }} className="w-full text-center text-[9px] font-bold text-[#0070a8]">+{capacity.plans.length - 3} servicios</button>}</div>
+              <div className="space-y-1 border-t border-slate-100 p-1.5">{capacity.plans.length === 0 ? <p className="py-2 text-center text-[10px] text-slate-400">Sin servicios</p> : capacity.plans.map((plan) => <button key={plan.caseRef} type="button" onClick={() => openPlan(plan)} className={`w-full rounded border border-slate-100 bg-slate-50 px-1.5 py-1 text-left hover:bg-sky-50 ${selectedCaseRef === plan.caseRef ? "ring-1 ring-[#0070a8]" : ""}`}><strong className="block truncate text-[10px] text-[#003366]">{plan.caseCode}</strong><span className="block truncate text-[9px] text-slate-600">{plan.clientName}</span></button>)}</div>
             </article>;
           })}
         </div> : <div className={`border p-3 ${DAY_STYLE[selectedCapacity.status]}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Capacidad del día</p><strong className="text-lg capitalize text-[#003366]">{format(parseISO(selectedDate), "EEEE d 'de' MMMM", { locale: es })}</strong><p className="text-xs text-slate-600">{Math.round(selectedCapacity.weightedPersonHours)}/{Math.round(selectedCapacity.personHoursAvailable)} h-persona · {selectedCapacity.vehiclesRequired}/{selectedCapacity.vehiclesAvailable} vehículos · {selectedCapacity.plans.length} servicios</p></div><div className="min-w-40"><div className="flex items-center justify-between gap-2"><span className={`rounded px-2 py-1 text-[10px] font-black ${CAPACITY_BADGE[selectedCapacity.status]}`}>{capacityLabel(selectedCapacity)}</span><strong className="text-lg text-slate-800">{selectedCapacity.utilizationPercent}%</strong></div><div className="mt-2 h-2 overflow-hidden rounded bg-white/80"><span className={`block h-full ${CAPACITY_BAR[selectedCapacity.status]}`} style={{ width: `${Math.min(100, selectedCapacity.utilizationPercent)}%` }} /></div></div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Capacidad del día</p><strong className="text-lg capitalize text-[#003366]">{format(parseISO(selectedDate), "EEEE d 'de' MMMM", { locale: es })}</strong><p className="text-xs text-slate-600">{Math.round(selectedCapacity.weightedPersonHours)}/{Math.round(selectedCapacity.personHoursAvailable)} h-persona · {selectedCapacity.vehiclesRequired}/{selectedCapacity.vehiclesAvailable} vehículos · {selectedCapacity.plans.length} servicios</p>{selectedCarryoverSource && <span className="mt-1 inline-flex rounded bg-red-100 px-2 py-0.5 text-[9px] font-bold text-red-700">Tope 80% por arrastre del día anterior</span>}</div><div className="min-w-40"><div className="flex items-center justify-between gap-2"><span className={`rounded px-2 py-1 text-[10px] font-black ${CAPACITY_BADGE[selectedCapacity.status]}`}>{capacityLabel(selectedCapacity)}</span><strong className="text-lg text-slate-800">{selectedCapacity.utilizationPercent}%</strong></div><div className="mt-2 h-2 overflow-hidden rounded bg-white/80"><span className={`block h-full ${CAPACITY_BAR[selectedCapacity.status]}`} style={{ width: `${Math.min(100, selectedCapacity.utilizationPercent)}%` }} /></div></div></div>
         </div>}
       </div>
 
       {view === "DAY" ? <div className="mt-2 min-h-0 flex-1">
         <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2"><div><h2 className="text-sm font-black text-[#003366]">Servicios del día</h2><p className="text-[11px] text-slate-500">Seleccione uno para revisar o ajustar su planificación.</p></div><span className={`rounded px-2 py-1 text-[10px] font-black ${CAPACITY_BADGE[selectedCapacity.status]}`}>{capacityLabel(selectedCapacity)}</span></div>
-          {selectedCapacity.plans.length === 0 ? <p className="grid flex-1 place-items-center text-sm text-slate-500">No hay servicios previstos para este día.</p> : <div className="min-h-0 flex-1 divide-y overflow-hidden">{visibleDayPlans.map((plan) => <button key={plan.caseRef} type="button" onClick={() => openPlan(plan)} className={`grid w-full gap-2 px-3 py-2 text-left hover:bg-sky-50 sm:grid-cols-[minmax(0,1fr)_auto_auto] ${selectedCaseRef === plan.caseRef ? "bg-sky-50" : ""}`}><span className="min-w-0"><strong className="block truncate text-sm text-slate-900">{plan.caseCode} · {plan.clientName}</strong><span className="block truncate text-[11px] text-slate-500">{plan.serviceType} · {plan.volumeM3.toFixed(1)} m³ · {plan.sourceLabel}</span></span><span className="text-[11px] font-semibold text-slate-600">{plan.crew} personas × {plan.durationHours} h<br />{plan.vehicles} vehículo(s)</span><span className={`self-center rounded px-2 py-1 text-[10px] font-bold ${STATE_STYLE[plan.state]}`}>{SMART_CALENDAR_LABELS[plan.state]}</span></button>)}</div>}
-          {dayPageCount > 1 && <div className="flex shrink-0 items-center justify-between border-t px-3 py-1.5"><span className="text-[10px] text-slate-500">Página {currentDayPage + 1} de {dayPageCount}</span><div className="flex gap-1"><button type="button" aria-label="Página anterior de servicios" disabled={currentDayPage === 0} onClick={() => setDayPage((value) => Math.max(0, value - 1))} className="grid h-7 w-7 place-items-center rounded border disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" /></button><button type="button" aria-label="Página siguiente de servicios" disabled={currentDayPage >= dayPageCount - 1} onClick={() => setDayPage((value) => Math.min(dayPageCount - 1, value + 1))} className="grid h-7 w-7 place-items-center rounded border disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button></div></div>}
+          {selectedCapacity.plans.length === 0 ? <p className="grid flex-1 place-items-center text-sm text-slate-500">No hay servicios previstos para este día.</p> : <div className="min-h-0 flex-1 divide-y">{selectedCapacity.plans.map((plan) => <button key={plan.caseRef} type="button" onClick={() => openPlan(plan)} className={`grid w-full gap-2 px-3 py-1.5 text-left hover:bg-sky-50 sm:grid-cols-[minmax(0,1fr)_auto_auto] ${selectedCaseRef === plan.caseRef ? "bg-sky-50" : ""}`}><span className="min-w-0"><strong className="block truncate text-sm text-slate-900">{plan.caseCode} · {plan.clientName}</strong><span className="block truncate text-[11px] text-slate-500">{plan.serviceType} · {plan.volumeM3.toFixed(1)} m³ · {plan.sourceLabel}</span></span><span className="text-[11px] font-semibold text-slate-600">{plan.crew} personas × {plan.durationHours} h · {plan.vehicles} vehículo(s)</span><span className={`self-center rounded px-2 py-1 text-[10px] font-bold ${STATE_STYLE[plan.state]}`}>{SMART_CALENDAR_LABELS[plan.state]}</span></button>)}</div>}
         </section>
       </div> : null}
       {planEditor}

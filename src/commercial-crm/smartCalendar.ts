@@ -42,6 +42,12 @@ export type DayCapacity = Readonly<{
   status: "AVAILABLE" | "LIMITED" | "OVERLOADED";
 }>;
 
+export type CarryoverCapacityViolation = Readonly<{
+  sourceDate: string;
+  protectedDate: string;
+  protectedUtilizationPercent: number;
+}>;
+
 const STORAGE_KEY = "osi-plus.preview.smart-calendar.v1";
 const STATE_WEIGHTS: Readonly<Record<CalendarPlanState, number>> = Object.freeze({
   ESTIMATED: 0.25,
@@ -170,6 +176,45 @@ export function calculateDayCapacity(date: string, plans: readonly SmartServiceP
 
 function parseISODate(value: string) {
   return new Date(`${value}T00:00:00`);
+}
+
+export function nextWorkingDate(value: string) {
+  let candidate = addDays(parseISODate(value), 1);
+  while (candidate.getDay() === 0 || candidate.getDay() === 6) candidate = addDays(candidate, 1);
+  return isoDate(candidate);
+}
+
+export function carryoverSourceForDate(date: string, plans: readonly SmartServicePlan[], availablePeople: number | ((candidate: string) => number), availableVehicles: number | ((candidate: string) => number)) {
+  for (let offset = 1; offset <= 3; offset += 1) {
+    const candidate = isoDate(addDays(parseISODate(date), -offset));
+    if (nextWorkingDate(candidate) !== date) continue;
+    const people = typeof availablePeople === "function" ? availablePeople(candidate) : availablePeople;
+    const vehicles = typeof availableVehicles === "function" ? availableVehicles(candidate) : availableVehicles;
+    if (calculateDayCapacity(candidate, plans, people, vehicles).status === "OVERLOADED") return candidate;
+  }
+  return null;
+}
+
+export function findCarryoverCapacityViolation(plans: readonly SmartServicePlan[], availablePeople: number | ((candidate: string) => number), availableVehicles: number | ((candidate: string) => number)): CarryoverCapacityViolation | null {
+  if (plans.length === 0) return null;
+  const first = plans.reduce((earliest, plan) => plan.plannedDate < earliest ? plan.plannedDate : earliest, plans[0].plannedDate);
+  const last = plans.reduce((latest, plan) => {
+    const finalDay = isoDate(addDays(parseISODate(plan.plannedDate), Math.max(0, Math.ceil(plan.durationHours / 8) - 1)));
+    return finalDay > latest ? finalDay : latest;
+  }, plans[0].plannedDate);
+  const days = Math.ceil((parseISODate(last).getTime() - parseISODate(first).getTime()) / 86_400_000) + 1;
+  for (let offset = 0; offset < days; offset += 1) {
+    const sourceDate = isoDate(addDays(parseISODate(first), offset));
+    const people = typeof availablePeople === "function" ? availablePeople(sourceDate) : availablePeople;
+    const vehicles = typeof availableVehicles === "function" ? availableVehicles(sourceDate) : availableVehicles;
+    if (calculateDayCapacity(sourceDate, plans, people, vehicles).status !== "OVERLOADED") continue;
+    const protectedDate = nextWorkingDate(sourceDate);
+    const protectedPeople = typeof availablePeople === "function" ? availablePeople(protectedDate) : availablePeople;
+    const protectedVehicles = typeof availableVehicles === "function" ? availableVehicles(protectedDate) : availableVehicles;
+    const protectedCapacity = calculateDayCapacity(protectedDate, plans, protectedPeople, protectedVehicles);
+    if (protectedCapacity.utilizationPercent > 80) return { sourceDate, protectedDate, protectedUtilizationPercent: protectedCapacity.utilizationPercent };
+  }
+  return null;
 }
 
 export function nextAvailableDate(plan: SmartServicePlan, plans: readonly SmartServicePlan[], availablePeople: number | ((date: string) => number), availableVehicles: number | ((date: string) => number), anchor = new Date()) {

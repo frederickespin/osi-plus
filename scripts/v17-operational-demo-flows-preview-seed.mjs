@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { calculateLogistics, publishLogistics } from "../api/_lib/logisticsEngineDomain.js";
 import { canonicalHash as logisticsHash } from "../api/_lib/logisticsEngineContract.js";
@@ -24,6 +25,24 @@ let activeStage = "BOOT";
 
 function requireCondition(condition, code) {
   if (!condition) throw new Error(`OPERATIONAL_DEMO_FLOWS_SEED_${code}`);
+}
+
+async function resetPreviewAdminPassword(prisma, membership, env = process.env) {
+  const password = env.V17_PREVIEW_ADMIN_PASSWORD_RESET;
+  if (password === undefined || password === "DISABLED") return membership;
+  requireCondition(typeof password === "string"
+    && password.length >= 24
+    && password.length <= 96
+    && /^[A-Za-z0-9_-]+$/u.test(password), "ADMIN_PASSWORD_RESET_INVALID");
+  const passwordHash = await bcrypt.hash(password, 10);
+  return prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: membership.userId }, data: { passwordHash } });
+    return tx.tenantMembership.update({
+      where: { id: membership.id },
+      data: { authorizationVersion: { increment: 1 } },
+      include: { user: true },
+    });
+  });
 }
 
 function sha(value) {
@@ -477,8 +496,9 @@ async function seed(prisma) {
         include: { user: true },
       }));
   }
-  const actorMembership = authorizedAdmins.find((membership) => membership.user.email === "admin-preview-10b@example.invalid");
+  let actorMembership = authorizedAdmins.find((membership) => membership.user.email === "admin-preview-10b@example.invalid");
   requireCondition(actorMembership, "PRIMARY_ACTOR_INVALID");
+  actorMembership = await resetPreviewAdminPassword(prisma, actorMembership);
   const actor = { membership: actorMembership, user: actorMembership.user };
   const evaluator = { membership: evaluatorMembership, user: evaluatorMembership.user };
   const schedulePolicy = await prisma.surveySchedulePolicyVersion.findFirst({ where: { tenantId: tenant.id, state: "ACTIVE" }, orderBy: { version: "desc" } });

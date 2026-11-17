@@ -22,7 +22,8 @@ const cases = [
   ["frontera económica mezclada", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Costos aplica el tarifario versionado", "Servicios fija el precio")],
   ["sin flujo guiado", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('label: "Movimientos"', 'label: "Todo junto"')],
   ["sin pestaña activa", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('bg-[#003366] text-white', 'bg-white text-slate-600')],
-  ["procesos reunificados", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('activeView={activeStage === "agreement" ? "agreement" : activeStage === "movements" ? "authorization" : "requirement"}', 'activeView="requirement"')],
+  ["procesos reunificados", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('activeView={activeStage === "movements" ? "authorization" : "requirement"}', 'activeView="requirement"')],
+  ["contrato duplicado", "src/commercial-crm/CommercialCaseDetail.tsx", (s) => s.replace('activeTab === "CONTRACT"', 'activeTab === "SERVICES"')],
 ];
 assert.equal(validateV17ServicesTenantFirst().ok, true);
 for (const [name, path, mutate] of cases) {

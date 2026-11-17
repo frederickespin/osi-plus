@@ -23,13 +23,13 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.doesNotMatch(tabs, /LOGISTICS|Motor Logístico/, "Motor no puede ser tab de Comercial");
   assert.doesNotMatch(detail, /LogisticsPlanPanel/, "Comercial no puede importar el workspace operativo del Motor");
   assert.doesNotMatch(overview, /onSelectTab\(["']LOGISTICS["']\)|Motor Logístico[^\n]*button/, "el resumen no puede abrir Motor manualmente");
-  assert.match(tabs, /\["SERVICES", "Servicios"[\s\S]*\["SURVEY", "Survey"[\s\S]*\["QUOTE", "Cotización"/, "flujo comercial consolidado ausente");
+  assert.match(tabs, /\["SERVICES", "Servicios"[\s\S]*\["SURVEY", "Survey"[\s\S]*\["QUOTE", "Cotización"[\s\S]*\["CONTRACT", "Contrato"/, "flujo comercial consolidado ausente");
   assert.doesNotMatch(tabs, /SUMMARY|Resumen/, "Resumen pertenece al selector de casos y no a la Ficha completa");
   assert.doesNotMatch(detail, /CaseWorkflowOverview/, "la Ficha no puede duplicar el flujo anterior");
   assert.doesNotMatch(tabs, /\["COSTING", "Costos"/, "Costos debe permanecer dentro de Cotización");
   assert.match(detail, /Etapas de Cotización/);
   assert.match(detail, /Costos internos/);
-  assert.match(detail, /FUTURE_TABS[\s\S]*Contrato[\s\S]*Ejecución[\s\S]*Cambios[\s\S]*Facturación/);
+  assert.match(detail, /FUTURE_TABS[\s\S]*Ejecución[\s\S]*Cambios[\s\S]*Facturación/);
   assert.match(inbox, /Resumen general de servicios/);
   assert.match(inbox, /Alertas generales/);
   assert.doesNotMatch(inbox, /Control del equipo/);

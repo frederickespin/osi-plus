@@ -6,7 +6,7 @@ import CommercialStorageAuthorizationPanel from "@/customer-custody/CommercialSt
 import QuickQuoteConfigurator from "./QuickQuoteConfigurator";
 
 type Props = Readonly<{ caseRef: string; authorization?: string; canUpdate: boolean; canConfigure?: boolean; canViewConfiguration?: boolean; onUnauthorized(): void }>;
-type GuidedStage = "plan" | "agreement" | "movements" | "configuration";
+type GuidedStage = "plan" | "movements" | "configuration";
 function errorCopy(error: unknown) {
   const code = error instanceof CrmServicesApiError ? error.code : "CRM_SERVICES_UNAVAILABLE";
   return ({ CRM_SERVICES_VERSION_CONFLICT: "El plan cambió. Recargue antes de guardar una nueva versión.", CRM_SERVICES_PRIMARY_INCOMPATIBLE: "La necesidad principal ya no es compatible con el modo del caso.", CRM_SERVICES_COMPLEMENTARY_NOT_ALLOWED: "Un servicio asociado ya no está permitido para la necesidad principal.", CRM_SERVICES_DISABLED: "Servicios permanece desactivado en este entorno." } as Record<string, string>)[code] || "No fue posible cargar o guardar el plan de Servicios.";
@@ -60,7 +60,7 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
     return configuration.packages.filter((item) => [item.primary, ...item.complementaries].filter(Boolean).every((service) => Boolean(service && selectedCodes.has(service.code))));
   }, [configuration, workspace]);
   useEffect(() => {
-    if ((!storageSelected && ["agreement", "movements"].includes(activeStage)) || (!canViewConfiguration && activeStage === "configuration")) setActiveStage("plan");
+    if ((!storageSelected && activeStage === "movements") || (!canViewConfiguration && activeStage === "configuration")) setActiveStage("plan");
   }, [activeStage, canViewConfiguration, storageSelected]);
   const primaryChanged = Boolean(workspace?.selection.primary?.serviceRef && primaryRef && workspace.selection.primary.serviceRef !== primaryRef);
   const changePrimary = (next: string) => {
@@ -94,13 +94,12 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
   if (!workspace) return null;
   const stages: readonly { id: GuidedStage; label: string; disabled: boolean }[] = [
     { id: "plan", label: "Plan", disabled: false },
-    { id: "agreement", label: "Contrato", disabled: !storageSelected },
     { id: "movements", label: "Movimientos", disabled: !storageSelected },
     { id: "configuration", label: "Configuración", disabled: !canViewConfiguration },
   ];
   return <section role="tabpanel" aria-labelledby="services-tab" className="w-full p-4" data-testid="case-services-panel">
     <header className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#0070a8]">Flujo comercial del almacenaje</p><h2 className="mt-1 text-xl font-black text-[#003366]">Servicios y almacenaje</h2><p className="mt-1 text-xs text-slate-500">Cada proceso se trabaja en una pantalla independiente; el estado general permanece visible.</p></div><span className="flex items-center gap-1 rounded bg-sky-50 px-2 py-1 text-xs font-bold text-sky-800"><Layers3 className="h-4 w-4" />{workspace.selection.revision ? `Plan V${workspace.selection.revision}` : "Plan sin publicar"}</span></header>
-    <nav role="tablist" aria-label="Flujo guiado de almacenaje" className="mt-3 grid grid-cols-4 gap-1 border-y border-slate-200 py-1">
+    <nav role="tablist" aria-label="Flujo guiado de almacenaje" className="mt-3 grid grid-cols-3 gap-1 border-y border-slate-200 py-1">
       {stages.map((stage) => <button key={stage.id} id={`storage-${stage.id}-tab`} role="tab" type="button" aria-selected={activeStage === stage.id} aria-controls={`storage-${stage.id}-panel`} disabled={stage.disabled} onClick={() => setActiveStage(stage.id)} className={`min-h-10 rounded px-2 text-[11px] font-bold transition-colors sm:text-sm ${activeStage === stage.id ? "bg-[#003366] text-white shadow-sm" : "bg-white text-slate-600 hover:bg-slate-100 disabled:bg-slate-50 disabled:text-slate-300"}`}>{stage.label}</button>)}
     </nav>
     <div id={activeStage === "configuration" ? undefined : `storage-${activeStage}-panel`} role={activeStage === "configuration" ? undefined : "tabpanel"} aria-labelledby={activeStage === "configuration" ? undefined : `storage-${activeStage}-tab`} hidden={activeStage === "configuration"} className={activeStage === "plan" ? "mt-4 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,.75fr)]" : "mt-4"}>
@@ -120,7 +119,7 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
     <footer className="mt-4 flex justify-end"><Button disabled={!canUpdate || !dirty || !primaryRef || saving} onClick={() => void save()}><Save />{saving ? "Guardando…" : workspace.selection.revision ? `Guardar Plan V${workspace.selection.revision + 1}` : "Crear plan de servicios"}</Button></footer>
       </div>
       <div className="min-w-0">
-        <CommercialStorageAuthorizationPanel caseRef={caseRef} selectionRef={workspace.selection.selectionRef} primary={workspace.selection.primary} complementaries={workspace.selection.complementaries} authorization={authorization} canAuthorize={canUpdate} activeView={activeStage === "agreement" ? "agreement" : activeStage === "movements" ? "authorization" : "requirement"} compactRequirement={activeStage === "plan"} />
+        <CommercialStorageAuthorizationPanel caseRef={caseRef} selectionRef={workspace.selection.selectionRef} primary={workspace.selection.primary} complementaries={workspace.selection.complementaries} authorization={authorization} canAuthorize={canUpdate} activeView={activeStage === "movements" ? "authorization" : "requirement"} compactRequirement={activeStage === "plan"} />
       </div>
     </div>
     <div id="storage-configuration-panel" role="tabpanel" aria-labelledby="storage-configuration-tab" hidden={activeStage !== "configuration"}>

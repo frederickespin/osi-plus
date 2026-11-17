@@ -11,6 +11,7 @@ import { calculateCosting, publishCosting } from "../api/_lib/costingDomain.js";
 import { costingHash } from "../api/_lib/costingContract.js";
 import { createQuoteProposal, publishQuoteProposal, recordQuoteDecision, sendQuoteProposal } from "../api/_lib/quoteDomain.js";
 import { quoteHash } from "../api/_lib/quoteContract.js";
+import { COMMUNICATION_PERMISSIONS } from "../api/_lib/communicationsDomain.js";
 import { isV17ConsolidatedPreviewBranch } from "../shared/v17ConsolidatedPreview.js";
 
 export const OPERATIONAL_DEMO_FLOWS_SEED_OPERATION = "V17_OPERATIONAL_DEMO_FLOWS_SEED";
@@ -18,6 +19,7 @@ const DATABASE = "v17_consolidated_preview_10b";
 const DATABASE_BRANCH = "br-bitter-mountain-ahs311pu";
 const TENANT_CODE = "V17-CONSOLIDATED-PREVIEW-10B";
 const DEMO_FLAG = "DEMO_OPERATIONAL_FLOW";
+const COMMUNICATION_GRANTS = Object.freeze(Object.values(COMMUNICATION_PERMISSIONS));
 let activeStage = "BOOT";
 
 function requireCondition(condition, code) {
@@ -456,9 +458,19 @@ async function seed(prisma) {
   requireCondition(identity?.database === DATABASE && identity.branch === DATABASE_BRANCH, "DATABASE_IDENTITY_INVALID");
   const tenant = await prisma.tenant.findUnique({ where: { code: TENANT_CODE } });
   requireCondition(tenant?.status === "ACTIVE", "TENANT_INVALID");
-  const actorMembership = await prisma.tenantMembership.findFirst({ where: { tenantId: tenant.id, user: { email: "admin-preview-10b@example.invalid" }, status: "ACTIVE" }, include: { user: true } });
+  let actorMembership = await prisma.tenantMembership.findFirst({ where: { tenantId: tenant.id, user: { email: "admin-preview-10b@example.invalid" }, status: "ACTIVE" }, include: { user: true } });
   const evaluatorMembership = await prisma.tenantMembership.findFirst({ where: { tenantId: tenant.id, user: { email: "evaluator-preview-10b@example.invalid" }, status: "ACTIVE" }, include: { user: true } });
   requireCondition(actorMembership && evaluatorMembership, "ACTORS_INVALID");
+  requireCondition(COMMUNICATION_GRANTS.every((permission) => !actorMembership.deniedPermissions.includes(permission)), "COMMUNICATION_PERMISSION_DENIED");
+  const communicationGrants = [...new Set([...actorMembership.grantedPermissions, ...COMMUNICATION_GRANTS])].sort();
+  if (JSON.stringify([...actorMembership.grantedPermissions].sort()) !== JSON.stringify(communicationGrants)) {
+    activeStage = "COMMUNICATION_PERMISSIONS";
+    actorMembership = await prisma.tenantMembership.update({
+      where: { id: actorMembership.id },
+      data: { grantedPermissions: communicationGrants, authorizationVersion: { increment: 1 } },
+      include: { user: true },
+    });
+  }
   const actor = { membership: actorMembership, user: actorMembership.user };
   const evaluator = { membership: evaluatorMembership, user: evaluatorMembership.user };
   const schedulePolicy = await prisma.surveySchedulePolicyVersion.findFirst({ where: { tenantId: tenant.id, state: "ACTIVE" }, orderBy: { version: "desc" } });

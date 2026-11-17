@@ -6,14 +6,17 @@ import { methodNotAllowed, readJsonObject, withPrivateApiHeaders } from "./http.
 import { CommunicationsError } from "./communicationsContract.js";
 import { COMMUNICATION_TRANSPORT_CAPABILITIES } from "./communicationsTransport.js";
 import { CommercialTenancyError } from "./commercialTenancyWrite.js";
-import { isV17ConsolidatedPreviewBranch } from "../../shared/v17ConsolidatedPreview.js";
+import {
+  V17_COMMERCIAL_STORAGE_SERVICES_PREVIEW_BRANCH,
+  isV17ConsolidatedPreviewBranch,
+} from "../../shared/v17ConsolidatedPreview.js";
 
 export const productionApiEnabled = false;
 export const COMMUNICATIONS_API_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" });
 export const COMMUNICATIONS_PREVIEW_BATCH = "V17-COMMUNICATIONS-PREVIEW-13B";
 export const COMMUNICATIONS_PREVIEW_DATABASE = "v17_consolidated_preview_10b";
-export const COMMUNICATIONS_PREVIEW_NEON_BRANCH = "br-mute-credit-ahxnvfx0";
-const PREVIEW_MANIFEST = Object.freeze({ batch: COMMUNICATIONS_PREVIEW_BATCH, branch: "feature/v17-consolidated-preview", database: COMMUNICATIONS_PREVIEW_DATABASE, neonBranch: COMMUNICATIONS_PREVIEW_NEON_BRANCH, transport: "DISABLED", version: 1 });
+export const COMMUNICATIONS_PREVIEW_NEON_BRANCH = "br-bitter-mountain-ahs311pu";
+const PREVIEW_MANIFEST = Object.freeze({ batch: COMMUNICATIONS_PREVIEW_BATCH, branch: V17_COMMERCIAL_STORAGE_SERVICES_PREVIEW_BRANCH, database: COMMUNICATIONS_PREVIEW_DATABASE, neonBranch: COMMUNICATIONS_PREVIEW_NEON_BRANCH, transport: "DISABLED", version: 1 });
 function fail(code, status) { throw new CommunicationsError(code, status); }
 function hasVercel(env) { return Object.keys(env || {}).some((key) => key.toUpperCase().startsWith("VERCEL")); }
 function canonical(value) { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }

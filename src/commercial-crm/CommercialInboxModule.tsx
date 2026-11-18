@@ -189,7 +189,7 @@ function SummaryRow({ label, value, note }: { label: string; value: string; note
 }
 
 type ProgressTone = "complete" | "current" | "attention" | "pending";
-type CaseWorkspaceTab = "SERVICES" | "SURVEY" | "QUOTE";
+type CaseWorkspaceTab = "SERVICES" | "SURVEY" | "QUOTE" | "CONTRACT" | "EXECUTION";
 type ProgressStage = Readonly<{ label: string; state: string; tone: ProgressTone; icon: LucideIcon; count?: number; tab?: CaseWorkspaceTab }>;
 const STATUS_INDEX = Object.freeze(Object.fromEntries(PIPELINE_CASE_STATUSES.map((status, index) => [status, index])) as Record<PipelineCaseStatus, number>);
 const PROGRESS_TONE_CLASS: Record<ProgressTone, string> = {
@@ -212,10 +212,10 @@ function progressStages(item: CrmPipelineCaseDetail): readonly ProgressStage[] {
     { label: "Servicios", state: item.serviceType ? "Definido" : "Requiere definición", tone: item.serviceType ? "complete" : "attention", icon: BriefcaseBusiness, tab: "SERVICES" },
     { label: "Survey", state: !item.requiresSurvey ? "No requerido" : surveyComplete ? "Completado" : ["SURVEY_PLANNING", "SURVEY_SCHEDULED"].includes(item.status) ? "En curso" : "Requerido", tone: !item.requiresSurvey || surveyComplete ? "complete" : ["SURVEY_PLANNING", "SURVEY_SCHEDULED"].includes(item.status) ? "current" : "attention", icon: ClipboardCheck, tab: "SURVEY" },
     { label: "Cotización", state: quoteComplete ? `${item.quoteCount} de 3 propuesta${item.quoteCount === 1 ? "" : "s"}` : costingComplete || ["PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION"].includes(item.status) ? "En curso" : "Pendiente", tone: quoteComplete ? "complete" : costingComplete || ["PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION"].includes(item.status) ? "current" : "pending", icon: FileCheck2, count: item.quoteCount || undefined, tab: "QUOTE" },
-    { label: "Contrato", state: approved ? "Disponible" : "Pendiente de propuesta aceptada", tone: approved ? "current" : "pending", icon: BadgeCheck },
-    { label: "Ejecución", state: item.status === "OPS_HANDOFF" ? "En operación" : "Pendiente", tone: item.status === "OPS_HANDOFF" ? "current" : "pending", icon: Route },
+    { label: "Contrato", state: approved ? "Disponible" : "Pendiente de propuesta aceptada", tone: approved ? "current" : "pending", icon: BadgeCheck, tab: "CONTRACT" },
+    { label: "Ejecución", state: item.status === "OPS_HANDOFF" ? "En operación" : "Pendiente", tone: item.status === "OPS_HANDOFF" ? "current" : "pending", icon: Route, tab: "EXECUTION" },
     { label: "Cambios", state: item.status === "CHANGE_CONTROL" ? "En atención" : "Sin cambios publicados", tone: item.status === "CHANGE_CONTROL" ? "current" : "pending", icon: BellRing },
-    { label: "Facturación", state: "Pendiente de ejecución", tone: "pending", icon: Calculator },
+    { label: "Control económico", state: "Pendiente de ejecución", tone: "pending", icon: Calculator },
   ];
 }
 

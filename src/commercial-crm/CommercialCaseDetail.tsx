@@ -27,6 +27,7 @@ const CommunicationPanel = lazy(() => import("@/communications/CommunicationPane
 const ContractCasePanel = lazy(() => import("./ContractCasePanel"));
 const ExecutionCasePanel = lazy(() => import("./ExecutionCasePanel"));
 const ChangeAddendaPanel = lazy(() => import("./ChangeAddendaPanel"));
+const EconomicControlPanel = lazy(() => import("./EconomicControlPanel"));
 
 type Props = Readonly<{
   state: Readonly<{ loading: boolean; value: CrmPipelineCaseDetail | null; error: CrmPipelineReadError | null }>;
@@ -52,7 +53,7 @@ type Props = Readonly<{
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
-type WorkspaceTab = "SURVEY" | "SERVICES" | "QUOTE" | "CONTRACT" | "EXECUTION" | "CHANGES";
+type WorkspaceTab = "SURVEY" | "SERVICES" | "QUOTE" | "CONTRACT" | "EXECUTION" | "CHANGES" | "ECONOMIC_CONTROL";
 type QuoteWorkspaceView = "COSTS" | "PROPOSALS";
 type CommunicationTarget = Readonly<
   | { context: "SCHEDULING"; surveyAssignmentRef: string; quoteRevisionRef: null }
@@ -66,6 +67,7 @@ const TABS = Object.freeze([
   ["CONTRACT", "Contrato", FileText],
   ["EXECUTION", "Ejecución", Route],
   ["CHANGES", "Cambios", BellRing],
+  ["ECONOMIC_CONTROL", "Control económico", Calculator],
 ] as const);
 
 function initialWorkspaceTab(caseRef: string | undefined): WorkspaceTab {
@@ -73,11 +75,8 @@ function initialWorkspaceTab(caseRef: string | undefined): WorkspaceTab {
   const key = `osi-commercial-workspace:${caseRef}`;
   const requested = window.sessionStorage.getItem(key);
   window.sessionStorage.removeItem(key);
-  return requested === "SURVEY" || requested === "QUOTE" || requested === "CONTRACT" || requested === "EXECUTION" || requested === "CHANGES" ? requested : "SERVICES";
+  return requested === "SURVEY" || requested === "QUOTE" || requested === "CONTRACT" || requested === "EXECUTION" || requested === "CHANGES" || requested === "ECONOMIC_CONTROL" ? requested : "SERVICES";
 }
-const FUTURE_TABS = Object.freeze([
-  ["ECONOMIC_CONTROL", "Control económico", Calculator],
-] as const);
 
 export default function CommercialCaseDetail(props: Props) {
   return <CommercialCaseWorkspace key={props.state.value?.caseRef ?? "loading"} {...props} />;
@@ -106,7 +105,7 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
     {state.loading && <div className="grid min-h-[40vh] place-items-center text-sm text-slate-500">Cargando la autoridad relacional del caso…</div>}
     {state.error && <Alert variant="destructive" role="alert" className="m-4"><AlertCircle /><AlertTitle>No pudimos cargar la Ficha</AlertTitle><AlertDescription>{commercialReadErrorCopy(state.error)}<Button className="mt-3" size="sm" variant="outline" onClick={onReload}>Reintentar lectura</Button></AlertDescription></Alert>}
     {item && <>
-      <div role="tablist" aria-label="Áreas del Caso Comercial" className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-[#e7e5e4] p-1">{tabs.map(([value, label, Icon]) => <button id={`${value.toLowerCase()}-tab`} key={value} type="button" role="tab" aria-selected={activeTab === value} onClick={() => setTab(value)} className={`flex shrink-0 items-center gap-1.5 rounded px-3 py-2 text-xs font-bold ${activeTab === value ? "bg-[#df8750] text-white shadow-sm" : "text-slate-700 hover:bg-white/60"}`}><Icon className="h-3.5 w-3.5" />{label}</button>)}{FUTURE_TABS.map(([value, label, Icon]) => <button id={`${value.toLowerCase()}-tab`} key={value} type="button" role="tab" aria-selected={false} aria-disabled="true" disabled title="Se habilitará cuando exista la autoridad previa" className="flex shrink-0 cursor-not-allowed items-center gap-1.5 rounded px-3 py-2 text-xs font-bold text-slate-400"><Icon className="h-3.5 w-3.5" />{label}</button>)}</div>
+      <div role="tablist" aria-label="Áreas del Caso Comercial" className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-[#e7e5e4] p-1">{tabs.map(([value, label, Icon]) => <button id={`${value.toLowerCase()}-tab`} key={value} type="button" role="tab" aria-selected={activeTab === value} onClick={() => setTab(value)} className={`flex shrink-0 items-center gap-1.5 rounded px-3 py-2 text-xs font-bold ${activeTab === value ? "bg-[#df8750] text-white shadow-sm" : "text-slate-700 hover:bg-white/60"}`}><Icon className="h-3.5 w-3.5" />{label}</button>)}</div>
       <div className="p-4">
         {activeTab === "SURVEY" && surveyEnabled && surveySchedulingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Survey…</div>}><SurveyCasePanel caseRef={item.caseRef} authorization={authorization} access={surveySchedulingAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} logisticsSummaryEnabled={logisticsEnabled && logisticsAccess.canView} transportAccess={transportAccess} clientTemporaryAccessEnabled={clientTemporaryAccessEnabled} clientTemporaryAccess={clientTemporaryAccess} onOpenCommunications={(surveyAssignmentRef) => openCommunications({ context: "SCHEDULING", surveyAssignmentRef, quoteRevisionRef: null })} onNavigate={onNavigate} onUnauthorized={onUnauthorized} /></Suspense>}
         {activeTab === "SERVICES" && servicesEnabled && <div className="space-y-3"><Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando selección de Servicios…</div>}><ServiceCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} canViewConfiguration={servicesAccess.canCaseConfigView} canConfigure={servicesAccess.canCaseConfigUpdate} onUnauthorized={onUnauthorized} /></Suspense>{commercialRelationshipsEnabled && commercialRelationshipsAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando contexto comercial…</div>}><CaseCommercialContextPanel caseRef={item.caseRef} authorization={authorization} access={commercialRelationshipsAccess} onUnauthorized={onUnauthorized} /></Suspense>}</div>}
@@ -114,6 +113,7 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
         {activeTab === "CONTRACT" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Contrato…</div>}><ContractCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} canViewTemplates={communicationsEnabled && communicationsAccess.canTemplatesView} context={{ caseCode: item.caseCode, clientName: item.client?.displayName || "Cliente pendiente", origin: item.route?.origin?.compactAddress || item.originLocation || "Origen pendiente", destination: item.route?.destination?.compactAddress || item.destinationLocation || "Destino pendiente" }} onUnauthorized={onUnauthorized} /></Suspense>}
         {activeTab === "EXECUTION" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Ejecución…</div>}><ExecutionCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} onUnauthorized={onUnauthorized} /></Suspense>}
         {activeTab === "CHANGES" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Cambios…</div>}><ChangeAddendaPanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} onUnauthorized={onUnauthorized} /></Suspense>}
+        {activeTab === "ECONOMIC_CONTROL" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Control económico…</div>}><EconomicControlPanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} onUnauthorized={onUnauthorized} /></Suspense>}
         {communicationTarget && communicationsEnabled && (communicationsAccess.canView || communicationsAccess.canPrepare && communicationsAccess.canTemplatesView) && <section id="case-communications" className="mt-3 border border-slate-200" aria-label="Actividad y Comunicaciones"><div className="flex flex-wrap items-center justify-between gap-2 border-b bg-slate-50 px-3 py-2"><p className="text-xs font-semibold text-slate-600">Comunicación de {communicationTarget.context === "SCHEDULING" ? "Survey" : "Cotización"}</p><Button size="sm" variant="outline" onClick={() => setCommunicationTarget(null)}>Cerrar</Button></div><Suspense fallback={<p className="p-4 text-xs text-slate-500">Cargando comunicaciones…</p>}><CommunicationPanel caseRef={item.caseRef} authorization={authorization} access={communicationsAccess} context={communicationTarget.context} surveyAssignmentRef={communicationTarget.surveyAssignmentRef} quoteRevisionRef={communicationTarget.quoteRevisionRef} onUnauthorized={onUnauthorized} /></Suspense></section>}
       </div>
       <CaseRouteEditor open={routeOpen} caseRef={item.caseRef} api={routeApi} onOpenChange={setRouteOpen} onSaved={onReload} />

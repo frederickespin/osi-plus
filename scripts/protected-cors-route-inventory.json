@@ -112,6 +112,7 @@
       "/api/crm/services/configurations/[caseRef]",
       "/api/crm/services/configurations/conflicts/[conflictRef]",
       "/api/crm/services/defaults",
+      "/api/crm/services/economic-control/[caseRef]",
       "/api/crm/services/execution-orders/[caseRef]",
       "/api/crm/services/material-policies",
       "/api/crm/services/modes",

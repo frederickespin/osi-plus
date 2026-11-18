@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardCheck, LockKeyhole } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ClipboardCheck } from "lucide-react";
 import CommercialStorageAuthorizationPanel from "@/customer-custody/CommercialStorageAuthorizationPanel";
 import { CrmServicesApi, CrmServicesApiError, type CaseServiceWorkspace } from "@/crm-services/api";
+import CommonExecutionOrderPanel from "./CommonExecutionOrderPanel";
 
 type Props = Readonly<{
   caseRef: string;
@@ -20,10 +21,8 @@ export default function ExecutionCasePanel({ caseRef, authorization, canUpdate, 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
+  useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
     void api.workspace(caseRef, controller.signal)
       .then(setWorkspace)
       .catch((cause) => {
@@ -33,8 +32,6 @@ export default function ExecutionCasePanel({ caseRef, authorization, canUpdate, 
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [api, caseRef, onUnauthorized]);
-
-  useEffect(load, [load]);
 
   if (loading) return <div role="status" className="p-8 text-center text-sm text-slate-500">Cargando autoridad de ejecución…</div>;
   if (error) return <p role="alert" className="m-4 border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>;
@@ -60,9 +57,6 @@ export default function ExecutionCasePanel({ caseRef, authorization, canUpdate, 
       authorization={authorization}
       canAuthorize={canUpdate}
       activeView="authorization"
-    /> : <div className="mt-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-      <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0" />
-      <div><strong>Orden operativa pendiente de configuración</strong><p className="mt-1 text-xs leading-5">Para {workspace.selection.primary?.name || "este servicio"}, la orden se habilitará cuando exista contrato vigente y estén confirmados fecha, alcance, direcciones y recursos. Las autorizaciones de almacenaje ya están operativas en esta pantalla.</p></div>
-    </div>}
+    /> : <CommonExecutionOrderPanel caseRef={caseRef} authorization={authorization} canUpdate={canUpdate} onUnauthorized={onUnauthorized} />}
   </section>;
 }

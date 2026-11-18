@@ -18,6 +18,7 @@ function isStorageService(item: Readonly<{ code: string; category: string | null
 export default function ExecutionCasePanel({ caseRef, authorization, canUpdate, onUnauthorized }: Props) {
   const api = useMemo(() => new CrmServicesApi(() => authorization || null), [authorization]);
   const [workspace, setWorkspace] = useState<CaseServiceWorkspace | null>(null);
+  const [executionView, setExecutionView] = useState<"PRIMARY" | "STORAGE">("PRIMARY");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +38,9 @@ export default function ExecutionCasePanel({ caseRef, authorization, canUpdate, 
   if (error) return <p role="alert" className="m-4 border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>;
   if (!workspace) return null;
 
-  const storageSelected = isStorageService(workspace.selection.primary) || workspace.selection.complementaries.some(isStorageService);
+  const primaryIsStorage = isStorageService(workspace.selection.primary);
+  const hasAssociatedStorage = workspace.selection.complementaries.some(isStorageService);
+  const showStorageAuthorization = primaryIsStorage || (hasAssociatedStorage && executionView === "STORAGE");
 
   return <section role="tabpanel" aria-labelledby="execution-tab" className="w-full p-4" data-testid="case-execution-panel">
     <header className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3">
@@ -49,7 +52,12 @@ export default function ExecutionCasePanel({ caseRef, authorization, canUpdate, 
       <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800"><ClipboardCheck className="h-4 w-4" />Plan V{workspace.selection.revision || 0}</span>
     </header>
 
-    {storageSelected ? <CommercialStorageAuthorizationPanel
+    {!primaryIsStorage && hasAssociatedStorage ? <nav aria-label="Procesos de ejecución del caso" className="mt-3 flex flex-wrap gap-1 border-b border-slate-200 pb-2">
+      <button type="button" onClick={() => setExecutionView("PRIMARY")} className={`rounded px-3 py-2 text-xs font-bold ${executionView === "PRIMARY" ? "bg-[#003b71] text-white" : "bg-slate-100 text-slate-600"}`}>Orden principal</button>
+      <button type="button" onClick={() => setExecutionView("STORAGE")} className={`rounded px-3 py-2 text-xs font-bold ${executionView === "STORAGE" ? "bg-[#003b71] text-white" : "bg-slate-100 text-slate-600"}`}>Almacenaje asociado</button>
+    </nav> : null}
+
+    {showStorageAuthorization ? <CommercialStorageAuthorizationPanel
       caseRef={caseRef}
       selectionRef={workspace.selection.selectionRef}
       primary={workspace.selection.primary}

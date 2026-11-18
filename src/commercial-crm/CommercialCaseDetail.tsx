@@ -26,6 +26,7 @@ const CaseCommercialContextPanel = lazy(() => import("@/commercial-relationships
 const CommunicationPanel = lazy(() => import("@/communications/CommunicationPanel"));
 const ContractCasePanel = lazy(() => import("./ContractCasePanel"));
 const ExecutionCasePanel = lazy(() => import("./ExecutionCasePanel"));
+const ChangeAddendaPanel = lazy(() => import("./ChangeAddendaPanel"));
 
 type Props = Readonly<{
   state: Readonly<{ loading: boolean; value: CrmPipelineCaseDetail | null; error: CrmPipelineReadError | null }>;
@@ -51,7 +52,7 @@ type Props = Readonly<{
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
-type WorkspaceTab = "SURVEY" | "SERVICES" | "QUOTE" | "CONTRACT" | "EXECUTION";
+type WorkspaceTab = "SURVEY" | "SERVICES" | "QUOTE" | "CONTRACT" | "EXECUTION" | "CHANGES";
 type QuoteWorkspaceView = "COSTS" | "PROPOSALS";
 type CommunicationTarget = Readonly<
   | { context: "SCHEDULING"; surveyAssignmentRef: string; quoteRevisionRef: null }
@@ -64,6 +65,7 @@ const TABS = Object.freeze([
   ["QUOTE", "Cotización", BriefcaseBusiness],
   ["CONTRACT", "Contrato", FileText],
   ["EXECUTION", "Ejecución", Route],
+  ["CHANGES", "Cambios", BellRing],
 ] as const);
 
 function initialWorkspaceTab(caseRef: string | undefined): WorkspaceTab {
@@ -71,10 +73,9 @@ function initialWorkspaceTab(caseRef: string | undefined): WorkspaceTab {
   const key = `osi-commercial-workspace:${caseRef}`;
   const requested = window.sessionStorage.getItem(key);
   window.sessionStorage.removeItem(key);
-  return requested === "SURVEY" || requested === "QUOTE" || requested === "CONTRACT" || requested === "EXECUTION" ? requested : "SERVICES";
+  return requested === "SURVEY" || requested === "QUOTE" || requested === "CONTRACT" || requested === "EXECUTION" || requested === "CHANGES" ? requested : "SERVICES";
 }
 const FUTURE_TABS = Object.freeze([
-  ["CHANGES", "Cambios", BellRing],
   ["ECONOMIC_CONTROL", "Control económico", Calculator],
 ] as const);
 
@@ -112,6 +113,7 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
         {activeTab === "QUOTE" && quoteWorkspaceAvailable && <section aria-label="Cotización del caso" className="space-y-2">{quoteWorkspaceCount > 1 && <div role="tablist" aria-label="Etapas de Cotización" className="flex gap-1 border border-slate-200 bg-slate-50 p-1">{costingEnabled && costingAccess.canView && <button type="button" role="tab" aria-selected={activeQuoteView === "COSTS"} onClick={() => setQuoteView("COSTS")} className={`rounded px-3 py-1.5 text-xs font-bold ${activeQuoteView === "COSTS" ? "bg-[#003366] text-white" : "text-slate-600 hover:bg-white"}`}><Calculator className="mr-1.5 inline h-3.5 w-3.5" />Costos internos</button>}{quoteEnabled && quoteAccess.canView && <button type="button" role="tab" aria-selected={activeQuoteView === "PROPOSALS"} onClick={() => setQuoteView("PROPOSALS")} className={`rounded px-3 py-1.5 text-xs font-bold ${activeQuoteView === "PROPOSALS" ? "bg-[#003366] text-white" : "text-slate-600 hover:bg-white"}`}><BriefcaseBusiness className="mr-1.5 inline h-3.5 w-3.5" />Propuestas</button>}</div>}{activeQuoteView === "COSTS" && costingEnabled && costingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Costos…</div>}><CostingPanel caseRef={item.caseRef} authorization={authorization} access={costingAccess} transportAccess={transportAccess} onUnauthorized={onUnauthorized} /></Suspense>}{activeQuoteView === "PROPOSALS" && quoteEnabled && quoteAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Cotización…</div>}><QuotePanel caseRef={item.caseRef} authorization={authorization} access={quoteAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} onOpenCommunications={(quoteRevisionRef) => openCommunications({ context: "QUOTE", surveyAssignmentRef: null, quoteRevisionRef })} onUnauthorized={onUnauthorized} /></Suspense>}</section>}
         {activeTab === "CONTRACT" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Contrato…</div>}><ContractCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} canViewTemplates={communicationsEnabled && communicationsAccess.canTemplatesView} context={{ caseCode: item.caseCode, clientName: item.client?.displayName || "Cliente pendiente", origin: item.route?.origin?.compactAddress || item.originLocation || "Origen pendiente", destination: item.route?.destination?.compactAddress || item.destinationLocation || "Destino pendiente" }} onUnauthorized={onUnauthorized} /></Suspense>}
         {activeTab === "EXECUTION" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Ejecución…</div>}><ExecutionCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} onUnauthorized={onUnauthorized} /></Suspense>}
+        {activeTab === "CHANGES" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Cambios…</div>}><ChangeAddendaPanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} onUnauthorized={onUnauthorized} /></Suspense>}
         {communicationTarget && communicationsEnabled && (communicationsAccess.canView || communicationsAccess.canPrepare && communicationsAccess.canTemplatesView) && <section id="case-communications" className="mt-3 border border-slate-200" aria-label="Actividad y Comunicaciones"><div className="flex flex-wrap items-center justify-between gap-2 border-b bg-slate-50 px-3 py-2"><p className="text-xs font-semibold text-slate-600">Comunicación de {communicationTarget.context === "SCHEDULING" ? "Survey" : "Cotización"}</p><Button size="sm" variant="outline" onClick={() => setCommunicationTarget(null)}>Cerrar</Button></div><Suspense fallback={<p className="p-4 text-xs text-slate-500">Cargando comunicaciones…</p>}><CommunicationPanel caseRef={item.caseRef} authorization={authorization} access={communicationsAccess} context={communicationTarget.context} surveyAssignmentRef={communicationTarget.surveyAssignmentRef} quoteRevisionRef={communicationTarget.quoteRevisionRef} onUnauthorized={onUnauthorized} /></Suspense></section>}
       </div>
       <CaseRouteEditor open={routeOpen} caseRef={item.caseRef} api={routeApi} onOpenChange={setRouteOpen} onSaved={onReload} />

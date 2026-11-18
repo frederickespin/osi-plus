@@ -198,6 +198,7 @@
     "test:v17-warehouse-localities:browser": "playwright test -c playwright.v17-warehouse-localities.config.ts",
     "test:v17-customer-custody": "node scripts/v17-customer-custody-contract-test.mjs && node scripts/v17-customer-custody-http-test.mjs && node scripts/v17-customer-custody-preview-migrate-test.mjs",
     "test:v17-execution-order": "node scripts/v17-execution-order-contract-test.mjs",
+    "test:v17-change-addenda": "node scripts/v17-change-addendum-contract-test.mjs",
     "test:v17-operational-demo-flows-preview": "node scripts/v17-operational-demo-flows-preview-seed-test.mjs",
     "test:v17-customer-custody:db": "node scripts/v17-customer-custody-db-test.mjs"
   },

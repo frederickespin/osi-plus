@@ -107,6 +107,228 @@ ACEPTACIÓN
     variables: ["case.reference", "client.name", "origin.address", "destination.address"],
   },
   {
+    id: "storage-personal-contract",
+    family: "CONTRACTS",
+    name: "Almacenaje de efectos personales",
+    description: "Guardamuebles y custodia de bienes personales con inventario, capacidad y facturación mensual.",
+    code: "CTR.STORAGE.PERSONAL",
+    templateName: "Contrato de almacenaje de efectos personales",
+    category: "DOCUMENT_REQUEST",
+    audiences: ["CLIENT", "PAYER", "APPROVER"],
+    channels: ["EMAIL", "PORTAL"],
+    subject: "Contrato de almacenaje personal · {{case.reference}}",
+    bodyText: `CONTRATO DE ALMACENAJE DE EFECTOS PERSONALES
+
+Cliente: {{client.name}}
+Caso: {{case.reference}}
+
+OBJETO E INVENTARIO
+Custodia de los bultos identificados mediante inventario, etiquetas, fotografías y movimientos registrados. [DETALLAR EXCLUSIONES Y ARTÍCULOS PROHIBIDOS]
+
+CAPACIDAD Y PLAZO
+Espacio o volumen contratado: [CAPACIDAD]
+Inicio y duración: [FECHAS]
+Tarifa regular y preferencial: [MONEDA Y MONTOS]
+Terminación anticipada: [REGLA Y EJEMPLO TRANSPARENTE]
+
+MOVIMIENTOS Y CARGOS
+Entradas adicionales, retiros parciales, remanejos, búsquedas, materiales y permanencia de excedentes se cobran según autorización y tarifario vigente.
+
+RESPONSABILIDAD Y EVIDENCIAS
+[SEGURO, CONDICIONES, CADENA DE CUSTODIA Y RECLAMOS]
+
+FACTURACIÓN Y ACEPTACIÓN
+[PAGADOR, FRECUENCIA, VENCIMIENTO, IDENTIFICACIÓN, FIRMA Y FECHA]`,
+    variables: ["case.reference", "client.name"],
+  },
+  {
+    id: "storage-commercial-contract",
+    family: "CONTRACTS",
+    name: "Almacenaje comercial",
+    description: "Mercancías, materias primas o embarques comerciales con responsables y reglas de despacho.",
+    code: "CTR.STORAGE.COMMERCIAL",
+    templateName: "Contrato de almacenaje comercial",
+    category: "DOCUMENT_REQUEST",
+    audiences: ["CLIENT", "PAYER", "APPROVER"],
+    channels: ["EMAIL", "PORTAL"],
+    subject: "Contrato de almacenaje comercial · {{case.reference}}",
+    bodyText: `CONTRATO DE ALMACENAJE COMERCIAL
+
+Cliente: {{client.name}}
+Caso: {{case.reference}}
+
+MERCANCÍA Y ALCANCE
+[TIPO DE MERCANCÍA, LOTES, UNIDADES, DOCUMENTOS Y RESTRICCIONES]
+
+CAPACIDAD, ROTACIÓN Y PLAZO
+[VOLUMEN O ESPACIO, FECHAS, RECEPCIONES, DESPACHOS Y NIVELES DE SERVICIO]
+
+TARIFAS
+[RENTA, ENTRADA, SALIDA, MANIPULACIÓN, REMANEJO, ETIQUETADO, PERMANENCIA Y CARGOS EXTRAORDINARIOS]
+
+AUTORIZADOS Y TRAZABILIDAD
+[PERSONAS AUTORIZADAS, DOCUMENTOS, ESCANEO, INVENTARIO Y CADENA DE CUSTODIA]
+
+FACTURACIÓN, RESPONSABILIDAD Y FIRMA
+[PAGADOR, MONEDA, IMPUESTOS, SEGURO, RECLAMOS, FIRMAS Y FECHA]`,
+    variables: ["case.reference", "client.name"],
+  },
+  {
+    id: "local-moving-contract",
+    family: "CONTRACTS",
+    name: "Mudanza local o nacional",
+    description: "Empaque, carga, transporte, descarga y servicios asociados dentro del país.",
+    code: "CTR.MOVE.LOCAL",
+    templateName: "Contrato de mudanza local o nacional",
+    category: "DOCUMENT_REQUEST",
+    audiences: ["CLIENT", "PAYER", "APPROVER"],
+    channels: ["EMAIL", "PORTAL"],
+    subject: "Contrato de mudanza · {{case.reference}}",
+    bodyText: `CONTRATO DE MUDANZA LOCAL O NACIONAL
+
+Cliente: {{client.name}}
+Caso: {{case.reference}}
+Origen: {{origin.address}}
+Destino: {{destination.address}}
+
+ALCANCE APROBADO
+[VOLUMEN, EMPAQUE, PERSONAL, VEHÍCULOS, EQUIPOS, DESMONTAJE Y ORGANIZACIÓN]
+
+FECHAS Y DURACIÓN ESTIMADA
+[INICIO, VENTANA DE SERVICIO Y SUPUESTOS OPERATIVOS]
+
+PRECIO Y CAMBIOS
+[MONEDA, SERVICIOS, EXCLUSIONES, PAGO Y ADENDAS]
+
+ACCESOS, RESPONSABILIDAD Y FIRMA
+[ACCESOS, ARTÍCULOS ESPECIALES, SEGURO, RECLAMOS, FIRMAS Y FECHA]`,
+    variables: ["case.reference", "client.name", "origin.address", "destination.address"],
+  },
+  {
+    id: "import-moving-contract",
+    family: "CONTRACTS",
+    name: "Mudanza internacional de importación",
+    description: "Recepción internacional, coordinación, aduanas, entrega y posibles almacenajes asociados.",
+    code: "CTR.MOVE.IMPORT",
+    templateName: "Contrato de importación de mudanza",
+    category: "DOCUMENT_REQUEST",
+    audiences: ["CLIENT", "PAYER", "APPROVER", "AGENT"],
+    channels: ["EMAIL", "PORTAL"],
+    subject: "Contrato de importación · {{case.reference}}",
+    bodyText: `CONTRATO DE SERVICIO DE IMPORTACIÓN
+
+Cliente: {{client.name}}
+Caso: {{case.reference}}
+Agente relacionado: {{agent.name}}
+Destino: {{destination.address}}
+
+ALCANCE Y DOCUMENTOS
+[EMBARQUE, RECEPCIÓN, ADUANAS, PUERTO/AEROPUERTO, TRANSPORTE Y ENTREGA]
+
+CARGOS INCLUIDOS Y EXCLUIDOS
+[TARIFAS, GASTOS DE TERCEROS, DEMORA, INSPECCIÓN, ALMACENAJE Y TRIBUTOS]
+
+RESPONSABILIDADES DEL CLIENTE Y DEL AGENTE
+[DOCUMENTOS, DECLARACIONES, PLAZOS Y AUTORIZACIONES]
+
+CAMBIOS, RECLAMOS Y FIRMA
+[ADENDAS, SEGURO, RECLAMOS, FIRMAS Y FECHA]`,
+    variables: ["case.reference", "client.name", "agent.name", "destination.address"],
+  },
+  {
+    id: "export-moving-contract",
+    family: "CONTRACTS",
+    name: "Mudanza internacional de exportación",
+    description: "Empaque de exportación, documentación, transporte, embarque y coordinación internacional.",
+    code: "CTR.MOVE.EXPORT",
+    templateName: "Contrato de exportación de mudanza",
+    category: "DOCUMENT_REQUEST",
+    audiences: ["CLIENT", "PAYER", "APPROVER", "AGENT"],
+    channels: ["EMAIL", "PORTAL"],
+    subject: "Contrato de exportación · {{case.reference}}",
+    bodyText: `CONTRATO DE SERVICIO DE EXPORTACIÓN
+
+Cliente: {{client.name}}
+Caso: {{case.reference}}
+Origen: {{origin.address}}
+Destino: {{destination.address}}
+Agente relacionado: {{agent.name}}
+
+ALCANCE
+[EMPAQUE, INVENTARIO, RECOGIDA, CONSOLIDACIÓN, DOCUMENTACIÓN Y EMBARQUE]
+
+RUTA, PLAZOS Y TERCEROS
+[MODO, PUERTOS/AEROPUERTOS, AGENTES, TIEMPOS ESTIMADOS Y EXCLUSIONES]
+
+PRECIO Y EVENTUALIDADES
+[MONEDA, FLETE, GASTOS, ALMACENAJE, DEMORA, ADUANAS Y ADENDAS]
+
+SEGURO, RECLAMOS Y FIRMA
+[COBERTURA, RESPONSABILIDAD, FIRMAS Y FECHA]`,
+    variables: ["case.reference", "client.name", "origin.address", "destination.address", "agent.name"],
+  },
+  {
+    id: "local-transport-contract",
+    family: "CONTRACTS",
+    name: "Transporte local o nacional",
+    description: "Traslado sin asumir servicios de mudanza no incluidos expresamente.",
+    code: "CTR.TRANSPORT.LOCAL",
+    templateName: "Contrato de transporte local o nacional",
+    category: "DOCUMENT_REQUEST",
+    audiences: ["CLIENT", "PAYER", "APPROVER"],
+    channels: ["EMAIL", "PORTAL"],
+    subject: "Contrato de transporte · {{case.reference}}",
+    bodyText: `CONTRATO DE TRANSPORTE LOCAL O NACIONAL
+
+Cliente: {{client.name}}
+Caso: {{case.reference}}
+Origen: {{origin.address}}
+Destino: {{destination.address}}
+
+CARGA Y SERVICIO
+[DESCRIPCIÓN, PESO/VOLUMEN, VEHÍCULO, VIAJES Y MANIPULACIÓN INCLUIDA]
+
+FECHA, RUTA Y PRECIO
+[VENTANA, DISTANCIA, RETORNO, PEAJES, COMBUSTIBLE, MONEDA Y PAGO]
+
+EXCLUSIONES Y CAMBIOS
+[EMPAQUE, ESPERAS, ACCESOS, EQUIPOS, ADENDAS Y CARGOS ADICIONALES]
+
+RESPONSABILIDAD Y FIRMA
+[CONDICIONES DE CARGA, SEGURO, RECLAMOS, FIRMAS Y FECHA]`,
+    variables: ["case.reference", "client.name", "origin.address", "destination.address"],
+  },
+  {
+    id: "contract-addendum",
+    family: "CONTRACTS",
+    name: "Adenda contractual",
+    description: "Añade, elimina o modifica servicios, precio o plazo sin reemplazar el contrato original.",
+    code: "CTR.ADDENDUM.BASE",
+    templateName: "Adenda a contrato de servicio",
+    category: "DOCUMENT_REQUEST",
+    audiences: ["CLIENT", "PAYER", "APPROVER"],
+    channels: ["EMAIL", "PORTAL"],
+    subject: "Adenda contractual · {{case.reference}}",
+    bodyText: `ADENDA A CONTRATO DE SERVICIO
+
+Cliente: {{client.name}}
+Caso: {{case.reference}}
+Contrato original: [REFERENCIA Y VERSIÓN]
+
+MOTIVO DEL CAMBIO
+[SOLICITADO POR, FECHA, MOTIVO Y EVIDENCIA]
+
+SERVICIOS, PLAZO Y DIFERENCIA ECONÓMICA
+[AÑADIDOS, ELIMINADOS O MODIFICADOS; MONEDA; IMPUESTOS; NUEVO PLAZO]
+
+VIGENCIA
+Las cláusulas no modificadas del contrato original permanecen vigentes.
+
+APROBACIONES
+[CLIENTE, APROBACIÓN INTERNA, FIRMAS Y FECHA]`,
+    variables: ["case.reference", "client.name"],
+  },
+  {
     id: "client-visit",
     family: "COMMUNICATIONS",
     name: "Confirmación de visita al cliente",

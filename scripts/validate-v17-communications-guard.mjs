@@ -19,6 +19,7 @@ export function validateCommunicationsGuard(overrides = {}) {
   const transport = read("api/_lib/communicationsTransport.js", overrides);
   const access = read("src/communications/access.ts", overrides);
   const mode = read("src/communications/mode.ts", overrides);
+  const masks = read("src/communications/templateMasks.ts", overrides);
   const hub = read("src/hub/HubWorkspace.tsx", overrides);
   const inventory = JSON.parse(read("scripts/protected-cors-route-inventory.json", overrides));
   for (const model of ["CommunicationTemplate", "CommunicationTemplateVersion", "CommunicationRecord", "CommunicationCommand", "CommunicationAuditEvent"]) assert.match(schema, new RegExp(`model ${model}\\s*\\{`), `falta ${model}`);
@@ -39,10 +40,12 @@ export function validateCommunicationsGuard(overrides = {}) {
   assert.ok(mode.includes('"LOCAL_ONLY"') && mode.includes('"PREVIEW_REHEARSAL"') && mode.includes("VITE_COMMUNICATIONS_PREVIEW_BATCH") && mode.includes("VITE_COMMUNICATIONS_TRANSPORT_MODE") && mode.includes("VITE_OSI_HUB_MODE") && mode.includes("VITE_CRM_PIPELINE_READ_MODE") && mode.includes("isV17ConsolidatedPreviewBranch") && mode.includes("VERCEL"), "modo frontend fail-closed ausente");
   assert.ok(mode.includes('&& !Object.keys(environment).some((key) => key.toUpperCase().startsWith("VERCEL"))'), "modo local debe rechazar cualquier metadata Vercel");
   assert.ok(hub.indexOf("const communicationsAccess") < hub.indexOf("communicationsAdminAvailable") && hub.indexOf("communicationsAdminAvailable") < hub.indexOf("return <Suspense fallback={<div className=\"grid min-h-screen"), "autorización debe preceder render lazy admin");
+  const contractMaskCodes = ["CTR.STORAGE.PERSONAL", "CTR.STORAGE.COMMERCIAL", "CTR.MOVE.LOCAL", "CTR.MOVE.IMPORT", "CTR.MOVE.EXPORT", "CTR.TRANSPORT.LOCAL", "CTR.ADDENDUM.BASE"];
+  for (const code of contractMaskCodes) assert.ok(masks.includes(`code: "${code}"`), `máscara contractual ausente: ${code}`);
   for (const route of requiredRoutes) assert.ok(inventory.categories.protectedSameOrigin.includes(route), `ruta CORS no inventariada: ${route}`);
   const forbiddenRuntime = ["twilio", "sendgrid", "nodemailer", "api.whatsapp", "wa.me/"];
   for (const token of forbiddenRuntime) assert.ok(!`${contract}\n${domain}\n${http}\n${transport}`.toLowerCase().includes(token), `transporte externo introducido: ${token}`);
-  return { routes: requiredRoutes.length, models: 5 };
+  return { routes: requiredRoutes.length, models: 5, contractMasks: contractMaskCodes.length };
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replaceAll("\\", "/")}`).href) console.log("V17-COMMUNICATIONS-GUARD", validateCommunicationsGuard());

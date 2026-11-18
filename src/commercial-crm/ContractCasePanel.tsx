@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileSignature, LockKeyhole } from "lucide-react";
 import CommercialStorageAuthorizationPanel from "@/customer-custody/CommercialStorageAuthorizationPanel";
-import { CustomerCustodyApi, type CustomerStorageType } from "@/customer-custody/api";
+import { CustomerCustodyApi, type CustomerStorageAgreementWorkspace, type CustomerStorageType } from "@/customer-custody/api";
 import { CrmServicesApi, CrmServicesApiError, type CaseServiceWorkspace } from "@/crm-services/api";
 import { communicationsApi, type CommunicationTemplate } from "@/communications/api";
+import ContractDocumentPreview, { ContractOutputActions } from "./ContractDocumentPreview";
+import type { ContractPdfContext } from "./ContractPdf";
+
+export type ContractCaseContext = Readonly<{
+  caseCode: string;
+  clientName: string;
+  origin: string;
+  destination: string;
+}>;
 
 type Props = Readonly<{
   caseRef: string;
   authorization?: string;
   canUpdate: boolean;
   canViewTemplates: boolean;
+  context: ContractCaseContext;
   onUnauthorized(): void;
 }>;
 
@@ -25,13 +35,38 @@ function recommendedCode(workspace: CaseServiceWorkspace, storageSelected: boole
   return primary.includes("TRANSPORT") ? "CTR.TRANSPORT.LOCAL" : "CTR.MOVE.LOCAL";
 }
 
-export default function ContractCasePanel({ caseRef, authorization, canUpdate, canViewTemplates, onUnauthorized }: Props) {
+function renderContractBody(template: CommunicationTemplate, context: ContractCaseContext, agreementWorkspace: CustomerStorageAgreementWorkspace | null) {
+  let body = template.current?.bodyText || "";
+  const variables: Readonly<Record<string, string>> = {
+    "case.reference": context.caseCode,
+    "client.name": context.clientName,
+    "origin.address": context.origin,
+    "destination.address": context.destination,
+    "agent.name": "Agente por confirmar",
+  };
+  Object.entries(variables).forEach(([name, value]) => { body = body.replaceAll(`{{${name}}}`, value); });
+  const agreement = agreementWorkspace?.agreement;
+  if (!agreement) return body;
+  const capacity = `${agreement.capacityQuantity} · ${agreement.capacityBasis.replaceAll("_", " ")}`;
+  const dates = `${agreement.startDate} al ${agreement.estimatedEndDate} · ${agreement.estimatedDurationMonths} meses estimados`;
+  body = body
+    .replaceAll("[CAPACIDAD]", capacity)
+    .replaceAll("[FECHAS]", dates)
+    .replaceAll("[PAGADOR, FRECUENCIA, VENCIMIENTO, IDENTIFICACIÓN, FIRMA Y FECHA]", `${agreement.billingName} · ${agreement.billingCurrency} · ${agreement.billingFrequency} · día de factura ${agreement.invoiceDay}. Identificación ${agreement.identityNumberMasked}.`)
+    .replaceAll("[NOMBRE / CÉDULA / RNC]", `${agreement.holderName} · ${agreement.identityNumberMasked}`)
+    .replaceAll("[CORREO]", agreement.billingEmail);
+  return body;
+}
+
+export default function ContractCasePanel({ caseRef, authorization, canUpdate, canViewTemplates, context, onUnauthorized }: Props) {
   const api = useMemo(() => new CrmServicesApi(() => authorization || null), [authorization]);
   const custodyApi = useMemo(() => new CustomerCustodyApi(authorization), [authorization]);
   const [workspace, setWorkspace] = useState<CaseServiceWorkspace | null>(null);
   const [storageType, setStorageType] = useState<CustomerStorageType | null>(null);
+  const [agreementWorkspace, setAgreementWorkspace] = useState<CustomerStorageAgreementWorkspace | null>(null);
   const [templates, setTemplates] = useState<readonly CommunicationTemplate[]>([]);
   const [templateRef, setTemplateRef] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,10 +78,12 @@ export default function ContractCasePanel({ caseRef, authorization, canUpdate, c
       api.workspace(caseRef, controller.signal),
       canViewTemplates ? communicationsApi.templates(authorization) : Promise.resolve([]),
       custodyApi.storageRequirementWorkspace(caseRef, controller.signal).catch(() => null),
+      custodyApi.storageAgreementWorkspace(caseRef, controller.signal).catch(() => null),
     ])
-      .then(([nextWorkspace, nextTemplates, requirementWorkspace]) => {
+      .then(([nextWorkspace, nextTemplates, requirementWorkspace, nextAgreementWorkspace]) => {
         setWorkspace(nextWorkspace);
         setStorageType(requirementWorkspace?.current?.storageType || null);
+        setAgreementWorkspace(nextAgreementWorkspace);
         setTemplates(nextTemplates.filter((item) => item.code.startsWith("CTR.") && item.state !== "INACTIVE" && Boolean(item.current)));
       })
       .catch((cause) => {
@@ -67,6 +104,18 @@ export default function ContractCasePanel({ caseRef, authorization, canUpdate, c
   const recommended = recommendedCode(workspace, storageSelected, storageType);
   const chosen = templates.find((item) => item.templateRef === templateRef) || templates.find((item) => item.code === recommended) || templates[0] || null;
   const suggestedTermsVersion = chosen ? `${chosen.code}@v${chosen.currentVersion}` : undefined;
+  const contractBody = chosen ? renderContractBody(chosen, context, agreementWorkspace) : "";
+  const isFinal = chosen?.state === "PUBLISHED" && agreementWorkspace?.agreement?.status === "ACTIVE";
+  const documentContext: ContractPdfContext | null = chosen ? {
+    caseCode: context.caseCode,
+    clientName: context.clientName,
+    serviceName: workspace.selection.primary?.name || "Servicio por confirmar",
+    templateName: chosen.name,
+    termsReference: suggestedTermsVersion || "Términos pendientes",
+    bodyText: contractBody,
+    documentReference: agreementWorkspace?.agreement?.agreementCode || `BORRADOR-${context.caseCode}`,
+    isFinal,
+  } : null;
 
   return <section role="tabpanel" aria-labelledby="contract-tab" className="w-full p-4" data-testid="case-contract-panel">
     <header className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3">
@@ -89,6 +138,9 @@ export default function ContractCasePanel({ caseRef, authorization, canUpdate, c
       </div>
       {chosen?.current && <details className="border-t"><summary className="cursor-pointer px-3 py-2 text-xs font-bold text-slate-700">Consultar contenido de la versión</summary><pre className="max-h-72 overflow-auto whitespace-pre-wrap border-t bg-slate-50 p-3 font-sans text-xs leading-5 text-slate-700">{chosen.current.bodyText}</pre></details>}
     </section>
+
+    {documentContext && <ContractOutputActions context={documentContext} onOpenChange={setPreviewOpen} />}
+    {documentContext && <ContractDocumentPreview context={documentContext} open={previewOpen} onOpenChange={setPreviewOpen} />}
 
     {storageSelected ? <CommercialStorageAuthorizationPanel
       caseRef={caseRef}

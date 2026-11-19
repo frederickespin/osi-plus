@@ -17,6 +17,18 @@ type Defaults = { combinationRef: string; code: string; name: string; version: n
 type Event = { action: string; version: number; createdAt: string };
 
 const EMPTY: Draft = { name: "", category: "", usage: "PRIMARY", compatibleModes: ["LOCAL"], status: "ACTIVE", sortOrder: 0, allowedComplementaryRefs: [] };
+const SERVICE_CATEGORIES = new Map([
+  ["CUSTOMS", "Aduanas y documentación"],
+  ["STORAGE", "Almacenaje con custodia"],
+  ["PACKING", "Empaque y embalaje"],
+  ["FREIGHT", "Flete internacional"],
+  ["ENGINEERING", "Ingeniería y huacales"],
+  ["INSTALLATION", "Instalación y desmontaje"],
+  ["INVENTORY", "Inventario y etiquetado"],
+  ["MOVING", "Mudanzas"],
+  ["TRANSPORT", "Transporte"],
+  ["OTHER", "Otros servicios"],
+]);
 const USAGE = { PRIMARY: "Principal", COMPLEMENTARY: "Complementario", BOTH: "Ambos" };
 const SCOPES: Record<Scope, string> = { LOCAL: "Local / Nacional", EXPORT: "Exportación", IMPORT: "Importación" };
 const STATUS = { ACTIVE: "Activo", INACTIVE: "Inactivo" };
@@ -28,6 +40,12 @@ const EVENT_LABELS: Record<string, string> = {
 const DATE = new Intl.DateTimeFormat("es-DO", { timeZone: "America/Santo_Domingo", dateStyle: "short", timeStyle: "short" });
 const ACTION = "border-transparent bg-transparent";
 const TABLE_WRAP = "overflow-auto border-b border-slate-200 max-h-[max(15rem,calc(100dvh-17rem))]";
+
+function categoryLabel(category: string | null) {
+  if (!category) return "Sin clasificar";
+  if (category === "PREVIEW_SYNTHETIC") return "Demostración";
+  return SERVICE_CATEGORIES.get(category) ?? category;
+}
 
 export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, onUnauthorized }: Props) {
   const form = useId();
@@ -41,9 +59,14 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
   const [detailStatus, setDetailStatus] = useState<"loading" | "ready" | "error">("loading");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const editedService = rows.find((item) => item.serviceRef === draft?.serviceRef);
+  const savedCategory = editedService?.category;
+  const legacyCategory = savedCategory && !SERVICE_CATEGORIES.has(savedCategory) ? savedCategory : null;
+  const canSaveDraft = Boolean(draft && draft.name.trim() && draft.compatibleModes.length &&
+    (SERVICE_CATEGORIES.has(draft.category) || draft.category === legacyCategory));
   const complementary = rows.filter((item) => item.status === "ACTIVE" && item.usage !== "PRIMARY");
   const visible = rows.filter((item) => item.serviceRef === draft?.serviceRef || filterBySearch(
-    [item.name, item.category, USAGE[item.usage], ...item.compatibleModes.map((mode) => SCOPES[mode])].join(" "), search,
+    [item.name, item.category, categoryLabel(item.category), USAGE[item.usage], ...item.compatibleModes.map((mode) => SCOPES[mode])].join(" "), search,
   ));
   const allowDefaults = details?.kind === "DEFAULTS" && details.service.usage !== "COMPLEMENTARY";
 
@@ -63,12 +86,12 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft || !canManage || saving || !draft.name.trim() || !draft.compatibleModes.length) return;
+    if (!draft || !canManage || saving || !canSaveDraft) return;
     setSaving(true);
     setError("");
     try {
       const common = {
-        requestId: request.current, name: draft.name.trim(), category: draft.category.trim() || null,
+        requestId: request.current, name: draft.name.trim(), category: draft.category,
         usage: draft.usage, compatibleModes: [...draft.compatibleModes].sort(), sortOrder: draft.sortOrder,
         allowedComplementaryRefs: draft.allowedComplementaryRefs,
       };
@@ -81,7 +104,7 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
         ? "Otra persona modificó el servicio. Actualiza antes de volver a editar."
         : cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_IDEMPOTENCY_CONFLICT"
           ? "El guardado anterior ya se registró. Actualiza el listado para ver el servicio."
-          : "No se pudo guardar el servicio. Revisa el nombre y la modalidad.");
+          : "No se pudo guardar el servicio. Revisa el nombre, la categoría y las modalidades.");
     } finally { setSaving(false); }
   }
   async function toggleStatus(item: ServiceCatalogItem) {
@@ -140,8 +163,13 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
     <tr className="bg-sky-50/70">
       <td><input form={form} aria-label="Nombre del servicio" placeholder="Nombre del servicio" className={FIELD} required maxLength={160}
         disabled={saving} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></td>
-      <td><input form={form} aria-label="Categoría" placeholder="Opcional" className={FIELD} maxLength={80}
-        disabled={saving} value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })} /></td>
+      <td><select form={form} aria-label="Categoría" className={FIELD} required disabled={saving}
+        title={draft.category ? categoryLabel(draft.category) : undefined}
+        value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>
+        <option value="" disabled>Selecciona categoría</option>
+        {legacyCategory && <option value={legacyCategory}>{categoryLabel(legacyCategory)} (registrada)</option>}
+        {Array.from(SERVICE_CATEGORIES, ([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select></td>
       <td><select form={form} aria-label="Uso del servicio" className={FIELD} disabled={saving} value={draft.usage}
         onChange={(event) => setDraft({ ...draft, usage: event.target.value as Draft["usage"] })}>
         {Object.entries(USAGE).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -152,9 +180,9 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
             onChange={() => setDraft({ ...draft, compatibleModes: draft.compatibleModes.includes(mode) ? draft.compatibleModes.filter((item) => item !== mode) : [...draft.compatibleModes, mode] })} />{label}
         </label>)}
       </div></td>
-      <td>{draft.serviceRef ? STATUS[draft.status] : "Nuevo"}</td><td className="text-right">{rows.find((row) => row.serviceRef === draft.serviceRef)?.usageCount ?? "—"}</td>
+      <td>{draft.serviceRef ? STATUS[draft.status] : "Nuevo"}</td><td className="text-right">{editedService?.usageCount ?? "—"}</td>
       <td><form id={form} onSubmit={(event) => void save(event)} className="flex justify-end">
-        <AdministrationIconAction label="Guardar servicio" type="submit" className={ACTION + " text-emerald-700"} disabled={saving || !draft.name.trim() || !draft.compatibleModes.length}><Check aria-hidden="true" className="size-4" /></AdministrationIconAction>
+        <AdministrationIconAction label="Guardar servicio" type="submit" className={ACTION + " text-emerald-700"} disabled={saving || !canSaveDraft}><Check aria-hidden="true" className="size-4" /></AdministrationIconAction>
         <AdministrationIconAction label="Cancelar edición del servicio" className={ACTION} disabled={saving} onClick={() => { setDraft(null); setError(""); }}><X aria-hidden="true" className="size-4" /></AdministrationIconAction>
       </form></td>
     </tr>
@@ -211,22 +239,25 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
           onClick={() => openDraft()}><Plus aria-hidden="true" className="size-4" /></AdministrationIconAction>}
         <AdministrationHelp title="catálogo de servicios">
           <p>Registra los servicios que se podrán seleccionar en Comercial. El uso define si el servicio puede ser principal, complementario o ambos.</p>
+          <p>La categoría agrupa servicios en el catálogo. Almacenaje con custodia habilita el flujo de contrato y autorizaciones de almacén cuando el servicio se agrega a un caso. Selecciona la categoría propia de cada trabajo, como Empaque y embalaje o Transporte.</p>
           <p>Usa el icono de capas para elegir los complementarios que se cargarán al iniciar un caso.</p>
         </AdministrationHelp>
       </div>
       {error && !draft && <p role="alert" className="py-2 text-xs text-red-800">{error}</p>}
       <div className={TABLE_WRAP}>
         <table aria-label="Servicios disponibles" className="w-full min-w-[770px] table-fixed text-left">
-          <thead className={COMPACT_TABLE_HEAD}><tr><th className="w-[22%]" scope="col">Servicio</th><th className="w-[14%]" scope="col">Categoría</th>
-            <th className="w-[13%]" scope="col">Uso</th><th className="w-[18%]" scope="col">Modalidades</th><th className="w-[8%]" scope="col">Estado</th>
+          <thead className={COMPACT_TABLE_HEAD}><tr><th className="w-[21%]" scope="col">Servicio</th><th className="w-[17%]" scope="col">Categoría</th>
+            <th className="w-[12%]" scope="col">Uso</th><th className="w-[17%]" scope="col">Modalidades</th><th className="w-[8%]" scope="col">Estado</th>
             <th className="w-[5%] text-right" scope="col">Usos</th><th scope="col"><span className="sr-only">Acciones</span></th></tr></thead>
           <tbody className={COMPACT_TABLE_BODY}>
             {draft && !draft.serviceRef && editor}
             {visible.map((item) => item.serviceRef === draft?.serviceRef ? <Fragment key={item.serviceRef}>{editor}</Fragment> :
               <tr key={item.serviceRef} className="h-9 text-slate-700 hover:bg-slate-50">
-                <td className="break-words font-semibold text-slate-900">{item.name}</td><td className="break-words">{item.category ?? "—"}</td>
+                <td className={"break-words font-semibold " + (item.status === "INACTIVE" ? "text-red-700" : "text-slate-900")}>{item.name}</td>
+                <td className="break-words">{categoryLabel(item.category)}</td>
                 <td>{USAGE[item.usage]}</td><td>{item.compatibleModes.map((mode) => SCOPES[mode]).join(", ") || "—"}</td>
-                <td>{STATUS[item.status]}</td><td className="text-right tabular-nums">{item.usageCount}</td>
+                <td className={item.status === "INACTIVE" ? "font-semibold text-red-700" : undefined}>{STATUS[item.status]}</td>
+                <td className="text-right tabular-nums">{item.usageCount}</td>
                 <td><div className="flex justify-end">
                   {canManage && <AdministrationIconAction label={"Editar servicio " + item.name} disabled={Boolean(draft) || saving} className={ACTION}
                     onClick={() => openDraft(item)}><Pencil aria-hidden="true" className="size-4" /></AdministrationIconAction>}

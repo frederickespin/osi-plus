@@ -20,6 +20,8 @@ rejects("api/_lib/rbac.js", (value) => value.replace("services:packages:manage",
 rejects("src/crm-services/ServiceConfigurationAdmin.tsx", (value) => `${value}\nconst productionApiEnabled=true;`);
 rejects("src/crm-services/ServiceConfigurationAdmin.tsx", (value) => `${value}\nconst ratio='70%';`);
 rejects("api/_lib/servicePackagesDomain.js", (value) => `${value}\nconst employeeId='assigned';`);
-rejects("src/crm-services/ServiceCasePanel.tsx", (value) => value.replace("Configuración final del caso", "Configuración temporal"));
+rejects("src/crm-services/ServiceConfigurationAdmin.tsx", (value) => value.replaceAll('aria-label="Paquetes operativos"', 'aria-label="Paquetes archivados"'));
+rejects("src/crm-services/ServiceCasePanel.tsx", (value) => value.replace('data-testid="case-service-configuration"', 'data-testid="case-service-preview"'));
+rejects("src/crm-services/ServiceCasePanel.tsx", (value) => value.replace("ajuste del caso → acuerdo comercial → paquete", "paquete → acuerdo comercial → ajuste del caso"));
 rejects("src/crm-services/ServiceConfigurationAdmin.tsx", (value) => `${value}\nimport { useCasesStore } from './legacy';`);
 process.stdout.write(`${JSON.stringify({ ok: true, negativeAssertions: checks })}\n`);

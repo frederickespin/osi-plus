@@ -22,10 +22,15 @@ export function validateServicePackages(overrides = {}) {
   need(contract, /exact\(input,[\s\S]*payloadHash/, "payloads no son cerrados"); need(contract, /SERVICE_PACKAGES_PAYLOAD_HASH_INVALID/, "servidor no recalcula payloadHash");
   for (const permission of ["services:packages:view", "services:packages:manage", "services:materials:view", "services:materials:manage", "services:case-config:view", "services:case-config:update"]) { if (!rbac.includes(permission) || !access.includes(permission)) fail(`falta permiso explícito ${permission}`); }
   need(http, /CRM_SERVICES_API_MODES[\s\S]*DISABLED[\s\S]*LOCAL_ONLY[\s\S]*PREVIEW_REHEARSAL/, "gate fail-closed ausente"); need(http, /CRM_SERVICES_DISABLED", 409/, "DISABLED no bloquea antes del contexto");
-  need(admin, /Configuración de Servicios[\s\S]*Combinaciones[\s\S]*Políticas de materiales/, "UI administrativa incompleta"); need(admin, /PERSONNEL[\s\S]*MATERIAL[\s\S]*ASSET[\s\S]*TRANSPORT[\s\S]*DURATION[\s\S]*CRATING/, "editor no separa recursos"); need(panel, /Configuración final del caso[\s\S]*override del caso[\s\S]*acuerdo comercial[\s\S]*combinación/, "workspace final/precedencia ausente");
+  need(admin, /data-testid="service-configuration-admin"/, "configuración administrativa ausente");
+  need(admin, /aria-label="Paquetes operativos"[\s\S]*aria-label="Políticas de materiales"/, "faltan los editores de paquetes operativos o políticas");
+  need(admin, /PERSONNEL[\s\S]*MATERIAL[\s\S]*ASSET[\s\S]*TRANSPORT[\s\S]*DURATION[\s\S]*CRATING/, "editor no separa recursos");
+  need(panel, /data-testid="case-service-configuration"[\s\S]*<QuickQuoteConfigurator\b/, "configuración final del caso ausente");
+  need(panel, /Precedencia: ajuste del caso → acuerdo comercial → paquete → modo\/servicio → resolución manual/, "precedencia de la configuración del caso ausente");
   if (/useCasesStore|caseBridge|salesStore|localCaseCache|TemplateRepository/.test(`${domain}\n${admin}\n${panel}`)) fail("se reintrodujo autoridad legacy");
   if (/productionApiEnabled\s*[:=]\s*true/i.test(`${packageJson}\n${http}\n${admin}\n${panel}`)) fail("Production fue activada");
-  if (/\b(?:70|30)\s*%/.test(`${domain}\n${contract}\n${admin}`)) fail("porcentaje empresarial hard-coded");
+  const adminWithoutColumnWidths = admin.replace(/\b(?:w|min-w|max-w)-\[\d+(?:\.\d+)?%\]/g, "");
+  if (/\b(?:70|30)\s*%/.test(`${domain}\n${contract}\n${adminWithoutColumnWidths}`)) fail("porcentaje empresarial hard-coded");
   if (/employeeId|vehicleId|licensePlate|stockQuantity/.test(`${contract}\n${domain}`)) fail("paquete asigna persona/vehículo/stock concreto");
   return Object.freeze({ models: 15, permissions: 6, productionApiEnabled: false });
 }

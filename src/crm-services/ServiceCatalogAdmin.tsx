@@ -29,7 +29,8 @@ const SERVICE_CATEGORIES = new Map([
   ["TRANSPORT", "Transporte"],
   ["OTHER", "Otros servicios"],
 ]);
-const USAGE = { PRIMARY: "Principal", COMPLEMENTARY: "Complementario", BOTH: "Ambos" };
+const ROLE_LABELS = { PRIMARY: "Principal", COMPLEMENTARY: "Complementario", BOTH: "Ambos" };
+const ROLE_LOCKED_HELP = "El rol queda fijo cuando el servicio figura en un plan guardado.";
 const SCOPES: Record<Scope, string> = { LOCAL: "Local / Nacional", EXPORT: "Exportación", IMPORT: "Importación" };
 const STATUS = { ACTIVE: "Activo", INACTIVE: "Inactivo" };
 const EVENT_LABELS: Record<string, string> = {
@@ -61,6 +62,7 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const editedService = rows.find((item) => item.serviceRef === draft?.serviceRef);
+  const roleLocked = (editedService?.usageCount ?? 0) > 0;
   const savedCategory = editedService?.category;
   const legacyCategory = savedCategory && !SERVICE_CATEGORIES.has(savedCategory) ? savedCategory : null;
   const canSaveDraft = Boolean(draft && draft.name.trim() && draft.compatibleModes.length &&
@@ -68,7 +70,7 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
   const orderedRows = useMemo(() => [...rows].sort((a, b) => SERVICE_NAME_ORDER.compare(a.name, b.name)), [rows]);
   const complementary = orderedRows.filter((item) => item.status === "ACTIVE" && item.usage !== "PRIMARY");
   const visible = orderedRows.filter((item) => item.serviceRef === draft?.serviceRef || filterBySearch(
-    [item.name, item.category, categoryLabel(item.category), USAGE[item.usage], ...item.compatibleModes.map((mode) => SCOPES[mode])].join(" "), search,
+    [item.name, item.category, categoryLabel(item.category), ROLE_LABELS[item.usage], ...item.compatibleModes.map((mode) => SCOPES[mode])].join(" "), search,
   ));
   const allowDefaults = details?.kind === "DEFAULTS" && details.service.usage !== "COMPLEMENTARY";
 
@@ -102,6 +104,10 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
       setDraft(null);
       await refresh();
     } catch (cause) {
+      if (cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_USED_TYPE_IMMUTABLE") {
+        setError("El servicio figura en un plan guardado. Actualiza el catálogo para revisar su rol.");
+        return;
+      }
       report(cause, cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_VERSION_CONFLICT"
         ? "Otra persona modificó el servicio. Actualiza antes de volver a editar."
         : cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_IDEMPOTENCY_CONFLICT"
@@ -172,9 +178,9 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
         {legacyCategory && <option value={legacyCategory}>{categoryLabel(legacyCategory)} (registrada)</option>}
         {Array.from(SERVICE_CATEGORIES, ([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></td>
-      <td><select form={form} aria-label="Uso del servicio" className={FIELD} disabled={saving} value={draft.usage}
+      <td title={roleLocked ? ROLE_LOCKED_HELP : undefined}><select form={form} aria-label="Rol en el caso" className={FIELD} disabled={saving || roleLocked} value={draft.usage}
         onChange={(event) => setDraft({ ...draft, usage: event.target.value as Draft["usage"] })}>
-        {Object.entries(USAGE).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        {Object.entries(ROLE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select></td>
       <td><div className="flex flex-wrap gap-x-2 gap-y-1">
         {([["LOCAL", "Local"], ["EXPORT", "Exp."], ["IMPORT", "Imp."]] as const).map(([mode, label]) => <label key={mode} className="flex items-center gap-1" title={SCOPES[mode]}>
@@ -212,7 +218,7 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
           onClick={() => { setDetails(null); setError(""); }}><ArrowLeft aria-hidden="true" className="size-4" /></AdministrationIconAction>
         <h3 className="flex-1 text-sm font-semibold text-[#003366]">{details.kind === "HISTORY" ? "Historial" : "Complementarios iniciales"} · {details.service.name}</h3>
         {allowDefaults && <>
-          <AdministrationHelp title="complementarios iniciales"><p>Los servicios seleccionados se cargan al elegir este servicio principal en un caso nuevo.</p></AdministrationHelp>
+          <AdministrationHelp title="complementarios iniciales"><p>Marca los complementarios permitidos que deben quedar preseleccionados al elegir este servicio como principal en Comercial.</p></AdministrationHelp>
           <Button size="sm" type="button" disabled={saving || detailStatus !== "ready"}
             onClick={() => void saveDefaults()}><Check aria-hidden="true" />Guardar</Button>
         </>}
@@ -240,24 +246,25 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
         {canManage && <AdministrationIconAction label="Nuevo servicio" mobileLabel="Nuevo" disabled={Boolean(draft) || saving}
           onClick={() => openDraft()}><Plus aria-hidden="true" className="size-4" /></AdministrationIconAction>}
         <AdministrationHelp title="catálogo de servicios">
-          <p>Registra los servicios que se podrán seleccionar en Comercial. El uso define si el servicio puede ser principal, complementario o ambos.</p>
+          <p><strong>Rol en el caso.</strong> Elige si el servicio puede ser principal, complementario o ambos. {ROLE_LOCKED_HELP}</p>
+          <p><strong>En planes.</strong> Indica cuántas veces figura el servicio en planes guardados de Comercial. Incluye las versiones anteriores de un mismo caso.</p>
+          <p><strong>Complementarios.</strong> En la edición, marca los servicios que se pueden agregar cuando este sea el principal. El icono de capas permite elegir cuáles de ellos quedan preseleccionados en Comercial.</p>
           <p>La categoría agrupa servicios en el catálogo. Almacenaje con custodia habilita el flujo de contrato y autorizaciones de almacén cuando el servicio se agrega a un caso. Selecciona la categoría propia de cada trabajo, como Empaque y embalaje o Transporte.</p>
-          <p>Usa el icono de capas para elegir los complementarios que se cargarán al iniciar un caso.</p>
         </AdministrationHelp>
       </div>
       {error && !draft && <p role="alert" className="py-2 text-xs text-red-800">{error}</p>}
       <div className={TABLE_WRAP}>
         <table aria-label="Servicios disponibles" className="w-full min-w-[770px] table-fixed text-left">
-          <thead className={COMPACT_TABLE_HEAD}><tr><th className="w-[20%]" scope="col">Servicio</th><th className="w-[17%]" scope="col">Categoría</th>
-            <th className="w-[13%]" scope="col">Uso</th><th className="w-[17%]" scope="col">Modalidades</th><th className="w-[8%]" scope="col">Estado</th>
-            <th className="w-[5%] text-right" scope="col">Usos</th><th scope="col"><span className="sr-only">Acciones</span></th></tr></thead>
+          <thead className={COMPACT_TABLE_HEAD}><tr><th className="w-[19%]" scope="col">Servicio</th><th className="w-[17%]" scope="col">Categoría</th>
+            <th className="w-[13%]" scope="col">Rol en el caso</th><th className="w-[16%]" scope="col">Modalidades</th><th className="w-[8%]" scope="col">Estado</th>
+            <th className="w-[7%] text-right" scope="col" title="Registros del servicio en planes guardados, incluidas sus versiones">En planes</th><th scope="col"><span className="sr-only">Acciones</span></th></tr></thead>
           <tbody className={COMPACT_TABLE_BODY}>
             {draft && !draft.serviceRef && editor}
             {visible.map((item) => item.serviceRef === draft?.serviceRef ? <Fragment key={item.serviceRef}>{editor}</Fragment> :
               <tr key={item.serviceRef} className="h-9 text-slate-700 hover:bg-slate-50">
                 <td className={"break-words font-semibold " + (item.status === "INACTIVE" ? "text-red-700" : "text-slate-900")}>{item.name}</td>
                 <td className="break-words">{categoryLabel(item.category)}</td>
-                <td>{USAGE[item.usage]}</td><td>{item.compatibleModes.map((mode) => SCOPES[mode]).join(", ") || "—"}</td>
+                <td>{ROLE_LABELS[item.usage]}</td><td>{item.compatibleModes.map((mode) => SCOPES[mode]).join(", ") || "—"}</td>
                 <td className={item.status === "INACTIVE" ? "font-semibold text-red-700" : undefined}>{STATUS[item.status]}</td>
                 <td className="text-right tabular-nums">{item.usageCount}</td>
                 <td><div className="flex justify-end">

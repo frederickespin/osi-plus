@@ -1,4 +1,4 @@
-import { Fragment, useId, useRef, useState, type FormEvent } from "react";
+import { Fragment, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, Check, History, Layers3, Pencil, Plus, Power, Search, X } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ const EVENT_LABELS: Record<string, string> = {
   SERVICE_CATALOG_MODES_CHANGED: "Cambio de modalidades",
 };
 const DATE = new Intl.DateTimeFormat("es-DO", { timeZone: "America/Santo_Domingo", dateStyle: "short", timeStyle: "short" });
+const SERVICE_NAME_ORDER = new Intl.Collator("es-DO", { sensitivity: "base", numeric: true });
 const ACTION = "border-transparent bg-transparent";
 const TABLE_WRAP = "overflow-auto border-b border-slate-200 max-h-[max(15rem,calc(100dvh-17rem))]";
 
@@ -64,8 +65,9 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
   const legacyCategory = savedCategory && !SERVICE_CATEGORIES.has(savedCategory) ? savedCategory : null;
   const canSaveDraft = Boolean(draft && draft.name.trim() && draft.compatibleModes.length &&
     (SERVICE_CATEGORIES.has(draft.category) || draft.category === legacyCategory));
-  const complementary = rows.filter((item) => item.status === "ACTIVE" && item.usage !== "PRIMARY");
-  const visible = rows.filter((item) => item.serviceRef === draft?.serviceRef || filterBySearch(
+  const orderedRows = useMemo(() => [...rows].sort((a, b) => SERVICE_NAME_ORDER.compare(a.name, b.name)), [rows]);
+  const complementary = orderedRows.filter((item) => item.status === "ACTIVE" && item.usage !== "PRIMARY");
+  const visible = orderedRows.filter((item) => item.serviceRef === draft?.serviceRef || filterBySearch(
     [item.name, item.category, categoryLabel(item.category), USAGE[item.usage], ...item.compatibleModes.map((mode) => SCOPES[mode])].join(" "), search,
   ));
   const allowDefaults = details?.kind === "DEFAULTS" && details.service.usage !== "COMPLEMENTARY";
@@ -246,8 +248,8 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
       {error && !draft && <p role="alert" className="py-2 text-xs text-red-800">{error}</p>}
       <div className={TABLE_WRAP}>
         <table aria-label="Servicios disponibles" className="w-full min-w-[770px] table-fixed text-left">
-          <thead className={COMPACT_TABLE_HEAD}><tr><th className="w-[21%]" scope="col">Servicio</th><th className="w-[17%]" scope="col">Categoría</th>
-            <th className="w-[12%]" scope="col">Uso</th><th className="w-[17%]" scope="col">Modalidades</th><th className="w-[8%]" scope="col">Estado</th>
+          <thead className={COMPACT_TABLE_HEAD}><tr><th className="w-[20%]" scope="col">Servicio</th><th className="w-[17%]" scope="col">Categoría</th>
+            <th className="w-[13%]" scope="col">Uso</th><th className="w-[17%]" scope="col">Modalidades</th><th className="w-[8%]" scope="col">Estado</th>
             <th className="w-[5%] text-right" scope="col">Usos</th><th scope="col"><span className="sr-only">Acciones</span></th></tr></thead>
           <tbody className={COMPACT_TABLE_BODY}>
             {draft && !draft.serviceRef && editor}

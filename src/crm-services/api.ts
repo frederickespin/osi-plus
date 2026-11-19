@@ -92,7 +92,11 @@ export class CrmServicesApi {
   async catalogModes(signal?: AbortSignal): Promise<readonly Readonly<{ serviceRef: string; modeRefs: readonly string[] }>[]> { const value = await this.request("/catalog-modes", { signal }); if (!Array.isArray(value)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID"); return Object.freeze(value.map((entry) => { const row = publicRecord(entry, ["serviceRef", "modeRefs"]); if (!Array.isArray(row.modeRefs)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID"); return Object.freeze({ serviceRef: text(row.serviceRef, true), modeRefs: Object.freeze(row.modeRefs.map((item) => text(item, true))) }); })); }
   async saveCatalogModes(unsigned: Omit<RecordValue, "payloadHash">) { const payload = { operation: "CATALOG_MODES_SAVE", ...unsigned }; return this.request("/catalog-modes", { method: "POST", body: JSON.stringify({ ...unsigned, payloadHash: await hash(payload) }) }); }
   async packages(signal?: AbortSignal): Promise<readonly ServicePackage[]> { const value = await this.request("/packages", { signal }); if (!Array.isArray(value)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID"); return Object.freeze(value.map(servicePackage)); }
-  async savePackage(unsigned: Omit<RecordValue, "payloadHash">) { const payload = { operation: "PACKAGE_SAVE", ...unsigned }; return this.request("/packages", { method: "POST", body: JSON.stringify({ ...unsigned, payloadHash: await hash(payload) }) }); }
+  async savePackage(unsigned: Omit<RecordValue, "payloadHash">) {
+    const payload = { operation: "PACKAGE_SAVE", ...unsigned };
+    const result = record(await this.request("/packages", { method: "POST", body: JSON.stringify({ ...unsigned, payloadHash: await hash(payload) }) }));
+    return { package: servicePackage(result.package), replayed: result.replayed === true };
+  }
   async materialPolicies(signal?: AbortSignal): Promise<readonly ServiceMaterialPolicy[]> { const value = await this.request("/material-policies", { signal }); if (!Array.isArray(value)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID"); return Object.freeze(value.map(materialPolicy)); }
   async materialResources(signal?: AbortSignal): Promise<readonly ServiceMaterialResource[]> {
     const items: ServiceMaterialResource[] = [];

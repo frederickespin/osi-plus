@@ -1,0 +1,40 @@
+export const PACKAGE_PRICING_KIND: "SERVICE_PACKAGE_PRICING";
+export const PACKAGE_QUOTE_BASIS: "PACKAGE_QUOTATION";
+export const PACKAGE_BASE_LABELS: Readonly<Record<PackageBasis, string>>;
+export type PackageBasis = "FIXED" | "M3" | "FT3" | "CWT" | "CHARGEABLE_KG" | "CAPACITY";
+export type PackageShipment = Readonly<{ mode: "NONE" | "SEA" | "AIR"; factor: number | null; roundKg: number }>;
+export type PackageComponent = Readonly<{
+  ruleSeriesRef: string;
+  concept: string;
+  unit: string;
+  basis: PackageBasis;
+  factor: number;
+  minimumQuantity: number;
+  roundUp: boolean;
+}>;
+export type PackagePricingResult = Readonly<{
+  kind: typeof PACKAGE_PRICING_KIND;
+  components: readonly PackageComponent[];
+  minimumSale: string;
+  volumeTiers?: readonly PackageVolumeTier[];
+  allowEdits?: boolean;
+  includeRouteTransport: boolean;
+  shipment: PackageShipment;
+}>;
+export type PackageVolumeTier = Readonly<{ maxM3: number | null; minimumSale: string }>;
+export type PackageMinimum = PackageVolumeTier & Readonly<{ afterM3: number | null }>;
+export type PackageMeasures = Readonly<{
+  volumeM3: number;
+  volumeFt3: number;
+  grossKg: number | null;
+  estimatedKg: number | null;
+  volumetricKg: number | null;
+  chargeableKg: number | null;
+  cwt: number | null;
+  cwtBasis: "GROSS" | "ESTIMATED" | "CHARGEABLE" | null;
+}>;
+export function isPackagePricingRule(rule: unknown): rule is Readonly<{ result: PackagePricingResult }>;
+export function minimumForPackage(price: Pick<PackagePricingResult, "minimumSale" | "volumeTiers">, volumeM3: number): PackageMinimum | null;
+export function isPackageMinimumLine(line: unknown): boolean;
+export function packageMeasures(volumeM3: number, grossKg: number | null, shipment: PackageShipment): PackageMeasures;
+export function packageQuantity(component: PackageComponent, measures: PackageMeasures): string | null;

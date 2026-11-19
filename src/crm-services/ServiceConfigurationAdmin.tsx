@@ -1,18 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { Boxes, Layers3, PackagePlus, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { COMPACT_FORM_DIALOG, COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { NumericInput } from "@/components/ui/numeric-input";
+import type { CostingUiAccess } from "@/costing/access";
 import type { CrmServicesUiAccess } from "./access";
 import { CrmServicesApi, CrmServicesApiError, type ServiceCatalogItem, type ServiceMaterialPolicy, type ServiceMode, type ServicePackage } from "./api";
 import ServiceCatalogAdmin from "./ServiceCatalogAdmin";
 import MaterialPolicySheet from "./MaterialPolicySheet";
 import { draftFromPolicy, newPolicyDraft, policySavePayload, validatePolicyDraft, type PolicyDraft } from "./materialPolicyDraft";
 
-type Props = Readonly<{ authorization?: string; access: CrmServicesUiAccess; onUnauthorized(): void }>;
-type Tab = "CATALOG" | "PACKAGES" | "MATERIALS";
+const PackagePricingAdmin = lazy(() => import("@/costing/PackagePricingAdmin"));
+
+type Props = Readonly<{ authorization?: string; access: CrmServicesUiAccess; costingAccess?: CostingUiAccess; onUnauthorized(): void }>;
+type Tab = "CATALOG" | "PACKAGES" | "PRICING" | "MATERIALS";
 type NewModeDraft = Readonly<{ modeRef: null; code: string; scope: "LOCAL" | "EXPORT" | "IMPORT"; name: string; description: null; state: "DRAFT"; version: 0 }>;
 const MODE_SCOPES = [
   { code: "LOCAL", label: "Local / Nacional" }, { code: "EXPORT", label: "Exportación" }, { code: "IMPORT", label: "Importación" },
@@ -24,9 +27,10 @@ const EMPTY_PACKAGE: PackageDraft = Object.freeze({ packageRef: null, expectedVe
 const EMPTY_REQUIREMENT: RequirementDraft = Object.freeze({ kind: "DURATION", code: null, name: "Duración estimada", quantity: "", unitCode: "", hours: "", days: "", phaseCode: null, configuration: {}, authorityRef: "", disposition: "", chargeType: "" });
 const numberOrNull = (value: string) => value.trim() ? Number(value) : null;
 
-export default function ServiceConfigurationAdmin({ authorization, access, onUnauthorized }: Props) {
+export default function ServiceConfigurationAdmin({ authorization, access, costingAccess, onUnauthorized }: Props) {
   const api = useMemo(() => new CrmServicesApi(() => authorization || null), [authorization]);
-  const [tab, setTab] = useState<Tab>("CATALOG"); const [modes, setModes] = useState<readonly ServiceMode[]>([]); const [catalog, setCatalog] = useState<readonly ServiceCatalogItem[]>([]); const [catalogModes, setCatalogModes] = useState<readonly Readonly<{ serviceRef: string; modeRefs: readonly string[] }>[]>([]); const [packages, setPackages] = useState<readonly ServicePackage[]>([]); const [policies, setPolicies] = useState<readonly ServiceMaterialPolicy[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [packageDraft, setPackageDraft] = useState<PackageDraft | null>(null); const [policyDraft, setPolicyDraft] = useState<PolicyDraft | null>(null); const [modeDraft, setModeDraft] = useState<ServiceMode | NewModeDraft | null>(null); const [requirementDraft, setRequirementDraft] = useState<RequirementDraft | null>(null); const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<Tab>(access.canPackagesView && costingAccess?.canRulesView ? "PRICING" : "CATALOG");
+  const [modes, setModes] = useState<readonly ServiceMode[]>([]); const [catalog, setCatalog] = useState<readonly ServiceCatalogItem[]>([]); const [catalogModes, setCatalogModes] = useState<readonly Readonly<{ serviceRef: string; modeRefs: readonly string[] }>[]>([]); const [packages, setPackages] = useState<readonly ServicePackage[]>([]); const [policies, setPolicies] = useState<readonly ServiceMaterialPolicy[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [packageDraft, setPackageDraft] = useState<PackageDraft | null>(null); const [policyDraft, setPolicyDraft] = useState<PolicyDraft | null>(null); const [modeDraft, setModeDraft] = useState<ServiceMode | NewModeDraft | null>(null); const [requirementDraft, setRequirementDraft] = useState<RequirementDraft | null>(null); const [saving, setSaving] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [dataReady, setDataReady] = useState(false);
   const pendingCommands = useRef<Record<string, string>>({});
@@ -36,9 +40,15 @@ export default function ServiceConfigurationAdmin({ authorization, access, onUna
     if (!pendingCommands.current[operation]) pendingCommands.current[operation] = crypto.randomUUID();
     return { ...payload, requestId: pendingCommands.current[operation] };
   };
-  const allowedTabs = (["CATALOG", "PACKAGES", "MATERIALS"] as const).filter((value) =>
-    value === "CATALOG" ? access.canCatalogView : value === "PACKAGES" ? access.canPackagesView : access.canMaterialsView,
-  );
+  const allowedTabs: Tab[] = [];
+  if (access.canPackagesView && costingAccess?.canRulesView) allowedTabs.push("PRICING");
+  if (access.canCatalogView) allowedTabs.push("CATALOG");
+  if (access.canPackagesView) allowedTabs.push("PACKAGES");
+  if (access.canMaterialsView) allowedTabs.push("MATERIALS");
+  const tabLabels: Record<Tab, string> = {
+    CATALOG: access.canPackagesView ? "Catálogo y modos" : "Catálogo",
+    PACKAGES: "Combinaciones", PRICING: "Tarifario", MATERIALS: "Políticas de materiales",
+  };
   const activeTab = allowedTabs.includes(tab) ? tab : allowedTabs[0];
   const canEditPackage = access.canPackagesView && access.canPackagesManage && access.canCatalogView;
   const canEditPolicy = access.canMaterialsView && access.canMaterialsManage && access.canPackagesView;
@@ -60,9 +70,9 @@ export default function ServiceConfigurationAdmin({ authorization, access, onUna
     setDataReady(false);
     setError(null);
     // Modes belong to the packages read contract; catalog mappings require catalog read.
-    const readCatalog = access.canCatalogView && (activeTab === "CATALOG" || activeTab === "PACKAGES" || activeTab === "MATERIALS");
-    const readCatalogModes = access.canCatalogView && access.canPackagesView && activeTab === "CATALOG";
-    const readPackages = access.canPackagesView && (activeTab === "PACKAGES" || activeTab === "MATERIALS");
+    const readCatalog = access.canCatalogView;
+    const readCatalogModes = access.canCatalogView && access.canPackagesView && (activeTab === "CATALOG" || activeTab === "PRICING");
+    const readPackages = access.canPackagesView && (activeTab === "PACKAGES" || activeTab === "MATERIALS" || activeTab === "PRICING");
     void Promise.all([
       access.canPackagesView ? api.modes(controller.signal) : Promise.resolve([]),
       readCatalog ? api.catalog(controller.signal) : Promise.resolve([]),
@@ -113,6 +123,15 @@ export default function ServiceConfigurationAdmin({ authorization, access, onUna
       else setError("No fue posible guardar la combinación. Revise sus servicios y recursos; otra persona puede haber guardado una versión más reciente.");
     } finally { setSaving(false); }
   };
+  const createTariffPackage = async (value: { name: string; modeRef: string; primaryServiceRef: string; requestId: string }) => {
+    const result = await api.savePackage({
+      requestId: value.requestId, packageRef: null, expectedVersion: null, code: null, name: value.name,
+      description: null, category: null, tags: [], modeRefs: [value.modeRef], primaryServiceRef: value.primaryServiceRef,
+      complementaryRefs: [], requirements: [], state: "PUBLISHED", validFrom: null, validTo: null,
+    });
+    setPackages((current) => [...current.filter((pkg) => pkg.versionRef !== result.package.versionRef), result.package]);
+    return result.package;
+  };
   const editPolicy = (row: ServiceMaterialPolicy) => { delete pendingCommands.current.MATERIAL_POLICY_SAVE; setError(null); setPolicyDraft(draftFromPolicy(row)); };
   const savePolicy = async () => {
     if (!policyDraft || !canEditPolicy || activeTab !== "MATERIALS" || loading || !dataReady || !validatePolicyDraft(policyDraft).valid) return;
@@ -147,7 +166,11 @@ export default function ServiceConfigurationAdmin({ authorization, access, onUna
   if (!activeTab) return null;
   return <section id="admin-service-configuration" className="mt-3 min-w-0" data-testid="service-configuration-admin">
     <header className="flex flex-wrap items-center justify-between gap-2 border-b pb-3"><div className="flex items-center gap-1"><h2 className="text-base font-semibold text-slate-950">Configuración de Servicios</h2><AdministrationHelp title="Servicios y combinaciones"><p>El catálogo reúne los servicios disponibles. Las combinaciones reúnen servicios y recursos para reutilizarlos en los casos.</p><p>Las políticas de materiales definen consumo, alquiler, devolución y cargos. Cada versión publicada conserva sus condiciones.</p></AdministrationHelp></div><AdministrationIconAction label="Actualizar configuración de Servicios" mobileLabel="Actualizar" disabled={loading || saving} onClick={load}><RefreshCw aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction></header>
-    <nav aria-label="Configuración de Servicios" className="flex gap-1 overflow-x-auto border-b px-4 pt-2">{allowedTabs.map((value) => <button key={value} type="button" onClick={() => setTab(value)} aria-current={activeTab === value ? "page" : undefined} className={`whitespace-nowrap border-b-2 px-3 py-2 text-xs font-bold ${activeTab === value ? "border-[#0070a8] text-[#003366]" : "border-transparent text-slate-500"}`}>{value === "CATALOG" ? access.canPackagesView ? "Catálogo y modos" : "Catálogo" : value === "PACKAGES" ? "Combinaciones" : "Políticas de materiales"}</button>)}</nav>
+    <nav aria-label="Configuración de Servicios" className="flex gap-1 overflow-x-auto border-b px-4 pt-2">{allowedTabs.map((value) => <button key={value} type="button" onClick={() => setTab(value)} aria-current={activeTab === value ? "page" : undefined} className={`whitespace-nowrap border-b-2 px-3 py-2 text-xs font-bold ${activeTab === value ? "border-[#0070a8] text-[#003366]" : "border-transparent text-slate-500"}`}>{tabLabels[value]}</button>)}</nav>
+    {!loading && dataReady && activeTab === "PRICING" && costingAccess?.canRulesView && <Suspense fallback={<p role="status" className="p-3 text-xs text-slate-600">Cargando tarifas…</p>}>
+      <PackagePricingAdmin authorization={authorization} packages={packages} canManage={costingAccess.canRulesManage} onUnauthorized={onUnauthorized}
+        modes={modes} services={primaries} catalogModes={catalogModes} onCreate={canEditPackage && costingAccess.canRulesManage ? createTariffPackage : undefined} />
+    </Suspense>}
     {error && !policyDraft && !modeDraft && !packageDraft && <p role="alert" className="m-4 border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}{loading && <p role="status" className="p-8 text-center text-sm text-slate-500">Cargando configuración…</p>}
     {!loading && dataReady && activeTab === "CATALOG" && <div className="py-3">{access.canPackagesView ? <><div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b pb-2"><div><h3 className="text-sm font-semibold text-slate-950">Modalidades de servicio</h3><p className="text-xs text-slate-500">Local, exportación, importación y otras modalidades configuradas.</p></div>{canEditMode && <Button size="sm" disabled={!availableModeScopes.length} onClick={openNewMode}><Plus />Nuevo modo</Button>}</div>{canEditMode && !availableModeScopes.length && <p className="mb-2 text-xs text-slate-500">Las modalidades están configuradas. Seleccione una para editarla.</p>}<div className="flex flex-wrap gap-2">{modes.map((mode) => <button key={mode.modeRef} type="button" disabled={!canEditMode} onClick={() => { delete pendingCommands.current.MODE_SAVE; setError(null); setModeDraft(mode); }} className="rounded border px-3 py-2 text-left text-xs"><strong className="block text-[#003366]">{mode.name}</strong><span>{mode.state} · v{mode.version}</span></button>)}</div><div className="mt-4 overflow-x-auto border"><div className="min-w-[700px]"><div className="grid grid-cols-[200px_1fr] border-b bg-slate-50 px-3 py-2 text-[10px] font-black uppercase"><span>Servicio</span><span>Modalidades disponibles</span></div>{catalog.map((service) => <div key={service.serviceRef} className="grid grid-cols-[200px_1fr] gap-2 border-b px-3 py-2 text-xs"><strong>{service.name}</strong><span className="flex flex-wrap gap-3">{modes.filter((mode) => mode.state !== "INACTIVE").map((mode) => <label key={mode.modeRef}><input type="checkbox" disabled={!access.canCatalogManage || saving} checked={catalogModes.find((entry) => entry.serviceRef === service.serviceRef)?.modeRefs.includes(mode.modeRef) || false} onChange={() => void toggleCatalogMode(service.serviceRef, mode.modeRef)} /> {mode.name}</label>)}</span></div>)}</div></div></> : <p className="mb-4 text-xs text-slate-600">Para consultar modos y compatibilidades necesitas acceso de consulta a combinaciones.</p>}<ServiceCatalogAdmin authorization={authorization} canManage={access.canCatalogManage} onUnauthorized={onUnauthorized} /></div>}
     {!loading && dataReady && activeTab === "PACKAGES" && <div className="py-3"><div className="flex flex-wrap items-end justify-between gap-3 border-b pb-3"><div><h3 className="text-sm font-semibold text-slate-950">Combinaciones reutilizables</h3><p className="text-xs text-slate-500">Combinaciones de servicios y recursos.</p></div>{access.canPackagesManage && <Button size="sm" disabled={!canEditPackage} onClick={() => { delete pendingCommands.current.PACKAGE_SAVE; setError(null); setPackageDraft(EMPTY_PACKAGE); }}><PackagePlus />Nueva combinación</Button>}</div>{access.canPackagesManage && !canEditPackage && <p className="mt-3 text-xs text-slate-600">Puedes consultar las combinaciones. Para crearlas o editarlas necesitas también acceso de consulta al catálogo de servicios.</p>}<div className="mt-3 overflow-x-auto"><div className="min-w-[900px] divide-y border bg-white"><div className="grid grid-cols-[120px_minmax(180px,1fr)_140px_160px_90px_90px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase text-slate-500"><span>Código</span><span>Combinación</span><span>Modalidad</span><span>Servicios</span><span>Estado</span><span>Versión</span></div>{packages.map((row) => <button key={row.versionRef} type="button" disabled={!canEditPackage} onClick={() => canEditPackage && editPackage(row)} className="grid w-full grid-cols-[120px_minmax(180px,1fr)_140px_160px_90px_90px] gap-3 px-3 py-2 text-left text-xs"><code>{row.code}</code><strong>{row.name}</strong><span>{row.modes.map((mode) => mode.name).join(", ")}</span><span>{row.primary?.name || "—"} +{row.complementaries.length}</span><span>{row.state}</span><span>v{row.version}</span></button>)}{!packages.length && <p className="p-6 text-center text-xs text-slate-500">No hay combinaciones registradas.</p>}</div></div></div>}

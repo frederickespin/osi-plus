@@ -214,7 +214,12 @@ function normalizeLine(raw, position, proposalCurrency) {
     capturedCost: decimal(manualAuthority.capturedCost, { nullable: true }),
     suggestedPrice: decimal(manualAuthority.suggestedPrice, { nullable: true }),
   } : null;
-  if (normalizedAuthority?.status === "CONFIRMED" && (normalizedAuthority.capturedCost == null || normalizedAuthority.suggestedPrice == null)) quoteFail("QUOTE_MANUAL_AUTHORITY_INVALID");
+  if (normalizedAuthority?.kind === "QUOTE_CATALOG_COMPONENT") {
+    uuid(normalizedAuthority.reference);
+    if (normalizedAuthority.status !== "CONFIRMED" || normalizedAuthority.capturedCost != null || normalizedAuthority.suggestedPrice != null || value.quotedPrice == null) quoteFail("QUOTE_MANUAL_AUTHORITY_INVALID");
+  } else if (normalizedAuthority?.status === "CONFIRMED" && (normalizedAuthority.capturedCost == null || normalizedAuthority.suggestedPrice == null)) {
+    quoteFail("QUOTE_MANUAL_AUTHORITY_INVALID");
+  }
   if (normalizedAuthority?.status === "PENDING" && (normalizedAuthority.capturedCost != null || normalizedAuthority.suggestedPrice != null || value.quotedPrice != null)) quoteFail("QUOTE_MANUAL_AUTHORITY_INVALID");
   const lineCurrency = currency(value.currency);
   if (lineCurrency !== proposalCurrency) quoteFail("QUOTE_LINE_CURRENCY_INVALID");
@@ -253,6 +258,7 @@ function normalizeProposalPayload(value) {
     exchange: normalizeExchange(value.exchange, proposalCurrency),
     discount: normalizeDiscount(value.discount),
     marginAuthorizationRef: value.marginAuthorizationRef == null ? null : uuid(value.marginAuthorizationRef),
+    ...(Object.hasOwn(value, "packageAdjustmentReason") && { packageAdjustmentReason: nullableText(value.packageAdjustmentReason, 1000) }),
     lines: value.lines.map((line, index) => normalizeLine(line, index + 1, proposalCurrency)),
   };
 }
@@ -270,15 +276,19 @@ function command(raw, operation, normalized, extra = {}) {
 
 const PROPOSAL_FIELDS = ["requestId", "payloadHash", "caseRef", "costingRevisionRef", "position", "proposalName", "currency", "issueDate", "validUntil", "commercialContext", "payer", "terms", "exchange", "discount", "marginAuthorizationRef", "lines"];
 
+function proposalFields(value) {
+  return Object.hasOwn(value, "packageAdjustmentReason") ? [...PROPOSAL_FIELDS, "packageAdjustmentReason"] : PROPOSAL_FIELDS;
+}
+
 export function normalizeQuoteCreate(raw) {
   const value = object(raw);
-  exact(value, PROPOSAL_FIELDS);
+  exact(value, proposalFields(value));
   return command(value, "QUOTE_PROPOSAL_CREATE", normalizeProposalPayload(value));
 }
 
 export function normalizeQuoteRevise(raw) {
   const value = object(raw);
-  exact(value, [...PROPOSAL_FIELDS, "proposalRef", "expectedRevision"]);
+  exact(value, [...proposalFields(value), "proposalRef", "expectedRevision"]);
   return command(value, "QUOTE_PROPOSAL_REVISE", normalizeProposalPayload(value), { proposalRef: uuid(value.proposalRef), expectedRevision: integer(value.expectedRevision, 1) });
 }
 

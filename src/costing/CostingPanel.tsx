@@ -1,8 +1,9 @@
 import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calculator, Check, CheckCircle2, CircleDollarSign, RefreshCw, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, Calculator, Check, CheckCircle2, CircleDollarSign, Package, RefreshCw, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, X } from "lucide-react";
 import type { CostingUiAccess } from "./access";
-import { costingApi, type CostingCalculation, type CostingLine, type CostingRevision } from "./api";
+import { costingApi, type CostingCalculation, type CostingLine, type CostingPackageEstimate, type CostingRevision } from "./api";
 import type { TransportUiAccess } from "@/logistics-engine/transportAccess";
+import { PackageCostingForm, PackageCostingSummary } from "./PackageCosting";
 
 const TransportCalculationPanel = lazy(() => import("@/logistics-engine/TransportCalculationPanel"));
 
@@ -16,9 +17,15 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   COSTING_TRANSPORT_CONTEXT_INVALID: "La revisión de transporte no corresponde a un contexto válido. Recalcule el transporte de esta cotización.",
   COSTING_TRANSPORT_AUTHORITY_INVALID: "No se pudo verificar la tarifa asociada al transporte. Revise la zona y publique un nuevo cálculo.",
   COSTING_TRANSPORT_DUPLICATE_ITEM: "La revisión contiene un gasto de transporte repetido. Recalcule el transporte antes de continuar.",
+  COSTING_PACKAGE_NOT_AVAILABLE: "El paquete o su tarifa ya no está vigente para el servicio del caso.",
+  COSTING_PACKAGE_PLAN_STALE: "Cambió la ruta o el servicio del caso. Actualice la publicación logística y vuelva a calcular.",
+  COSTING_PACKAGE_CURRENCY_INVALID: "Cambió la moneda del paquete. Vuelva a abrir el selector y recalcule.",
+  COSTING_PACKAGE_RULE_CONFLICT: "Hay más de una tarifa vigente para el paquete. Revise la configuración en Administración.",
+  COSTING_PACKAGE_VOLUME_UNSUPPORTED: "El volumen queda fuera de los tramos de este paquete.",
+  COSTING_PACKAGE_TRANSPORT_REQUIRED: "Este paquete requiere calcular el transporte de la ruta del caso.",
 };
 
-type Props = Readonly<{ caseRef: string; authorization?: string; access: CostingUiAccess; transportAccess?: TransportUiAccess; onUnauthorized(): void }>;
+type Props = Readonly<{ caseRef: string; authorization?: string; access: CostingUiAccess; transportAccess?: TransportUiAccess; onUnauthorized(): void; onContinueToProposals?(): void }>;
 
 function money(value: string | number | null, currency: string) {
   if (value == null) return "Pendiente";
@@ -51,7 +58,7 @@ function Totals({ value, currency }: { value: CostingRevision["totals"]; currenc
   return <aside className="border bg-white p-3"><h3 className="text-xs font-black uppercase tracking-wide text-[#003366]">Resumen económico</h3><dl className="mt-2 divide-y">{rows.map(([label, amount]) => <div key={label} className="flex items-center justify-between gap-4 py-2 text-xs"><dt className="text-slate-600">{label}</dt><dd className="font-bold tabular-nums">{money(amount, currency)}</dd></div>)}<div className="flex items-center justify-between gap-4 py-2 text-xs"><dt className="text-slate-600">Margen esperado propio</dt><dd className="font-bold">{value.expectedMarginBps == null ? "Sin política" : `${(value.expectedMarginBps / 100).toFixed(2)}%`}</dd></div></dl></aside>;
 }
 
-export default function CostingPanel({ caseRef, authorization, access, transportAccess, onUnauthorized }: Props) {
+export default function CostingPanel({ caseRef, authorization, access, transportAccess, onUnauthorized, onContinueToProposals }: Props) {
   const [revision, setRevision] = useState<CostingRevision | null>(null);
   const [calculation, setCalculation] = useState<CostingCalculation | null>(null);
   const [family, setFamily] = useState("ALL");
@@ -63,6 +70,7 @@ export default function CostingPanel({ caseRef, authorization, access, transport
   const [overrideAmount, setOverrideAmount] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [transportChanged, setTransportChanged] = useState(false);
+  const [showPackages, setShowPackages] = useState(false);
   const current = calculation?.result || revision;
   const currency = calculation?.baseCurrency || revision?.baseCurrency || "DOP";
   const load = useCallback(async () => {
@@ -72,12 +80,16 @@ export default function CostingPanel({ caseRef, authorization, access, transport
     finally { setLoading(false); }
   }, [authorization, caseRef, onUnauthorized]);
   useEffect(() => { void load(); }, [load]);
-  const calculate = async () => {
+  const calculate = async (packageEstimate?: CostingPackageEstimate, packageCurrency?: string, useTransport = true) => {
     setBusy(true); setError(null);
+    if (packageEstimate) setCalculation(null);
     try {
-      const logistics = await costingApi.currentLogistics(authorization, caseRef);
-      if (!logistics) throw new Error("COSTING_LOGISTICS_REVISION_REQUIRED");
-      setCalculation(await costingApi.calculate(authorization, { caseRef, logisticsPlanRevisionRef: logistics.revisionRef, baseCurrency: currency }));
+      const logistics = useTransport ? await costingApi.currentLogistics(authorization, caseRef) : null;
+      if (useTransport && !logistics) throw new Error("COSTING_LOGISTICS_REVISION_REQUIRED");
+      setCalculation(await costingApi.calculate(authorization, {
+        caseRef, logisticsPlanRevisionRef: logistics?.revisionRef ?? null, baseCurrency: packageCurrency ?? currency,
+        ...(packageEstimate && { packageEstimate }),
+      }));
       setTransportChanged(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "COSTING_REQUEST_FAILED"); }
     finally { setBusy(false); }
@@ -106,7 +118,29 @@ export default function CostingPanel({ caseRef, authorization, access, transport
   };
   const rows = useMemo(() => (current?.lines || []).filter((line) => (family === "ALL" || line.family === family) && (classification === "ALL" || line.classification === classification)), [classification, current, family]);
   if (!access.canView) return <div role="tabpanel" className="border border-dashed p-8 text-center text-sm text-slate-600">No tiene acceso a Costos.</div>;
-  return <section role="tabpanel" aria-label="Costos" data-testid="costing-panel" className="space-y-2"><header className="flex flex-wrap items-center justify-between gap-2 border bg-slate-50 px-3 py-2"><div className="flex flex-wrap items-baseline gap-x-3 gap-y-1"><div><p className="text-[9px] font-bold uppercase tracking-[.16em] text-indigo-600">Después del Motor Logístico</p><h2 className="font-black leading-5 text-[#003366]">Costos</h2></div><p className="text-[11px] text-slate-500">Fuentes, moneda, margen y precio interno.</p></div><div className="flex flex-wrap gap-1.5">{access.canCalculate && <button type="button" disabled={busy} onClick={() => void calculate()} className="rounded border bg-white px-2.5 py-1.5 text-xs font-bold"><Calculator className="mr-1 inline h-3.5 w-3.5" />{current ? "Recalcular" : "Calcular"}</button>}{access.canPublish && calculation && <button type="button" disabled={busy} onClick={() => void publish()} className="rounded bg-[#003366] px-2.5 py-1.5 text-xs font-bold text-white"><CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />Publicar</button>}<button type="button" disabled={busy} onClick={() => void load()} className="rounded border bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600"><RefreshCw className="mr-1 inline h-3.5 w-3.5" />Actualizar datos</button></div></header>
+  return <section role="tabpanel" aria-label="Costos" data-testid="costing-panel" className="space-y-2">
+    <header className="flex flex-wrap items-center justify-between gap-2 border bg-slate-50 px-3 py-2">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 className="font-black leading-5 text-[#003366]">Costos</h2>
+        <p className="text-[11px] text-slate-500">Fuentes, moneda, margen y precio interno.</p>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {access.canCalculate && <>
+          <button type="button" disabled={busy} aria-expanded={showPackages} onClick={() => { setShowPackages(!showPackages); setError(null); }}
+            className={`rounded border px-2.5 py-1.5 text-xs font-bold ${showPackages ? "border-[#003366] bg-[#003366] text-white" : "bg-white"}`}>
+            <Package className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />Por paquete
+          </button>
+          {!showPackages && <button type="button" disabled={busy} onClick={() => void calculate()} className="rounded border bg-white px-2.5 py-1.5 text-xs font-bold"><Calculator className="mr-1 inline h-3.5 w-3.5" />{current ? "Recalcular" : "Calcular"}</button>}
+        </>}
+        {access.canPublish && calculation && <button type="button" disabled={busy || Boolean(calculation.result.packagePricing && calculation.result.issues.some((issue) => issue.severity === "BLOCKER" && issue.status === "OPEN"))} onClick={() => void publish()} className="rounded bg-[#003366] px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"><CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />Publicar</button>}
+        {!calculation && revision?.packagePricing && onContinueToProposals && <button type="button" disabled={busy} onClick={onContinueToProposals} className="rounded border bg-white px-2.5 py-1.5 text-xs font-bold">Ir a propuestas<ArrowRight className="ml-1 inline h-3.5 w-3.5" aria-hidden="true" /></button>}
+        <button type="button" disabled={busy} onClick={() => void load()} className="rounded border bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600"><RefreshCw className="mr-1 inline h-3.5 w-3.5" />Actualizar datos</button>
+      </div>
+    </header>
+    {showPackages && access.canCalculate && <PackageCostingForm key={caseRef} caseRef={caseRef} authorization={authorization} busy={busy} current={current?.packagePricing}
+      onCalculate={(estimate, selectedCurrency, useTransport) => void calculate(estimate, selectedCurrency, useTransport)}
+      onChange={() => setCalculation((value) => value?.result.packagePricing ? null : value)} onUnauthorized={onUnauthorized} />}
+    {current?.packagePricing && <PackageCostingSummary value={current.packagePricing} totals={current.totals} currency={currency} />}
     {transportAccess?.canView && <Suspense fallback={<p className="p-3 text-sm text-slate-500">Cargando transporte de la cotización…</p>}><TransportCalculationPanel caseRef={caseRef} purpose="QUOTE" contextRef={null} authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized} onPublished={() => { setCalculation(null); setTransportChanged(true); void load(); }} /></Suspense>}
     {transportChanged && <p role="status" className="border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">Transporte actualizado. Recalcule los costos para incorporarlo al resumen económico de esta cotización.</p>}
     {loading && <p className="p-8 text-center text-sm text-slate-500">Cargando Costos…</p>}

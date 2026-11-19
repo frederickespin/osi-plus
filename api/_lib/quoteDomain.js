@@ -1,6 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { latestCostingRevision, QUOTE_TRANSPORT_CONTEXT, sameTransportContext, transportContextOf } from "./logisticsTransportContext.js";
 import { resolveCommercialQuoteAuthority } from "./commercialRelationshipsDomain.js";
+import { toQuoteCatalogItem } from "./costingPackages.js";
+import { isPackageQuoteBasis } from "./packageQuoteBasis.js";
+import { isPackageMinimumLine } from "../../shared/servicePackagePricing.js";
 import {
   QuoteError,
   calculateQuoteTotals,
@@ -14,6 +17,7 @@ import {
   normalizeQuoteSend,
   quoteFail,
   quoteHash,
+  quoteMoney,
 } from "./quoteContract.js";
 
 export const QUOTE_PERMISSIONS = Object.freeze({
@@ -121,7 +125,8 @@ async function resolvePublishedCosting(tx, context, pipelineCaseId, revisionRef)
     },
   });
   if (!row) quoteFail("QUOTE_COSTING_REVISION_NOT_FOUND", 404);
-  if (!sameTransportContext(transportContextOf(row.logisticsRevision?.inputSnapshot), QUOTE_TRANSPORT_CONTEXT)
+  const packageBasis = row.inputSnapshot?.packagePricing && isPackageQuoteBasis(row.logisticsRevision?.inputSnapshot);
+  if ((!packageBasis && !sameTransportContext(transportContextOf(row.logisticsRevision?.inputSnapshot), QUOTE_TRANSPORT_CONTEXT))
     || !sameTransportContext(transportContextOf(row.inputSnapshot), QUOTE_TRANSPORT_CONTEXT)) quoteFail("QUOTE_COSTING_CONTEXT_INVALID", 409);
   return row;
 }
@@ -166,25 +171,78 @@ function findAuthorization(costing, authorizationRef) {
   return null;
 }
 
-function buildLines(input, costing) {
+const Decimal = Prisma.Decimal.clone({ precision: 40 });
+
+function packageEdit(context, pricing, input) {
+  requirePermission(context, QUOTE_PERMISSIONS.OVERRIDE_PRICE);
+  if (pricing.allowEdits === false) quoteFail("QUOTE_PACKAGE_EDIT_NOT_ALLOWED", 409);
+  if (!input.packageAdjustmentReason) quoteFail("QUOTE_PACKAGE_ADJUSTMENT_REASON_REQUIRED");
+}
+
+async function buildLines(tx, input, costing, context) {
   const costingByRef = new Map(costing.lines.map((line) => [line.lineRef, line]));
-  return input.lines.map((line) => {
+  const pricing = costing.inputSnapshot?.packagePricing;
+  const included = input.lines.filter((line) => line.sourceKind === "COSTING");
+  const includedRefs = new Set(included.map((line) => line.costingLineRef));
+  if (pricing) {
+    const available = costing.lines.filter((line) => Number(line.quantity) > 0 && line.suggestedPrice != null && !isPackageMinimumLine(line));
+    if (input.currency !== costing.baseCurrency) quoteFail("QUOTE_PACKAGE_CURRENCY_INVALID", 409);
+    if (includedRefs.size !== included.length || !included.length) quoteFail("QUOTE_PACKAGE_LINES_REQUIRED", 409);
+    if (available.some((line) => !includedRefs.has(line.lineRef))) packageEdit(context, pricing, input);
+  }
+  const catalogRefs = [...new Set(input.lines.filter((line) => line.manualAuthority?.kind === "QUOTE_CATALOG_COMPONENT").map((line) => line.manualAuthority.reference))];
+  const at = new Date();
+  const catalogRules = catalogRefs.length ? await tx.costingRule.findMany({ where: {
+    tenantId: context.tenantId, ruleRef: { in: catalogRefs }, state: "ACTIVE", currency: input.currency,
+    AND: [{ OR: [{ validFrom: null }, { validFrom: { lte: at } }] }, { OR: [{ validTo: null }, { validTo: { gt: at } }] }],
+  } }) : [];
+  const catalogByRef = new Map(catalogRules.map((rule) => [rule.ruleRef, rule]));
+  const lines = input.lines.flatMap((line) => {
     if (line.sourceKind === "COSTING") {
       const source = costingByRef.get(line.costingLineRef);
       if (!source) quoteFail("QUOTE_COSTING_LINE_NOT_FOUND", 404);
       if (source.suggestedPrice == null || line.quotedPrice == null) quoteFail("QUOTE_COSTING_LINE_PENDING", 409);
-      if (line.concept !== source.concept || line.quantity !== String(source.quantity) || line.unit !== source.unit || line.economicClass !== source.classification) quoteFail("QUOTE_COSTING_LINE_TAMPERED", 409);
+      // Clients on the earlier package editor may still send its suggested adjustment.
+      if (pricing && isPackageMinimumLine(source)) return [];
+      const quantityChanged = !new Decimal(line.quantity).equals(String(source.quantity));
+      if (line.concept !== source.concept || line.unit !== source.unit || line.economicClass !== source.classification
+        || !pricing && line.quantity !== String(source.quantity)) quoteFail("QUOTE_COSTING_LINE_TAMPERED", 409);
+      const capturedCost = quantityChanged ? new Decimal(String(source.baseUnitCost)).times(line.quantity).toDecimalPlaces(6).toString() : String(source.totalCost);
+      const suggestedPrice = quantityChanged ? new Decimal(String(source.suggestedPrice)).times(line.quantity).div(String(source.quantity)).toDecimalPlaces(6).toString() : String(source.suggestedPrice);
+      // Two-place display may round a six-place recommendation by half a cent.
+      const priceChanged = !new Decimal(line.quotedPrice).equals(suggestedPrice)
+        && !new Decimal(line.quotedPrice).equals(new Decimal(suggestedPrice).toDecimalPlaces(2));
+      if (pricing && (quantityChanged || priceChanged)) packageEdit(context, pricing, input);
       return {
         ...line,
         sourceRef: String(source.sourceRef || source.lineRef),
         sourceVersion: source.sourceVersion || costing.revision,
-        capturedCost: String(source.totalCost),
-        suggestedPrice: String(source.suggestedPrice),
+        capturedCost, suggestedPrice,
         priceStatus: "CONFIRMED",
-        snapshot: { costingLineRef: source.lineRef, family: source.family, source: source.source, sourceRef: source.sourceRef, sourceVersion: source.sourceVersion, costingRevisionRef: costing.revisionRef },
+        snapshot: { costingLineRef: source.lineRef, family: source.family, source: source.source, sourceRef: source.sourceRef,
+          sourceVersion: source.sourceVersion, costingRevisionRef: costing.revisionRef,
+          ...(pricing && { originalQuantity: String(source.quantity), adjustmentReason: input.packageAdjustmentReason ?? null }) },
       };
     }
     const authority = line.manualAuthority;
+    if (authority.kind === "QUOTE_CATALOG_COMPONENT") {
+      const rule = catalogByRef.get(authority.reference);
+      const item = rule && toQuoteCatalogItem(rule);
+      if (!item || item.version !== authority.version || item.name !== line.concept || item.unit !== line.unit
+        || item.classification !== line.economicClass) quoteFail("QUOTE_CATALOG_PRICE_STALE", 409);
+      const amount = new Decimal(item.unitPrice).times(line.quantity).toDecimalPlaces(2);
+      if (!amount.equals(line.quotedPrice)) requirePermission(context, QUOTE_PERMISSIONS.OVERRIDE_PRICE);
+      return {
+        ...line, sourceRef: item.ruleRef, sourceVersion: item.version,
+        capturedCost: new Decimal(String(rule.unitCost)).times(line.quantity).toDecimalPlaces(6).toString(),
+        suggestedPrice: amount.toFixed(2), priceStatus: "CONFIRMED",
+        snapshot: { catalog: { ruleRef: item.ruleRef, version: item.version, unitPrice: item.unitPrice }, reason: line.reason },
+      };
+    }
+    if ((costing.inputSnapshot?.packagePricing || authority.kind === "QUOTE_ADDITIONAL_CHARGE") && authority.status === "CONFIRMED") {
+      requirePermission(context, QUOTE_PERMISSIONS.OVERRIDE_PRICE);
+      if (line.quotedPrice == null) quoteFail("QUOTE_MANUAL_AUTHORITY_INVALID");
+    }
     return {
       ...line,
       sourceRef: authority.reference,
@@ -196,6 +254,25 @@ function buildLines(input, costing) {
       snapshot: { authority: { kind: authority.kind, reference: authority.reference, version: authority.version, status: authority.status }, reason: line.reason },
     };
   });
+  if (!pricing) return lines;
+  const base = lines.filter((line) => line.sourceKind === "COSTING");
+  if (!base.length) quoteFail("QUOTE_PACKAGE_LINES_REQUIRED", 409);
+  const packageFloor = (field) => Math.max(0, quoteMoney(Number(pricing.minimumSale) - base.reduce((sum, line) => sum + Number(line[field]), 0)));
+  const adjustment = packageFloor("quotedPrice");
+  const suggestedAdjustment = packageFloor("suggestedPrice");
+  if (adjustment > 0 || suggestedAdjustment > 0) {
+    const floorSource = costing.lines.find(isPackageMinimumLine);
+    const adjustmentLine = {
+      sourceKind: floorSource ? "COSTING" : "MANUAL", costingLineRef: floorSource?.lineRef ?? null,
+      sourceRef: pricing.pricingRuleRef, sourceVersion: pricing.pricingVersion,
+      concept: "Ajuste al mínimo del paquete", quantity: "1", unit: "servicio", economicClass: "PR",
+      capturedCost: "0", suggestedPrice: String(suggestedAdjustment), quotedPrice: String(adjustment), currency: input.currency,
+      priceStatus: "CONFIRMED", reason: floorSource ? null : "Aplicación del mínimo de la tarifa",
+      snapshot: { packageMinimum: true, minimumSale: pricing.minimumSale },
+    };
+    lines.splice(base.length, 0, adjustmentLine);
+  }
+  return lines.map((line, index) => ({ ...line, position: index + 1 }));
 }
 
 function buildIssues(pipelineCase, costing, lines, totals, authorization) {
@@ -207,7 +284,9 @@ function buildIssues(pipelineCase, costing, lines, totals, authorization) {
   for (const line of lines.filter((row) => row.priceStatus === "PENDING")) {
     issues.push({ code: "MANUAL_PRICE_PENDING", severity: "BLOCKER", message: "Un concepto manual continúa pendiente de autoridad económica.", status: "OPEN", sourceSnapshot: { position: line.position, sourceKind: line.sourceKind } });
   }
-  if (totals.foregoneRevenue > 0 && !authorization) issues.push({ code: "MARGIN_AUTHORIZATION_REQUIRED", severity: "BLOCKER", message: "Todo descuento o exoneración de un servicio operativo requiere autorización de Administración.", status: "OPEN", sourceSnapshot: { comparison: "BELOW_SUGGESTED", regularPrice: totals.regularPrice, payablePrice: totals.payablePrice, foregoneRevenue: totals.foregoneRevenue } });
+  const needsMinimumApproval = costing.inputSnapshot?.packagePricing && totals.discountAmount > 0
+    && totals.packageSubtotal - totals.discountAmount < Number(costing.inputSnapshot.packagePricing.minimumSale);
+  if ((totals.foregoneRevenue > 0 || needsMinimumApproval) && !authorization) issues.push({ code: "MARGIN_AUTHORIZATION_REQUIRED", severity: "BLOCKER", message: "Todo descuento o exoneración de un servicio operativo requiere autorización de Administración.", status: "OPEN", sourceSnapshot: { comparison: needsMinimumApproval ? "BELOW_PACKAGE_MINIMUM" : "BELOW_SUGGESTED", regularPrice: totals.regularPrice, payablePrice: totals.payablePrice, foregoneRevenue: totals.foregoneRevenue } });
   return issues;
 }
 
@@ -254,7 +333,7 @@ function revisionLogical(input, costing, lines, totals, client) {
 function outputReferences(costing, client) {
   return {
     costingRevisionRef: costing.revisionRef,
-    logisticsPlanRevisionRef: costing.logisticsRevision.revisionRef,
+    logisticsPlanRevisionRef: isPackageQuoteBasis(costing.logisticsRevision.inputSnapshot) ? null : costing.logisticsRevision.revisionRef,
     surveyPublicationRef: costing.logisticsRevision.inputSnapshot?.survey?.publicationRef || null,
     servicesRevisionRef: costing.logisticsRevision.inputSnapshot?.services?.selectionRef || null,
     caseRef: client.caseRef,
@@ -262,13 +341,23 @@ function outputReferences(costing, client) {
 }
 
 async function createRevision(tx, context, proposal, input, costing, pipelineCase, state, supersedes = null) {
-  const lines = buildLines(input, costing);
+  const lines = await buildLines(tx, input, costing, context);
   const totals = calculateQuoteTotals(lines, input.discount);
+  if (costing.inputSnapshot?.packagePricing) {
+    totals.packageSubtotal = quoteMoney(lines.filter((line) => line.sourceKind === "COSTING" || line.snapshot?.packageMinimum).reduce((sum, line) => sum + Number(line.quotedPrice), 0));
+  }
   const authorization = findAuthorization(costing, input.marginAuthorizationRef);
   const issues = buildIssues(pipelineCase, costing, lines, totals, authorization);
   const client = clientSnapshot(pipelineCase);
   const revision = proposal.currentRevision + 1;
   const logicalSha256 = revisionLogical(input, costing, lines, totals, client);
+  const packagePricing = costing.inputSnapshot?.packagePricing;
+  const packageScope = packagePricing ? {
+    name: packagePricing.name, version: packagePricing.version, pricingVersion: packagePricing.pricingVersion,
+    volumeM3: packagePricing.measures.volumeM3, minimumSale: packagePricing.minimumSale,
+    afterM3: packagePricing.afterM3 ?? null, maxM3: packagePricing.maxM3 ?? null,
+    adjustmentReason: input.packageAdjustmentReason ?? null,
+  } : null;
   const row = await tx.quoteProposalRevision.create({
     data: {
       tenantId: context.tenantId,
@@ -288,7 +377,10 @@ async function createRevision(tx, context, proposal, input, costing, pipelineCas
       discountSnapshot: input.discount,
       totalsSnapshot: totals,
       marginAuthorizationSnapshot: authorization,
-      internalSnapshot: { costingRevisionRef: costing.revisionRef, costingPublishedAt: costing.publishedAt.toISOString(), sourceReferences: outputReferences(costing, client) },
+      internalSnapshot: {
+        costingRevisionRef: costing.revisionRef, costingPublishedAt: costing.publishedAt.toISOString(),
+        sourceReferences: outputReferences(costing, client), ...(packageScope && { packageScope }),
+      },
       clientSnapshot: client,
       logicalSha256,
       supersedesRevisionId: supersedes?.id || null,
@@ -319,6 +411,7 @@ function mapRevision(row, context, proposal) {
     revision: row.revision,
     proposalName: row.proposalName,
     costingRevisionRef: row.internalSnapshot?.costingRevisionRef,
+    ...(row.internalSnapshot?.packageScope && { packageScope: row.internalSnapshot.packageScope }),
     costingLogicalSha256: row.costingLogicalSha256,
     currency: row.currency,
     issueDate: row.issueDate.toISOString().slice(0, 10),
@@ -365,6 +458,7 @@ export async function createQuoteProposal(prisma, context, raw) {
     }
     const revisionInput = commercialAuthority ? { ...input, commercialContext: commercialAuthority.commercialContext, payer: commercialAuthority.payer } : input;
     const costing = await resolvePublishedCosting(tx, context, pipelineCase.id, input.costingRevisionRef);
+    await assertPackageCaseCurrent(tx, context, pipelineCase, costing);
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${pipelineCase.id}:quote-cycle`}, 0))`);
     let quote = await tx.pipelineCaseQuote.findFirst({ where: { tenantId: context.tenantId, caseId: pipelineCase.id, contractVersion: 2, costingRevisionId: costing.id }, orderBy: { cycleNumber: "desc" } });
     if (!quote) {
@@ -400,6 +494,7 @@ export async function reviseQuoteProposal(prisma, context, raw) {
     }
     const revisionInput = commercialAuthority ? { ...input, commercialContext: commercialAuthority.commercialContext, payer: commercialAuthority.payer } : input;
     const costing = await resolvePublishedCosting(tx, context, proposal.pipelineCaseId, input.costingRevisionRef);
+    await assertPackageCaseCurrent(tx, context, proposal.pipelineCase, costing);
     if (costing.id !== proposal.quote.costingRevisionId) quoteFail("QUOTE_COSTING_SELECTION_IMMUTABLE", 409);
     const revision = await createRevision(tx, context, proposal, revisionInput, costing, proposal.pipelineCase, "DRAFT", current);
     const result = mapRevision(revision, context, { ...proposal, state: "DRAFT" });
@@ -433,11 +528,24 @@ async function assertReadyForExternal(tx, context, proposal, revision, { accepta
   if (acceptance) {
     const accepted = await tx.quoteProposal.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: proposal.pipelineCaseId, state: "ACCEPTED", id: { not: proposal.id } }, select: { proposalRef: true } });
     if (accepted) quoteFail("QUOTE_ALREADY_ACCEPTED", 409);
+  } else if (costing.inputSnapshot?.packagePricing) {
+    await assertPackageCaseCurrent(tx, context, proposal.pipelineCase, costing);
   } else {
     const latest = await latestCostingRevision(tx, { where: { tenantId: context.tenantId, pipelineCaseId: proposal.pipelineCaseId }, context: QUOTE_TRANSPORT_CONTEXT, select: { id: true } });
     if (latest?.id !== costing.id) quoteFail("QUOTE_COSTING_INPUT_STALE", 409);
   }
   return costing;
+}
+
+async function assertPackageCaseCurrent(tx, context, pipelineCase, costing) {
+  if (!costing.inputSnapshot?.packagePricing) return;
+  const facts = costing.inputSnapshot.logistics;
+  const current = await tx.pipelineCaseServiceRevision.findFirst({
+    where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id },
+    orderBy: { revision: "desc" }, select: { selectionRef: true, modeSnapshot: true },
+  });
+  if (facts?.routeRevision !== pipelineCase.routeRevision || current?.selectionRef !== facts?.serviceSelectionRef
+    || current?.modeSnapshot !== pipelineCase.mode) quoteFail("QUOTE_COSTING_INPUT_STALE", 409);
 }
 
 export async function publishQuoteProposal(prisma, context, raw) {
@@ -557,4 +665,4 @@ export function mapQuoteDatabaseError(error) {
   return error;
 }
 
-export const quoteContractInternals = Object.freeze({ canonicalQuoteJson });
+export const quoteContractInternals = Object.freeze({ canonicalQuoteJson, buildLines });

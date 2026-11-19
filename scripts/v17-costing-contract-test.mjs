@@ -12,6 +12,8 @@ import {
   normalizeCostingPublish,
   normalizeCostingRule,
 } from "../api/_lib/costingContract.js";
+import { calculateCosting, getCostingPackageOptions } from "../api/_lib/costingDomain.js";
+import { PACKAGE_PRICING_KIND, packageMeasures, packageQuantity } from "../shared/servicePackagePricing.js";
 
 const ref = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const item = (n, family, source = "ADMIN_RULE", extra = {}) => ({ itemRef: ref(n), family, kind: `${family}_${n}`, label: `${family} ${n}`, quantity: 1, unit: "UNIT", priceStatus: "CONFIRMED", source, sourceRef: ref(100 + n), sourceVersion: 1, snapshot: { requirementRef: ref(200 + n) }, ...extra });
@@ -58,4 +60,135 @@ assert.doesNotThrow(() => normalizeCostingExchangeRate(signed("COSTING_EXCHANGE_
 assert.throws(() => normalizeCostingCalculate({ ...signed("COSTING_CALCULATE", { caseRef: ref(1), logisticsPlanRevisionRef: ref(2), baseCurrency: "DOP" }), payloadHash: "0".repeat(64) }), /COSTING_PAYLOAD_HASH_MISMATCH/);
 assert.throws(() => normalizeCostingCalculate(signed("COSTING_CALCULATE", { caseRef: "cuid-interno", logisticsPlanRevisionRef: ref(2), baseCurrency: "DOP" })), /COSTING_REFERENCE_INVALID/);
 assert.throws(() => normalizeCostingRule(signed("COSTING_RULE_VERSION", { seriesRef: null, family: "LABOR", code: "X", name: "X", classification: "PR", source: "ADMIN", priority: 1, specificity: 1, conditions: {}, unitCost: "1", currency: "DOP", minimumMarginBps: 3000, recommendedMarginBps: 2000, result: {}, state: "ACTIVE", validFrom: null, validTo: null })), /COSTING_MARGIN_POLICY_INVALID/);
-process.stdout.write(JSON.stringify({ ok: true, scenarios: ["LOCAL_SIMPLE", "LOCAL_EXTERNAL", "PROVIDER_PENDING", "EXPORT", "IMPORT"], families: 13, productionApiEnabled: false }) + "\n");
+const air = packageMeasures(1, 100, { mode: "AIR", factor: 6000, roundKg: 0.5 });
+assert.equal(air.grossKg, 100);
+assert.equal(air.chargeableKg, 167);
+assert.ok(Math.abs(air.volumetricKg - 166.6667) < 0.0001);
+assert.equal(packageMeasures(1, 180, { mode: "AIR", factor: 6000, roundKg: 1 }).chargeableKg, 180);
+assert.equal(packageQuantity({ basis: "CWT", factor: 1, minimumQuantity: 0 }, packageMeasures(1, null, { mode: "NONE", factor: null, roundKg: 0 })), null);
+
+const packageVersionRef = ref(2010);
+const seaProfile = { mode: "SEA", factor: 100, roundKg: 0 };
+const packageCost = {
+  seriesRef: null, expectedVersion: 0, family: "ADDITIONAL", code: "PACKAGE_DEMO",
+  name: "Mudanza de prueba", currency: "DOP", classification: "PR", source: "COMBO", priority: 100, specificity: 1,
+  conditions: { packageVersionRef }, unitCost: null, minimumMarginBps: 2000, recommendedMarginBps: 2500,
+  state: "ACTIVE", validFrom: null, validTo: null,
+  result: {
+    kind: PACKAGE_PRICING_KIND,
+    includeRouteTransport: false, shipment: seaProfile, minimumSale: "32000",
+    volumeTiers: [{ maxM3: 20, minimumSale: "22000" }, { maxM3: 30, minimumSale: "32000" }, { maxM3: null, minimumSale: "45000" }],
+    components: [
+      { ruleSeriesRef: ref(2021), concept: "Personal", unit: "hora", basis: "M3", factor: 1, minimumQuantity: 8, roundUp: false },
+      { ruleSeriesRef: ref(2022), concept: "Camión", unit: "viaje", basis: "CAPACITY", factor: 18, minimumQuantity: 1, roundUp: false },
+      { ruleSeriesRef: ref(2023), concept: "Materiales", unit: "caja", basis: "M3", factor: 1, minimumQuantity: 1, roundUp: true },
+      { ruleSeriesRef: ref(2024), concept: "Permiso", unit: "servicio", basis: "FIXED", factor: 1, minimumQuantity: 1, roundUp: false },
+    ],
+  },
+};
+assert.equal(normalizeCostingRule(signed("COSTING_RULE_VERSION", packageCost)).result.kind, PACKAGE_PRICING_KIND);
+assert.throws(() => normalizeCostingRule(signed("COSTING_RULE_VERSION", {
+  ...packageCost, result: { ...packageCost.result, components: [packageCost.result.components[0], packageCost.result.components[0]] },
+})), /COSTING_PACKAGE_RULE_INVALID/);
+assert.throws(() => normalizeCostingRule(signed("COSTING_RULE_VERSION", {
+  ...packageCost, result: { ...packageCost.result, volumeTiers: [{ maxM3: 20, minimumSale: "22000" }, { maxM3: 18, minimumSale: "32000" }] },
+})), /COSTING_PACKAGE_TIERS_INVALID/);
+assert.equal(packageQuantity(packageCost.result.components[0], packageMeasures(5, null, seaProfile)), "8");
+assert.deepEqual([18, 18.01, 30].map((m3) => packageQuantity(packageCost.result.components[1], packageMeasures(m3, null, seaProfile))), ["1", "2", "2"]);
+assert.equal(packageQuantity({ ...packageCost.result.components[1], factor: 0.02 }, packageMeasures(0.14, null, seaProfile)), "7");
+const airQuote = packageMeasures(1, 100, { mode: "AIR", factor: 6000, roundKg: 1 });
+assert.equal(airQuote.cwtBasis, "CHARGEABLE");
+assert.equal(packageQuantity({ basis: "CWT", factor: 1, minimumQuantity: 0, roundUp: false }, airQuote), "3.6817");
+
+const caseRecord = { id: "case-id", publicRef: ref(1100), mode: "EXPORT", routeRevision: 2 };
+const logisticsRef = ref(1101);
+const selectionRef = ref(1102);
+const context = {
+  tenantId: "synthetic-tenant", userId: "staff-id", membershipId: "membership-id", role: "A",
+  effectivePermissions: ["costing:calculate", "costing:view", "costing:tenant"],
+};
+const resourceRule = (n, family, unitCost, classification = "PR") => ({
+  ruleRef: ref(2010 + n), seriesRef: ref(2020 + n), version: 1, family, unitCost, currency: "DOP",
+  classification, source: "ADMIN", code: family, conditions: { packageComponentCode: family }, result: {},
+  minimumMarginBps: classification === "PR" ? 2000 : null, recommendedMarginBps: classification === "PR" ? 2000 : null,
+  conditionHash: "f".repeat(64),
+});
+const packageRules = [
+  resourceRule(1, "LABOR", "450"), resourceRule(2, "TRANSPORT", "3000"),
+  resourceRule(3, "MATERIAL", "100"), resourceRule(4, "PERMIT", "600", "DE"),
+  { ...packageCost, ruleRef: ref(2099), seriesRef: ref(2098), version: 1, conditionHash: "e".repeat(64) },
+];
+let latestRules = packageRules;
+let storedBasis;
+const tx = {
+  $executeRaw: async () => {},
+  pipelineCase: { findFirst: async ({ where }) => {
+    assert.equal(where.tenantId, context.tenantId);
+    return where.publicRef === caseRecord.publicRef ? caseRecord : null;
+  } },
+  pipelineCaseServiceRevision: { findFirst: async () => ({ selectionRef, revision: 2, modeSnapshot: "EXPORT", items: [{ serviceId: "service-id", kind: "PRIMARY", codeSnapshot: "MOVING" }] }) },
+  caseServiceConfigurationRevision: { findFirst: async () => null },
+  surveyPublication: { findFirst: async ({ select }) => select.totalsSnapshot ? ({ totalsSnapshot: { totalVolumeM3: 30 } }) : null },
+  servicePackageVersion: { findMany: async ({ where }) => {
+    assert.equal(where.tenantId, context.tenantId);
+    assert.equal(where.services.some.serviceId, "service-id");
+    return [{ versionRef: packageVersionRef, version: 2, name: "Mudanza de prueba" }];
+  } },
+  logisticsPlanRevision: { findFirst: async ({ where }) => {
+    if (where.inputSnapshot?.path?.[0] === "basisHash") return storedBasis ?? null;
+    if (where.planId) return { revision: 2 };
+    assert.equal(where.plan.pipelineCaseId, caseRecord.id);
+    return {
+      id: "logistics-id", revisionRef: logisticsRef, revision: 2, status: "PUBLISHED", logicalSha256: "a".repeat(64), plan: { planRef: ref(1103) },
+      inputSnapshot: { services: { selectionRef, revision: 2, codes: ["MOVING"] }, route: { version: 2 } },
+      items: [item(99, "LABOR", "ADMIN_RULE", { quantity: 99 })], issues: [],
+    };
+  }, create: async ({ data }) => {
+    storedBasis = { ...data, id: "basis-id", status: "PUBLISHED", revisionRef: ref(2250) };
+    return storedBasis;
+  } },
+  logisticsPlan: { upsert: async () => ({ id: "plan-id", planRef: ref(1103) }) },
+  logisticsCalculation: { create: async ({ data }) => {
+    assert.equal(data.inputSnapshot.transportContext, null);
+    assert.equal(data.routeVersion, 2);
+    assert.equal(data.serviceSelectionRef, selectionRef);
+    return { id: "basis-calculation-id" };
+  } },
+  costingRule: { findMany: async () => latestRules },
+  costingMutationCommand: { findUnique: async () => null, create: async () => {} },
+  commercialAuditLog: { create: async () => {} },
+  costingCalculation: { create: async ({ data }) => ({ ...data, calculationRef: ref(2200), status: "VALID" }) },
+};
+const database = { ...tx, $transaction: async (operation) => operation(tx) };
+const options = await getCostingPackageOptions(database, context, caseRecord.publicRef);
+assert.equal(options.volumeM3, 30);
+assert.equal(options.packages[0].versionRef, packageVersionRef);
+const packageCommand = signed("COSTING_CALCULATE", {
+  caseRef: caseRecord.publicRef, logisticsPlanRevisionRef: logisticsRef, baseCurrency: "DOP",
+  packageEstimate: { versionRef: packageVersionRef, volumeM3: "30", grossKg: null },
+});
+const calculatedPackage = (await calculateCosting(database, context, packageCommand)).result;
+assert.deepEqual(calculatedPackage.lines.map((row) => row.quantity), ["30", "2", "30", "1", "1"]);
+assert.equal(calculatedPackage.totals.totalCost, "23100");
+assert.equal(calculatedPackage.totals.suggestedPrice, "32000");
+assert.equal(calculatedPackage.totals.disbursements, "600");
+assert.deepEqual(calculatedPackage.issues, []);
+assert.equal(calculatedPackage.lines.at(-1).suggestedPrice, "1400");
+assert.ok(Math.abs(calculatedPackage.packagePricing.measures.cwt - 66.1387) < 0.0001);
+const { requestId: _request, payloadHash: _hash, ...packageInput } = packageCommand;
+const configuredOnly = (await calculateCosting(database, context, signed("COSTING_CALCULATE", {
+  ...packageInput, logisticsPlanRevisionRef: null, packageEstimate: { ...packageInput.packageEstimate, volumeM3: "20" },
+}))).result;
+assert.equal(configuredOnly.packagePricing.minimumSale, "22000");
+assert.equal(configuredOnly.packagePricing.maxM3, 20);
+assert.equal(configuredOnly.lines.find((line) => line.family === "TRANSPORT").quantity, "2");
+const nextTier = (await calculateCosting(database, context, signed("COSTING_CALCULATE", {
+  ...packageInput, logisticsPlanRevisionRef: null, packageEstimate: { ...packageInput.packageEstimate, volumeM3: "20.01" },
+}))).result;
+assert.equal(nextTier.packagePricing.minimumSale, "32000");
+assert.equal(storedBasis.inputSnapshot.kind, "PACKAGE_QUOTATION");
+latestRules = packageRules.filter((rule) => rule.family !== "PERMIT");
+const incompletePackage = (await calculateCosting(database, context, packageCommand)).result;
+assert.equal(incompletePackage.issues[0].code, "COSTING_PACKAGE_COMPONENT_MISSING");
+assert.equal(incompletePackage.lines.length, 3);
+process.stdout.write(JSON.stringify({ ok: true, scenarios: ["LOCAL_SIMPLE", "LOCAL_EXTERNAL", "PROVIDER_PENDING", "EXPORT", "IMPORT", "SERVICE_PACKAGES"], families: 13, productionApiEnabled: false }) + "\n");

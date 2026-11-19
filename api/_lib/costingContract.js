@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { TRANSPORT_CONTEXT_CONTRACT } from "./logisticsTransportContext.js";
+import { isPackagePricingRule, PACKAGE_BASE_LABELS } from "../../shared/servicePackagePricing.js";
 
 export class CostingError extends Error {
   constructor(code, status = 400) {
@@ -99,11 +100,21 @@ function command(raw, operation, payload) {
 
 export function normalizeCostingCalculate(raw) {
   const value = asObject(raw);
-  exactKeys(value, ["requestId", "payloadHash", "caseRef", "logisticsPlanRevisionRef", "baseCurrency"]);
+  exactKeys(value, ["requestId", "payloadHash", "caseRef", "logisticsPlanRevisionRef", "baseCurrency", "packageEstimate"]);
+  let packageEstimate;
+  if (Object.hasOwn(value, "packageEstimate")) {
+    const estimate = asObject(value.packageEstimate);
+    exactKeys(estimate, ["versionRef", "volumeM3", "grossKg"]);
+    const volumeM3 = asDecimal(estimate.volumeM3, { positive: true });
+    const grossKg = asDecimal(estimate.grossKg, { positive: true, nullable: true });
+    if (Number(volumeM3) > 100_000 || Number(grossKg) > 1_000_000) costingFail("COSTING_PACKAGE_MEASURES_INVALID");
+    packageEstimate = { versionRef: asUuid(estimate.versionRef), volumeM3, grossKg };
+  }
   return command(value, "COSTING_CALCULATE", {
     caseRef: asUuid(value.caseRef),
-    logisticsPlanRevisionRef: asUuid(value.logisticsPlanRevisionRef),
+    logisticsPlanRevisionRef: packageEstimate && value.logisticsPlanRevisionRef === null ? null : asUuid(value.logisticsPlanRevisionRef),
     baseCurrency: asCurrency(value.baseCurrency),
+    ...(packageEstimate && { packageEstimate }),
   });
 }
 
@@ -154,9 +165,60 @@ export function isProtectedTransportCostingRule(rule) {
     || rule?.result?.contract === TRANSPORT_CONTEXT_CONTRACT;
 }
 
+function validatePackagePricing(rule) {
+  const { conditions, result } = rule;
+  exactKeys(conditions, ["packageVersionRef"]);
+  exactKeys(result, ["kind", "components", "minimumSale", "volumeTiers", "allowEdits", "includeRouteTransport", "shipment"]);
+  asUuid(conditions.packageVersionRef);
+  if (rule.source !== "COMBO" || rule.family !== "ADDITIONAL" || rule.classification !== "PR"
+    || rule.unitCost !== null || rule.minimumMarginBps === null || rule.recommendedMarginBps === null
+    || typeof result.includeRouteTransport !== "boolean" || !Array.isArray(result.components)
+    || result.components.length > 30 || (!result.components.length && !result.includeRouteTransport)
+    || typeof result.minimumSale !== "string" || Number(asDecimal(result.minimumSale)) > 100_000_000) {
+    costingFail("COSTING_PACKAGE_RULE_INVALID");
+  }
+  const shipment = asObject(result.shipment);
+  if (Object.hasOwn(result, "allowEdits") && typeof result.allowEdits !== "boolean") costingFail("COSTING_PACKAGE_RULE_INVALID");
+  if (Object.hasOwn(result, "volumeTiers")) {
+    if (!Array.isArray(result.volumeTiers) || result.volumeTiers.length > 20) costingFail("COSTING_PACKAGE_TIERS_INVALID");
+    let previous = 0;
+    for (const [index, rawTier] of result.volumeTiers.entries()) {
+      const tier = asObject(rawTier);
+      exactKeys(tier, ["maxM3", "minimumSale"]);
+      const limit = tier.maxM3;
+      if (limit === null ? index !== result.volumeTiers.length - 1
+        : !Number.isFinite(limit) || limit <= previous || limit > 100_000) costingFail("COSTING_PACKAGE_TIERS_INVALID");
+      if (typeof tier.minimumSale !== "string" || Number(asDecimal(tier.minimumSale)) > 100_000_000) costingFail("COSTING_PACKAGE_TIERS_INVALID");
+      previous = limit;
+    }
+  }
+  exactKeys(shipment, ["mode", "factor", "roundKg"]);
+  const mode = asEnum(shipment.mode, ["NONE", "SEA", "AIR"]);
+  if (mode === "NONE" ? shipment.factor !== null : !Number.isFinite(shipment.factor) || shipment.factor < 1 || shipment.factor > 100_000) {
+    costingFail("COSTING_PACKAGE_RULE_INVALID");
+  }
+  if (![0, 0.5, 1].includes(shipment.roundKg) || (mode !== "AIR" && shipment.roundKg !== 0)) costingFail("COSTING_PACKAGE_RULE_INVALID");
+  const seen = new Set();
+  for (const entry of result.components) {
+    const component = asObject(entry);
+    exactKeys(component, ["ruleSeriesRef", "concept", "unit", "basis", "factor", "minimumQuantity", "roundUp"]);
+    asUuid(component.ruleSeriesRef);
+    asText(component.concept, 240);
+    asText(component.unit, 32);
+    const basis = asEnum(component.basis, Object.keys(PACKAGE_BASE_LABELS));
+    if (seen.has(component.ruleSeriesRef) || (basis === "CHARGEABLE_KG" && mode !== "AIR")
+      || !Number.isFinite(component.factor) || component.factor < 0.0001 || component.factor > 100_000
+      || !Number.isFinite(component.minimumQuantity) || component.minimumQuantity < 0 || component.minimumQuantity > 100_000
+      || typeof component.roundUp !== "boolean") {
+      costingFail("COSTING_PACKAGE_RULE_INVALID");
+    }
+    seen.add(component.ruleSeriesRef);
+  }
+}
+
 export function normalizeCostingRule(raw) {
   const value = asObject(raw);
-  exactKeys(value, ["requestId", "payloadHash", "seriesRef", "family", "code", "name", "classification", "source", "priority", "specificity", "conditions", "unitCost", "currency", "minimumMarginBps", "recommendedMarginBps", "result", "state", "validFrom", "validTo"]);
+  exactKeys(value, ["requestId", "payloadHash", "seriesRef", "family", "code", "name", "classification", "source", "priority", "specificity", "conditions", "unitCost", "currency", "minimumMarginBps", "recommendedMarginBps", "result", "state", "validFrom", "validTo", "expectedVersion"]);
   if (isProtectedTransportCostingRule(value)) costingFail("COSTING_TRANSPORT_RULE_PROTECTED", 409);
   const payload = {
     seriesRef: value.seriesRef ? asUuid(value.seriesRef) : null,
@@ -176,7 +238,22 @@ export function normalizeCostingRule(raw) {
     state: asEnum(value.state, ["DRAFT", "ACTIVE", "INACTIVE"]),
     validFrom: asTimestamp(value.validFrom, true),
     validTo: asTimestamp(value.validTo, true),
+    ...(Object.hasOwn(value, "expectedVersion") && { expectedVersion: asInteger(value.expectedVersion) }),
   };
+  if (isPackagePricingRule(payload)) validatePackagePricing(payload);
+  else if (Object.hasOwn(payload.conditions, "packageVersionRef")) costingFail("COSTING_PACKAGE_RULE_INVALID");
+  if (Object.hasOwn(payload.conditions, "packageComponentCode")) {
+    exactKeys(payload.conditions, ["packageComponentCode"]);
+    exactKeys(payload.result, ["unit", "saleUnitPrice"]);
+    asText(payload.result.unit, 32);
+    if (Object.hasOwn(payload.result, "saleUnitPrice") && payload.result.saleUnitPrice !== null
+      && (typeof payload.result.saleUnitPrice !== "string" || Number(asDecimal(payload.result.saleUnitPrice)) > 100_000_000)) {
+      costingFail("COSTING_PACKAGE_COMPONENT_PRICE_INVALID");
+    }
+    if (payload.conditions.packageComponentCode !== payload.code.toUpperCase() || payload.family === "CURRENCY_COMPENSATION" || payload.unitCost === null) {
+      costingFail("COSTING_PACKAGE_RULE_INVALID");
+    }
+  }
   if (payload.minimumMarginBps != null && payload.recommendedMarginBps != null && payload.minimumMarginBps > payload.recommendedMarginBps) costingFail("COSTING_MARGIN_POLICY_INVALID");
   if (payload.validFrom && payload.validTo && payload.validTo <= payload.validFrom) costingFail("COSTING_RULE_PERIOD_INVALID");
   return command(value, "COSTING_RULE_VERSION", payload);
@@ -243,11 +320,11 @@ function issue(code, family, message, source = "MOTOR", snapshot = {}) {
   return { code, severity: "BLOCKER", family, message, source, sourceSnapshot: snapshot, status: "OPEN", version: 1 };
 }
 
-export function calculateCostingSnapshot({ baseCurrency, logisticsRevision, authorities = [], rates = [], compensationRules = [] }) {
+export function calculateCostingSnapshot({ baseCurrency, logisticsRevision, authorities = [], rates = [], compensationRules = [], packagePricing = null, additionalIssues = [] }) {
   if (!logisticsRevision || logisticsRevision.status !== "PUBLISHED") costingFail("COSTING_LOGISTICS_REVISION_REQUIRED", 409);
   const authorityByItem = new Map(authorities.map((authority) => [authority.logisticsItemRef, authority]));
   const lines = [];
-  const issues = [];
+  const issues = [...additionalIssues];
 
   for (const sourceIssue of logisticsRevision.issues || []) {
     if (sourceIssue.status === "OPEN" && sourceIssue.severity === "BLOCKER") {
@@ -282,7 +359,7 @@ export function calculateCostingSnapshot({ baseCurrency, logisticsRevision, auth
     }
     const suggested = classification === "PR" && recommendedMarginBps != null ? suggestedFor(totalCost, recommendedMarginBps) : totalCost;
     lines.push({
-      logisticsItemRef: item.itemRef,
+      logisticsItemRef: item.packageComponent ? null : item.itemRef,
       family,
       concept: item.label,
       classification,
@@ -322,6 +399,22 @@ export function calculateCostingSnapshot({ baseCurrency, logisticsRevision, auth
     lines.push({ logisticsItemRef: null, family: "CURRENCY_COMPENSATION", concept: compensation.name, classification: compensation.classification, source: "ADMIN", sourceRef: compensation.ruleRef, sourceVersion: compensation.version, quantity: "1", unit: "UNIT", originalCurrency: baseCurrency, originalUnitCost: decimal(totalCost), exchangeRateRef: null, exchangeRateVersion: null, exchangeRate: "1", exchangeRateSource: "IDENTITY", baseCurrency, baseUnitCost: decimal(totalCost), totalCost: decimal(totalCost), minimumMarginBps: compensation.classification === "PR" ? compensation.minimumMarginBps : null, recommendedMarginBps: compensation.classification === "PR" ? compensation.recommendedMarginBps : null, suggestedPrice: decimal(compensation.classification === "PR" && compensation.recommendedMarginBps != null ? suggestedFor(totalCost, compensation.recommendedMarginBps) : totalCost), priceStatus: compensation.classification === "PR" ? "RECOMMENDED" : "NO_MARGIN", snapshot: { basisPoints: compensation.basisPoints, appliesTo: compensation.appliesTo } });
   }
 
+  if (packagePricing && !issues.length) {
+    const suggested = lines.reduce((amount, line) => amount + scaled(line.suggestedPrice, 6), 0n);
+    const difference = scaled(packagePricing.minimumSale, 6) - suggested;
+    if (Number(packagePricing.minimumSale) > 0) {
+      lines.push({
+        logisticsItemRef: null, family: "ADDITIONAL", concept: "Ajuste al mínimo de venta",
+        classification: "PR", source: "COMBO", sourceRef: packagePricing.pricingRuleRef, sourceVersion: packagePricing.pricingVersion,
+        quantity: "1", unit: "servicio", originalCurrency: baseCurrency, originalUnitCost: "0",
+        exchangeRateRef: null, exchangeRateVersion: null, exchangeRate: "1", exchangeRateSource: "IDENTITY",
+        baseCurrency, baseUnitCost: "0", totalCost: "0", suggestedPrice: decimal(difference > 0n ? difference : 0n),
+        minimumMarginBps: packagePricing.minimumMarginBps, recommendedMarginBps: packagePricing.recommendedMarginBps,
+        priceStatus: "RECOMMENDED", snapshot: { packageMinimum: true, minimumSale: packagePricing.minimumSale },
+      });
+    }
+  }
+
   const sum = (predicate, field = "totalCost") => decimal(lines.filter(predicate).reduce((total, line) => total + scaled(line[field], 6), 0n));
   const ownCost = lines.filter((line) => line.classification === "PR").reduce((total, line) => total + scaled(line.totalCost, 6), 0n);
   const ownSuggested = lines.filter((line) => line.classification === "PR").reduce((total, line) => total + scaled(line.suggestedPrice, 6), 0n);
@@ -329,6 +422,7 @@ export function calculateCostingSnapshot({ baseCurrency, logisticsRevision, auth
   return Object.freeze({
     lines: lines.map((line, position) => ({ ...line, position })),
     issues,
+    ...(packagePricing && { packagePricing }),
     totals: {
       ownCosts: decimal(ownCost),
       externalCosts: sum((line) => line.classification === "EX"),

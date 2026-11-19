@@ -1,8 +1,20 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import { latestCostingRevision, latestLogisticsRevision, QUOTE_TRANSPORT_CONTEXT, transportContextOf } from "./logisticsTransportContext.js";
+import { latestCostingRevision, latestLogisticsRevision, QUOTE_TRANSPORT_CONTEXT, sameTransportContext, transportContextOf } from "./logisticsTransportContext.js";
 import { hasTransportCostingAuthority, resolveTransportCostingAuthority, transportCostingItemKey } from "./costingTransportAuthority.js";
 import { assertTransportRevisionCurrent } from "./logisticsTransportDomain.js";
+import { isPackagePricingRule } from "../../shared/servicePackagePricing.js";
+import {
+  applyPackageMargin,
+  assertPackagePricingRule,
+  eligiblePackagePricing,
+  isPackageComponentRule,
+  packagePricingIssues,
+  packageResourceLines,
+  resolvePackageMeasures,
+  toQuoteCatalogItem,
+} from "./costingPackages.js";
+import { ensurePackageQuoteBasis, isPackageQuoteBasis } from "./packageQuoteBasis.js";
 import {
   CostingError,
   calculateCostingSnapshot,
@@ -62,14 +74,14 @@ function caseScope(context) {
 async function resolveCase(tx, context, caseRef) {
   const row = await tx.pipelineCase.findFirst({
     where: { tenantId: context.tenantId, publicRef: caseRef, ...caseScope(context) },
-    select: { id: true, publicRef: true, caseCode: true },
+    select: { id: true, publicRef: true, caseCode: true, mode: true, routeRevision: true, estimatedCbm: true },
   });
   if (!row) costingFail("COSTING_NOT_FOUND", 404);
   return row;
 }
 
 function ruleMatchesItem(rule, item, logisticsInput) {
-  if (isProtectedTransportCostingRule(rule)) return false;
+  if (isProtectedTransportCostingRule(rule) || isPackagePricingRule(rule) || isPackageComponentRule(rule)) return false;
   const conditions = rule.conditions || {};
   const serviceCodes = logisticsInput?.services?.codes || [];
   if (conditions.logisticsFamilies && !conditions.logisticsFamilies.includes(item.family)) return false;
@@ -153,25 +165,62 @@ async function resolveProviderAuthority(tx, context, item, rule) {
   return { logisticsItemRef: item.itemRef, family: rule?.family || "THIRD_PARTY", classification: rule?.classification || "EX", source: "PROVIDER", sourceRef: offer.offerRef, sourceVersion: offer.version, unitCost: String(offer.rateAmount), currency: offer.currency, unit: offer.temporalUnit || item.unit || "UNIT", minimumMarginBps: null, recommendedMarginBps: null, authoritySnapshot: { kind: "EXTERNAL_RESOURCE_OFFER", offerRef: offer.offerRef, version: offer.version, contractualReferencePresent: true, validFrom: offer.validFrom?.toISOString() || null, validTo: offer.validTo?.toISOString() || null }, logicalSha256: costingHash({ offerRef: offer.offerRef, version: offer.version, rateAmount: String(offer.rateAmount), currency: offer.currency, contractualReferencePresent: true, validFrom: offer.validFrom?.toISOString() || null, validTo: offer.validTo?.toISOString() || null }) };
 }
 
-async function loadCalculationInput(tx, context, caseRef, logisticsRevisionRef, baseCurrency) {
+async function loadCalculationInput(tx, context, caseRef, logisticsRevisionRef, baseCurrency, packageEstimate = null) {
   const pipelineCase = await resolveCase(tx, context, caseRef);
-  const logisticsRevision = await tx.logisticsPlanRevision.findFirst({
+  let logisticsRevision = logisticsRevisionRef ? await tx.logisticsPlanRevision.findFirst({
     where: { tenantId: context.tenantId, revisionRef: logisticsRevisionRef, status: "PUBLISHED", plan: { pipelineCaseId: pipelineCase.id } },
     include: { items: { orderBy: { position: "asc" } }, issues: true, plan: { select: { id: true, planRef: true } } },
-  });
-  if (!logisticsRevision) costingFail("COSTING_LOGISTICS_REVISION_NOT_FOUND", 404);
-  const transportContext = transportContextOf(logisticsRevision.inputSnapshot);
-  if (!transportContext) costingFail("COSTING_TRANSPORT_CONTEXT_INVALID", 409);
-  const rules = (await currentRules(tx, context.tenantId)).filter((rule) => !isProtectedTransportCostingRule(rule));
+  }) : null;
+  if (logisticsRevisionRef && !logisticsRevision) costingFail("COSTING_LOGISTICS_REVISION_NOT_FOUND", 404);
+  const isBasis = isPackageQuoteBasis(logisticsRevision?.inputSnapshot);
+  const transportContext = !logisticsRevision || isBasis && packageEstimate ? QUOTE_TRANSPORT_CONTEXT : transportContextOf(logisticsRevision.inputSnapshot);
+  if (!transportContext || !logisticsRevision && !packageEstimate) costingFail("COSTING_TRANSPORT_CONTEXT_INVALID", 409);
+  const activeRules = (await currentRules(tx, context.tenantId)).filter((rule) => !isProtectedTransportCostingRule(rule));
+  const rules = activeRules.filter((rule) => !isPackagePricingRule(rule) && !isPackageComponentRule(rule));
   const authorities = [];
   const transportKeys = new Set();
-  for (const item of logisticsRevision.items) {
+  const additionalIssues = [];
+  let pkg = null;
+  let packagePricing = null;
+  let items = logisticsRevision?.items ?? [];
+  let issues = logisticsRevision?.issues ?? [];
+  let relevantRules = rules;
+
+  if (packageEstimate) {
+    if (!sameTransportContext(transportContext, QUOTE_TRANSPORT_CONTEXT)) costingFail("COSTING_TRANSPORT_CONTEXT_INVALID", 409);
+    const eligibility = await eligiblePackagePricing(tx, context.tenantId, pipelineCase, activeRules, packageEstimate.versionRef);
+    pkg = eligibility.packages[0];
+    if (!pkg) costingFail("COSTING_PACKAGE_NOT_AVAILABLE", 409);
+    if (pkg.rule.currency !== baseCurrency) costingFail("COSTING_PACKAGE_CURRENCY_INVALID", 409);
+    packagePricing = resolvePackageMeasures(packageEstimate, pkg);
+    if ((!logisticsRevision || isBasis) && packagePricing.includeRouteTransport) costingFail("COSTING_PACKAGE_TRANSPORT_REQUIRED", 409);
+    if (!logisticsRevision) logisticsRevision = await ensurePackageQuoteBasis(tx, context, pipelineCase, eligibility.selection);
+    const snapshot = logisticsRevision.inputSnapshot;
+    if (snapshot?.services?.selectionRef !== eligibility.selection.selectionRef
+      || snapshot?.route?.version !== pipelineCase.routeRevision) costingFail("COSTING_PACKAGE_PLAN_STALE", 409);
+
+    const { items: resources, issues: resourceIssues } = packageResourceLines(pkg, packagePricing, activeRules, pipelineCase.mode, snapshot.services.codes ?? []);
+    additionalIssues.push(...resourceIssues);
+    const transportItems = packagePricing.includeRouteTransport ? items.filter(hasTransportCostingAuthority) : [];
+    if (packagePricing.includeRouteTransport && (!transportItems.length || logisticsRevision.resultSnapshot?.transport?.complete !== true)) {
+      additionalIssues.push(packagePricingIssues("COSTING_PACKAGE_TRANSPORT_REQUIRED", "Calcule y publique el transporte de esta cotización para incluirlo en el paquete."));
+    }
+    items = [...resources, ...transportItems].map((item, position) => ({ ...item, position }));
+    issues = packagePricing.includeRouteTransport ? issues.filter((row) => row.family === "TRANSPORT") : [];
+    relevantRules = [pkg.rule, ...resources.map((item) => item.rule), ...rules.filter((rule) => rule.family === "CURRENCY_COMPENSATION")];
+  }
+
+  for (const item of items) {
+    if (item.packageComponent) {
+      authorities.push(applyPackageMargin(ruleAuthority(item.rule, item), pkg));
+      continue;
+    }
     if (hasTransportCostingAuthority(item)) {
       const key = transportCostingItemKey(item);
       if (transportKeys.has(key)) costingFail("COSTING_TRANSPORT_DUPLICATE_ITEM", 409);
       transportKeys.add(key);
       const authority = await resolveTransportCostingAuthority(tx, context, item, logisticsRevision);
-      if (authority) authorities.push(authority);
+      if (authority) authorities.push(applyPackageMargin(authority, pkg));
       continue;
     }
     const matching = rules.filter((rule) => ruleMatchesItem(rule, item, logisticsRevision.inputSnapshot));
@@ -196,13 +245,17 @@ async function loadCalculationInput(tx, context, caseRef, logisticsRevisionRef, 
     routeRevision: logisticsRevision.inputSnapshot?.route?.version || null,
     surveyPublicationRef: logisticsRevision.inputSnapshot?.survey?.publicationRef || null,
     materialRequirementRef: logisticsRevision.inputSnapshot?.materials?.requirementRef || null,
-    items: logisticsRevision.items.map(({ itemRef, family, kind, label, quantity, unit, requiredQuantity, priceStatus, source, sourceRef, sourceVersion, snapshot, position }) => ({ itemRef, family, kind, label, quantity: quantity == null ? null : String(quantity), unit, requiredQuantity: requiredQuantity == null ? null : String(requiredQuantity), priceStatus, source, sourceRef, sourceVersion, snapshot, position })),
-    issues: logisticsRevision.issues.map(({ issueRef, code, severity, family, status }) => ({ issueRef, code, severity, family, status })),
+    items: items.map(({ itemRef, family, kind, label, quantity, unit, requiredQuantity, priceStatus, source, sourceRef, sourceVersion, snapshot, position, packageComponent }) => ({
+      itemRef, family, kind: kind ?? "PACKAGE_RESOURCE", label, quantity: quantity == null ? null : String(quantity),
+      unit, requiredQuantity: requiredQuantity == null ? null : String(requiredQuantity), priceStatus: priceStatus ?? null,
+      source, sourceRef, sourceVersion, snapshot, position, ...(packageComponent && { packageComponent }),
+    })),
+    issues: issues.map(({ issueRef, code, severity, family, status }) => ({ issueRef, code, severity, family, status })),
   };
-  const result = calculateCostingSnapshot({ baseCurrency, logisticsRevision: logistics, authorities, rates, compensationRules });
+  const result = calculateCostingSnapshot({ baseCurrency, logisticsRevision: logistics, authorities, rates, compensationRules, packagePricing, additionalIssues });
   const snapshots = {
-    input: { caseRef: pipelineCase.publicRef, transportContext, logistics, authorities: authorities.map((row) => ({ ...row })) },
-    rules: rules.map((rule) => ({ ruleRef: rule.ruleRef, seriesRef: rule.seriesRef, family: rule.family, version: rule.version, conditionHash: rule.conditionHash, unitCost: rule.unitCost == null ? null : String(rule.unitCost), currency: rule.currency, minimumMarginBps: rule.minimumMarginBps, recommendedMarginBps: rule.recommendedMarginBps, resultHash: costingHash(rule.result) })),
+    input: { caseRef: pipelineCase.publicRef, transportContext, logistics, authorities, ...(packagePricing && { packageEstimate, packagePricing }) },
+    rules: relevantRules.map((rule) => ({ ruleRef: rule.ruleRef, seriesRef: rule.seriesRef, family: rule.family, version: rule.version, conditionHash: rule.conditionHash, unitCost: rule.unitCost == null ? null : String(rule.unitCost), currency: rule.currency, minimumMarginBps: rule.minimumMarginBps, recommendedMarginBps: rule.recommendedMarginBps, resultHash: costingHash(rule.result) })),
     rates: rates.map((rate) => ({ rateRef: rate.rateRef, seriesRef: rate.seriesRef, baseCurrency: rate.baseCurrency, quoteCurrency: rate.quoteCurrency, rate: String(rate.rate), source: rate.source, version: rate.version, effectiveAt: rate.effectiveAt.toISOString(), logicalSha256: rate.logicalSha256 })),
   };
   return { pipelineCase, logisticsRevision, result, snapshots, inputHash: costingHash(snapshots) };
@@ -228,7 +281,7 @@ export async function calculateCosting(prisma, context, raw) {
   return serializable(prisma, async (tx) => {
     const prior = await replay(tx, context, input);
     if (prior) return prior;
-    const loaded = await loadCalculationInput(tx, context, input.caseRef, input.logisticsPlanRevisionRef, input.baseCurrency);
+    const loaded = await loadCalculationInput(tx, context, input.caseRef, input.logisticsPlanRevisionRef, input.baseCurrency, input.packageEstimate);
     const row = await tx.costingCalculation.create({ data: { tenantId: context.tenantId, pipelineCaseId: loaded.pipelineCase.id, logisticsRevisionId: loaded.logisticsRevision.id, baseCurrency: input.baseCurrency, inputSnapshot: loaded.snapshots.input, rulesSnapshot: loaded.snapshots.rules, ratesSnapshot: loaded.snapshots.rates, resultSnapshot: loaded.result, inputHash: loaded.inputHash, resultHash: costingHash(loaded.result), requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
     const result = { calculationRef: row.calculationRef, status: row.status, baseCurrency: row.baseCurrency, inputHash: row.inputHash, resultHash: row.resultHash, result: loaded.result };
     return persist(tx, context, input, row.calculationRef, result, "COSTING_CALCULATE", "CostingCalculation");
@@ -254,11 +307,13 @@ export async function publishCosting(prisma, context, raw) {
     if (!calculation) costingFail("COSTING_CALCULATION_NOT_FOUND", 404);
     if (calculation.publishedRevision) costingFail("COSTING_CALCULATION_ALREADY_PUBLISHED", 409);
     await resolveCase(tx, context, calculation.pipelineCase.publicRef);
+    const estimate = calculation.inputSnapshot?.packageEstimate;
+    const packageBasis = estimate && isPackageQuoteBasis(calculation.logisticsRevision.inputSnapshot);
     const calculationContext = transportContextOf(calculation.logisticsRevision.inputSnapshot);
-    if (!calculationContext) costingFail("COSTING_TRANSPORT_CONTEXT_INVALID", 409);
-    const latestLogistics = await latestLogisticsRevision(tx, { where: { tenantId: context.tenantId, planId: calculation.logisticsRevision.planId }, context: calculationContext, select: { revisionRef: true } });
-    const loaded = await loadCalculationInput(tx, context, calculation.pipelineCase.publicRef, calculation.logisticsRevision.revisionRef, calculation.baseCurrency);
-    await assertTransportRevisionCurrent(tx, context, loaded.logisticsRevision);
+    if (!calculationContext && !packageBasis) costingFail("COSTING_TRANSPORT_CONTEXT_INVALID", 409);
+    const latestLogistics = packageBasis ? null : await latestLogisticsRevision(tx, { where: { tenantId: context.tenantId, planId: calculation.logisticsRevision.planId }, context: calculationContext, select: { revisionRef: true } });
+    const loaded = await loadCalculationInput(tx, context, calculation.pipelineCase.publicRef, calculation.logisticsRevision.revisionRef, calculation.baseCurrency, estimate);
+    if (!estimate || loaded.result.packagePricing.includeRouteTransport) await assertTransportRevisionCurrent(tx, context, loaded.logisticsRevision);
     if ((latestLogistics && latestLogistics.revisionRef !== calculation.logisticsRevision.revisionRef) || loaded.inputHash !== calculation.inputHash) costingFail("COSTING_INPUT_STALE", 409);
     const blockers = (calculation.resultSnapshot?.issues || []).filter((row) => row.severity === "BLOCKER" && row.status === "OPEN");
     if (blockers.length) costingFail("COSTING_BLOCKERS_PRESENT", 409);
@@ -280,6 +335,7 @@ function mapRevision(row) {
     logicalSha256: row.logicalSha256,
     publishedAt: row.publishedAt.toISOString(),
     transportContext: transportContextOf(row.inputSnapshot),
+    ...(row.inputSnapshot?.packagePricing && { packagePricing: row.inputSnapshot.packagePricing }),
     totals: row.totalsSnapshot,
     lines: row.lines.map(({ lineRef, logisticsItemRef, family, concept, classification, source, sourceRef, sourceVersion, quantity, unit, originalCurrency, originalUnitCost, exchangeRateRef, exchangeRateVersion, exchangeRate, baseCurrency, baseUnitCost, totalCost, minimumMarginBps, recommendedMarginBps, suggestedPrice, priceStatus, snapshot, position }) => ({ lineRef, logisticsItemRef, family, concept, classification, source, sourceRef, sourceVersion, quantity: String(quantity), unit, originalCurrency, originalUnitCost: String(originalUnitCost), exchangeRateRef, exchangeRateVersion, exchangeRate: String(exchangeRate), baseCurrency, baseUnitCost: String(baseUnitCost), totalCost: String(totalCost), minimumMarginBps, recommendedMarginBps, suggestedPrice: suggestedPrice == null ? null : String(suggestedPrice), priceStatus, snapshot, position })),
     issues: row.issues.map(({ issueRef, code, severity, family, message, source, sourceSnapshot, status, resolvedReason, resolvedAt, version }) => ({ issueRef, code, severity, family, message, source, sourceSnapshot, status, resolvedReason, resolvedAt: resolvedAt?.toISOString() || null, version })),
@@ -292,6 +348,42 @@ export async function getCosting(prisma, context, caseRef, transportContext = QU
   const pipelineCase = await resolveCase(prisma, context, caseRef);
   const row = await latestCostingRevision(prisma, { where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id }, context: transportContext, include: { lines: { orderBy: { position: "asc" } }, issues: true, overrides: { include: { authorizations: true } } } });
   return row ? mapRevision(row) : null;
+}
+
+export async function getCostingPackageOptions(prisma, context, caseRef) {
+  requirePermission(context, COSTING_PERMISSIONS.VIEW);
+  const pipelineCase = await resolveCase(prisma, context, caseRef);
+  const rules = await currentRules(prisma, context.tenantId);
+  const eligible = await eligiblePackagePricing(prisma, context.tenantId, pipelineCase, rules);
+  if (!eligible.packages.length) return { hasService: eligible.hasService, packages: [], volumeM3: null };
+  const where = { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, serviceSelectionRef: eligible.selection.selectionRef };
+  const [configuration, survey] = await Promise.all([
+    prisma.caseServiceConfigurationRevision.findFirst({ where, orderBy: { revision: "desc" }, select: { preferenceSnapshot: true } }),
+    prisma.surveyPublication.findFirst({ where: { ...where, status: "CURRENT" }, select: { totalsSnapshot: true } }),
+  ]);
+  const volumeM3 = [
+    configuration?.preferenceSnapshot?.quickQuote?.volumeM3,
+    survey?.totalsSnapshot?.totalVolumeM3 ?? survey?.totalsSnapshot?.volumeM3,
+    pipelineCase.estimatedCbm,
+  ].map(Number).find((value) => Number.isFinite(value) && value > 0) ?? null;
+  return {
+    hasService: eligible.hasService,
+    packages: eligible.packages.map(({ rule, ...pkg }) => ({
+      ...pkg, currency: rule.currency, includeRouteTransport: rule.result.includeRouteTransport,
+      shipment: rule.result.shipment, volumeTiers: rule.result.volumeTiers ?? [], minimumSale: rule.result.minimumSale,
+      needsWeight: rule.result.shipment.mode === "NONE" && rule.result.components.some((component) => component.basis === "CWT"),
+    })),
+    volumeM3,
+  };
+}
+
+export async function getQuoteAddOnCatalog(prisma, context, caseRef, currency) {
+  requirePermission(context, COSTING_PERMISSIONS.VIEW);
+  await resolveCase(prisma, context, caseRef);
+  if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) costingFail("COSTING_CURRENCY_INVALID");
+  const rules = await currentRules(prisma, context.tenantId);
+  return rules.filter((rule) => rule.currency === currency).map(toQuoteCatalogItem).filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
 }
 
 export async function listCostingRules(prisma, context, query = {}) {
@@ -309,10 +401,18 @@ export async function versionCostingRule(prisma, context, raw) {
     const seriesRef = input.seriesRef || randomUUID();
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${seriesRef}:costing-rule`}, 0))`);
     const current = await tx.costingRule.findFirst({ where: { tenantId: context.tenantId, seriesRef }, orderBy: { version: "desc" } });
+    if (input.expectedVersion != null && input.expectedVersion !== (current?.version ?? 0)) costingFail("COSTING_RULE_VERSION_CONFLICT", 409);
     if (current && isProtectedTransportCostingRule(current)) costingFail("COSTING_TRANSPORT_RULE_PROTECTED", 409);
-    if (current) await tx.costingRule.update({ where: { id: current.id }, data: { state: "SUPERSEDED", validTo: input.validFrom ? new Date(input.validFrom) : new Date() } });
-    const row = await tx.costingRule.create({ data: { tenantId: context.tenantId, seriesRef, family: input.family, code: input.code, name: input.name, classification: input.classification, source: input.source, priority: input.priority, specificity: input.specificity, conditions: input.conditions, conditionHash: costingHash(input.conditions), unitCost: input.unitCost, currency: input.currency, minimumMarginBps: input.minimumMarginBps, recommendedMarginBps: input.recommendedMarginBps, result: input.result, state: input.state, version: (current?.version || 0) + 1, validFrom: input.validFrom ? new Date(input.validFrom) : null, validTo: input.validTo ? new Date(input.validTo) : null, replacesRuleId: current?.id, requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
-    const result = { ruleRef: row.ruleRef, seriesRef: row.seriesRef, family: row.family, classification: row.classification, state: row.state, version: row.version, conditionHash: row.conditionHash };
+    if (isPackagePricingRule(input)) {
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${input.conditions.packageVersionRef}:costing-package`}, 0))`);
+    }
+    await assertPackagePricingRule(tx, context.tenantId, input, current, isPackagePricingRule(input) ? await currentRules(tx, context.tenantId) : []);
+    const now = new Date(Math.max(Date.now(), (current?.validFrom?.getTime() ?? 0) + 1));
+    const validFrom = input.validFrom ? new Date(input.validFrom)
+      : isPackagePricingRule(input) || isPackageComponentRule(input) ? now : null;
+    if (current) await tx.costingRule.update({ where: { id: current.id }, data: { state: "SUPERSEDED", validTo: validFrom ?? now } });
+    const row = await tx.costingRule.create({ data: { tenantId: context.tenantId, seriesRef, family: input.family, code: input.code, name: input.name, classification: input.classification, source: input.source, priority: input.priority, specificity: input.specificity, conditions: input.conditions, conditionHash: costingHash(input.conditions), unitCost: input.unitCost, currency: input.currency, minimumMarginBps: input.minimumMarginBps, recommendedMarginBps: input.recommendedMarginBps, result: input.result, state: input.state, version: (current?.version || 0) + 1, validFrom, validTo: input.validTo ? new Date(input.validTo) : null, replacesRuleId: current?.id, requestId: input.requestId, payloadHash: input.payloadHash, ...actor(context) } });
+    const result = { ruleRef: row.ruleRef, seriesRef: row.seriesRef, family: row.family, classification: row.classification, state: row.state, version: row.version, validFrom: row.validFrom?.toISOString() ?? null, conditionHash: row.conditionHash };
     return persist(tx, context, input, row.ruleRef, result, current ? "COSTING_RULE_VERSION" : "COSTING_RULE_CREATE", "CostingRule");
   });
 }

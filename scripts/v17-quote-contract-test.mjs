@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { calculateQuoteTotals, normalizeQuoteCreate, quoteHash } from "../api/_lib/quoteContract.js";
-import { getQuoteClientProjection } from "../api/_lib/quoteDomain.js";
+import { getQuoteClientProjection, quoteContractInternals } from "../api/_lib/quoteDomain.js";
 
 const ref = () => randomUUID();
 function payload(overrides = {}) {
@@ -28,6 +28,48 @@ const totals = calculateQuoteTotals([{ priceStatus: "CONFIRMED", capturedCost: "
 assert.deepEqual(totals, { capturedCost: 90, suggestedPrice: 130, grossQuotedPrice: 160, discountAmount: 10, totalQuotedPrice: 150, regularPrice: 130, payablePrice: 150, foregoneRevenue: 0, differenceVsSuggested: 20, marginAmount: 60, marginBps: 4000, external: 35, disbursements: 0, pendingLines: 1 }); assertions += 1;
 const waivedTotals = calculateQuoteTotals([{ priceStatus: "CONFIRMED", capturedCost: "70", suggestedPrice: "100", quotedPrice: "0", economicClass: "PR" }], null);
 assert.deepEqual({ regularPrice: waivedTotals.regularPrice, payablePrice: waivedTotals.payablePrice, foregoneRevenue: waivedTotals.foregoneRevenue }, { regularPrice: 100, payablePrice: 0, foregoneRevenue: 100 }); assertions += 1;
+const extra = { sourceKind: "MANUAL", costingLineRef: null, concept: "Grúa", quantity: "2", unit: "hora", economicClass: "EX", quotedPrice: "250", currency: "USD", reason: "Cargo adicional del caso", manualAuthority: { kind: "QUOTE_ADDITIONAL_CHARGE", reference: ref(), version: 1, status: "CONFIRMED", capturedCost: "200", suggestedPrice: "250" } };
+const packageQuote = payload();
+const chargedPackage = normalizeQuoteCreate(signed({ ...packageQuote, lines: [...packageQuote.lines, extra] }));
+const withCharges = calculateQuoteTotals(chargedPackage.lines.map((line) => ({
+  ...line, priceStatus: "CONFIRMED", capturedCost: line.manualAuthority?.capturedCost ?? "80",
+  suggestedPrice: line.manualAuthority?.suggestedPrice ?? "125",
+})), null);
+assert.equal(withCharges.totalQuotedPrice, 375);
+assert.equal(withCharges.external, 250);
+assert.equal(withCharges.capturedCost, 280);
+assertions += 3;
+const issuedBase = { ...packageQuote.lines[0], quantity: "2", quotedPrice: "75" };
+const catalogRef = ref();
+const catalogExtra = {
+  ...extra, concept: "Caja adicional", quantity: "3", unit: "caja", quotedPrice: "60", economicClass: "PR",
+  manualAuthority: { kind: "QUOTE_CATALOG_COMPONENT", reference: catalogRef, version: 2, status: "CONFIRMED", capturedCost: null, suggestedPrice: null },
+};
+const tariff = {
+  revisionRef: packageQuote.costingRevisionRef, revision: 1, baseCurrency: "USD",
+  inputSnapshot: { packagePricing: { minimumSale: "100", allowEdits: true, pricingRuleRef: ref(), pricingVersion: 1 } },
+  lines: [
+    { ...packageQuote.lines[0], lineRef: issuedBase.costingLineRef, classification: "PR", baseUnitCost: "50", totalCost: "50", suggestedPrice: "80", family: "LABOR", source: "ADMIN" },
+    { lineRef: ref(), snapshot: { packageMinimum: true }, suggestedPrice: "20" },
+  ],
+};
+const quoteContext = { tenantId: "demo", membershipId: "seller", userId: "seller", effectivePermissions: ["quote:override-price"] };
+const catalogDatabase = { costingRule: { findMany: async ({ where }) => {
+  assert.equal(where.tenantId, quoteContext.tenantId);
+  return [{ ruleRef: catalogRef, version: 2, name: "Caja adicional", family: "MATERIAL", currency: "USD", classification: "PR",
+    unitCost: "12", conditions: { packageComponentCode: "BOX" }, result: { unit: "caja", saleUnitPrice: "20" } }];
+} } };
+const adjustedPackage = normalizeQuoteCreate(signed({ ...packageQuote, packageAdjustmentReason: "Se compactó el alcance", lines: [issuedBase, catalogExtra] }));
+const adjustedLines = await quoteContractInternals.buildLines(catalogDatabase, adjustedPackage, tariff, quoteContext);
+assert.deepEqual(adjustedLines.map((line) => [line.concept, line.quotedPrice, line.capturedCost]), [
+  ["Servicio", "75", "100"],
+  ["Ajuste al mínimo del paquete", "25", "0"],
+  ["Caja adicional", "60", "36"],
+]);
+assert.equal(calculateQuoteTotals(adjustedLines, null).totalQuotedPrice, 160);
+await assert.rejects(quoteContractInternals.buildLines(catalogDatabase, adjustedPackage, tariff, { ...quoteContext, effectivePermissions: [] }), /QUOTE_FORBIDDEN/);
+await assert.rejects(quoteContractInternals.buildLines(catalogDatabase, { ...adjustedPackage, packageAdjustmentReason: null }, tariff, quoteContext), /QUOTE_PACKAGE_ADJUSTMENT_REASON_REQUIRED/);
+assertions += 4;
 const client = getQuoteClientProjection({ proposalRef: ref(), reference: "Q-2026-000001-A", revisionRef: ref(), revision: 1, state: "SENT", proposalName: "A", currency: "USD", issueDate: "2026-09-05", validUntil: "2026-10-05", client: {}, commercialContext: {}, payer: {}, terms: {}, exchange: null, discount: null, totals: { capturedCost: 90, suggestedPrice: 130, grossQuotedPrice: 160, discountAmount: 0, totalQuotedPrice: 160 }, lines: [{ lineRef: ref(), sourceKind: "COSTING", concept: "Servicio", quantity: "1", unit: "SERVICE", economicClass: "PR", capturedCost: "90", suggestedPrice: "130", quotedPrice: "160", currency: "USD", priceStatus: "CONFIRMED", position: 1 }], logicalSha256: "a".repeat(64) });
 assert.equal("capturedCost" in client.lines[0], false); assert.equal("suggestedPrice" in client.lines[0], false); assert.equal("capturedCost" in client.totals, false); assertions += 3;
 console.log(`V17-QUOTE-09A contract: ${assertions}/${assertions}`);

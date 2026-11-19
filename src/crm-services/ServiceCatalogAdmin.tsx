@@ -1,63 +1,247 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { History, Layers3, Plus, Power, Settings2 } from "lucide-react";
+import { Fragment, useId, useRef, useState, type FormEvent } from "react";
+import { ArrowLeft, Check, History, Layers3, Pencil, Plus, Power, Search, X } from "lucide-react";
+import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { Button } from "@/components/ui/button";
-import { COMPACT_FORM_DIALOG, COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
-import { cn } from "@/lib/utils";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { COMPACT_TABLE_BODY, COMPACT_TABLE_FIELD as FIELD, COMPACT_TABLE_HEAD } from "@/components/ui/compact-form";
+import { filterBySearch } from "@/costing/componentLabels";
 import { CrmServicesApi, CrmServicesApiError, type ServiceCatalogItem } from "./api";
 
-type Props = Readonly<{ authorization?: string; canManage: boolean; onUnauthorized(): void }>;
-type Draft = Readonly<{ serviceRef?: string; expectedVersion?: number; code: string; name: string; category: string; usage: "PRIMARY" | "COMPLEMENTARY" | "BOTH"; compatibleModes: readonly string[]; status: "ACTIVE" | "INACTIVE"; sortOrder: number; allowedComplementaryRefs: readonly string[] }>;
-const EMPTY: Draft = Object.freeze({ code: "", name: "", category: "", usage: "PRIMARY", compatibleModes: ["LOCAL"], status: "ACTIVE", sortOrder: 0, allowedComplementaryRefs: [] });
+type Props = Readonly<{
+  api: CrmServicesApi; rows: readonly ServiceCatalogItem[]; canManage: boolean;
+  onUpdate(rows: readonly ServiceCatalogItem[]): void; onUnauthorized(): void;
+}>;
+type Scope = ServiceCatalogItem["compatibleModes"][number];
+type Draft = Pick<ServiceCatalogItem, "name" | "usage" | "compatibleModes" | "status" | "sortOrder" | "allowedComplementaryRefs">
+  & { serviceRef?: string; version?: number; category: string };
+type Defaults = { combinationRef: string; code: string; name: string; version: number };
+type Event = { action: string; version: number; createdAt: string };
 
-export default function ServiceCatalogAdmin({ authorization, canManage, onUnauthorized }: Props) {
-  const api = useMemo(() => new CrmServicesApi(() => authorization || null), [authorization]);
-  const pendingCommands = useRef(new Map<string, string>());
-  const requestFor = (operation: string) => {
-    const previous = pendingCommands.current.get(operation);
-    if (previous) return previous;
-    const requestId = crypto.randomUUID();
-    pendingCommands.current.set(operation, requestId);
-    return requestId;
-  };
-  const [rows, setRows] = useState<readonly ServiceCatalogItem[]>([]);
+const EMPTY: Draft = { name: "", category: "", usage: "PRIMARY", compatibleModes: ["LOCAL"], status: "ACTIVE", sortOrder: 0, allowedComplementaryRefs: [] };
+const USAGE = { PRIMARY: "Principal", COMPLEMENTARY: "Complementario", BOTH: "Ambos" };
+const SCOPES: Record<Scope, string> = { LOCAL: "Local / Nacional", EXPORT: "Exportación", IMPORT: "Importación" };
+const STATUS = { ACTIVE: "Activo", INACTIVE: "Inactivo" };
+const EVENT_LABELS: Record<string, string> = {
+  SERVICE_CATALOG_CREATED: "Creación", SERVICE_CATALOG_UPDATED: "Edición",
+  SERVICE_CATALOG_ACTIVATED: "Activación", SERVICE_CATALOG_DEACTIVATED: "Desactivación",
+  SERVICE_CATALOG_MODES_CHANGED: "Cambio de modalidades",
+};
+const DATE = new Intl.DateTimeFormat("es-DO", { timeZone: "America/Santo_Domingo", dateStyle: "short", timeStyle: "short" });
+const ACTION = "border-transparent bg-transparent";
+const TABLE_WRAP = "overflow-auto border-b border-slate-200 max-h-[max(15rem,calc(100dvh-17rem))]";
+
+export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, onUnauthorized }: Props) {
+  const form = useId();
+  const request = useRef("");
+  const [search, setSearch] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [history, setHistory] = useState<Readonly<{ name: string; events: readonly Readonly<{ action: string; version: number; createdAt: string }>[] }> | null>(null);
-  const [defaultsFor, setDefaultsFor] = useState<ServiceCatalogItem | null>(null);
+  const [details, setDetails] = useState<{ service: ServiceCatalogItem; kind: "DEFAULTS" | "HISTORY" } | null>(null);
+  const [history, setHistory] = useState<readonly Event[] | null>(null);
   const [defaultRefs, setDefaultRefs] = useState<readonly string[]>([]);
-  const [defaultRecord, setDefaultRecord] = useState<Readonly<{ combinationRef: string; code: string; name: string; version: number }> | null>(null);
-  const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null);
-  const load = useCallback(() => { const controller = new AbortController(); setLoading(true); void api.catalog(controller.signal).then(setRows).catch((cause) => { if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized(); else setError("No fue posible cargar el catálogo."); }).finally(() => setLoading(false)); return () => controller.abort(); }, [api, onUnauthorized]);
-  useEffect(load, [load]);
-  const complementary = rows.filter((item) => item.status === "ACTIVE" && ["COMPLEMENTARY", "BOTH"].includes(item.usage));
-  const edit = (item: ServiceCatalogItem) => {
-    pendingCommands.current.delete("catalog");
-    setError(null);
-    setDraft({ serviceRef: item.serviceRef, expectedVersion: item.version, code: item.code, name: item.name, category: item.category || "", usage: item.usage, compatibleModes: item.compatibleModes, status: item.status, sortOrder: item.sortOrder, allowedComplementaryRefs: item.allowedComplementaryRefs });
-  };
-  const save = async () => {
-    if (!draft || !canManage) return; setSaving(true); setError(null);
+  const [defaultRecord, setDefaultRecord] = useState<Defaults | null>(null);
+  const [detailStatus, setDetailStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const complementary = rows.filter((item) => item.status === "ACTIVE" && item.usage !== "PRIMARY");
+  const visible = rows.filter((item) => item.serviceRef === draft?.serviceRef || filterBySearch(
+    [item.name, item.category, USAGE[item.usage], ...item.compatibleModes.map((mode) => SCOPES[mode])].join(" "), search,
+  ));
+  const allowDefaults = details?.kind === "DEFAULTS" && details.service.usage !== "COMPLEMENTARY";
+
+  function openDraft(item?: ServiceCatalogItem) {
+    request.current = crypto.randomUUID();
+    setError("");
+    setDraft(item ? { ...item, category: item.category ?? "" } : EMPTY);
+  }
+  function report(cause: unknown, message: string) {
+    if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized();
+    else setError(message);
+  }
+  async function refresh() {
     try {
-      const shared = { name: draft.name.trim(), category: draft.category.trim() || null, usage: draft.usage, compatibleModes: [...draft.compatibleModes].sort(), sortOrder: draft.sortOrder, allowedComplementaryRefs: draft.allowedComplementaryRefs };
-      const values = draft.serviceRef ? { ...shared, expectedVersion: draft.expectedVersion, status: draft.status } : { ...shared, code: null };
-      const requestId = requestFor("catalog");
-      if (draft.serviceRef) await api.updateCatalog(draft.serviceRef, { requestId, ...values });
-      else await api.createCatalog({ requestId, ...values });
-      pendingCommands.current.delete("catalog");
-      setDraft(null); load();
-    } catch (cause) { setError(cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_VERSION_CONFLICT" ? "El servicio cambió; recargue antes de guardar." : cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_IDEMPOTENCY_CONFLICT" ? "El guardado anterior ya fue registrado. Cierre y actualice el catálogo para revisar el servicio antes de modificarlo." : "No fue posible guardar el servicio."); } finally { setSaving(false); }
-  };
-  const toggleStatus = async (item: ServiceCatalogItem) => {
-    setSaving(true); setError(null); try { await api.updateCatalog(item.serviceRef, { requestId: crypto.randomUUID(), expectedVersion: item.version, name: item.name, category: item.category, usage: item.usage, compatibleModes: [...item.compatibleModes].sort(), status: item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE", sortOrder: item.sortOrder, allowedComplementaryRefs: item.allowedComplementaryRefs }); load(); } catch { setError("No fue posible cambiar el estado sin afectar la configuración vigente."); } finally { setSaving(false); }
-  };
-  const openDefaults = async (item: ServiceCatalogItem) => { pendingCommands.current.delete("defaults"); setDefaultsFor(item); setError(null); try { const values = await api.defaults(item.serviceRef); const current = values.find((value) => value.isDefault && value.status === "ACTIVE") || null; setDefaultRecord(current ? { combinationRef: current.combinationRef, code: current.code, name: current.name, version: current.version } : null); setDefaultRefs(current?.complementaries.map((entry) => entry.serviceRef) || []); } catch { setError("No fue posible cargar las combinaciones."); } };
-  const saveDefault = async () => { if (!defaultsFor || !canManage) return; setSaving(true); try { const values = { primaryServiceRef: defaultsFor.serviceRef, combinationRef: defaultRecord?.combinationRef || null, code: defaultRecord?.code || null, name: defaultRecord?.name || `Predeterminado ${defaultsFor.name}`, isDefault: true, status: "ACTIVE", expectedVersion: defaultRecord?.version || null, complementaryRefs: defaultRefs }; await api.saveDefaults({ requestId: requestFor("defaults"), ...values }); pendingCommands.current.delete("defaults"); setDefaultsFor(null); } catch { setError("No fue posible guardar la combinación predeterminada."); } finally { setSaving(false); } };
-  return <section data-testid="service-catalog-admin" className="mt-5">
-    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-indigo-600">Administración / Servicios</p><h2 className="text-xl font-black text-slate-950">Catálogo de servicios</h2><p className="text-xs text-slate-500">Código | Servicio | Tipo | Modos | Estado | Usos | Acciones</p></div>{canManage && <Button onClick={() => { pendingCommands.current.delete("catalog"); setError(null); setDraft(EMPTY); }}><Plus />Nuevo servicio</Button>}</div>
-    {error && !draft && !defaultsFor && <p role="alert" className="mt-3 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-    <div className="mt-3 overflow-x-auto border bg-white"><div className="grid min-w-[850px] grid-cols-[120px_minmax(180px,1fr)_120px_150px_90px_60px_260px] border-b bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase text-slate-500"><span>Código</span><span>Servicio</span><span>Tipo</span><span>Modos</span><span>Estado</span><span>Usos</span><span>Acciones</span></div>{loading ? <p className="p-6 text-center text-sm text-slate-500">Cargando…</p> : rows.map((item) => <div key={item.serviceRef} className="grid min-w-[850px] grid-cols-[120px_minmax(180px,1fr)_120px_150px_90px_60px_260px] items-center border-b px-3 py-2 text-xs"><code className="truncate font-bold text-[#003366]" title={item.code}>{item.code}</code><span className="truncate font-semibold">{item.name}</span><span>{{ PRIMARY: "Principal", COMPLEMENTARY: "Complementario", BOTH: "Ambos" }[item.usage]}</span><span>{item.compatibleModes.join(", ") || "—"}</span><span>{item.status}</span><span>{item.usageCount}</span><span className="flex gap-1"><Button size="sm" variant="ghost" disabled={!canManage} onClick={() => edit(item)}><Settings2 />Editar</Button>{["PRIMARY", "BOTH"].includes(item.usage) && <Button size="sm" variant="ghost" disabled={!canManage} onClick={() => void openDefaults(item)}><Layers3 />Combinar</Button>}<Button size="sm" variant="ghost" onClick={() => void api.history(item.serviceRef).then((value) => setHistory({ name: item.name, events: value.events }))}><History />Historial</Button><Button aria-label={`${item.status === "ACTIVE" ? "Desactivar" : "Activar"} ${item.name}`} size="icon" variant="ghost" disabled={!canManage || saving} onClick={() => void toggleStatus(item)}><Power /></Button></span></div>)}</div>
-    <Dialog open={Boolean(draft)} onOpenChange={(open) => { if (!open) setDraft(null); }}><DialogContent className={`${COMPACT_FORM_DIALOG} max-h-[90dvh] min-w-0 overflow-y-auto sm:max-w-2xl`}><DialogHeader><DialogTitle>{draft?.serviceRef ? "Editar servicio" : "Crear servicio"}</DialogTitle><DialogDescription>{draft?.serviceRef ? "Actualice los datos del servicio. Su código se conserva." : "Indique el nombre y las modalidades del servicio. El código se asigna automáticamente al guardar."}</DialogDescription></DialogHeader>{error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}{draft && <div className="grid gap-3 sm:grid-cols-2">{draft.serviceRef && <label className="text-xs font-bold">Código<input readOnly value={draft.code} className={cn(COMPACT_FORM_FIELD, "mt-1 w-full bg-slate-50 text-slate-500")} /></label>}<label className="text-xs font-bold">Servicio<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label><label className="text-xs font-bold">Categoría<input value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })} className={`${COMPACT_FORM_FIELD} mt-1 w-full`} /></label><label className="text-xs font-bold">Tipo<select value={draft.usage} onChange={(event) => setDraft({ ...draft, usage: event.target.value as Draft["usage"] })} className={`${COMPACT_FORM_FIELD} mt-1 w-full`}><option value="PRIMARY">Principal</option><option value="COMPLEMENTARY">Complementario</option><option value="BOTH">Principal y complementario</option></select></label><fieldset className="sm:col-span-2"><legend className="text-xs font-bold">Modos compatibles</legend><div className="mt-1 flex gap-4">{["LOCAL", "EXPORT", "IMPORT"].map((mode) => <label key={mode} className="text-sm"><input type="checkbox" checked={draft.compatibleModes.includes(mode)} onChange={() => setDraft({ ...draft, compatibleModes: draft.compatibleModes.includes(mode) ? draft.compatibleModes.filter((value) => value !== mode) : [...draft.compatibleModes, mode] })} /> {mode}</label>)}</div></fieldset>{["PRIMARY", "BOTH"].includes(draft.usage) && <fieldset className="sm:col-span-2"><legend className="text-xs font-bold">Complementarios permitidos</legend><div className="mt-1 grid gap-1 border p-2 sm:grid-cols-2">{complementary.filter((item) => item.serviceRef !== draft.serviceRef).map((item) => <label key={item.serviceRef} className="text-sm"><input type="checkbox" checked={draft.allowedComplementaryRefs.includes(item.serviceRef)} onChange={() => setDraft({ ...draft, allowedComplementaryRefs: draft.allowedComplementaryRefs.includes(item.serviceRef) ? draft.allowedComplementaryRefs.filter((ref) => ref !== item.serviceRef) : [...draft.allowedComplementaryRefs, item.serviceRef] })} /> {item.name}</label>)}</div></fieldset>}<Button size="sm" className="sm:col-span-2" disabled={saving || !draft.name.trim() || !draft.compatibleModes.length} onClick={() => void save()}>{saving ? "Guardando…" : "Guardar"}</Button></div>}</DialogContent></Dialog>
-    <Dialog open={Boolean(defaultsFor)} onOpenChange={(open) => { if (!open) setDefaultsFor(null); }}><DialogContent className={`${COMPACT_FORM_DIALOG} max-h-[90dvh] min-w-0 overflow-y-auto`}><DialogHeader><DialogTitle>Combinación predeterminada</DialogTitle><DialogDescription>Se copiará al caso; los cambios posteriores no reescriben su historia.</DialogDescription></DialogHeader>{error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}<div className="divide-y border">{complementary.filter((item) => defaultsFor?.allowedComplementaryRefs.includes(item.serviceRef)).map((item) => <label key={item.serviceRef} className="flex items-center gap-2 p-2 text-sm"><input type="checkbox" checked={defaultRefs.includes(item.serviceRef)} onChange={() => setDefaultRefs((current) => current.includes(item.serviceRef) ? current.filter((ref) => ref !== item.serviceRef) : [...current, item.serviceRef])} />{item.name}</label>)}</div><Button size="sm" disabled={saving} onClick={() => void saveDefault()}>Guardar combinación</Button></DialogContent></Dialog>
-    <Dialog open={Boolean(history)} onOpenChange={(open) => { if (!open) setHistory(null); }}><DialogContent><DialogHeader><DialogTitle>Historial · {history?.name}</DialogTitle><DialogDescription>Cambios guardados en el servicio.</DialogDescription></DialogHeader><div className="divide-y border">{history?.events.map((event, index) => <div key={`${event.createdAt}-${index}`} className="flex justify-between gap-3 p-2 text-xs"><span>{event.action}</span><span>v{event.version} · {new Intl.DateTimeFormat("es-DO", { timeZone: "America/Santo_Domingo" }).format(new Date(event.createdAt))}</span></div>)}</div></DialogContent></Dialog>
+      onUpdate(await api.catalog());
+    } catch (cause) { report(cause, "El servicio se guardó. Actualiza el listado para ver el cambio."); }
+  }
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!draft || !canManage || saving || !draft.name.trim() || !draft.compatibleModes.length) return;
+    setSaving(true);
+    setError("");
+    try {
+      const common = {
+        requestId: request.current, name: draft.name.trim(), category: draft.category.trim() || null,
+        usage: draft.usage, compatibleModes: [...draft.compatibleModes].sort(), sortOrder: draft.sortOrder,
+        allowedComplementaryRefs: draft.allowedComplementaryRefs,
+      };
+      if (draft.serviceRef) await api.updateCatalog(draft.serviceRef, { ...common, expectedVersion: draft.version, status: draft.status });
+      else await api.createCatalog({ ...common, code: null });
+      setDraft(null);
+      await refresh();
+    } catch (cause) {
+      report(cause, cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_VERSION_CONFLICT"
+        ? "Otra persona modificó el servicio. Actualiza antes de volver a editar."
+        : cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_IDEMPOTENCY_CONFLICT"
+          ? "El guardado anterior ya se registró. Actualiza el listado para ver el servicio."
+          : "No se pudo guardar el servicio. Revisa el nombre y la modalidad.");
+    } finally { setSaving(false); }
+  }
+  async function toggleStatus(item: ServiceCatalogItem) {
+    if (!canManage || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const { name, category, usage, sortOrder, allowedComplementaryRefs, compatibleModes } = item;
+      await api.updateCatalog(item.serviceRef, {
+        requestId: crypto.randomUUID(), expectedVersion: item.version, name, category, usage, sortOrder, allowedComplementaryRefs,
+        compatibleModes: [...compatibleModes].sort(), status: item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
+      });
+      await refresh();
+    } catch (cause) { report(cause, "No se pudo cambiar el estado del servicio. Revisa sus usos."); }
+    finally { setSaving(false); }
+  }
+  async function openDetails(service: ServiceCatalogItem, kind: "DEFAULTS" | "HISTORY") {
+    request.current = crypto.randomUUID();
+    setError("");
+    setDetailStatus("loading");
+    setHistory(null);
+    setDefaultRecord(null);
+    setDefaultRefs([]);
+    setDetails({ service, kind });
+    try {
+      if (kind === "HISTORY") {
+        setHistory((await api.history(service.serviceRef)).events);
+      } else {
+        const current = (await api.defaults(service.serviceRef)).find((value) => value.isDefault && value.status === "ACTIVE");
+        setDefaultRecord(current ?? null);
+        setDefaultRefs(current?.complementaries.map((entry) => entry.serviceRef) ?? []);
+      }
+      setDetailStatus("ready");
+    } catch (cause) {
+      setDetailStatus("error");
+      report(cause, "No se pudo cargar el detalle del servicio.");
+    }
+  }
+  async function saveDefaults() {
+    if (!details || !allowDefaults || !canManage || saving || detailStatus !== "ready") return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.saveDefaults({
+        requestId: request.current, primaryServiceRef: details.service.serviceRef,
+        combinationRef: defaultRecord?.combinationRef ?? null, code: defaultRecord?.code ?? null,
+        name: defaultRecord?.name ?? "Predeterminado " + details.service.name, isDefault: true, status: "ACTIVE",
+        expectedVersion: defaultRecord?.version ?? null, complementaryRefs: defaultRefs,
+      });
+      setDetails(null);
+    } catch (cause) { report(cause, "No se pudieron guardar los complementarios iniciales."); }
+    finally { setSaving(false); }
+  }
+
+  const editor = draft && <>
+    <tr className="bg-sky-50/70">
+      <td><input form={form} aria-label="Nombre del servicio" placeholder="Nombre del servicio" className={FIELD} required maxLength={160}
+        disabled={saving} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></td>
+      <td><input form={form} aria-label="Categoría" placeholder="Opcional" className={FIELD} maxLength={80}
+        disabled={saving} value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })} /></td>
+      <td><select form={form} aria-label="Uso del servicio" className={FIELD} disabled={saving} value={draft.usage}
+        onChange={(event) => setDraft({ ...draft, usage: event.target.value as Draft["usage"] })}>
+        {Object.entries(USAGE).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select></td>
+      <td><div className="flex flex-wrap gap-x-2 gap-y-1">
+        {([["LOCAL", "Local"], ["EXPORT", "Exp."], ["IMPORT", "Imp."]] as const).map(([mode, label]) => <label key={mode} className="flex items-center gap-1" title={SCOPES[mode]}>
+          <input type="checkbox" aria-label={SCOPES[mode]} disabled={saving} checked={draft.compatibleModes.includes(mode)}
+            onChange={() => setDraft({ ...draft, compatibleModes: draft.compatibleModes.includes(mode) ? draft.compatibleModes.filter((item) => item !== mode) : [...draft.compatibleModes, mode] })} />{label}
+        </label>)}
+      </div></td>
+      <td>{draft.serviceRef ? STATUS[draft.status] : "Nuevo"}</td><td className="text-right">{rows.find((row) => row.serviceRef === draft.serviceRef)?.usageCount ?? "—"}</td>
+      <td><form id={form} onSubmit={(event) => void save(event)} className="flex justify-end">
+        <AdministrationIconAction label="Guardar servicio" type="submit" className={ACTION + " text-emerald-700"} disabled={saving || !draft.name.trim() || !draft.compatibleModes.length}><Check aria-hidden="true" className="size-4" /></AdministrationIconAction>
+        <AdministrationIconAction label="Cancelar edición del servicio" className={ACTION} disabled={saving} onClick={() => { setDraft(null); setError(""); }}><X aria-hidden="true" className="size-4" /></AdministrationIconAction>
+      </form></td>
+    </tr>
+    {draft.usage !== "COMPLEMENTARY" && <tr className="bg-sky-50/70"><td colSpan={7}>
+      <details className="py-1.5">
+        <summary className="cursor-pointer font-semibold text-[#003366]">Complementarios permitidos · {draft.allowedComplementaryRefs.length}</summary>
+        <div className="flex max-h-24 flex-wrap gap-x-4 gap-y-2 overflow-auto py-2">
+          {complementary.filter((item) => item.serviceRef !== draft.serviceRef).map((item) => <label key={item.serviceRef} className="flex items-center gap-1">
+            <input type="checkbox" disabled={saving} checked={draft.allowedComplementaryRefs.includes(item.serviceRef)} onChange={() => setDraft({
+              ...draft, allowedComplementaryRefs: draft.allowedComplementaryRefs.includes(item.serviceRef)
+                ? draft.allowedComplementaryRefs.filter((ref) => ref !== item.serviceRef) : [...draft.allowedComplementaryRefs, item.serviceRef],
+            })} />{item.name}
+          </label>)}
+          {!complementary.length && <span className="text-slate-500">Sin servicios complementarios activos.</span>}
+        </div>
+      </details>
+    </td></tr>}
+    {error && <tr><td colSpan={7}><p role="alert" className="py-1 text-red-800">{error}</p></td></tr>}
+  </>;
+
+  return <section data-testid="service-catalog-admin" aria-label="Catálogo de servicios" className="min-w-0 pt-1">
+    {details ? <>
+      <header className="flex flex-wrap items-center gap-2 border-b py-2">
+        <AdministrationIconAction label="Volver a servicios" className={ACTION} disabled={detailStatus === "loading" || saving}
+          onClick={() => { setDetails(null); setError(""); }}><ArrowLeft aria-hidden="true" className="size-4" /></AdministrationIconAction>
+        <h3 className="flex-1 text-sm font-semibold text-[#003366]">{details.kind === "HISTORY" ? "Historial" : "Complementarios iniciales"} · {details.service.name}</h3>
+        {allowDefaults && <>
+          <AdministrationHelp title="complementarios iniciales"><p>Los servicios seleccionados se cargan al elegir este servicio principal en un caso nuevo.</p></AdministrationHelp>
+          <Button size="sm" type="button" disabled={saving || detailStatus !== "ready"}
+            onClick={() => void saveDefaults()}><Check aria-hidden="true" />Guardar</Button>
+        </>}
+      </header>
+      {detailStatus === "loading" && <p role="status" className="py-2 text-xs text-slate-500">Cargando…</p>}
+      {error && <p role="alert" className="py-2 text-xs text-red-800">{error}</p>}
+      {detailStatus === "ready" && (details.kind === "HISTORY" ? <ul className="divide-y divide-slate-200 bg-white text-xs">
+        {history?.map((event, index) => <li key={event.createdAt + "-" + index} className="flex justify-between gap-3 px-2 py-2">
+          <span>{EVENT_LABELS[event.action] ?? "Cambio de configuración"}</span><span>v{event.version} · {DATE.format(new Date(event.createdAt))}</span>
+        </li>)}
+        {history?.length === 0 && <li className="px-2 py-2 text-slate-500">Sin cambios registrados.</li>}
+      </ul> : <div className="divide-y divide-slate-200 bg-white text-xs">
+        {complementary.filter((item) => details.service.allowedComplementaryRefs.includes(item.serviceRef)).map((item) => <label key={item.serviceRef} className="flex items-center gap-2 px-2 py-2">
+          <input type="checkbox" disabled={saving} checked={defaultRefs.includes(item.serviceRef)} onChange={() => setDefaultRefs((current) =>
+            current.includes(item.serviceRef) ? current.filter((ref) => ref !== item.serviceRef) : [...current, item.serviceRef])} />{item.name}
+        </label>)}
+        {!complementary.some((item) => details.service.allowedComplementaryRefs.includes(item.serviceRef)) && <p className="px-2 py-2 text-slate-500">Primero agrega complementarios permitidos en la edición del servicio.</p>}
+      </div>)}
+    </> : <>
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 py-1.5">
+        <div className="relative flex min-w-48 max-w-sm flex-1 items-center">
+          <Search aria-hidden="true" className="absolute left-2 size-4 text-slate-500" />
+          <input aria-label="Buscar servicio" placeholder="Buscar servicio" className={FIELD + " bg-white pl-8"} value={search} onChange={(event) => setSearch(event.target.value)} />
+        </div>
+        {canManage && <AdministrationIconAction label="Nuevo servicio" mobileLabel="Nuevo" disabled={Boolean(draft) || saving}
+          onClick={() => openDraft()}><Plus aria-hidden="true" className="size-4" /></AdministrationIconAction>}
+        <AdministrationHelp title="catálogo de servicios">
+          <p>Registra los servicios que se podrán seleccionar en Comercial. El uso define si el servicio puede ser principal, complementario o ambos.</p>
+          <p>Usa el icono de capas para elegir los complementarios que se cargarán al iniciar un caso.</p>
+        </AdministrationHelp>
+      </div>
+      {error && !draft && <p role="alert" className="py-2 text-xs text-red-800">{error}</p>}
+      <div className={TABLE_WRAP}>
+        <table aria-label="Servicios disponibles" className="w-full min-w-[770px] table-fixed text-left">
+          <thead className={COMPACT_TABLE_HEAD}><tr><th className="w-[22%]" scope="col">Servicio</th><th className="w-[14%]" scope="col">Categoría</th>
+            <th className="w-[13%]" scope="col">Uso</th><th className="w-[18%]" scope="col">Modalidades</th><th className="w-[8%]" scope="col">Estado</th>
+            <th className="w-[5%] text-right" scope="col">Usos</th><th scope="col"><span className="sr-only">Acciones</span></th></tr></thead>
+          <tbody className={COMPACT_TABLE_BODY}>
+            {draft && !draft.serviceRef && editor}
+            {visible.map((item) => item.serviceRef === draft?.serviceRef ? <Fragment key={item.serviceRef}>{editor}</Fragment> :
+              <tr key={item.serviceRef} className="h-9 text-slate-700 hover:bg-slate-50">
+                <td className="break-words font-semibold text-slate-900">{item.name}</td><td className="break-words">{item.category ?? "—"}</td>
+                <td>{USAGE[item.usage]}</td><td>{item.compatibleModes.map((mode) => SCOPES[mode]).join(", ") || "—"}</td>
+                <td>{STATUS[item.status]}</td><td className="text-right tabular-nums">{item.usageCount}</td>
+                <td><div className="flex justify-end">
+                  {canManage && <AdministrationIconAction label={"Editar servicio " + item.name} disabled={Boolean(draft) || saving} className={ACTION}
+                    onClick={() => openDraft(item)}><Pencil aria-hidden="true" className="size-4" /></AdministrationIconAction>}
+                  {canManage && item.usage !== "COMPLEMENTARY" && <AdministrationIconAction label={"Complementarios iniciales de " + item.name}
+                    disabled={Boolean(draft) || saving} className={ACTION} onClick={() => void openDetails(item, "DEFAULTS")}><Layers3 aria-hidden="true" className="size-4" /></AdministrationIconAction>}
+                  <AdministrationIconAction label={"Historial de " + item.name} disabled={Boolean(draft) || saving} className={ACTION}
+                    onClick={() => void openDetails(item, "HISTORY")}><History aria-hidden="true" className="size-4" /></AdministrationIconAction>
+                  {canManage && <AdministrationIconAction label={(item.status === "ACTIVE" ? "Desactivar " : "Activar ") + item.name}
+                    disabled={Boolean(draft) || saving} className={ACTION} onClick={() => void toggleStatus(item)}><Power aria-hidden="true" className="size-4" /></AdministrationIconAction>}
+                </div></td>
+              </tr>)}
+            {!visible.length && !draft && <tr><td colSpan={7} className="h-11 text-slate-500">{search.trim() ? "Sin coincidencias." : "Sin servicios en el catálogo."}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>}
   </section>;
 }

@@ -1,10 +1,9 @@
 import { Fragment, useEffect, useState } from "react";
-import { Copy, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { Button } from "@/components/ui/button";
-import { COMPACT_FORM_FIELD as FIELD } from "@/components/ui/compact-form";
+import { COMPACT_TABLE_FIELD as FIELD } from "@/components/ui/compact-form";
 import { NumericInput } from "@/components/ui/numeric-input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CrmServicesApi, CrmServicesApiError, type ServiceCatalogItem, type ServiceMaterialResource, type ServiceMode, type ServicePackage } from "./api";
 import { newPolicyLine, validatePolicyDraft, type PolicyDraft, type PolicyLineDraft } from "./materialPolicyDraft";
 
@@ -68,13 +67,25 @@ export default function MaterialPolicySheet({ api, draft, packages, modes, servi
   };
   const knownScope = !draft.serviceRef || services.some((item) => item.serviceRef === draft.serviceRef);
 
-  return <Dialog open onOpenChange={(open) => { if (!open && !saving) onClose(); }}>
-    <DialogContent showCloseButton={!saving} className="max-h-[92dvh] w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:w-[calc(100vw-3rem)] sm:max-w-6xl" data-testid="material-policy-sheet">
-      <DialogHeader className="border-b px-4 py-3 pr-12 sm:px-5">
-        <div className="flex items-center gap-1"><DialogTitle>{draft.policyRef ? "Editar política de materiales" : "Nueva política de materiales"}</DialogTitle><AdministrationHelp title="Políticas de materiales"><p>Complete los datos y edite la composición directamente en las filas. Use Tab para avanzar entre celdas.</p><p>Los porcentajes declarados deben sumar 100 %. Deje una celda vacía cuando esa fila no tenga una proporción.</p><p>Clase describe la condición o grupo del recurso. Uso indica consumo, alquiler o devolución; Cargo define cómo se trata económicamente.</p></AdministrationHelp></div>
-        <DialogDescription>Edite la composición en una sola hoja. Los materiales y recursos se seleccionan del catálogo.</DialogDescription>
-      </DialogHeader>
-      <div className="min-h-0 min-w-0 overflow-y-auto px-4 py-3 sm:px-5">
+  return <section aria-label="Editar política de materiales" className="min-w-0 pt-1" data-testid="material-policy-sheet">
+      <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 py-1.5">
+        <AdministrationIconAction label="Volver a políticas" className="border-transparent bg-transparent" disabled={saving} onClick={onClose}><ArrowLeft aria-hidden="true" className="size-4" /></AdministrationIconAction>
+        <h3 className="flex-1 text-sm font-semibold text-[#003366]">{draft.policyRef ? "Editar política de materiales" : "Nueva política de materiales"}</h3>
+        <label className="flex items-center gap-1 text-xs font-medium text-slate-600">Estado
+          <select aria-label="Guardar como" disabled={saving} value={draft.state} onChange={(event) => onChange({ ...draft, state: event.target.value as PolicyDraft["state"] })} className={FIELD + " w-32"}>
+            <option value="DRAFT">Borrador</option><option value="PUBLISHED">Publicado</option>
+          </select>
+        </label>
+        <AdministrationHelp title="Políticas de materiales">
+          <p>Edita la composición en las filas. Usa Tab para avanzar entre celdas.</p>
+          <p>Los porcentajes declarados deben sumar 100 %. Deja vacía la celda que no tenga una proporción.</p>
+          <p>Clase describe la condición del recurso. Uso indica cómo se utiliza y Cargo define cómo se cobra.</p>
+        </AdministrationHelp>
+        <Button size="sm" disabled={saving || !resourcesReady} onClick={save}><Save aria-hidden="true" />{saving ? "Guardando…" : "Guardar política"}</Button>
+      </header>
+      {error && <p role="alert" className="py-1.5 text-xs text-red-800">{error}</p>}
+      {showErrors && !validation.valid && <p role="alert" className="py-1.5 text-xs text-red-700">Revisa los campos y las filas indicadas.</p>}
+      <div className="min-w-0 py-2">
         <fieldset disabled={saving} className="min-w-0 space-y-3">
           <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.4fr)_minmax(180px,1fr)_minmax(160px,1fr)]">
             <label className="min-w-0 text-xs font-medium text-slate-700">Nombre de la política<input aria-label="Nombre de la política" autoFocus maxLength={160} value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} aria-invalid={showErrors && Boolean(validation.general.name)} aria-describedby={showErrors && validation.general.name ? "material-policy-name-error" : undefined} className={`${FIELD} mt-1 w-full ${showErrors && validation.general.name ? ERROR_FIELD : ""}`} />
@@ -91,7 +102,7 @@ export default function MaterialPolicySheet({ api, draft, packages, modes, servi
             {!resourcesReady && !resourceError && <p role="status" className="mb-2 text-xs text-slate-500">Cargando materiales y recursos…</p>}
             {resourceError && <p role="alert" className="mb-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">{resourceError}</p>}
             {resourcesReady && !resources.length && <p role="status" className="mb-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">No hay materiales ni recursos activos en el catálogo. Registre los recursos antes de completar la política.</p>}
-            <div className="max-h-[48dvh] min-w-0 overflow-auto rounded border border-slate-200" data-testid="material-policy-table-scroll" tabIndex={0} role="region" aria-label="Hoja de composición y cargos">
+            <div className="max-h-[48dvh] min-w-0 overflow-auto border-y border-slate-200" data-testid="material-policy-table-scroll" tabIndex={0} role="region" aria-label="Hoja de composición y cargos">
               <table className="w-full min-w-[1020px] border-collapse text-left text-xs" aria-label="Composición y cargos">
                 <caption className="sr-only">Una fila por material o recurso. Todos los campos se editan directamente en la tabla.</caption>
                 <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] text-slate-600"><tr><th scope="col" className="w-10 px-2 py-2">Fila</th><th scope="col" className="w-36 px-2 py-2">Tipo</th><th scope="col" className="w-60 px-2 py-2">Material o recurso</th><th scope="col" className="w-40 px-2 py-2">Clase</th><th scope="col" className="w-24 px-2 py-2 text-right">%</th><th scope="col" className="w-36 px-2 py-2">Uso</th><th scope="col" className="w-40 px-2 py-2">Cargo</th><th scope="col" className="w-24 px-2 py-2"><span className="sr-only">Acciones</span></th></tr></thead>
@@ -125,14 +136,8 @@ export default function MaterialPolicySheet({ api, draft, packages, modes, servi
             {showErrors && validation.general.lines && <p role="alert" className="mt-2 text-xs text-red-700">{validation.general.lines}</p>}
           </section>
 
-          <details className="rounded border border-slate-200 px-3 py-2 text-xs"><summary className="cursor-pointer font-medium text-slate-600">Opciones de la política</summary><div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-3">{canReadServices ? <label className="min-w-0 font-medium text-slate-700">Servicio específico<select aria-label="Servicio específico" value={draft.serviceRef} onChange={(event) => onChange({ ...draft, serviceRef: event.target.value })} className={`${FIELD} mt-1 w-full`}><option value="">Cualquier servicio</option>{!knownScope && <option value={draft.serviceRef}>Servicio guardado</option>}{services.map((item) => <option key={item.serviceRef} value={item.serviceRef}>{item.name}</option>)}</select></label> : draft.serviceRef && <p className="text-slate-500">Se conserva el servicio asociado a esta política.</p>}<label className="min-w-0 font-medium text-slate-700">Estándar<input maxLength={80} value={draft.standardCode} onChange={(event) => onChange({ ...draft, standardCode: event.target.value })} className={`${FIELD} mt-1 w-full ${showErrors && validation.general.standard ? ERROR_FIELD : ""}`} />{showErrors && validation.general.standard && <span className="mt-1 block text-red-700">{validation.general.standard}</span>}</label><label className="min-w-0 font-medium text-slate-700">Preferencia<input maxLength={80} value={draft.preferenceCode} onChange={(event) => onChange({ ...draft, preferenceCode: event.target.value })} className={`${FIELD} mt-1 w-full`} placeholder="Opcional" /></label></div></details>
+          <details className="border-b border-slate-200 px-2 py-2 text-xs"><summary className="cursor-pointer font-medium text-slate-600">Opciones de la política</summary><div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-3">{canReadServices ? <label className="min-w-0 font-medium text-slate-700">Servicio específico<select aria-label="Servicio específico" value={draft.serviceRef} onChange={(event) => onChange({ ...draft, serviceRef: event.target.value })} className={`${FIELD} mt-1 w-full`}><option value="">Cualquier servicio</option>{!knownScope && <option value={draft.serviceRef}>Servicio guardado</option>}{services.map((item) => <option key={item.serviceRef} value={item.serviceRef}>{item.name}</option>)}</select></label> : draft.serviceRef && <p className="text-slate-500">Se conserva el servicio asociado a esta política.</p>}<label className="min-w-0 font-medium text-slate-700">Estándar<input maxLength={80} value={draft.standardCode} onChange={(event) => onChange({ ...draft, standardCode: event.target.value })} className={`${FIELD} mt-1 w-full ${showErrors && validation.general.standard ? ERROR_FIELD : ""}`} />{showErrors && validation.general.standard && <span className="mt-1 block text-red-700">{validation.general.standard}</span>}</label><label className="min-w-0 font-medium text-slate-700">Preferencia<input maxLength={80} value={draft.preferenceCode} onChange={(event) => onChange({ ...draft, preferenceCode: event.target.value })} className={`${FIELD} mt-1 w-full`} placeholder="Opcional" /></label></div></details>
         </fieldset>
       </div>
-      <footer className="min-w-0 border-t bg-white px-4 py-3 sm:px-5">
-        {error && <p role="alert" className="mb-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">{error}</p>}
-        {showErrors && !validation.valid && <p role="alert" className="mb-2 text-xs text-red-700">Revise los campos y las filas indicadas antes de guardar.</p>}
-        <div className="flex flex-wrap items-center justify-between gap-2"><label className="flex items-center gap-2 text-xs font-medium text-slate-600">Guardar como<select aria-label="Guardar como" disabled={saving} value={draft.state} onChange={(event) => onChange({ ...draft, state: event.target.value as PolicyDraft["state"] })} className={`${FIELD} w-40`}><option value="DRAFT">Borrador</option><option value="PUBLISHED">Versión publicada</option></select></label><div className="flex items-center gap-2"><Button size="sm" variant="outline" disabled={saving} onClick={onClose}>Cerrar</Button><Button size="sm" disabled={saving || !resourcesReady} onClick={save}>{saving ? <RefreshCw className="animate-spin" aria-hidden="true" /> : null}{saving ? "Guardando…" : "Guardar política"}</Button></div></div>
-      </footer>
-    </DialogContent>
-  </Dialog>;
+  </section>;
 }

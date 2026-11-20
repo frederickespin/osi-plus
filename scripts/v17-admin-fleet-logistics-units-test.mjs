@@ -13,7 +13,7 @@ const context = Object.freeze({ tenantId: "test-tenant", membershipId: "test-mem
 function vehicle(overrides = {}) {
   return Object.freeze({ vehicle_type: "TRUCK", capacity_weight: new Prisma.Decimal("1000"), capacity_volume: new Prisma.Decimal("20"), weight_unit: "KG", volume_unit: "CBM", row_version: 1, ...overrides });
 }
-function fixture(rows) {
+function fixture(rows, containerTypes = []) {
   const calls = { vehicles: [], logisticsRevisions: [] };
   const tx = {
     pipelineCase: { findFirst: async () => ({ id: "test-case", publicRef: ref(1), mode: "LOCAL", routeContractVersion: 2, routeRevision: 3, destinationStatus: "CONFIRMED" }) },
@@ -22,6 +22,12 @@ function fixture(rows) {
     surveyPublication: { findFirst: async () => null },
     materialRequirementSnapshot: { findFirst: async () => null },
     assetModel: { findMany: async () => [] },
+    fleetVehicleType: { findMany: async ({ where, select }) => {
+      assert.equal(where.tenantId, context.tenantId);
+      assert.equal(where.variableVolume, true);
+      assert.deepEqual(select, { name: true });
+      return containerTypes.filter((name) => where.name.in.includes(name)).map((name) => ({ name }));
+    } },
     externalResourceOffer: { findMany: async () => [] },
     logisticsPlanRevision: { findMany: async (query) => {
       calls.logisticsRevisions.push(query);
@@ -91,6 +97,16 @@ test("unknown capacities remain null while availability still reflects operation
   assert.equal(plan.items[0].availableQuantity, 2);
   assert.equal(plan.items[0].availability, "AVAILABLE");
   assert.equal(plan.items[0].sourceVersion, 5);
+});
+
+test("the volume of a container vehicle is pending even when an older vehicle volume is stored", async () => {
+  const patana = vehicle({ vehicle_type: "Patana", capacity_volume: 90, capacity_weight: 33000 });
+  const facts = await fixture([patana, vehicle()], ["Patana"]).read();
+  assert.deepEqual(facts.vehicles, [
+    { vehicleType: "Patana", available: 1, maxWeightKg: 33000, maxVolumeM3: null, sourceVersion: 1, variableVolume: true },
+    { vehicleType: "TRUCK", available: 1, maxWeightKg: 1000, maxVolumeM3: 20, sourceVersion: 1 },
+  ]);
+  assert.equal(patana.capacity_volume, 90);
 });
 
 test("unknown or missing source units stop calculation instead of assuming metric units", async () => {

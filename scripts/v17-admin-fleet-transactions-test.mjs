@@ -21,7 +21,7 @@ const baseRow = {
 };
 function fixture({ currentActor = actor, row = baseRow, existing = [], usedRequest = false, duplicate = false, writeResult = null, failAudit = false } = {}) {
   const queries = []; const audits = []; let committedWrites = 0; let rolledBack = false;
-  const tx = { async $queryRaw(query) {
+  const tx = { fleetVehicleType: { findMany: async () => [] }, async $queryRaw(query) {
     queries.push(query);
     const sql = query.sql;
     // This is a query-spy fixture, not a SQL engine. The separate PostgreSQL suite verifies actual constraints/rollback.

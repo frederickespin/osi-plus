@@ -7,7 +7,7 @@ export type DimensionUnit = AdminFleetVehicle["dimensionUnit"];
 export type VehicleValues = AdminFleetEditableFields;
 export type FleetVehicle = Readonly<AdminFleetVehicle>;
 
-export type FleetList = Readonly<{ data: readonly FleetVehicle[]; total: number; page: number; pageSize: number }>;
+export type FleetList = Readonly<{ data: readonly FleetVehicle[]; containerVolumeTypes: readonly string[]; total: number; page: number; pageSize: number }>;
 export type FleetListFilters = Readonly<{ search: string; operationalStatus: FleetStatus | ""; vehicleType: string; page: number; pageSize: number }>;
 export type FleetCreate = Omit<VehicleValues, "businessCode"> & { requestId: string; businessCode?: string };
 export type FleetUpdate = AdminFleetPatchInput;

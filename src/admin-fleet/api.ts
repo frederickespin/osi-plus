@@ -80,7 +80,9 @@ export class FleetApi {
       || body.page !== filters.page || body.pageSize !== filters.pageSize || body.data.length > filters.pageSize || body.data.length > Number(body.total)) return fail();
     const data = body.data.map(vehicleOf);
     if (new Set(data.map((vehicle) => vehicle.vehicleRef)).size !== data.length) return fail();
-    return { data, total: Number(body.total), page: filters.page, pageSize: filters.pageSize };
+    const containerTypes = body.containerVolumeTypes ?? [];
+    if (!Array.isArray(containerTypes) || !containerTypes.every((type) => data.some((vehicle) => vehicle.vehicleType === type))) return fail();
+    return { data, containerVolumeTypes: containerTypes, total: Number(body.total), page: filters.page, pageSize: filters.pageSize };
   }
   async get(vehicleRef: string, signal?: AbortSignal) {
     if (!ref(vehicleRef)) throw new FleetApiError("ADMIN_FLEET_INPUT_INVALID", 400);
@@ -134,7 +136,6 @@ export function fleetErrorText(error: unknown, context: "request" | "details" | 
     ADMIN_FLEET_DUPLICATE: "El código, la matrícula o el VIN ya pertenecen a otro vehículo.",
     ADMIN_FLEET_TYPE_DUPLICATE: "Ya existe un tipo de vehículo con ese nombre.",
     ADMIN_FLEET_TYPE_VERSION_CONFLICT: "El tipo cambió. Vuelva a abrir Tipos de vehículo para cargar el valor actual.",
-    ADMIN_FLEET_TYPE_FIXED_CAPACITY_IN_USE: "Hay vehículos de este tipo con volumen o dimensiones fijas. Revise sus fichas antes de cambiar a volumen según el contenedor.",
     ADMIN_FLEET_TYPE_NOT_REGISTERED: "Seleccione un tipo del catálogo de flota.",
     ADMIN_FLEET_BASE_NOT_REGISTERED: "Seleccione una sede disponible en Motor Logístico.",
     ADMIN_FLEET_VARIABLE_VOLUME: "Este tipo utiliza el volumen y las dimensiones del contenedor.",

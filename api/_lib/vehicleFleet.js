@@ -6,6 +6,16 @@ import { VEHICLE_PERMISSIONS, auditVehicle, resolveVehicleActor, serializable } 
 
 const MAX_PAGE_SIZE = 100;
 
+export async function loadContainerVolumeTypes(tx, tenantId, vehicles) {
+  if (!vehicles.length) return [];
+  const names = [...new Set(vehicles.map(({ vehicle_type }) => vehicle_type))];
+  const types = await tx.fleetVehicleType.findMany({
+    where: { tenantId, name: { in: names }, variableVolume: true },
+    select: { name: true },
+  });
+  return types.map(({ name }) => name);
+}
+
 function dto(row) {
   if (!row) return null;
   return {

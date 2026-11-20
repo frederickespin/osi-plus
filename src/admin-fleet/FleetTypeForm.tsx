@@ -64,7 +64,7 @@ export default function FleetTypeForm({ api, existing, onSaved, onClose, onUnaut
       </div>
       <AdministrationHelp title="capacidad de carga">
         <p><strong>Volumen fijo del vehículo.</strong> Para un furgón o camión de caja cerrada. En la ficha de cada vehículo se registra el volumen y las dimensiones de su espacio de carga.</p>
-        <p><strong>Volumen según el contenedor.</strong> Para un tractocamión con contenedores intercambiables. La ficha admite el peso de carga y el volumen depende del contenedor utilizado.</p>
+        <p><strong>Volumen según el contenedor.</strong> Para una patana o tractocamión. El volumen y las dimensiones corresponden al contenedor del servicio. Las medidas anteriores quedan guardadas en la ficha y se excluyen de los cálculos con este tipo.</p>
       </AdministrationHelp>
       <AdministrationIconAction label="Guardar tipo" type="submit" disabled={!canSave}><Check aria-hidden="true" className="size-4" /></AdministrationIconAction>
       <AdministrationIconAction label="Cancelar tipo" disabled={busy} onClick={onClose}><X aria-hidden="true" className="size-4" /></AdministrationIconAction>

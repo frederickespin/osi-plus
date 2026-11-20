@@ -240,9 +240,17 @@ try {
   const measured = await updateAdminFleetVehicle(prisma, ctx, containerVehicle.vehicleRef,
     { requestId: randomUUID(), expectedVersion: containerVehicle.rowVersion, changes: { capacityVolume: 32 } });
   check("vehicle accepts fixed capacity after correcting its type", measured.capacityVolume === 32);
-  await rejects("a type with recorded vehicle measurements cannot switch to variable volume",
-    () => updateAdminFleetType(prisma, ctx, { ...typeEdit, requestId: randomUUID(), expectedVariableVolume: false, variableVolume: true }),
-    "ADMIN_FLEET_TYPE_FIXED_CAPACITY_IN_USE");
+  const converted = await updateAdminFleetType(prisma, ctx, { ...typeEdit, requestId: randomUUID(), expectedVariableVolume: false, variableVolume: true });
+  const measuredVehicle = await getAdminFleetVehicle(prisma, ctx, measured.vehicleRef);
+  check("switching a measured type to container mode preserves historical measurements and row version",
+    converted.type.variableVolume && measuredVehicle.capacityVolume === 32 && measuredVehicle.rowVersion === measured.rowVersion);
+  const patana = await createAdminFleetVehicle(prisma, ctx, input("PATANA", { vehicleType: "Patana", capacityVolume: 90 }));
+  await createAdminFleetType(prisma, ctx, { requestId: randomUUID(), name: "Patana", variableVolume: true });
+  const patanas = await listAdminFleetVehicles(prisma, ctx, { vehicleType: "Patana" });
+  check("registering an existing Patana in container mode exposes the mode while preserving its measurements",
+    patanas.containerVolumeTypes.length === 1 && patanas.containerVolumeTypes[0] === "Patana"
+    && patanas.data[0].vehicleRef === patana.vehicle.vehicleRef && patanas.data[0].capacityVolume === 90
+    && !((await listAdminFleetVehicles(prisma, foreignCtx)).containerVolumeTypes.includes("Patana")));
   process.stdout.write(JSON.stringify({ ok: true, assertions: results.length, results }, null, 2) + "\n");
 } finally {
   await prisma.$disconnect();

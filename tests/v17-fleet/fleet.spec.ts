@@ -65,7 +65,10 @@ async function fixture(page: Page, options: { count?: number; permissions?: stri
       const status = url.searchParams.get("operationalStatus");
       const filtered = rows.filter((row) => (!search || `${row.businessCode} ${row.plate} ${row.brand}`.toLowerCase().includes(search)) && (!type || row.vehicleType.toLowerCase().includes(type.toLowerCase())) && (!status || row.operationalStatus === status));
       const pageNumber = Number(url.searchParams.get("page")); const pageSize = Number(url.searchParams.get("pageSize"));
-      return json({ ok: true, data: filtered.slice((pageNumber - 1) * pageSize, pageNumber * pageSize), total: filtered.length, page: pageNumber, pageSize });
+      const data = filtered.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+      const containerVolumeTypes = types.filter(({ name, variableVolume }) =>
+        variableVolume && data.some((row) => row.vehicleType === name)).map(({ name }) => name);
+      return json({ ok: true, data, containerVolumeTypes, total: filtered.length, page: pageNumber, pageSize });
     }
     if (url.pathname === BASE && request.method() === "POST") {
       const body = request.postDataJSON() as Record<string, unknown>; writes.push({ method: "POST", body });
@@ -236,14 +239,22 @@ test("un tipo que ya figura en la flota aparece en Tipos y se registra con el no
   await page.getByRole("button", { name: "Tipos de vehículo", exact: true }).click();
   const catalog = page.getByRole("combobox", { name: "Tipo de vehículo", exact: true });
   await catalog.selectOption("Patana");
-  await expect(page.getByRole("combobox", { name: "Capacidad de carga", exact: true })).toHaveValue("fixed");
+  const capacity = page.getByRole("combobox", { name: "Capacidad de carga", exact: true });
+  await expect(capacity).toHaveValue("fixed");
   await expect(page.getByLabel("Nombre del tipo")).toHaveCount(0);
   expect(seen.writes).toHaveLength(0);
 
+  await capacity.selectOption("container");
   await page.getByRole("button", { name: "Guardar tipo", exact: true }).click();
   await expect(page.getByText("Patana disponible en la ficha de vehículo.", { exact: true })).toBeVisible();
-  expect(seen.writes).toEqual([{ method: "POST", body: { name: "Patana", variableVolume: false, requestId: expect.any(String) } }]);
+  await expect(page.getByRole("cell", { name: "Según contenedor", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "90 m³", exact: true })).toHaveCount(0);
+  expect(seen.writes).toEqual([{ method: "POST", body: { name: "Patana", variableVolume: true, requestId: expect.any(String) } }]);
   expect(seen.rows()[0]).toMatchObject({ vehicleType: "Patana", capacityVolume: 90 });
+  await page.getByRole("button", { name: "IP-001", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Ficha de vehículo", exact: true });
+  await expect(dialog.getByText("Volumen y dimensiones según el contenedor.")).toBeVisible();
+  await expect(dialog.getByLabel(/Capacidad de volumen|Largo útil/)).toHaveCount(0);
 });
 
 test("conflicto conserva borrador y exige lectura explícita antes de otro guardado", async ({ page }) => {

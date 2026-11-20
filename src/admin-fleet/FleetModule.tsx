@@ -37,7 +37,7 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
   const api = useMemo(() => new FleetApi(() => authorization || null, globalThis.fetch.bind(globalThis), () => membershipRef), [authorization, membershipRef]);
   const driversApi = useMemo(() => new FleetDriversApi(() => authorization || null, globalThis.fetch.bind(globalThis), () => membershipRef), [authorization, membershipRef]);
   const driversEnabled = isFleetDriversEnabled();
-  const [result, setResult] = useState<{ query: string; rows: readonly FleetVehicle[]; total: number; error: string | null } | null>(null);
+  const [result, setResult] = useState<{ query: string; rows: readonly FleetVehicle[]; containerVolumeTypes: ReadonlySet<string>; total: number; error: string | null } | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<FleetStatus | "">("");
   const [vehicleType, setVehicleType] = useState("");
@@ -113,7 +113,7 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
         if (controller.signal.aborted || readEpoch.current !== epoch) return;
         const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
         if (page > lastPage) { setPage(lastPage); return; }
-        setResult({ query, rows: result.data, total: result.total, error: null });
+        setResult({ query, rows: result.data, containerVolumeTypes: new Set(result.containerVolumeTypes), total: result.total, error: null });
         setAsOf(Date.now());
         // A failed write is never replayed. Only an explicit refresh followed by
         // an authoritative read of this row releases its quick-action lock.
@@ -129,7 +129,7 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
       }).catch((cause) => {
         if (controller.signal.aborted || readEpoch.current !== epoch) return;
         if (cause instanceof FleetApiError && cause.status === 401) callbacks.current.onUnauthorized();
-        else setResult({ query, rows: [], total: 0, error: fleetErrorText(cause) });
+        else setResult({ query, rows: [], containerVolumeTypes: new Set<string>(), total: 0, error: fleetErrorText(cause) });
       });
     }, 150);
     return () => { window.clearTimeout(timer); controller.abort(); };
@@ -202,6 +202,7 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
           setShowTypes(false);
           setOptions(null);
           setOptionsRevision((value) => value + 1);
+          setRefresh((value) => value + 1);
         }} />}
       {optionsError && <p role="alert" className="text-red-800">{optionsError}</p>}
     </div>}
@@ -234,7 +235,8 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
               <td className="max-w-48 px-3 py-2 text-slate-600">{vehicle.vehicleType}</td>
               <td className="max-w-56 px-3 py-2 text-slate-600">{[vehicle.brand, vehicle.model, vehicle.modelYear].filter(Boolean).join(" · ") || "—"}</td>
               <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600">{number(vehicle.capacityWeight, WEIGHT_LABELS[vehicle.weightUnit])}</td>
-              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600">{number(vehicle.capacityVolume, VOLUME_LABELS[vehicle.volumeUnit])}</td>
+              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-600">{result?.containerVolumeTypes.has(vehicle.vehicleType)
+                ? "Según contenedor" : number(vehicle.capacityVolume, VOLUME_LABELS[vehicle.volumeUnit])}</td>
               <td className="px-2 py-1 text-center"><label className="inline-flex min-h-10 min-w-10 items-center justify-center" aria-busy={pending}>
                 <input type="checkbox" aria-label={`Activo ${vehicle.businessCode}`} checked={vehicle.availableForCalculation}
                   disabled={!access.canEdit || retired || pending || Boolean(updateErrors[vehicle.vehicleRef])}

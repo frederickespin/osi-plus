@@ -9,6 +9,7 @@ import {
   normalizePublish, normalizeRuleCreate, isTransportPolicy,
 } from "./logisticsEngineContract.js";
 import { latestLogisticsRevision, QUOTE_TRANSPORT_CONTEXT } from "./logisticsTransportContext.js";
+import { loadContainerVolumeTypes } from "./vehicleFleet.js";
 
 export const LOGISTICS_PERMISSIONS = Object.freeze({
   PLAN_VIEW: "logistics:plan:view",
@@ -98,12 +99,15 @@ export async function loadCanonicalLogisticsFacts(tx, context, caseRef, interval
     tx.materialInventoryMovement.findMany({ where: { tenantId: context.tenantId, materialId: { in: materialIds }, occurredAt: { lte: observedAt } }, select: { materialId: true, locationId: true, movementType: true, quantityBase: true } }),
     tx.materialReservation.findMany({ where: { tenantId: context.tenantId, materialId: { in: materialIds }, status: { in: ["RESERVED", "ASSIGNED"] } }, select: { materialId: true, locationId: true, quantityBase: true } }),
   ]) : [[], []];
+  const containerTypes = new Set(await loadContainerVolumeTypes(tx, context.tenantId, vehicles));
   const byType = new Map();
   for (const row of vehicles) {
     // Convert current facts only; source records and published snapshots retain their original values.
-    const volumeM3 = metricVehicleCapacity(row.capacity_volume, row.volume_unit, VEHICLE_VOLUME_TO_M3);
+    const containerVolume = containerTypes.has(row.vehicle_type);
+    const volumeM3 = containerVolume ? null : metricVehicleCapacity(row.capacity_volume, row.volume_unit, VEHICLE_VOLUME_TO_M3);
     const weightKg = metricVehicleCapacity(row.capacity_weight, row.weight_unit, VEHICLE_WEIGHT_TO_KG);
     const current = byType.get(row.vehicle_type) || { vehicleType: row.vehicle_type, available: 0, maxVolumeM3: null, maxWeightKg: null, sourceVersion: 0 };
+    if (containerVolume) current.variableVolume = true;
     current.available += 1;
     if (volumeM3 !== null) current.maxVolumeM3 = Math.max(current.maxVolumeM3 ?? volumeM3, volumeM3);
     if (weightKg !== null) current.maxWeightKg = Math.max(current.maxWeightKg ?? weightKg, weightKg);

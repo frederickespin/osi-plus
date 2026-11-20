@@ -17,7 +17,7 @@ const BASIS_BY_KIND = { BASE: ["TRIP"], FUEL: ["GALLON"], TOLL: ["PASS", "FIXED"
 const COMPONENT_KEYS = ["code", "label", "kind", "basis", "unitCost", "classification", "minimumMarginBps", "recommendedMarginBps", "includedConcepts"];
 const ZONE_KEYS = ["seriesRef", "expectedVersion", "code", "name", "locationType", "city", "sector", "baseName", "baseAddress", "referenceDistanceKm", "referenceDistanceSource", "zoneType", "priority", "vehicleType", "purposes", "geometry", "mode", "factor", "currency", "kmPerGallon", "gallonUnit", "fuelType", "includedConcepts", "components", "state"];
 const CALCULATE_KEYS = ["caseRef", "purpose", "contextRef", "intervalStart", "intervalEnd", "journeys", "routeRevision"];
-const JOURNEY_KEYS = ["journeyRef", "label", "vehicleType", "vehicleRef", "origin", "destination", "distanceKm", "distanceSource", "returnToOrigin", "trips", "people", "days", "quantities", "referenceBaseAddress", "originLabel", "destinationLabel"];
+const JOURNEY_KEYS = ["journeyRef", "label", "vehicleType", "vehicleRef", "origin", "destination", "distanceKm", "distanceSource", "returnToOrigin", "trips", "people", "days", "quantities", "referenceBaseAddress", "operatingBaseAddress", "returnToBase", "originLabel", "destinationLabel"];
 const invalid = (code = "TRANSPORT_PAYLOAD_INVALID") => logisticsFail(code);
 function object(value) { if (!value || typeof value !== "object" || Array.isArray(value)) invalid(); return value; }
 function exact(value, keys) { if (Object.keys(value).some((key) => !keys.includes(key))) invalid(); }
@@ -132,9 +132,13 @@ export function normalizeTransportInput(raw) {
     if (row.vehicleRef !== null) { try { vehicleRef = adminFleetVehicleRef(row.vehicleRef); } catch { invalid("TRANSPORT_VEHICLE_REFERENCE_INVALID"); } }
     const referenceBaseAddress = row.referenceBaseAddress === undefined ? undefined : text(row.referenceBaseAddress, 240);
     if (referenceBaseAddress && (!estimate || row.origin !== null || row.distanceKm !== null || row.distanceSource !== "")) invalid("TRANSPORT_REFERENCE_INVALID");
+    const operatingBaseAddress = row.operatingBaseAddress === undefined ? undefined : text(row.operatingBaseAddress, 240);
+    const returnToBase = row.returnToBase;
+    if (returnToBase !== undefined && (returnToBase !== true || !operatingBaseAddress || row.origin === null || row.destination === null || row.returnToOrigin)
+      || operatingBaseAddress && referenceBaseAddress) invalid("TRANSPORT_REFERENCE_INVALID");
     const originLabel = row.originLabel === undefined ? undefined : text(row.originLabel, 240);
     const destinationLabel = row.destinationLabel === undefined ? undefined : text(row.destinationLabel, 240);
-    return { ...(referenceBaseAddress && { referenceBaseAddress }), ...(originLabel && { originLabel }), ...(destinationLabel && { destinationLabel }), journeyRef: transportRef(row.journeyRef), label: text(row.label, 120), vehicleType: text(row.vehicleType, 80), vehicleRef, origin: normalizeTransportCoordinate(row.origin, true), destination: normalizeTransportCoordinate(row.destination, true), distanceKm: decimal(row.distanceKm, 4, "999999.9999"), distanceSource: text(row.distanceSource, 240, false, true), returnToOrigin: row.returnToOrigin, trips: integer(row.trips, 1, 9999), people: integer(row.people, 0, 9999, true), days: decimal(row.days, 4, "9999.9999"), quantities: { ...quantities } };
+    return { ...(referenceBaseAddress && { referenceBaseAddress }), ...(operatingBaseAddress && { operatingBaseAddress }), ...(returnToBase && { returnToBase }), ...(originLabel && { originLabel }), ...(destinationLabel && { destinationLabel }), journeyRef: transportRef(row.journeyRef), label: text(row.label, 120), vehicleType: text(row.vehicleType, 80), vehicleRef, origin: normalizeTransportCoordinate(row.origin, true), destination: normalizeTransportCoordinate(row.destination, true), distanceKm: decimal(row.distanceKm, 4, "999999.9999"), distanceSource: text(row.distanceSource, 240, false, true), returnToOrigin: row.returnToOrigin, trips: integer(row.trips, 1, 9999), people: integer(row.people, 0, 9999, true), days: decimal(row.days, 4, "9999.9999"), quantities: { ...quantities } };
   });
   if (new Set(journeys.map((row) => row.journeyRef)).size !== journeys.length) invalid("TRANSPORT_JOURNEY_DUPLICATED");
   return { caseRef: transportRef(value.caseRef), purpose, contextRef, intervalStart, intervalEnd, journeys, ...(routeRevision !== undefined && { routeRevision }) };
@@ -143,8 +147,13 @@ export function normalizeTransportCalculate(raw) { const value = object(raw); ex
 export function normalizeTransportPublish(raw) { const value = object(raw); exact(value, ["requestId", "payloadHash", "calculationRef"]); return command(value, "TRANSPORT_PUBLISH", { calculationRef: transportRef(value.calculationRef) }); }
 
 export function selectTransportZone(zones, journey, purpose) {
-  if (!journey.destination) return { zone: null, reason: "TRANSPORT_DESTINATION_PENDING" };
-  const matching = zones.filter((zone) => zone.state === "ACTIVE" && zone.purposes.includes(purpose) && (zone.vehicleType === null || zone.vehicleType === journey.vehicleType) && (!journey.referenceBaseAddress || zone.baseAddress === journey.referenceBaseAddress) && pointInTransportPolygon(journey.destination, zone.geometry));
+  const point = journey.returnToBase ? journey.origin : journey.destination;
+  if (!point) return { zone: null, reason: "TRANSPORT_DESTINATION_PENDING" };
+  const baseAddress = journey.referenceBaseAddress || journey.operatingBaseAddress;
+  const eligible = zones.filter((zone) => zone.state === "ACTIVE" && (zone.vehicleType === null || zone.vehicleType === journey.vehicleType)
+    && (!baseAddress || zone.baseAddress === baseAddress) && pointInTransportPolygon(point, zone.geometry));
+  const service = purpose === "QUOTE" ? eligible.filter((zone) => zone.purposes.includes("SERVICE")) : [];
+  const matching = service.length ? service : eligible.filter((zone) => zone.purposes.includes(purpose));
   matching.sort((a, b) => Number(b.vehicleType !== null) - Number(a.vehicleType !== null) || b.priority - a.priority || a.ruleRef.localeCompare(b.ruleRef));
   if (!matching.length) return { zone: null, reason: "TRANSPORT_ZONE_NOT_CONFIGURED" };
   if (matching[1] && matching[0].vehicleType === matching[1].vehicleType && matching[0].priority === matching[1].priority) return { zone: null, reason: "TRANSPORT_ZONE_CONFLICT" };

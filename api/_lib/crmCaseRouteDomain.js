@@ -214,6 +214,17 @@ export async function getCaseRouteCoverage(context, ref, { longitude, latitude }
   return { areas: await transportCoverageAt(database, context.tenantId, [Number(longitude), Number(latitude)]) };
 }
 
+export async function getCaseRouteTravel(context, ref, { baseAddress, localTerminalAddress }, database = prisma) {
+  for (const value of [baseAddress, localTerminalAddress]) {
+    if (value !== undefined && (typeof value !== "string" || value.length > 240)) fail("CRM_CASE_ROUTE_INPUT_INVALID");
+  }
+  const item = await caseAuthority(database, context, ref);
+  const [{ caseDailyTravel }, { loadTransportZones }, route] = await Promise.all([
+    import("./caseDailyTravel.js"), import("./logisticsTransportZones.js"), currentRoute(database, context.tenantId, item),
+  ]);
+  return caseDailyTravel(await loadTransportZones(database, context.tenantId, new Date()), route, { baseAddress, localTerminalAddress });
+}
+
 async function materializeAddress(tx, actorRow, clientId, address) {
   if (!address.sourceAddressRef) return address;
   const registered = await tx.clientAddress.findFirst({ where: { tenantId: actorRow.tenantId, clientId, addressRef: address.sourceAddressRef, status: "ACTIVE" } });

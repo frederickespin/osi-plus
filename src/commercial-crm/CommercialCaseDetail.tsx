@@ -17,6 +17,7 @@ import type { CommunicationsAccess } from "@/communications/access";
 import type { ClientTemporaryAccessUi } from "@/client-portal/access";
 import CaseRouteEditor from "./CaseRouteEditor";
 import { CaseRouteApi } from "./caseRouteApi";
+import CaseDailyTravelPanel, { useCaseDailyTravel } from "./CaseDailyTravel";
 
 const ServiceCasePanel = lazy(() => import("@/crm-services/ServiceCasePanel"));
 const CostingPanel = lazy(() => import("@/costing/CostingPanel"));
@@ -89,10 +90,16 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
   const [routeOpen, setRouteOpen] = useState(false);
   const routeApi = useMemo(() => new CaseRouteApi(() => authorization ?? null), [authorization]);
   const item = state.value;
+  const [completeDays, setCompleteDays] = useState("");
+  const [preparationDays, setPreparationDays] = useState("");
+  const travelState = useCaseDailyTravel(routeApi, logisticsEnabled ? item?.caseRef : undefined, item?.route?.revision);
   const transportAddresses = {
     revision: item?.route?.revision,
     origin: item?.route?.origin?.compactAddress || item?.originLocation || "",
     destination: item?.route?.destination?.compactAddress || item?.destinationLocation || "",
+    travel: travelState.travel,
+    completeDays: /^\d{1,3}$/u.test(completeDays) ? Number(completeDays) : undefined,
+    preparationDays: preparationDays === "" ? undefined : /^\d{1,3}$/u.test(preparationDays) ? Number(preparationDays) : NaN,
   };
   const alerts = item ? [!item.client ? "Cliente receptor pendiente" : null, !item.owner ? "Caso sin asignar" : null, item.requiresSurvey ? "Survey requerido" : null, !item.route?.destination ? "Destino estructurado pendiente" : null].filter((value): value is string => Boolean(value)) : [];
   const servicesEnabled = isCrmServicesUiEnabled() && servicesAccess.canCaseView;
@@ -114,6 +121,9 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
     {item && <>
       <div role="tablist" aria-label="Áreas del Caso Comercial" className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-[#e7e5e4] p-1">{tabs.map(([value, label, Icon]) => <button id={`${value.toLowerCase()}-tab`} key={value} type="button" role="tab" aria-selected={activeTab === value} onClick={() => setTab(value)} className={`flex shrink-0 items-center gap-1.5 rounded px-3 py-2 text-xs font-bold ${activeTab === value ? "bg-[#df8750] text-white shadow-sm" : "text-slate-700 hover:bg-white/60"}`}><Icon className="h-3.5 w-3.5" />{label}</button>)}</div>
       <div className="p-4">
+        {logisticsEnabled && item.route?.revision && ["SERVICES", "SURVEY", "QUOTE"].includes(activeTab) &&
+          <CaseDailyTravelPanel {...travelState} completeDays={completeDays} preparationDays={preparationDays}
+            setCompleteDays={setCompleteDays} setPreparationDays={setPreparationDays} />}
         {activeTab === "SURVEY" && surveyEnabled && surveySchedulingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Survey…</div>}><SurveyCasePanel caseRef={item.caseRef} authorization={authorization} access={surveySchedulingAccess} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} logisticsSummaryEnabled={logisticsEnabled && logisticsAccess.canView} transportAccess={transportAccess} clientTemporaryAccessEnabled={clientTemporaryAccessEnabled} clientTemporaryAccess={clientTemporaryAccess} onOpenCommunications={(surveyAssignmentRef) => openCommunications({ context: "SCHEDULING", surveyAssignmentRef, quoteRevisionRef: null })} onNavigate={onNavigate} onUnauthorized={onUnauthorized} /></Suspense>}
         {activeTab === "SERVICES" && servicesEnabled && <div className="space-y-3">
           {canOpenTransport && <section aria-label="Ruta para cotizar" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded border border-slate-200 px-3 py-2">

@@ -1,11 +1,16 @@
 import { prisma } from "../../../_lib/db.js";
 import { createCrmPipelineReadHandler } from "../../../_lib/crmPipelineReadHttp.js";
 import { createCrmCaseMutationHandler, isMutationPreflight } from "../../../_lib/crmCaseMutationHttp.js";
-import { getCaseRouteCoverage, getCaseRouteEditor, updateCaseRoute } from "../../../_lib/crmCaseRouteDomain.js";
+import { getCaseRouteCoverage, getCaseRouteEditor, getCaseRouteTravel, updateCaseRoute } from "../../../_lib/crmCaseRouteDomain.js";
 
 const readHandler = createCrmPipelineReadHandler({
   prismaClient: prisma,
   execute: async ({ req, context, prisma: database }) => {
+    if (req.query?.travel === "1") {
+      const { resolveLogisticsApiMode } = await import("../../../_lib/logisticsEngineHttp.js");
+      resolveLogisticsApiMode(process.env, req);
+      return getCaseRouteTravel(context, req.query.caseKey, req.query, database);
+    }
     if (req.query?.longitude !== undefined || req.query?.latitude !== undefined) {
       const { resolveLogisticsApiMode } = await import("../../../_lib/logisticsEngineHttp.js");
       resolveLogisticsApiMode(process.env, req);

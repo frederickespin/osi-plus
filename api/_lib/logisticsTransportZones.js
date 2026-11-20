@@ -191,7 +191,7 @@ export async function transportReferenceBases(tx, tenantId, at) {
   for (const row of rows) {
     assertZoneIdentity(row, tenantId);
     const { baseName: name, baseAddress: address, referenceDistanceKm } = row.result;
-    if (row.result.purposes.includes("QUOTE") && name && address && referenceDistanceKm != null) bases.set(address, { name, address });
+    if (row.result.purposes.some((purpose) => purpose === "SERVICE" || purpose === "QUOTE") && name && address && referenceDistanceKm != null) bases.set(address, { name, address });
   }
   return [...bases.values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
 }

@@ -36,6 +36,8 @@ export type TransportJourney = Readonly<{
   originLabel?: string;
   destinationLabel?: string;
   referenceBaseAddress?: string; // Selects a configured base-to-zone distance.
+  operatingBaseAddress?: string;
+  returnToBase?: boolean;
   quantities: Readonly<Record<string, string>>; // PASS/FIXED totals for this journey, already including return and trips
 }>;
 export type TransportCalculateInput = Readonly<{
@@ -64,7 +66,21 @@ export type TransportPublication = Readonly<{
   calculationRef: string; result: TransportResult; input: TransportCalculateInput;
 }>;
 export type TransportReferenceBase = Readonly<{ name: string; address: string }>;
-export type TransportCaseAddresses = Readonly<{ revision?: number; origin: string; destination: string }>;
+export type CaseTravelLeg = Readonly<{
+  from: Readonly<{ label: string; address: string }>; to: Readonly<{ label: string; address: string }>;
+  origin: TransportCoordinate | null; destination: TransportCoordinate | null;
+  distanceKm: number | null; source: string | null; estimated: boolean; returnToBase: boolean;
+}>;
+export type CaseDailyTravel = Readonly<{
+  revision: number; bases: readonly TransportReferenceBase[]; base: TransportReferenceBase | null;
+  terminal: TransportReferenceBase | null; foreignOrigin: boolean; foreignDestination: boolean;
+  area: Readonly<{ origin: "METRO" | "INTERIOR" | null; destination: "METRO" | "INTERIOR" | null }>;
+  legs: readonly CaseTravelLeg[]; preparation: readonly CaseTravelLeg[]; distanceKm: number | null; estimated: boolean;
+}>;
+export type TransportCaseAddresses = Readonly<{
+  revision?: number; origin: string; destination: string;
+  travel?: CaseDailyTravel | null; completeDays?: number; preparationDays?: number;
+}>;
 export type TransportWorkspace = Readonly<{
   referenceBases?: readonly TransportReferenceBase[];
   cases: readonly Readonly<{ caseRef: string; label: string; mode: string }>[];

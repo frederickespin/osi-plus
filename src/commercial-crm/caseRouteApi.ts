@@ -1,5 +1,5 @@
 import { getMembershipRef } from "@/lib/sessionStore";
-import type { TransportCoordinate, TransportPolygon } from "../../shared/logisticsTransport";
+import type { CaseDailyTravel, TransportCoordinate, TransportPolygon } from "../../shared/logisticsTransport";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -108,6 +108,17 @@ export class CaseRouteApi {
   async workspace(caseRef: string): Promise<CaseRouteWorkspace> {
     if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
     return this.parseWorkspace(await this.read(await this.fetchImpl(`/api/crm/pipeline-cases/${encodeURIComponent(caseRef)}/route`, { headers: this.headers(), credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" })));
+  }
+  async travel(caseRef: string, baseAddress: string, localTerminalAddress: string, signal: AbortSignal): Promise<CaseDailyTravel> {
+    if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+    const query = new URLSearchParams({ travel: "1" });
+    if (baseAddress) query.set("baseAddress", baseAddress);
+    if (localTerminalAddress) query.set("localTerminalAddress", localTerminalAddress);
+    const data = await this.read(await this.fetchImpl(`/api/crm/pipeline-cases/${encodeURIComponent(caseRef)}/route?${query}`, { headers: this.headers(), credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", signal }));
+    if (!Number.isInteger(data.revision) || !Array.isArray(data.bases) || !Array.isArray(data.legs) || !Array.isArray(data.preparation) || !data.area) {
+      throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    }
+    return data as CaseDailyTravel;
   }
   async coverage(caseRef: string, [longitude, latitude]: TransportCoordinate, signal: AbortSignal): Promise<readonly CaseRouteArea[]> {
     if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");

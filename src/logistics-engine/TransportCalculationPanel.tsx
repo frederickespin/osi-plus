@@ -4,7 +4,7 @@ import { AdministrationHelp } from "@/administration/AdministrationHelp";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { cn } from "@/lib/utils";
-import { isTransportUnauthorized, transportApi, transportErrorMessage, TransportRequestError, type TransportCalculateInput, type TransportCalculation, type TransportCaseAddresses, type TransportCoordinate, type TransportJourney, type TransportLine, type TransportPublication, type TransportReferenceBase, type TransportResult, type TransportWorkspace } from "./transportApi";
+import { isTransportUnauthorized, transportApi, transportErrorMessage, TransportRequestError, type CaseTravelLeg, type TransportCalculateInput, type TransportCalculation, type TransportCaseAddresses, type TransportCoordinate, type TransportJourney, type TransportLine, type TransportPublication, type TransportReferenceBase, type TransportResult, type TransportWorkspace } from "./transportApi";
 import { isRoadTransportComponent } from "../../shared/transportCostScope.js";
 import type { TransportUiAccess } from "./transportAccess";
 import { BASIS_LABELS, PURPOSE_LABELS, UNIT_LABELS, formatTransportDate, formatTransportNumber } from "./transportPresentation";
@@ -32,6 +32,19 @@ const PURPOSE = "QUOTE";
 
 function newJourney(number: number): JourneyDraft {
   return { journeyRef: crypto.randomUUID(), label: `Recorrido ${number}`, vehicleType: "", vehicleRef: null, origin: EMPTY_POINT, destination: EMPTY_POINT, distanceKm: "", distanceSource: "", returnToOrigin: false, trips: "1", quantities: {} };
+}
+
+function fromCaseLeg(leg: CaseTravelLeg, days: number, baseAddress: string, vehicle: JourneyDraft): JourneyDraft {
+  const point = (coordinate: TransportCoordinate | null, address: string): PointDraft => ({
+    longitude: coordinate ? String(coordinate[0]) : "", latitude: coordinate ? String(coordinate[1]) : "", address, countryCode: "DO",
+  });
+  return {
+    ...newJourney(1), label: `${leg.from.label} → ${leg.to.label}`.slice(0, 120), trips: String(days),
+    vehicleRef: vehicle.vehicleRef, vehicleType: vehicle.vehicleType, operatingBaseAddress: baseAddress,
+    ...(leg.returnToBase && { returnToBase: true }),
+    origin: point(leg.origin, leg.from.address), destination: point(leg.destination, leg.to.address),
+    distanceKm: leg.distanceKm === null ? "" : String(leg.distanceKm), distanceSource: leg.source || "",
+  };
 }
 
 function fromPublication({ input, result }: TransportPublication): Draft {
@@ -82,10 +95,13 @@ function CaseTransport({ authorization, caseRef, addresses, access, onUnauthoriz
   const [uncertain, setUncertain] = useState<"calculate" | "publish" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [appliedTravel, setAppliedTravel] = useState<string | null>(null);
   const touched = useRef(false);
   const scope = useRef(0);
   const currentCalculation = useRef<TransportCalculation | null>(null);
   const pendingSave = useRef<{ calculationRef: string; requestId: string } | null>(null);
+  const travelKey = JSON.stringify([addresses.travel?.base?.address, addresses.travel?.terminal?.address, addresses.completeDays, addresses.preparationDays]);
+  const travelChanged = appliedTravel !== null && appliedTravel !== travelKey;
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -141,6 +157,8 @@ function CaseTransport({ authorization, caseRef, addresses, access, onUnauthoriz
           label: journey.label.trim(), vehicleType: journey.vehicleType.trim(), vehicleRef: journey.vehicleRef,
           origin, destination, returnToOrigin: journey.returnToOrigin,
           ...(referenceBaseAddress && { referenceBaseAddress }),
+          ...(journey.operatingBaseAddress && { operatingBaseAddress: journey.operatingBaseAddress }),
+          ...(journey.returnToBase && { returnToBase: true }),
           originLabel: journey.origin.address.slice(0, 240).trim() || "Salida",
           destinationLabel: journey.destination.address.slice(0, 240).trim() || "Destino",
           distanceKm: journey.distanceKm.trim() || null, distanceSource: journey.distanceSource.trim(),
@@ -218,6 +236,19 @@ function CaseTransport({ authorization, caseRef, addresses, access, onUnauthoriz
   const oldRoute = publication && addresses.revision !== undefined && (publication.routeRevision ?? publication.input.routeRevision) !== addresses.revision;
   const resultLines = (calculation?.result.lines ?? (oldRoute ? [] : publication?.result.lines) ?? []).filter(isRoadTransportComponent);
   const legacyPublication = publication?.result.lines.some((line) => !isRoadTransportComponent(line));
+  const travel = addresses.travel;
+  const completeDays = addresses.completeDays;
+  const preparationDays = addresses.preparationDays ?? 0;
+  const canLoadDays = completeDays !== undefined && completeDays <= 366 && preparationDays <= 366 && completeDays + preparationDays > 0;
+  function loadCaseJourneys() {
+    if (!canLoadDays || completeDays === undefined || !travel?.base) return;
+    const base = travel.base.address;
+    const vehicle = draft.journeys[0];
+    const journeys = [[travel.legs, completeDays], [travel.preparation, preparationDays]] as const;
+    const rows = journeys.flatMap(([legs, days]) => days ? legs.filter((leg) => leg.distanceKm !== 0 || leg.source !== "Mismo punto")
+      .map((leg) => fromCaseLeg(leg, days, base, vehicle)) : []);
+    if (rows.length) { change({ journeys: rows }); setAppliedTravel(travelKey); }
+  }
   return <section className="space-y-3" data-testid="transport-calculation-panel" aria-label="Transporte de la cotización">
     <header className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1"><h3 className="text-sm font-semibold text-slate-900">Transporte de la cotización</h3><AdministrationHelp title="Transporte de la cotización"><p>Use las direcciones del caso o seleccione un tramo en el mapa. Las tarifas de vehículo y peajes se toman del Motor Logístico.</p><p>Para usar kilómetros de referencia desde una sede, selecciónela en Salida. El costo se incorpora a la cotización cuando están completos los datos.</p></AdministrationHelp></div>
@@ -227,12 +258,17 @@ function CaseTransport({ authorization, caseRef, addresses, access, onUnauthoriz
     {notice && <p role="status" className="rounded border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-[#003366]">{notice}</p>}
     {uncertain && <p role="alert" className="rounded border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">No se confirmó {uncertain === "publish" ? "el guardado del costo" : "el cálculo"}. Confirme el estado para continuar.</p>}
     {access.canCalculate && <form onSubmit={(event) => void calculate(event)} className="space-y-3" data-testid="transport-calculation-form">
+      {travel?.legs.length ? <div className="flex flex-wrap items-center gap-2 text-xs">
+        <button type="button" disabled={blocked || !canLoadDays} onClick={loadCaseJourneys} className="min-h-8 rounded border px-2.5 font-semibold text-[#003366] disabled:opacity-40">Cargar tramos del caso</button>
+        {!canLoadDays && <span className="text-slate-500">Indique los días en Recorrido diario.</span>}
+      </div> : null}
+      {travelChanged && <p role="status" className="text-xs text-amber-800">La sede o los días cambiaron. Vuelva a cargar los tramos para actualizar el cálculo.</p>}
       <fieldset disabled={blocked} className="min-w-0 space-y-3 disabled:opacity-70">
         {draft.journeys.map((journey, index) => <JourneyFields key={journey.journeyRef} journey={journey} index={index} vehicles={workspace.vehicles} bases={workspace.referenceBases ?? []} addresses={index === 0 ? addresses : undefined} lines={resultLines.filter((line) => line.journeyRef === journey.journeyRef)} disabled={blocked} canRemove={draft.journeys.length > 1} onChange={setJourney} onRemove={() => change({ ...draft, journeys: draft.journeys.filter((row) => row.journeyRef !== journey.journeyRef) })} />)}
       </fieldset>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button type="button" disabled={blocked || draft.journeys.length >= 20} onClick={() => change({ journeys: [...draft.journeys, newJourney(draft.journeys.length + 1)] })} className="inline-flex min-h-9 items-center gap-1.5 rounded border px-2.5 text-xs font-medium text-slate-600 disabled:opacity-40"><Plus className="size-3.5" aria-hidden="true" />Añadir tramo</button>
-        <button type="submit" disabled={blocked} className="inline-flex min-h-10 items-center gap-1.5 rounded bg-[#003366] px-4 text-xs font-semibold text-white disabled:opacity-40"><Calculator className="h-4 w-4" />{busy === "calculate" ? "Calculando…" : busy === "publish" ? "Aplicando…" : "Calcular transporte"}</button></div>
+        <button type="submit" disabled={blocked || travelChanged} className="inline-flex min-h-10 items-center gap-1.5 rounded bg-[#003366] px-4 text-xs font-semibold text-white disabled:opacity-40"><Calculator className="h-4 w-4" />{busy === "calculate" ? "Calculando…" : busy === "publish" ? "Aplicando…" : "Calcular transporte"}</button></div>
     </form>}
     {calculation && <section className="space-y-3 rounded border border-slate-200 bg-white p-3" data-testid="transport-calculation-result">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><h4 className="text-sm font-semibold text-slate-900">Resultado del cálculo</h4><p className="mt-1 text-[11px] text-slate-500">{formatTransportDate(calculation.calculatedAt)}</p></div><span className={`rounded px-2 py-1 text-xs ${calculationDirty ? "bg-amber-50 text-amber-800" : calculation.result.complete ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{calculationDirty ? "Cambios por calcular" : calculation.result.complete ? "Completo" : "Datos pendientes"}</span></div>
@@ -283,7 +319,7 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
   const quantities = useMemo(() => [...new Map(lines.filter((line) => line.basis === "PASS" || line.basis === "FIXED").map((line) => [line.componentCode, line])).values()], [lines]);
   const unmatchedQuantities = Object.keys(journey.quantities).filter((code) => journey.quantities[code].trim() && lines.length > 0 && !quantities.some((line) => line.componentCode === code));
   const set = <K extends keyof JourneyDraft>(key: K, value: JourneyDraft[K]) => {
-    onChange({ ...journey, [key]: value, ...(["trips", "returnToOrigin", "vehicleType"].includes(key) && { quantities: {} }) });
+    onChange({ ...journey, [key]: value, ...(key === "returnToOrigin" && value === true && { returnToBase: undefined }), ...(["trips", "returnToOrigin", "vehicleType"].includes(key) && { quantities: {} }) });
   };
   const chooseVehicle = (vehicleRef: string) => { const vehicle = vehicles.find((row) => row.vehicleRef === vehicleRef); onChange({ ...journey, vehicleRef: vehicle?.vehicleRef || null, vehicleType: vehicle?.vehicleType || journey.vehicleType, quantities: {} }); };
 
@@ -328,6 +364,7 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
   const selectLocation = async (pointKey: "origin" | "destination", value: TransportLocation) => {
     const point: PointDraft = { longitude: String(value.point[0]), latitude: String(value.point[1]), address: value.label, countryCode: value.countryCode };
     const next = { ...journey, [pointKey]: point, distanceKm: "", distanceSource: "", quantities: {} };
+    if (pointKey === "destination" && point.address !== journey.destination.address) delete next.returnToBase;
     if (pointKey === "origin") delete next.referenceBaseAddress;
     onChange(next); setAddressQuery(""); setAddressResults([]); setLocationError(null);
     if (pointKey === "origin" && !pointValue(next.destination)) openMap("destination");
@@ -353,7 +390,8 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
     if (!base) return;
     routeRequest.current += 1;
     setRouteBusy(false); setRouteError(null); setRouteDuration(null);
-    onChange({ ...journey, origin: { ...EMPTY_POINT, address: base.name, countryCode: "DO" }, referenceBaseAddress: base.address, distanceKm: "", distanceSource: "", quantities: {} });
+    const { operatingBaseAddress: _base, returnToBase: _return, ...current } = journey;
+    onChange({ ...current, origin: { ...EMPTY_POINT, address: base.name, countryCode: "DO" }, referenceBaseAddress: base.address, distanceKm: "", distanceSource: "", quantities: {} });
     if (!destinationPoint) openMap("destination");
     else setMapPoint(null);
   };

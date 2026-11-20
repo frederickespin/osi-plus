@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { caseDailyTravel } from "../api/_lib/caseDailyTravel.js";
 import { canonicalHash, normalizeRuleCreate, ruleMatches } from "../api/_lib/logisticsEngineContract.js";
 import { calculateTransportResult, normalizeTransportCalculate, normalizeTransportPolygon, normalizeTransportZone, normalizeTransportZonePayload, pointInTransportPolygon, selectTransportZone, TRANSPORT_CONTRACT } from "../api/_lib/logisticsTransportContract.js";
 
@@ -129,4 +130,30 @@ equal(ruleMatches({ conditions: { transportContract: TRANSPORT_CONTRACT } }, {})
 const secondCurrency = { ...zoneFrom(), geometry: { type: "Polygon", coordinates: [[[-68, 18], [-67, 18], [-67, 19], [-68, 19], [-68, 18]]] }, currency: "USD" };
 const multiple = calculateTransportResult({ ...input, journeys: [journey, { ...journey, journeyRef: randomUUID(), destination: [-67.5, 18.5] }] }, [zone, secondCurrency]);
 equal(multiple.totals, [{ currency: "DOP", amount: "340.000000" }, { currency: "USD", amount: "340.000000" }]);
+const routeAddress = (cityMunicipality, sector, countryCode = "DO") => ({ cityMunicipality, sector, countryCode, streetAndNumber: "Calle de prueba 1", provinceState: "Provincia de prueba" });
+const localRoute = { revision: 1, destinationStatus: "CONFIRMED", origin: routeAddress("Ciudad uno", "Sector especial"), destination: routeAddress("Ciudad dos", null) };
+const localZones = [
+  zoneFrom({ ...payload, purposes: ["SERVICE"], city: "Ciudad uno", referenceDistanceKm: "12", zoneType: "METRO" }),
+  zoneFrom({ ...payload, purposes: ["SERVICE"], city: "Ciudad uno", locationType: "SECTOR", sector: "Sector especial", referenceDistanceKm: "13", zoneType: "INTERIOR" }),
+  zoneFrom({ ...payload, purposes: ["SERVICE"], city: "Ciudad dos", referenceDistanceKm: "15" }),
+];
+const referenceTravel = await caseDailyTravel(localZones, localRoute, {}, null);
+equal(referenceTravel.legs.map((leg) => leg.distanceKm), [13, null, 15]);
+equal(referenceTravel.distanceKm, null);
+equal(referenceTravel.area, { origin: "INTERIOR", destination: "INTERIOR" });
+const provider = {
+  locate: async (address) => address.includes("Ciudad uno") ? [-69.8, 18.4] : address.includes("Ciudad dos") ? [-69.5, 18.5] : [-70.3, 18.8],
+  legs: async (points) => (points.length === 4 ? [12, 18, 15] : [12, 13]).map((distanceKm) => ({ distanceKm, source: "Motor de prueba", estimated: false })),
+};
+const measuredTravel = await caseDailyTravel(localZones, localRoute, {}, provider);
+equal(measuredTravel.distanceKm * 3, 135);
+equal(measuredTravel.preparation.reduce((sum, leg) => sum + leg.distanceKm, 0), 25);
+equal(measuredTravel.legs[2].returnToBase, true);
+const exportRoute = { ...localRoute, destination: routeAddress("Exterior", null, "US") };
+equal((await caseDailyTravel(localZones, exportRoute, {}, provider)).legs.length, 0);
+const exportTravel = await caseDailyTravel(localZones, exportRoute, { localTerminalAddress: payload.baseAddress }, provider);
+equal(exportTravel.legs.map((leg) => leg.distanceKm), [12, 18, 0]);
+const returnLeg = { ...journey, origin: [-69.8, 18.4], destination: [-70.3, 18.8], returnToOrigin: false,
+  operatingBaseAddress: payload.baseAddress, returnToBase: true };
+equal(selectTransportZone(localZones.slice(0, 1), returnLeg, "QUOTE").zone.ruleRef, localZones[0].ruleRef);
 process.stdout.write(JSON.stringify({ ok: true, assertions, geometry: true, decimals: true, contexts: true, missingValuesStayPending: true, noDoubleCounting: true }) + "\n");

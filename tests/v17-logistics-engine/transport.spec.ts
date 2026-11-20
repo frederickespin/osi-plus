@@ -107,6 +107,11 @@ async function calculator(page: Page, options: { lostPublishResponse?: boolean; 
     }), headers: privateHeaders,
   }));
   await page.route("**/api/costing/revisions/**", (route) => route.fulfill(json(null)));
+  await page.route(`**/api/crm/pipeline-cases/${CASE}/route?travel=1`, (route) => route.fulfill({
+    ...json({ revision: 3, bases: [], base: null, terminal: null, foreignOrigin: false, foreignDestination: false,
+      area: { origin: null, destination: null }, distanceKm: null, estimated: false, legs: [], preparation: [] }),
+    headers: privateHeaders,
+  }));
   await page.route("**/api/crm/services/cases/**", (route) => route.fulfill({
     ...json({ caseRef: CASE, mode: "LOCAL", selection: { selectionRef: null, revision: 0, primary: null, complementaries: [], otherServices: [] }, primaries: [], allowedComplementaries: [], defaults: [] }),
     headers: privateHeaders,
@@ -438,6 +443,43 @@ test("Servicios usa la ruta del caso y Cotización aplica el transporte sin fech
   expect(backend.publishes()).toBe(1);
   expect(backend.queries.some((query) => query.get("purpose") === "QUOTE" && query.get("contextRef") === null)).toBe(true);
   await expect(page.getByTestId("transport-publication")).toContainText("Cotizaciones");
+});
+
+test("el caso muestra los kilómetros diarios y los tramos se cargan en cotización por jornada", async ({ page }) => {
+  await session(page);
+  const seen = await calculator(page);
+  const base = { name: "Oficina de prueba", address: "Avenida de prueba 1" };
+  const origin = { label: "Origen", address: "Calle de prueba 2" };
+  const destination = { label: "Destino", address: "Calle de prueba 3" };
+  const leg = (from: typeof origin, to: typeof destination, distanceKm: number, returnToBase = false) => ({
+    from, to, origin: [-69.9, 18.5], destination: [-69.8, 18.6], distanceKm, source: "Ruta sintética", estimated: false, returnToBase,
+  });
+  const office = { label: base.name, address: base.address };
+  await page.route(`**/api/crm/pipeline-cases/${CASE}/route?travel=1`, (route) => route.fulfill({
+    ...json({ revision: 3, bases: [base], base, terminal: null, foreignOrigin: false, foreignDestination: false,
+      area: { origin: "METRO", destination: "INTERIOR" }, distanceKm: 45, estimated: false,
+      legs: [leg(office, origin, 12), leg(origin, destination, 18), leg(destination, office, 15, true)],
+      preparation: [leg(office, origin, 12), leg(origin, office, 13, true)] }),
+    headers: { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" },
+  }));
+  await page.goto(`/commercial/cases/${CASE}`);
+  const plan = page.getByRole("region", { name: "Recorrido diario del caso" });
+  await expect(plan).toContainText("45 km/día");
+  await expect(plan).toContainText("Total pendiente");
+  await plan.getByLabel("Días de ruta completa").fill("3");
+  await expect(plan).toContainText("135 km en total");
+  await plan.getByLabel("Días solo en origen").fill("1");
+  await expect(plan).toContainText("160 km en total");
+  await page.getByRole("button", { name: "Ver costo de transporte" }).click();
+  const form = page.getByTestId("transport-calculation-form");
+  await form.getByRole("combobox", { name: "Vehículo de flota" }).selectOption(VEHICLE);
+  await form.getByRole("button", { name: "Cargar tramos del caso" }).click();
+  await expect(form.getByLabel("Distancia vial calculada")).toHaveCount(5);
+  await form.getByRole("button", { name: "Calcular transporte" }).click();
+  await expect.poll(() => seen.calculations.length).toBe(1);
+  expect(seen.calculations[0].input.journeys.map(({ distanceKm, trips }) => [distanceKm, trips])).toEqual([
+    ["12", 3], ["18", 3], ["15", 3], ["12", 1], ["13", 1],
+  ]);
 });
 
 test("una salida por sede usa la referencia configurada y conserva el destino del caso", async ({ page }) => {

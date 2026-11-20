@@ -339,7 +339,12 @@ function RecipeForm({ pkg, rule, choices, authorization, canManage, onBack, onSa
       {picker !== "ADD" && <div className="flex items-center gap-1 py-1">
         {canManage && <AdministrationIconAction label="Agregar componentes" mobileLabel="Agregar" disabled={saving || editingCost || rows.length >= 30}
           onClick={() => setPicker("ADD")}><Plus aria-hidden="true" className="size-4" /></AdministrationIconAction>}
-        <AdministrationHelp title="componentes del paquete"><p>Usa + para agregar un costo. En cada fila se indica cómo se calcula la cantidad y qué mínimo aplica.</p><p>Para un camión, elige «Por viaje según capacidad» y anota los m³ útiles por viaje en «Cant. / Cap.».</p></AdministrationHelp>
+        <AdministrationHelp title="componentes del paquete">
+          <p>Usa + para agregar un costo. En cada fila se indica cómo se calcula la cantidad y qué mínimo aplica.</p>
+          <p><strong>Cajas de empaque.</strong> Selecciona «{PACKAGE_BASE_LABELS.M3}» y escribe 0,5 en «Cant. / Cap.» para calcular una caja por cada 2 m³. Con 20 m³, el paquete calcula 10 cajas. Marca «Red.» para redondear hacia arriba a cajas completas.</p>
+          <p><strong>Dietas.</strong> Si el paquete prevé una dieta por persona y día, 4 personas durante 2 días requieren 8 dietas. Agrega el costo «Dieta», elige «Cantidad fija» y escribe 8 en «Cant. / Cap.» para ese paquete. Con un costo de ejemplo de RD$500 por dieta, el costo total es RD$4,000.</p>
+          <p>Para un camión, elige «Por viaje según capacidad» y anota los m³ útiles por viaje en «Cant. / Cap.».</p>
+        </AdministrationHelp>
       </div>}
       {canManage && picker === "ADD" && rows.length < 30 && <PackageCostTable authorization={authorization} costs={available} currency={currency} canManage={!saving}
         onPick={addRow} onEditingChange={setEditingNewCost} onSaved={onCostSaved} onClose={() => setPicker(null)} onUnauthorized={onUnauthorized} />}

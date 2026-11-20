@@ -90,6 +90,12 @@ test("una regla nueva usa código automático y conserva la identidad al reinten
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: [] }) });
   });
   await page.goto("/administration/logistics");
+  await page.getByRole("button", { name: "Ayuda de Reglas operativas" }).click();
+  const help = page.getByRole("dialog", { name: "Reglas operativas" });
+  await expect(help).toContainText("Empacadores locales");
+  await expect(help).toContainText("Borrador");
+  await expect(help).toContainText("4 personas × 2 días = 8 dietas");
+  await help.getByRole("button", { name: "Cerrar ayuda" }).click();
   await page.getByRole("button", { name: "Nueva regla", exact: true }).click();
   const form = page.getByTestId("logistics-rule-form");
   await expect(form.getByRole("textbox", { name: "Código", exact: true })).toHaveCount(0);

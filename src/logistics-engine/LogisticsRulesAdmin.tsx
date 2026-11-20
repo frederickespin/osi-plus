@@ -105,9 +105,21 @@ function OperationalRules({ authorization, access, onUnauthorized }: Props) {
   return <section className="min-w-0" data-testid="logistics-operational-rules">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
       <div className="flex items-center gap-1"><h2 className="text-base font-semibold text-slate-950">Reglas operativas</h2><AdministrationHelp title="Reglas operativas">
-        <p>Una regla sugiere una necesidad cuando se cumplen sus condiciones. Por ejemplo, una mudanza puede requerir dos empacadores, una grúa de un proveedor externo o un huacal para proteger una pieza.</p>
-        <p>Las reglas independientes se aplican juntas. Si se configuró un grupo de alternativas excluyentes, se elige una según la prioridad y el desempate.</p>
-        <p>Configure los costos del servicio en Servicios y combinaciones. Registre las distancias, los perfiles de vehículo y los peajes en Ciudades y sectores.</p>
+        <p>Una regla indica qué recurso sugiere el plan y en qué cantidad. La modalidad determina a qué casos se aplica una regla nueva de este formulario.</p>
+        <div className="space-y-1.5 rounded bg-slate-50 p-2.5">
+          <h4 className="font-semibold text-slate-900">Ejemplo para practicar en Nueva regla</h4>
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-1">
+            <dt>Familia</dt><dd className="font-medium">Personal</dd>
+            <dt>Nombre de la regla</dt><dd className="font-medium">Empacadores locales</dd>
+            <dt>Modalidad</dt><dd className="font-medium">Local / Nacional</dd>
+            <dt>Tipo de necesidad</dt><dd className="font-medium">EMPACADOR</dd>
+            <dt>Descripción para el plan</dt><dd className="font-medium">Empacadores</dd>
+            <dt>Cantidad</dt><dd className="font-medium">2</dd>
+            <dt>Estado</dt><dd className="font-medium">Borrador</dd>
+          </dl>
+        </div>
+        <p>Este ejemplo activo sugeriría dos empacadores en todos los casos Local / Nacional que se calculen. Manténgalo en borrador para practicar. Los rangos de volumen, la distancia y la condición fuera de zona metropolitana requieren configuración adicional.</p>
+        <p><strong>Dietas fuera de zona metro.</strong> Consulte la localidad del trabajo en Ciudades y sectores. Si la empresa asigna una dieta por persona y día, 4 personas × 2 días = 8 dietas. Registre el costo por dieta en Servicios y combinaciones → Costos y la cantidad del ejemplo en el Tarifario del paquete, si corresponde.</p>
       </AdministrationHelp></div>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <select aria-label="Familia logística" value={family} onChange={(event) => setFamily(event.target.value)} className={cn(COMPACT_FORM_FIELD, "max-w-full")}><option value="ALL">Todas las familias</option>{Object.entries(FAMILY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -142,7 +154,7 @@ function OperationalRules({ authorization, access, onUnauthorized }: Props) {
           ) : (
             <><label htmlFor={`${formId}-quantity`}>Cantidad</label><div className="flex items-center gap-1">
               <NumericInput id={`${formId}-quantity`} required min="0" step="0.01" value={draft.quantity} onChange={(event) => change("quantity", event.target.value)} className={numberField} />
-              <AdministrationHelp title="Cantidad de la regla"><p>Indica cuántos recursos sugiere la regla cuando aplica. Una regla de personal con cantidad 2 añade dos personas al plan.</p></AdministrationHelp>
+              <AdministrationHelp title="Cantidad de la regla"><p>Es el total que sugiere cada aplicación de la regla. En Personal, cantidad 2 significa dos personas. En Huacales, cantidad 1 significa un huacal.</p></AdministrationHelp>
             </div></>
           )}
         </div>

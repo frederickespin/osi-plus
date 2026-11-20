@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertPackagePricingRule, packageResourceLines } from "../api/_lib/costingPackages.js";
 import {
   COSTING_CLASSES,
   COSTING_FAMILIES,
@@ -118,6 +119,26 @@ const packageRules = [
   resourceRule(3, "MATERIAL", "100"), resourceRule(4, "PERMIT", "600", "DE"),
   { ...packageCost, ruleRef: ref(2099), seriesRef: ref(2098), version: 1, conditionHash: "e".repeat(64) },
 ];
+const travelRule = resourceRule(5, "TRAVEL", "500");
+const routePackage = {
+  ...packageCost,
+  result: {
+    ...packageCost.result,
+    includeRouteTransport: true,
+    components: [packageCost.result.components[0], { ...packageCost.result.components[3], ruleSeriesRef: travelRule.seriesRef, concept: "Dieta del chofer" }],
+  },
+};
+const packageConfiguration = { servicePackageVersion: { findFirst: async () => ({ id: "package-id" }) } };
+await assert.doesNotReject(() => assertPackagePricingRule(packageConfiguration, context.tenantId, routePackage, null, [packageRules[0], travelRule]));
+const { items: routeItems, issues: routeIssues } = packageResourceLines({ versionRef: packageVersionRef, version: 1, rule: routePackage }, {
+  includeRouteTransport: true,
+  measures: packageMeasures(30, null, seaProfile),
+}, [packageRules[0], travelRule], "EXPORT", ["MOVING"]);
+assert.deepEqual(routeItems.map((item) => item.family), ["LABOR", "TRAVEL"]);
+assert.deepEqual(routeIssues, []);
+await assert.rejects(() => assertPackagePricingRule(packageConfiguration, context.tenantId, {
+  ...routePackage, result: { ...routePackage.result, components: [packageCost.result.components[1]] },
+}, null, [packageRules[1]]), /COSTING_PACKAGE_TRANSPORT_DUPLICATE/);
 let latestRules = packageRules;
 let storedBasis;
 const tx = {

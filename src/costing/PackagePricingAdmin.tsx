@@ -34,7 +34,7 @@ const ERRORS: Record<string, string> = {
   COSTING_PACKAGE_RULE_CONFLICT: "Ya existe una tarifa para esta versión. Actualiza antes de editar.",
   COSTING_PACKAGE_COMPONENT_MISSING: "Al menos un costo de componente ya no está vigente.",
   COSTING_PACKAGE_NOT_AVAILABLE: "La versión del paquete ya no está publicada.",
-  COSTING_PACKAGE_TRANSPORT_DUPLICATE: "El transporte por ruta ya incluye transporte y viáticos. Revisa esos componentes.",
+  COSTING_PACKAGE_TRANSPORT_DUPLICATE: "El transporte por ruta ya cubre el costo del vehículo. Revisa el componente de transporte.",
   COSTING_RULE_VERSION_CONFLICT: "Otra persona publicó una tarifa más reciente. Actualiza antes de guardar.",
   COSTING_PACKAGE_TIERS_INVALID: "Ordena los tramos por volumen máximo. Solo el último puede quedar sin límite.",
 };
@@ -203,7 +203,7 @@ function RecipeForm({ pkg, rule, choices, authorization, canManage, onBack, onSa
   const shipment = mode !== "NONE" && (shipmentFactor < 1 || shipmentFactor > 100_000) ? null
     : { mode, factor: mode === "NONE" ? null : shipmentFactor, roundKg: mode === "AIR" ? roundKg : 0 };
   const excluded = new Set(rows.map((row) => row.ruleSeriesRef));
-  const available = choices.filter((cost) => !excluded.has(cost.seriesRef) && (!routeTransport || !["TRANSPORT", "TRAVEL"].includes(cost.family)));
+  const available = choices.filter((cost) => !excluded.has(cost.seriesRef) && (!routeTransport || cost.family !== "TRANSPORT"));
   const editingCost = editingNewCost || Boolean(picker && picker !== "ADD");
 
   function updateRow(ref: string, patch: Partial<ComponentDraft>) {
@@ -237,7 +237,7 @@ function RecipeForm({ pkg, rule, choices, authorization, canManage, onBack, onSa
       setError("Selecciona al menos un componente y completa sus cantidades. Verifica que los costos estén vigentes.");
       return;
     }
-    if (routeTransport && components.some((row) => ["TRANSPORT", "TRAVEL"].includes(bySeries.get(row.ruleSeriesRef)!.family))) {
+    if (routeTransport && components.some((row) => bySeries.get(row.ruleSeriesRef)!.family === "TRANSPORT")) {
       setPanel("COMPONENTS"); setError(ERRORS.COSTING_PACKAGE_TRANSPORT_DUPLICATE); return;
     }
     const result: PackagePricingResult = {
@@ -383,7 +383,7 @@ function RecipeForm({ pkg, rule, choices, authorization, canManage, onBack, onSa
         </select></label>}
         <label className="flex min-h-9 items-center gap-2 font-semibold"><input type="checkbox" checked={routeTransport} onChange={(event) => setRouteTransport(event.target.checked)} />Incluir transporte por ruta</label>
         <label className="flex min-h-9 items-center gap-2 font-semibold"><input type="checkbox" checked={allowEdits} onChange={(event) => setAllowEdits(event.target.checked)} />Permitir ajustes en Cotización</label>
-        <AdministrationHelp title="peso y ruta"><p>Para flete aéreo se usa el mayor entre el peso bruto y el volumétrico. El transporte por ruta incluye transporte y viáticos.</p><p>Los ajustes en Cotización dependen de los permisos del usuario.</p></AdministrationHelp>
+        <AdministrationHelp title="peso y ruta"><p>Para flete aéreo se usa el mayor entre el peso bruto y el volumétrico. Añade choferes, cuadrillas, dietas y viáticos como componentes del paquete. El transporte por ruta aporta el costo del vehículo y sus peajes.</p><p>Los ajustes en Cotización dependen de los permisos del usuario.</p></AdministrationHelp>
       </fieldset>
     </section>
     <div hidden={panel !== "SIMULATION"}>

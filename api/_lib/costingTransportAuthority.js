@@ -1,6 +1,7 @@
 import { canonicalCostingJson, costingFail, costingHash } from "./costingContract.js";
 import { sameTransportContext, TRANSPORT_CONTEXT_CONTRACT, transportContextOf } from "./logisticsTransportContext.js";
 import { transportLineQuantity } from "./logisticsTransportContract.js";
+import { includesPersonnelCosts, isRoadTransportComponent } from "../../shared/transportCostScope.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const TRANSPORT_KEYS = ["contract", "zoneRuleRef", "zoneVersion", "componentCode", "costRuleRef", "costRuleVersion", "journeyRef", "factor"];
@@ -73,6 +74,9 @@ export async function resolveTransportCostingAuthority(tx, context, item, revisi
   const family = ["PER_DIEM", "ALLOWANCE"].includes(component.kind) ? "TRAVEL" : "TRANSPORT";
   if (component.costRuleRef !== transport.costRuleRef || component.costRuleVersion !== transport.costRuleVersion
     || component.kind !== item.kind || component.basis !== item.unit || item.family !== family) invalid();
+  if (!isRoadTransportComponent(component) || includesPersonnelCosts(component, zone.result.includedConcepts)) {
+    costingFail("COSTING_TRANSPORT_SCOPE_CHANGED", 409);
+  }
   let computedQuantity;
   try { computedQuantity = transportLineQuantity(component, journey, zone.result).quantity; }
   catch { invalid(); }

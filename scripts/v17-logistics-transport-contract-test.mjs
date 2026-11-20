@@ -52,12 +52,21 @@ equal(selectTransportZone([zone, { ...zoneFrom(), priority: 2 }], journey, "QUOT
 const result = calculateTransportResult(input, [zone]);
 equal(result.complete, true);
 equal(result.context, { contract: TRANSPORT_CONTRACT, purpose: "QUOTE", contextRef: null });
-equal(result.lines.map((row) => [row.kind, row.quantity, row.totalCost]), [["FUEL", "32.0000", "320.000000"], ["TOLL", "4.0000", "20.000000"], ["PER_DIEM", "3.0000", "60.000000"]]);
-equal(result.totals, [{ currency: "DOP", amount: "400.000000" }]);
+equal(result.lines.map((row) => [row.kind, row.quantity, row.totalCost]), [["FUEL", "32.0000", "320.000000"], ["TOLL", "4.0000", "20.000000"]]);
+equal(result.totals, [{ currency: "DOP", amount: "340.000000" }]);
 const oneWay = calculateTransportResult({ ...input, journeys: [{ ...journey, returnToOrigin: false, trips: 1 }] }, [zone]);
 equal(oneWay.lines[0].quantity, "8.0000");
 equal(oneWay.lines[1].quantity, "4.0000"); // Explicit total is never doubled implicitly.
-equal(oneWay.lines[2].quantity, "3.0000"); // Crew-days do not multiply by vehicle trips.
+const legacyRows = [
+  tariff("LODGING", "ALLOWANCE", "FIXED", "900"),
+  tariff("CREW", "OTHER", "PERSON_DAY", "100"),
+];
+const legacyScoped = calculateTransportResult({ ...input, journeys: [{ ...journey, quantities: { ...journey.quantities, LODGING: "2" } }] }, [
+  { ...zone, components: [...zone.components, ...legacyRows] },
+]);
+equal(legacyScoped.complete, true);
+equal(legacyScoped.lines, result.lines);
+equal(legacyScoped.totals, result.totals);
 const rounded = calculateTransportResult({ ...input, journeys: [{ ...journey, distanceKm: "1", trips: 1, returnToOrigin: false }] }, [zone]);
 equal(rounded.lines[0].quantity, "0.1111");
 equal(rounded.lines[0].totalCost, "1.111000");
@@ -66,6 +75,13 @@ const factorResult = calculateTransportResult({ ...input, journeys: [{ ...journe
 equal(factorResult.lines[0].unitCost, "123.609115");
 equal(factorResult.lines[0].quantity, "2.0000");
 equal(factorResult.lines[0].totalCost, "247.218230");
+const mixed = calculateTransportResult({ ...input, journeys: [{ ...journey, quantities: {} }] }, [
+  { ...factorZone, includedConcepts: ["PER_DIEM"] },
+]);
+equal(mixed.complete, false);
+equal(mixed.issues[0].code, "TRANSPORT_MIXED_TARIFF");
+equal(mixed.lines, []);
+equal(mixed.totals[0].amount, null);
 const missing = calculateTransportResult(input, [{ ...zone, components: zone.components.map((row) => row.kind === "TOLL" ? { ...row, unitCost: null } : row) }]);
 equal(missing.complete, false); equal(missing.lines[1].totalCost, null); equal(missing.totals[0].amount, null);
 const missingDistance = calculateTransportResult({ ...input, journeys: [{ ...journey, distanceKm: null, distanceSource: "" }] }, [zone]);
@@ -94,5 +110,5 @@ rejects(() => normalizeRuleCreate(signed("LOGISTICS_RULE_VERSION", operational))
 equal(ruleMatches({ conditions: { transportContract: TRANSPORT_CONTRACT } }, {}), false);
 const secondCurrency = { ...zoneFrom(), geometry: { type: "Polygon", coordinates: [[[-68, 18], [-67, 18], [-67, 19], [-68, 19], [-68, 18]]] }, currency: "USD" };
 const multiple = calculateTransportResult({ ...input, journeys: [journey, { ...journey, journeyRef: randomUUID(), destination: [-67.5, 18.5] }] }, [zone, secondCurrency]);
-equal(multiple.totals, [{ currency: "DOP", amount: "400.000000" }, { currency: "USD", amount: "400.000000" }]);
+equal(multiple.totals, [{ currency: "DOP", amount: "340.000000" }, { currency: "USD", amount: "340.000000" }]);
 process.stdout.write(JSON.stringify({ ok: true, assertions, geometry: true, decimals: true, contexts: true, missingValuesStayPending: true, noDoubleCounting: true }) + "\n");

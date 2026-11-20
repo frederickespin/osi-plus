@@ -14,6 +14,7 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   LOGISTICS_INPUT_STALE: "Cambió la zona, el trayecto o una tarifa de transporte. Recalcule y publique el transporte antes de actualizar los costos.",
   COSTING_BLOCKERS_PRESENT: "Hay datos económicos pendientes. Revise las advertencias antes de publicar.",
   COSTING_LOGISTICS_REVISION_REQUIRED: "Primero publique una revisión del Motor Logístico para esta cotización.",
+  COSTING_TRANSPORT_SCOPE_CHANGED: "La publicación anterior incluye costos de personal. Recalcule y publique el recorrido. Agregue el personal y los viáticos en Servicios y combinaciones.",
   COSTING_TRANSPORT_CONTEXT_INVALID: "La revisión de transporte no corresponde a un contexto válido. Recalcule el transporte de esta cotización.",
   COSTING_TRANSPORT_AUTHORITY_INVALID: "No se pudo verificar la tarifa asociada al transporte. Revise la zona y publique un nuevo cálculo.",
   COSTING_TRANSPORT_DUPLICATE_ITEM: "La revisión contiene un gasto de transporte repetido. Recalcule el transporte antes de continuar.",

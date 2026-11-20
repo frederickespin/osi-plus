@@ -42,7 +42,6 @@ function zoneInput(changes = {}) {
     components: [
       { code: "FUEL", label: "Combustible sintético", kind: "FUEL", basis: "GALLON", unitCost: "250.000000", classification: "PR", minimumMarginBps: 2000, recommendedMarginBps: 2500, includedConcepts: [] },
       { code: "TOLL", label: "Peaje sintético", kind: "TOLL", basis: "PASS", unitCost: "100", classification: "EX", minimumMarginBps: null, recommendedMarginBps: null, includedConcepts: [] },
-      { code: "MEAL", label: "Dieta sintética", kind: "PER_DIEM", basis: "PERSON_DAY", unitCost: "200", classification: "PR", minimumMarginBps: 2000, recommendedMarginBps: 2500, includedConcepts: [] },
     ], ...changes };
 }
 async function account(label) {
@@ -77,7 +76,7 @@ const calculate = (context, input) => calculateTransport(prisma, context, signed
 const publish = (context, calculationRef, requestId = randomUUID()) => publishTransport(prisma, context, signed("TRANSPORT_PUBLISH", { calculationRef }, requestId));
 async function costPublication(context, pipelineCase, transport) {
   const calculated = await calculateCosting(prisma, context, signed("COSTING_CALCULATE", { caseRef: pipelineCase.publicRef, logisticsPlanRevisionRef: transport.revisionRef, baseCurrency: "DOP" }, randomUUID(), costingHash));
-  check(`costing ${transport.context.purpose} consumes exact transport authority without blockers`, calculated.result.lines.length === 3 && !calculated.result.issues.some((issue) => issue.severity === "BLOCKER"));
+  check(`costing ${transport.context.purpose} consumes exact transport authority without blockers`, calculated.result.lines.length === 2 && !calculated.result.issues.some((issue) => issue.severity === "BLOCKER"));
   return publishCosting(prisma, context, signed("COSTING_PUBLISH", { calculationRef: calculated.calculationRef }, randomUUID(), costingHash));
 }
 function failingAuditClient() {
@@ -98,9 +97,9 @@ try {
   const concurrentCreate = await Promise.all([versionTransportZone(prisma, a.context, createCommand), versionTransportZone(prisma, a.context, createCommand)]);
   const first = concurrentCreate[0];
   check("concurrent identical creation commits one zone and returns one version", concurrentCreate[1].ruleRef === first.ruleRef && await prisma.logisticsRule.count({ where: { tenantId: a.tenant.id } }) === 1);
-  check("zone version atomically binds three monetary tariffs and its audited command", await prisma.costingRule.count({ where: { tenantId: a.tenant.id } }) === 3
+  check("zone version atomically binds two monetary tariffs and its audited command", await prisma.costingRule.count({ where: { tenantId: a.tenant.id } }) === 2
     && await prisma.logisticsMutationCommand.count({ where: { tenantId: a.tenant.id } }) === 1
-    && await prisma.commercialAuditLog.count({ where: { tenant_id: a.tenant.id, request_id: createCommand.requestId } }) === 4);
+    && await prisma.commercialAuditLog.count({ where: { tenant_id: a.tenant.id, request_id: createCommand.requestId } }) === 3);
   check("operational JSON contains only authority references, never tariffs or margins", !/unitCost|MarginBps|classification/.test(JSON.stringify((await prisma.logisticsRule.findFirst({ where: { tenantId: a.tenant.id, ruleRef: first.ruleRef } })).result)));
   check("another tenant cannot list the zone", (await listTransportZones(prisma, b.context)).length === 0);
   await rejects("another tenant cannot version the zone", () => versionTransportZone(prisma, b.context, zoneCommand(zoneInput({ seriesRef: first.seriesRef, expectedVersion: 1 }))), "LOGISTICS_TRANSPORT_ZONE_NOT_FOUND");
@@ -119,14 +118,14 @@ try {
   const quoteCalculation = await calculate(a.context, calculationInput(pipelineCase));
   check("calculation preserves fractional gallons and explicit road distance", quoteCalculation.status === "VALID" && quoteCalculation.result.complete
     && new Prisma.Decimal(quoteCalculation.result.lines.find((line) => line.kind === "FUEL").quantity).equals("7.175")
-    && quoteCalculation.result.totals[0].amount === "2593.750000");
+    && quoteCalculation.result.totals[0].amount === "1993.750000");
   const publicationRequest = randomUUID();
   const quotePublications = await Promise.all([publish(a.context, quoteCalculation.calculationRef, publicationRequest), publish(a.context, quoteCalculation.calculationRef, publicationRequest)]);
   const quote = quotePublications[0];
   check("concurrent publication replays one immutable quotation context", quotePublications[1].revisionRef === quote.revisionRef && quote.context.purpose === "QUOTE");
   const quoteCost = await costPublication(a.context, pipelineCase, quote);
   check("costing maintains fractional fuel and references the same versioned tariff", quoteCost.lines.some((line) => line.unit === "GALLON" && new Prisma.Decimal(line.quantity).equals("7.175") && line.source === "MOTOR")
-    && new Prisma.Decimal(quoteCost.totals.totalCost).equals("2593.75"));
+    && new Prisma.Decimal(quoteCost.totals.totalCost).equals("1993.75"));
   const frozenQuote = await prisma.logisticsPlanRevision.findFirst({ where: { tenantId: a.tenant.id, revisionRef: quote.revisionRef } });
   const frozenCost = await prisma.costingRevision.findFirst({ where: { tenantId: a.tenant.id, revisionRef: quoteCost.revisionRef } });
   const originalSnapshots = canonicalHash({ transport: frozenQuote.resultSnapshot, costing: frozenCost.totalsSnapshot, transportInput: frozenQuote.inputSnapshot, costingInput: frozenCost.inputSnapshot });
@@ -139,7 +138,7 @@ try {
   const visitInput = calculationInput(pipelineCase, "VISIT", decision.decisionRef, { distanceKm: "20", people: 1, days: "1", quantities: { TOLL: "0" } });
   const visit = await publish(a.context, (await calculate(a.context, visitInput)).calculationRef);
   const visitCost = await costPublication(a.context, pipelineCase, visit);
-  check("visit computes and publishes before a completed survey", visit.context.contextRef === decision.decisionRef && visit.result.totals[0].amount === "450.000000");
+  check("visit computes and publishes before a completed survey", visit.context.contextRef === decision.decisionRef && visit.result.totals[0].amount === "250.000000");
   for (const expected of [quote, service, visit]) {
     const query = { caseRef: pipelineCase.publicRef, purpose: expected.context.purpose, ...(expected.context.contextRef ? { contextRef: expected.context.contextRef } : {}) };
     check(`latest ${expected.context.purpose} publication is independent`, (await getTransportPublication(prisma, a.context, query)).revisionRef === expected.revisionRef);
@@ -168,7 +167,7 @@ try {
   const activated = await versionTransportZone(prisma, a.context, zoneCommand(zoneInput({ seriesRef: first.seriesRef, expectedVersion: draft.version, components: activeComponents })));
   check("activation creates a new policy and closes older active rates", activated.version === 3
     && await prisma.logisticsRule.count({ where: { tenantId: a.tenant.id, state: "ACTIVE" } }) === 1
-    && await prisma.costingRule.count({ where: { tenantId: a.tenant.id, state: "ACTIVE" } }) === 3);
+    && await prisma.costingRule.count({ where: { tenantId: a.tenant.id, state: "ACTIVE" } }) === 2);
   await rejects("tariff changes make an unpublished estimate stale", () => publish(a.context, staleCalculation.calculationRef), "LOGISTICS_INPUT_STALE");
   const preservedQuote = await prisma.logisticsPlanRevision.findFirst({ where: { tenantId: a.tenant.id, revisionRef: quote.revisionRef } });
   const preservedCost = await prisma.costingRevision.findFirst({ where: { tenantId: a.tenant.id, revisionRef: quoteCost.revisionRef } });
@@ -200,8 +199,12 @@ try {
     const legacy = { seriesRef: null, family, code: `OLD_${family}`, name: "Synthetic legacy travel", priority: 90, specificity: 0, conditions: {}, result: { kind: "SYNTHETIC_TRAVEL", label: "Synthetic travel", quantity: 1, unit: "TRIP", ...(family === "LABOR" ? { family: "TRANSPORT" } : {}) }, state: "ACTIVE", validFrom: null, validTo: null };
     const legacyRule = await versionLogisticsRule(prisma, a.context, signed("LOGISTICS_RULE_VERSION", legacy));
     const conflicted = await calculate(a.context, calculationInput(pipelineCase));
-    check(`${family} cannot add a second travel charge through its effective item family`, !conflicted.result.complete && conflicted.result.issues.some((issue) => issue.code === "TRANSPORT_LEGACY_RULE_CONFLICT"));
-    await rejects(`${family} overlapping travel blocks publication`, () => publish(a.context, conflicted.calculationRef), "TRANSPORT_CALCULATION_INCOMPLETE");
+    if (family === "LODGING") {
+      check("separate lodging rule does not change route cost", conflicted.result.complete && conflicted.result.lines.every((line) => line.kind === "FUEL" || line.kind === "TOLL"));
+    } else {
+      check("overlapping vehicle rule blocks publication", !conflicted.result.complete && conflicted.result.issues.some((issue) => issue.code === "TRANSPORT_LEGACY_RULE_CONFLICT"));
+      await rejects("overlapping route transport cannot be published", () => publish(a.context, conflicted.calculationRef), "TRANSPORT_CALCULATION_INCOMPLETE");
+    }
     await versionLogisticsRule(prisma, a.context, signed("LOGISTICS_RULE_VERSION", { ...legacy, seriesRef: legacyRule.seriesRef, state: "INACTIVE" }));
   }
   const badSeries = randomUUID();
@@ -228,9 +231,9 @@ try {
   check("concurrent code-free zone requests replay one saved identity", automaticCreations[1].ruleRef === automaticZone.ruleRef
     && /^ZON_[A-F0-9]{24}$/.test(automaticZone.code)
     && await prisma.logisticsRule.count({ where: { tenantId: automaticActor.tenant.id } }) === 1
-    && await prisma.costingRule.count({ where: { tenantId: automaticActor.tenant.id } }) === 3);
+    && await prisma.costingRule.count({ where: { tenantId: automaticActor.tenant.id } }) === 2);
   check("code-free rows have distinct generated references", automaticZone.components.every((row) => /^REN_[A-F0-9]{24}$/.test(row.code))
-    && new Set(automaticZone.components.map((row) => row.code)).size === 3);
+    && new Set(automaticZone.components.map((row) => row.code)).size === 2);
   await rejects("automatic zone retry with changed data is rejected", () => versionTransportZone(prisma, automaticActor.context,
     signed("TRANSPORT_ZONE_VERSION", { ...automaticInput, name: "Changed automatic zone" }, automaticCommand.requestId)), "LOGISTICS_TRANSPORT_IDEMPOTENCY_CONFLICT");
   const automaticVersion = await versionTransportZone(prisma, automaticActor.context, zoneCommand({ ...automaticInput,

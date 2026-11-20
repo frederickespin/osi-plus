@@ -381,7 +381,8 @@ test("las ayudas comparan parámetros con ejemplos sin cargar tarifas ni cambiar
   await expect(editor.getByLabel("Rendimiento km/gal", { exact: true })).toHaveValue("");
   await expect(editor.getByLabel("Tarifa del renglón 2")).toHaveValue("");
   await editor.getByRole("button", { name: "Ayuda de Base del renglón", exact: true }).click();
-  await expect(page.getByText(/2 personas × 3 días = 6 unidades/)).toBeVisible();
+  await expect(page.getByText(/por kilómetro usa la distancia total/)).toBeVisible();
+  await expect(editor.getByRole("option", { name: /Dieta|Viático|Por persona/ })).toHaveCount(0);
   await closeHelp("Base del renglón");
   await editor.getByRole("button", { name: "Ayuda de Tarifa del renglón", exact: true }).click();
   await expect(page.getByText(/2 pasos × 100 = 200/)).toBeVisible();
@@ -399,6 +400,7 @@ for (const purpose of ["QUOTE", "SERVICE", "VISIT"] as const) test(`${purpose}: 
   const backend = await calculator(page);
   await selectContext(page, purpose);
   await fillJourney(page);
+  await expect(page.getByTestId("transport-calculation-form").getByLabel(/Personal|Días fuera/)).toHaveCount(0);
   await page.getByRole("button", { name: "Calcular transporte", exact: true }).click();
   await expect(page.getByTestId("transport-calculation-result").getByText("Datos pendientes", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Publicar costo de transporte" })).toBeDisabled();
@@ -409,7 +411,7 @@ for (const purpose of ["QUOTE", "SERVICE", "VISIT"] as const) test(`${purpose}: 
   await page.getByRole("button", { name: "Publicar costo de transporte" }).click();
   await expect(page.getByRole("button", { name: "Publicado", exact: true })).toBeDisabled();
   expect(backend.calculations).toHaveLength(2);
-  expect(backend.calculations[1].input).toMatchObject({ caseRef: CASE, purpose, contextRef: purpose === "VISIT" ? VISIT : null, journeys: [{ vehicleRef: VEHICLE, vehicleType: "Camión de prueba", distanceKm: "80.00", distanceSource: "OSRM / OpenStreetMap · ruta vial automática", returnToOrigin: true, trips: 1, quantities: { TOLL: "2" } }] });
+  expect(backend.calculations[1].input).toMatchObject({ caseRef: CASE, purpose, contextRef: purpose === "VISIT" ? VISIT : null, journeys: [{ vehicleRef: VEHICLE, vehicleType: "Camión de prueba", distanceKm: "80.00", distanceSource: "OSRM / OpenStreetMap · ruta vial automática", returnToOrigin: true, trips: 1, people: null, days: null, quantities: { TOLL: "2" } }] });
   expect(backend.publishes()).toBe(1);
   expect(backend.queries.some((query) => query.get("purpose") === purpose && query.get("contextRef") === (purpose === "VISIT" ? VISIT : null))).toBe(true);
   await expect(page.getByTestId("transport-publication")).toContainText(PURPOSE_LABEL[purpose]);
@@ -421,6 +423,7 @@ test("publicación con respuesta perdida se consulta sin repetir el envío", asy
   const backend = await calculator(page, { lostPublishResponse: true });
   await selectContext(page, "QUOTE");
   await fillJourney(page);
+  await expect(page.getByTestId("transport-calculation-form").getByLabel(/Personal|Días fuera/)).toHaveCount(0);
   await page.getByRole("button", { name: "Calcular transporte", exact: true }).click();
   await page.getByLabel("Peaje de prueba del recorrido 1").fill("0");
   await page.getByRole("button", { name: "Calcular transporte", exact: true }).click();

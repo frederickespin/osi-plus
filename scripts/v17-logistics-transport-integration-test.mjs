@@ -133,6 +133,8 @@ assert.equal(authority.sourceRef, rule.ruleRef);
 assert.equal(authority.minimumMarginBps, 1000);
 assert.equal(authority.recommendedMarginBps, 1500);
 assert.equal(authority.authoritySnapshot.transport.originalUnitCost, "100.125");
+const mixedZone = { ...zone, result: { ...zone.result, includedConcepts: ["PER_DIEM"] } };
+await assert.rejects(() => resolveTransportCostingAuthority(authorityTx(mixedZone), trusted, item, revision), { code: "COSTING_TRANSPORT_SCOPE_CHANGED" });
 const noMargin = await resolveTransportCostingAuthority(authorityTx(zone, { ...rule, minimumMarginBps: null, recommendedMarginBps: null }), trusted, item, revision);
 assert.equal(noMargin.minimumMarginBps, null, "No invented commercial margin");
 const rejected = (tx, value = item, revisionValue = revision) => assert.rejects(() => resolveTransportCostingAuthority(tx, trusted, value, revisionValue), { code: "COSTING_TRANSPORT_AUTHORITY_INVALID" });

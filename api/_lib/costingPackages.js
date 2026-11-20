@@ -42,7 +42,7 @@ export async function assertPackagePricingRule(tx, tenantId, input, current, rul
   for (const { ruleSeriesRef } of input.result.components) {
     const component = components.get(ruleSeriesRef);
     if (!component) costingFail("COSTING_PACKAGE_COMPONENT_MISSING", 409);
-    if (input.result.includeRouteTransport && ["TRANSPORT", "TRAVEL"].includes(component.family)) {
+    if (input.result.includeRouteTransport && component.family === "TRANSPORT") {
       costingFail("COSTING_PACKAGE_TRANSPORT_DUPLICATE", 409);
     }
   }
@@ -122,7 +122,7 @@ export function packageResourceLines(pkg, pricing, rules, caseMode, serviceCodes
       issues.push(packagePricingIssues("COSTING_PACKAGE_COMPONENT_MISSING", `Revise el costo vigente de «${component.concept}».`, { ruleSeriesRef: component.ruleSeriesRef }));
       continue;
     }
-    if (pricing.includeRouteTransport && ["TRANSPORT", "TRAVEL"].includes(rule.family)) {
+    if (pricing.includeRouteTransport && rule.family === "TRANSPORT") {
       issues.push(packagePricingIssues("COSTING_PACKAGE_TRANSPORT_DUPLICATE", `«${component.concept}» se superpone con el transporte calculado.`));
       continue;
     }

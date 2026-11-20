@@ -3,6 +3,8 @@ import { canonicalHash, logisticsFail } from "./logisticsEngineContract.js";
 import { adminFleetVehicleRef } from "./adminFleetContract.js";
 import { transportRingError, pointInTransportPolygon } from "../../shared/transportGeometry.js";
 
+import { includesPersonnelCosts, isRoadTransportComponent } from "../../shared/transportCostScope.js";
+
 export { pointInTransportPolygon };
 
 export const TRANSPORT_CONTRACT = "V17_TRANSPORT_ZONES_V1";
@@ -147,7 +149,6 @@ export function transportLineQuantity(component, journey, zone) {
   if (component.basis === "TRIP") quantity = new Decimal(journey.trips);
   else if (component.basis === "KM") quantity = distance;
   else if (component.basis === "GALLON") quantity = distance !== null && zone.kmPerGallon !== null ? distance.div(zone.kmPerGallon) : null;
-  else if (component.basis === "PERSON_DAY") quantity = journey.people !== null && journey.days !== null ? new Decimal(journey.people).mul(journey.days) : null;
   else if (Object.hasOwn(journey.quantities, component.code)) quantity = new Decimal(journey.quantities[component.code]);
   return { quantity: quantity === null ? null : boundedDecimal(quantity, 4, "99999999999999.9999"), distanceKm: distance === null ? null : boundedDecimal(distance, 4, "99999999999999.9999") };
 }
@@ -164,13 +165,19 @@ export function calculateTransportResult(input, zones) {
       ? { ...journey, distanceKm: zone.referenceDistanceKm, distanceSource: zone.referenceDistanceSource }
       : journey;
     if (!totals.has(zone.currency)) totals.set(zone.currency, { amount: new Decimal(0), pending: false });
-    if (!zone.components.length) { issue("TRANSPORT_TARIFF_PENDING", "La zona no tiene renglones de transporte configurados.", journey.journeyRef); totals.get(zone.currency).pending = true; }
-    if (zone.mode === "FACTOR" && !zone.components.some((row) => row.kind === "BASE")) { issue("TRANSPORT_BASE_PENDING", "El modo por factor necesita una tarifa base de transporte.", journey.journeyRef); totals.get(zone.currency).pending = true; }
-    if (zone.components.some((row) => row.kind === "FUEL") && !zone.fuelType) issue("TRANSPORT_FUEL_TYPE_PENDING", "Indique el combustible al que corresponden el rendimiento y el precio por galón.", journey.journeyRef);
-    if (journeyForCalculation.distanceKm !== null && !journeyForCalculation.distanceSource || zone.components.some((row) => ["GALLON", "KM"].includes(row.basis)) && (journeyForCalculation.distanceKm === null || !journeyForCalculation.distanceSource)) issue("TRANSPORT_DISTANCE_PENDING", "Confirme los kilómetros de carretera y su fuente; el mapa no calcula esa distancia.", journey.journeyRef);
+    const roadComponents = zone.components.filter(isRoadTransportComponent);
+    if (!roadComponents.length) { issue("TRANSPORT_TARIFF_PENDING", "La zona no tiene renglones de transporte configurados.", journey.journeyRef); totals.get(zone.currency).pending = true; }
+    if (zone.mode === "FACTOR" && !roadComponents.some((row) => row.kind === "BASE")) { issue("TRANSPORT_BASE_PENDING", "El modo por factor necesita una tarifa base de transporte.", journey.journeyRef); totals.get(zone.currency).pending = true; }
+    if (roadComponents.some((row) => row.kind === "FUEL") && !zone.fuelType) issue("TRANSPORT_FUEL_TYPE_PENDING", "Indique el combustible al que corresponden el rendimiento y el precio por galón.", journey.journeyRef);
+    if (journeyForCalculation.distanceKm !== null && !journeyForCalculation.distanceSource || roadComponents.some((row) => ["GALLON", "KM"].includes(row.basis)) && (journeyForCalculation.distanceKm === null || !journeyForCalculation.distanceSource)) issue("TRANSPORT_DISTANCE_PENDING", "Confirme los kilómetros de carretera y su fuente; el mapa no calcula esa distancia.", journey.journeyRef);
     const quantityCodes = new Set(zone.components.filter((row) => ["PASS", "FIXED"].includes(row.basis)).map((row) => row.code));
     if (Object.keys(journey.quantities).some((code) => !quantityCodes.has(code))) issue("TRANSPORT_QUANTITY_UNKNOWN", "Hay cantidades manuales que no pertenecen a los renglones de esta zona.", journey.journeyRef);
-    for (const component of zone.components) {
+    for (const component of roadComponents) {
+      if (includesPersonnelCosts(component, zone.includedConcepts)) {
+        issue("TRANSPORT_MIXED_TARIFF", `Actualice «${component.label}» en Motor Logístico con el costo del vehículo. Configure el personal y los viáticos en Servicios y combinaciones.`, journey.journeyRef);
+        totals.get(zone.currency).pending = true;
+        continue;
+      }
       const { quantity, distanceKm } = transportLineQuantity(component, journeyForCalculation, zone);
       const factor = component.kind === "BASE" && zone.mode === "FACTOR" ? zone.factor : null;
       let unitCost = component.unitCost === null || component.kind === "BASE" && zone.mode === "FACTOR" && factor === null ? null : boundedDecimal(new Decimal(component.unitCost).mul(factor ?? 1), 6, "999999999999.999999");

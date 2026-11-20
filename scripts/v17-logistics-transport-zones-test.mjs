@@ -177,6 +177,15 @@ for (const stale of [null, { ...currentActor, granted_permissions: [] }, { ...cu
 }
 
 const f = fixture();
+for (const personnel of [
+  { ...toll, code: "MEAL", kind: "PER_DIEM", basis: "PERSON_DAY" },
+  { ...toll, code: "TRAVEL", kind: "ALLOWANCE", basis: "FIXED" },
+  { ...toll, code: "CREW", kind: "OTHER", basis: "PERSON_DAY" },
+  { ...toll, includedConcepts: ["ALLOWANCE"] },
+]) {
+  await rejects(() => versionTransportZone(f.prisma, context, command({ components: [fuel, personnel] })), "PERSONNEL_COST_FORBIDDEN");
+}
+check("personnel and mixed tariffs cannot create route costs", f.state().tariffs.length === 0);
 const create = command();
 const first = await versionTransportZone(f.prisma, context, create);
 let state = f.state();

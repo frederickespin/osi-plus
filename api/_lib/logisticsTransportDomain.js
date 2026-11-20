@@ -55,7 +55,7 @@ function operationalTransportItems(result, input, zones) {
     const journey = input.journeys.find((row) => row.journeyRef === line.journeyRef);
     const originZone = journey.origin ? selectTransportZone(zones, { ...journey, destination: journey.origin }, input.purpose).zone : null;
     return ({
-    family: ["PER_DIEM", "ALLOWANCE"].includes(line.kind) ? "TRAVEL" : "TRANSPORT", kind: line.kind, label: line.concept,
+    family: "TRANSPORT", kind: line.kind, label: line.concept,
     quantity: line.quantity, unit: line.basis, estimatedHours: null, trips: input.journeys.find((journey) => journey.journeyRef === line.journeyRef).trips,
     requiredQuantity: line.quantity, availableQuantity: null, reservedQuantity: null, shortageQuantity: null, availability: "NOT_APPLICABLE", priceStatus: line.unitCost === null ? "PENDING" : "REFERENCED",
     source: "ADMIN_RULE", sourceRef: line.zoneRuleRef, sourceVersion: line.zoneVersion,
@@ -87,8 +87,8 @@ async function prepareCalculation(tx, context, input, pipelineCase = null) {
   const allDistances = input.journeys.every((journey) => journey.distanceKm !== null && journey.distanceSource);
   const operationalFacts = { ...facts, route: { ...facts.route, distanceStatus: allDistances ? "KNOWN" : "PENDING", distanceKm: allDistances ? input.journeys.reduce((sum, journey) => sum.plus(new Decimal(journey.distanceKm).mul(journey.returnToOrigin ? 2 : 1).mul(journey.trips)), new Decimal(0)).toNumber() : null } };
   const base = input.purpose === "VISIT" ? { items: [], issues: [], rules: [] } : calculateLogisticsPlan(operationalFacts, rules);
-  const overlap = base.items.some((item) => ["TRANSPORT", "TRAVEL"].includes(item.family));
-  if (overlap) transport.issues.push({ code: "TRANSPORT_LEGACY_RULE_CONFLICT", message: "Hay renglones generales de transporte o gastos de viaje que también aplican. Revise esas reglas antes de publicar para evitar cargos duplicados.", journeyRef: null, severity: "BLOCKER" });
+  const overlap = base.items.some((item) => item.family === "TRANSPORT");
+  if (overlap) transport.issues.push({ code: "TRANSPORT_LEGACY_RULE_CONFLICT", message: "Hay renglones generales de transporte que también aplican. Revise esas reglas antes de publicar para evitar cargos duplicados.", journeyRef: null, severity: "BLOCKER" });
   for (const issue of base.issues.filter((row) => row.severity === "BLOCKER")) transport.issues.push({ code: issue.code, message: issue.message, journeyRef: null, severity: "BLOCKER" });
   transport.complete = transport.complete && !transport.issues.some((row) => row.severity === "BLOCKER");
   const selectedZones = [...new Map(input.journeys.flatMap((journey) => [selectTransportZone(zones, journey, input.purpose).zone, journey.origin ? selectTransportZone(zones, { ...journey, destination: journey.origin }, input.purpose).zone : null]).filter(Boolean).map((zone) => [zone.ruleRef, zone])).values()].sort((a, b) => a.ruleRef.localeCompare(b.ruleRef));
@@ -98,7 +98,7 @@ async function prepareCalculation(tx, context, input, pipelineCase = null) {
   const zoneRefs = selectedZones.map((zone) => ({ ruleRef: zone.ruleRef, seriesRef: zone.seriesRef, family: "ZONE", code: zone.code, priority: zone.priority, specificity: zone.vehicleType === null ? 0 : 1, version: zone.version }));
   const rulesSnapshot = [...base.rules, ...zoneRefs];
   const resultSnapshot = JSON.parse(JSON.stringify({
-    items: [...base.items, ...operationalTransportItems(transport, input, zones)].map((item, position) => ({ ...item, position })),
+    items: [...base.items.filter((item) => item.family !== "TRAVEL"), ...operationalTransportItems(transport, input, zones)].map((item, position) => ({ ...item, position })),
     issues: [...base.issues.filter((row) => row.severity !== "BLOCKER"), ...transport.issues.map((issue) => ({ code: issue.code, severity: issue.severity, family: "TRANSPORT", message: issue.message, source: "ADMIN_RULE", sourceSnapshot: { transportContext, journeyRef: issue.journeyRef } }))],
     rules: rulesSnapshot, transport,
   }));

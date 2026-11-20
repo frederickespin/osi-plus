@@ -1,12 +1,13 @@
+import { ROAD_TRANSPORT_KINDS } from "../../shared/transportCostScope.js";
 import type { TransportBasis, TransportComponentKind, TransportPurpose } from "./transportApi";
 
 export const PURPOSE_LABELS: Record<TransportPurpose, string> = { QUOTE: "Cotizaciones", SERVICE: "Servicios operativos", VISIT: "Visitas presenciales" };
-export const KIND_LABELS: Record<TransportComponentKind, string> = { BASE: "Base de transporte", FUEL: "Combustible", TOLL: "Peaje", PER_DIEM: "Dieta", ALLOWANCE: "Viático", OTHER: "Otro gasto" };
+export const KIND_LABELS: Record<TransportComponentKind, string> = { BASE: "Base de transporte", FUEL: "Combustible", TOLL: "Peaje", PER_DIEM: "Dieta", ALLOWANCE: "Viático", OTHER: "Otro costo vehicular" };
 export const BASIS_LABELS: Record<TransportBasis, string> = { TRIP: "Por viaje", GALLON: "Por galón", PASS: "Por paso", PERSON_DAY: "Por persona / día", FIXED: "Cantidad indicada", KM: "Por kilómetro" };
 export const UNIT_LABELS: Record<TransportBasis, string> = { TRIP: "viajes", GALLON: "gal", PASS: "pasos", PERSON_DAY: "persona/día", FIXED: "unidades", KM: "km" };
 export const STATE_LABELS = { DRAFT: "Borrador", ACTIVE: "Activa", INACTIVE: "Inactiva" } as const;
 export const TRANSPORT_PURPOSES: readonly TransportPurpose[] = ["QUOTE", "SERVICE", "VISIT"];
-export const INCLUDED_KINDS: readonly TransportComponentKind[] = ["FUEL", "TOLL", "PER_DIEM", "ALLOWANCE", "OTHER"];
+export const INCLUDED_KINDS: readonly TransportComponentKind[] = ROAD_TRANSPORT_KINDS.filter((kind) => kind !== "BASE");
 
 export function formatTransportNumber(value: string | number | null, maximumFractionDigits = 4): string {
   if (value === null || value === "") return "Pendiente";

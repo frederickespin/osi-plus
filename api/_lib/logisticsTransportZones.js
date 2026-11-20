@@ -4,6 +4,7 @@ import { automaticLogisticsConfigurationCode } from "./logisticsConfigurationCod
 import { canonicalHash, logisticsFail } from "./logisticsEngineContract.js";
 import { normalizeTransportZone, normalizeTransportZonePayload, pointInTransportPolygon, TRANSPORT_CONTRACT } from "./logisticsTransportContract.js";
 import { effectivePermissionsFor } from "./rbac.js";
+import { includesPersonnelCosts, isRoadTransportComponent } from "../../shared/transportCostScope.js";
 
 export const TRANSPORT_ZONE_PERMISSIONS = Object.freeze({
   VIEW: Object.freeze(["logistics:rules:view", "costing:rules:view"]),
@@ -265,6 +266,9 @@ export async function versionTransportZone(prisma, context, raw) {
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.tenantId}:${input.requestId}:logistics-transport-command`}, 0))`);
     const prior = await replayCommand(tx, actor, input);
     if (prior) return prior;
+    if (input.components.some((component) => !isRoadTransportComponent(component) || includesPersonnelCosts(component, input.includedConcepts))) {
+      fail("PERSONNEL_COST_FORBIDDEN", 400);
+    }
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.tenantId}:transport-zones`}, 0))`);
     const current = await tx.logisticsRule.findFirst({ where: { tenantId: actor.tenantId, seriesRef }, orderBy: { version: "desc" } });
     if (input.seriesRef && !current) fail("ZONE_NOT_FOUND", 404);

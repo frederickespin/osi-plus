@@ -20,7 +20,7 @@ export default function FleetTypeForm({ api, existing, onSaved, onClose, onUnaut
   const pending = useRef<AbortController | null>(null);
   const request = useRef<{ key: string; id: string } | null>(null);
   useEffect(() => () => pending.current?.abort(), []);
-  const canSave = !busy && Boolean(name.trim()) && variableVolume !== existing?.variableVolume;
+  const canSave = !busy && Boolean(name.trim()) && (!existing?.registered || variableVolume !== existing.variableVolume);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,7 +34,7 @@ export default function FleetTypeForm({ api, existing, onSaved, onClose, onUnaut
     setError("");
     try {
       const payload = { ...type, requestId: request.current.id };
-      const saved = existing
+      const saved = existing?.registered
         ? await api.updateType({ ...payload, expectedVariableVolume: existing.variableVolume }, controller.signal)
         : await api.createType(payload, controller.signal);
       if (!controller.signal.aborted) onSaved(saved);
@@ -48,7 +48,7 @@ export default function FleetTypeForm({ api, existing, onSaved, onClose, onUnaut
     }
   }
 
-  return <form aria-label={existing ? "Editar tipo de vehículo" : "Registrar tipo de vehículo"}
+  return <form aria-label={existing?.registered ? "Editar tipo de vehículo" : "Registrar tipo de vehículo"}
     onSubmit={(event) => void save(event)} className="min-w-0 text-xs">
     <fieldset disabled={busy} className="flex flex-wrap items-end gap-2">
       {!existing && <label className="grid min-w-44 flex-1 gap-1 font-semibold text-slate-700">Nombre del tipo

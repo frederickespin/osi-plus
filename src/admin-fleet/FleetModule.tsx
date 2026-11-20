@@ -48,7 +48,7 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
   const [showTypes, setShowTypes] = useState(false);
   const [createType, setCreateType] = useState(false);
   const [typeName, setTypeName] = useState("");
-  const registeredTypeId = useId();
+  const catalogTypeId = useId();
   const [options, setOptions] = useState<FleetOptions | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [optionsRevision, setOptionsRevision] = useState(0);
@@ -68,8 +68,8 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
   const total = !loading && result ? result.total : 0;
   const error = !loading && result ? result.error : null;
   const needsOptions = showTypes || selection?.section === "details";
-  const registeredTypes = options?.types.filter((type) => type.registered) ?? [];
-  const editingType = createType ? undefined : registeredTypes.find((type) => type.name === typeName);
+  const catalogTypes = options?.types ?? [];
+  const editingType = createType ? undefined : catalogTypes.find((type) => type.name === typeName);
 
   useEffect(() => {
     if (!needsOptions) return;
@@ -188,17 +188,17 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
     </div>
     {showTypes && <div className="mb-3 flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-sky-50 p-2 text-xs">
       {!createType && <div className="grid w-60 max-w-full gap-1 font-semibold text-slate-700">
-        <label htmlFor={registeredTypeId}>Tipo registrado</label>
-        <select id={registeredTypeId} value={typeName} onChange={(event) => setTypeName(event.target.value)} className={COMPACT_FORM_FIELD} disabled={!registeredTypes.length}>
-          <option value="">{options ? (registeredTypes.length ? "Seleccionar para editar" : "Sin tipos registrados") : "Seleccionar tipo"}</option>
-          {registeredTypes.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+        <label htmlFor={catalogTypeId}>Tipo de vehículo</label>
+        <select id={catalogTypeId} value={typeName} onChange={(event) => setTypeName(event.target.value)} className={COMPACT_FORM_FIELD} disabled={!catalogTypes.length}>
+          <option value="">{options && !catalogTypes.length ? "Sin tipos disponibles" : "Seleccionar tipo"}</option>
+          {catalogTypes.map(({ name }) => <option key={name} value={name}>{name}</option>)}
         </select>
       </div>}
       {!createType && <AdministrationIconAction label="Nuevo tipo de vehículo" onClick={() => { setCreateType(true); setTypeName(""); }}><Plus aria-hidden="true" className="size-4" /></AdministrationIconAction>}
       {(createType || editingType) && <FleetTypeForm key={editingType ? `edit:${editingType.name}` : "new"} api={api}
         existing={editingType} onUnauthorized={onUnauthorized} onClose={() => { setCreateType(false); setTypeName(""); }}
         onSaved={(type) => {
-          setTypeNotice(editingType ? `Capacidad de «${type.name}» actualizada.` : `${type.name} disponible en la ficha de vehículo.`);
+          setTypeNotice(editingType?.registered ? `Capacidad de «${type.name}» actualizada.` : `${type.name} disponible en la ficha de vehículo.`);
           setShowTypes(false);
           setOptions(null);
           setOptionsRevision((value) => value + 1);

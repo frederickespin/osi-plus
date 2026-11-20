@@ -52,7 +52,10 @@ async function fixture(page: Page, options: { count?: number; permissions?: stri
         type.variableVolume = body.variableVolume;
         return json({ ok: true, type });
       }
-      return json({ ok: true, types, bases: [{ code: BASE_CODE, name: "Sede principal", address: "Calle de prueba" }] });
+      const inferred = [...new Set(rows.map((row) => row.vehicleType))]
+        .filter((name) => !types.some((type) => type.name === name))
+        .map((name) => ({ name, variableVolume: false, registered: false }));
+      return json({ ok: true, types: [...types, ...inferred], bases: [{ code: BASE_CODE, name: "Sede principal", address: "Calle de prueba" }] });
     }
     if (url.pathname === BASE && request.method() === "GET") {
       reads.push(url);
@@ -212,7 +215,7 @@ test("registra y corrige la capacidad de un tipo desde la cabecera de flota", as
   await page.getByRole("button", { name: "Cerrar ficha", exact: true }).click();
 
   await page.getByRole("button", { name: "Tipos de vehículo", exact: true }).click();
-  await page.getByLabel("Tipo registrado").selectOption("Camión de caja cerrada");
+  await page.getByRole("combobox", { name: "Tipo de vehículo", exact: true }).selectOption("Camión de caja cerrada");
   await expect(capacityMode).toHaveValue("container");
   await expect(page.getByRole("button", { name: "Guardar tipo", exact: true })).toBeDisabled();
   await capacityMode.selectOption("fixed");
@@ -225,6 +228,22 @@ test("registra y corrige la capacidad de un tipo desde la cabecera de flota", as
   await dialog.getByLabel("Tipo de vehículo *", { exact: true }).selectOption("Camión de caja cerrada");
   await expect(dialog.getByLabel(/Capacidad de volumen/)).toBeVisible();
   await expect(dialog.getByLabel(/Largo útil/)).toBeVisible();
+});
+
+test("un tipo que ya figura en la flota aparece en Tipos y se registra con el nombre existente", async ({ page }) => {
+  const seen = await fixture(page, { count: 1, vehicles: [{ vehicleType: "Patana", capacityVolume: 90 }] });
+  await openFleet(page);
+  await page.getByRole("button", { name: "Tipos de vehículo", exact: true }).click();
+  const catalog = page.getByRole("combobox", { name: "Tipo de vehículo", exact: true });
+  await catalog.selectOption("Patana");
+  await expect(page.getByRole("combobox", { name: "Capacidad de carga", exact: true })).toHaveValue("fixed");
+  await expect(page.getByLabel("Nombre del tipo")).toHaveCount(0);
+  expect(seen.writes).toHaveLength(0);
+
+  await page.getByRole("button", { name: "Guardar tipo", exact: true }).click();
+  await expect(page.getByText("Patana disponible en la ficha de vehículo.", { exact: true })).toBeVisible();
+  expect(seen.writes).toEqual([{ method: "POST", body: { name: "Patana", variableVolume: false, requestId: expect.any(String) } }]);
+  expect(seen.rows()[0]).toMatchObject({ vehicleType: "Patana", capacityVolume: 90 });
 });
 
 test("conflicto conserva borrador y exige lectura explícita antes de otro guardado", async ({ page }) => {

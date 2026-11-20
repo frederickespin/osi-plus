@@ -36,6 +36,7 @@ async function migrateFleetCatalog(env = process.env) {
     const rows = await prisma.$queryRaw`
       SELECT "migration_name", "checksum", "finished_at", "rolled_back_at", "applied_steps_count"
       FROM "osi"."_prisma_migrations"
+      WHERE "rolled_back_at" IS NULL
     `;
     const applied = new Set();
     for (const row of rows) {

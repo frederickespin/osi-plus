@@ -5,10 +5,11 @@ import type { VehicleDraft } from "./vehicleForm";
 
 const fieldClass = "mt-1 h-10 min-w-0 rounded border border-slate-300 bg-white px-2 text-sm text-slate-900 disabled:bg-slate-50 disabled:text-slate-500 sm:h-9";
 
-export default function FleetFields({ draft, onChange, options, disabled, technicalLocked }: {
+export default function FleetFields({ draft, onChange, options, calculatedVolume, disabled, technicalLocked }: {
   draft: VehicleDraft;
   onChange(draft: VehicleDraft): void;
   options: FleetOptions | null;
+  calculatedVolume: number | null;
   disabled: boolean;
   technicalLocked: boolean;
 }) {
@@ -19,9 +20,10 @@ export default function FleetFields({ draft, onChange, options, disabled, techni
     const variable = options?.types.some((type) => type.name === vehicleType && type.variableVolume);
     onChange({ ...draft, vehicleType, ...(variable && { capacityVolume: "", usableLength: "", usableWidth: "", usableHeight: "" }) });
   }
-  const text = (key: keyof VehicleDraft, label: string, maxLength: number, options: { technical?: boolean; numeric?: boolean; integer?: boolean; required?: boolean; caption?: string } = {}) => (
+  const text = (key: keyof VehicleDraft, label: string, maxLength: number, options: { technical?: boolean; numeric?: boolean; integer?: boolean; required?: boolean; caption?: string; calculated?: string } = {}) => (
     <label className={`flex min-w-0 flex-col justify-end text-xs font-medium text-slate-600 ${options.numeric ? "w-fit shrink-0" : ""}`}>{options.caption || label}
-      <input aria-label={label} value={String(draft[key])} onChange={(event) => update(key, event.target.value)}
+      <input aria-label={label} value={options.calculated ?? String(draft[key])} onChange={(event) => update(key, event.target.value)}
+        readOnly={options.calculated !== undefined}
         required={options.required} maxLength={maxLength} disabled={disabled || options.technical && technicalLocked}
         inputMode={options.numeric ? options.integer ? "numeric" : "decimal" : undefined} type="text"
         onFocus={options.numeric ? (event) => event.currentTarget.select() : undefined}
@@ -79,11 +81,14 @@ export default function FleetFields({ draft, onChange, options, disabled, techni
         {unit("weightUnit", "Unidad de peso", WEIGHT_LABELS)}
       </div>
       {!variableVolume && <div className="flex items-end gap-2">
-        {text("capacityVolume", `Capacidad de volumen (${VOLUME_LABELS[draft.volumeUnit]})`, 20, { technical: true, numeric: true, caption: "Volumen" })}
+        {text("capacityVolume", `Capacidad de volumen (${VOLUME_LABELS[draft.volumeUnit]})`, 20, {
+          technical: true, numeric: true, caption: calculatedVolume === null ? "Volumen" : "Volumen automático",
+          calculated: calculatedVolume?.toFixed(1),
+        })}
         {unit("volumeUnit", "Unidad de volumen", VOLUME_LABELS)}
       </div>}
       {variableVolume && <p className="self-center text-xs text-slate-600">Volumen y dimensiones según el contenedor.</p>}
-    </>, "flex flex-wrap items-end gap-x-6 gap-y-2", <><p>Indique la capacidad útil de carga y su unidad. Los campos vacíos conservan el dato como desconocido.</p><p>Cambiar una unidad no convierte el número. Introduzca la capacidad en la unidad seleccionada.</p></>)}
+    </>, "flex flex-wrap items-end gap-x-6 gap-y-2", <><p>Con largo, ancho y alto completos, el volumen se calcula en la unidad elegida y se redondea a un decimal. Puede escribirlo directamente cuando falte alguna medida.</p><p>Para el peso y el volumen ingresados a mano, escriba el valor en la unidad seleccionada.</p></>)}
     {!variableVolume && group("Dimensiones útiles", <>
       {text("usableLength", `Largo útil (${DIMENSION_LABELS[draft.dimensionUnit]})`, 20, { technical: true, numeric: true, caption: "Largo" })}
       {text("usableWidth", `Ancho útil (${DIMENSION_LABELS[draft.dimensionUnit]})`, 20, { technical: true, numeric: true, caption: "Ancho" })}

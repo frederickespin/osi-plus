@@ -64,7 +64,7 @@ try {
   let vehicle = created.vehicle;
   const ref = vehicle.vehicleRef;
   check("create persists a vehicle with version one and explicit units", created.created && !created.idempotent && vehicle.rowVersion === 1
-    && vehicle.weightUnit === "LB" && vehicle.volumeUnit === "CFT" && vehicle.capacityWeight === 12000 && vehicle.capacityVolume === 1800);
+    && vehicle.weightUnit === "LB" && vehicle.volumeUnit === "CFT" && vehicle.capacityWeight === 12000 && vehicle.capacityVolume === 1259);
   check("vehicle DTO excludes tenant, actors, import sources, fingerprints and audit internals",
     !["id", "tenantId", "tenant_id", "userId", "created_by_user_id", "created_by_membership_id", "source", "request_id", "payload_hash", "import_batch_id"].some((key) => Object.hasOwn(vehicle, key)));
   const originalRow = await prisma.vehicle.findUnique({ where: { id: ref } });
@@ -244,13 +244,26 @@ try {
   const measuredVehicle = await getAdminFleetVehicle(prisma, ctx, measured.vehicleRef);
   check("switching a measured type to container mode preserves historical measurements and row version",
     converted.type.variableVolume && measuredVehicle.capacityVolume === 32 && measuredVehicle.rowVersion === measured.rowVersion);
-  const patana = await createAdminFleetVehicle(prisma, ctx, input("PATANA", { vehicleType: "Patana", capacityVolume: 90 }));
+  const patana = await createAdminFleetVehicle(prisma, ctx, input("PATANA", { vehicleType: "Patana", capacityVolume: 90, usableHeight: null }));
   await createAdminFleetType(prisma, ctx, { requestId: randomUUID(), name: "Patana", variableVolume: true });
   const patanas = await listAdminFleetVehicles(prisma, ctx, { vehicleType: "Patana" });
   check("registering an existing Patana in container mode exposes the mode while preserving its measurements",
     patanas.containerVolumeTypes.length === 1 && patanas.containerVolumeTypes[0] === "Patana"
     && patanas.data[0].vehicleRef === patana.vehicle.vehicleRef && patanas.data[0].capacityVolume === 90
     && !((await listAdminFleetVehicles(prisma, foreignCtx)).containerVolumeTypes.includes("Patana")));
+
+  const { vehicle: measuredTruck } = await createAdminFleetVehicle(prisma, ctx, input("BOX", {
+    usableLength: 600, usableWidth: 250, usableHeight: 243.5, dimensionUnit: "CM", volumeUnit: "CBM", capacityVolume: 10,
+  }));
+  check("the server prioritizes full dimensions over the submitted volume when creating a fixed vehicle", measuredTruck.capacityVolume === 36.5);
+  const resized = await updateAdminFleetVehicle(prisma, ctx, measuredTruck.vehicleRef,
+    patch(measuredTruck.rowVersion, { usableHeight: 250 }));
+  check("changing a dimension recalculates the persisted volume", resized.capacityVolume === 37.5
+    && (await getAdminFleetVehicle(prisma, ctx, measuredTruck.vehicleRef)).capacityVolume === 37.5);
+  const manualOverride = await updateAdminFleetVehicle(prisma, ctx, resized.vehicleRef, patch(resized.rowVersion, { capacityVolume: 19 }));
+  check("a manual amount cannot override complete dimensions", manualOverride.capacityVolume === 37.5 && manualOverride.rowVersion === resized.rowVersion);
+  const partial = await updateAdminFleetVehicle(prisma, ctx, resized.vehicleRef, patch(resized.rowVersion, { usableHeight: null, capacityVolume: 30 }));
+  check("manual volume remains available with incomplete dimensions", partial.capacityVolume === 30);
   process.stdout.write(JSON.stringify({ ok: true, assertions: results.length, results }, null, 2) + "\n");
 } finally {
   await prisma.$disconnect();

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { normalizeVehicleInput } from "./vehicleNormalization.js";
 import {
-  ADMIN_FLEET_STATUSES, ADMIN_FLEET_WEIGHT_UNITS, ADMIN_FLEET_VOLUME_UNITS, ADMIN_FLEET_DIMENSION_UNITS,
+  ADMIN_FLEET_STATUSES, ADMIN_FLEET_WEIGHT_UNITS, ADMIN_FLEET_VOLUME_UNITS, ADMIN_FLEET_DIMENSION_UNITS, calculateFleetLoadVolume,
 } from "../../shared/adminFleet.js";
 
 export const ADMIN_FLEET_EDITABLE_FIELDS = Object.freeze([
@@ -51,6 +51,10 @@ function decimal(value, scale, wholeDigits) {
   const rendered = String(value);
   if (!new RegExp(`^\\d{1,${wholeDigits}}(?:\\.\\d{1,${scale}})?$`).test(rendered)) fleetFail("INPUT_INVALID");
   return value;
+}
+export function applyCalculatedFleetVolume(vehicle) {
+  const volume = calculateFleetLoadVolume(vehicle);
+  if (volume !== null) vehicle.capacityVolume = decimal(volume, ...PRECISION.capacityVolume);
 }
 export function adminFleetEditableInput(fields) {
   exactFleetObject(fields, ADMIN_FLEET_EDITABLE_FIELDS);

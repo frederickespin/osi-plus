@@ -5,12 +5,13 @@ import { requiredAdminText } from "./adminMembershipDomain.js";
 import { authorizeFleetContext, revalidateFleetActor } from "./fleetActor.js";
 import {
   ADMIN_FLEET_EDITABLE_FIELDS, ADMIN_FLEET_TECHNICAL_FIELDS, adminFleetEditableDto, adminFleetVehicleDto,
-  adminFleetVehicleRef, fleetFail, fleetTypeNameKey, normalizeAdminFleetVehicle, parseAdminFleetCreate, parseAdminFleetFilters, parseAdminFleetPatch, parseFleetTypeCreate, parseFleetTypeUpdate,
+  adminFleetVehicleRef, applyCalculatedFleetVolume, fleetFail, fleetTypeNameKey, normalizeAdminFleetVehicle, parseAdminFleetCreate, parseAdminFleetFilters, parseAdminFleetPatch, parseFleetTypeCreate, parseFleetTypeUpdate,
 } from "./adminFleetContract.js";
 import { transportFleetOptions } from "./logisticsTransportZones.js";
 import { loadContainerVolumeTypes } from "./vehicleFleet.js";
 
 const SOURCE = "V17_ADMINISTRATION_FLEET_19D";
+const LOAD_VOLUME_FIELDS = ["capacityVolume", "usableLength", "usableWidth", "usableHeight"];
 function authorizeContext(context, write = false) {
   authorizeFleetContext(context, { write });
 }
@@ -131,7 +132,7 @@ async function validateFleetOptions(tx, tenantId, vehicle, { type, base }) {
   if (type) {
     const selected = options.types.find(({ name }) => name === vehicle.vehicleType);
     if (!selected) fleetFail("TYPE_NOT_REGISTERED");
-    if (selected.variableVolume && [vehicle.capacityVolume, vehicle.usableLength, vehicle.usableWidth, vehicle.usableHeight].some((value) => value !== null)) {
+    if (selected.variableVolume && LOAD_VOLUME_FIELDS.some((field) => vehicle[field] !== null)) {
       fleetFail("VARIABLE_VOLUME");
     }
   }
@@ -232,7 +233,11 @@ export async function createAdminFleetVehicle(prisma, context, input, { auditWri
     if (automaticCode) {
       await validateFleetOptions(tx, actor.tenantId, vehicle, { type: true, base: true });
       vehicle.businessCode = vehicle.normalizedCode = await nextVehicleCode(tx, actor.tenantId);
+    } else if (LOAD_VOLUME_FIELDS.some((field) => vehicle[field] !== null)
+      && (await loadContainerVolumeTypes(tx, actor.tenantId, [{ vehicle_type: vehicle.vehicleType }])).length) {
+      fleetFail("VARIABLE_VOLUME");
     }
+    applyCalculatedFleetVolume(vehicle);
     await assertUniqueVehicle(tx, actor, vehicle);
     const effectiveFrom = vehicle.effectiveFrom ?? new Date();
     if (vehicle.effectiveTo && vehicle.effectiveTo <= effectiveFrom) fleetFail("INPUT_INVALID");
@@ -269,16 +274,20 @@ export async function updateAdminFleetVehicle(prisma, context, vehicleRef, input
     if (Number(beforeRow.row_version) !== expectedVersion) fleetFail("VERSION_CONFLICT", 409);
     const before = adminFleetVehicleDto(beforeRow);
     const vehicle = normalizeAdminFleetVehicle({ ...adminFleetEditableDto(before), ...changes }, { source: beforeRow.source, sourceStableId: beforeRow.source_stable_id });
-    const changedFields = ADMIN_FLEET_EDITABLE_FIELDS.filter((key) => comparable(vehicle[key]) !== before[key]);
+    const differs = (key) => comparable(vehicle[key]) !== before[key];
+    const requestedFields = ADMIN_FLEET_EDITABLE_FIELDS.filter(differs);
     // A no-op is not a new mutation: no audit, request claim, timestamp or version bump.
-    if (!changedFields.length) return before;
+    if (!requestedFields.length) return before;
     // Retirement is terminal in 19D. History remains readable; reactivation is a separate future workflow.
     if (before.operationalStatus === "RETIRED" || before.retiredAt) fleetFail("RETIRED", 409);
-    if (before.calculationLocked && changedFields.some((key) => ADMIN_FLEET_TECHNICAL_FIELDS.includes(key))) fleetFail("CALCULATION_LOCKED", 409);
-    const typeChanged = changedFields.includes("vehicleType");
-    const capacityChanged = ["capacityVolume", "usableLength", "usableWidth", "usableHeight"].some((field) => changedFields.includes(field));
-    const baseChanged = changedFields.includes("hubCode") && vehicle.hubCode !== null;
+    if (before.calculationLocked && requestedFields.some((key) => ADMIN_FLEET_TECHNICAL_FIELDS.includes(key))) fleetFail("CALCULATION_LOCKED", 409);
+    const typeChanged = requestedFields.includes("vehicleType");
+    const capacityChanged = [...LOAD_VOLUME_FIELDS, "volumeUnit", "dimensionUnit"].some(differs);
+    const baseChanged = requestedFields.includes("hubCode") && vehicle.hubCode !== null;
     if (typeChanged || capacityChanged || baseChanged) await validateFleetOptions(tx, actor.tenantId, vehicle, { type: typeChanged || capacityChanged, base: baseChanged });
+    if (typeChanged || capacityChanged) applyCalculatedFleetVolume(vehicle);
+    const changedFields = ADMIN_FLEET_EDITABLE_FIELDS.filter(differs);
+    if (!changedFields.length) return before;
     await assertUnusedRequest(tx, actor, requestId);
     await assertUniqueVehicle(tx, actor, vehicle, ref);
     const rows = await tx.$queryRaw(Prisma.sql`

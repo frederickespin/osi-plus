@@ -39,6 +39,8 @@ export type AdminFleetEditableFields = Pick<AdminFleetVehicle,
   "capacityWeight" | "capacityVolume" | "usableLength" | "usableWidth" | "usableHeight" |
   "weightUnit" | "volumeUnit" | "dimensionUnit" | "operationalStatus" | "availableForCalculation" |
   "effectiveFrom" | "effectiveTo" | "hubCode">;
+export function calculateFleetLoadVolume(values: Pick<AdminFleetVehicle,
+  "usableLength" | "usableWidth" | "usableHeight" | "dimensionUnit" | "volumeUnit">): number | null;
 export type AdminFleetCreateInput = Pick<AdminFleetEditableFields, "businessCode" | "vehicleType"> &
   Partial<Omit<AdminFleetEditableFields, "businessCode" | "vehicleType">> & { requestId: string };
 export interface AdminFleetPatchInput { requestId: string; expectedVersion: number; changes: Partial<AdminFleetEditableFields>; }

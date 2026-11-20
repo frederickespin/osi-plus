@@ -6,7 +6,7 @@ import { FleetApi, FleetApiError, fleetErrorText } from "./api";
 import FleetFields from "./FleetFields";
 import FleetAvailabilityFields from "./FleetAvailabilityFields";
 import type { FleetOptions, FleetVehicle, VehicleValues } from "./types";
-import { hasVehicleChanges, vehicleChanges, vehicleDraft, vehicleValues, type VehicleDraft } from "./vehicleForm";
+import { draftCalculatedVolume, hasVehicleChanges, vehicleChanges, vehicleDraft, vehicleValues, type VehicleDraft } from "./vehicleForm";
 
 export default function FleetEditor({ api, options, optionsError, reloadOptions, vehicleRef, canEdit, section = "details", onClose, onSaved, onUnauthorized }: {
   api: FleetApi;
@@ -58,10 +58,14 @@ export default function FleetEditor({ api, options, optionsError, reloadOptions,
   const availability = section === "availability" && Boolean(vehicleRef || vehicle);
   const editable = canEdit && !retired && !loading && !saving && !mustReload;
   const dirty = hasVehicleChanges(vehicle, draft);
+  const variableVolume = options?.types.some((type) => type.name === draft?.vehicleType && type.variableVolume);
+  const calculatedVolume = draft && options && !availability && !variableVolume && !vehicle?.calculationLocked
+    ? draftCalculatedVolume(draft) : null;
+  const volumeChanged = vehicle !== null && calculatedVolume !== null && calculatedVolume !== vehicle.capacityVolume;
   const save = async (retire = false) => {
-    if (!editable || !draft || writing.current || !retire && !dirty || retire && (!vehicle || dirty)) return;
+    if (!editable || !draft || writing.current || !retire && !dirty && !volumeChanged || retire && (!vehicle || dirty)) return;
     let values: VehicleValues;
-    try { values = vehicleValues(draft, vehicle || undefined); }
+    try { values = vehicleValues(draft, vehicle || undefined, retire ? null : calculatedVolume); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Revise los datos de la ficha."); return; }
     const changes = vehicle ? retire ? { operationalStatus: "RETIRED" as const, availableForCalculation: false } : vehicleChanges(vehicle, values) : null;
     if (changes && Object.keys(changes).length === 0) { setDraft(vehicleDraft(vehicle!)); return; }
@@ -101,7 +105,7 @@ export default function FleetEditor({ api, options, optionsError, reloadOptions,
         {loading && <p role="status" className="py-6 text-center text-sm text-slate-500">Cargando vehículo…</p>}
         {draft && (availability
           ? <FleetAvailabilityFields draft={draft} onChange={(value) => { setDraft(value); setSaved(false); setError(null); setConfirmRetirement(false); }} disabled={!editable} />
-          : <FleetFields draft={draft} options={options} onChange={(value) => { setDraft(value); setSaved(false); setError(null); setConfirmRetirement(false); }} disabled={!editable} technicalLocked={Boolean(vehicle?.calculationLocked)} />)}
+          : <FleetFields draft={draft} options={options} calculatedVolume={calculatedVolume} onChange={(value) => { setDraft(value); setSaved(false); setError(null); setConfirmRetirement(false); }} disabled={!editable} technicalLocked={Boolean(vehicle?.calculationLocked)} />)}
         {!availability && !options && (optionsError
           ? <div className="flex items-center gap-2 text-xs text-red-800"><p role="alert">{optionsError}</p><button type="button" onClick={reloadOptions} className="underline">Reintentar</button></div>
           : <p role="status" className="text-xs text-slate-500">Cargando tipos y sedes…</p>)}
@@ -120,7 +124,7 @@ export default function FleetEditor({ api, options, optionsError, reloadOptions,
           {vehicle && !retired && canEdit && <AdministrationIconAction label={dirty ? "Guarde los cambios antes de retirar" : "Retirar vehículo"} disabled={!editable || dirty} onClick={() => setConfirmRetirement(true)} className="mr-auto text-amber-900"><Archive aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction>}
           {readRef && (mustReload || error && !vehicle) && <button type="button" disabled={loading || saving} onClick={() => setReload((value) => value + 1)} className="inline-flex min-h-10 items-center gap-1.5 rounded border border-slate-300 px-3 text-xs font-medium text-slate-700 disabled:opacity-50"><RefreshCw aria-hidden="true" className="h-4 w-4" />Recargar ficha</button>}
           <button type="button" disabled={saving} onClick={close} className="min-h-10 rounded border border-slate-300 px-3 text-xs font-medium text-slate-600 disabled:opacity-50">Cerrar</button>
-          {canEdit && !retired && <button type="button" disabled={!editable || !dirty || confirmRetirement} onClick={() => void save()} className="inline-flex min-h-10 items-center gap-1.5 rounded bg-[#003366] px-3 text-xs font-semibold text-white disabled:opacity-50"><Save aria-hidden="true" className="h-4 w-4" />{saving ? "Guardando…" : "Guardar vehículo"}</button>}
+          {canEdit && !retired && <button type="button" disabled={!editable || (!dirty && !volumeChanged) || confirmRetirement} onClick={() => void save()} className="inline-flex min-h-10 items-center gap-1.5 rounded bg-[#003366] px-3 text-xs font-semibold text-white disabled:opacity-50"><Save aria-hidden="true" className="h-4 w-4" />{saving ? "Guardando…" : "Guardar vehículo"}</button>}
         </div>
       </footer>
     </DialogContent>

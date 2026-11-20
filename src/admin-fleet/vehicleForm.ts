@@ -1,3 +1,4 @@
+import { calculateFleetLoadVolume } from "../../shared/adminFleet.js";
 import type { FleetVehicle, VehicleValues } from "./types";
 
 type StringField = "businessCode" | "plate" | "vin" | "vehicleType" | "brand" | "model" | "modelYear" | "capacityWeight" | "capacityVolume" | "usableLength" | "usableWidth" | "usableHeight" | "effectiveFrom" | "effectiveTo" | "hubCode";
@@ -38,7 +39,21 @@ function effectiveDate(value: string, original?: string | null) {
   return date.toISOString();
 }
 
-export function vehicleValues(draft: VehicleDraft, original?: FleetVehicle): VehicleValues {
+function vehicleDimensions(draft: VehicleDraft) {
+  return {
+    usableLength: numeric(draft.usableLength, "Largo útil", 4, 99999999.9999),
+    usableWidth: numeric(draft.usableWidth, "Ancho útil", 4, 99999999.9999),
+    usableHeight: numeric(draft.usableHeight, "Alto útil", 4, 99999999.9999),
+    dimensionUnit: draft.dimensionUnit,
+  };
+}
+
+export function draftCalculatedVolume(draft: VehicleDraft) {
+  try { return calculateFleetLoadVolume({ ...vehicleDimensions(draft), volumeUnit: draft.volumeUnit }); }
+  catch { return null; }
+}
+
+export function vehicleValues(draft: VehicleDraft, original?: FleetVehicle, calculatedVolume: number | null = null): VehicleValues {
   const text = (value: string) => value.trim() || null;
   const businessCode = draft.businessCode.trim();
   const vehicleType = draft.vehicleType.trim();
@@ -49,14 +64,15 @@ export function vehicleValues(draft: VehicleDraft, original?: FleetVehicle): Veh
   const effectiveTo = effectiveDate(draft.effectiveTo, original?.effectiveTo);
   if (!effectiveFrom) throw new Error("Indique la fecha inicial de vigencia.");
   if (effectiveFrom && effectiveTo && effectiveTo <= effectiveFrom) throw new Error("La fecha final debe ser posterior a la fecha inicial.");
+  if (calculatedVolume !== null && (calculatedVolume < 0.1 || calculatedVolume >= 1e10)) {
+    throw new Error("El volumen calculado está fuera del rango permitido. Revise las medidas y sus unidades.");
+  }
   return {
     businessCode, vehicleType, plate: text(draft.plate), vin: text(draft.vin), brand: text(draft.brand), model: text(draft.model), modelYear,
     capacityWeight: numeric(draft.capacityWeight, "Capacidad de peso", 3, 99999999999.999),
-    capacityVolume: numeric(draft.capacityVolume, "Capacidad de volumen", 4, 9999999999.9999),
-    usableLength: numeric(draft.usableLength, "Largo útil", 4, 99999999.9999),
-    usableWidth: numeric(draft.usableWidth, "Ancho útil", 4, 99999999.9999),
-    usableHeight: numeric(draft.usableHeight, "Alto útil", 4, 99999999.9999),
-    weightUnit: draft.weightUnit, volumeUnit: draft.volumeUnit, dimensionUnit: draft.dimensionUnit,
+    capacityVolume: calculatedVolume ?? numeric(draft.capacityVolume, "Capacidad de volumen", 4, 9999999999.9999),
+    ...vehicleDimensions(draft),
+    weightUnit: draft.weightUnit, volumeUnit: draft.volumeUnit,
     operationalStatus: draft.operationalStatus,
     availableForCalculation: ["AVAILABLE", "IN_USE"].includes(draft.operationalStatus) && draft.availableForCalculation,
     effectiveFrom, effectiveTo, hubCode: text(draft.hubCode),

@@ -8,7 +8,7 @@ export const vehicleFixture = (index = 1): FleetVehicle => ({
   vehicleRef: `synthetic-vehicle-${index}`, businessCode: `IP-${String(index).padStart(3, "0")}`,
   plate: `L${String(index).padStart(6, "0")}`, vin: `VIN${String(index).padStart(5, "0")}`, vehicleType: index === 2 ? "Furgón" : "Camión",
   brand: "Marca de prueba", model: "Modelo sintético", modelYear: 2025,
-  capacityWeight: 4500, capacityVolume: 28, usableLength: 6, usableWidth: 2.4, usableHeight: 2.6,
+  capacityWeight: 4500, capacityVolume: 28, usableLength: 7, usableWidth: 2, usableHeight: 2,
   weightUnit: "KG", volumeUnit: "CBM", dimensionUnit: "M", operationalStatus: "AVAILABLE", availableForCalculation: true,
   effectiveFrom: "2026-10-01T00:00:00.000Z", effectiveTo: null, hubCode: "METRO", rowVersion: 1,
   updatedAt: "2026-10-31T12:00:00.000Z", retiredAt: null, calculationLocked: false,
@@ -195,6 +195,31 @@ test("alta incluye unidades elegidas y edición envía sólo campos cambiados", 
   await dialog.getByLabel("Código", { exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: `/tmp/osi-fleet-19e-${info.project.name}.png`, fullPage: true, animations: "disabled" });
   expect(seen.unexpected).toEqual([]);
+});
+
+test("las medidas completas tienen prioridad sobre el volumen manual y se guardan a un decimal", async ({ page }) => {
+  const seen = await fixture(page, { count: 1, vehicles: [{
+    dimensionUnit: "CM", usableLength: 600, usableWidth: 250, usableHeight: null, capacityVolume: 20,
+  }] });
+  const dialog = await openVehicle(page);
+  const volume = dialog.getByLabel("Capacidad de volumen (m³)", { exact: true });
+  const height = dialog.getByLabel("Alto útil (cm)", { exact: true });
+  await volume.fill("32");
+  await height.fill("243,5");
+  await expect(volume).toHaveValue("36.5");
+  await expect(volume).toHaveAttribute("readonly", "");
+  await height.fill("");
+  await expect(volume).toHaveValue("32");
+  await expect(volume).toBeEditable();
+  await height.fill("240");
+  await expect(volume).toHaveValue("36.0");
+  await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
+  await expect(dialog.getByText("Vehículo guardado.", { exact: true })).toBeVisible();
+  expect(seen.writes[0]).toMatchObject({ method: "PATCH", body: { changes: { capacityVolume: 36, usableHeight: 240 } } });
+  await dialog.getByRole("button", { name: "Cerrar ficha", exact: true }).click();
+  await expect(page.getByRole("cell", { name: "36 m³", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "IP-001", exact: true }).click();
+  await expect(volume).toHaveValue("36.0");
 });
 
 test("registra y corrige la capacidad de un tipo desde la cabecera de flota", async ({ page }) => {

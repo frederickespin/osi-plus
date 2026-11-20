@@ -1,3 +1,9 @@
+import { isV17ConsolidatedPreviewBranch } from "./v17ConsolidatedPreview.js";
+
+export function isAdminFleetPreviewBranch(branch) {
+  return branch === "feature/v17-administration-fleet-19d" || isV17ConsolidatedPreviewBranch(branch);
+}
+
 export const ADMIN_FLEET_BATCH = "V17-ADMINISTRATION-FLEET-19D";
 export const ADMIN_FLEET_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_ONLY: "LOCAL_ONLY", PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" });
 export const ADMIN_FLEET_STATUSES = Object.freeze(["AVAILABLE", "IN_USE", "UNAVAILABLE", "RETIRED"]);

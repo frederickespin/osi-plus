@@ -1,3 +1,5 @@
+export function isAdminFleetPreviewBranch(branch: unknown): boolean;
+
 export const ADMIN_FLEET_BATCH: "V17-ADMINISTRATION-FLEET-19D";
 export const ADMIN_FLEET_MODES: Readonly<{ DISABLED: "DISABLED"; LOCAL_ONLY: "LOCAL_ONLY"; PREVIEW_REHEARSAL: "PREVIEW_REHEARSAL" }>;
 export const ADMIN_FLEET_STATUSES: readonly ["AVAILABLE", "IN_USE", "UNAVAILABLE", "RETIRED"];

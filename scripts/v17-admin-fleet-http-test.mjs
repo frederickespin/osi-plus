@@ -6,6 +6,7 @@ import { AdminFleetError } from "../api/_lib/adminFleetContract.js";
 import { AdminMembershipError } from "../api/_lib/adminMembershipDomain.js";
 import { ADMIN_FLEET_BATCH } from "../shared/adminFleet.js";
 import { ADMIN_MEMBERSHIP_PREVIEW_BATCH } from "../shared/adminMembershipPreview.js";
+import { V17_COMMERCIAL_STORAGE_SERVICES_PREVIEW_BRANCH } from "../shared/v17ConsolidatedPreview.js";
 
 const results = [];
 const check = (name, value) => { assert.ok(value, name); results.push({ name, passed: true }); };
@@ -24,6 +25,7 @@ const previewEnv = {
   MT01B_AUTH_MODE: "LEGACY", MT01B_TENANT_SWITCH_ENABLED: "false", VITE_MT01B2_CLIENT_ENABLED: "false",
 };
 const previewContext = { ...context, tenantCode: "V17-CONSOLIDATED-PREVIEW-10B", tenant: { code: "V17-CONSOLIDATED-PREVIEW-10B" }, tenantStatus: "ACTIVE", userStatus: "ACTIVE", membershipStatus: "ACTIVE", sessionKind: "LEGACY" };
+const commercialPreview = { ...previewEnv, VERCEL_GIT_COMMIT_REF: V17_COMMERCIAL_STORAGE_SERVICES_PREVIEW_BRANCH, ADMIN_MEMBERSHIP_PREVIEW_NEON_BRANCH_ID: "br-bitter-mountain-ahs311pu" };
 function request({ method = "GET", url = "/api/admin/fleet/vehicles", query, body, bodyGetter, origin = "http://localhost:5173", headers = {}, remoteAddress = "127.0.0.1" } = {}) {
   const req = { method, url, query, headers: { host: "localhost:5173", origin, "x-forwarded-proto": "http", ...headers }, socket: { localAddress: "127.0.0.1", remoteAddress } };
   if (bodyGetter) Object.defineProperty(req, "body", { get: bodyGetter }); else req.body = body;
@@ -66,6 +68,9 @@ for (const [name, overrides] of [
   results.push({ name: `Preview refuses ${name}`, passed: true });
 }
 for (const branch of ["feature/v17-administration-fleet-19d", "feature/v17-consolidated-preview"]) check(`only intended branch ${branch} allowed`, requireAdminFleetAccess(request(), { ...previewEnv, VERCEL_GIT_COMMIT_REF: branch }) === "PREVIEW_REHEARSAL");
+check("commercial Preview accepts its own branch configuration", requireAdminFleetAccess(request(), commercialPreview) === "PREVIEW_REHEARSAL");
+assert.throws(() => requireAdminFleetAccess(request(), { ...commercialPreview, ADMIN_MEMBERSHIP_PREVIEW_NEON_BRANCH_ID: previewEnv.ADMIN_MEMBERSHIP_PREVIEW_NEON_BRANCH_ID }), { code: "ADMIN_FLEET_CONFIGURATION_INVALID" });
+results.push({ name: "commercial Preview rejects configuration for the earlier database branch", passed: true });
 for (const [name, env, req] of [
   ["unknown mode", { ...localEnv, ADMIN_FLEET_MODE: "TRUE" }, request()], ["missing membership local gate", { ADMIN_FLEET_MODE: "LOCAL_ONLY" }, request()],
   ["Vercel local bypass", { ...localEnv, VERCEL: "0" }, request()], ["Vercel marker even empty", { ...localEnv, VERCEL_ENV: "" }, request()],
@@ -77,6 +82,9 @@ for (const [name, env, req] of [
 const databaseIdentity = { database: "v17_consolidated_preview_10b", branch: "br-mute-credit-ahxnvfx0", schema_exists: true, vehicles_exists: true, audit_exists: true };
 await assertAdminFleetDatabase({ $queryRaw: async () => [databaseIdentity] }, "PREVIEW_REHEARSAL", previewEnv);
 results.push({ name: "Preview validates actual database identity and required tables", passed: true });
+await assertAdminFleetDatabase({ $queryRaw: async () => [{ ...databaseIdentity, branch: commercialPreview.ADMIN_MEMBERSHIP_PREVIEW_NEON_BRANCH_ID }] }, "PREVIEW_REHEARSAL", commercialPreview);
+await assert.rejects(() => assertAdminFleetDatabase({ $queryRaw: async () => [databaseIdentity] }, "PREVIEW_REHEARSAL", commercialPreview), { code: "ADMIN_FLEET_CONFIGURATION_INVALID" });
+results.push({ name: "commercial Preview verifies the actual database branch", passed: true });
 for (const overrides of [{ database: "other" }, { branch: "br-other" }, { schema_exists: false }, { vehicles_exists: false }, { audit_exists: false }]) {
   await assert.rejects(() => assertAdminFleetDatabase({ $queryRaw: async () => [{ ...databaseIdentity, ...overrides }] }, "PREVIEW_REHEARSAL", previewEnv), (error) => error.status === 503);
   results.push({ name: `database refuses mismatched ${Object.keys(overrides)[0]}`, passed: true });

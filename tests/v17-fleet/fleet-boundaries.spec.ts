@@ -54,6 +54,7 @@ test("gate cerrado por defecto y prerequisitos incompletos ocultan la sección",
     const { availableAdministrationSections } = await import("/src/administration/administrationSections.ts");
     const { ADMIN_FLEET_BATCH } = await import("/shared/adminFleet.js");
     const { ADMIN_MEMBERSHIP_PREVIEW_BATCH } = await import("/shared/adminMembershipPreview.js");
+    const { V17_COMMERCIAL_STORAGE_SERVICES_PREVIEW_BRANCH } = await import("/shared/v17ConsolidatedPreview.js");
     const preview = { VITE_ADMIN_FLEET_MODE: "PREVIEW_REHEARSAL", VITE_ADMIN_FLEET_BATCH: ADMIN_FLEET_BATCH, VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "PREVIEW_REHEARSAL", VITE_ADMIN_MEMBERSHIP_PREVIEW_BATCH: ADMIN_MEMBERSHIP_PREVIEW_BATCH, VITE_MT01B2_CLIENT_ENABLED: "false" };
     const runtime = { vercelEnvironment: "preview", gitBranch: "feature/v17-administration-fleet-19d" };
     const enabled = (environment: Record<string, unknown>, host = "synthetic.vercel.app", current = runtime) => isAdminFleetEnabled(environment, host, current);
@@ -63,10 +64,11 @@ test("gate cerrado por defecto y prerequisitos incompletos ocultan la sección",
       wrongBranch: enabled(preview, undefined, { ...runtime, gitBranch: "feature/unknown" }), production: enabled(preview, undefined, { ...runtime, vercelEnvironment: "production" }),
       untrustedHost: enabled(preview, "synthetic.example.test"), clientOn: enabled({ ...preview, VITE_MT01B2_CLIENT_ENABLED: "true" }),
       preview: enabled(preview), consolidated: enabled(preview, undefined, { ...runtime, gitBranch: "feature/v17-consolidated-preview" }),
+      commercial: enabled(preview, undefined, { ...runtime, gitBranch: V17_COMMERCIAL_STORAGE_SERVICES_PREVIEW_BRANCH }),
       localFlagOnly: enabled({ VITE_ADMIN_FLEET_MODE: "LOCAL_ONLY" }, "localhost", { vercelEnvironment: null, gitBranch: null }),
       local: enabled({ VITE_ADMIN_FLEET_MODE: "LOCAL_ONLY", VITE_ADMIN_TENANT_MEMBERSHIP_MODE: "LOCAL_ONLY" }, "localhost", { vercelEnvironment: null, gitBranch: null }),
       sectionsWithIncompleteFlags: availableAdministrationSections({ access: false, fleet: enabled(flagsOnly), services: false, logistics: false, costing: false, communications: false, policies: false }, ["fleet:view", "fleet:edit"], []).map((section) => section.id),
     };
   });
-  expect(results).toEqual({ absent: false, flagsOnly: false, wrongBatch: false, wrongBranch: false, production: false, untrustedHost: false, clientOn: false, preview: true, consolidated: true, localFlagOnly: false, local: true, sectionsWithIncompleteFlags: [] });
+  expect(results).toEqual({ absent: false, flagsOnly: false, wrongBatch: false, wrongBranch: false, production: false, untrustedHost: false, clientOn: false, preview: true, consolidated: true, commercial: true, localFlagOnly: false, local: true, sectionsWithIncompleteFlags: [] });
 });

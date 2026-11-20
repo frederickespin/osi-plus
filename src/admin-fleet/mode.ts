@@ -1,4 +1,4 @@
-import { ADMIN_FLEET_BATCH } from "../../shared/adminFleet.js";
+import { ADMIN_FLEET_BATCH, isAdminFleetPreviewBranch } from "../../shared/adminFleet.js";
 import { ADMIN_MEMBERSHIP_PREVIEW_BATCH } from "../../shared/adminMembershipPreview.js";
 
 export function isAdminFleetEnabled(
@@ -22,6 +22,6 @@ export function isAdminFleetEnabled(
     && environment.VITE_ADMIN_MEMBERSHIP_PREVIEW_BATCH === ADMIN_MEMBERSHIP_PREVIEW_BATCH
     && environment.VITE_MT01B2_CLIENT_ENABLED === "false"
     && runtime.vercelEnvironment === "preview"
-    && ["feature/v17-administration-fleet-19d", "feature/v17-consolidated-preview"].includes(runtime.gitBranch || "")
+    && isAdminFleetPreviewBranch(runtime.gitBranch)
     && /^[a-z0-9][a-z0-9.-]*\.vercel\.app$/u.test(hostname);
 }

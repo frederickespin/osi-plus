@@ -1,12 +1,13 @@
 import { Prisma } from "@prisma/client";
 import { isRealLoopbackRequest } from "./commercialTenancyMutation.js";
 import { ADMIN_MEMBERSHIP_PREVIEW_BATCH } from "../../shared/adminMembershipPreview.js";
-import { ADMIN_FLEET_BATCH, ADMIN_FLEET_MODES } from "../../shared/adminFleet.js";
+import { ADMIN_FLEET_BATCH, ADMIN_FLEET_MODES, isAdminFleetPreviewBranch } from "../../shared/adminFleet.js";
+import { V17_COMMERCIAL_STORAGE_SERVICES_PREVIEW_BRANCH } from "../../shared/v17ConsolidatedPreview.js";
 import { fleetFail } from "./adminFleetContract.js";
 import { authorizeFleetContext } from "./fleetActor.js";
 
 const PREVIEW = Object.freeze({ database: "v17_consolidated_preview_10b", neonBranch: "br-mute-credit-ahxnvfx0", tenantCode: "V17-CONSOLIDATED-PREVIEW-10B" });
-const BRANCHES = Object.freeze(["feature/v17-administration-fleet-19d", "feature/v17-consolidated-preview"]);
+const COMMERCIAL_PREVIEW = Object.freeze({ ...PREVIEW, neonBranch: "br-bitter-mountain-ahs311pu" });
 function databaseUrlMatches(raw) {
   try {
     if (typeof raw !== "string" || raw !== raw.trim()) return false;
@@ -16,14 +17,15 @@ function databaseUrlMatches(raw) {
   } catch { return false; }
 }
 export function assertAdminFleetPreviewEnvironment(env = process.env) {
+  const preview = env.VERCEL_GIT_COMMIT_REF === V17_COMMERCIAL_STORAGE_SERVICES_PREVIEW_BRANCH ? COMMERCIAL_PREVIEW : PREVIEW;
   if (env.ADMIN_FLEET_MODE !== ADMIN_FLEET_MODES.PREVIEW_REHEARSAL || env.ADMIN_FLEET_BATCH !== ADMIN_FLEET_BATCH
-    || env.VERCEL !== "1" || env.VERCEL_ENV !== "preview" || !BRANCHES.includes(env.VERCEL_GIT_COMMIT_REF)
+    || env.VERCEL !== "1" || env.VERCEL_ENV !== "preview" || !isAdminFleetPreviewBranch(env.VERCEL_GIT_COMMIT_REF)
     || env.ADMIN_TENANT_MEMBERSHIP_MODE !== "PREVIEW_REHEARSAL" || env.ADMIN_MEMBERSHIP_PREVIEW_BATCH !== ADMIN_MEMBERSHIP_PREVIEW_BATCH
-    || env.ADMIN_MEMBERSHIP_PREVIEW_DATABASE !== PREVIEW.database || env.ADMIN_MEMBERSHIP_PREVIEW_NEON_BRANCH_ID !== PREVIEW.neonBranch
-    || env.ADMIN_MEMBERSHIP_PREVIEW_TENANT_CODE !== PREVIEW.tenantCode
+    || env.ADMIN_MEMBERSHIP_PREVIEW_DATABASE !== preview.database || env.ADMIN_MEMBERSHIP_PREVIEW_NEON_BRANCH_ID !== preview.neonBranch
+    || env.ADMIN_MEMBERSHIP_PREVIEW_TENANT_CODE !== preview.tenantCode
     || env.MT01B_AUTH_MODE !== "LEGACY" || env.MT01B_TENANT_SWITCH_ENABLED !== "false" || env.VITE_MT01B2_CLIENT_ENABLED !== "false"
     || !databaseUrlMatches(env.DATABASE_URL)) fleetFail("CONFIGURATION_INVALID", 503);
-  return PREVIEW;
+  return preview;
 }
 export function requireAdminFleetAccess(req, env = process.env) {
   const mode = env.ADMIN_FLEET_MODE ?? ADMIN_FLEET_MODES.DISABLED;

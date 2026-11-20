@@ -59,11 +59,11 @@ export default function TransportPlaceSearch({ disabled, onSelect }: Props) {
     {message && <p role={message.error ? "alert" : "status"} className={`mt-1 text-xs ${message.error ? "text-amber-800" : "text-slate-600"}`}>{message.text}</p>}
     {options.length > 0 && <ul aria-label="Resultados del mapa" className="absolute inset-x-0 top-full z-[1100] mt-1 max-h-64 divide-y overflow-y-auto rounded border border-slate-200 bg-white shadow-md">
       {options.map((item) => {
-        const jurisdiction = [...new Set([item.city, item.province].filter((value) => value && value !== item.name))].join(" · ");
+        const details = [...new Set([item.matchType, item.street, item.city, item.province].filter((value) => value && value !== item.name))].join(" · ");
         return <li key={item.id}>
           <button type="button" disabled={disabled} onClick={() => { change(item.name); onSelect(item); }} className="flex min-h-11 w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-sky-50 focus-visible:bg-sky-50">
             <MapPin className="h-4 w-4 shrink-0 text-sky-700" aria-hidden="true" />
-            <span className="min-w-0"><span className="block break-words font-medium text-[#003366]">{item.name}</span>{jurisdiction && <span className="block text-xs text-slate-600">{jurisdiction}</span>}</span>
+            <span className="min-w-0"><span className="block break-words font-medium text-[#003366]">{item.name}</span><span className="block text-xs text-slate-600">{details}</span></span>
           </button>
         </li>;
       })}

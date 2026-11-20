@@ -207,7 +207,9 @@ test("buscar en el mapa guarda primero el perímetro y permite reutilizar una ba
   let queries = 0;
   await page.route("https://photon.komoot.io/**", (route) => {
     queries += 1;
-    expect(new URL(route.request().url()).searchParams.get("countrycode")).toBe("DO");
+    const params = new URL(route.request().url()).searchParams;
+    expect(params.get("countrycode")).toBe("DO");
+    expect(params.has("lang")).toBe(false);
     return route.fulfill({ json: { features: [{ geometry: { type: "Point", coordinates: [-70.633, 19.123] }, properties: {
       osm_id: 123, osm_type: "R", type: "city", name: "Jarabacoa", state: "La Vega", countrycode: "DO",
     } }] } });
@@ -234,7 +236,7 @@ test("buscar en el mapa guarda primero el perímetro y permite reutilizar una ba
   await search.fill("Jarabacoa");
   expect(queries).toBe(0);
   await search.press("Enter");
-  await editor.getByRole("button", { name: "Jarabacoa La Vega" }).click();
+  await editor.getByRole("button", { name: "Jarabacoa Ciudad / municipio · La Vega" }).click();
   await expect(editor.getByLabel("Ciudad *", { exact: true })).toHaveValue("Jarabacoa");
   await expect(editor.getByLabel("Nombre del perfil *", { exact: true })).toHaveValue("Jarabacoa");
   await expect(editor.getByLabel("Dirección de la base", { exact: true })).toHaveCount(0);

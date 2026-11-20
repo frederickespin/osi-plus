@@ -10,6 +10,7 @@ export type TransportPlace = Readonly<{
   sector: string;
   street: string;
   municipality: boolean;
+  matchType: "Ciudad / municipio" | "Sector" | "Referencia";
   boundary: TransportPolygon | null;
 }>;
 
@@ -62,6 +63,7 @@ function place(feature: MapFeature): TransportPlace | null {
   return {
     id: [text(properties.osm_type), properties.osm_id, point.join(",")].join(":"),
     name, city, province: text(properties.state), sector, street, point, municipality,
+    matchType: municipality ? "Ciudad / municipio" : localityTypes.has(type) ? "Sector" : "Referencia",
     boundary: municipality || localityTypes.has(type) ? boundary : null,
   };
 }
@@ -85,7 +87,7 @@ export async function searchTransportPlaces(query: string, signal: AbortSignal):
   const cached = recentSearches.get(key);
   if (cached && Date.now() < cached.expires) return cached.places;
   const url = new URL(PHOTON_URL);
-  url.search = new URLSearchParams({ q: search, countrycode: "DO", lang: "es", limit: "6" }).toString();
+  url.search = new URLSearchParams({ q: search, countrycode: "DO", limit: "6" }).toString();
   const places = (await features(url, signal)).map(place).filter((entry): entry is TransportPlace => entry !== null);
   if (recentSearches.size >= 30) recentSearches.delete(recentSearches.keys().next().value!);
   recentSearches.set(key, { places, expires: Date.now() + 5 * 60_000 });

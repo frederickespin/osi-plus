@@ -125,9 +125,9 @@ async function selectContext(page: Page, purpose: TransportPurpose) {
 
 async function fillJourney(page: Page) {
   const form = page.getByTestId("transport-calculation-form");
-  await expect(form.getByLabel("Inicio del desplazamiento *")).toBeEnabled();
-  await form.getByLabel("Inicio del desplazamiento *").fill("2026-11-10T08:00");
-  await form.getByLabel("Fin del desplazamiento *").fill("2026-11-10T17:00");
+  await expect(form.getByLabel("Inicio *", { exact: true })).toBeEnabled();
+  await form.getByLabel("Inicio *", { exact: true }).fill("2026-11-10T08:00");
+  await form.getByLabel("Fin *", { exact: true }).fill("2026-11-10T17:00");
   await form.getByRole("combobox", { name: "Vehículo de flota", exact: true }).selectOption(VEHICLE);
   await expect(form.getByLabel(/Latitud|Longitud/)).toHaveCount(0);
   await form.getByRole("button", { name: "Ubicar salida en mapa", exact: true }).click();
@@ -135,8 +135,8 @@ async function fillJourney(page: Page) {
   await form.getByRole("button", { name: "Base de prueba, Santo Domingo, República Dominicana", exact: true }).click();
   await form.getByLabel("Buscar dirección de destino", { exact: true }).fill("Destino de prueba");
   await form.getByRole("button", { name: "Destino de prueba, Santiago, República Dominicana", exact: true }).click();
-  await expect(form.getByText(/Distancia vial calculada/)).toContainText("80.00 km");
-  await form.getByLabel("Añadir regreso").check();
+  await expect(form.getByLabel("Distancia vial calculada")).toContainText("80.00 km");
+  await form.getByLabel("Regreso", { exact: true }).check();
 }
 
 test("una ciudad o sector conserva perímetro real trazado y tarifas pendientes, con campos compactos", async ({ page }, testInfo) => {
@@ -155,12 +155,10 @@ test("una ciudad o sector conserva perímetro real trazado y tarifas pendientes,
   });
   await page.goto("/administration/logistics");
   await page.getByRole("button", { name: "Nueva ciudad o sector", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByTestId("transport-zone-form");
   await expect(dialog.getByRole("textbox", { name: /Código/ })).toHaveCount(0);
   await dialog.getByLabel("Nombre del perfil *", { exact: true }).fill("Perímetro de prueba local");
   await dialog.getByLabel("Ciudad *", { exact: true }).fill("Santo Domingo");
-  await dialog.getByLabel("Dirección de la base *", { exact: true }).fill("Base principal de prueba");
-  await dialog.getByText("Visitas presenciales", { exact: true }).click();
   await dialog.getByRole("button", { name: "Trazar perímetro", exact: true }).click();
   const map = dialog.getByRole("region", { name: "Mapa de la geocerca" });
   await expect(map.getByRole("button", { name: "Acercar", exact: true })).toBeVisible();
@@ -169,18 +167,22 @@ test("una ciudad o sector conserva perímetro real trazado y tarifas pendientes,
   await map.click({ position: { x: 190, y: 220 } });
   await dialog.getByRole("button", { name: "Terminar trazado" }).click();
   await expect(dialog.getByText("Coordenadas · 3 puntos")).toBeVisible();
+  await dialog.getByRole("tab", { name: "Operación y costos" }).click();
+  await dialog.getByLabel("Base operativa", { exact: true }).fill("Oficina de prueba");
+  await dialog.getByLabel("Dirección de la base", { exact: true }).fill("Base principal de prueba");
+  await dialog.getByText("Visitas presenciales", { exact: true }).click();
   await dialog.getByRole("button", { name: "Añadir renglón", exact: true }).click();
   await dialog.getByLabel("Concepto del renglón 1").selectOption("FUEL");
   await dialog.getByLabel("Nombre del renglón 1").fill("Combustible pendiente");
   const expectedHeight = testInfo.project.name.includes("mobile") ? 32 : 28;
-  for (const control of [dialog.getByLabel("Nombre del perfil *", { exact: true }), dialog.getByLabel("Concepto del renglón 1"), dialog.getByLabel("Rendimiento km/gal")]) {
+  for (const control of [dialog.getByLabel("Base operativa", { exact: true }), dialog.getByLabel("Concepto del renglón 1"), dialog.getByLabel("Rendimiento km/gal")]) {
     const height = await control.evaluate((element) => element.getBoundingClientRect().height);
     expect(height).toBe(expectedHeight);
   }
   expect(await dialog.getByLabel("Rendimiento km/gal").evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(110);
-  expect(await dialog.getByTestId("transport-zone-scroll").evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   if (process.env.CAPTURE_TRANSPORT_UI === "true") await page.screenshot({ animations: "disabled", path: testInfo.outputPath("transport-zone-editor.png") });
-  await dialog.getByRole("button", { name: "Guardar ubicación", exact: true }).click();
+  await dialog.getByRole("button", { name: "Guardar borrador", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(input).not.toBeNull();
   const submitted = input as unknown as TransportZoneInput;
@@ -193,6 +195,78 @@ test("una ciudad o sector conserva perímetro real trazado y tarifas pendientes,
   await expect(page.getByText("Perímetro de prueba local", { exact: true })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
   expect(overflow).toBe(false);
+});
+
+test("buscar en el mapa guarda primero el perímetro y permite reutilizar una base al activarlo", async ({ page }, testInfo) => {
+  await session(page);
+  const base = editableZone();
+  const newRef = "448f6d8f-8d11-4f39-8a2d-1b6c7e8f4015";
+  const commands: TransportZoneInput[] = [];
+  const geometry = { type: "Polygon" as const, coordinates: [[[-70.75, 19.08], [-70.6, 19.08], [-70.6, 19.2], [-70.75, 19.08]]] };
+  let zone: TransportZone | null = null;
+  let queries = 0;
+  await page.route("https://photon.komoot.io/**", (route) => {
+    queries += 1;
+    expect(new URL(route.request().url()).searchParams.get("countrycode")).toBe("DO");
+    return route.fulfill({ json: { features: [{ geometry: { type: "Point", coordinates: [-70.633, 19.123] }, properties: {
+      osm_id: 123, osm_type: "R", type: "city", name: "Jarabacoa", state: "La Vega", countrycode: "DO",
+    } }] } });
+  });
+  await page.route("https://geoportal.iderd.gob.do/**", (route) => route.fulfill({ json: { features: [{ properties: { municipio: "JARABACOA" }, geometry }] } }));
+  await page.route("**/api/logistics/transport/zones", (route) => {
+    if (route.request().method() === "POST") {
+      const input = route.request().postDataJSON() as TransportZoneInput;
+      commands.push(input);
+      zone = {
+        ...input, ruleRef: newRef, seriesRef: newRef, code: "ZON_TEST",
+        version: commands.length, validFrom: null, validTo: null,
+        components: input.components.map((line) => ({ ...line, code: "REN_TEST", costRuleRef: newRef, costRuleVersion: 1 })),
+      };
+      return route.fulfill(json(zone));
+    }
+    return route.fulfill(json(zone ? [base, zone] : [base]));
+  });
+  await page.goto("/administration/logistics");
+  await page.getByRole("button", { name: "Nueva ciudad o sector" }).click();
+  const editor = page.getByTestId("transport-zone-form");
+  await expect(page.getByTestId("transport-zones-admin")).toHaveCount(0);
+  const search = editor.getByRole("textbox", { name: "Ciudad, municipio, sector o referencia" });
+  await search.fill("Jarabacoa");
+  expect(queries).toBe(0);
+  await search.press("Enter");
+  await editor.getByRole("button", { name: "Jarabacoa La Vega" }).click();
+  await expect(editor.getByLabel("Ciudad *", { exact: true })).toHaveValue("Jarabacoa");
+  await expect(editor.getByLabel("Nombre del perfil *", { exact: true })).toHaveValue("Jarabacoa");
+  await expect(editor.getByLabel("Dirección de la base", { exact: true })).toHaveCount(0);
+  await editor.getByRole("button", { name: "Guardar borrador" }).click();
+  await expect(editor.getByRole("alert")).toContainText("Confirme un contorno");
+  await editor.getByRole("button", { name: "Usar contorno" }).click();
+  await expect(editor.getByText("Coordenadas · 3 puntos")).toBeVisible();
+  if (process.env.CAPTURE_TRANSPORT_UI === "true") await page.screenshot({ animations: "disabled", path: testInfo.outputPath("transport-map-first.png") });
+  await editor.getByRole("button", { name: "Guardar borrador" }).click();
+  await expect(page.getByText("Jarabacoa · borrador guardado.")).toBeVisible();
+  expect(commands[0]).toMatchObject({ state: "DRAFT", geometry, baseName: "", baseAddress: "", purposes: [], components: [] });
+
+  const row = page.getByRole("row").filter({ hasText: "Jarabacoa" });
+  await row.getByRole("button", { name: "Editar", exact: true }).click();
+  await editor.getByRole("tab", { name: "Operación y costos" }).click();
+  await editor.getByLabel("Usar base registrada").selectOption({ label: "Base de prueba · Dirección de prueba" });
+  await expect(editor.getByLabel("Dirección de la base", { exact: true })).toHaveValue("Dirección de prueba");
+  await expect(editor.getByLabel("Km viales de referencia")).toHaveValue("");
+  await editor.getByLabel("Visitas presenciales", { exact: true }).check();
+  await editor.getByRole("combobox", { name: "Estado", exact: true }).selectOption("ACTIVE");
+  await editor.getByRole("button", { name: "Guardar versión" }).click();
+  await expect(editor.getByRole("alert")).toContainText("Añada al menos un renglón");
+  await editor.getByRole("button", { name: "Añadir renglón" }).click();
+  await editor.getByLabel("Tarifa del renglón 1").fill("0");
+  await editor.getByRole("button", { name: "Guardar versión" }).click();
+  await expect(page.getByText("Jarabacoa · versión 2 guardada.")).toBeVisible();
+  expect(commands[1]).toMatchObject({ state: "ACTIVE", seriesRef: newRef, expectedVersion: 1, geometry, purposes: ["VISIT"], baseAddress: "Dirección de prueba" });
+  await row.getByRole("button", { name: "Reutilizar perímetro" }).click();
+  await expect(editor.getByText("Coordenadas · 3 puntos")).toBeVisible();
+  await editor.getByRole("tab", { name: "Operación y costos" }).click();
+  await expect(editor.getByLabel("Visitas presenciales", { exact: true })).not.toBeChecked();
+  await expect(editor.getByRole("button", { name: "Guardar borrador" })).toBeVisible();
 });
 
 test("los números se reemplazan completos sin flechas y conservan límites antes de guardar", async ({ page }) => {
@@ -209,11 +283,12 @@ test("los números se reemplazan completos sin flechas y conservan límites ante
   });
   await page.goto("/administration/logistics");
   await page.getByRole("button", { name: "Editar", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  const dialog = page.getByTestId("transport-zone-form");
+  await dialog.getByRole("tab", { name: "Operación y costos" }).click();
   const priority = dialog.getByLabel("Prioridad", { exact: true });
-  const save = dialog.getByRole("button", { name: "Guardar nueva versión", exact: true });
+  const save = dialog.getByRole("button", { name: "Guardar borrador", exact: true });
   await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
-  await dialog.getByLabel("Nombre del perfil *", { exact: true }).focus();
+  await dialog.getByLabel("Base operativa", { exact: true }).focus();
   await priority.click();
   expect(await priority.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 3]);
   await priority.pressSequentially("125");
@@ -253,6 +328,7 @@ test("los números se reemplazan completos sin flechas y conservan límites ante
   await save.click();
   expect(commands).toHaveLength(0);
   await margin.fill("25");
+  await dialog.getByRole("tab", { name: "Ubicación", exact: true }).click();
   await dialog.getByText("Coordenadas · 3 puntos", { exact: true }).click();
   const longitude = dialog.getByLabel("Longitud del punto 1", { exact: true });
   await longitude.fill("-70.5");
@@ -273,7 +349,8 @@ test("las ayudas comparan parámetros con ejemplos sin cargar tarifas ni cambiar
   });
   await page.goto("/administration/logistics");
   await page.getByRole("button", { name: "Editar", exact: true }).click();
-  const editor = page.getByRole("dialog", { name: "Nueva versión de ubicación", exact: true });
+  const editor = page.getByTestId("transport-zone-form");
+  await editor.getByRole("tab", { name: "Operación y costos" }).click();
   const closeHelp = async (title: string) => {
     const help = page.getByRole("dialog", { name: title, exact: true });
     await help.getByRole("button", { name: "Cerrar ayuda", exact: true }).click();
@@ -348,7 +425,7 @@ test("publicación con respuesta perdida se consulta sin repetir el envío", asy
   await page.getByRole("button", { name: "Publicar costo de transporte" }).click();
   await expect(page.getByText(/No se confirmó la publicación/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Publicar costo de transporte" })).toBeDisabled();
-  await page.getByRole("button", { name: "Consultar publicación", exact: true }).click();
+  await page.getByRole("button", { name: "Confirmar estado", exact: true }).click();
   await expect(page.getByText("Publicación confirmada · revisión 1.", { exact: true })).toBeVisible();
   expect(backend.publishes()).toBe(1);
 });
@@ -378,7 +455,7 @@ test("el acceso de consulta no concede cálculo ni publicación", async ({ page 
   await session(page, permissions.filter((permission) => !["costing:calculate", "costing:publish", "logistics:plan:calculate", "logistics:plan:publish"].includes(permission)));
   const backend = await calculator(page);
   await selectContext(page, "SERVICE");
-  await expect(page.getByText("Este contexto todavía no tiene un costo de transporte publicado.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sin costo de transporte publicado.", { exact: true })).toBeVisible();
   await expect(page.getByTestId("transport-calculation-form")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Calcular transporte", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Publicar costo de transporte" })).toHaveCount(0);
@@ -400,11 +477,11 @@ test("el guardado incierto de zona bloquea nuevas escrituras hasta consultar el 
   });
   await page.goto("/administration/logistics");
   await page.getByRole("button", { name: "Editar", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Guardar nueva versión", exact: true }).click();
-  await expect(dialog.getByText(/No se confirmó el guardado/)).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Guardar nueva versión", exact: true })).toBeDisabled();
-  await dialog.getByRole("button", { name: "Cerrar ubicación", exact: true }).click();
+  const dialog = page.getByTestId("transport-zone-form");
+  await dialog.getByRole("button", { name: "Guardar borrador", exact: true }).click();
+  await expect(dialog.getByText(/Quedó pendiente confirmar el guardado/)).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Guardar borrador", exact: true })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Volver a ciudades y sectores", exact: true }).click();
   await expect(page.getByRole("button", { name: "Nueva ciudad o sector", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Actualizar ubicaciones", exact: true }).click();
   await expect(page.getByRole("button", { name: "Nueva ciudad o sector", exact: true })).toBeEnabled();

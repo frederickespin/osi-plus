@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FeatureGroup, Map as LeafletMap } from "leaflet";
-import { LocateFixed, Undo2 } from "lucide-react";
+import { LocateFixed, PencilLine, Undo2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
 
 export type TransportMapPoint = readonly [longitude: number, latitude: number];
@@ -14,9 +15,18 @@ type Props = {
   label?: string;
   autoSelect?: boolean;
   pointLabels?: readonly string[];
+  focus?: { point: TransportMapPoint; zoom: number } | null;
+  previewBoundary?: readonly TransportMapPoint[];
+  heightClassName?: string;
 };
 
-export default function TransportZoneMap({ points, onChange, disabled = false, mode = "polygon", selectedPoint, label = "Mapa de la geocerca", autoSelect = false, pointLabels = [] }: Props) {
+const EMPTY_POINTS: readonly TransportMapPoint[] = [];
+const EMPTY_LABELS: readonly string[] = [];
+
+export default function TransportZoneMap({
+  points, onChange, disabled = false, mode = "polygon", selectedPoint, label = "Mapa de la geocerca",
+  autoSelect = false, pointLabels = EMPTY_LABELS, focus, previewBoundary = EMPTY_POINTS, heightClassName = "h-72 sm:h-80",
+}: Props) {
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<LeafletMap | null>(null);
   const layers = useRef<FeatureGroup | null>(null);
@@ -73,13 +83,18 @@ export default function TransportZoneMap({ points, onChange, disabled = false, m
       const shape = mode === "polygon" && coordinates.length > 2 ? L.polygon(coordinates, { color: "#003366", weight: 2, fillOpacity: 0.15 }) : L.polyline(coordinates, { color: "#003366", weight: 2 });
       shape.addTo(group);
     }
-    coordinates.forEach((coordinate, index) => {
+    if (mode === "points" || drawing && !disabled) coordinates.forEach((coordinate, index) => {
       const markerLabel = pointLabels[index] || String(index + 1);
       const marker = L.marker(coordinate, {
         draggable: !disabled && (mode !== "points" || selectedPoint === undefined || selectedPoint === index),
         title: pointLabels[index] ? `Punto ${markerLabel}` : `Punto ${index + 1}`,
         alt: pointLabels[index] ? `Punto ${markerLabel}` : `Punto ${index + 1}`,
-        icon: L.divIcon({ html: `<span style="display:grid;place-items:center;width:24px;height:24px;border:2px solid white;border-radius:50%;background:#003366;color:white;font:600 11px sans-serif;box-shadow:0 1px 3px #475569">${markerLabel}</span>`, className: "", iconSize: [24, 24], iconAnchor: [12, 12] }),
+        icon: L.divIcon({
+          html: mode === "polygon"
+            ? '<span style="display:block;width:12px;height:12px;border:2px solid white;border-radius:50%;background:#003366;box-shadow:0 1px 3px #475569"></span>'
+            : `<span style="display:grid;place-items:center;width:24px;height:24px;border:2px solid white;border-radius:50%;background:#003366;color:white;font:600 11px sans-serif;box-shadow:0 1px 3px #475569">${markerLabel}</span>`,
+          className: "", iconSize: mode === "polygon" ? [12, 12] : [24, 24], iconAnchor: mode === "polygon" ? [6, 6] : [12, 12],
+        }),
       }).addTo(group);
       marker.on("dragend", () => {
         const value = current.current;
@@ -92,22 +107,46 @@ export default function TransportZoneMap({ points, onChange, disabled = false, m
       map.current.fitBounds(group.getBounds(), { padding: [30, 30], maxZoom: 13 });
       fitted.current = true;
     }
-  }, [disabled, mode, pointLabels, points, ready]);
+  }, [disabled, drawing, mode, pointLabels, points, ready, selectedPoint]);
+
+  useEffect(() => {
+    if (focus && ready) map.current?.setView([focus.point[1], focus.point[0]], focus.zoom, { animate: false });
+  }, [focus, ready]);
+
+  useEffect(() => {
+    const L = leaflet.current;
+    const instance = map.current;
+    if (!ready || !L || !instance) return;
+    const overlay = L.featureGroup().addTo(instance);
+    const bounds = previewBoundary.map(([longitude, latitude]) => L.latLng(latitude, longitude));
+    if (bounds.length >= 3) L.polygon(bounds, { color: "#0e7490", dashArray: "6 5", weight: 3, fillOpacity: 0.12, interactive: false }).addTo(overlay);
+    if (focus) {
+      const [longitude, latitude] = focus.point;
+      const center = L.latLng(latitude, longitude);
+      if (mode === "polygon") L.circleMarker(center, { radius: 6, color: "#fff", weight: 2, fillOpacity: 1, fillColor: "#c2410c", interactive: false }).addTo(overlay);
+      if (bounds.length >= 3) instance.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom: focus.zoom, animate: false });
+    }
+    return () => { overlay.remove(); };
+  }, [focus, mode, previewBoundary, ready]);
 
   const fit = () => {
+    if (previewBoundary.length >= 3 && leaflet.current && map.current) {
+      map.current.fitBounds(leaflet.current.latLngBounds(previewBoundary.map(([longitude, latitude]) => [latitude, longitude])), { padding: [24, 24], maxZoom: 16 });
+      return;
+    }
     const bounds = layers.current?.getBounds();
     if (bounds?.isValid()) map.current?.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+    else if (focus) map.current?.setView([focus.point[1], focus.point[0]], focus.zoom);
   };
 
   return <div className="min-w-0 space-y-2">
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      {!disabled && !autoSelect && <button type="button" aria-pressed={drawing} onClick={() => setDrawing((value) => !value)} className={`min-h-9 rounded border px-3 font-medium ${drawing ? "border-[#003366] bg-[#003366] text-white" : "border-slate-300 bg-white text-slate-700"}`}>{drawing ? "Terminar trazado" : mode === "polygon" ? "Trazar perímetro" : "Elegir ubicación"}</button>}
-      {!disabled && mode === "polygon" && <button type="button" disabled={!points.length} onClick={() => onChange(points.slice(0, -1))} className="inline-flex min-h-9 items-center gap-1 rounded border border-slate-300 px-2 text-slate-600 disabled:opacity-40"><Undo2 aria-hidden="true" className="h-3.5 w-3.5" />Quitar último punto</button>}
-      <button type="button" disabled={!points.length || !ready} onClick={fit} className="inline-flex min-h-9 items-center gap-1 rounded border border-slate-300 px-2 text-slate-600 disabled:opacity-40"><LocateFixed aria-hidden="true" className="h-3.5 w-3.5" />Ver puntos</button>
-      {drawing && !disabled && <span role="status" className="text-slate-500">{mode === "polygon" ? "Pulse el mapa para añadir puntos al perímetro." : "Pulse el mapa para ubicar el punto seleccionado."}</span>}
+      {!disabled && !autoSelect && <button type="button" aria-pressed={drawing} onClick={() => setDrawing((value) => !value)} className={`inline-flex min-h-9 items-center gap-1.5 rounded border px-3 font-medium ${drawing ? "border-[#003366] bg-[#003366] text-white" : "border-slate-300 bg-white text-slate-700"}`}><PencilLine aria-hidden="true" className="h-3.5 w-3.5" />{drawing ? "Terminar trazado" : mode === "polygon" ? points.length ? "Ajustar perímetro" : "Trazar perímetro" : "Elegir ubicación"}</button>}
+      {!disabled && mode === "polygon" && drawing && <button type="button" aria-label="Quitar último punto" title="Quitar último punto" disabled={!points.length} onClick={() => onChange(points.slice(0, -1))} className="grid h-9 w-9 place-items-center rounded border border-slate-300 text-slate-600 disabled:opacity-40"><Undo2 aria-hidden="true" className="h-4 w-4" /></button>}
+      <button type="button" aria-label="Centrar mapa" title="Centrar mapa" disabled={(!points.length && !focus) || !ready} onClick={fit} className="grid h-9 w-9 place-items-center rounded border border-slate-300 text-slate-600 disabled:opacity-40"><LocateFixed aria-hidden="true" className="h-4 w-4" /></button>
+      {drawing && !disabled && <span role="status" className="text-slate-500">{mode === "polygon" ? "Pulse para añadir puntos o arrástrelos para ajustar." : "Pulse el mapa para ubicar el punto seleccionado."}</span>}
     </div>
     {error && <p role="alert" className="text-xs text-amber-800">{error}</p>}
-    <div ref={element} role="region" aria-label={label} className="relative isolate z-0 h-72 w-full overflow-hidden rounded border border-slate-300 bg-slate-100 sm:h-80" />
-    <p className="text-[11px] text-slate-500">{disabled ? "Ubicación guardada." : mode === "points" ? "Busque una dirección o pulse el mapa. Arrastre los puntos para corregirlos." : "Arrastre los puntos para corregir el perímetro."}</p>
+    <div ref={element} role="region" aria-label={label} className={cn("relative isolate z-0 w-full overflow-hidden rounded border border-slate-300 bg-slate-100", heightClassName)} />
   </div>;
 }

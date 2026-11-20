@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { automaticLogisticsConfigurationCode } from "./logisticsConfigurationCode.js";
 import { canonicalHash, logisticsFail } from "./logisticsEngineContract.js";
-import { normalizeTransportZone, normalizeTransportZonePayload, TRANSPORT_CONTRACT } from "./logisticsTransportContract.js";
+import { normalizeTransportZone, normalizeTransportZonePayload, pointInTransportPolygon, TRANSPORT_CONTRACT } from "./logisticsTransportContract.js";
 import { effectivePermissionsFor } from "./rbac.js";
 
 export const TRANSPORT_ZONE_PERMISSIONS = Object.freeze({
@@ -142,7 +142,7 @@ function zoneDto(row, tariffs, at = null) {
   });
   const input = { seriesRef: row.seriesRef, expectedVersion: row.version, code: row.code, name: row.name,
     locationType: policy.locationType || "CITY", city: policy.city || row.name, sector: policy.locationType === "SECTOR" ? policy.sector : null,
-    baseName: policy.baseName || "Base operativa", baseAddress: policy.baseAddress || "Dirección pendiente de confirmar",
+    baseName: policy.baseName ?? "Base operativa", baseAddress: policy.baseAddress ?? "Dirección pendiente de confirmar",
     referenceDistanceKm: policy.referenceDistanceKm ?? null, referenceDistanceSource: policy.referenceDistanceSource || "",
     zoneType: policy.zoneType,
     priority: row.priority, vehicleType: row.conditions.vehicleType, purposes: policy.purposes, geometry: policy.geometry,
@@ -169,15 +169,32 @@ async function hydrateZones(tx, tenantId, rows, at = null) {
 
 // Internal reader: callers revalidate their own purpose-specific authority in
 // the same transaction. Only actually active zone/tariff versions enter math.
-export async function loadTransportZones(tx, tenantId, at) {
+async function activeZoneRows(tx, tenantId, at) {
   identifier(tenantId);
   const instant = new Date(at);
   if (!Number.isFinite(instant.getTime())) fail("PERIOD_INVALID", 400);
-  const rows = await tx.logisticsRule.findMany({ where: { ...namespaceWhere(tenantId), state: "ACTIVE", AND: [
+  return tx.logisticsRule.findMany({ where: { ...namespaceWhere(tenantId), state: "ACTIVE", AND: [
     { OR: [{ validFrom: null }, { validFrom: { lte: instant } }] },
     { OR: [{ validTo: null }, { validTo: { gt: instant } }] },
   ] }, orderBy: [{ priority: "desc" }, { specificity: "desc" }, { code: "asc" }], take: MAX_ZONES + 1 });
-  return hydrateZones(tx, tenantId, rows, instant);
+}
+
+export async function loadTransportZones(tx, tenantId, at) {
+  return hydrateZones(tx, tenantId, await activeZoneRows(tx, tenantId, at), new Date(at));
+}
+
+export async function transportCoverageAt(database, tenantId, point, at = new Date()) {
+  const rows = await activeZoneRows(database, tenantId, at);
+  if (rows.length > MAX_ZONES) fail("ZONE_LIMIT");
+  const areas = new Map();
+  for (const row of rows) {
+    assertZoneIdentity(row, tenantId);
+    const { geometry, city, sector, locationType } = row.result;
+    if (!pointInTransportPolygon(point, geometry)) continue;
+    const label = locationType === "SECTOR" ? `${sector}, ${city}` : city || row.name;
+    if (!areas.has(label)) areas.set(label, { label, geometry });
+  }
+  return [...areas.values()];
 }
 
 function parseListQuery(query = {}) {

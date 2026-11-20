@@ -5,7 +5,7 @@ import { automaticLogisticsConfigurationCode } from "../api/_lib/logisticsConfig
 import { TRANSPORT_CONTRACT } from "../api/_lib/logisticsTransportContract.js";
 import {
   listTransportZones, loadTransportZones, revalidateTransportActor, TRANSPORT_ZONE_PERMISSIONS,
-  versionTransportZone, withTransportTransaction,
+  transportCoverageAt, versionTransportZone, withTransportTransaction,
 } from "../api/_lib/logisticsTransportZones.js";
 
 const results = [];
@@ -103,6 +103,27 @@ function fixture({ actor = currentActor, failAudit = false, initial = null } = {
   return { prisma, calls, state: () => structuredClone(state), transactions: () => transactions, setActor: (next) => { liveActor = next; } };
 }
 const rejects = (work, code) => assert.rejects(work, (error) => error.code === `LOGISTICS_TRANSPORT_${code}`);
+
+{
+  const f = fixture();
+  const blankProfile = { baseName: "", baseAddress: "", referenceDistanceKm: null, referenceDistanceSource: "", purposes: [], components: [] };
+  const draft = await versionTransportZone(f.prisma, context, command({ ...blankProfile, state: "DRAFT" }));
+  assert.equal(draft.baseAddress, "");
+  assert.equal((await listTransportZones(f.prisma, context))[0].baseName, "");
+  const coverage = (tenantId, point) => f.prisma.$transaction((tx) => transportCoverageAt(tx, tenantId, point), { isolationLevel: "Serializable" });
+  assert.deepEqual(await coverage(context.tenantId, [-69.9, 18.1]), []);
+  const nextVersion = { seriesRef: draft.seriesRef, expectedVersion: draft.version };
+  await assert.rejects(() => versionTransportZone(f.prisma, context, command({ ...blankProfile, ...nextVersion, state: "ACTIVE" })),
+    { code: "TRANSPORT_PAYLOAD_INVALID" });
+  await assert.rejects(() => versionTransportZone(f.prisma, context, command({ ...nextVersion, components: [], state: "ACTIVE" })),
+    { code: "TRANSPORT_ZONE_COMPONENT_REQUIRED" });
+  const active = await versionTransportZone(f.prisma, context, command(nextVersion));
+  assert.deepEqual(await coverage(context.tenantId, [-69.9, 18.1]), [{ label: zone.city, geometry: zone.geometry }]);
+  assert.deepEqual(await coverage(context.tenantId, [-70.3, 18.1]), []);
+  assert.deepEqual(await coverage("other-tenant", [-69.9, 18.1]), []);
+  check("saved perimeter stays out of coverage and costs until the same zone is activated", active.version === 2
+    && f.state().tariffs.every((row) => row.state === "ACTIVE" && row.version === 1));
+}
 
 {
   const automatic = fixture();

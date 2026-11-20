@@ -81,6 +81,7 @@ export function transportErrorMessage(cause: unknown): string {
   if (code === "LOGISTICS_TRANSPORT_IDEMPOTENCY_CONFLICT") return "Esta solicitud ya guardó una versión con otros datos. Actualice el listado y abra la versión guardada antes de continuar.";
   if (/ZONE_CODE_IMMUTABLE|ZONE_CODE_CONFLICT|COMPONENT_CODE_CONFLICT/.test(code)) return "No se pudo confirmar la referencia automática. Actualice el listado y abra la zona vigente antes de continuar.";
   if (code === "LOGISTICS_TRANSPORT_ZONE_LIMIT") return "Se alcanzó el límite de zonas de la empresa. Revise las zonas existentes antes de añadir otra.";
+  if (code === "TRANSPORT_ZONE_COMPONENT_REQUIRED") return "Añada al menos un renglón de costo para activar el área.";
   if (/ZONE_INTEGRITY|TARIFF_INTEGRITY/.test(code)) return "La configuración guardada de esta zona necesita revisión. Actualice y consulte al responsable de Flota / Logística.";
   if (/TRANSPORT_(?:ZONE|COMPONENT)_CODE_INVALID/.test(code)) return "La referencia del registro necesita actualizarse. Los códigos se generan automáticamente al guardar.";
   if (/CONCEPT_DUPLICATED|COMPONENT_DUPLICATED/.test(code)) return "Un concepto está repetido o ya está cubierto por la base o un viático. Revise los renglones y sus conceptos incluidos.";

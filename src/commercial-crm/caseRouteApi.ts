@@ -1,4 +1,5 @@
 import { getMembershipRef } from "@/lib/sessionStore";
+import type { TransportCoordinate, TransportPolygon } from "../../shared/logisticsTransport";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -37,6 +38,7 @@ export type CaseRouteWorkspace = Readonly<{
   options: readonly CaseRouteOption[];
 }>;
 export type ClientRouteOptions = Readonly<{ clientRef: string; options: readonly CaseRouteOption[] }>;
+export type CaseRouteArea = Readonly<{ label: string; geometry: TransportPolygon }>;
 
 export class CaseRouteClientError extends Error {
   readonly status: number;
@@ -106,6 +108,13 @@ export class CaseRouteApi {
   async workspace(caseRef: string): Promise<CaseRouteWorkspace> {
     if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
     return this.parseWorkspace(await this.read(await this.fetchImpl(`/api/crm/pipeline-cases/${encodeURIComponent(caseRef)}/route`, { headers: this.headers(), credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" })));
+  }
+  async coverage(caseRef: string, [longitude, latitude]: TransportCoordinate, signal: AbortSignal): Promise<readonly CaseRouteArea[]> {
+    if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
+    const query = new URLSearchParams({ longitude: longitude.toFixed(6), latitude: latitude.toFixed(6) });
+    const data = await this.read(await this.fetchImpl(`/api/crm/pipeline-cases/${encodeURIComponent(caseRef)}/route?${query}`, { headers: this.headers(), credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", signal }));
+    if (!Array.isArray(data.areas)) throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    return data.areas as CaseRouteArea[];
   }
   async update(caseRef: string, value: Omit<CaseRouteWorkspace["route"], "revision"> & Readonly<{ expectedVersion: number; expectedRouteRevision: number }>): Promise<CaseRouteWorkspace> {
     if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");

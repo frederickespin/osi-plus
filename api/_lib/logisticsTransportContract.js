@@ -1,6 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { canonicalHash, logisticsFail } from "./logisticsEngineContract.js";
 import { adminFleetVehicleRef } from "./adminFleetContract.js";
+import { transportRingError, pointInTransportPolygon } from "../../shared/transportGeometry.js";
+
+export { pointInTransportPolygon };
 
 export const TRANSPORT_CONTRACT = "V17_TRANSPORT_ZONES_V1";
 const Decimal = Prisma.Decimal.clone({ precision: 48, rounding: Prisma.Decimal.ROUND_HALF_UP });
@@ -41,37 +44,15 @@ export function normalizeTransportCoordinate(value, nullable = false) {
   if (!Array.isArray(value) || value.length !== 2 || value.some((number) => typeof number !== "number" || !Number.isFinite(number)) || Math.abs(value[0]) > 180 || Math.abs(value[1]) > 90) invalid("TRANSPORT_COORDINATE_INVALID");
   return [...value];
 }
-function cross(a, b, c) { return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]); }
-function onSegment(p, a, b) { return Math.abs(cross(a, b, p)) <= 1e-10 && p[0] >= Math.min(a[0], b[0]) - 1e-10 && p[0] <= Math.max(a[0], b[0]) + 1e-10 && p[1] >= Math.min(a[1], b[1]) - 1e-10 && p[1] <= Math.max(a[1], b[1]) + 1e-10; }
-function intersects(a, b, c, d) { const abC = cross(a, b, c), abD = cross(a, b, d), cdA = cross(c, d, a), cdB = cross(c, d, b); return abC * abD < 0 && cdA * cdB < 0 || onSegment(c, a, b) || onSegment(d, a, b) || onSegment(a, c, d) || onSegment(b, c, d); }
 export function normalizeTransportPolygon(raw) {
   const value = object(raw); exact(value, ["type", "coordinates"]);
   if (value.type !== "Polygon" || !Array.isArray(value.coordinates) || value.coordinates.length !== 1) invalid("TRANSPORT_GEOMETRY_INVALID");
   const ring = value.coordinates[0];
   if (!Array.isArray(ring) || ring.length < 4 || ring.length > 201) invalid("TRANSPORT_GEOMETRY_INVALID");
   const points = ring.map((point) => normalizeTransportCoordinate(point));
-  const first = points[0], last = points.at(-1);
-  if (first[0] !== last[0] || first[1] !== last[1] || new Set(points.slice(0, -1).map((point) => point.join(","))).size !== points.length - 1) invalid("TRANSPORT_GEOMETRY_INVALID");
-  let area = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    if (Math.abs(points[i][0] - points[i + 1][0]) > 180) invalid("TRANSPORT_GEOMETRY_INVALID");
-    area += points[i][0] * points[i + 1][1] - points[i + 1][0] * points[i][1];
-    for (let j = i + 2; j < points.length - 1; j++) {
-      if (i === 0 && j === points.length - 2) continue;
-      if (intersects(points[i], points[i + 1], points[j], points[j + 1])) invalid("TRANSPORT_GEOMETRY_SELF_INTERSECTION");
-    }
-  }
-  if (Math.abs(area) <= 1e-10) invalid("TRANSPORT_GEOMETRY_INVALID");
+  const error = transportRingError(points);
+  if (error) invalid(error);
   return { type: "Polygon", coordinates: [points] };
-}
-export function pointInTransportPolygon(point, geometry) {
-  const ring = geometry.coordinates[0]; let inside = false;
-  for (let i = 0; i < ring.length - 1; i++) {
-    const a = ring[i], b = ring[i + 1];
-    if (onSegment(point, a, b)) return true;
-    if ((a[1] > point[1]) !== (b[1] > point[1]) && point[0] < (b[0] - a[0]) * (point[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
-  }
-  return inside;
 }
 
 function component(raw, allowAutomaticCodes) {
@@ -97,6 +78,8 @@ function validateCoverage(zone) {
 }
 export function normalizeTransportZonePayload(raw, { allowAutomaticCodes = false } = {}) {
   const value = object(raw); exact(value, ZONE_KEYS);
+  const state = enumeration(value.state, ["DRAFT", "ACTIVE", "INACTIVE"]);
+  const incomplete = state !== "ACTIVE";
   const code = text(value.code, 64, allowAutomaticCodes); if (code !== null && !/^[A-Z][A-Z0-9_]{1,63}$/.test(code)) invalid("TRANSPORT_ZONE_CODE_INVALID");
   if (!Array.isArray(value.components) || value.components.length > 40) invalid();
   const components = value.components.map((row) => component(row, allowAutomaticCodes));
@@ -105,13 +88,13 @@ export function normalizeTransportZonePayload(raw, { allowAutomaticCodes = false
   const zone = {
     seriesRef: value.seriesRef === null ? null : transportRef(value.seriesRef), expectedVersion: integer(value.expectedVersion, 1, 2147483647, true),
     code, name: text(value.name, 180), locationType: enumeration(value.locationType, ["CITY", "SECTOR"]), city: text(value.city, 160),
-    sector: text(value.sector, 160, true), baseName: text(value.baseName, 160), baseAddress: text(value.baseAddress, 240),
+    sector: text(value.sector, 160, true), baseName: text(value.baseName, 160, false, incomplete), baseAddress: text(value.baseAddress, 240, false, incomplete),
     referenceDistanceKm: decimal(value.referenceDistanceKm, 4, "999999.9999"), referenceDistanceSource: text(value.referenceDistanceSource, 240, false, true),
     zoneType: enumeration(value.zoneType, ["METRO", "INTERIOR"]), priority: integer(value.priority, 0, 9999),
-    vehicleType: text(value.vehicleType, 80, true), purposes: uniqueEnums(value.purposes, PURPOSES, 1), geometry: normalizeTransportPolygon(value.geometry),
+    vehicleType: text(value.vehicleType, 80, true), purposes: uniqueEnums(value.purposes, PURPOSES, incomplete ? 0 : 1), geometry: normalizeTransportPolygon(value.geometry),
     mode: enumeration(value.mode, ["ITEMIZED", "FACTOR"]), factor: decimal(value.factor, 6, "9999.999999", true, true), currency: text(value.currency, 3),
     kmPerGallon: decimal(value.kmPerGallon, 4, "9999.9999", true, true), gallonUnit: enumeration(value.gallonUnit, ["US", "IMPERIAL"]), fuelType: text(value.fuelType, 80, true),
-    includedConcepts: uniqueEnums(value.includedConcepts, KINDS.filter((kind) => kind !== "BASE")), components, state: enumeration(value.state, ["DRAFT", "ACTIVE", "INACTIVE"]),
+    includedConcepts: uniqueEnums(value.includedConcepts, KINDS.filter((kind) => kind !== "BASE")), components, state,
   };
   if ((zone.seriesRef === null) !== (zone.expectedVersion === null) || !/^[A-Z]{3}$/.test(zone.currency) || zone.mode === "ITEMIZED" && zone.factor !== null
     || zone.locationType === "SECTOR" && zone.sector === null || zone.locationType === "CITY" && zone.sector !== null
@@ -121,7 +104,9 @@ export function normalizeTransportZonePayload(raw, { allowAutomaticCodes = false
 }
 export function normalizeTransportZone(raw) {
   const value = object(raw); exact(value, [...ZONE_KEYS, "requestId", "payloadHash"]);
-  return command(value, "TRANSPORT_ZONE_VERSION", normalizeTransportZonePayload(Object.fromEntries(ZONE_KEYS.map((key) => [key, value[key]])), { allowAutomaticCodes: true }));
+  const zone = normalizeTransportZonePayload(Object.fromEntries(ZONE_KEYS.map((key) => [key, value[key]])), { allowAutomaticCodes: true });
+  if (zone.state === "ACTIVE" && !zone.components.length) invalid("TRANSPORT_ZONE_COMPONENT_REQUIRED");
+  return command(value, "TRANSPORT_ZONE_VERSION", zone);
 }
 export function normalizeTransportInput(raw) {
   const value = object(raw); exact(value, CALCULATE_KEYS);

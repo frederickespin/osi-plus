@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, LoaderCircle, MapPin, Save } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, LoaderCircle, MapPin, MapPinned, Save } from "lucide-react";
+import { AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { isLogisticsUiEnabled } from "@/logistics-engine/mode";
+import type { TransportPlace } from "@/logistics-engine/transportPlaces";
 import { CaseRouteApi, CaseRouteClientError, type CaseRouteAddress, type CaseRouteOption, type CaseRouteWorkspace } from "./caseRouteApi";
 
+const CaseRouteMap = lazy(() => import("./CaseRouteMap"));
+type RouteEnd = "origin" | "destination";
 type EditableAddress = { -readonly [K in keyof CaseRouteAddress]: CaseRouteAddress[K] };
 const field = "mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100";
 const label = "text-[10px] font-bold uppercase tracking-wide text-slate-600";
@@ -28,10 +33,13 @@ function optionText(option: CaseRouteOption) {
   return option.source === "REGISTERED" ? `${option.label} · ${address}` : `${option.label} · ${option.serviceType || "Servicio anterior"} · ${address}`;
 }
 
-function AddressEditor({ title, value, options, source, onSource, onChange }: Readonly<{ title: string; value: EditableAddress; options: readonly CaseRouteOption[]; source: string; onSource(value: string): void; onChange(value: EditableAddress): void }>) {
+function AddressEditor({ title, value, options, source, onSource, onChange, onMap }: Readonly<{ title: string; value: EditableAddress; options: readonly CaseRouteOption[]; source: string; onSource(value: string): void; onChange(value: EditableAddress): void; onMap?(): void }>) {
   const update = <K extends keyof EditableAddress>(key: K, next: EditableAddress[K]) => { onSource("MANUAL"); onChange({ ...value, [key]: next, ...(key === "sourceAddressRef" ? {} : { sourceAddressRef: null }) }); };
   return <fieldset className="rounded-xl border border-slate-200 p-3">
-    <legend className="px-1 text-sm font-black text-[#003366]">{title}</legend>
+    <legend className="px-1 text-sm font-black text-[#003366]"><span className="inline-flex items-center gap-1">
+      {title}
+      {onMap && value.countryCode === "DO" && <AdministrationIconAction label={`Buscar ${title.toLowerCase()} en el mapa`} onClick={onMap}><MapPinned className="h-4 w-4" aria-hidden="true" /></AdministrationIconAction>}
+    </span></legend>
     <label className={label}>Seleccionar dirección<select className={field} value={source} onChange={(event) => onSource(event.target.value)}><option value="CURRENT">Dirección actual de este caso</option>{options.some((option) => option.source === "REGISTERED") && <optgroup label="Direcciones registradas del cliente">{options.filter((option) => option.source === "REGISTERED").map((option) => <option key={option.optionId} value={option.optionId}>{optionText(option)}</option>)}</optgroup>}{options.some((option) => option.source === "RECENT_SERVICE") && <optgroup label="Direcciones de los dos últimos servicios">{options.filter((option) => option.source === "RECENT_SERVICE").map((option) => <option key={option.optionId} value={option.optionId}>{optionText(option)}</option>)}</optgroup>}<option value="MANUAL">Otra dirección para este caso</option></select></label>
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
       <label className={label}>País<input className={field} maxLength={2} value={value.countryCode} onChange={(event) => update("countryCode", event.target.value.toUpperCase())} /></label>
@@ -53,18 +61,33 @@ export default function CaseRouteEditor({ open, caseRef, api, onOpenChange, onSa
   const [destinationStatus, setDestinationStatus] = useState<CaseRouteWorkspace["route"]["destinationStatus"]>("CONFIRMED");
   const [originSource, setOriginSource] = useState("CURRENT");
   const [destinationSource, setDestinationSource] = useState("CURRENT");
+  const [mapEnd, setMapEnd] = useState<RouteEnd | null>(null);
   const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false); const [error, setError] = useState("");
   useEffect(() => {
     if (!open) return undefined;
-    let active = true; setLoading(true); setError("");
+    let active = true; setLoading(true); setError(""); setMapEnd(null);
     void api.workspace(caseRef).then((value) => { if (!active) return; setWorkspace(value); setOrigin(edit(value.route.origin)); setDestination(edit(value.route.destination)); setDestinationStatus(value.route.destinationStatus); setOriginSource("CURRENT"); setDestinationSource("CURRENT"); }).catch((cause) => { if (active) setError(errorText(cause)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [api, caseRef, open]);
-  const select = (value: string, current: "origin" | "destination") => {
+  const select = (value: string, current: RouteEnd) => {
+    setMapEnd(null);
     const option = workspace?.options.find((candidate) => candidate.optionId === value);
     if (current === "origin") { setOriginSource(value); if (option) setOrigin(edit(option.address)); else if (value === "MANUAL") setOrigin(blankAddress()); else if (workspace) setOrigin(edit(workspace.route.origin)); }
     else { setDestinationSource(value); if (option) setDestination(edit(option.address)); else if (value === "MANUAL") setDestination(blankAddress()); else if (workspace) setDestination(edit(workspace.route.destination)); }
   };
+  function applyMap(end: RouteEnd, place: TransportPlace) {
+    const setAddress = end === "origin" ? setOrigin : setDestination;
+    const setSource = end === "origin" ? setOriginSource : setDestinationSource;
+    setSource("MANUAL");
+    setAddress((current) => ({
+      ...current, countryCode: "DO", sourceAddressRef: null,
+      cityMunicipality: place.city.slice(0, 160) || current.cityMunicipality,
+      provinceState: place.province.slice(0, 160) || current.provinceState,
+      sector: place.sector.slice(0, 160) || null,
+      streetAndNumber: place.street.slice(0, 240) || current.streetAndNumber,
+    }));
+    setMapEnd(null);
+  }
   const canSave = useMemo(() => Boolean(workspace && valid(origin) && (destinationStatus === "PENDING" || valid(destination))), [destination, destinationStatus, origin, workspace]);
   const save = async () => {
     if (!workspace || !canSave || saving) return;
@@ -80,7 +103,21 @@ export default function CaseRouteEditor({ open, caseRef, api, onOpenChange, onSa
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">{error}</p>}
       {workspace && !loading && <>
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><AlertTriangle className="mr-1 inline h-4 w-4" />Al guardar se crea una nueva versión de la ruta y deberán revisarse geocerca, distancia, visita, transporte y agenda.</div>
-        <div className="grid gap-3 lg:grid-cols-2"><AddressEditor title="Origen" value={origin} options={workspace.options} source={originSource} onSource={(value) => select(value, "origin")} onChange={setOrigin} /><div className="space-y-3"><label className={label}>Estado del destino<select className={field} value={destinationStatus} onChange={(event) => setDestinationStatus(event.target.value as CaseRouteWorkspace["route"]["destinationStatus"])}><option value="CONFIRMED">Confirmado</option><option value="APPROXIMATE">Aproximado</option><option value="PENDING">Pendiente de confirmar</option></select></label>{destinationStatus !== "PENDING" && <AddressEditor title="Destino" value={destination} options={workspace.options} source={destinationSource} onSource={(value) => select(value, "destination")} onChange={setDestination} />}</div></div>
+        {mapEnd && <Suspense fallback={<p role="status" className="text-xs text-slate-500">Cargando mapa…</p>}>
+          <CaseRouteMap key={mapEnd} api={api} caseRef={caseRef} title={mapEnd === "origin" ? "Mapa del origen" : "Mapa del destino"} disabled={saving}
+            onApply={(place) => applyMap(mapEnd, place)} onClose={() => setMapEnd(null)} />
+        </Suspense>}
+        <div className="grid gap-3 lg:grid-cols-2">
+          <AddressEditor title="Origen" value={origin} options={workspace.options} source={originSource} onSource={(value) => select(value, "origin")} onChange={setOrigin} onMap={isLogisticsUiEnabled() ? () => setMapEnd("origin") : undefined} />
+          <div className="space-y-3">
+            <label className={label}>Estado del destino
+              <select className={field} value={destinationStatus} onChange={(event) => { setDestinationStatus(event.target.value as CaseRouteWorkspace["route"]["destinationStatus"]); if (mapEnd === "destination") setMapEnd(null); }}>
+                <option value="CONFIRMED">Confirmado</option><option value="APPROXIMATE">Aproximado</option><option value="PENDING">Pendiente de confirmar</option>
+              </select>
+            </label>
+            {destinationStatus !== "PENDING" && <AddressEditor title="Destino" value={destination} options={workspace.options} source={destinationSource} onSource={(value) => select(value, "destination")} onChange={setDestination} onMap={isLogisticsUiEnabled() ? () => setMapEnd("destination") : undefined} />}
+          </div>
+        </div>
       </>}
       <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>Cancelar</Button><Button type="button" disabled={!canSave || saving} onClick={() => void save()}>{saving ? <LoaderCircle className="animate-spin" /> : <Save />}{saving ? "Guardando…" : "Guardar ruta"}</Button></DialogFooter>
     </DialogContent>

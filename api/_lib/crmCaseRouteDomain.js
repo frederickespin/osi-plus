@@ -205,6 +205,15 @@ export async function getCaseRouteEditor(context, ref, database = prisma) {
   });
 }
 
+export async function getCaseRouteCoverage(context, ref, { longitude, latitude }, database = prisma) {
+  if (typeof longitude !== "string" || typeof latitude !== "string"
+    || !/^-?\d{1,3}(?:\.\d{1,8})?$/.test(longitude) || !/^-?\d{1,3}(?:\.\d{1,8})?$/.test(latitude)
+    || Math.abs(Number(longitude)) > 180 || Math.abs(Number(latitude)) > 90) fail("CRM_CASE_ROUTE_INPUT_INVALID");
+  await caseAuthority(database, context, ref);
+  const { transportCoverageAt } = await import("./logisticsTransportZones.js");
+  return { areas: await transportCoverageAt(database, context.tenantId, [Number(longitude), Number(latitude)]) };
+}
+
 async function materializeAddress(tx, actorRow, clientId, address) {
   if (!address.sourceAddressRef) return address;
   const registered = await tx.clientAddress.findFirst({ where: { tenantId: actorRow.tenantId, clientId, addressRef: address.sourceAddressRef, status: "ACTIVE" } });

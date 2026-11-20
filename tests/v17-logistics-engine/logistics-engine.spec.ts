@@ -31,11 +31,16 @@ test("Comercial sólo consulta el resultado publicado y no monta un Motor operat
   expect(writes).toBe(0); const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => name.includes("LogisticsPlanPanel"))); expect(chunks).toHaveLength(0);
 });
 
-test("Administración presenta y versiona reglas compactas por familia", async ({ page }, testInfo) => {
+test("Administración presenta reglas en español y conserva sus condiciones al versionarlas", async ({ page }, testInfo) => {
   await session(page, { admin: true });
   await page.route("**/api/admin/memberships**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: [], total: 0, page: 1, pageSize: 20 }) }));
   let versioned: Record<string, unknown> | null = null;
-  await page.route("**/api/logistics/rules", async (route) => { if (route.request().method() === "POST") { versioned = route.request().postDataJSON(); return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, data: { ruleRef: "938f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", version: 3 } }) }); } return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: [{ ruleRef: "738f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", seriesRef: "838f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", family: "TRANSPORT", code: "TRUCK_BY_VOLUME", name: "Camión por volumen", priority: 100, specificity: 20, conditions: { modes: ["LOCAL"] }, result: { kind: "TRUCK", label: "Camión", quantity: 1 }, state: "ACTIVE", version: 2 }] }) }); });
+  const conditions = { modes: ["LOCAL", "EXPORT"], serviceCodes: ["MOVING"], minVolumeM3: 10 };
+  const result = {
+    kind: "CRANE", label: "Grúa", quantity: { basis: "VOLUME_M3", divisor: 10, minimum: 1 },
+    unit: "servicio", availabilitySource: "PROVIDER", sourceCode: "CRANE", exclusiveKey: "CRANE",
+  };
+  await page.route("**/api/logistics/rules", async (route) => { if (route.request().method() === "POST") { versioned = route.request().postDataJSON(); return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, data: { ruleRef: "938f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", version: 3 } }) }); } return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: [{ ruleRef: "738f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", seriesRef: "838f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", family: "EXTERNAL", code: "CRANE_BY_VOLUME", name: "Grúa por volumen", priority: 100, specificity: 20, conditions, result, state: "ACTIVE", version: 2 }] }) }); });
   await page.goto("/administration/logistics");
   await expect(page.getByTestId("logistics-rules-admin")).toBeVisible();
   const sectionSelector = page.getByLabel("Sección de Administración", { exact: true });
@@ -46,15 +51,29 @@ test("Administración presenta y versiona reglas compactas por familia", async (
     await expect(logisticsLink).toBeVisible();
     await expect(logisticsLink).toHaveAttribute("aria-current", "page");
   }
-  await page.getByLabel("Familia logística").selectOption("TRANSPORT");
-  await expect(page.getByText("TRUCK_BY_VOLUME")).toBeVisible();
+  const familyFilter = page.getByLabel("Familia logística");
+  await familyFilter.selectOption({ label: "Proveedores externos" });
+  await expect(familyFilter).toHaveValue("EXTERNAL");
+  await expect(page.getByRole("cell", { name: "Activa", exact: true })).toBeVisible();
+  await expect(page.getByText("CRANE_BY_VOLUME")).toBeVisible();
   await page.getByRole("button", { name: "Nueva versión" }).click();
   const form = page.getByTestId("logistics-rule-form");
   await expect(form.getByRole("textbox", { name: "Código", exact: true })).toHaveCount(0);
-  expect(await form.getByLabel("Nombre empresarial", { exact: true }).evaluate((element) => element.getBoundingClientRect().height)).toBe(testInfo.project.name.includes("mobile") ? 32 : 28);
+  expect(await form.getByLabel("Nombre de la regla", { exact: true }).evaluate((element) => element.getBoundingClientRect().height)).toBe(testInfo.project.name.includes("mobile") ? 32 : 28);
+  await expect(form.getByLabel("Modalidad").locator("option:checked")).toHaveText("Modalidades configuradas");
+  await expect(form.getByLabel("Estado").locator("option:checked")).toHaveText("Borrador");
+  await expect(form.getByText("Según la regla configurada")).toBeVisible();
+  await expect(form.getByLabel("Prioridad", { exact: true })).toBeHidden();
+  await form.getByText("Orden de aplicación", { exact: true }).click();
+  await expect(form.getByLabel("Especificidad", { exact: true })).toHaveValue("20");
+  await form.getByLabel("Nombre de la regla", { exact: true }).fill("Grúa externa para mudanza");
+  await form.getByLabel("Estado").selectOption({ label: "Activa" });
   await page.getByRole("button", { name: "Crear nueva versión" }).click();
   await expect.poll(() => versioned).not.toBeNull();
-  expect(versioned).toMatchObject({ code: "TRUCK_BY_VOLUME", seriesRef: "838f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", priority: 100, specificity: 20 });
+  expect(versioned).toMatchObject({
+    name: "Grúa externa para mudanza", code: "CRANE_BY_VOLUME", seriesRef: "838f6d8f-8d11-4f39-8a2d-1b6c7e8f9012",
+    priority: 100, specificity: 20, family: "EXTERNAL", state: "ACTIVE", conditions, result,
+  });
 });
 
 test("una regla nueva usa código automático y conserva la identidad al reintentar una respuesta perdida", async ({ page }) => {
@@ -75,9 +94,11 @@ test("una regla nueva usa código automático y conserva la identidad al reinten
   const form = page.getByTestId("logistics-rule-form");
   await expect(form.getByRole("textbox", { name: "Código", exact: true })).toHaveCount(0);
   await expect(form.getByRole("spinbutton")).toHaveCount(0);
-  await form.getByLabel("Nombre empresarial", { exact: true }).fill("Personal sintético");
-  await form.getByLabel("Tipo de necesidad", { exact: true }).fill("PERSONNEL");
-  await form.getByLabel("Etiqueta visible", { exact: true }).fill("Personal de prueba");
+  await form.getByRole("combobox", { name: "Familia", exact: true }).selectOption({ label: "Huacales" });
+  await form.getByRole("combobox", { name: "Modalidad", exact: true }).selectOption({ label: "Exportación" });
+  await form.getByLabel("Nombre de la regla", { exact: true }).fill("Huacales de exportación");
+  await form.getByLabel("Tipo de necesidad", { exact: true }).fill("CRATE");
+  await form.getByLabel("Descripción para el plan", { exact: true }).fill("Huacales de prueba");
   const quantity = form.getByLabel("Cantidad", { exact: true });
   await quantity.click();
   expect(await quantity.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 1]);
@@ -90,7 +111,7 @@ test("una regla nueva usa código automático y conserva la identidad al reinten
   await form.getByRole("button", { name: "Guardar regla", exact: true }).click();
   await expect(form).toHaveCount(0);
   expect(commands).toHaveLength(2);
-  expect(commands[0]).toMatchObject({ code: null, seriesRef: null, result: { quantity: 2.5 } });
+  expect(commands[0]).toMatchObject({ code: null, seriesRef: null, family: "CRATING", conditions: { modes: ["EXPORT"] }, result: { quantity: 2.5 } });
   expect(commands[0].requestId).toMatch(/^[a-f0-9-]{36}$/);
   expect(commands[0].payloadHash).toMatch(/^[a-f0-9]{64}$/);
   expect(commands[1]).toEqual(commands[0]);

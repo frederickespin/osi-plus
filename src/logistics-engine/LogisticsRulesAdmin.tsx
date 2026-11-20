@@ -13,15 +13,42 @@ import { resolveTransportUiAccess } from "./transportAccess";
 const TransportZonesAdmin = lazy(() => import("./TransportZonesAdmin"));
 
 type Props = Readonly<{ authorization?: string; access: LogisticsUiAccess; costingAccess?: CostingUiAccess; onUnauthorized(): void }>;
-type Draft = Readonly<{ requestId: string; seriesRef: string | null; family: string; code: string; name: string; priority: string; specificity: string; mode: string; kind: string; label: string; quantity: string; state: string }>;
-const FAMILIES = ["LABOR", "TIME", "TRANSPORT", "MATERIAL", "ASSET", "EXTERNAL", "PER_DIEM", "LODGING", "TOLL", "PARKING", "PERMIT", "ZONE", "CRATING"];
-const EMPTY: Omit<Draft, "requestId"> = { seriesRef: null, family: "LABOR", code: "", name: "", priority: "100", specificity: "0", mode: "", kind: "", label: "", quantity: "1", state: "DRAFT" };
+type Draft = Readonly<{
+  requestId: string; sourceRule: LogisticsRule | null; family: string; name: string;
+  priority: string; specificity: string; mode: string; kind: string; label: string; quantity: string; state: string;
+}>;
+const FAMILY_LABELS: Readonly<Record<string, string>> = {
+  LABOR: "Personal", TIME: "Tiempo de trabajo", TRANSPORT: "Transporte", MATERIAL: "Materiales", ASSET: "Equipos",
+  EXTERNAL: "Proveedores externos", PER_DIEM: "Dietas", LODGING: "Alojamiento", TOLL: "Peajes", PARKING: "Estacionamiento",
+  PERMIT: "Permisos y gestiones", ZONE: "Zonas operativas", CRATING: "Huacales",
+};
+const MODE_LABELS: Readonly<Record<string, string>> = { LOCAL: "Local / Nacional", EXPORT: "Exportación", IMPORT: "Importación" };
+const STATE_LABELS: Readonly<Record<string, string>> = { DRAFT: "Borrador", ACTIVE: "Activa", INACTIVE: "Inactiva", SUPERSEDED: "Reemplazada" };
+const CURRENT_MODES = "CURRENT_MODES";
+const EMPTY: Omit<Draft, "requestId"> = {
+  sourceRule: null, family: "LABOR", name: "", priority: "100", specificity: "0", mode: "",
+  kind: "", label: "", quantity: "1", state: "DRAFT",
+};
 const field = cn(COMPACT_FORM_FIELD, "mt-1 block w-full font-normal");
 const numberField = cn(field, "w-24 tabular-nums");
 
+function ruleMode(rule: LogisticsRule | null): string {
+  const modes = rule?.conditions.modes;
+  if (modes === undefined) return "";
+  if (Array.isArray(modes) && modes.length === 1 && typeof modes[0] === "string" && Object.hasOwn(MODE_LABELS, modes[0])) return modes[0];
+  return CURRENT_MODES;
+}
+
 function fromRule(rule: LogisticsRule): Draft {
-  const result = rule.result as Record<string, unknown>; const conditions = rule.conditions as Record<string, unknown>; const modes = Array.isArray(conditions.modes) ? conditions.modes : [];
-  return { requestId: crypto.randomUUID(), seriesRef: rule.seriesRef, family: rule.family, code: rule.code, name: rule.name, priority: String(rule.priority), specificity: String(rule.specificity), mode: typeof modes[0] === "string" ? modes[0] : "", kind: typeof result.kind === "string" ? result.kind : "", label: typeof result.label === "string" ? result.label : rule.name, quantity: typeof result.quantity === "number" ? String(result.quantity) : "1", state: "DRAFT" };
+  const { result } = rule;
+  return {
+    requestId: crypto.randomUUID(), sourceRule: rule, family: rule.family, name: rule.name,
+    priority: String(rule.priority), specificity: String(rule.specificity), mode: ruleMode(rule),
+    kind: typeof result.kind === "string" ? result.kind : "",
+    label: typeof result.label === "string" ? result.label : rule.name,
+    quantity: typeof result.quantity === "number" ? String(result.quantity) : "",
+    state: "DRAFT",
+  };
 }
 
 export default function LogisticsRulesAdmin({ authorization, access, costingAccess = NO_COSTING_ACCESS, onUnauthorized }: Props) {
@@ -48,13 +75,26 @@ function OperationalRules({ authorization, access, onUnauthorized }: Props) {
   const load = useCallback(async () => { try { setRules(await logisticsApi.rules(authorization)); setError(null); } catch (cause) { const code = cause instanceof Error ? cause.message : "LOGISTICS_REQUEST_FAILED"; if (code.includes("AUTH")) onUnauthorized(); else setError(logisticsErrorMessage(cause)); } }, [authorization, onUnauthorized]);
   useEffect(() => { if (access.canRulesView) void load(); }, [access.canRulesView, load]);
   const visible = useMemo(() => rules.filter((row) => family === "ALL" || row.family === family), [family, rules]);
-  const change = (key: Exclude<keyof Draft, "seriesRef" | "requestId">, value: string) => setDraft((current) => current ? { ...current, [key]: value } : current);
+  const replacesActiveRule = draft?.sourceRule && rules.some((row) => row.seriesRef === draft.sourceRule?.seriesRef && row.state === "ACTIVE");
+  const change = (key: Exclude<keyof Draft, "sourceRule" | "requestId">, value: string) => setDraft((current) => current ? { ...current, [key]: value } : current);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!draft || saving) return;
     setSaving(true); setError(null);
     try {
-      await logisticsApi.versionRule(authorization, { seriesRef: draft.seriesRef, family: draft.family, code: draft.code.trim() || null, name: draft.name.trim(), priority: Number(draft.priority), specificity: Number(draft.specificity), conditions: draft.mode ? { modes: [draft.mode] } : {}, result: { kind: draft.kind.trim(), label: draft.label.trim(), quantity: Number(draft.quantity), unit: "unidad" }, state: draft.state, validFrom: null, validTo: null }, draft.requestId);
+      const { sourceRule } = draft;
+      const conditions = { ...sourceRule?.conditions };
+      if (draft.mode === "") delete conditions.modes;
+      else if (draft.mode !== CURRENT_MODES) conditions.modes = [draft.mode];
+
+      const result: Record<string, unknown> = { ...sourceRule?.result, kind: draft.kind.trim(), label: draft.label.trim() };
+      if (!sourceRule) result.unit = "unidad";
+      if (!sourceRule || typeof sourceRule.result.quantity === "number") result.quantity = Number(draft.quantity);
+      await logisticsApi.versionRule(authorization, {
+        seriesRef: sourceRule?.seriesRef ?? null, code: sourceRule?.code ?? null, family: draft.family,
+        name: draft.name.trim(), priority: Number(draft.priority), specificity: Number(draft.specificity),
+        conditions, result, state: draft.state, validFrom: null, validTo: null,
+      }, draft.requestId);
       setDraft(null); await load();
     } catch (cause) {
       const code = cause instanceof Error ? cause.message : "";
@@ -64,9 +104,13 @@ function OperationalRules({ authorization, access, onUnauthorized }: Props) {
   if (!access.canRulesView) return null;
   return <section className="min-w-0" data-testid="logistics-operational-rules">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-      <div className="flex items-center gap-1"><h2 className="text-base font-semibold text-slate-950">Reglas logísticas</h2><AdministrationHelp title="Motor Logístico"><p>Estas reglas sugieren cantidades y recursos para el plan operativo. Las tarifas de cada servicio se configuran en Servicios y combinaciones.</p><p>Filtra por familia y crea una nueva versión para actualizar una regla. Las versiones anteriores conservan su historial.</p></AdministrationHelp></div>
+      <div className="flex items-center gap-1"><h2 className="text-base font-semibold text-slate-950">Reglas operativas</h2><AdministrationHelp title="Reglas operativas">
+        <p>Una regla sugiere una necesidad cuando se cumplen sus condiciones. Por ejemplo, una mudanza puede requerir dos empacadores, una grúa de un proveedor externo o un huacal para proteger una pieza.</p>
+        <p>Las reglas independientes se aplican juntas. Si se configuró un grupo de alternativas excluyentes, se elige una según la prioridad y el desempate.</p>
+        <p>Configure los costos del servicio en Servicios y combinaciones. Registre las distancias, los perfiles de vehículo y los peajes en Ciudades y sectores.</p>
+      </AdministrationHelp></div>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <select aria-label="Familia logística" value={family} onChange={(event) => setFamily(event.target.value)} className={cn(COMPACT_FORM_FIELD, "max-w-full")}><option value="ALL">Todas las familias</option>{FAMILIES.map((value) => <option key={value}>{value}</option>)}</select>
+        <select aria-label="Familia logística" value={family} onChange={(event) => setFamily(event.target.value)} className={cn(COMPACT_FORM_FIELD, "max-w-full")}><option value="ALL">Todas las familias</option>{Object.entries(FAMILY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         <button type="button" disabled={saving} onClick={() => void load()} aria-label="Actualizar reglas" className="grid h-9 w-9 place-items-center rounded border text-slate-600 disabled:opacity-40"><RefreshCw aria-hidden="true" className="h-4 w-4" /></button>
         {access.canRulesManage && <button type="button" disabled={saving} onClick={() => { setDraft({ ...EMPTY, requestId: crypto.randomUUID() }); setError(null); }} className="inline-flex min-h-9 items-center gap-1.5 rounded bg-[#003366] px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"><Plus aria-hidden="true" className="h-4 w-4" />Nueva regla</button>}
       </div>
@@ -74,19 +118,52 @@ function OperationalRules({ authorization, access, onUnauthorized }: Props) {
     {error && <p role="alert" className="mt-3 border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</p>}
     {draft && <form onSubmit={(event) => void submit(event)} className="mt-3 border bg-slate-50 p-3" data-testid="logistics-rule-form">
       <fieldset disabled={saving} className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 disabled:opacity-70">
-        <label className="text-xs font-semibold">Familia<select value={draft.family} onChange={(event) => change("family", event.target.value)} className={field}>{FAMILIES.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <div className="lg:col-span-3"><label className="text-xs font-semibold">Nombre empresarial<input required value={draft.name} onChange={(event) => change("name", event.target.value)} className={field} /></label><p className="mt-1 text-[11px] text-slate-500">{draft.seriesRef ? `Código: ${draft.code}` : "Código automático al guardar"}</p></div>
-        <div className="text-xs font-semibold"><label htmlFor={`${formId}-priority`}>Prioridad</label><div className="flex items-center gap-1"><NumericInput id={`${formId}-priority`} required min="0" step="1" value={draft.priority} onChange={(event) => change("priority", event.target.value)} className={numberField} /><AdministrationHelp title="Prioridad de reglas"><p>Ordena las reglas que cumplen sus condiciones, de mayor a menor prioridad. Las reglas independientes que correspondan siguen aplicándose.</p><p>Ejemplo: una prioridad de 200 se evalúa antes que una de 100. Cambiar de 100 a 200 no duplica la cantidad ni el costo.</p><p>Si dos reglas tienen la misma prioridad, se ordenan por especificidad.</p></AdministrationHelp></div></div>
-        <div className="text-xs font-semibold"><label htmlFor={`${formId}-specificity`}>Especificidad</label><div className="flex items-center gap-1"><NumericInput id={`${formId}-specificity`} required min="0" step="1" value={draft.specificity} onChange={(event) => change("specificity", event.target.value)} className={numberField} /><AdministrationHelp title="Especificidad de reglas"><p>Ordena las reglas que tienen la misma prioridad; se evalúa primero la especificidad mayor.</p><p>Ejemplo: con prioridad 100 en ambas reglas, una especificidad de 2 va antes que una de 1. Este número no aumenta cantidades ni costos y no descarta otras reglas independientes.</p></AdministrationHelp></div></div>
-        <label className="text-xs font-semibold">Modo aplicable<select value={draft.mode} onChange={(event) => change("mode", event.target.value)} className={field}><option value="">Todos</option><option>LOCAL</option><option>EXPORT</option><option>IMPORT</option></select></label>
-        <label className="text-xs font-semibold">Estado<select value={draft.state} onChange={(event) => change("state", event.target.value)} className={field}><option>DRAFT</option><option>ACTIVE</option><option>INACTIVE</option></select></label>
-        <label className="text-xs font-semibold">Tipo de necesidad<input required value={draft.kind} onChange={(event) => change("kind", event.target.value)} className={field} /></label>
-        <label className="text-xs font-semibold sm:col-span-2">Etiqueta visible<input required value={draft.label} onChange={(event) => change("label", event.target.value)} className={field} /></label>
-        <div className="text-xs font-semibold"><label htmlFor={`${formId}-quantity`}>Cantidad</label><div className="flex items-center gap-1"><NumericInput id={`${formId}-quantity`} required min="0" step="0.01" value={draft.quantity} onChange={(event) => change("quantity", event.target.value)} className={numberField} /><AdministrationHelp title="Cantidad de la regla"><p>Es la cantidad sugerida de esta necesidad cuando la regla se aplica.</p><p>Ejemplo: pasar de 2 a 3 unidades añade 1 unidad, un aumento del 50 %. La tarifa y el costo se determinan en el costeo correspondiente.</p><p>Ingrese 0 solo cuando la cantidad realmente sea cero.</p></AdministrationHelp></div></div>
-        <div className="flex items-end justify-end gap-2 sm:col-span-2 lg:col-span-4"><button type="button" onClick={() => setDraft(null)} className="min-h-9 rounded border bg-white px-3 py-2 text-xs font-bold">Cancelar</button><button type="submit" disabled={saving} className="min-h-9 rounded bg-[#003366] px-3 py-2 text-xs font-bold text-white">{saving ? "Guardando…" : draft.seriesRef ? "Crear nueva versión" : "Guardar regla"}</button></div>
+        <label className="text-xs font-semibold">Familia<select value={draft.family} onChange={(event) => change("family", event.target.value)} className={field}>{Object.entries(FAMILY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <div className="lg:col-span-3"><label className="text-xs font-semibold">Nombre de la regla<input required value={draft.name} onChange={(event) => change("name", event.target.value)} className={field} /></label><p className="mt-1 text-[11px] text-slate-500">{draft.sourceRule ? draft.sourceRule.code : "Código automático al guardar"}</p></div>
+        <label className="text-xs font-semibold">Modalidad<select value={draft.mode} onChange={(event) => change("mode", event.target.value)} className={field}>
+          <option value="">Todas las modalidades</option>
+          {ruleMode(draft.sourceRule) === CURRENT_MODES && <option value={CURRENT_MODES}>Modalidades configuradas</option>}
+          {Object.entries(MODE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select></label>
+        <label className="text-xs font-semibold">Estado<select value={draft.state} onChange={(event) => change("state", event.target.value)} className={field}>
+          <option value="DRAFT">{STATE_LABELS.DRAFT}</option><option value="ACTIVE">{STATE_LABELS.ACTIVE}</option><option value="INACTIVE">{STATE_LABELS.INACTIVE}</option>
+        </select></label>
+        <div className="text-xs font-semibold">
+          <label htmlFor={`${formId}-kind`}>Tipo de necesidad</label>
+          <div className="flex items-center gap-1">
+            <input id={`${formId}-kind`} required value={draft.kind} onChange={(event) => change("kind", event.target.value)} className={cn(field, "min-w-0")} />
+            <AdministrationHelp title="Tipo de necesidad"><p>Es el identificador que permite reconocer el mismo recurso en otras configuraciones, por ejemplo GRUA. La descripción es el texto que verá el equipo en el plan.</p></AdministrationHelp>
+          </div>
+        </div>
+        <label className="text-xs font-semibold sm:col-span-2 lg:col-span-3">Descripción para el plan<input required value={draft.label} onChange={(event) => change("label", event.target.value)} className={field} /></label>
+        <div className="text-xs font-semibold">
+          {draft.sourceRule && typeof draft.sourceRule.result.quantity !== "number" ? (
+            <><span>Cantidad</span><p className="mt-2 font-normal text-slate-600">Según la regla configurada</p></>
+          ) : (
+            <><label htmlFor={`${formId}-quantity`}>Cantidad</label><div className="flex items-center gap-1">
+              <NumericInput id={`${formId}-quantity`} required min="0" step="0.01" value={draft.quantity} onChange={(event) => change("quantity", event.target.value)} className={numberField} />
+              <AdministrationHelp title="Cantidad de la regla"><p>Indica cuántos recursos sugiere la regla cuando aplica. Una regla de personal con cantidad 2 añade dos personas al plan.</p></AdministrationHelp>
+            </div></>
+          )}
+        </div>
+        <details onInvalidCapture={(event) => { event.currentTarget.open = true; }} className="border-t pt-2 sm:col-span-2 lg:col-span-4">
+          <summary className="w-fit cursor-pointer rounded px-1 text-xs font-semibold text-[#003366] focus-visible:outline-2">Orden de aplicación</summary>
+          <div className="mt-2 flex flex-wrap gap-4">
+            <div className="text-xs font-semibold"><label htmlFor={`${formId}-priority`}>Prioridad</label><div className="flex items-center gap-1">
+              <NumericInput id={`${formId}-priority`} required min="0" step="1" value={draft.priority} onChange={(event) => change("priority", event.target.value)} className={numberField} />
+              <AdministrationHelp title="Prioridad de reglas"><p>El valor mayor se evalúa primero. Si dos reglas son alternativas del mismo grupo, una prioridad de 200 prevalece sobre una de 100. Si son independientes, ambas pueden aplicar.</p></AdministrationHelp>
+            </div></div>
+            <div className="text-xs font-semibold"><label htmlFor={`${formId}-specificity`}>Especificidad</label><div className="flex items-center gap-1">
+              <NumericInput id={`${formId}-specificity`} required min="0" step="1" value={draft.specificity} onChange={(event) => change("specificity", event.target.value)} className={numberField} />
+              <AdministrationHelp title="Especificidad de reglas"><p>Es el segundo criterio de orden cuando la prioridad coincide. En un grupo excluyente, gana el valor mayor. Si ambas cifras coinciden, el sistema señala un conflicto.</p></AdministrationHelp>
+            </div></div>
+          </div>
+        </details>
+        {replacesActiveRule && draft.state !== "ACTIVE" && <p className="text-xs text-amber-800 sm:col-span-2 lg:col-span-4">Al guardar esta versión, la regla activa se reemplaza y deja de aplicarse.</p>}
+        <div className="flex items-end justify-end gap-2 sm:col-span-2 lg:col-span-4"><button type="button" onClick={() => setDraft(null)} className="min-h-9 rounded border bg-white px-3 py-2 text-xs font-bold">Cancelar</button><button type="submit" disabled={saving} className="min-h-9 rounded bg-[#003366] px-3 py-2 text-xs font-bold text-white">{saving ? "Guardando…" : draft.sourceRule ? "Crear nueva versión" : "Guardar regla"}</button></div>
       </fieldset>
     </form>}
-    <div className="mt-3 overflow-x-auto border bg-white"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-2">Familia</th><th className="p-2">Regla</th><th className="p-2">Prioridad</th><th className="p-2">Especificidad</th><th className="p-2">Versión</th><th className="p-2">Estado</th>{access.canRulesManage && <th className="p-2">Acción</th>}</tr></thead><tbody>{visible.map((row) => <tr key={row.ruleRef} className="border-t hover:bg-slate-50"><td className="p-2 font-bold">{row.family}</td><td className="p-2"><strong>{row.name}</strong><span className="block font-mono text-[10px] text-slate-500">{row.code}</span></td><td className="p-2">{row.priority}</td><td className="p-2">{row.specificity}</td><td className="p-2">v{row.version}</td><td className="p-2">{row.state}</td>{access.canRulesManage && <td className="p-2"><button type="button" disabled={saving} onClick={() => { setDraft(fromRule(row)); setError(null); }} className="rounded border px-2 py-1 font-bold disabled:opacity-40">Nueva versión</button></td>}</tr>)}</tbody></table></div>
+    <div className="mt-3 overflow-x-auto border bg-white"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-2">Familia</th><th className="p-2">Regla</th><th className="p-2">Prioridad</th><th className="p-2">Especificidad</th><th className="p-2">Versión</th><th className="p-2">Estado</th>{access.canRulesManage && <th className="p-2">Acción</th>}</tr></thead><tbody>{visible.map((row) => <tr key={row.ruleRef} className="border-t hover:bg-slate-50"><td className="p-2 font-bold">{FAMILY_LABELS[row.family] ?? row.family}</td><td className="p-2"><strong>{row.name}</strong><span className="block font-mono text-[10px] text-slate-500">{row.code}</span></td><td className="p-2">{row.priority}</td><td className="p-2">{row.specificity}</td><td className="p-2">v{row.version}</td><td className="p-2">{STATE_LABELS[row.state] ?? row.state}</td>{access.canRulesManage && <td className="p-2"><button type="button" disabled={saving} onClick={() => { setDraft(fromRule(row)); setError(null); }} className="rounded border px-2 py-1 font-bold disabled:opacity-40">Nueva versión</button></td>}</tr>)}</tbody></table></div>
     {visible.length === 0 && <p className="border border-t-0 bg-white p-4 text-center text-xs text-slate-500">Sin reglas para este filtro.</p>}
   </section>;
 }

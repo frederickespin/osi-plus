@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, ListPlus, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Truck, UsersRound } from "lucide-react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, List, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Truck, UsersRound } from "lucide-react";
 import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { getMembershipRef } from "@/lib/sessionStore";
+import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { resolveFleetAccess, type FleetAccess } from "./access";
 import { FleetApi, FleetApiError, fleetErrorText } from "./api";
 import FleetEditor from "./FleetEditor";
@@ -44,7 +45,10 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
   const [asOf, setAsOf] = useState(() => Date.now());
   const [refresh, setRefresh] = useState(0);
   const [selection, setSelection] = useState<{ vehicleRef: string | null; section: "details" | "availability" } | { vehicleRef: string; section: "drivers" } | null>(null);
-  const [registerType, setRegisterType] = useState(false);
+  const [showTypes, setShowTypes] = useState(false);
+  const [createType, setCreateType] = useState(false);
+  const [typeName, setTypeName] = useState("");
+  const registeredTypeId = useId();
   const [options, setOptions] = useState<FleetOptions | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [optionsRevision, setOptionsRevision] = useState(0);
@@ -63,7 +67,9 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
   const rows = !loading && result ? result.rows : [];
   const total = !loading && result ? result.total : 0;
   const error = !loading && result ? result.error : null;
-  const needsOptions = selection?.section === "details";
+  const needsOptions = showTypes || selection?.section === "details";
+  const registeredTypes = options?.types.filter((type) => type.registered) ?? [];
+  const editingType = createType ? undefined : registeredTypes.find((type) => type.name === typeName);
 
   useEffect(() => {
     if (!needsOptions) return;
@@ -173,13 +179,32 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
       <div className="flex items-center gap-1.5">
         <AdministrationHelp title="Flota vehicular"><p>Registre primero la ficha técnica y active el vehículo desde la casilla Activo del listado.</p><p>Activo permite considerarlo en planificación. Para ofrecerse como disponible también debe estar en estado Disponible y dentro de su vigencia. En uso no significa libre.</p><p>En el menú de tres puntos encontrará la ficha y Disponibilidad, donde puede gestionar el estado, la vigencia y el retiro. Un vehículo retirado conserva sus datos y deja de admitir cambios.</p><p>Las características técnicas usadas en cálculos quedan protegidas. La flota no incluye todavía mantenimiento, combustible ni reservas.</p></AdministrationHelp>
         <AdministrationIconAction label="Actualizar flota" disabled={loading || updating.size > 0} onClick={refreshList}><RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></AdministrationIconAction>
-        {access.canEdit && <AdministrationIconAction label="Nuevo tipo de vehículo" aria-expanded={registerType} disabled={registerType}
-          onClick={() => { setRegisterType(true); setTypeNotice(""); }}><ListPlus aria-hidden="true" className="size-4" /></AdministrationIconAction>}
+        {access.canEdit && <AdministrationIconAction label="Tipos de vehículo" aria-expanded={showTypes}
+          onClick={() => { setShowTypes(!showTypes); setCreateType(false); setTypeName(""); setTypeNotice(""); }}>
+          <List aria-hidden="true" className="size-4" /><span>Tipos</span>
+        </AdministrationIconAction>}
         {access.canEdit && <AdministrationIconAction label="Nuevo vehículo" onClick={() => setSelection({ vehicleRef: null, section: "details" })} className="border-[#003366] bg-[#003366] text-white hover:bg-[#00264d]"><Plus aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction>}
       </div>
     </div>
-    {registerType && <FleetTypeForm api={api} onUnauthorized={onUnauthorized} onClose={() => setRegisterType(false)}
-      onSaved={(type) => { setRegisterType(false); setTypeNotice(type.name + " disponible en la ficha de vehículo."); }} />}
+    {showTypes && <div className="mb-3 flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-sky-50 p-2 text-xs">
+      {!createType && <div className="grid w-60 max-w-full gap-1 font-semibold text-slate-700">
+        <label htmlFor={registeredTypeId}>Tipo registrado</label>
+        <select id={registeredTypeId} value={typeName} onChange={(event) => setTypeName(event.target.value)} className={COMPACT_FORM_FIELD} disabled={!registeredTypes.length}>
+          <option value="">{options ? (registeredTypes.length ? "Seleccionar para editar" : "Sin tipos registrados") : "Seleccionar tipo"}</option>
+          {registeredTypes.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+        </select>
+      </div>}
+      {!createType && <AdministrationIconAction label="Nuevo tipo de vehículo" onClick={() => { setCreateType(true); setTypeName(""); }}><Plus aria-hidden="true" className="size-4" /></AdministrationIconAction>}
+      {(createType || editingType) && <FleetTypeForm key={editingType ? `edit:${editingType.name}` : "new"} api={api}
+        existing={editingType} onUnauthorized={onUnauthorized} onClose={() => { setCreateType(false); setTypeName(""); }}
+        onSaved={(type) => {
+          setTypeNotice(editingType ? `Capacidad de «${type.name}» actualizada.` : `${type.name} disponible en la ficha de vehículo.`);
+          setShowTypes(false);
+          setOptions(null);
+          setOptionsRevision((value) => value + 1);
+        }} />}
+      {optionsError && <p role="alert" className="text-red-800">{optionsError}</p>}
+    </div>}
     {typeNotice && <p role="status" className="mb-2 text-xs text-emerald-800">{typeNotice}</p>}
     <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(180px,1fr)_160px_160px]">
       <label className="relative col-span-2 block sm:col-span-1"><Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-3 h-4 w-4 text-slate-400 sm:top-2.5" /><input type="search" aria-label="Buscar vehículos" placeholder="Código, matrícula, marca…" maxLength={120} value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} className={`${filterClass} w-full pl-8`} /></label>

@@ -44,7 +44,7 @@ async function bodyOf(response: Response) {
 
 function vehicleTypeOf(value: unknown): FleetVehicleType {
   if (!record(value) || !text(value.name, 80) || typeof value.variableVolume !== "boolean") return fail();
-  return { name: String(value.name), variableVolume: value.variableVolume };
+  return { name: String(value.name), variableVolume: value.variableVolume, registered: value.registered === true };
 }
 
 function baseOf(value: unknown): FleetBase {
@@ -101,8 +101,12 @@ export class FleetApi {
     if (!Array.isArray(body.types) || !Array.isArray(body.bases)) return fail();
     return { types: body.types.map(vehicleTypeOf), bases: body.bases.map(baseOf) };
   }
-  async createType(payload: FleetVehicleType & { requestId: string }, signal?: AbortSignal) {
+  async createType(payload: Pick<FleetVehicleType, "name" | "variableVolume"> & { requestId: string }, signal?: AbortSignal) {
     const response = await this.fetchImpl("/api/admin/fleet/options", { method: "POST", headers: this.headers(true), body: JSON.stringify(payload), cache: "no-store", signal });
+    return vehicleTypeOf((await bodyOf(response)).type);
+  }
+  async updateType(payload: Pick<FleetVehicleType, "name" | "variableVolume"> & { requestId: string; expectedVariableVolume: boolean }, signal?: AbortSignal) {
+    const response = await this.fetchImpl("/api/admin/fleet/options", { method: "PATCH", headers: this.headers(true), body: JSON.stringify(payload), cache: "no-store", signal });
     return vehicleTypeOf((await bodyOf(response)).type);
   }
   async update(vehicleRef: string, payload: FleetUpdate, signal?: AbortSignal) {
@@ -129,6 +133,8 @@ export function fleetErrorText(error: unknown, context: "request" | "details" | 
     ADMIN_FLEET_VERSION_CONFLICT: "La ficha cambió desde que la abrió. Recárguela para revisar la versión actual.",
     ADMIN_FLEET_DUPLICATE: "El código, la matrícula o el VIN ya pertenecen a otro vehículo.",
     ADMIN_FLEET_TYPE_DUPLICATE: "Ya existe un tipo de vehículo con ese nombre.",
+    ADMIN_FLEET_TYPE_VERSION_CONFLICT: "El tipo cambió. Vuelva a abrir Tipos de vehículo para cargar el valor actual.",
+    ADMIN_FLEET_TYPE_FIXED_CAPACITY_IN_USE: "Hay vehículos de este tipo con volumen o dimensiones fijas. Revise sus fichas antes de cambiar a volumen según el contenedor.",
     ADMIN_FLEET_TYPE_NOT_REGISTERED: "Seleccione un tipo del catálogo de flota.",
     ADMIN_FLEET_BASE_NOT_REGISTERED: "Seleccione una sede disponible en Motor Logístico.",
     ADMIN_FLEET_VARIABLE_VOLUME: "Este tipo utiliza el volumen y las dimensiones del contenedor.",

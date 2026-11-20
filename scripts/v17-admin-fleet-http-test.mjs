@@ -184,10 +184,21 @@ const typeRequest = { ...type, requestId: randomUUID() };
 const options = createAdminFleetOptionsHandler({ ...dependencies,
   list: async (_db, actor) => { assert.equal(actor, context); return { types: [type], bases: [] }; },
   create: async (_db, actor, input) => { assert.equal(actor, context); assert.deepEqual(input, typeRequest); return { type, created: true }; },
+  update: async (_db, actor, input) => {
+    assert.equal(actor, context);
+    assert.deepEqual(input, { ...typeRequest, expectedVariableVolume: true, variableVolume: false });
+    return { type: { ...type, variableVolume: false } };
+  },
 });
 const optionsResponse = await invoke(options, { url: "/api/admin/fleet/options" });
 check("options response includes only the scoped catalog and is private", optionsResponse.statusCode === 200
   && optionsResponse.body.types[0].variableVolume && isPrivate(optionsResponse));
 const typeResponse = await invoke(options, { method: "POST", url: "/api/admin/fleet/options", body: typeRequest, headers: jsonHeaders });
 check("type registration returns created status and private headers", typeResponse.statusCode === 201 && typeResponse.body.type.name === type.name && isPrivate(typeResponse));
+const typePatch = await invoke(options, {
+  method: "PATCH", url: "/api/admin/fleet/options", headers: jsonHeaders,
+  body: { ...typeRequest, expectedVariableVolume: true, variableVolume: false },
+});
+check("type edit returns the updated mode and private headers", typePatch.statusCode === 200
+  && typePatch.body.type.variableVolume === false && isPrivate(typePatch));
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

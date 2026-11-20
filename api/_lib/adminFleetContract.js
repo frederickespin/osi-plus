@@ -110,6 +110,12 @@ export function parseFleetTypeCreate(input) {
   if (!normalizedName || normalizedName.length > 80) fleetFail("INPUT_INVALID");
   return { requestId: adminFleetRequestId(input.requestId), name, normalizedName, variableVolume: input.variableVolume };
 }
+export function parseFleetTypeUpdate(input) {
+  exactFleetObject(input, ["requestId", "name", "variableVolume", "expectedVariableVolume"]);
+  const { expectedVariableVolume, ...type } = input;
+  if (typeof expectedVariableVolume !== "boolean") fleetFail("INPUT_INVALID");
+  return { ...parseFleetTypeCreate(type), expectedVariableVolume };
+}
 export function parseAdminFleetPatch(input) {
   exactFleetObject(input, ["requestId", "expectedVersion", "changes"]);
   const requestId = adminFleetRequestId(input.requestId);

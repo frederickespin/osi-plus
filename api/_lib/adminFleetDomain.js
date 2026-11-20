@@ -5,7 +5,7 @@ import { requiredAdminText } from "./adminMembershipDomain.js";
 import { authorizeFleetContext, revalidateFleetActor } from "./fleetActor.js";
 import {
   ADMIN_FLEET_EDITABLE_FIELDS, ADMIN_FLEET_TECHNICAL_FIELDS, adminFleetEditableDto, adminFleetVehicleDto,
-  adminFleetVehicleRef, fleetFail, fleetTypeNameKey, normalizeAdminFleetVehicle, parseAdminFleetCreate, parseAdminFleetFilters, parseAdminFleetPatch, parseFleetTypeCreate,
+  adminFleetVehicleRef, fleetFail, fleetTypeNameKey, normalizeAdminFleetVehicle, parseAdminFleetCreate, parseAdminFleetFilters, parseAdminFleetPatch, parseFleetTypeCreate, parseFleetTypeUpdate,
 } from "./adminFleetContract.js";
 import { transportFleetOptions } from "./logisticsTransportZones.js";
 
@@ -46,9 +46,9 @@ async function fleetOptions(tx, tenantId) {
     tx.vehicle.findMany({ where: { tenant_id: tenantId }, distinct: ["vehicle_type"], select: { vehicle_type: true } }),
     transportFleetOptions(tx, tenantId),
   ]);
-  const vehicleTypes = new Map(savedTypes.map((type) => [type.name, type]));
+  const vehicleTypes = new Map(savedTypes.map((type) => [type.name, { ...type, registered: true }]));
   for (const name of [...usedTypes.map((row) => row.vehicle_type), ...transport.types]) {
-    if (!vehicleTypes.has(name)) vehicleTypes.set(name, { name, variableVolume: false });
+    if (!vehicleTypes.has(name)) vehicleTypes.set(name, { name, variableVolume: false, registered: false });
   }
   return { types: [...vehicleTypes.values()].sort((a, b) => a.name.localeCompare(b.name, "es")), bases: transport.bases };
 }
@@ -56,6 +56,18 @@ async function fleetOptions(tx, tenantId) {
 export async function listAdminFleetOptions(prisma, context) {
   authorizeContext(context);
   return adminFleetTransaction(prisma, async (tx) => fleetOptions(tx, (await actorFor(tx, context)).tenantId));
+}
+
+async function assertContainerCapacityCompatible(tx, tenantId, name) {
+  const measuredVehicle = await tx.vehicle.findFirst({
+    where: {
+      tenant_id: tenantId,
+      vehicle_type: name,
+      OR: ["capacity_volume", "usable_length", "usable_width", "usable_height"].map((field) => ({ [field]: { not: null } })),
+    },
+    select: { id: true },
+  });
+  if (measuredVehicle) fleetFail("TYPE_FIXED_CAPACITY_IN_USE", 409);
 }
 
 export async function createAdminFleetType(prisma, context, input, { auditWriter = appendCommercialAudit } = {}) {
@@ -66,8 +78,12 @@ export async function createAdminFleetType(prisma, context, input, { auditWriter
     const { tenantId, membershipId } = await actorFor(tx, context, true);
     const previous = await tx.fleetVehicleType.findUnique({ where: { tenantId_requestId: { tenantId, requestId } } });
     if (previous) {
-      if (previous.normalizedName !== normalizedName || previous.variableVolume !== variableVolume) fleetFail("REQUEST_CONFLICT", 409);
-      return { type: { name: previous.name, variableVolume }, created: false };
+      const receipt = await tx.commercialAuditLog.findFirst({
+        where: { tenant_id: tenantId, source: SOURCE, request_id: requestId, action: "ADMIN_FLEET_TYPE_CREATED", entityId: previous.id },
+        select: { after_json: true },
+      });
+      if (previous.normalizedName !== normalizedName || receipt?.after_json?.variableVolume !== variableVolume) fleetFail("REQUEST_CONFLICT", 409);
+      return { type: { name: previous.name, variableVolume, registered: true }, created: false };
     }
     if (await tx.fleetVehicleType.findUnique({ where: { tenantId_normalizedName: { tenantId, normalizedName } } })) fleetFail("TYPE_DUPLICATE", 409);
     // Keep the exact name already used by a vehicle or tariff so its profile
@@ -75,13 +91,52 @@ export async function createAdminFleetType(prisma, context, input, { auditWriter
     const { types } = await fleetOptions(tx, tenantId);
     const canonicalName = types.find((type) => type.name === name)?.name
       ?? types.find((type) => fleetTypeNameKey(type.name) === normalizedName)?.name ?? name;
+    await assertUnusedRequest(tx, { tenantId }, requestId);
+    if (variableVolume) await assertContainerCapacityCompatible(tx, tenantId, canonicalName);
     const { id } = await tx.fleetVehicleType.create({ data: { id: randomUUID(), tenantId, name: canonicalName, normalizedName, variableVolume, requestId } });
     await auditWriter(tx, { tenantId, actorKind: "MEMBERSHIP", actorMembershipId: membershipId }, {
       requestId, correlationId: requestId, source: SOURCE, entity: "FLEET_VEHICLE_TYPE", entityId: id,
       action: "ADMIN_FLEET_TYPE_CREATED", critical: true, afterJson: { name: canonicalName, variableVolume },
     });
-    return { type: { name: canonicalName, variableVolume }, created: true };
+    return { type: { name: canonicalName, variableVolume, registered: true }, created: true };
   }, { retryUnique: true });
+}
+
+export async function updateAdminFleetType(prisma, context, input, { auditWriter = appendCommercialAudit } = {}) {
+  authorizeContext(context, true);
+  const { requestId, normalizedName, variableVolume, expectedVariableVolume } = parseFleetTypeUpdate(input);
+  return adminFleetTransaction(prisma, async (tx) => {
+    await lockTenant(tx, context);
+    const actor = await actorFor(tx, context, true);
+    const { tenantId, membershipId } = actor;
+    const saved = await tx.fleetVehicleType.findUnique({ where: { tenantId_normalizedName: { tenantId, normalizedName } } });
+    if (!saved) fleetFail("TYPE_NOT_REGISTERED", 404);
+    const type = { name: saved.name, variableVolume, registered: true };
+    const receipt = await tx.commercialAuditLog.findFirst({
+      where: { tenant_id: tenantId, source: SOURCE, request_id: requestId },
+      select: { action: true, entityId: true, before_json: true, after_json: true },
+    });
+    if (receipt) {
+      if (receipt.action !== "ADMIN_FLEET_TYPE_UPDATED" || receipt.entityId !== saved.id
+        || receipt.before_json?.variableVolume !== expectedVariableVolume || receipt.after_json?.variableVolume !== variableVolume) {
+        fleetFail("REQUEST_CONFLICT", 409);
+      }
+      if (saved.variableVolume !== variableVolume) fleetFail("TYPE_VERSION_CONFLICT", 409);
+      return { type };
+    }
+    if (saved.variableVolume !== expectedVariableVolume) fleetFail("TYPE_VERSION_CONFLICT", 409);
+    if (saved.variableVolume === variableVolume) return { type };
+    await assertUnusedRequest(tx, actor, requestId);
+    if (variableVolume) await assertContainerCapacityCompatible(tx, tenantId, saved.name);
+    await tx.fleetVehicleType.update({ where: { id: saved.id }, data: { variableVolume } });
+    await auditWriter(tx, { tenantId, actorKind: "MEMBERSHIP", actorMembershipId: membershipId }, {
+      requestId, correlationId: requestId, source: SOURCE, entity: "FLEET_VEHICLE_TYPE", entityId: saved.id,
+      action: "ADMIN_FLEET_TYPE_UPDATED", critical: true,
+      beforeJson: { name: saved.name, variableVolume: saved.variableVolume },
+      afterJson: { name: saved.name, variableVolume },
+    });
+    return { type };
+  });
 }
 
 async function validateFleetOptions(tx, tenantId, vehicle, { type, base }) {
@@ -233,8 +288,9 @@ export async function updateAdminFleetVehicle(prisma, context, vehicleRef, input
     if (before.operationalStatus === "RETIRED" || before.retiredAt) fleetFail("RETIRED", 409);
     if (before.calculationLocked && changedFields.some((key) => ADMIN_FLEET_TECHNICAL_FIELDS.includes(key))) fleetFail("CALCULATION_LOCKED", 409);
     const typeChanged = changedFields.includes("vehicleType");
+    const capacityChanged = ["capacityVolume", "usableLength", "usableWidth", "usableHeight"].some((field) => changedFields.includes(field));
     const baseChanged = changedFields.includes("hubCode") && vehicle.hubCode !== null;
-    if (typeChanged || baseChanged) await validateFleetOptions(tx, actor.tenantId, vehicle, { type: typeChanged, base: baseChanged });
+    if (typeChanged || capacityChanged || baseChanged) await validateFleetOptions(tx, actor.tenantId, vehicle, { type: typeChanged || capacityChanged, base: baseChanged });
     await assertUnusedRequest(tx, actor, requestId);
     await assertUniqueVehicle(tx, actor, vehicle, ref);
     const rows = await tx.$queryRaw(Prisma.sql`

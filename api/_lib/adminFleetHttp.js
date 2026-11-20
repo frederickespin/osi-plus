@@ -7,7 +7,7 @@ import { Mt01bAuthError } from "./authPolicy.js";
 import { AdminMembershipError } from "./adminMembershipDomain.js";
 import { AdminFleetError, fleetFail } from "./adminFleetContract.js";
 import { assertAdminFleetDatabase, requireAdminFleetAccess, requireAdminFleetContext } from "./adminFleetAccess.js";
-import { createAdminFleetType, createAdminFleetVehicle, getAdminFleetVehicle, listAdminFleetOptions, listAdminFleetVehicles, updateAdminFleetVehicle } from "./adminFleetDomain.js";
+import { createAdminFleetType, createAdminFleetVehicle, getAdminFleetVehicle, listAdminFleetOptions, listAdminFleetVehicles, updateAdminFleetType, updateAdminFleetVehicle } from "./adminFleetDomain.js";
 
 function header(req, name) { const value = req.headers?.[name]; return Array.isArray(value) ? null : value; }
 function sameOrigin(req) {
@@ -70,10 +70,12 @@ export function createAdminFleetCollectionHandler(options = {}) {
 export function createAdminFleetOptionsHandler(options = {}) {
   const list = options.list ?? listAdminFleetOptions;
   const create = options.create ?? createAdminFleetType;
-  return protectedHandler(options, ["GET", "HEAD", "POST"], async (req, res, context, prisma, head) => {
+  const update = options.update ?? updateAdminFleetType;
+  return protectedHandler(options, ["GET", "HEAD", "POST", "PATCH"], async (req, res, context, prisma, head) => {
     queryParams(req, []);
-    if (req.method === "POST") {
-      const result = await create(prisma, context, await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 4096 }));
+    if (req.method === "POST" || req.method === "PATCH") {
+      const input = await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 4096 });
+      const result = await (req.method === "POST" ? create : update)(prisma, context, input);
       return res.status(result.created ? 201 : 200).json({ ok: true, ...result });
     }
     const result = await list(prisma, context);

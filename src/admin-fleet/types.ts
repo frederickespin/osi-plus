@@ -11,7 +11,7 @@ export type FleetList = Readonly<{ data: readonly FleetVehicle[]; total: number;
 export type FleetListFilters = Readonly<{ search: string; operationalStatus: FleetStatus | ""; vehicleType: string; page: number; pageSize: number }>;
 export type FleetCreate = Omit<VehicleValues, "businessCode"> & { requestId: string; businessCode?: string };
 export type FleetUpdate = AdminFleetPatchInput;
-export type FleetVehicleType = Readonly<{ name: string; variableVolume: boolean }>;
+export type FleetVehicleType = Readonly<{ name: string; variableVolume: boolean; registered: boolean }>;
 export type FleetBase = Readonly<{ code: string; name: string; address: string }>;
 export type FleetOptions = Readonly<{ types: readonly FleetVehicleType[]; bases: readonly FleetBase[] }>;
 

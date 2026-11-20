@@ -22,7 +22,7 @@ async function fixture(page: Page, options: { count?: number; permissions?: stri
   const writes: { method: string; body: Record<string, unknown> }[] = [];
   const reads: URL[] = [];
   const unexpected: string[] = [];
-  const types = [{ name: "Camión", variableVolume: false }, { name: "Furgón", variableVolume: false }];
+  const types = [{ name: "Camión", variableVolume: false, registered: true }, { name: "Furgón", variableVolume: false, registered: true }];
   await page.addInitScript(({ membership, role }) => {
     localStorage.setItem("osi-plus.token", "synthetic.fleet.token");
     localStorage.setItem("osi-plus.session", JSON.stringify({ name: "Administradora de prueba", role, membershipRef: membership,
@@ -39,9 +39,18 @@ async function fixture(page: Page, options: { count?: number; permissions?: stri
       if (request.method() === "POST") {
         const body = request.postDataJSON();
         writes.push({ method: "POST", body });
-        const type = { name: body.name, variableVolume: body.variableVolume };
+        const type = { name: body.name, variableVolume: body.variableVolume, registered: true };
         types.push(type);
         return json({ ok: true, type, created: true }, 201);
+      }
+      if (request.method() === "PATCH") {
+        const body = request.postDataJSON();
+        writes.push({ method: "PATCH", body });
+        const type = types.find(({ name }) => name === body.name);
+        expect(type?.variableVolume).toBe(body.expectedVariableVolume);
+        if (!type) return json({ ok: false, error: "ADMIN_FLEET_TYPE_NOT_REGISTERED" }, 404);
+        type.variableVolume = body.variableVolume;
+        return json({ ok: true, type });
       }
       return json({ ok: true, types, bases: [{ code: BASE_CODE, name: "Sede principal", address: "Calle de prueba" }] });
     }
@@ -182,22 +191,40 @@ test("alta incluye unidades elegidas y edición envía sólo campos cambiados", 
   expect(seen.unexpected).toEqual([]);
 });
 
-test("registra un tractocamión desde la cabecera y deja el volumen al contenedor", async ({ page }) => {
+test("registra y corrige la capacidad de un tipo desde la cabecera de flota", async ({ page }) => {
   const seen = await fixture(page);
   await openFleet(page);
+  await page.getByRole("button", { name: "Tipos de vehículo", exact: true }).click();
   await page.getByRole("button", { name: "Nuevo tipo de vehículo", exact: true }).click();
-  await page.getByLabel("Nombre del tipo").fill("Tractocamión");
-  await page.getByLabel("Volumen según el contenedor").check();
+  await page.getByLabel("Nombre del tipo").fill("Camión de caja cerrada");
+  const capacityMode = page.getByRole("combobox", { name: "Capacidad de carga", exact: true });
+  await capacityMode.selectOption("container");
   await page.getByRole("button", { name: "Guardar tipo", exact: true }).click();
-  await expect(page.getByText("Tractocamión disponible en la ficha de vehículo.")).toBeVisible();
+  await expect(page.getByText("Camión de caja cerrada disponible en la ficha de vehículo.")).toBeVisible();
   await page.getByRole("button", { name: "Nuevo vehículo", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Nuevo vehículo", exact: true });
-  await dialog.getByLabel("Tipo de vehículo *", { exact: true }).selectOption("Tractocamión");
+  await dialog.getByLabel("Tipo de vehículo *", { exact: true }).selectOption("Camión de caja cerrada");
   await expect(dialog.getByText("Volumen y dimensiones según el contenedor.")).toBeVisible();
   await expect(dialog.getByLabel(/Capacidad de volumen|Largo útil/)).toHaveCount(0);
   await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
   await expect(page.getByLabel("Código", { exact: true })).toHaveValue("V001");
-  expect(seen.writes[1].body).toMatchObject({ vehicleType: "Tractocamión", capacityVolume: null, usableLength: null, hubCode: null });
+  expect(seen.writes[1].body).toMatchObject({ vehicleType: "Camión de caja cerrada", capacityVolume: null, usableLength: null, hubCode: null });
+  await page.getByRole("button", { name: "Cerrar ficha", exact: true }).click();
+
+  await page.getByRole("button", { name: "Tipos de vehículo", exact: true }).click();
+  await page.getByLabel("Tipo registrado").selectOption("Camión de caja cerrada");
+  await expect(capacityMode).toHaveValue("container");
+  await expect(page.getByRole("button", { name: "Guardar tipo", exact: true })).toBeDisabled();
+  await capacityMode.selectOption("fixed");
+  await page.getByRole("button", { name: "Guardar tipo", exact: true }).click();
+  await expect(page.getByText("Capacidad de «Camión de caja cerrada» actualizada.", { exact: true })).toBeVisible();
+  expect(seen.writes[2]).toMatchObject({ method: "PATCH", body: { name: "Camión de caja cerrada", variableVolume: false, expectedVariableVolume: true } });
+  expect(seen.writes).toHaveLength(3);
+
+  await page.getByRole("button", { name: "Nuevo vehículo", exact: true }).click();
+  await dialog.getByLabel("Tipo de vehículo *", { exact: true }).selectOption("Camión de caja cerrada");
+  await expect(dialog.getByLabel(/Capacidad de volumen/)).toBeVisible();
+  await expect(dialog.getByLabel(/Largo útil/)).toBeVisible();
 });
 
 test("conflicto conserva borrador y exige lectura explícita antes de otro guardado", async ({ page }) => {

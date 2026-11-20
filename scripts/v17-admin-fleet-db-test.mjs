@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { createCrm01b1LocalPrisma, validateCrm01b1LocalUrl } from "./crm-01b1-local-target.mjs";
 import {
-  createAdminFleetType, createAdminFleetVehicle, getAdminFleetVehicle, listAdminFleetOptions, listAdminFleetVehicles, updateAdminFleetVehicle,
+  createAdminFleetType, createAdminFleetVehicle, getAdminFleetVehicle, listAdminFleetOptions, listAdminFleetVehicles, updateAdminFleetType, updateAdminFleetVehicle,
 } from "../api/_lib/adminFleetDomain.js";
 import { canonicalHash } from "../api/_lib/logisticsEngineContract.js";
 import { versionTransportZone } from "../api/_lib/logisticsTransportZones.js";
@@ -221,6 +221,28 @@ try {
       && generated.every(({ vehicle }) => vehicle.hubCode === automatic.hubCode && vehicle.capacityVolume === null));
   const autoReplay = await createAdminFleetVehicle(prisma, ctx, automatic);
   check("an automatic creation retry recovers the original code", autoReplay.idempotent && autoReplay.vehicle.businessCode === generated[0].vehicle.businessCode);
+
+  const containerVehicle = generated[0].vehicle;
+  await rejects("fixed volume cannot be added to a variable-volume vehicle of the same type", () => updateAdminFleetVehicle(prisma, ctx, containerVehicle.vehicleRef,
+    { requestId: randomUUID(), expectedVersion: containerVehicle.rowVersion, changes: { capacityVolume: 32 } }), "ADMIN_FLEET_VARIABLE_VOLUME");
+  const typeEdit = { requestId: randomUUID(), name: type.name, expectedVariableVolume: true, variableVolume: false };
+  await rejects("a read-only fleet user cannot edit a type", () => updateAdminFleetType(prisma, readonlyContext, typeEdit), "ADMIN_FLEET_FORBIDDEN");
+  await rejects("a type edit is scoped to the current company", () => updateAdminFleetType(prisma, foreignCtx, typeEdit), "ADMIN_FLEET_TYPE_NOT_REGISTERED");
+  const correction = await updateAdminFleetType(prisma, ctx, typeEdit);
+  await updateAdminFleetType(prisma, ctx, typeEdit);
+  check("editing a registered type keeps its name and produces one audit", correction.type.name === type.name
+    && !correction.type.variableVolume && correction.type.registered && await auditCount(tenant.id, typeEdit.requestId) === 1);
+  check("the catalog exposes the corrected capacity and a creation replay keeps its original result",
+    (await listAdminFleetOptions(prisma, ctx)).types.some((item) => item.name === type.name && item.registered && !item.variableVolume)
+    && (await createAdminFleetType(prisma, ctx, typeInput)).type.variableVolume);
+  await rejects("an edit based on the old volume mode conflicts", () => updateAdminFleetType(prisma, ctx, { ...typeEdit, requestId: randomUUID() }),
+    "ADMIN_FLEET_TYPE_VERSION_CONFLICT");
+  const measured = await updateAdminFleetVehicle(prisma, ctx, containerVehicle.vehicleRef,
+    { requestId: randomUUID(), expectedVersion: containerVehicle.rowVersion, changes: { capacityVolume: 32 } });
+  check("vehicle accepts fixed capacity after correcting its type", measured.capacityVolume === 32);
+  await rejects("a type with recorded vehicle measurements cannot switch to variable volume",
+    () => updateAdminFleetType(prisma, ctx, { ...typeEdit, requestId: randomUUID(), expectedVariableVolume: false, variableVolume: true }),
+    "ADMIN_FLEET_TYPE_FIXED_CAPACITY_IN_USE");
   process.stdout.write(JSON.stringify({ ok: true, assertions: results.length, results }, null, 2) + "\n");
 } finally {
   await prisma.$disconnect();

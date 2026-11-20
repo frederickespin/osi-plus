@@ -2,12 +2,12 @@ import { useRef, useState, type FormEvent } from "react";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NumericInput } from "@/components/ui/numeric-input";
-import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
+import { COMPACT_FORM_FIELD, COMPACT_TABLE_FIELD } from "@/components/ui/compact-form";
 import type { CostingLine, CostingRevision } from "@/costing/api";
 import { pricingDecimal, pricingMoney, pricingQuantity } from "@/costing/pricingInput";
 import { eligibleCostingLines } from "../../shared/quoteCostingSelection.js";
 import { isPackageMinimumLine } from "../../shared/servicePackagePricing.js";
-import { QuoteAdditionPicker, type AdditionalCharge } from "./QuoteAdditionPicker";
+import { QuoteAdditionPicker, QuoteManualChargeDialog, type AdditionalCharge } from "./QuoteAdditionPicker";
 import { quoteApi } from "./api";
 
 type Props = Readonly<{
@@ -17,6 +17,7 @@ type Props = Readonly<{
 }>;
 type Adjustment = Readonly<{ quantity?: string; price?: string; removed?: boolean }>;
 const FIELD = COMPACT_FORM_FIELD + " w-full bg-white";
+const CELL = COMPACT_TABLE_FIELD + " text-right tabular-nums";
 
 function scaled(value: string, decimals: number) {
   const [units, fraction = ""] = value.split(".");
@@ -67,19 +68,19 @@ function BaseRow({ line, adjustment, packageRef, canEdit, currency, onEdit }: {
   const quoted = adjustment?.price != null
     ? packageRef ? amountFor(pricingDecimal(quantity, 4), pricingDecimal(adjustment.price, 2)) : pricingDecimal(adjustment.price, 6)
     : line.suggestedPrice === null ? null : Number(quantity) === Number(line.quantity) ? line.suggestedPrice : (unitPrice * Number(quantity)).toFixed(6);
-  return <div className="grid grid-cols-[minmax(0,1fr)_6rem_minmax(0,7rem)_minmax(0,8rem)_auto] items-center gap-2 px-2 py-1.5 text-xs max-sm:flex max-sm:flex-wrap">
+  return <div className="grid grid-cols-[minmax(0,1fr)_6rem_7rem_8rem_2rem] items-center gap-2 px-2 py-0.5 text-xs max-sm:flex max-sm:flex-wrap">
     <div className="min-w-32 flex-1">
       <p className="font-semibold">{line.concept}</p>
       <p className="text-slate-600">{line.unit}{adjustment?.removed ? " · Quitado" : changed && packageRef ? " · Ajustado" : ""}</p>
     </div>
-    {adjustment?.removed ? <Button size="icon" type="button" variant="ghost" aria-label={"Restaurar " + line.concept} onClick={() => onEdit({ removed: false })}><RotateCcw aria-hidden="true" /></Button> : <>
-      {packageRef && canEdit ? <NumericInput aria-label={"Cantidad de " + line.concept} className={FIELD + " w-24"} required allowDecimalComma min="0.0001" max={1_000_000} step="0.0001"
+    {adjustment?.removed ? <Button size="icon" type="button" variant="ghost" className="col-start-5 size-8" aria-label={"Restaurar " + line.concept} title={"Restaurar " + line.concept} onClick={() => onEdit({ removed: false })}><RotateCcw aria-hidden="true" /></Button> : <>
+      {packageRef && canEdit ? <NumericInput aria-label={"Cantidad de " + line.concept} className={CELL + " max-sm:w-24"} required allowDecimalComma min="0.0001" max={1_000_000} step="0.0001"
         value={quantity} onChange={(event) => onEdit({ quantity: event.target.value })} /> : <span className="text-slate-600">{quantity}</span>}
-      <NumericInput aria-label={packageRef ? "Precio unitario de " + line.concept : "Precio cotizado " + line.concept} className={FIELD + " w-28 tabular-nums"}
+      <NumericInput aria-label={packageRef ? "Precio unitario de " + line.concept : "Precio cotizado " + line.concept} className={CELL + " max-sm:w-28"}
         required readOnly={!canEdit} allowDecimalComma min={0} step={packageRef ? "0.01" : "0.000001"}
         value={adjustment?.price ?? referencePrice.toFixed(2)} onChange={(event) => onEdit({ price: event.target.value })} />
       <span className="whitespace-nowrap text-right font-semibold tabular-nums">{quoted === null ? "—" : pricingMoney(quoted, currency)}</span>
-      {packageRef && canEdit && <Button size="icon" type="button" variant="ghost" aria-label={"Quitar " + line.concept} onClick={() => onEdit({ removed: true })}><Trash2 aria-hidden="true" /></Button>}
+      {packageRef && canEdit && <Button size="icon" type="button" variant="ghost" className="size-8" aria-label={"Quitar " + line.concept} title={"Quitar " + line.concept} onClick={() => onEdit({ removed: true })}><Trash2 aria-hidden="true" /></Button>}
     </>}
   </div>;
 }
@@ -97,11 +98,13 @@ export default function ProposalComposer({ caseRef, authorization, costing, posi
   const [adjustments, setAdjustments] = useState<Record<string, Adjustment>>({});
   const [charges, setCharges] = useState<readonly AdditionalCharge[]>([]);
   const [showAdditions, setShowAdditions] = useState(false);
+  const [showManualCharge, setShowManualCharge] = useState(false);
   const [reason, setReason] = useState("");
   const [approvalRef, setApprovalRef] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const request = useRef<{ key: string; id: string } | null>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
   const currency = costing.baseCurrency;
   const description = scope ?? packageLabel;
   const getAdjustment = (line: CostingLine) => canEditBase ? adjustments[priceKey(line, pkg?.versionRef)] : undefined;
@@ -122,6 +125,13 @@ export default function ProposalComposer({ caseRef, authorization, costing, posi
     return [{ line, quantity, quotedPrice, suggestion, adjusted: Number(quantity) !== Number(line.quantity) || hasPriceOverride }];
   });
   const extraLines = normalizeCharges(charges, currency);
+  const canAddCharge = baseRows.length + charges.length < 119;
+  const included = new Map<string, number>();
+  if (pkg && showAdditions) {
+    for (const { line, quantity } of baseRows) {
+      if (line.sourceRef && quantity) included.set(line.sourceRef, (included.get(line.sourceRef) ?? 0) + Number(quantity));
+    }
+  }
   const baseTotal = baseRows.reduce((sum, row) => sum + Number(row.quotedPrice), 0);
   const floor = Number(pkg?.minimumSale ?? 0);
   const payableBase = Math.max(baseTotal, floor);
@@ -134,6 +144,19 @@ export default function ProposalComposer({ caseRef, authorization, costing, posi
     && baseRows.length && baseRows.every((row) => row.quotedPrice !== null && Number(row.quantity) > 0 && Number(row.quantity) <= 1_000_000)
     && (!modified || reason.trim()));
   const approvals = costing.overrides.filter((override) => override.authorization?.decision === "AUTHORIZED");
+
+  function addCharge(charge: AdditionalCharge) {
+    setCharges((current) => {
+      const existing = charge.catalog && current.find((row) => row.catalog?.ruleRef === charge.catalog?.ruleRef
+        && Number(pricingDecimal(row.unitPrice, 2) ?? NaN) === Number(charge.unitPrice));
+      const quantity = existing && pricingDecimal(existing.quantity, 4);
+      if (existing && quantity && Number(quantity) <= 999_999) {
+        const next = String(Number((Number(quantity) + 1).toFixed(4)));
+        return current.map((row) => row.id === existing.id ? { ...row, quantity: next } : row);
+      }
+      return baseRows.length + current.length < 119 ? [...current, charge] : current;
+    });
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -174,11 +197,15 @@ export default function ProposalComposer({ caseRef, authorization, costing, posi
       <fieldset disabled={saving}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-bold text-[#003366]">{pkg ? packageLabel : "Propuesta " + position}</h3>
-          <Button type="button" variant="outline" size="sm" disabled={baseRows.length + charges.length >= 119} onClick={() => setShowAdditions(true)}><Plus aria-hidden="true" />Agregar</Button>
+          <Button ref={addButton} type="button" variant="outline" size="sm" aria-expanded={showAdditions && canAddCharge}
+            disabled={!canAddCharge} onClick={() => setShowAdditions((visible) => !visible)}><Plus aria-hidden="true" />Agregar</Button>
         </div>
+        {showAdditions && canAddCharge && <QuoteAdditionPicker caseRef={caseRef} currency={currency} authorization={authorization}
+          included={included} canAddManual={canConfirmCharges} onSelect={addCharge} onManual={() => setShowManualCharge(true)}
+          onClose={() => { setShowAdditions(false); addButton.current?.focus(); }} />}
         {pkg ? <section aria-label="Cargos del paquete" className="mt-2 rounded border bg-white">
           <div className="grid grid-cols-[minmax(0,1fr)_6rem_7rem_8rem_2rem] gap-2 bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-600 max-sm:hidden">
-            <span>Concepto</span><span>Cantidad</span><span>Precio unit.</span><span className="text-right">Importe</span>
+            <span>Concepto incluido</span><span className="text-right">Cantidad</span><span className="text-right">Precio unit.</span><span className="text-right">Importe</span>
           </div>
           {base}
         </section> : <details className="mt-2 rounded border bg-white">
@@ -190,12 +217,12 @@ export default function ProposalComposer({ caseRef, authorization, costing, posi
             const label = "adicional " + (index + 1);
             const update = (patch: Partial<AdditionalCharge>) => setCharges((current) => current.map((item) => item.id === charge.id ? { ...item, ...patch } : item));
             const total = amountFor(pricingDecimal(charge.quantity, 4), pricingDecimal(charge.unitPrice, 2));
-            return <div key={charge.id} className="grid grid-cols-[minmax(0,1fr)_6rem_7rem_8rem_auto] items-center gap-2 px-2 py-1.5 text-xs max-sm:flex max-sm:flex-wrap">
+            return <div key={charge.id} className="grid grid-cols-[minmax(0,1fr)_6rem_7rem_8rem_2rem] items-center gap-2 px-2 py-0.5 text-xs max-sm:flex max-sm:flex-wrap">
               <div className="min-w-32 flex-1"><p className="font-semibold">{charge.concept}</p><p className="text-sky-800">Adicional · {charge.unit}</p></div>
-              <NumericInput aria-label={"Cantidad " + label} className={FIELD + " w-24"} required allowDecimalComma min="0.0001" max={1_000_000} step="0.0001" value={charge.quantity} onChange={(event) => update({ quantity: event.target.value })} />
-              <NumericInput aria-label={"Venta unitaria " + label} className={FIELD + " w-28"} required readOnly={!canConfirmCharges} allowDecimalComma min={0} step="0.01" value={charge.unitPrice} onChange={(event) => update({ unitPrice: event.target.value })} />
+              <NumericInput aria-label={"Cantidad " + label} className={CELL + " max-sm:w-24"} required allowDecimalComma min="0.0001" max={1_000_000} step="0.0001" value={charge.quantity} onChange={(event) => update({ quantity: event.target.value })} />
+              <NumericInput aria-label={"Venta unitaria " + label} className={CELL + " max-sm:w-28"} required readOnly={!canConfirmCharges} allowDecimalComma min={0} step="0.01" value={charge.unitPrice} onChange={(event) => update({ unitPrice: event.target.value })} />
               <span className="text-right font-semibold tabular-nums">{total === null ? "—" : pricingMoney(total, currency)}</span>
-              <Button type="button" size="icon" variant="ghost" aria-label={"Quitar " + label} onClick={() => setCharges((current) => current.filter((row) => row.id !== charge.id))}><Trash2 aria-hidden="true" /></Button>
+              <Button type="button" size="icon" variant="ghost" className="size-8" aria-label={"Quitar " + label} title={"Quitar " + charge.concept} onClick={() => setCharges((current) => current.filter((row) => row.id !== charge.id))}><Trash2 aria-hidden="true" /></Button>
             </div>;
           })}
         </section>}
@@ -232,7 +259,7 @@ export default function ProposalComposer({ caseRef, authorization, costing, posi
         </div>
       </fieldset>
     </form>
-    {showAdditions && <QuoteAdditionPicker caseRef={caseRef} currency={currency} authorization={authorization} canAddManual={canConfirmCharges} onClose={() => setShowAdditions(false)}
-      onSelect={(charge) => { setCharges((current) => [...current, charge]); setShowAdditions(false); }} />}
+    {showManualCharge && <QuoteManualChargeDialog onClose={() => setShowManualCharge(false)}
+      onSelect={(charge) => { addCharge(charge); setShowManualCharge(false); }} />}
   </>;
 }

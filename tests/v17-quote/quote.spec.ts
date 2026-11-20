@@ -4,7 +4,7 @@ const CASE_REF = "038f6d8f-8d11-4f39-8a2d-1b6c7e8f9012"; const MEMBERSHIP_REF = 
 const permissions = ["pipeline:view", "costing:view", "quote:view", "quote:create", "quote:update", "quote:publish", "quote:send", "quote:record-client-decision", "quote:override-price", "quote:internal-cost:view", "quote:tenant"];
 const costing = { revisionRef: COSTING_REF, revision: 1, status: "PUBLISHED", baseCurrency: "USD", logicalSha256: "c".repeat(64), publishedAt: "2026-09-10T12:00:00.000Z", totals: { ownCosts: "300", externalCosts: "0", disbursements: "0", risks: "0", currencyCompensation: "0", totalCost: "300", suggestedPrice: "400", expectedMarginBps: 2500 }, lines: [{ lineRef: LINE_REF, logisticsItemRef: null, family: "LABOR", concept: "Equipo operativo", classification: "PR", source: "ADMIN", sourceRef: "338f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", sourceVersion: 2, quantity: "1", unit: "SERVICE", originalCurrency: "USD", originalUnitCost: "300", exchangeRateRef: null, exchangeRateVersion: null, exchangeRate: "1", baseCurrency: "USD", baseUnitCost: "300", totalCost: "300", minimumMarginBps: 2000, recommendedMarginBps: 2500, suggestedPrice: "400", priceStatus: "RECOMMENDED", position: 1 }], issues: [], overrides: [] };
 
-async function session(page: Page, deny = false) { const denied = deny ? ["quote:view"] : []; await page.addInitScript(({ ref }) => { localStorage.setItem("osi-plus.token", "synthetic.quote.token"); localStorage.setItem("osi-plus.session", JSON.stringify({ name: "Cotizador sintético", role: "A", membershipRef: ref, memberships: [{ membershipRef: ref, tenantName: "Tenant sintético", role: "A", preferred: true }] })); }, { ref: MEMBERSHIP_REF }); await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { name: "Cotizador sintético", role: "A", status: "ACTIVE", permissions, deniedPermissions: denied, membership: { membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role: "A" }, memberships: [{ membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role: "A", preferred: true }] } }) })); }
+async function session(page: Page, deny = false, additionalPermissions: string[] = []) { const denied = deny ? ["quote:view"] : []; await page.addInitScript(({ ref }) => { localStorage.setItem("osi-plus.token", "synthetic.quote.token"); localStorage.setItem("osi-plus.session", JSON.stringify({ name: "Cotizador sintético", role: "A", membershipRef: ref, memberships: [{ membershipRef: ref, tenantName: "Tenant sintético", role: "A", preferred: true }] })); }, { ref: MEMBERSHIP_REF }); await page.route("**/api/auth/me", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, user: { name: "Cotizador sintético", role: "A", status: "ACTIVE", permissions: [...permissions, ...additionalPermissions], deniedPermissions: denied, membership: { membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role: "A" }, memberships: [{ membershipRef: MEMBERSHIP_REF, tenantName: "Tenant sintético", role: "A", preferred: true }] } }) })); }
 async function crm(page: Page) { const headers = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" }; const byStatus = Object.fromEntries(["NEW_INBOX", "AWAITING_ICP", "GOVERNANCE_CONFIRMED", "REQUIREMENTS_CONFIRMED", "SURVEY_PLANNING", "SURVEY_SCHEDULED", "SURVEY_COMPLETED", "CRATING_ESTIMATE_PENDING", "PRICING_IN_PROGRESS", "QUOTE_DRAFT", "INTERNAL_REVIEW", "QUOTE_SENT", "NEGOTIATION", "WON", "LOST", "CHANGE_CONTROL", "APPROVED", "OPS_HANDOFF"].map((status) => [status, 0])); await page.route(/\/api\/crm\/pipeline-cases(?:\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: [], total: 0, page: 1, pageSize: 25 }) })); await page.route("**/api/crm/pipeline-summary", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { total: 0, assigned: 0, unassigned: 0, byStatus, sla: { overdue: null, basis: "UNAVAILABLE" } } }) })); await page.route("**/api/crm/pipeline-cases/**", (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, caseCode: "CS-2026-0901", version: 1, status: "PRICING_IN_PROGRESS", mode: "LOCAL", serviceType: "MOVING_LOCAL", customerType: "L4_PERSONAL", estimatedCbm: 20, requiresSurvey: true, surveyMethod: "PRESENCIAL", originLocation: "Origen estructurado", destinationLocation: "Destino estructurado", destinationContracted: true, assetsCount: 0, quoteCount: 0, eventCount: 2, client: { clientRef: "528f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", displayName: "Cliente relacional", type: "INDIVIDUAL", status: "ACTIVE" }, owner: { displayName: "Cotizador sintético", isCurrentActor: true }, createdAt: "2026-09-10T12:00:00.000Z", updatedAt: "2026-09-10T12:00:00.000Z" } }) })); await page.route(`**/api/crm/icp-v2/pipeline-cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", headers, body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, caseCode: "CS-2026-0901", status: "PRICING_IN_PROGRESS", version: 1, mode: "LOCAL", serviceType: "MOVING_LOCAL", volume: { status: "ESTIMATED", estimatedCbm: 20, source: "ICP" }, requiresSurvey: true, surveyMethod: "PRESENCIAL", intakeChannel: "REFERRED", clientProfileType: "PERSONAL", requirementNotes: null, serviceDefinitionStatus: "DEFINED", surveyDecisionStatus: "DEFINED", ownerName: "Cotizador sintético", caseContact: { displayName: "Contacto sintético", phone: "+18095550100", email: null }, client: { clientRef: "528f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", displayName: "Cliente relacional", type: "INDIVIDUAL", status: "ACTIVE" }, route: { contractVersion: 2, revision: 1, destinationStatus: "CONFIRMED", origin: { countryCode: "DO", provinceState: "Distrito Nacional", cityMunicipality: "Santo Domingo", sector: null, streetAndNumber: "Origen sintético", buildingResidential: null, floorUnit: null, arrivalReference: null, locationContactName: null, locationContactPhone: null }, destination: { countryCode: "DO", provinceState: "Distrito Nacional", cityMunicipality: "Santo Domingo", sector: null, streetAndNumber: "Destino sintético", buildingResidential: null, floorUnit: null, arrivalReference: null, locationContactName: null, locationContactPhone: null }, additionalStops: [] }, createdAt: "2026-09-10T12:00:00.000Z", updatedAt: "2026-09-10T12:00:00.000Z" } }) })); }
 function proposal(position: number, state = "DRAFT", revision = 1) { return { proposalRef: `${position}38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012`, reference: `Q-2026-00000${position}-${String.fromCharCode(64 + position)}`, position, state, revisionRef: `${position}48f6d8f-8d11-4f39-8a2d-1b6c7e8f9012`, revision, proposalName: `Opción ${position}`, costingRevisionRef: COSTING_REF, costingLogicalSha256: "c".repeat(64), currency: "USD", issueDate: "2026-09-10", validUntil: "2026-10-10", commercialContext: { leadAccount: null, booker: null, tariff: null, referral: null, associations: [] }, payer: { displayName: "Pagador autorizado", sourceVersion: 1 }, terms: {}, exchange: null, discount: null, totals: { capturedCost: 300, suggestedPrice: 400, grossQuotedPrice: position === 1 ? 350 : 400 + position * 25, discountAmount: 0, totalQuotedPrice: position === 1 ? 350 : 400 + position * 25 }, lines: [{ lineRef: `${position}58f6d8f-8d11-4f39-8a2d-1b6c7e8f9012`, sourceKind: "COSTING", concept: "Equipo operativo", quantity: "1", unit: "SERVICE", economicClass: "PR", capturedCost: "300", suggestedPrice: "400", quotedPrice: position === 1 ? "350" : String(400 + position * 25), currency: "USD", priceStatus: "CONFIRMED", position: 1 }], issues: [], logicalSha256: "d".repeat(64) }; }
 
@@ -12,3 +12,89 @@ test("crea, compara, publica, envía y registra decisión", async ({ page }) => 
 test("muestra tres propuestas con referencias y posiciones estables", async ({ page }) => { await session(page); await crm(page); const proposals = [proposal(1), proposal(2), proposal(3)]; await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: costing }) })); await page.route(`**/api/quote/cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, caseCode: "CS-2026-0901", destinationStatus: "CONFIRMED", proposals } }) })); await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Cotización" }).click(); await expect(page.getByRole("button", { name: "Propuesta 1 Q-2026-000001-A" })).toBeVisible(); await expect(page.getByRole("button", { name: "Propuesta 2 Q-2026-000002-B" })).toBeVisible(); await expect(page.getByRole("button", { name: "Propuesta 3 Q-2026-000003-C" })).toBeVisible(); await expect(page.getByRole("button", { name: /Nueva propuesta/ })).toHaveCount(0); });
 test("registra rechazo explícito sin eliminar la revisión enviada", async ({ page }) => { await session(page); await crm(page); let proposals: Record<string, unknown>[] = [proposal(1, "SENT", 3)]; await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: costing }) })); await page.route(`**/api/quote/cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, caseCode: "CS-2026-0901", destinationStatus: "CONFIRMED", proposals } }) })); await page.route("**/api/quote/proposals/decision", (route) => { proposals = [proposal(1, "REJECTED", 3)]; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: proposals[0] }) }); }); await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Cotización" }).click(); await page.getByRole("button", { name: "Registrar rechazo" }).click(); await expect(page.getByText("REJECTED").last()).toBeVisible(); await expect(page.getByText("Revisión 3")).toBeVisible(); });
 test("deny no carga chunk ni solicita APIs Quote", async ({ page }) => { await session(page, true); await crm(page); let requests = 0; page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/quote/")) requests += 1; }); await page.goto(`/commercial/cases/${CASE_REF}`); await expect(page.getByRole("tab", { name: "Cotización" })).toHaveCount(0); expect(requests).toBe(0); const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => name.includes("QuotePanel"))); expect(chunks).toHaveLength(0); });
+
+test("aplica un paquete y cotiza una caja adicional a las dos incluidas", async ({ page }) => {
+  await session(page, false, ["costing:calculate", "costing:publish"]);
+  await crm(page);
+  const packageName = "Mudanza local de 1 a 6 m³";
+  const crate = "Caja de madera para TV";
+  const versionRef = "748f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+  const crateRef = "758f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+  const shipment = { mode: "NONE", factor: null, roundKg: 1 };
+  const packageCosting = {
+    ...costing,
+    lines: [{ ...costing.lines[0], sourceRef: crateRef, concept: crate, family: "MATERIAL",
+      quantity: "2", unit: "caja", totalCost: "70", suggestedPrice: "100" }],
+    packagePricing: { versionRef, name: packageName, version: 1, pricingVersion: 1, minimumSale: "300",
+      shipment, allowEdits: true, measures: { volumeM3: 5 } },
+  };
+  let proposals: object[] = [];
+  await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: proposals.length ? packageCosting : null } }));
+  await page.route(`**/api/costing/revisions/${CASE_REF}?view=packages`, (route) => route.fulfill({ json: { ok: true, data: {
+    hasService: true, volumeM3: 5, packages: [{ versionRef, name: packageName, version: 1, currency: "USD",
+      shipment, includeRouteTransport: false, needsWeight: false, minimumSale: "0", volumeTiers: [{ maxM3: 6, minimumSale: "300" }] }],
+  } } }));
+  await page.route("**/api/costing/calculate", (route) => {
+    expect(route.request().postDataJSON().packageEstimate).toEqual({ versionRef, volumeM3: "5", grossKg: null });
+    return route.fulfill({ json: { ok: true, data: { calculationRef: COSTING_REF, result: { issues: [] } } } });
+  });
+  await page.route("**/api/costing/publish", (route) => route.fulfill({ json: { ok: true, data: packageCosting } }));
+  await page.route(`**/api/costing/revisions/${CASE_REF}?view=addons&currency=USD`, (route) => route.fulfill({ json: {
+    ok: true, data: [
+      { ruleRef: crateRef, version: 2, name: crate, family: "MATERIAL", unit: "caja", currency: "USD", unitPrice: "50", classification: "PR" },
+      { ruleRef: LINE_REF, version: 1, name: "Papel kraft", family: "MATERIAL", unit: "rollo", currency: "USD", unitPrice: "20", classification: "PR" },
+    ],
+  } }));
+  await page.route(`**/api/quote/cases/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: { caseRef: CASE_REF, proposals } } }));
+  await page.route("**/api/quote/proposals/create", (route) => {
+    const { lines } = route.request().postDataJSON();
+    expect(lines).toMatchObject([
+      { sourceKind: "COSTING", concept: crate, quantity: "2", quotedPrice: "100" },
+      { sourceKind: "MANUAL", concept: crate, quantity: "1", quotedPrice: "50.00",
+        manualAuthority: { kind: "QUOTE_CATALOG_COMPONENT", reference: crateRef, version: 2 } },
+    ]);
+    const result = proposal(1);
+    proposals = [{ ...result, packageScope: { name: packageName, volumeM3: 5 },
+      totals: { grossQuotedPrice: 350, totalQuotedPrice: 350 },
+      lines: [
+        { ...result.lines[0], concept: crate, quantity: "2", quotedPrice: "100" },
+        { ...result.lines[0], lineRef: COSTING_REF, sourceKind: "MANUAL", packageMinimum: true,
+          concept: "Ajuste al mínimo del paquete", quotedPrice: "200" },
+        { ...result.lines[0], lineRef: crateRef, sourceKind: "MANUAL", concept: crate, quantity: "1", quotedPrice: "50" },
+      ],
+    }];
+    return route.fulfill({ status: 201, json: { ok: true, data: proposals[0] } });
+  });
+
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Cotización", exact: true }).click();
+  await expect(page.getByLabel("Volumen (m³)")).toHaveValue("5");
+  await page.getByLabel("Volumen (m³)").fill("7");
+  await expect(page.getByRole("button", { name: "Aplicar paquete" })).toBeDisabled();
+  await page.getByLabel("Volumen (m³)").fill("5");
+  await page.getByRole("button", { name: "Aplicar paquete" }).click();
+  await expect(page.getByLabel("Cantidad de " + crate)).toHaveValue("2");
+  await page.getByRole("button", { name: "Agregar", exact: true }).click();
+  const search = page.getByRole("textbox", { name: "Buscar servicio, producto o cargo" });
+  await expect(search).toBeFocused();
+  await search.fill("madera");
+  await search.press("Enter");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const catalog = page.getByRole("region", { name: "Catálogo de adicionales" });
+  await expect(catalog.getByText("Papel kraft")).toHaveCount(0);
+  await expect(catalog.getByText("En el paquete · 2")).toBeVisible();
+  await catalog.getByRole("button", { name: "Agregar " + crate }).click();
+  await expect(page.getByLabel("Cantidad adicional 1")).toHaveValue("1");
+  await catalog.getByRole("button", { name: "Agregar " + crate }).click();
+  await expect(page.getByLabel("Cantidad adicional 1")).toHaveValue("2");
+  await expect(page.getByLabel("Cantidad adicional 2")).toHaveCount(0);
+  await page.getByLabel("Cantidad adicional 1").fill("1");
+  await catalog.getByRole("button", { name: "Cerrar catálogo" }).click();
+  await expect(catalog).toHaveCount(0);
+  await expect(page.getByLabel("Totales de la propuesta").getByText(/350[.,]00/)).toBeVisible();
+  await expect(page.getByLabel("Cantidad de " + crate)).toHaveValue("2");
+  await page.getByRole("button", { name: "Crear propuesta" }).click();
+  await expect(page.getByText("Ajuste del paquete", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Adicionales.*50[.,]00/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});

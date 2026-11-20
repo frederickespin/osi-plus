@@ -397,6 +397,7 @@ async function createRevision(tx, context, proposal, input, costing, pipelineCas
 
 function publicLine(line, internal) {
   const base = { lineRef: line.lineRef, sourceKind: line.sourceKind, concept: line.concept, quantity: String(line.quantity), unit: line.unit, economicClass: line.economicClass, quotedPrice: line.quotedPrice == null ? null : String(line.quotedPrice), currency: line.currency, priceStatus: line.priceStatus, position: line.position };
+  if (isPackageMinimumLine(line)) base.packageMinimum = true;
   return internal ? { ...base, costingLineRef: line.costingLineRef, sourceRef: line.sourceRef, sourceVersion: line.sourceVersion, capturedCost: line.capturedCost == null ? null : String(line.capturedCost), suggestedPrice: line.suggestedPrice == null ? null : String(line.suggestedPrice), reason: line.reason } : base;
 }
 

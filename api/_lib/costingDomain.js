@@ -172,6 +172,9 @@ async function loadCalculationInput(tx, context, caseRef, logisticsRevisionRef, 
     include: { items: { orderBy: { position: "asc" } }, issues: true, plan: { select: { id: true, planRef: true } } },
   }) : null;
   if (logisticsRevisionRef && !logisticsRevision) costingFail("COSTING_LOGISTICS_REVISION_NOT_FOUND", 404);
+  if (logisticsRevision?.inputSnapshot?.transportInput && logisticsRevision.inputSnapshot.route?.version !== pipelineCase.routeRevision) {
+    costingFail("LOGISTICS_INPUT_STALE", 409);
+  }
   const isBasis = isPackageQuoteBasis(logisticsRevision?.inputSnapshot);
   const transportContext = !logisticsRevision || isBasis && packageEstimate ? QUOTE_TRANSPORT_CONTEXT : transportContextOf(logisticsRevision.inputSnapshot);
   if (!transportContext || !logisticsRevision && !packageEstimate) costingFail("COSTING_TRANSPORT_CONTEXT_INVALID", 409);
@@ -203,7 +206,7 @@ async function loadCalculationInput(tx, context, caseRef, logisticsRevisionRef, 
     additionalIssues.push(...resourceIssues);
     const transportItems = packagePricing.includeRouteTransport ? items.filter(hasTransportCostingAuthority) : [];
     if (packagePricing.includeRouteTransport && (!transportItems.length || logisticsRevision.resultSnapshot?.transport?.complete !== true)) {
-      additionalIssues.push(packagePricingIssues("COSTING_PACKAGE_TRANSPORT_REQUIRED", "Calcule y publique el transporte de esta cotización para incluirlo en el paquete."));
+      additionalIssues.push(packagePricingIssues("COSTING_PACKAGE_TRANSPORT_REQUIRED", "Calcule el transporte de esta cotización para incluirlo en el paquete."));
     }
     items = [...resources, ...transportItems].map((item, position) => ({ ...item, position }));
     issues = packagePricing.includeRouteTransport ? issues.filter((row) => row.family === "TRANSPORT") : [];

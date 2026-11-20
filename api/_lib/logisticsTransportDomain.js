@@ -1,9 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { calculateLogisticsPlan, canonicalHash, isTransportPolicy, logisticsFail } from "./logisticsEngineContract.js";
 import { loadCanonicalLogisticsFacts } from "./logisticsEngineDomain.js";
-import { calculateTransportResult, normalizeTransportCalculate, normalizeTransportInput, normalizeTransportPublish, selectTransportZone, TRANSPORT_CONTRACT, transportRef } from "./logisticsTransportContract.js";
+import { calculateTransportResult, resolveTransportJourneyDistance, normalizeTransportCalculate, normalizeTransportInput, normalizeTransportPublish, selectTransportZone, TRANSPORT_CONTRACT, transportRef } from "./logisticsTransportContract.js";
 import { latestLogisticsRevision, normalizeTransportContext, transportContextOf } from "./logisticsTransportContext.js";
-import { authorizeTransportContext, loadTransportZones, revalidateTransportActor, withTransportTransaction } from "./logisticsTransportZones.js";
+import { authorizeTransportContext, loadTransportZones, revalidateTransportActor, transportReferenceBases, withTransportTransaction } from "./logisticsTransportZones.js";
 
 const READ = Object.freeze(["logistics:plan:view", "costing:view"]);
 export const TRANSPORT_PLAN_PERMISSIONS = Object.freeze({
@@ -62,17 +62,25 @@ function operationalTransportItems(result, input, zones) {
     snapshot: { zoneType: line.zoneType, zoneCode: line.zoneCode, destinationZoneType: line.zoneType, ...(originZone ? { originZoneType: originZone.zoneType, originZoneCode: originZone.code } : {}), transport: { contract: TRANSPORT_CONTRACT, zoneRuleRef: line.zoneRuleRef, zoneVersion: line.zoneVersion, componentCode: line.componentCode, costRuleRef: line.costRuleRef, costRuleVersion: line.costRuleVersion, journeyRef: line.journeyRef, factor: line.factor } },
   }); });
 }
-async function prepareCalculation(tx, context, input, pipelineCase = null) {
+async function prepareCalculation(tx, context, input, pipelineCase = null, observedEstimateStart = null) {
   const scope = pipelineCase ?? await resolveCase(tx, context, input.caseRef);
   if (!scope.routeRevision) logisticsFail("TRANSPORT_ROUTE_REQUIRED", 409);
+  if (input.routeRevision !== undefined && input.routeRevision !== scope.routeRevision) logisticsFail("TRANSPORT_ROUTE_STALE", 409);
+  const now = new Date();
+  const estimate = input.intervalStart === null;
+  const observedAt = now.toISOString();
+  // Undated estimates use an observation instant for the existing cost ledger.
+  // It does not represent a service time or reserve a vehicle.
+  const observationStart = input.intervalStart ?? observedEstimateStart ?? observedAt;
+  const observationEnd = input.intervalEnd ?? new Date(Date.parse(observationStart) + 1).toISOString();
   const visit = await visitFor(tx, context, scope, input);
   const [rawFacts, zones, vehicles, rules] = await Promise.all([
-    canonicalFacts(tx, context, scope, input, visit),
+    canonicalFacts(tx, context, scope, { ...input, intervalStart: observationStart, intervalEnd: observationEnd }, visit),
     // Rates are the current configuration at calculation time. Published
     // snapshots preserve their own tariff versions permanently.
-    loadTransportZones(tx, context.tenantId, new Date()),
+    loadTransportZones(tx, context.tenantId, now),
     selectedVehicles(tx, context, input),
-    input.purpose === "VISIT" ? Promise.resolve([]) : currentOperationalRules(tx, context.tenantId, new Date(input.intervalStart)),
+    input.purpose === "VISIT" ? Promise.resolve([]) : currentOperationalRules(tx, context.tenantId, estimate ? now : new Date(input.intervalStart)),
   ]);
   const facts = { ...rawFacts,
     assets: [...rawFacts.assets].sort((a, b) => a.modelRef.localeCompare(b.modelRef)),
@@ -82,14 +90,18 @@ async function prepareCalculation(tx, context, input, pipelineCase = null) {
   const transport = calculateTransportResult(input, zones);
   for (const journey of input.journeys) {
     const vehicle = vehicles.find((row) => row.vehicleRef === journey.vehicleRef);
-    if (vehicle && (vehicle.vehicleType !== journey.vehicleType || !vehicle.active || vehicle.operationalStatus !== "AVAILABLE" || vehicle.retiredAt || vehicle.effectiveFrom > input.intervalStart || vehicle.effectiveTo !== null && vehicle.effectiveTo < input.intervalEnd)) transport.issues.push({ code: "TRANSPORT_VEHICLE_UNAVAILABLE", message: "El vehículo elegido no está habilitado para este tipo y período; revise la flota o seleccione el perfil sin vehículo asignado.", journeyRef: journey.journeyRef, severity: "BLOCKER" });
+    if (vehicle && (vehicle.vehicleType !== journey.vehicleType || !vehicle.active || vehicle.operationalStatus !== "AVAILABLE" || vehicle.retiredAt || vehicle.effectiveFrom > (estimate ? observedAt : input.intervalStart) || vehicle.effectiveTo !== null && vehicle.effectiveTo < (estimate ? observedAt : input.intervalEnd))) transport.issues.push({ code: "TRANSPORT_VEHICLE_UNAVAILABLE", message: "El vehículo elegido no está habilitado para este tipo y período; revise la flota o seleccione el tipo de vehículo.", journeyRef: journey.journeyRef, severity: "BLOCKER" });
   }
-  const allDistances = input.journeys.every((journey) => journey.distanceKm !== null && journey.distanceSource);
-  const operationalFacts = { ...facts, route: { ...facts.route, distanceStatus: allDistances ? "KNOWN" : "PENDING", distanceKm: allDistances ? input.journeys.reduce((sum, journey) => sum.plus(new Decimal(journey.distanceKm).mul(journey.returnToOrigin ? 2 : 1).mul(journey.trips)), new Decimal(0)).toNumber() : null } };
+  const measuredJourneys = estimate ? input.journeys.map((journey) => {
+    const zone = selectTransportZone(zones, journey, input.purpose).zone;
+    return zone ? resolveTransportJourneyDistance(journey, zone) : journey;
+  }) : input.journeys;
+  const allDistances = measuredJourneys.every((journey) => journey.distanceKm !== null && journey.distanceSource);
+  const operationalFacts = { ...facts, route: { ...facts.route, distanceStatus: allDistances ? "KNOWN" : "PENDING", distanceKm: allDistances ? measuredJourneys.reduce((sum, journey) => sum.plus(new Decimal(journey.distanceKm).mul(journey.returnToOrigin ? 2 : 1).mul(journey.trips)), new Decimal(0)).toNumber() : null } };
   const base = input.purpose === "VISIT" ? { items: [], issues: [], rules: [] } : calculateLogisticsPlan(operationalFacts, rules);
   const overlap = base.items.some((item) => item.family === "TRANSPORT");
   if (overlap) transport.issues.push({ code: "TRANSPORT_LEGACY_RULE_CONFLICT", message: "Hay renglones generales de transporte que también aplican. Revise esas reglas antes de publicar para evitar cargos duplicados.", journeyRef: null, severity: "BLOCKER" });
-  for (const issue of base.issues.filter((row) => row.severity === "BLOCKER")) transport.issues.push({ code: issue.code, message: issue.message, journeyRef: null, severity: "BLOCKER" });
+  for (const issue of base.issues.filter((row) => !estimate && row.severity === "BLOCKER")) transport.issues.push({ code: issue.code, message: issue.message, journeyRef: null, severity: "BLOCKER" });
   transport.complete = transport.complete && !transport.issues.some((row) => row.severity === "BLOCKER");
   const selectedZones = [...new Map(input.journeys.flatMap((journey) => [selectTransportZone(zones, journey, input.purpose).zone, journey.origin ? selectTransportZone(zones, { ...journey, destination: journey.origin }, input.purpose).zone : null]).filter(Boolean).map((zone) => [zone.ruleRef, zone])).values()].sort((a, b) => a.ruleRef.localeCompare(b.ruleRef));
   const { availabilityObservedAt, ...stableFacts } = operationalFacts;
@@ -99,7 +111,7 @@ async function prepareCalculation(tx, context, input, pipelineCase = null) {
   const rulesSnapshot = [...base.rules, ...zoneRefs];
   const resultSnapshot = JSON.parse(JSON.stringify({
     items: [...base.items.filter((item) => item.family !== "TRAVEL"), ...operationalTransportItems(transport, input, zones)].map((item, position) => ({ ...item, position })),
-    issues: [...base.issues.filter((row) => row.severity !== "BLOCKER"), ...transport.issues.map((issue) => ({ code: issue.code, severity: issue.severity, family: "TRANSPORT", message: issue.message, source: "ADMIN_RULE", sourceSnapshot: { transportContext, journeyRef: issue.journeyRef } }))],
+    issues: [...base.issues.filter((row) => estimate || row.severity !== "BLOCKER"), ...transport.issues.map((issue) => ({ code: issue.code, severity: issue.severity, family: "TRANSPORT", message: issue.message, source: "ADMIN_RULE", sourceSnapshot: { transportContext, journeyRef: issue.journeyRef } }))],
     rules: rulesSnapshot, transport,
   }));
   const inputHash = canonicalHash({ contract: TRANSPORT_CONTRACT, facts: stableFacts, input, vehicles, visit: inputSnapshot.transportVisit, zones: selectedZones, rules: rules.map((rule) => ({ ruleRef: rule.ruleRef, version: rule.version, conditionHash: rule.conditionHash, result: rule.result })), transport });
@@ -117,7 +129,7 @@ async function persist(tx, context, command, targetRef, result, entity) {
   return result;
 }
 function mapPublication(row) {
-  return { revisionRef: row.revisionRef, revision: row.revision, publishedAt: row.publishedAt.toISOString(), context: transportContextOf(row.inputSnapshot), calculationRef: row.calculation.calculationRef, result: row.resultSnapshot.transport, input: row.inputSnapshot.transportInput };
+  return { revisionRef: row.revisionRef, revision: row.revision, publishedAt: row.publishedAt.toISOString(), ...(row.inputSnapshot.route?.version != null && { routeRevision: row.inputSnapshot.route.version }), context: transportContextOf(row.inputSnapshot), calculationRef: row.calculation.calculationRef, result: row.resultSnapshot.transport, input: row.inputSnapshot.transportInput };
 }
 export async function calculateTransport(prisma, context, raw) {
   authorizeTransportContext(context, TRANSPORT_PLAN_PERMISSIONS.CALCULATE);
@@ -131,7 +143,7 @@ export async function calculateTransport(prisma, context, raw) {
     const row = await tx.logisticsCalculation.create({ data: {
       tenantId: actor.tenantId, pipelineCaseId: scope.id, routeVersion: prepared.facts.route.version, serviceSelectionRef: prepared.facts.services.selectionRef, serviceRevision: prepared.facts.services.revision,
       surveyPublicationRef: prepared.facts.survey.publicationRef, surveyLogicalSha256: prepared.facts.survey.logicalSha256, materialRequirementRef: prepared.facts.materials.requirementRef, materialLogicalSha256: prepared.facts.materials.logicalSha256,
-      intervalStart: new Date(input.intervalStart), intervalEnd: new Date(input.intervalEnd), availabilityObservedAt: new Date(prepared.availabilityObservedAt),
+      intervalStart: new Date(prepared.facts.interval.start), intervalEnd: new Date(prepared.facts.interval.end), availabilityObservedAt: new Date(prepared.availabilityObservedAt),
       inputSnapshot: prepared.inputSnapshot, rulesSnapshot: prepared.rulesSnapshot, resultSnapshot: prepared.resultSnapshot, inputHash: prepared.inputHash, resultHash: prepared.resultHash, status: prepared.resultSnapshot.transport.complete ? "VALID" : "CONFLICT", requestId: command.requestId, payloadHash: command.payloadHash, ...actorFields(actor),
     } });
     const result = { calculationRef: row.calculationRef, status: row.status, inputHash: row.inputHash, resultHash: row.resultHash, calculatedAt: row.createdAt.toISOString(), input, result: prepared.resultSnapshot.transport };
@@ -145,7 +157,7 @@ export async function assertTransportRevisionCurrent(tx, context, revision) {
   if (!Object.hasOwn(revision.inputSnapshot ?? {}, "transportInput")) return;
   const input = normalizeTransportInput(revision.inputSnapshot.transportInput);
   if (canonicalHash(contextFor(input)) !== canonicalHash(transportContextOf(revision.inputSnapshot))) logisticsFail("TRANSPORT_CONTEXT_INVALID", 409);
-  const prepared = await prepareCalculation(tx, context, input);
+  const prepared = await prepareCalculation(tx, context, input, null, revision.inputSnapshot.interval?.start);
   const calculation = await tx.logisticsCalculation.findFirst({ where: { tenantId: context.tenantId, id: revision.calculationId }, select: { inputHash: true } });
   if (!calculation || !prepared.resultSnapshot.transport.complete || calculation.inputHash !== prepared.inputHash) logisticsFail("LOGISTICS_INPUT_STALE", 409);
 }
@@ -164,7 +176,7 @@ export async function publishTransport(prisma, context, raw) {
     if (!calculation.resultSnapshot.transport.complete || calculation.status !== "VALID") logisticsFail("TRANSPORT_CALCULATION_INCOMPLETE", 409);
     const input = normalizeTransportInput(calculation.inputSnapshot.transportInput);
     if (input.caseRef !== scope.publicRef || canonicalHash(contextFor(input)) !== canonicalHash(calculation.inputSnapshot.transportContext)) logisticsFail("TRANSPORT_CONTEXT_INVALID", 409);
-    const prepared = await prepareCalculation(tx, actor, input, scope);
+    const prepared = await prepareCalculation(tx, actor, input, scope, calculation.inputSnapshot.interval?.start);
     if (prepared.inputHash !== calculation.inputHash || !prepared.resultSnapshot.transport.complete || canonicalHash(calculation.resultSnapshot) !== calculation.resultHash) logisticsFail("LOGISTICS_INPUT_STALE", 409);
     const plan = await tx.logisticsPlan.upsert({ where: { tenantId_pipelineCaseId: { tenantId: actor.tenantId, pipelineCaseId: scope.id } }, update: {}, create: { tenantId: actor.tenantId, pipelineCaseId: scope.id } });
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.tenantId}:${plan.id}:logistics-revision`}, 0))`);
@@ -201,12 +213,13 @@ export async function getTransportWorkspace(prisma, context, query = {}) {
   return withTransportTransaction(prisma, async (tx) => {
     const actor = await revalidateTransportActor(tx, context, READ);
     const scopedCase = query.caseRef ? await resolveCase(tx, actor, query.caseRef) : null;
-    const [cases, vehicles, decision] = await Promise.all([
-      tx.pipelineCase.findMany({ where: { tenantId: actor.tenantId, ...caseScope(actor), ...(query.search ? { OR: [{ caseCode: { contains: query.search, mode: "insensitive" } }, { clientName: { contains: query.search, mode: "insensitive" } }] } : {}) }, select: { publicRef: true, caseCode: true, mode: true }, orderBy: [{ updatedAt: "desc" }, { publicRef: "asc" }], take: 50 }),
+    const [cases, vehicles, decision, referenceBases] = await Promise.all([
+      scopedCase && query.search === undefined ? Promise.resolve([]) : tx.pipelineCase.findMany({ where: { tenantId: actor.tenantId, ...caseScope(actor), ...(query.search ? { OR: [{ caseCode: { contains: query.search, mode: "insensitive" } }, { clientName: { contains: query.search, mode: "insensitive" } }] } : {}) }, select: { publicRef: true, caseCode: true, mode: true }, orderBy: [{ updatedAt: "desc" }, { publicRef: "asc" }], take: 50 }),
       tx.vehicle.findMany({ where: { tenant_id: actor.tenantId, operational_status: "AVAILABLE", available_for_calculation: true, retired_at: null }, select: { id: true, business_code: true, vehicle_type: true }, orderBy: { normalized_code: "asc" }, take: 500 }),
       scopedCase ? tx.surveyEvaluationDecision.findFirst({ where: { tenantId: actor.tenantId, pipelineCaseId: scopedCase.id }, orderBy: { version: "desc" }, select: { decisionRef: true, version: true, method: true, commercialState: true, routeVersion: true } }) : Promise.resolve(null),
+      scopedCase ? transportReferenceBases(tx, actor.tenantId, new Date()) : Promise.resolve([]),
     ]);
     if (scopedCase && !cases.some((row) => row.publicRef === scopedCase.publicRef)) cases.unshift({ publicRef: scopedCase.publicRef, caseCode: scopedCase.caseCode, mode: scopedCase.mode });
-    return { cases: cases.map((row) => ({ caseRef: row.publicRef, label: row.caseCode, mode: row.mode })), vehicles: vehicles.map((row) => ({ vehicleRef: row.id, businessCode: row.business_code, vehicleType: row.vehicle_type })), visits: decision && decision.method === "IN_PERSON" && !["CANCELLED", "NOT_REQUIRED"].includes(decision.commercialState) && decision.routeVersion === scopedCase.routeRevision ? [{ contextRef: decision.decisionRef, label: `Visita presencial · decisión ${decision.version}` }] : [] };
+    return { referenceBases, cases: cases.map((row) => ({ caseRef: row.publicRef, label: row.caseCode, mode: row.mode })), vehicles: vehicles.map((row) => ({ vehicleRef: row.id, businessCode: row.business_code, vehicleType: row.vehicle_type })), visits: decision && decision.method === "IN_PERSON" && !["CANCELLED", "NOT_REQUIRED"].includes(decision.commercialState) && decision.routeVersion === scopedCase.routeRevision ? [{ contextRef: decision.decisionRef, label: `Visita presencial · decisión ${decision.version}` }] : [] };
   });
 }

@@ -1,12 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { TransportCalculateInput, TransportCalculation, TransportPublication, TransportPurpose, TransportResult, TransportZone, TransportZoneInput } from "../../shared/logisticsTransport";
+import type { TransportCalculateInput, TransportCalculation, TransportPublication, TransportResult, TransportZone, TransportZoneInput } from "../../shared/logisticsTransport";
 
 const CASE = "118f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const MEMBERSHIP = "228f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const VISIT = "338f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const ZONE = "448f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const VEHICLE = "cmtransporttestvehicle000001";
-const permissions = ["pipeline:view", "membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status", "logistics:rules:view", "logistics:rules:manage", "logistics:plan:view", "logistics:plan:calculate", "logistics:plan:publish", "costing:rules:view", "costing:rules:manage", "costing:view", "costing:calculate", "costing:publish"];
+const permissions = ["pipeline:view", "services:case:view", "membership:view", "membership:update:role", "membership:update:permissions", "membership:update:status", "logistics:rules:view", "logistics:rules:manage", "logistics:plan:view", "logistics:plan:calculate", "logistics:plan:publish", "costing:rules:view", "costing:rules:manage", "costing:view", "costing:calculate", "costing:publish"];
 const json = (data: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data }) });
 
 function editableZone(): TransportZone {
@@ -82,8 +82,37 @@ async function calculator(page: Page, options: { lostPublishResponse?: boolean; 
   const publications = new Map<string, TransportPublication>();
   const queries: URLSearchParams[] = [];
   let publishes = 0;
+  const privateHeaders = { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" };
+  await page.route(/\/api\/crm\/pipeline-cases(?:\?.*)?$/, (route) => route.fulfill({
+    status: 200, contentType: "application/json", headers: privateHeaders,
+    body: JSON.stringify({ ok: true, data: [], total: 0, page: 1, pageSize: 25 }),
+  }));
+  await page.route("**/api/crm/pipeline-summary", (route) => route.fulfill({
+    ...json({ total: 0, assigned: 0, unassigned: 0, byStatus: {}, sla: { overdue: null, basis: "UNAVAILABLE" } }),
+    headers: privateHeaders,
+  }));
+  await page.route(`**/api/crm/pipeline-cases/${CASE}`, (route) => route.fulfill({
+    ...json({
+      caseRef: CASE, caseCode: "CASO-PRUEBA-01", version: 3, mode: "LOCAL", status: "REQUIREMENTS_CONFIRMED",
+      createdAt: "2026-10-30T12:00:00.000Z", updatedAt: "2026-10-31T12:00:00.000Z",
+      serviceType: "MOVING_LOCAL", customerType: "L4_PERSONAL", estimatedCbm: 10, requiresSurvey: false, surveyMethod: "NO_APLICA",
+      originLocation: "Santo Domingo", destinationLocation: "Santiago", destinationContracted: true, assetsCount: 0, quoteCount: 0, eventCount: 0,
+      client: { clientRef: VISIT, displayName: "Cliente de prueba", type: "INDIVIDUAL", status: "ACTIVE" },
+      owner: { displayName: "Asesor de prueba", isCurrentActor: true },
+      route: {
+        revision: 3,
+        origin: { compactAddress: "Base de prueba, Santo Domingo, DO", area: "UNAVAILABLE", areaSource: "UNAVAILABLE" },
+        destination: { compactAddress: "Destino de prueba, Santiago, DO", area: "UNAVAILABLE", areaSource: "UNAVAILABLE" },
+      },
+    }), headers: privateHeaders,
+  }));
+  await page.route("**/api/costing/revisions/**", (route) => route.fulfill(json(null)));
+  await page.route("**/api/crm/services/cases/**", (route) => route.fulfill({
+    ...json({ caseRef: CASE, mode: "LOCAL", selection: { selectionRef: null, revision: 0, primary: null, complementaries: [], otherServices: [] }, primaries: [], allowedComplementaries: [], defaults: [] }),
+    headers: privateHeaders,
+  }));
   await page.route("**/api/logistics/transport/zones", (route) => route.fulfill(json([])));
-  await page.route("**/api/logistics/transport/context?**", (route) => route.fulfill(json({ cases: [{ caseRef: CASE, label: "CASO-PRUEBA-01", mode: "LOCAL" }], visits: [{ contextRef: VISIT, label: "Visita de prueba" }], vehicles: [{ vehicleRef: VEHICLE, businessCode: "VEH-PRUEBA", vehicleType: "Camión de prueba" }] })));
+  await page.route("**/api/logistics/transport/context?**", (route) => route.fulfill(json({ referenceBases: [{ name: "Oficina de prueba", address: "Avenida de prueba, Santo Domingo" }], cases: [{ caseRef: CASE, label: "CASO-PRUEBA-01", mode: "LOCAL" }], visits: [{ contextRef: VISIT, label: "Visita de prueba" }], vehicles: [{ vehicleRef: VEHICLE, businessCode: "VEH-PRUEBA", vehicleType: "Camión de prueba" }] })));
   await page.route("**/api/logistics/transport/plans?**", (route) => {
     const query = new URL(route.request().url()).searchParams;
     queries.push(query);
@@ -104,36 +133,31 @@ async function calculator(page: Page, options: { lostPublishResponse?: boolean; 
   await page.route("**/api/logistics/transport/publish", async (route) => {
     publishes += 1;
     const calculation = calculations.find((row) => row.calculationRef === route.request().postDataJSON().calculationRef)!;
-    const published: TransportPublication = { revisionRef: "668f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", revision: 1, publishedAt: "2026-10-31T12:02:00.000Z", calculationRef: calculation.calculationRef, context: calculation.result.context, result: calculation.result, input: calculation.input };
+    const published: TransportPublication = { revisionRef: "668f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", revision: 1, publishedAt: "2026-10-31T12:02:00.000Z", calculationRef: calculation.calculationRef, context: calculation.result.context, routeRevision: 3, result: calculation.result, input: calculation.input };
     publications.set(`${published.context.purpose}:${published.context.contextRef || ""}`, published);
     if (options.lostPublishResponse) await route.abort("failed"); else await route.fulfill(json(published));
   });
   return { calculations, queries, publishes: () => publishes };
 }
 
-async function selectContext(page: Page, purpose: TransportPurpose) {
-  await page.goto("/administration/logistics");
-  await page.getByRole("tab", { name: "Calcular transporte", exact: true }).click();
-  await expect(page.getByRole("combobox", { name: "Caso", exact: true })).toBeEnabled();
-  await page.getByRole("combobox", { name: "Caso", exact: true }).selectOption(CASE);
-  await page.getByRole("combobox", { name: "Uso del cálculo", exact: true }).selectOption(purpose);
-  if (purpose === "VISIT") {
-    await expect(page.getByRole("combobox", { name: "Visita presencial", exact: true })).toBeEnabled();
-    await page.getByRole("combobox", { name: "Visita presencial", exact: true }).selectOption(VISIT);
-  }
+async function openCosting(page: Page) {
+  await page.goto(`/commercial/cases/${CASE}`);
+  const serviceRoute = page.getByRole("region", { name: "Ruta para cotizar" });
+  await expect(serviceRoute).toContainText("Base de prueba, Santo Domingo, DO");
+  await expect(serviceRoute).toContainText("Destino de prueba, Santiago, DO");
+  await serviceRoute.getByRole("button", { name: "Ver costo de transporte" }).click();
+  await expect(page.getByTestId("transport-calculation-panel")).toBeVisible();
 }
 
 async function fillJourney(page: Page) {
   const form = page.getByTestId("transport-calculation-form");
-  await expect(form.getByLabel("Inicio *", { exact: true })).toBeEnabled();
-  await form.getByLabel("Inicio *", { exact: true }).fill("2026-11-10T08:00");
-  await form.getByLabel("Fin *", { exact: true }).fill("2026-11-10T17:00");
+  await expect(form.locator("input[type=datetime-local]")).toHaveCount(0);
   await form.getByRole("combobox", { name: "Vehículo de flota", exact: true }).selectOption(VEHICLE);
   await expect(form.getByLabel(/Latitud|Longitud/)).toHaveCount(0);
   await form.getByRole("button", { name: "Ubicar salida en mapa", exact: true }).click();
-  await form.getByLabel("Buscar dirección de salida", { exact: true }).fill("Base de prueba");
+  await expect(form.getByLabel("Buscar dirección de salida", { exact: true })).toHaveValue("Base de prueba, Santo Domingo, DO");
   await form.getByRole("button", { name: "Base de prueba, Santo Domingo, República Dominicana", exact: true }).click();
-  await form.getByLabel("Buscar dirección de destino", { exact: true }).fill("Destino de prueba");
+  await expect(form.getByLabel("Buscar dirección de destino", { exact: true })).toHaveValue("Destino de prueba, Santiago, DO");
   await form.getByRole("button", { name: "Destino de prueba, Santiago, República Dominicana", exact: true }).click();
   await expect(form.getByLabel("Distancia vial calculada")).toContainText("80.00 km");
   await form.getByLabel("Regreso", { exact: true }).check();
@@ -395,51 +419,81 @@ test("las ayudas comparan parámetros con ejemplos sin cargar tarifas ni cambiar
   expect(writes).toBe(0);
 });
 
-for (const purpose of ["QUOTE", "SERVICE", "VISIT"] as const) test(`${purpose}: calcula pendientes y publica exclusivamente el contexto elegido`, async ({ page }) => {
+test("Servicios usa la ruta del caso y Cotización aplica el transporte sin fechas ni publicación separada", async ({ page }) => {
   await session(page);
   const backend = await calculator(page);
-  await selectContext(page, purpose);
+  await openCosting(page);
   await fillJourney(page);
   await expect(page.getByTestId("transport-calculation-form").getByLabel(/Personal|Días fuera/)).toHaveCount(0);
   await page.getByRole("button", { name: "Calcular transporte", exact: true }).click();
   await expect(page.getByTestId("transport-calculation-result").getByText("Datos pendientes", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Publicar costo de transporte" })).toBeDisabled();
+  expect(backend.publishes()).toBe(0);
   await page.getByLabel("Peaje de prueba del recorrido 1").fill("2");
   await expect(page.getByText("Cambios por calcular", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Calcular transporte", exact: true }).click();
   await expect(page.getByTestId("transport-calculation-result").getByText("Completo", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Publicar costo de transporte" }).click();
-  await expect(page.getByRole("button", { name: "Publicado", exact: true })).toBeDisabled();
+  await expect(page.getByText("Transporte aplicado a la cotización · revisión 1.", { exact: true })).toBeVisible();
   expect(backend.calculations).toHaveLength(2);
-  expect(backend.calculations[1].input).toMatchObject({ caseRef: CASE, purpose, contextRef: purpose === "VISIT" ? VISIT : null, journeys: [{ vehicleRef: VEHICLE, vehicleType: "Camión de prueba", distanceKm: "80.00", distanceSource: "OSRM / OpenStreetMap · ruta vial automática", returnToOrigin: true, trips: 1, people: null, days: null, quantities: { TOLL: "2" } }] });
+  expect(backend.calculations[1].input).toMatchObject({ caseRef: CASE, purpose: "QUOTE", contextRef: null, intervalStart: null, intervalEnd: null, routeRevision: 3, journeys: [{ vehicleRef: VEHICLE, vehicleType: "Camión de prueba", distanceKm: "80.00", distanceSource: "OSRM / OpenStreetMap · ruta vial automática", returnToOrigin: true, trips: 1, people: null, days: null, quantities: { TOLL: "2" } }] });
   expect(backend.publishes()).toBe(1);
-  expect(backend.queries.some((query) => query.get("purpose") === purpose && query.get("contextRef") === (purpose === "VISIT" ? VISIT : null))).toBe(true);
-  await expect(page.getByTestId("transport-publication")).toContainText(PURPOSE_LABEL[purpose]);
+  expect(backend.queries.some((query) => query.get("purpose") === "QUOTE" && query.get("contextRef") === null)).toBe(true);
+  await expect(page.getByTestId("transport-publication")).toContainText("Cotizaciones");
 });
-const PURPOSE_LABEL = { QUOTE: "Cotizaciones", SERVICE: "Servicios operativos", VISIT: "Visitas presenciales" };
+
+test("una salida por sede usa la referencia configurada y conserva el destino del caso", async ({ page }) => {
+  await session(page);
+  const backend = await calculator(page);
+  await openCosting(page);
+  const form = page.getByTestId("transport-calculation-form");
+  await form.getByRole("combobox", { name: "Vehículo de flota", exact: true }).selectOption(VEHICLE);
+  await form.getByRole("button", { name: "Ubicar salida en mapa", exact: true }).click();
+  await form.getByLabel("Distancia de referencia desde una sede").selectOption("Avenida de prueba, Santo Domingo");
+  await expect(form.getByLabel("Buscar dirección de destino")).toHaveValue("Destino de prueba, Santiago, DO");
+  await form.getByRole("button", { name: "Destino de prueba, Santiago, República Dominicana", exact: true }).click();
+  await form.getByRole("button", { name: "Calcular transporte", exact: true }).click();
+  await expect(form.getByLabel("Peaje de prueba del recorrido 1")).toBeVisible();
+  expect(backend.calculations[0].input.journeys[0]).toMatchObject({
+    origin: null, destination: [-70.7, 19], referenceBaseAddress: "Avenida de prueba, Santo Domingo",
+    distanceKm: null,
+  });
+});
+
+test("Administración configura zonas sin abrir planes ni consultar casos", async ({ page }) => {
+  await session(page);
+  let caseQueries = 0;
+  await page.route("**/api/logistics/transport/context?**", (route) => {
+    caseQueries += 1;
+    return route.fulfill(json({ cases: [], visits: [], vehicles: [] }));
+  });
+  await page.route("**/api/logistics/transport/zones", (route) => route.fulfill(json([])));
+  await page.goto("/administration/logistics");
+  await expect(page.getByRole("tab", { name: "Ciudades y sectores" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Calcular transporte" })).toHaveCount(0);
+  await expect(page.locator("input[type=datetime-local]")).toHaveCount(0);
+  expect(caseQueries).toBe(0);
+});
 
 test("publicación con respuesta perdida se consulta sin repetir el envío", async ({ page }) => {
   await session(page);
   const backend = await calculator(page, { lostPublishResponse: true });
-  await selectContext(page, "QUOTE");
+  await openCosting(page);
   await fillJourney(page);
   await expect(page.getByTestId("transport-calculation-form").getByLabel(/Personal|Días fuera/)).toHaveCount(0);
   await page.getByRole("button", { name: "Calcular transporte", exact: true }).click();
   await page.getByLabel("Peaje de prueba del recorrido 1").fill("0");
   await page.getByRole("button", { name: "Calcular transporte", exact: true }).click();
-  await page.getByRole("button", { name: "Publicar costo de transporte" }).click();
-  await expect(page.getByText(/No se confirmó la publicación/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Publicar costo de transporte" })).toBeDisabled();
+  await expect(page.getByText(/No se confirmó el guardado del costo/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publicar costo de transporte" })).toHaveCount(0);
   await page.getByRole("button", { name: "Confirmar estado", exact: true }).click();
-  await expect(page.getByText("Publicación confirmada · revisión 1.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Transporte confirmado · revisión 1.", { exact: true })).toBeVisible();
   expect(backend.publishes()).toBe(1);
 });
 
 test("una publicación de otro contexto no se muestra ni habilita cálculos", async ({ page }) => {
   await session(page);
   await calculator(page, { mismatchedPublication: true });
-  await selectContext(page, "QUOTE");
-  await expect(page.getByRole("alert")).toContainText("no corresponde a este caso");
+  await openCosting(page);
+  await expect(page.getByTestId("transport-calculation-panel").getByRole("alert")).toContainText("no corresponde a este caso");
   await expect(page.getByTestId("transport-publication")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Calcular transporte", exact: true })).toBeDisabled();
 });
@@ -459,8 +513,8 @@ test("los permisos monetarios denegados impiden cargar zonas y cálculos", async
 test("el acceso de consulta no concede cálculo ni publicación", async ({ page }) => {
   await session(page, permissions.filter((permission) => !["costing:calculate", "costing:publish", "logistics:plan:calculate", "logistics:plan:publish"].includes(permission)));
   const backend = await calculator(page);
-  await selectContext(page, "SERVICE");
-  await expect(page.getByText("Sin costo de transporte publicado.", { exact: true })).toBeVisible();
+  await openCosting(page);
+  await expect(page.getByText("Sin costo de transporte aplicado.", { exact: true })).toBeVisible();
   await expect(page.getByTestId("transport-calculation-form")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Calcular transporte", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Publicar costo de transporte" })).toHaveCount(0);

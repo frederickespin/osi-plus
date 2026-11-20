@@ -16,8 +16,8 @@ const BASES = ["TRIP", "GALLON", "PASS", "PERSON_DAY", "FIXED", "KM"];
 const BASIS_BY_KIND = { BASE: ["TRIP"], FUEL: ["GALLON"], TOLL: ["PASS", "FIXED"], PER_DIEM: ["PERSON_DAY"], ALLOWANCE: ["PERSON_DAY", "FIXED", "TRIP"], OTHER: BASES.filter((value) => value !== "GALLON") };
 const COMPONENT_KEYS = ["code", "label", "kind", "basis", "unitCost", "classification", "minimumMarginBps", "recommendedMarginBps", "includedConcepts"];
 const ZONE_KEYS = ["seriesRef", "expectedVersion", "code", "name", "locationType", "city", "sector", "baseName", "baseAddress", "referenceDistanceKm", "referenceDistanceSource", "zoneType", "priority", "vehicleType", "purposes", "geometry", "mode", "factor", "currency", "kmPerGallon", "gallonUnit", "fuelType", "includedConcepts", "components", "state"];
-const CALCULATE_KEYS = ["caseRef", "purpose", "contextRef", "intervalStart", "intervalEnd", "journeys"];
-const JOURNEY_KEYS = ["journeyRef", "label", "vehicleType", "vehicleRef", "origin", "destination", "distanceKm", "distanceSource", "returnToOrigin", "trips", "people", "days", "quantities"];
+const CALCULATE_KEYS = ["caseRef", "purpose", "contextRef", "intervalStart", "intervalEnd", "journeys", "routeRevision"];
+const JOURNEY_KEYS = ["journeyRef", "label", "vehicleType", "vehicleRef", "origin", "destination", "distanceKm", "distanceSource", "returnToOrigin", "trips", "people", "days", "quantities", "referenceBaseAddress", "originLabel", "destinationLabel"];
 const invalid = (code = "TRANSPORT_PAYLOAD_INVALID") => logisticsFail(code);
 function object(value) { if (!value || typeof value !== "object" || Array.isArray(value)) invalid(); return value; }
 function exact(value, keys) { if (Object.keys(value).some((key) => !keys.includes(key))) invalid(); }
@@ -115,8 +115,12 @@ export function normalizeTransportInput(raw) {
   const purpose = enumeration(value.purpose, PURPOSES);
   const contextRef = value.contextRef === null ? null : transportRef(value.contextRef);
   if ((purpose === "VISIT") !== (contextRef !== null)) invalid("TRANSPORT_CONTEXT_INVALID");
-  const intervalStart = timestamp(value.intervalStart), intervalEnd = timestamp(value.intervalEnd);
-  if (intervalEnd <= intervalStart || Date.parse(intervalEnd) - Date.parse(intervalStart) > 366 * 86400000) invalid("TRANSPORT_INTERVAL_INVALID");
+  if ((value.intervalStart === null) !== (value.intervalEnd === null)) invalid("TRANSPORT_INTERVAL_INVALID");
+  const estimate = value.intervalStart === null;
+  const intervalStart = estimate ? null : timestamp(value.intervalStart);
+  const intervalEnd = estimate ? null : timestamp(value.intervalEnd);
+  if (!estimate && (intervalEnd <= intervalStart || Date.parse(intervalEnd) - Date.parse(intervalStart) > 366 * 86400000)) invalid("TRANSPORT_INTERVAL_INVALID");
+  const routeRevision = value.routeRevision === undefined ? undefined : integer(value.routeRevision, 1, 2147483647);
   if (!Array.isArray(value.journeys) || value.journeys.length < 1 || value.journeys.length > 40) invalid("TRANSPORT_JOURNEYS_REQUIRED");
   const journeys = value.journeys.map((rawJourney) => {
     const row = object(rawJourney); exact(row, JOURNEY_KEYS);
@@ -126,17 +130,21 @@ export function normalizeTransportInput(raw) {
     for (const [code, quantity] of Object.entries(quantities)) { if (!/^[A-Z][A-Z0-9_]{0,47}$/.test(code)) invalid(); decimal(quantity, 4, "99999999999999.9999", false); }
     let vehicleRef = null;
     if (row.vehicleRef !== null) { try { vehicleRef = adminFleetVehicleRef(row.vehicleRef); } catch { invalid("TRANSPORT_VEHICLE_REFERENCE_INVALID"); } }
-    return { journeyRef: transportRef(row.journeyRef), label: text(row.label, 120), vehicleType: text(row.vehicleType, 80), vehicleRef, origin: normalizeTransportCoordinate(row.origin, true), destination: normalizeTransportCoordinate(row.destination, true), distanceKm: decimal(row.distanceKm, 4, "999999.9999"), distanceSource: text(row.distanceSource, 240, false, true), returnToOrigin: row.returnToOrigin, trips: integer(row.trips, 1, 9999), people: integer(row.people, 0, 9999, true), days: decimal(row.days, 4, "9999.9999"), quantities: { ...quantities } };
+    const referenceBaseAddress = row.referenceBaseAddress === undefined ? undefined : text(row.referenceBaseAddress, 240);
+    if (referenceBaseAddress && (!estimate || row.origin !== null || row.distanceKm !== null || row.distanceSource !== "")) invalid("TRANSPORT_REFERENCE_INVALID");
+    const originLabel = row.originLabel === undefined ? undefined : text(row.originLabel, 240);
+    const destinationLabel = row.destinationLabel === undefined ? undefined : text(row.destinationLabel, 240);
+    return { ...(referenceBaseAddress && { referenceBaseAddress }), ...(originLabel && { originLabel }), ...(destinationLabel && { destinationLabel }), journeyRef: transportRef(row.journeyRef), label: text(row.label, 120), vehicleType: text(row.vehicleType, 80), vehicleRef, origin: normalizeTransportCoordinate(row.origin, true), destination: normalizeTransportCoordinate(row.destination, true), distanceKm: decimal(row.distanceKm, 4, "999999.9999"), distanceSource: text(row.distanceSource, 240, false, true), returnToOrigin: row.returnToOrigin, trips: integer(row.trips, 1, 9999), people: integer(row.people, 0, 9999, true), days: decimal(row.days, 4, "9999.9999"), quantities: { ...quantities } };
   });
   if (new Set(journeys.map((row) => row.journeyRef)).size !== journeys.length) invalid("TRANSPORT_JOURNEY_DUPLICATED");
-  return { caseRef: transportRef(value.caseRef), purpose, contextRef, intervalStart, intervalEnd, journeys };
+  return { caseRef: transportRef(value.caseRef), purpose, contextRef, intervalStart, intervalEnd, journeys, ...(routeRevision !== undefined && { routeRevision }) };
 }
 export function normalizeTransportCalculate(raw) { const value = object(raw); exact(value, [...CALCULATE_KEYS, "requestId", "payloadHash"]); return command(value, "TRANSPORT_CALCULATE", normalizeTransportInput(Object.fromEntries(CALCULATE_KEYS.map((key) => [key, value[key]])))); }
 export function normalizeTransportPublish(raw) { const value = object(raw); exact(value, ["requestId", "payloadHash", "calculationRef"]); return command(value, "TRANSPORT_PUBLISH", { calculationRef: transportRef(value.calculationRef) }); }
 
 export function selectTransportZone(zones, journey, purpose) {
   if (!journey.destination) return { zone: null, reason: "TRANSPORT_DESTINATION_PENDING" };
-  const matching = zones.filter((zone) => zone.state === "ACTIVE" && zone.purposes.includes(purpose) && (zone.vehicleType === null || zone.vehicleType === journey.vehicleType) && pointInTransportPolygon(journey.destination, zone.geometry));
+  const matching = zones.filter((zone) => zone.state === "ACTIVE" && zone.purposes.includes(purpose) && (zone.vehicleType === null || zone.vehicleType === journey.vehicleType) && (!journey.referenceBaseAddress || zone.baseAddress === journey.referenceBaseAddress) && pointInTransportPolygon(journey.destination, zone.geometry));
   matching.sort((a, b) => Number(b.vehicleType !== null) - Number(a.vehicleType !== null) || b.priority - a.priority || a.ruleRef.localeCompare(b.ruleRef));
   if (!matching.length) return { zone: null, reason: "TRANSPORT_ZONE_NOT_CONFIGURED" };
   if (matching[1] && matching[0].vehicleType === matching[1].vehicleType && matching[0].priority === matching[1].priority) return { zone: null, reason: "TRANSPORT_ZONE_CONFLICT" };
@@ -152,24 +160,29 @@ export function transportLineQuantity(component, journey, zone) {
   else if (Object.hasOwn(journey.quantities, component.code)) quantity = new Decimal(journey.quantities[component.code]);
   return { quantity: quantity === null ? null : boundedDecimal(quantity, 4, "99999999999999.9999"), distanceKm: distance === null ? null : boundedDecimal(distance, 4, "99999999999999.9999") };
 }
+export function resolveTransportJourneyDistance(journey, zone, allowLegacyReference = false) {
+  const matchesBase = Boolean(journey.referenceBaseAddress) && journey.referenceBaseAddress === zone.baseAddress;
+  if (journey.distanceKm !== null || (!matchesBase && !allowLegacyReference) || zone.referenceDistanceKm == null || !zone.referenceDistanceSource) return journey;
+  return { ...journey, distanceKm: zone.referenceDistanceKm, distanceSource: zone.referenceDistanceSource };
+}
+
 export function calculateTransportResult(input, zones) {
   const context = { contract: TRANSPORT_CONTRACT, purpose: input.purpose, contextRef: input.contextRef };
   const lines = [], issues = [], totals = new Map();
   const issue = (code, message, journeyRef, severity = "BLOCKER") => issues.push({ code, message, journeyRef, severity });
   for (const journey of input.journeys) {
     const selected = selectTransportZone(zones, journey, input.purpose);
-    if (!journey.origin) issue("TRANSPORT_ORIGIN_PENDING", "Indique el punto de salida del desplazamiento.", journey.journeyRef);
-    if (!selected.zone) { issue(selected.reason, selected.reason === "TRANSPORT_ZONE_CONFLICT" ? "El destino coincide con zonas de igual prioridad. Ajuste el perímetro o la prioridad." : selected.reason === "TRANSPORT_DESTINATION_PENDING" ? "Indique el destino para resolver su zona." : "No hay una zona activa para este destino, propósito y tipo de vehículo.", journey.journeyRef); continue; }
+    if (!journey.origin && !journey.referenceBaseAddress) issue("TRANSPORT_ORIGIN_PENDING", "Indique el punto de salida del desplazamiento.", journey.journeyRef);
+    if (!selected.zone) { issue(selected.reason, selected.reason === "TRANSPORT_ZONE_CONFLICT" ? "El destino coincide con zonas de igual prioridad. Ajuste el perímetro o la prioridad." : selected.reason === "TRANSPORT_DESTINATION_PENDING" ? "Indique el destino para resolver su zona." : journey.referenceBaseAddress ? "No hay un perfil activo para la sede, el destino y el vehículo elegidos. Seleccione otro origen o ubique la salida en el mapa." : "No hay una zona activa para este destino y tipo de vehículo.", journey.journeyRef); continue; }
     const zone = selected.zone;
-    const journeyForCalculation = journey.distanceKm === null && zone.referenceDistanceKm !== null
-      ? { ...journey, distanceKm: zone.referenceDistanceKm, distanceSource: zone.referenceDistanceSource }
-      : journey;
+    const journeyForCalculation = resolveTransportJourneyDistance(journey, zone, input.intervalStart !== null);
+    if (journey.referenceBaseAddress && journeyForCalculation.distanceKm === null) issue("TRANSPORT_REFERENCE_DISTANCE_PENDING", "Este perfil aún no tiene kilómetros desde la sede elegida. Configure la referencia en Motor Logístico o ubique la salida en el mapa.", journey.journeyRef);
     if (!totals.has(zone.currency)) totals.set(zone.currency, { amount: new Decimal(0), pending: false });
     const roadComponents = zone.components.filter(isRoadTransportComponent);
     if (!roadComponents.length) { issue("TRANSPORT_TARIFF_PENDING", "La zona no tiene renglones de transporte configurados.", journey.journeyRef); totals.get(zone.currency).pending = true; }
     if (zone.mode === "FACTOR" && !roadComponents.some((row) => row.kind === "BASE")) { issue("TRANSPORT_BASE_PENDING", "El modo por factor necesita una tarifa base de transporte.", journey.journeyRef); totals.get(zone.currency).pending = true; }
     if (roadComponents.some((row) => row.kind === "FUEL") && !zone.fuelType) issue("TRANSPORT_FUEL_TYPE_PENDING", "Indique el combustible al que corresponden el rendimiento y el precio por galón.", journey.journeyRef);
-    if (journeyForCalculation.distanceKm !== null && !journeyForCalculation.distanceSource || roadComponents.some((row) => ["GALLON", "KM"].includes(row.basis)) && (journeyForCalculation.distanceKm === null || !journeyForCalculation.distanceSource)) issue("TRANSPORT_DISTANCE_PENDING", "Confirme los kilómetros de carretera y su fuente; el mapa no calcula esa distancia.", journey.journeyRef);
+    if (journeyForCalculation.distanceKm !== null && !journeyForCalculation.distanceSource || roadComponents.some((row) => ["GALLON", "KM"].includes(row.basis)) && (journeyForCalculation.distanceKm === null || !journeyForCalculation.distanceSource)) issue("TRANSPORT_DISTANCE_PENDING", "Confirme los kilómetros viales en el mapa o seleccione una sede con una referencia configurada.", journey.journeyRef);
     const quantityCodes = new Set(zone.components.filter((row) => ["PASS", "FIXED"].includes(row.basis)).map((row) => row.code));
     if (Object.keys(journey.quantities).some((code) => !quantityCodes.has(code))) issue("TRANSPORT_QUANTITY_UNKNOWN", "Hay cantidades manuales que no pertenecen a los renglones de esta zona.", journey.journeyRef);
     for (const component of roadComponents) {

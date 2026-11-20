@@ -11,7 +11,6 @@ import { isCostingUiEnabled } from "@/costing/mode";
 import { resolveTransportUiAccess } from "./transportAccess";
 
 const TransportZonesAdmin = lazy(() => import("./TransportZonesAdmin"));
-const TransportCalculationPanel = lazy(() => import("./TransportCalculationPanel"));
 
 type Props = Readonly<{ authorization?: string; access: LogisticsUiAccess; costingAccess?: CostingUiAccess; onUnauthorized(): void }>;
 type Draft = Readonly<{ requestId: string; seriesRef: string | null; family: string; code: string; name: string; priority: string; specificity: string; mode: string; kind: string; label: string; quantity: string; state: string }>;
@@ -27,19 +26,17 @@ function fromRule(rule: LogisticsRule): Draft {
 
 export default function LogisticsRulesAdmin({ authorization, access, costingAccess = NO_COSTING_ACCESS, onUnauthorized }: Props) {
   const transportAccess = resolveTransportUiAccess(access, isCostingUiEnabled() ? costingAccess : NO_COSTING_ACCESS);
-  const [selected, setSelected] = useState<"zones" | "calculate" | "rules">(() => transportAccess.canZonesView ? "zones" : "rules");
-  const visible = selected === "zones" && !transportAccess.canZonesView || selected === "calculate" && !transportAccess.canView ? "rules" : selected;
+  const [selected, setSelected] = useState<"zones" | "rules">(() => transportAccess.canZonesView ? "zones" : "rules");
+  const visible = transportAccess.canZonesView ? selected : "rules";
   if (!access.canRulesView) return null;
   return <section id="admin-logistics-engine" data-testid="logistics-rules-admin" className="mt-3 min-w-0 scroll-mt-3 space-y-3">
-    <header className="flex items-center gap-1"><h2 className="text-base font-semibold text-[#003366]">Motor Logístico</h2><AdministrationHelp title="Motor Logístico"><p>Defina ciudades y sectores, su perímetro, kilómetros viales y costos desde cada base operativa.</p><p>Los recorridos usan distancia, rendimiento del vehículo y peajes. El personal, el chofer y los viáticos se costean en Servicios y combinaciones.</p><p>La clasificación metropolitana se usa para reglas operativas, no como sustituto de la distancia.</p></AdministrationHelp></header>
+    <header className="flex items-center gap-1"><h2 className="text-base font-semibold text-[#003366]">Motor Logístico</h2><AdministrationHelp title="Motor Logístico"><p>Defina ciudades y sectores, su perímetro, kilómetros viales y costos desde cada base operativa.</p><p>Los recorridos usan distancia, rendimiento del vehículo y peajes. El personal, el chofer y los viáticos se costean en Servicios y combinaciones.</p><p>Servicios y Cotización usan estos parámetros para las direcciones del caso.</p></AdministrationHelp></header>
     <div role="tablist" aria-label="Configuración del Motor Logístico" className="flex gap-1 overflow-x-auto border-b border-slate-200">
       {transportAccess.canZonesView && <button type="button" role="tab" aria-selected={visible === "zones"} onClick={() => setSelected("zones")} className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium ${visible === "zones" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500"}`}>Ciudades y sectores</button>}
-      {transportAccess.canView && <button type="button" role="tab" aria-selected={visible === "calculate"} onClick={() => setSelected("calculate")} className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium ${visible === "calculate" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500"}`}>Calcular transporte</button>}
       <button type="button" role="tab" aria-selected={visible === "rules"} onClick={() => setSelected("rules")} className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium ${visible === "rules" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500"}`}>Reglas operativas</button>
     </div>
     <Suspense fallback={<p role="status" className="py-8 text-center text-sm text-slate-500">Cargando transporte…</p>}>
       {visible === "zones" && <TransportZonesAdmin authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized} />}
-      {visible === "calculate" && <TransportCalculationPanel authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized} />}
       {visible === "rules" && <OperationalRules authorization={authorization} access={access} onUnauthorized={onUnauthorized} />}
     </Suspense>
   </section>;

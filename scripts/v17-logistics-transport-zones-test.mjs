@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { canonicalHash } from "../api/_lib/logisticsEngineContract.js";
 import { automaticLogisticsConfigurationCode } from "../api/_lib/logisticsConfigurationCode.js";
+import { assertTransportRevisionCurrent, calculateTransport, publishTransport, TRANSPORT_PLAN_PERMISSIONS } from "../api/_lib/logisticsTransportDomain.js";
 import { TRANSPORT_CONTRACT } from "../api/_lib/logisticsTransportContract.js";
 import {
   listTransportZones, loadTransportZones, revalidateTransportActor, TRANSPORT_ZONE_PERMISSIONS,
-  transportCoverageAt, versionTransportZone, withTransportTransaction,
+  transportCoverageAt, transportReferenceBases, versionTransportZone, withTransportTransaction,
 } from "../api/_lib/logisticsTransportZones.js";
 
 const results = [];
@@ -203,6 +204,82 @@ f.setActor({ ...currentActor, denied_permissions: [permissions[3]] });
 await rejects(() => versionTransportZone(f.prisma, context, create), "FORBIDDEN");
 f.setActor(currentActor);
 check("idempotent replay does not bypass revoked permission", f.state().commands.length === 1);
+
+{
+  const pricingFixture = fixture();
+  await versionTransportZone(pricingFixture.prisma, context, command({ purposes: ["QUOTE"] }));
+  const active = pricingFixture.state();
+  const allowed = [...new Set([...TRANSPORT_PLAN_PERMISSIONS.CALCULATE, ...TRANSPORT_PLAN_PERMISSIONS.PUBLISH])];
+  const pricingActor = { ...context, effectivePermissions: allowed };
+  const pipelineCase = {
+    id: "case-internal", publicRef: randomUUID(), mode: "EXPORT",
+    routeContractVersion: 1, routeRevision: 3, destinationStatus: "PENDING",
+  };
+  const service = { selectionRef: randomUUID(), revision: 1, modeSnapshot: "EXPORT", items: [] };
+  const commands = new Map();
+  let calculation;
+  let revision;
+  const empty = { findMany: async () => [] };
+  const noResult = { findFirst: async () => null };
+  const tx = {
+    $queryRaw: async () => [{ ...currentActor, granted_permissions: allowed }],
+    $executeRaw: async () => {},
+    pipelineCase: { findFirst: async () => pipelineCase },
+    pipelineCaseServiceRevision: { findFirst: async () => service },
+    pipelineCaseRouteSnapshot: empty,
+    surveyPublication: noResult,
+    materialRequirementSnapshot: noResult,
+    assetModel: empty,
+    vehicle: empty,
+    externalResourceOffer: empty,
+    logisticsRule: { findMany: async () => active.zones },
+    costingRule: { findMany: async () => active.tariffs },
+    logisticsMutationCommand: {
+      findUnique: async ({ where }) => commands.get(where.tenantId_requestId.requestId),
+      create: async ({ data }) => commands.set(data.requestId, data),
+    },
+    commercialAuditLog: { create: async () => {} },
+    logisticsCalculation: {
+      create: async ({ data }) => {
+        calculation = { ...data, id: "estimate-internal", calculationRef: randomUUID(), createdAt: new Date(), pipelineCase, publishedRevision: null };
+        return calculation;
+      },
+      findFirst: async () => calculation,
+    },
+    logisticsPlan: { upsert: async () => ({ id: "plan-internal" }) },
+    logisticsPlanRevision: {
+      findFirst: async () => revision ?? null,
+      create: async ({ data }) => {
+        revision = { ...data, revisionRef: randomUUID(), publishedAt: new Date(), calculation };
+        return revision;
+      },
+    },
+  };
+  const db = { $transaction: (work) => work(tx) };
+  const input = {
+    caseRef: pipelineCase.publicRef, purpose: "QUOTE", contextRef: null, routeRevision: 3, intervalStart: null, intervalEnd: null,
+    journeys: [{
+      journeyRef: randomUUID(), label: "Tramo terrestre", vehicleType: "TRUCK", vehicleRef: null, origin: null,
+      destination: [-69.95, 18.1], referenceBaseAddress: zone.baseAddress, distanceKm: null, distanceSource: "",
+      returnToOrigin: false, trips: 1, people: null, days: null, quantities: { TOLL: "2" },
+    }],
+  };
+  const sign = (operation, payload) => {
+    const requestId = randomUUID();
+    return { requestId, payloadHash: canonicalHash({ operation, requestId, ...payload }), ...payload };
+  };
+  const quote = await calculateTransport(db, pricingActor, sign("TRANSPORT_CALCULATE", input));
+  check("a domestic leg can be estimated without service dates or a confirmed international destination",
+    quote.result.complete && quote.result.totals[0].amount === "2200.000000" && quote.input.intervalStart === null);
+  check("configured bases available to estimates are scoped to the tenant",
+    JSON.stringify(await transportReferenceBases(tx, context.tenantId, new Date())) === JSON.stringify([{ name: zone.baseName, address: zone.baseAddress }]));
+  const applied = await publishTransport(db, pricingActor, sign("TRANSPORT_PUBLISH", { calculationRef: quote.calculationRef }));
+  check("saving an undated estimate preserves its observation instant and reference distance", applied.routeRevision === 3
+    && applied.input.intervalEnd === null && revision.inputSnapshot.route.distanceKm === 80);
+  await assertTransportRevisionCurrent(tx, pricingActor, revision);
+  pipelineCase.routeRevision = 4;
+  await assert.rejects(() => assertTransportRevisionCurrent(tx, pricingActor, revision), { code: "TRANSPORT_ROUTE_STALE" });
+}
 
 const second = await versionTransportZone(f.prisma, context, command({ seriesRef: first.seriesRef, expectedVersion: 1, components: [{ ...fuel, unitCost: "275" }], state: "DRAFT" }));
 state = f.state();

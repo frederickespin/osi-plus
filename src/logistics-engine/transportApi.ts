@@ -72,7 +72,7 @@ export const transportApi = Object.freeze({
     });
   },
   calculate: (authorization: string | undefined, input: TransportCalculateInput, signal?: AbortSignal) => command<TransportCalculation>(authorization, "/api/logistics/transport/calculate", "TRANSPORT_CALCULATE", input, signal),
-  publish: (authorization: string | undefined, calculationRef: string, signal?: AbortSignal) => command<TransportPublication>(authorization, "/api/logistics/transport/publish", "TRANSPORT_PUBLISH", { calculationRef }, signal),
+  publish: (authorization: string | undefined, calculationRef: string, signal?: AbortSignal, requestId?: string) => command<TransportPublication>(authorization, "/api/logistics/transport/publish", "TRANSPORT_PUBLISH", { calculationRef }, signal, requestId),
 });
 
 export function transportErrorMessage(cause: unknown): string {
@@ -89,6 +89,7 @@ export function transportErrorMessage(cause: unknown): string {
   if (code === "TRANSPORT_MARGIN_INVALID") return "El margen recomendado debe ser igual o mayor que el margen mínimo.";
   if (code === "TRANSPORT_NUMBER_INVALID") return "Revise los valores numéricos: kilómetros, rendimiento y cantidades admiten hasta 4 decimales; las tarifas y el factor, hasta 6.";
   if (code === "TRANSPORT_INTERVAL_INVALID") return "El fin debe ser posterior al inicio y el período no puede exceder un año.";
+  if (code === "TRANSPORT_ROUTE_STALE") return "La ruta del caso cambió. Actualice las direcciones y vuelva a calcular.";
   if (code === "TRANSPORT_ROUTE_REQUIRED") return "Confirme la ruta del caso antes de calcular su transporte.";
   if (/VEHICLE_NOT_FOUND|VEHICLE_UNAVAILABLE|VEHICLE_REFERENCE_INVALID/.test(code)) return "Actualice los vehículos y seleccione uno habilitado, o indique el perfil de vehículo para estimar el recorrido.";
   if (/VERSION|STALE|CONFLICT/.test(code)) return "La información cambió desde que la abrió. Actualice y revise la versión vigente antes de continuar.";

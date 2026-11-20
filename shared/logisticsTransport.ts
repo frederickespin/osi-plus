@@ -33,11 +33,15 @@ export type TransportJourney = Readonly<{
   origin: TransportCoordinate | null; destination: TransportCoordinate | null;
   distanceKm: string | null; distanceSource: string; returnToOrigin: boolean; trips: number;
   people: number | null; days: string | null;
+  originLabel?: string;
+  destinationLabel?: string;
+  referenceBaseAddress?: string; // Selects a configured base-to-zone distance.
   quantities: Readonly<Record<string, string>>; // PASS/FIXED totals for this journey, already including return and trips
 }>;
 export type TransportCalculateInput = Readonly<{
   caseRef: string; purpose: TransportPurpose; contextRef: string | null;
-  intervalStart: string; intervalEnd: string; journeys: readonly TransportJourney[];
+  routeRevision?: number;
+  intervalStart: string | null; intervalEnd: string | null; journeys: readonly TransportJourney[];
 }>;
 export type TransportIssue = Readonly<{ code: string; message: string; journeyRef: string | null; severity: "WARNING" | "BLOCKER" }>;
 export type TransportLine = Readonly<{
@@ -56,10 +60,13 @@ export type TransportCalculation = Readonly<{
   calculatedAt: string; input: TransportCalculateInput; result: TransportResult;
 }>;
 export type TransportPublication = Readonly<{
-  revisionRef: string; revision: number; publishedAt: string; context: TransportContext;
+  revisionRef: string; revision: number; publishedAt: string; context: TransportContext; routeRevision?: number;
   calculationRef: string; result: TransportResult; input: TransportCalculateInput;
 }>;
+export type TransportReferenceBase = Readonly<{ name: string; address: string }>;
+export type TransportCaseAddresses = Readonly<{ revision?: number; origin: string; destination: string }>;
 export type TransportWorkspace = Readonly<{
+  referenceBases?: readonly TransportReferenceBase[];
   cases: readonly Readonly<{ caseRef: string; label: string; mode: string }>[];
   visits: readonly Readonly<{ contextRef: string; label: string }>[];
   vehicles: readonly Readonly<{ vehicleRef: string; businessCode: string; vehicleType: string }>[];

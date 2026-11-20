@@ -184,6 +184,18 @@ export async function loadTransportZones(tx, tenantId, at) {
   return hydrateZones(tx, tenantId, await activeZoneRows(tx, tenantId, at), new Date(at));
 }
 
+export async function transportReferenceBases(tx, tenantId, at) {
+  const rows = await activeZoneRows(tx, tenantId, at);
+  if (rows.length > MAX_ZONES) fail("ZONE_LIMIT");
+  const bases = new Map();
+  for (const row of rows) {
+    assertZoneIdentity(row, tenantId);
+    const { baseName: name, baseAddress: address, referenceDistanceKm } = row.result;
+    if (row.result.purposes.includes("QUOTE") && name && address && referenceDistanceKm != null) bases.set(address, { name, address });
+  }
+  return [...bases.values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
+}
+
 export async function transportCoverageAt(database, tenantId, point, at = new Date()) {
   const rows = await activeZoneRows(database, tenantId, at);
   if (rows.length > MAX_ZONES) fail("ZONE_LIMIT");

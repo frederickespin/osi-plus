@@ -1,6 +1,6 @@
 import { canonicalCostingJson, costingFail, costingHash } from "./costingContract.js";
 import { sameTransportContext, TRANSPORT_CONTEXT_CONTRACT, transportContextOf } from "./logisticsTransportContext.js";
-import { transportLineQuantity } from "./logisticsTransportContract.js";
+import { resolveTransportJourneyDistance, transportLineQuantity } from "./logisticsTransportContract.js";
 import { includesPersonnelCosts, isRoadTransportComponent } from "../../shared/transportCostScope.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -78,7 +78,7 @@ export async function resolveTransportCostingAuthority(tx, context, item, revisi
     costingFail("COSTING_TRANSPORT_SCOPE_CHANGED", 409);
   }
   let computedQuantity;
-  try { computedQuantity = transportLineQuantity(component, journey, zone.result).quantity; }
+  try { computedQuantity = transportLineQuantity(component, resolveTransportJourneyDistance(journey, zone.result, transportInput.intervalStart !== null), zone.result).quantity; }
   catch { invalid(); }
   if (!sameDecimal(computedQuantity, item.quantity, 4)) invalid();
   const rule = await tx.costingRule.findFirst({ where: { tenantId: context.tenantId, ruleRef: transport.costRuleRef, version: transport.costRuleVersion } });

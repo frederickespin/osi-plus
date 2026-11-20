@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { createAdminFleetCollectionHandler, createAdminFleetDetailHandler } from "../api/_lib/adminFleetHttp.js";
+import { createAdminFleetCollectionHandler, createAdminFleetDetailHandler, createAdminFleetOptionsHandler } from "../api/_lib/adminFleetHttp.js";
 import { assertAdminFleetDatabase, requireAdminFleetAccess, requireAdminFleetContext } from "../api/_lib/adminFleetAccess.js";
 import { AdminFleetError } from "../api/_lib/adminFleetContract.js";
 import { AdminMembershipError } from "../api/_lib/adminMembershipDomain.js";
@@ -44,7 +44,7 @@ function isPrivate(res) {
     && res.getHeader("x-content-type-options") === "nosniff" && res.getHeader("referrer-policy") === "no-referrer"
     && !res.getHeader("access-control-allow-origin") && !res.getHeader("access-control-allow-credentials") && !res.getHeader("set-cookie");
 }
-for (const factory of [createAdminFleetCollectionHandler, createAdminFleetDetailHandler]) {
+for (const factory of [createAdminFleetCollectionHandler, createAdminFleetDetailHandler, createAdminFleetOptionsHandler]) {
   let reached = 0;
   const forbidden = async () => { reached += 1; throw new Error("unreachable"); };
   const handler = factory({ env: {}, prisma: {}, checkDatabase: forbidden, resolveContext: forbidden, list: forbidden, get: forbidden, create: forbidden, update: forbidden });
@@ -179,4 +179,15 @@ const unavailable = await invoke(broken, { query: { vehicleRef } });
 check("unexpected failures are sanitized", unavailable.statusCode === 503 && unavailable.body.error === "ADMIN_FLEET_UNAVAILABLE" && !JSON.stringify(unavailable.body).includes("private database") && isPrivate(unavailable));
 const conflict = createAdminFleetDetailHandler({ ...dependencies, update: async () => { throw new AdminFleetError("ADMIN_FLEET_VERSION_CONFLICT", 409); } });
 check("version conflict preserves safe code/status", (await invoke(conflict, { method: "PATCH", query: { vehicleRef }, headers: jsonHeaders, body: patch })).body.error === "ADMIN_FLEET_VERSION_CONFLICT");
+const type = { name: "Tractocamión", variableVolume: true };
+const typeRequest = { ...type, requestId: randomUUID() };
+const options = createAdminFleetOptionsHandler({ ...dependencies,
+  list: async (_db, actor) => { assert.equal(actor, context); return { types: [type], bases: [] }; },
+  create: async (_db, actor, input) => { assert.equal(actor, context); assert.deepEqual(input, typeRequest); return { type, created: true }; },
+});
+const optionsResponse = await invoke(options, { url: "/api/admin/fleet/options" });
+check("options response includes only the scoped catalog and is private", optionsResponse.statusCode === 200
+  && optionsResponse.body.types[0].variableVolume && isPrivate(optionsResponse));
+const typeResponse = await invoke(options, { method: "POST", url: "/api/admin/fleet/options", body: typeRequest, headers: jsonHeaders });
+check("type registration returns created status and private headers", typeResponse.statusCode === 201 && typeResponse.body.type.name === type.name && isPrivate(typeResponse));
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

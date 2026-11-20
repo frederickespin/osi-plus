@@ -75,7 +75,7 @@ export function previewMigrationOperation(env = process.env) {
 }
 
 export function previewMigrationManifest(root = process.cwd()) {
-  const names = validateMigrationFiles(root);
+  const names = validateMigrationFiles(root).filter((name) => name <= CUSTOMER_CUSTODY_MIGRATION);
   requireCondition(names.length === 52 && names.at(-1) === CUSTOMER_CUSTODY_MIGRATION, "SOURCE_INVENTORY_INVALID");
   const manifest = Object.fromEntries(names.map((name) => [name,
     sha256(readFileSync(resolve(root, "prisma/migrations", name, "migration.sql"))),
@@ -182,6 +182,7 @@ async function repairKnownFailedAttempt(prisma, env, root) {
 export async function runCustomerCustodyPreviewMigration({ env = process.env, root = process.cwd() } = {}) {
   const operation = previewMigrationOperation(env);
   if (!operation) return null;
+  requireCondition(validateMigrationFiles(root).at(-1) === CUSTOMER_CUSTODY_MIGRATION, "OPERATION_TARGET_INVALID");
   const manifest = previewMigrationManifest(root);
   const prismaVersion = JSON.parse(readFileSync(resolve(root, "node_modules/prisma/package.json"), "utf8")).version;
   requireCondition(prismaVersion === "6.19.2", "PRISMA_VERSION_INVALID");

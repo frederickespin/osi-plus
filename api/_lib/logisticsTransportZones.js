@@ -217,6 +217,32 @@ export async function listTransportZones(prisma, context, query = {}) {
   });
 }
 
+// Internal projection for the fleet forms. The caller supplies an authenticated
+// tenant, and this read never returns a tariff or a zone rule.
+export async function transportFleetOptions(tx, tenantId) {
+  const rows = await tx.logisticsRule.findMany({
+    where: namespaceWhere(tenantId), distinct: ["seriesRef"],
+    orderBy: [{ seriesRef: "asc" }, { version: "desc" }], take: MAX_ZONES + 1,
+  });
+  if (rows.length > MAX_ZONES) fail("ZONE_LIMIT");
+  const bases = new Map();
+  const types = new Set();
+  for (const row of rows) {
+    if (row.state !== "ACTIVE" && row.state !== "DRAFT") continue;
+    assertZoneIdentity(row, tenantId);
+    const { baseName: name, baseAddress: address } = row.result;
+    if (row.conditions.vehicleType) types.add(row.conditions.vehicleType);
+    if (name && address) {
+      const code = "BASE-" + canonicalHash({ name, address }).slice(0, 20).toUpperCase();
+      bases.set(code, { code, name, address });
+    }
+  }
+  return {
+    bases: [...bases.values()].sort((a, b) => a.name.localeCompare(b.name, "es") || a.address.localeCompare(b.address, "es")),
+    types: [...types],
+  };
+}
+
 function actorData(context) { return { actorMembershipId: context.membershipId, actorUserId: context.userId }; }
 function auditData(context, input, entity, entityId, action, after) {
   return { tenant_id: context.tenantId, actor_user_id: context.userId, actor_membership_id: context.membershipId,

@@ -60,7 +60,8 @@ export function validateCommercialPreviewCorrections12cGuard(overrides = {}) {
   assert.match(rules, /id="admin-logistics-engine"/);
   assert.match(rules, /<AdministrationHelp title="Motor Logístico">/);
   assert.doesNotMatch(http, /PRODUCTION_(?:READ|WRITE|PILOT)/, "12C no activa Production");
-  const migrationCount = readdirSync("prisma/migrations", { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
+  const migrationCount = readdirSync("prisma/migrations", { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name <= "20261113010000_v17_commercial_storage_requirements").length;
   assert.ok(migrationCount === 52 && existsSync("prisma/migrations/20261113010000_v17_commercial_storage_requirements/migration.sql"), "el linaje consolidado debe conservar las 52 migraciones publicadas hasta Almacenaje comercial");
   return Object.freeze({ ok: true, commercialMotorTabs: 0, adminLazyBoundary: true, independentAdminSurfaces: true, publishedResultOnly: true, productionApiEnabled: false, migrations: migrationCount });
 }

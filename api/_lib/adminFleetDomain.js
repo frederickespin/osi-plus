@@ -5,8 +5,9 @@ import { requiredAdminText } from "./adminMembershipDomain.js";
 import { authorizeFleetContext, revalidateFleetActor } from "./fleetActor.js";
 import {
   ADMIN_FLEET_EDITABLE_FIELDS, ADMIN_FLEET_TECHNICAL_FIELDS, adminFleetEditableDto, adminFleetVehicleDto,
-  adminFleetVehicleRef, fleetFail, normalizeAdminFleetVehicle, parseAdminFleetCreate, parseAdminFleetFilters, parseAdminFleetPatch,
+  adminFleetVehicleRef, fleetFail, fleetTypeNameKey, normalizeAdminFleetVehicle, parseAdminFleetCreate, parseAdminFleetFilters, parseAdminFleetPatch, parseFleetTypeCreate,
 } from "./adminFleetContract.js";
+import { transportFleetOptions } from "./logisticsTransportZones.js";
 
 const SOURCE = "V17_ADMINISTRATION_FLEET_19D";
 function authorizeContext(context, write = false) {
@@ -37,6 +38,73 @@ async function lockTenant(tx, context) {
   // Match administration19B lock order. Keep actor and tenant authority locked through audit/commit.
   const rows = await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "osi"."tenants" WHERE "id"=${tenantId} FOR UPDATE`);
   if (rows.length !== 1) fleetFail("FORBIDDEN", 403);
+}
+
+async function fleetOptions(tx, tenantId) {
+  const [savedTypes, usedTypes, transport] = await Promise.all([
+    tx.fleetVehicleType.findMany({ where: { tenantId }, select: { name: true, variableVolume: true } }),
+    tx.vehicle.findMany({ where: { tenant_id: tenantId }, distinct: ["vehicle_type"], select: { vehicle_type: true } }),
+    transportFleetOptions(tx, tenantId),
+  ]);
+  const vehicleTypes = new Map(savedTypes.map((type) => [type.name, type]));
+  for (const name of [...usedTypes.map((row) => row.vehicle_type), ...transport.types]) {
+    if (!vehicleTypes.has(name)) vehicleTypes.set(name, { name, variableVolume: false });
+  }
+  return { types: [...vehicleTypes.values()].sort((a, b) => a.name.localeCompare(b.name, "es")), bases: transport.bases };
+}
+
+export async function listAdminFleetOptions(prisma, context) {
+  authorizeContext(context);
+  return adminFleetTransaction(prisma, async (tx) => fleetOptions(tx, (await actorFor(tx, context)).tenantId));
+}
+
+export async function createAdminFleetType(prisma, context, input, { auditWriter = appendCommercialAudit } = {}) {
+  authorizeContext(context, true);
+  const { requestId, name, normalizedName, variableVolume } = parseFleetTypeCreate(input);
+  return adminFleetTransaction(prisma, async (tx) => {
+    await lockTenant(tx, context);
+    const { tenantId, membershipId } = await actorFor(tx, context, true);
+    const previous = await tx.fleetVehicleType.findUnique({ where: { tenantId_requestId: { tenantId, requestId } } });
+    if (previous) {
+      if (previous.normalizedName !== normalizedName || previous.variableVolume !== variableVolume) fleetFail("REQUEST_CONFLICT", 409);
+      return { type: { name: previous.name, variableVolume }, created: false };
+    }
+    if (await tx.fleetVehicleType.findUnique({ where: { tenantId_normalizedName: { tenantId, normalizedName } } })) fleetFail("TYPE_DUPLICATE", 409);
+    // Keep the exact name already used by a vehicle or tariff so its profile
+    // continues to match when that type is registered in the catalog.
+    const { types } = await fleetOptions(tx, tenantId);
+    const canonicalName = types.find((type) => type.name === name)?.name
+      ?? types.find((type) => fleetTypeNameKey(type.name) === normalizedName)?.name ?? name;
+    const { id } = await tx.fleetVehicleType.create({ data: { id: randomUUID(), tenantId, name: canonicalName, normalizedName, variableVolume, requestId } });
+    await auditWriter(tx, { tenantId, actorKind: "MEMBERSHIP", actorMembershipId: membershipId }, {
+      requestId, correlationId: requestId, source: SOURCE, entity: "FLEET_VEHICLE_TYPE", entityId: id,
+      action: "ADMIN_FLEET_TYPE_CREATED", critical: true, afterJson: { name: canonicalName, variableVolume },
+    });
+    return { type: { name: canonicalName, variableVolume }, created: true };
+  }, { retryUnique: true });
+}
+
+async function validateFleetOptions(tx, tenantId, vehicle, { type, base }) {
+  const options = await fleetOptions(tx, tenantId);
+  if (type) {
+    const selected = options.types.find(({ name }) => name === vehicle.vehicleType);
+    if (!selected) fleetFail("TYPE_NOT_REGISTERED");
+    if (selected.variableVolume && [vehicle.capacityVolume, vehicle.usableLength, vehicle.usableWidth, vehicle.usableHeight].some((value) => value !== null)) {
+      fleetFail("VARIABLE_VOLUME");
+    }
+  }
+  if (base && vehicle.hubCode !== null && !options.bases.some(({ code }) => code === vehicle.hubCode)) fleetFail("BASE_NOT_REGISTERED");
+}
+
+async function nextVehicleCode(tx, tenantId) {
+  const [row] = await tx.$queryRaw(Prisma.sql
+    `
+    SELECT COALESCE(MAX(substring("normalized_code" from 2)::integer), 0) + 1 AS "next_number"
+    FROM "osi"."osi_vehicles"
+    WHERE "tenant_id"=${tenantId} AND "normalized_code" ~ '^V[0-9]{3,8}$'
+  `);
+  if (row.next_number > 99_999_999) fleetFail("CODE_LIMIT", 409);
+  return "V" + String(row.next_number).padStart(3, "0");
 }
 async function vehicleFor(tx, actor, ref, lock = false) {
   const rows = await tx.$queryRaw(Prisma.sql`
@@ -105,7 +173,7 @@ export async function getAdminFleetVehicle(prisma, context, vehicleRef) {
 }
 export async function createAdminFleetVehicle(prisma, context, input, { auditWriter = appendCommercialAudit } = {}) {
   authorizeContext(context, true);
-  const { requestId, vehicle } = parseAdminFleetCreate(input);
+  const { requestId, vehicle, automaticCode } = parseAdminFleetCreate(input);
   return adminFleetTransaction(prisma, async (tx) => {
     await lockTenant(tx, context);
     const actor = await actorFor(tx, context, true);
@@ -118,6 +186,10 @@ export async function createAdminFleetVehicle(prisma, context, input, { auditWri
       return { vehicle: adminFleetVehicleDto(existing[0]), created: false, idempotent: true };
     }
     await assertUnusedRequest(tx, actor, requestId);
+    if (automaticCode) {
+      await validateFleetOptions(tx, actor.tenantId, vehicle, { type: true, base: true });
+      vehicle.businessCode = vehicle.normalizedCode = await nextVehicleCode(tx, actor.tenantId);
+    }
     await assertUniqueVehicle(tx, actor, vehicle);
     const effectiveFrom = vehicle.effectiveFrom ?? new Date();
     if (vehicle.effectiveTo && vehicle.effectiveTo <= effectiveFrom) fleetFail("INPUT_INVALID");
@@ -160,6 +232,9 @@ export async function updateAdminFleetVehicle(prisma, context, vehicleRef, input
     // Retirement is terminal in 19D. History remains readable; reactivation is a separate future workflow.
     if (before.operationalStatus === "RETIRED" || before.retiredAt) fleetFail("RETIRED", 409);
     if (before.calculationLocked && changedFields.some((key) => ADMIN_FLEET_TECHNICAL_FIELDS.includes(key))) fleetFail("CALCULATION_LOCKED", 409);
+    const typeChanged = changedFields.includes("vehicleType");
+    const baseChanged = changedFields.includes("hubCode") && vehicle.hubCode !== null;
+    if (typeChanged || baseChanged) await validateFleetOptions(tx, actor.tenantId, vehicle, { type: typeChanged, base: baseChanged });
     await assertUnusedRequest(tx, actor, requestId);
     await assertUniqueVehicle(tx, actor, vehicle, ref);
     const rows = await tx.$queryRaw(Prisma.sql`

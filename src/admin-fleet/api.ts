@@ -1,5 +1,5 @@
 import { getMembershipRef } from "@/lib/sessionStore";
-import type { FleetCreate, FleetList, FleetListFilters, FleetUpdate, FleetVehicle } from "./types";
+import type { FleetBase, FleetCreate, FleetList, FleetListFilters, FleetOptions, FleetUpdate, FleetVehicle, FleetVehicleType } from "./types";
 
 export class FleetApiError extends Error {
   readonly code: string;
@@ -40,6 +40,17 @@ async function bodyOf(response: Response) {
   if (!response.ok) throw new FleetApiError(typeof body.error === "string" ? body.error : "ADMIN_FLEET_UNAVAILABLE", response.status);
   if (body.ok !== true) return fail();
   return body;
+}
+
+function vehicleTypeOf(value: unknown): FleetVehicleType {
+  if (!record(value) || !text(value.name, 80) || typeof value.variableVolume !== "boolean") return fail();
+  return { name: String(value.name), variableVolume: value.variableVolume };
+}
+
+function baseOf(value: unknown): FleetBase {
+  if (!record(value) || typeof value.code !== "string" || !/^BASE-[0-9A-F]{20}$/u.test(value.code)
+    || !text(value.name, 160) || !text(value.address, 240)) return fail();
+  return { code: value.code, name: String(value.name), address: String(value.address) };
 }
 
 export class FleetApi {
@@ -84,6 +95,16 @@ export class FleetApi {
     if (typeof body.created !== "boolean" || typeof body.idempotent !== "boolean") return fail();
     return vehicleOf(body.vehicle);
   }
+  async options(signal?: AbortSignal): Promise<FleetOptions> {
+    const response = await this.fetchImpl("/api/admin/fleet/options", { headers: this.headers(), cache: "no-store", signal });
+    const body = await bodyOf(response);
+    if (!Array.isArray(body.types) || !Array.isArray(body.bases)) return fail();
+    return { types: body.types.map(vehicleTypeOf), bases: body.bases.map(baseOf) };
+  }
+  async createType(payload: FleetVehicleType & { requestId: string }, signal?: AbortSignal) {
+    const response = await this.fetchImpl("/api/admin/fleet/options", { method: "POST", headers: this.headers(true), body: JSON.stringify(payload), cache: "no-store", signal });
+    return vehicleTypeOf((await bodyOf(response)).type);
+  }
   async update(vehicleRef: string, payload: FleetUpdate, signal?: AbortSignal) {
     if (!ref(vehicleRef)) throw new FleetApiError("ADMIN_FLEET_INPUT_INVALID", 400);
     const response = await this.fetchImpl(`/api/admin/fleet/vehicles/${encodeURIComponent(vehicleRef)}`, { method: "PATCH", headers: this.headers(true), body: JSON.stringify(payload), cache: "no-store", signal });
@@ -107,6 +128,11 @@ export function fleetErrorText(error: unknown, context: "request" | "details" | 
     ADMIN_FLEET_NOT_FOUND: "El vehículo ya no está disponible en esta empresa.",
     ADMIN_FLEET_VERSION_CONFLICT: "La ficha cambió desde que la abrió. Recárguela para revisar la versión actual.",
     ADMIN_FLEET_DUPLICATE: "El código, la matrícula o el VIN ya pertenecen a otro vehículo.",
+    ADMIN_FLEET_TYPE_DUPLICATE: "Ya existe un tipo de vehículo con ese nombre.",
+    ADMIN_FLEET_TYPE_NOT_REGISTERED: "Seleccione un tipo del catálogo de flota.",
+    ADMIN_FLEET_BASE_NOT_REGISTERED: "Seleccione una sede disponible en Motor Logístico.",
+    ADMIN_FLEET_VARIABLE_VOLUME: "Este tipo utiliza el volumen y las dimensiones del contenedor.",
+    ADMIN_FLEET_CODE_LIMIT: "Se agotó la numeración de los vehículos.",
     ADMIN_FLEET_REQUEST_CONFLICT: "La solicitud ya cambió. Recargue para confirmar el estado del vehículo.",
     ADMIN_FLEET_RETIRED: "El vehículo fue retirado. Su ficha se conserva para consulta.",
     ADMIN_FLEET_CALCULATION_LOCKED: "Las características técnicas ya se utilizaron en un cálculo. Recargue la ficha.",

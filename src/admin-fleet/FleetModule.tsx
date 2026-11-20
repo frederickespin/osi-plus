@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Truck, UsersRound } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Eye, ListPlus, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Truck, UsersRound } from "lucide-react";
 import { CanonicalAccessDenied } from "@/components/auth/CanonicalAccessDenied";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
@@ -7,10 +7,11 @@ import { getMembershipRef } from "@/lib/sessionStore";
 import { resolveFleetAccess, type FleetAccess } from "./access";
 import { FleetApi, FleetApiError, fleetErrorText } from "./api";
 import FleetEditor from "./FleetEditor";
+import FleetTypeForm from "./FleetTypeForm";
 import { isAdminFleetEnabled } from "./mode";
 import { isFleetDriversEnabled } from "./driversMode";
 import { FleetDriversApi } from "./driversApi";
-import { FLEET_STATUS_LABELS, VOLUME_LABELS, WEIGHT_LABELS, type FleetStatus, type FleetVehicle } from "./types";
+import { FLEET_STATUS_LABELS, VOLUME_LABELS, WEIGHT_LABELS, type FleetOptions, type FleetStatus, type FleetVehicle } from "./types";
 
 const FleetDriversDialog = lazy(() => import("./FleetDriversDialog"));
 
@@ -43,6 +44,11 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
   const [asOf, setAsOf] = useState(() => Date.now());
   const [refresh, setRefresh] = useState(0);
   const [selection, setSelection] = useState<{ vehicleRef: string | null; section: "details" | "availability" } | { vehicleRef: string; section: "drivers" } | null>(null);
+  const [registerType, setRegisterType] = useState(false);
+  const [options, setOptions] = useState<FleetOptions | null>(null);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [optionsRevision, setOptionsRevision] = useState(0);
+  const [typeNotice, setTypeNotice] = useState("");
   const [updating, setUpdating] = useState<ReadonlySet<string>>(() => new Set());
   const [updateErrors, setUpdateErrors] = useState<Readonly<Record<string, { code: string; message: string }>>>({});
   const pendingUpdates = useRef(new Map<string, AbortController>());
@@ -57,6 +63,23 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
   const rows = !loading && result ? result.rows : [];
   const total = !loading && result ? result.total : 0;
   const error = !loading && result ? result.error : null;
+  const needsOptions = selection?.section === "details";
+
+  useEffect(() => {
+    if (!needsOptions) return;
+    const controller = new AbortController();
+    void api.options(controller.signal).then((catalog) => {
+      if (controller.signal.aborted) return;
+      setOptions(catalog);
+      setOptionsError(null);
+    }).catch((cause) => {
+      if (controller.signal.aborted) return;
+      setOptions(null);
+      if (cause instanceof FleetApiError && cause.status === 401) callbacks.current.onUnauthorized();
+      else setOptionsError("No se pudieron consultar los tipos y las sedes.");
+    });
+    return () => controller.abort();
+  }, [api, needsOptions, optionsRevision]);
 
   useEffect(() => {
     if (!result || result.query !== query) return;
@@ -150,9 +173,14 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
       <div className="flex items-center gap-1.5">
         <AdministrationHelp title="Flota vehicular"><p>Registre primero la ficha técnica y active el vehículo desde la casilla Activo del listado.</p><p>Activo permite considerarlo en planificación. Para ofrecerse como disponible también debe estar en estado Disponible y dentro de su vigencia. En uso no significa libre.</p><p>En el menú de tres puntos encontrará la ficha y Disponibilidad, donde puede gestionar el estado, la vigencia y el retiro. Un vehículo retirado conserva sus datos y deja de admitir cambios.</p><p>Las características técnicas usadas en cálculos quedan protegidas. La flota no incluye todavía mantenimiento, combustible ni reservas.</p></AdministrationHelp>
         <AdministrationIconAction label="Actualizar flota" disabled={loading || updating.size > 0} onClick={refreshList}><RefreshCw aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></AdministrationIconAction>
+        {access.canEdit && <AdministrationIconAction label="Nuevo tipo de vehículo" aria-expanded={registerType} disabled={registerType}
+          onClick={() => { setRegisterType(true); setTypeNotice(""); }}><ListPlus aria-hidden="true" className="size-4" /></AdministrationIconAction>}
         {access.canEdit && <AdministrationIconAction label="Nuevo vehículo" onClick={() => setSelection({ vehicleRef: null, section: "details" })} className="border-[#003366] bg-[#003366] text-white hover:bg-[#00264d]"><Plus aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction>}
       </div>
     </div>
+    {registerType && <FleetTypeForm api={api} onUnauthorized={onUnauthorized} onClose={() => setRegisterType(false)}
+      onSaved={(type) => { setRegisterType(false); setTypeNotice(type.name + " disponible en la ficha de vehículo."); }} />}
+    {typeNotice && <p role="status" className="mb-2 text-xs text-emerald-800">{typeNotice}</p>}
     <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(180px,1fr)_160px_160px]">
       <label className="relative col-span-2 block sm:col-span-1"><Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-3 h-4 w-4 text-slate-400 sm:top-2.5" /><input type="search" aria-label="Buscar vehículos" placeholder="Código, matrícula, marca…" maxLength={120} value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} className={`${filterClass} w-full pl-8`} /></label>
       <select aria-label="Filtrar por estado" value={status} onChange={(event) => { setStatus(event.target.value as FleetStatus | ""); setPage(1); }} className={filterClass}><option value="">Todos los estados</option>{Object.entries(FLEET_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -207,6 +235,9 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
         <div className="flex items-center gap-2"><AdministrationIconAction label="Página anterior" disabled={loading || Boolean(error) || page === 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction><span>Página {page} de {Math.max(1, Math.ceil(total / pageSize))}</span><AdministrationIconAction label="Página siguiente" disabled={loading || Boolean(error) || page * pageSize >= total} onClick={() => setPage((value) => value + 1)}><ChevronRight aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction></div>
       </footer>
     </div>
-    {selection?.section === "drivers" ? <Suspense fallback={<p role="status" className="py-3 text-xs text-slate-500">Cargando gestión de choferes…</p>}><FleetDriversDialog key={selection.vehicleRef} api={driversApi} vehicleRef={selection.vehicleRef} access={access} onClose={() => setSelection(null)} onUnauthorized={onUnauthorized} /></Suspense> : selection && <FleetEditor key={`${selection.vehicleRef || "new"}:${selection.section}`} api={api} vehicleRef={selection.vehicleRef} section={selection.section} canEdit={access.canEdit} onClose={() => { setSelection(null); setRefresh((value) => value + 1); }} onSaved={() => setRefresh((value) => value + 1)} onUnauthorized={onUnauthorized} />}
+    {selection?.section === "drivers" ? <Suspense fallback={<p role="status" className="py-3 text-xs text-slate-500">Cargando gestión de choferes…</p>}><FleetDriversDialog key={selection.vehicleRef} api={driversApi} vehicleRef={selection.vehicleRef} access={access} onClose={() => setSelection(null)} onUnauthorized={onUnauthorized} /></Suspense> : selection && <FleetEditor key={`${selection.vehicleRef || "new"}:${selection.section}`}
+      api={api} options={options} optionsError={optionsError} reloadOptions={() => { setOptionsError(null); setOptionsRevision((value) => value + 1); }}
+      vehicleRef={selection.vehicleRef} section={selection.section} canEdit={access.canEdit}
+      onClose={() => { setSelection(null); setRefresh((value) => value + 1); }} onSaved={() => setRefresh((value) => value + 1)} onUnauthorized={onUnauthorized} />}
   </section>;
 }

@@ -5,11 +5,14 @@ import { AdministrationHelp, AdministrationIconAction } from "@/administration/A
 import { FleetApi, FleetApiError, fleetErrorText } from "./api";
 import FleetFields from "./FleetFields";
 import FleetAvailabilityFields from "./FleetAvailabilityFields";
-import type { FleetVehicle, VehicleValues } from "./types";
+import type { FleetOptions, FleetVehicle, VehicleValues } from "./types";
 import { hasVehicleChanges, vehicleChanges, vehicleDraft, vehicleValues, type VehicleDraft } from "./vehicleForm";
 
-export default function FleetEditor({ api, vehicleRef, canEdit, section = "details", onClose, onSaved, onUnauthorized }: {
+export default function FleetEditor({ api, options, optionsError, reloadOptions, vehicleRef, canEdit, section = "details", onClose, onSaved, onUnauthorized }: {
   api: FleetApi;
+  options: FleetOptions | null;
+  optionsError: string | null;
+  reloadOptions(): void;
   vehicleRef: string | null;
   canEdit: boolean;
   section?: "details" | "availability";
@@ -67,7 +70,7 @@ export default function FleetEditor({ api, vehicleRef, canEdit, section = "detai
     try {
       const result = vehicle
         ? await api.update(vehicle.vehicleRef, { requestId: crypto.randomUUID(), expectedVersion: vehicle.rowVersion, changes: changes! }, controller.signal)
-        : await api.create({ requestId: crypto.randomUUID(), ...values }, controller.signal);
+        : await api.create({ requestId: crypto.randomUUID(), ...values, businessCode: undefined }, controller.signal);
       if (controller.signal.aborted) return;
       setVehicle(result); setDraft(vehicleDraft(result)); setSaved(true); setConfirmRetirement(false);
       callbacks.current.onSaved(result);
@@ -76,7 +79,7 @@ export default function FleetEditor({ api, vehicleRef, canEdit, section = "detai
       if (cause instanceof FleetApiError && cause.status === 401) callbacks.current.onUnauthorized();
       else {
         const uncertain = !(cause instanceof FleetApiError) || cause.status >= 500
-          || !["ADMIN_FLEET_INPUT_INVALID", "ADMIN_FLEET_DUPLICATE"].includes(cause.code);
+          || !["ADMIN_FLEET_INPUT_INVALID", "ADMIN_FLEET_DUPLICATE", "ADMIN_FLEET_TYPE_NOT_REGISTERED", "ADMIN_FLEET_BASE_NOT_REGISTERED", "ADMIN_FLEET_VARIABLE_VOLUME"].includes(cause.code);
         setMustReload(uncertain);
         setError(fleetErrorText(cause, retire ? "request" : availability ? "availability" : "details"));
       }
@@ -91,14 +94,18 @@ export default function FleetEditor({ api, vehicleRef, canEdit, section = "detai
     <DialogContent showCloseButton={false} className="flex max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[600px]"
       onEscapeKeyDown={(event) => { if (writing.current) event.preventDefault(); }} onInteractOutside={(event) => event.preventDefault()}>
       <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
-        <div><DialogTitle className="text-base text-[#003366]">{availability ? "Disponibilidad del vehículo" : vehicle || vehicleRef ? "Ficha de vehículo" : "Nuevo vehículo"}</DialogTitle><DialogDescription className="mt-1 text-xs">{vehicle ? [vehicle.businessCode, vehicle.plate].filter(Boolean).join(" · ") : vehicleRef ? "Consultando la ficha guardada." : "Código y tipo son obligatorios."}</DialogDescription></div>
+        <div><DialogTitle className="text-base text-[#003366]">{availability ? "Disponibilidad del vehículo" : vehicle || vehicleRef ? "Ficha de vehículo" : "Nuevo vehículo"}</DialogTitle><DialogDescription className="mt-1 text-xs">{vehicle ? [vehicle.businessCode, vehicle.plate].filter(Boolean).join(" · ") : vehicleRef ? "Consultando la ficha guardada." : "El código se asigna al guardar."}</DialogDescription></div>
         <div className="flex shrink-0 items-center gap-1"><AdministrationHelp title="Ficha de vehículo"><p>Registre la matrícula, las capacidades y las dimensiones en sus unidades reales. Los campos vacíos conservan el dato como desconocido.</p><p>Una ficha nueva se crea inactiva para planificación. Actívela desde la casilla Activo del listado; el menú de cada vehículo permite gestionar su disponibilidad.</p><p>El retiro es definitivo y conserva la ficha para consulta.</p></AdministrationHelp><AdministrationIconAction label="Cerrar ficha" disabled={saving} onClick={close}><X aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction></div>
       </header>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4" data-testid="fleet-editor-body">
         {loading && <p role="status" className="py-6 text-center text-sm text-slate-500">Cargando vehículo…</p>}
         {draft && (availability
           ? <FleetAvailabilityFields draft={draft} onChange={(value) => { setDraft(value); setSaved(false); setError(null); setConfirmRetirement(false); }} disabled={!editable} />
-          : <FleetFields draft={draft} onChange={(value) => { setDraft(value); setSaved(false); setError(null); setConfirmRetirement(false); }} disabled={!editable} technicalLocked={Boolean(vehicle?.calculationLocked)} />)}
+          : <FleetFields draft={draft} options={options} onChange={(value) => { setDraft(value); setSaved(false); setError(null); setConfirmRetirement(false); }} disabled={!editable} technicalLocked={Boolean(vehicle?.calculationLocked)} />)}
+        {!availability && !options && (optionsError
+          ? <div className="flex items-center gap-2 text-xs text-red-800"><p role="alert">{optionsError}</p><button type="button" onClick={reloadOptions} className="underline">Reintentar</button></div>
+          : <p role="status" className="text-xs text-slate-500">Cargando tipos y sedes…</p>)}
+        {!vehicle && !vehicleRef && options?.types.length === 0 && <p className="text-xs text-amber-800">Registre un tipo desde la cabecera de Flota vehicular.</p>}
         {!vehicle && !vehicleRef && <p className="text-xs text-slate-500">Se crea inactivo. Puede activarlo después desde el listado.</p>}
         {!canEdit && <p className="text-xs text-slate-500">Acceso de consulta a la flota.</p>}
         {retired && <p className="rounded bg-slate-100 p-2 text-xs text-slate-600">Vehículo retirado{vehicle?.retiredAt ? ` el ${new Date(vehicle.retiredAt).toLocaleDateString("es")}` : ""}. La ficha se conserva para consulta.</p>}

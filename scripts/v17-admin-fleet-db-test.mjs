@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { createCrm01b1LocalPrisma, validateCrm01b1LocalUrl } from "./crm-01b1-local-target.mjs";
 import {
-  createAdminFleetVehicle, getAdminFleetVehicle, listAdminFleetVehicles, updateAdminFleetVehicle,
+  createAdminFleetType, createAdminFleetVehicle, getAdminFleetVehicle, listAdminFleetOptions, listAdminFleetVehicles, updateAdminFleetVehicle,
 } from "../api/_lib/adminFleetDomain.js";
+import { canonicalHash } from "../api/_lib/logisticsEngineContract.js";
+import { versionTransportZone } from "../api/_lib/logisticsTransportZones.js";
 
 // This suite can write only to the disposable canonical CI database. It never
 // reads DATABASE_URL, dotenv, the consolidated Preview or a real company.
@@ -172,6 +174,53 @@ try {
     && simultaneousCreates[0].vehicle.vehicleRef === simultaneousCreates[1].vehicle.vehicleRef);
   check("simultaneous creation records one row and one audit", await prisma.vehicle.count({ where: { tenant_id: tenant.id, request_id: simultaneousInput.requestId } }) === 1
     && await auditCount(tenant.id, simultaneousInput.requestId) === 1);
+
+  const typeInput = { requestId: randomUUID(), name: "Tractocamión", variableVolume: true };
+  const { type, created: newType } = await createAdminFleetType(prisma, ctx, typeInput);
+  check("the catalog persists a variable-volume type and replays the same request", newType && type.variableVolume
+    && !(await createAdminFleetType(prisma, ctx, typeInput)).created && await auditCount(tenant.id, typeInput.requestId) === 1);
+  await rejects("the catalog rejects equivalent names", () => createAdminFleetType(prisma, ctx,
+    { ...typeInput, requestId: randomUUID(), name: "TRACTOCAMION" }), "ADMIN_FLEET_TYPE_DUPLICATE");
+  await rejects("a read-only fleet user cannot register a type", () => createAdminFleetType(prisma, readonlyContext, typeInput), "ADMIN_FLEET_FORBIDDEN");
+  const zone = {
+    seriesRef: null, expectedVersion: null, code: "FLEET_QA", name: "Zona de prueba", locationType: "CITY", city: "Ciudad de prueba", sector: null,
+    baseName: "Sede principal", baseAddress: "Calle de prueba", referenceDistanceKm: null, referenceDistanceSource: "",
+    zoneType: "METRO", priority: 100, vehicleType: type.name, purposes: ["QUOTE"],
+    geometry: { type: "Polygon", coordinates: [[[-70, 18], [-69.8, 18], [-69.8, 18.2], [-70, 18.2], [-70, 18]]] },
+    mode: "ITEMIZED", factor: null,
+    currency: "DOP", kmPerGallon: null, gallonUnit: "US", fuelType: null, includedConcepts: [], components: [], state: "DRAFT",
+  };
+  const logisticsCtx = { ...ctx, effectivePermissions: [...permissions, "logistics:rules:view", "logistics:rules:manage", "costing:rules:view", "costing:rules:manage"] };
+  await prisma.tenantMembership.update({ where: { id: member.id }, data: { grantedPermissions: logisticsCtx.effectivePermissions } });
+  for (const [index, name] of ["Zona de prueba", "Segunda zona"].entries()) {
+    const payload = { ...zone, name, code: "FLEET_QA_" + index };
+    const requestId = randomUUID();
+    await versionTransportZone(prisma, logisticsCtx, { ...payload, requestId,
+      payloadHash: canonicalHash({ operation: "TRANSPORT_ZONE_VERSION", requestId, ...payload }) });
+  }
+  const options = await listAdminFleetOptions(prisma, ctx);
+  const foreignOptions = await listAdminFleetOptions(prisma, foreignCtx);
+  check("the directory reads a shared logistics base once and keeps legacy types", options.bases.length === 1
+    && options.bases[0].name === "Sede principal" && options.types.some((item) => item.name === "TRUCK"));
+  check("fleet types and bases are scoped to the current company", foreignOptions.bases.length === 0
+    && !foreignOptions.types.some((item) => item.name === type.name));
+  const automatic = { requestId: randomUUID(), vehicleType: type.name, hubCode: options.bases[0].code };
+  await rejects("automatic vehicle requires a registered type", () => createAdminFleetVehicle(prisma, ctx,
+    { ...automatic, vehicleType: "Unregistered" }), "ADMIN_FLEET_TYPE_NOT_REGISTERED");
+  await rejects("automatic vehicle requires a configured base if provided", () => createAdminFleetVehicle(prisma, ctx,
+    { ...automatic, hubCode: "Unregistered" }), "ADMIN_FLEET_BASE_NOT_REGISTERED");
+  await rejects("container vehicles cannot have a fixed volume at registration", () => createAdminFleetVehicle(prisma, ctx,
+    { ...automatic, capacityVolume: 32 }), "ADMIN_FLEET_VARIABLE_VOLUME");
+  await createAdminFleetVehicle(prisma, ctx, { ...input("009"), businessCode: "V004" });
+  const secondAutomatic = { ...automatic, requestId: randomUUID() };
+  const generated = await Promise.all([
+    createAdminFleetVehicle(prisma, ctx, automatic), createAdminFleetVehicle(prisma, ctx, secondAutomatic),
+  ]);
+  check("simultaneous automatic codes skip existing codes and keep unique short numbers",
+    JSON.stringify(generated.map(({ vehicle }) => vehicle.businessCode).sort()) === '["V005","V006"]'
+      && generated.every(({ vehicle }) => vehicle.hubCode === automatic.hubCode && vehicle.capacityVolume === null));
+  const autoReplay = await createAdminFleetVehicle(prisma, ctx, automatic);
+  check("an automatic creation retry recovers the original code", autoReplay.idempotent && autoReplay.vehicle.businessCode === generated[0].vehicle.businessCode);
   process.stdout.write(JSON.stringify({ ok: true, assertions: results.length, results }, null, 2) + "\n");
 } finally {
   await prisma.$disconnect();

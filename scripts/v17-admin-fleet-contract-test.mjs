@@ -37,8 +37,15 @@ check("supported source units are preserved", () => {
 for (const status of ["UNAVAILABLE", "RETIRED"]) check(`${status} cannot remain available for calculations`, () => {
   assert.equal(parseAdminFleetCreate({ ...creation(), operationalStatus: status, availableForCalculation: true }).vehicle.availableForCalculation, false);
 });
-for (const field of ["businessCode", "vehicleType", "requestId"]) check(`create requires ${field}`, () => {
+for (const field of ["vehicleType", "requestId"]) check(`create requires ${field}`, () => {
   const input = creation(); delete input[field]; invalid(() => parseAdminFleetCreate(input));
+});
+check("automatic code input leaves allocation to the server and has a distinct stable fingerprint", () => {
+  const { businessCode: _code, ...input } = creation();
+  const auto = parseAdminFleetCreate(input);
+  assert.equal(auto.automaticCode, true);
+  assert.equal(parseAdminFleetCreate(input).vehicle.payloadHash, auto.vehicle.payloadHash);
+  assert.notEqual(parseAdminFleetCreate({ ...input, businessCode: auto.vehicle.businessCode }).vehicle.payloadHash, auto.vehicle.payloadHash);
 });
 for (const value of ["", " ", "!!!", "中文", 123, true, null, "x".repeat(81)]) check(`invalid business code ${String(value).slice(0, 12)}`, () => invalid(() => parseAdminFleetCreate({ ...creation(), businessCode: value })));
 for (const value of [true, "1", -1, 0, NaN, Infinity, 0.0001, 1.2345, 1e11, {}]) check(`capacity weight rejects coercion/rounding ${String(value)}`, () => invalid(() => parseAdminFleetCreate({ ...creation(), capacityWeight: value })));

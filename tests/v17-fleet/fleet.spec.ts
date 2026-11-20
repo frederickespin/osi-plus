@@ -3,6 +3,7 @@ import type { FleetVehicle, VehicleValues } from "../../src/admin-fleet/types";
 
 const MEMBERSHIP = "11111111-1111-4111-8111-111111111111";
 const BASE = "/api/admin/fleet/vehicles";
+const BASE_CODE = "BASE-AA000000000000000093";
 export const vehicleFixture = (index = 1): FleetVehicle => ({
   vehicleRef: `synthetic-vehicle-${index}`, businessCode: `IP-${String(index).padStart(3, "0")}`,
   plate: `L${String(index).padStart(6, "0")}`, vin: `VIN${String(index).padStart(5, "0")}`, vehicleType: index === 2 ? "Furgón" : "Camión",
@@ -21,6 +22,7 @@ async function fixture(page: Page, options: { count?: number; permissions?: stri
   const writes: { method: string; body: Record<string, unknown> }[] = [];
   const reads: URL[] = [];
   const unexpected: string[] = [];
+  const types = [{ name: "Camión", variableVolume: false }, { name: "Furgón", variableVolume: false }];
   await page.addInitScript(({ membership, role }) => {
     localStorage.setItem("osi-plus.token", "synthetic.fleet.token");
     localStorage.setItem("osi-plus.session", JSON.stringify({ name: "Administradora de prueba", role, membershipRef: membership,
@@ -33,6 +35,16 @@ async function fixture(page: Page, options: { count?: number; permissions?: stri
       membership: { membershipRef: MEMBERSHIP, tenantName: "Empresa sintética", role: options.role || "A" }, memberships: [{ membershipRef: MEMBERSHIP, tenantName: "Empresa sintética", role: options.role || "A", preferred: true }] } });
     expect(request.headers().authorization).toBe("Bearer synthetic.fleet.token");
     expect(request.headers()["x-osi-membership-ref"]).toBe(MEMBERSHIP);
+    if (url.pathname === "/api/admin/fleet/options") {
+      if (request.method() === "POST") {
+        const body = request.postDataJSON();
+        writes.push({ method: "POST", body });
+        const type = { name: body.name, variableVolume: body.variableVolume };
+        types.push(type);
+        return json({ ok: true, type, created: true }, 201);
+      }
+      return json({ ok: true, types, bases: [{ code: BASE_CODE, name: "Sede principal", address: "Calle de prueba" }] });
+    }
     if (url.pathname === BASE && request.method() === "GET") {
       reads.push(url);
       if (listFailure) return json({ ok: false, error: "ADMIN_FLEET_UNAVAILABLE" }, 503);
@@ -46,7 +58,7 @@ async function fixture(page: Page, options: { count?: number; permissions?: stri
     if (url.pathname === BASE && request.method() === "POST") {
       const body = request.postDataJSON() as Record<string, unknown>; writes.push({ method: "POST", body });
       const values = { ...body }; delete values.requestId;
-      const vehicle = { ...vehicleFixture(100), ...values, plate: values.plate ? String(values.plate).toUpperCase() : null } as FleetVehicle;
+      const vehicle = { ...vehicleFixture(100), businessCode: "V001", ...values, plate: values.plate ? String(values.plate).toUpperCase() : null } as FleetVehicle;
       rows = [...rows, vehicle]; return json({ ok: true, vehicle, created: true, idempotent: false }, 201);
     }
     const vehicle = rows.find((row) => url.pathname === `${BASE}/${row.vehicleRef}`);
@@ -86,7 +98,7 @@ async function openVehicle(page: Page) {
   await openFleet(page);
   await page.getByRole("button", { name: "IP-001", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Ficha de vehículo", exact: true });
-  await expect(dialog.getByLabel("Código *", { exact: true })).toHaveValue("IP-001");
+  await expect(dialog.getByLabel("Código", { exact: true })).toHaveValue("IP-001");
   return dialog;
 }
 async function openAvailability(page: Page) {
@@ -130,8 +142,9 @@ test("alta incluye unidades elegidas y edición envía sólo campos cambiados", 
   await expect(dialog.getByLabel("Vigencia desde")).toHaveCount(0);
   await expect(dialog.getByLabel("Sede habitual", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Se crea inactivo. Puede activarlo después desde el listado.", { exact: true })).toBeVisible();
-  await dialog.getByLabel("Código *", { exact: true }).fill("IP-100");
-  await dialog.getByLabel("Tipo de vehículo *", { exact: true }).fill("Furgón");
+  await expect(dialog.getByLabel("Código", { exact: true })).toHaveAttribute("readonly", "");
+  await dialog.getByLabel("Tipo de vehículo *", { exact: true }).selectOption("Furgón");
+  await dialog.getByLabel("Sede habitual", { exact: true }).selectOption(BASE_CODE);
   await dialog.getByLabel("Matrícula", { exact: true }).fill("l555555");
   await dialog.getByLabel("Unidad de peso").selectOption("LB");
   await dialog.getByLabel("Capacidad de peso (lb)", { exact: true }).fill("8000");
@@ -142,7 +155,9 @@ test("alta incluye unidades elegidas y edición envía sólo campos cambiados", 
   await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "Ficha de vehículo", exact: true });
   await expect(dialog.getByText("Vehículo guardado.", { exact: true })).toBeVisible();
-  expect(seen.writes[0]).toMatchObject({ method: "POST", body: { requestId: expect.stringMatching(/^[0-9a-f-]{36}$/), businessCode: "IP-100", vehicleType: "Furgón", capacityWeight: 8000, weightUnit: "LB", capacityVolume: 1500, volumeUnit: "CFT", usableLength: 20, dimensionUnit: "FT", operationalStatus: "UNAVAILABLE", availableForCalculation: false } });
+  expect(seen.writes[0]).toMatchObject({ method: "POST", body: { requestId: expect.stringMatching(/^[0-9a-f-]{36}$/), vehicleType: "Furgón", hubCode: BASE_CODE, capacityWeight: 8000, weightUnit: "LB", capacityVolume: 1500, volumeUnit: "CFT", usableLength: 20, dimensionUnit: "FT", operationalStatus: "UNAVAILABLE", availableForCalculation: false } });
+  expect(seen.writes[0].body).not.toHaveProperty("businessCode");
+  await expect(dialog.getByLabel("Código", { exact: true })).toHaveValue("V001");
   await expect(dialog.getByLabel("Matrícula", { exact: true })).toHaveValue("L555555");
   await dialog.getByLabel("Modelo", { exact: true }).fill("Nuevo modelo");
   await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
@@ -162,9 +177,27 @@ test("alta incluye unidades elegidas y edición envía sólo campos cambiados", 
     expect(width).toBeGreaterThanOrEqual(60);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
-  await dialog.getByLabel("Código *", { exact: true }).scrollIntoViewIfNeeded();
+  await dialog.getByLabel("Código", { exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: `/tmp/osi-fleet-19e-${info.project.name}.png`, fullPage: true, animations: "disabled" });
   expect(seen.unexpected).toEqual([]);
+});
+
+test("registra un tractocamión desde la cabecera y deja el volumen al contenedor", async ({ page }) => {
+  const seen = await fixture(page);
+  await openFleet(page);
+  await page.getByRole("button", { name: "Nuevo tipo de vehículo", exact: true }).click();
+  await page.getByLabel("Nombre del tipo").fill("Tractocamión");
+  await page.getByLabel("Volumen según el contenedor").check();
+  await page.getByRole("button", { name: "Guardar tipo", exact: true }).click();
+  await expect(page.getByText("Tractocamión disponible en la ficha de vehículo.")).toBeVisible();
+  await page.getByRole("button", { name: "Nuevo vehículo", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Nuevo vehículo", exact: true });
+  await dialog.getByLabel("Tipo de vehículo *", { exact: true }).selectOption("Tractocamión");
+  await expect(dialog.getByText("Volumen y dimensiones según el contenedor.")).toBeVisible();
+  await expect(dialog.getByLabel(/Capacidad de volumen|Largo útil/)).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
+  await expect(page.getByLabel("Código", { exact: true })).toHaveValue("V001");
+  expect(seen.writes[1].body).toMatchObject({ vehicleType: "Tractocamión", capacityVolume: null, usableLength: null, hubCode: null });
 });
 
 test("conflicto conserva borrador y exige lectura explícita antes de otro guardado", async ({ page }) => {
@@ -228,7 +261,7 @@ test("consulta sin edición y denegaciones explícitas no emiten escrituras", as
   const seen = await fixture(page, { denied: ["fleet:edit"] });
   const dialog = await openVehicle(page);
   await expect(page.getByRole("button", { name: "Nuevo vehículo", exact: true })).toHaveCount(0);
-  await expect(dialog.getByLabel("Código *", { exact: true })).toBeDisabled();
+  await expect(dialog.getByLabel("Código", { exact: true })).toHaveAttribute("readonly", "");
   await expect(dialog.getByRole("button", { name: "Guardar vehículo", exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Retirar vehículo", exact: true })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();

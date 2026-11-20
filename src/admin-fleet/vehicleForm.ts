@@ -42,7 +42,7 @@ export function vehicleValues(draft: VehicleDraft, original?: FleetVehicle): Veh
   const text = (value: string) => value.trim() || null;
   const businessCode = draft.businessCode.trim();
   const vehicleType = draft.vehicleType.trim();
-  if (!businessCode || !vehicleType) throw new Error("Complete el código y el tipo de vehículo.");
+  if (!vehicleType) throw new Error("Seleccione el tipo de vehículo.");
   const modelYear = numeric(draft.modelYear, "Año", 0, 2200);
   if (modelYear !== null && modelYear < 1900) throw new Error("El año debe estar entre 1900 y 2200.");
   const effectiveFrom = effectiveDate(draft.effectiveFrom, original?.effectiveFrom);
@@ -69,7 +69,7 @@ export function vehicleChanges(vehicle: FleetVehicle, values: VehicleValues): Pa
 
 export function hasVehicleChanges(vehicle: FleetVehicle | null, draft: VehicleDraft | null) {
   if (!draft) return false;
-  if (!vehicle) return Boolean(draft.businessCode.trim() && draft.vehicleType.trim());
+  if (!vehicle) return Boolean(draft.vehicleType.trim());
   const baseline = vehicleDraft(vehicle);
   return (Object.keys(draft) as (keyof VehicleDraft)[]).some((key) => draft[key] !== baseline[key]);
 }

@@ -9,8 +9,11 @@ export type FleetVehicle = Readonly<AdminFleetVehicle>;
 
 export type FleetList = Readonly<{ data: readonly FleetVehicle[]; total: number; page: number; pageSize: number }>;
 export type FleetListFilters = Readonly<{ search: string; operationalStatus: FleetStatus | ""; vehicleType: string; page: number; pageSize: number }>;
-export type FleetCreate = VehicleValues & { requestId: string };
+export type FleetCreate = Omit<VehicleValues, "businessCode"> & { requestId: string; businessCode?: string };
 export type FleetUpdate = AdminFleetPatchInput;
+export type FleetVehicleType = Readonly<{ name: string; variableVolume: boolean }>;
+export type FleetBase = Readonly<{ code: string; name: string; address: string }>;
+export type FleetOptions = Readonly<{ types: readonly FleetVehicleType[]; bases: readonly FleetBase[] }>;
 
 export const FLEET_STATUS_LABELS: Readonly<Record<FleetStatus, string>> = {
   AVAILABLE: "Disponible", IN_USE: "En uso", UNAVAILABLE: "No disponible", RETIRED: "Retirado",

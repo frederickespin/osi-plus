@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { normalizeVehicleInput } from "./vehicleNormalization.js";
 import {
   ADMIN_FLEET_STATUSES, ADMIN_FLEET_WEIGHT_UNITS, ADMIN_FLEET_VOLUME_UNITS, ADMIN_FLEET_DIMENSION_UNITS,
@@ -93,8 +94,21 @@ export function parseAdminFleetCreate(input) {
   exactFleetObject(input, ["requestId", ...ADMIN_FLEET_EDITABLE_FIELDS]);
   const requestId = adminFleetRequestId(input.requestId);
   const { requestId: _requestId, ...fields } = input;
-  if (!Object.hasOwn(fields, "businessCode") || !Object.hasOwn(fields, "vehicleType")) fleetFail("INPUT_INVALID");
-  return { requestId, vehicle: normalizeAdminFleetVehicle(adminFleetEditableInput(fields)) };
+  if (!Object.hasOwn(fields, "vehicleType")) fleetFail("INPUT_INVALID");
+  const automaticCode = !Object.hasOwn(fields, "businessCode");
+  const vehicle = normalizeAdminFleetVehicle({ businessCode: "V-AUTOMATIC", ...adminFleetEditableInput(fields) });
+  if (automaticCode) vehicle.payloadHash = createHash("sha256").update("automatic:" + vehicle.payloadHash).digest("hex");
+  return { requestId, vehicle, automaticCode };
+}
+export const fleetTypeNameKey = (name) => name.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("es").replace(/\s+/gu, " ").trim();
+
+export function parseFleetTypeCreate(input) {
+  exactFleetObject(input, ["requestId", "name", "variableVolume"]);
+  if (typeof input.variableVolume !== "boolean") fleetFail("INPUT_INVALID");
+  const name = adminFleetEditableInput({ vehicleType: input.name }).vehicleType.replace(/\s+/gu, " ");
+  const normalizedName = fleetTypeNameKey(name);
+  if (!normalizedName || normalizedName.length > 80) fleetFail("INPUT_INVALID");
+  return { requestId: adminFleetRequestId(input.requestId), name, normalizedName, variableVolume: input.variableVolume };
 }
 export function parseAdminFleetPatch(input) {
   exactFleetObject(input, ["requestId", "expectedVersion", "changes"]);

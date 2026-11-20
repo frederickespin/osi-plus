@@ -46,6 +46,7 @@ model User {
 }
 
 model Tenant {
+  fleetVehicleTypes                 FleetVehicleType[]
   fleetDriverPrimaryEvents          FleetDriverPrimaryEvent[]
   fleetDriverAuthorizations         FleetDriverAuthorization[]
   userIdentityProfiles              TenantUserIdentity[]
@@ -3110,6 +3111,21 @@ model Vehicle {
   @@index([tenant_id, capacity_volume, capacity_weight], map: "osi_vehicles_tenant_capacity_idx")
   @@index([tenant_id, operational_status, available_for_calculation], map: "osi_vehicles_tenant_status_available_idx")
   @@map("osi_vehicles")
+}
+
+model FleetVehicleType {
+  id             String   @id @db.Uuid
+  tenantId       String   @map("tenant_id")
+  name           String   @db.VarChar(80)
+  normalizedName String   @map("normalized_name") @db.VarChar(80)
+  variableVolume Boolean  @default(false) @map("variable_volume")
+  requestId      String   @map("request_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "fleet_vehicle_types_tenant_fkey")
+
+  @@unique([tenantId, normalizedName], map: "fleet_vehicle_types_tenant_name_key")
+  @@unique([tenantId, requestId], map: "fleet_vehicle_types_tenant_request_key")
+  @@map("fleet_vehicle_types")
 }
 
 model VehicleEngineSettings {

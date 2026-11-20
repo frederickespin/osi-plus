@@ -37,6 +37,7 @@ export function mountFleetHarness() {
   window.fetch = async (input, init) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(raw, location.origin);
+    if (url.pathname === "/api/admin/fleet/options") return json({ ok: true, types: [{ name: "Camión", variableVolume: false }], bases: [] });
     if (url.pathname === base) {
       if (url.searchParams.get("search") === "lento") {
         slowRequested = true; slowSignal = init?.signal;

@@ -1,7 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, MapPinned, Plus, RefreshCw, Search } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
+import { FleetApi } from "@/admin-fleet/api";
+import { isAdminFleetEnabled } from "@/admin-fleet/mode";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
+import { getMembershipRef } from "@/lib/sessionStore";
 import { cn } from "@/lib/utils";
 import { isTransportUnauthorized, transportApi, transportErrorMessage, TransportRequestError, type TransportZone, type TransportZoneInput } from "./transportApi";
 import type { TransportUiAccess } from "./transportAccess";
@@ -21,6 +24,9 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
+  const [fleetTypes, setFleetTypes] = useState<{ authorization?: string; membership: string; names: readonly string[] } | null>(null);
+  const membership = getMembershipRef();
+  const editing = editor !== null && access.canZonesManage;
   const scope = useRef(0);
   const latest = useMemo(() => {
     const bySeries = new Map<string, TransportZone>();
@@ -28,7 +34,10 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
     return [...bySeries.values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
   }, [zones]);
   const visible = useMemo(() => latest.filter((zone) => (state === "ALL" || zone.state === state) && `${zone.code} ${zone.name} ${zone.city} ${zone.sector || ""} ${zone.baseName} ${zone.vehicleType || ""}`.toLocaleLowerCase("es").includes(search.trim().toLocaleLowerCase("es"))), [latest, search, state]);
-  const vehicleTypes = useMemo(() => [...new Set(latest.map((zone) => zone.vehicleType).filter((value): value is string => Boolean(value)))].sort(), [latest]);
+  const vehicleTypes = useMemo(() => {
+    const names = fleetTypes && fleetTypes.authorization === authorization && fleetTypes.membership === membership ? fleetTypes.names : [];
+    return [...new Set([...names, ...latest.flatMap(({ vehicleType }) => vehicleType ? [vehicleType] : [])])].sort((a, b) => a.localeCompare(b, "es"));
+  }, [fleetTypes, latest, authorization, membership]);
   const bases = useMemo(() => {
     const registered = new Map<string, { baseName: string; baseAddress: string }>();
     for (const { baseName, baseAddress } of latest) {
@@ -61,6 +70,18 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
     void load(controller.signal);
     return () => { controller.abort(); scope.current += 1; };
   }, [load]);
+
+  useEffect(() => {
+    if (!editing || !membership || !isAdminFleetEnabled()) return;
+    const controller = new AbortController();
+    const api = new FleetApi(() => authorization || null, globalThis.fetch.bind(globalThis), () => membership);
+    void api.options(controller.signal).then(({ types }) => {
+      if (!controller.signal.aborted) setFleetTypes({ authorization, membership, names: types.map(({ name }) => name) });
+    }).catch(() => {
+      if (!controller.signal.aborted) setFleetTypes(null);
+    });
+    return () => controller.abort();
+  }, [authorization, editing, membership]);
 
   const open = (zone: TransportZone | null, area: TransportZone | null = null) => { if (uncertain) return; setEditor({ zone, area, requestId: crypto.randomUUID() }); setSaveError(null); setNotice(null); };
   const save = async (input: TransportZoneInput) => {

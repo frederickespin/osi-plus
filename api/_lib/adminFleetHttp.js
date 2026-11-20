@@ -7,7 +7,7 @@ import { Mt01bAuthError } from "./authPolicy.js";
 import { AdminMembershipError } from "./adminMembershipDomain.js";
 import { AdminFleetError, fleetFail } from "./adminFleetContract.js";
 import { assertAdminFleetDatabase, requireAdminFleetAccess, requireAdminFleetContext } from "./adminFleetAccess.js";
-import { createAdminFleetVehicle, getAdminFleetVehicle, listAdminFleetVehicles, updateAdminFleetVehicle } from "./adminFleetDomain.js";
+import { createAdminFleetType, createAdminFleetVehicle, getAdminFleetVehicle, listAdminFleetOptions, listAdminFleetVehicles, updateAdminFleetVehicle } from "./adminFleetDomain.js";
 
 function header(req, name) { const value = req.headers?.[name]; return Array.isArray(value) ? null : value; }
 function sameOrigin(req) {
@@ -63,6 +63,20 @@ export function createAdminFleetCollectionHandler(options = {}) {
       return res.status(result.created ? 201 : 200).json({ ok: true, ...result });
     }
     const result = await list(prisma, context, queryParams(req, ["search", "operationalStatus", "vehicleType", "page", "pageSize"]));
+    return head ? res.status(200).end() : res.status(200).json({ ok: true, ...result });
+  });
+}
+
+export function createAdminFleetOptionsHandler(options = {}) {
+  const list = options.list ?? listAdminFleetOptions;
+  const create = options.create ?? createAdminFleetType;
+  return protectedHandler(options, ["GET", "HEAD", "POST"], async (req, res, context, prisma, head) => {
+    queryParams(req, []);
+    if (req.method === "POST") {
+      const result = await create(prisma, context, await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 4096 }));
+      return res.status(result.created ? 201 : 200).json({ ok: true, ...result });
+    }
+    const result = await list(prisma, context);
     return head ? res.status(200).end() : res.status(200).json({ ok: true, ...result });
   });
 }

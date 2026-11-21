@@ -12,6 +12,14 @@ import { loadContainerVolumeTypes } from "./vehicleFleet.js";
 
 const SOURCE = "V17_ADMINISTRATION_FLEET_19D";
 const LOAD_VOLUME_FIELDS = ["capacityVolume", "usableLength", "usableWidth", "usableHeight"];
+// Keep prepared query results stable when another field is added to the table.
+const VEHICLE_COLUMNS = Prisma.sql`
+  "id", "business_code", "plate", "vin", "vehicle_type", "brand", "model", "model_year",
+  "capacity_weight", "capacity_volume", "usable_length", "usable_width", "usable_height",
+  "weight_unit", "volume_unit", "dimension_unit", "operational_status", "available_for_calculation",
+  "effective_from", "effective_to", "hub_code", "transit_configuration", "transit_axles", "toll_category",
+  "row_version", "updated_at", "retired_at", "calculation_locked_at"
+`;
 function authorizeContext(context, write = false) {
   authorizeFleetContext(context, { write });
 }
@@ -151,7 +159,8 @@ async function nextVehicleCode(tx, tenantId) {
 }
 async function vehicleFor(tx, actor, ref, lock = false) {
   const rows = await tx.$queryRaw(Prisma.sql`
-    SELECT * FROM "osi"."osi_vehicles" WHERE "tenant_id"=${actor.tenantId} AND "id"=${ref}
+    SELECT ${VEHICLE_COLUMNS}, "source", "source_stable_id"
+    FROM "osi"."osi_vehicles" WHERE "tenant_id"=${actor.tenantId} AND "id"=${ref}
     ${lock ? Prisma.sql`FOR UPDATE` : Prisma.empty}
   `);
   if (rows.length !== 1) fleetFail("NOT_FOUND", 404);
@@ -203,7 +212,8 @@ export async function listAdminFleetVehicles(prisma, context, input = {}) {
     }
     const counts = await tx.$queryRaw(Prisma.sql`SELECT COUNT(*)::integer AS "total" FROM "osi"."osi_vehicles" WHERE ${Prisma.join(clauses, " AND ")}`);
     const rows = await tx.$queryRaw(Prisma.sql`
-      SELECT * FROM "osi"."osi_vehicles" WHERE ${Prisma.join(clauses, " AND ")}
+      SELECT ${VEHICLE_COLUMNS}
+      FROM "osi"."osi_vehicles" WHERE ${Prisma.join(clauses, " AND ")}
       ORDER BY "business_code" ASC, "id" ASC LIMIT ${filters.pageSize} OFFSET ${(filters.page - 1) * filters.pageSize}
     `);
     const containerVolumeTypes = await loadContainerVolumeTypes(tx, actor.tenantId, rows);
@@ -222,7 +232,8 @@ export async function createAdminFleetVehicle(prisma, context, input, { auditWri
     await lockTenant(tx, context);
     const actor = await actorFor(tx, context, true);
     const existing = await tx.$queryRaw(Prisma.sql`
-      SELECT * FROM "osi"."osi_vehicles" WHERE "tenant_id"=${actor.tenantId} AND "request_id"=${requestId}
+      SELECT ${VEHICLE_COLUMNS}, "source", "payload_hash"
+      FROM "osi"."osi_vehicles" WHERE "tenant_id"=${actor.tenantId} AND "request_id"=${requestId}
     `);
     if (existing.length) {
       if (existing.length !== 1 || existing[0].source !== SOURCE || existing[0].payload_hash !== vehicle.payloadHash) fleetFail("REQUEST_CONFLICT", 409);
@@ -256,7 +267,7 @@ export async function createAdminFleetVehicle(prisma, context, input, { auditWri
         ${vehicle.transitConfiguration}, ${vehicle.transitAxles}, ${vehicle.tollCategory},
         ${SOURCE}, ${requestId}, ${vehicle.payloadHash}, ${actor.userId}, ${actor.membershipId},
         CASE WHEN ${vehicle.operationalStatus}='RETIRED' THEN CURRENT_TIMESTAMP ELSE NULL END
-      ) RETURNING *
+      ) RETURNING ${VEHICLE_COLUMNS}
     `);
     if (rows.length !== 1) fleetFail("UNAVAILABLE", 503);
     const dto = adminFleetVehicleDto(rows[0]);
@@ -304,7 +315,7 @@ export async function updateAdminFleetVehicle(prisma, context, vehicleRef, input
         "retired_at"=CASE WHEN ${vehicle.operationalStatus}='RETIRED' THEN COALESCE("retired_at", CURRENT_TIMESTAMP) ELSE "retired_at" END,
         "row_version"="row_version"+1, "updated_at"=CURRENT_TIMESTAMP
       WHERE "tenant_id"=${actor.tenantId} AND "id"=${ref} AND "row_version"=${expectedVersion}
-      RETURNING *
+      RETURNING ${VEHICLE_COLUMNS}
     `);
     if (rows.length !== 1) fleetFail("VERSION_CONFLICT", 409);
     const after = adminFleetVehicleDto(rows[0]);

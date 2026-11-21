@@ -465,6 +465,8 @@ test("error de lista no se presenta como lista vacía y recuperación sólo cons
   await page.goto("/administration/fleet");
   await expect(page.getByRole("alert")).toContainText("No fue posible");
   await expect(page.getByText("Todavía no hay vehículos registrados.")).toHaveCount(0);
+  await expect(page.getByText("0 vehículos", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Total sin confirmar", { exact: true })).toBeVisible();
   seen.recoverList();
   await page.getByRole("button", { name: "Reintentar consulta", exact: true }).click();
   await expect(page.getByRole("button", { name: "IP-001", exact: true })).toBeVisible();

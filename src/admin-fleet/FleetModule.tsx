@@ -258,7 +258,7 @@ function FleetWorkspace({ authorization, membershipRef, access, onUnauthorized }
         </table>
       </div>
       <footer className="flex items-center justify-between gap-2 border-t border-slate-200 px-3 py-2 text-xs text-slate-500">
-        <span aria-live="polite">{loading ? "Consultando…" : `${total} vehículo${total === 1 ? "" : "s"}`}</span>
+        <span aria-live="polite">{loading ? "Consultando…" : error ? "Total sin confirmar" : `${total} vehículo${total === 1 ? "" : "s"}`}</span>
         <div className="flex items-center gap-2"><AdministrationIconAction label="Página anterior" disabled={loading || Boolean(error) || page === 1} onClick={() => setPage((value) => value - 1)}><ChevronLeft aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction><span>Página {page} de {Math.max(1, Math.ceil(total / pageSize))}</span><AdministrationIconAction label="Página siguiente" disabled={loading || Boolean(error) || page * pageSize >= total} onClick={() => setPage((value) => value + 1)}><ChevronRight aria-hidden="true" className="h-4 w-4" /></AdministrationIconAction></div>
       </footer>
     </div>

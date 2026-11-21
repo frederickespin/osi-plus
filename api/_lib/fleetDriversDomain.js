@@ -60,7 +60,8 @@ async function actorFor(tx, context, permission = null, lock = false) {
 }
 async function vehicleFor(tx, actor, vehicleRef, lock = false) {
   const rows = await tx.$queryRaw(Prisma.sql`
-    SELECT * FROM "osi"."osi_vehicles" WHERE "tenant_id"=${actor.tenantId} AND "id"=${vehicleRef}
+    SELECT "business_code", "plate", "operational_status", "retired_at"
+    FROM "osi"."osi_vehicles" WHERE "tenant_id"=${actor.tenantId} AND "id"=${vehicleRef}
     ${lock ? Prisma.sql`FOR UPDATE` : Prisma.empty}
   `);
   if (rows.length !== 1) fleetDriverFail("NOT_FOUND", 404);
@@ -375,7 +376,9 @@ export async function resolveVehicleDriverAuthority(tx, { tenantId, vehicleId, d
   // lock could deadlock with a revocation that already holds the company lock.
   const tenants = await tx.$queryRaw(Prisma.sql`SELECT "status"::text AS "status" FROM "osi"."tenants" WHERE "id"=${tenantId} FOR SHARE`);
   if (tenants.length !== 1 || tenants[0].status !== "ACTIVE") return unavailable("RESOURCE_UNAVAILABLE");
-  const vehicles = await tx.$queryRaw(Prisma.sql`SELECT * FROM "osi"."osi_vehicles"
+  const vehicles = await tx.$queryRaw(Prisma.sql`
+    SELECT "operational_status", "retired_at", "effective_from", "effective_to"
+    FROM "osi"."osi_vehicles"
     WHERE "tenant_id"=${tenantId} AND "id"=${vehicleId} FOR SHARE`);
   const vehicle = vehicles[0];
   if (!vehicle) return unavailable("RESOURCE_UNAVAILABLE");

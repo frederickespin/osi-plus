@@ -19,6 +19,7 @@ const baseRow = {
   source: "V17_ADMINISTRATION_FLEET_19D", request_id: randomUUID(), payload_hash: "original-creation-fingerprint", source_stable_id: null,
   row_version: 1, updated_at: new Date("2026-10-31T00:00:00Z"), retired_at: null, calculation_locked_at: null,
 };
+const readsVehicle = (sql) => /^\s*SELECT\s+"id",\s*"business_code",/.test(sql) && sql.includes('FROM "osi"."osi_vehicles"');
 function fixture({ currentActor = actor, row = baseRow, existing = [], usedRequest = false, duplicate = false, writeResult = null, failAudit = false } = {}) {
   const queries = []; const audits = []; let committedWrites = 0; let rolledBack = false;
   const tx = { fleetVehicleType: { findMany: async () => [] }, async $queryRaw(query) {
@@ -28,10 +29,10 @@ function fixture({ currentActor = actor, row = baseRow, existing = [], usedReque
     if (sql.includes('FROM "osi"."tenants"') && sql.includes("FOR UPDATE")) return [{ id: context.tenantId }];
     if (sql.includes('FROM "osi"."tenant_memberships" m')) return currentActor ? [currentActor] : [];
     if (sql.includes("UNION ALL")) return usedRequest ? [{ id: "prior-request" }] : [];
-    if (sql.includes('SELECT * FROM "osi"."osi_vehicles"') && sql.includes('"request_id"=')) return existing;
+    if (readsVehicle(sql) && sql.includes('"request_id"=')) return existing;
     if (sql.includes('SELECT "id" FROM "osi"."osi_vehicles"') && sql.includes('"normalized_code"=')) return duplicate ? [{ id: "duplicate" }] : [];
     if (sql.includes("COUNT(*)")) return [{ total: row ? 1 : 0 }];
-    if (sql.includes('SELECT * FROM "osi"."osi_vehicles"')) return row ? [row] : [];
+    if (readsVehicle(sql)) return row ? [row] : [];
     if (sql.includes('INSERT INTO "osi"."osi_vehicles"') || sql.includes('UPDATE "osi"."osi_vehicles" SET')) {
       committedWrites += 1; return writeResult ? [writeResult] : [];
     }
@@ -92,7 +93,7 @@ check("serialization retries stop after three confirmed rollbacks", attempts ===
 for (const staleActor of [null, { ...actor, role: "V" }, { ...actor, status: "SUSPENDED" }, { ...actor, user_status: "inactive" }, { ...actor, tenant_status: "SUSPENDED" }, { ...actor, denied_permissions: ["fleet:edit"], granted_permissions: ["fleet:edit"] }]) {
   const f = fixture({ currentActor: staleActor });
   await rejects(() => updateAdminFleetVehicle(f.prisma, context, baseRow.id, patch({ brand: "Updated" }), { auditWriter: f.auditWriter }), "FORBIDDEN");
-  check(`fresh actor authority refuses ${staleActor ? JSON.stringify(staleActor) : "missing membership"}`, f.writes() === 0 && f.audits.length === 0 && !f.queries.some((q) => q.sql.includes('SELECT * FROM "osi"."osi_vehicles"')));
+  check(`fresh actor authority refuses ${staleActor ? JSON.stringify(staleActor) : "missing membership"}`, f.writes() === 0 && f.audits.length === 0 && !f.queries.some((q) => readsVehicle(q.sql)));
 }
 for (const deniedContext of [
   { ...context, role: "V" }, { ...context, deniedPermissions: ["fleet:edit"] }, { ...context, effectivePermissions: ["vehicle:manage", "vehicle:view"] }, { ...context, effectivePermissions: ["fleet:view"] },
@@ -112,6 +113,12 @@ for (const operation of [listAdminFleetVehicles, (db, ctx) => getAdminFleetVehic
   check("list uses authoritative transaction and explicit pagination", list.total === 1 && list.page === 2 && list.pageSize === 10 && f.queries[0].sql.includes("FOR SHARE OF m, u, t"));
   const fleetQueries = f.queries.filter((q) => q.sql.includes('FROM "osi"."osi_vehicles"'));
   check("list queries bind tenant and escape wildcard search literals", fleetQueries.every((q) => q.values.includes(context.tenantId) && q.values.includes("%\\%\\_\\\\%")));
+  check("a preexisting vehicle is listed with optional transit fields empty",
+    list.data[0].businessCode === baseRow.business_code && list.data[0].capacityWeight === 1000
+    && list.data[0].transitAxles === null && list.data[0].tollCategory === null);
+  const projection = fleetQueries.find((query) => readsVehicle(query.sql))?.sql;
+  check("list explicitly projects the previous and transit columns", projection && /"capacity_weight"/.test(projection)
+    && /"transit_configuration", "transit_axles", "toll_category"/.test(projection) && !/SELECT\s+\*/.test(projection));
 }
 {
   const f = fixture({ row: null });
@@ -199,6 +206,7 @@ for (const [name, fixtureOptions, changes, version, code] of [
   const dto = await updateAdminFleetVehicle(f.prisma, context, baseRow.id, patch({ brand: "Synthetic" }), { auditWriter: f.auditWriter });
   check("PATCH returns one new version and audits only actual changed fields", dto.rowVersion === 2 && f.writes() === 1 && f.audits.length === 1 && JSON.stringify(f.audits[0].metadataJson.changedFields) === '["brand"]');
   const update = f.queries.find((q) => q.sql.includes('UPDATE "osi"."osi_vehicles" SET'));
+  check("PATCH returns a named vehicle projection", /RETURNING\s+"id",\s*"business_code"/.test(update.sql));
   check("UPDATE preserves original request fingerprint, source and actor columns", !/"(?:request_id|payload_hash|source|source_stable_id|import_batch_id|calculation_locked_at|created_by_user_id|created_by_membership_id)"\s*=/.test(update.sql));
   check("UPDATE binds tenant/reference/expected row version", update.sql.includes('WHERE "tenant_id"=') && update.sql.includes('AND "row_version"=') && update.values.includes(context.tenantId) && update.values.includes(baseRow.id));
   const auditJson = JSON.stringify({ before: f.audits[0].beforeJson, after: f.audits[0].afterJson, metadata: f.audits[0].metadataJson });
@@ -222,6 +230,7 @@ for (const [name, fixtureOptions, changes, version, code] of [
   const f = fixture({ writeResult: createdRow });
   const created = await createAdminFleetVehicle(f.prisma, context, input, { auditWriter: f.auditWriter });
   check("creation is one insert plus critical audit", created.created && !created.idempotent && f.writes() === 1 && f.audits[0].critical === true);
+  check("POST returns a named vehicle projection", f.queries.some((q) => /RETURNING\s+"id",\s*"business_code"/.test(q.sql)));
   const replayFixture = fixture({ existing: [{ ...createdRow, brand: "Edited later", row_version: 4 }] });
   const replay = await createAdminFleetVehicle(replayFixture.prisma, context, input, { auditWriter: replayFixture.auditWriter });
   check("create replay uses preserved fingerprint and current DTO after later edits", replay.idempotent && !replay.created && replay.vehicle.rowVersion === 4 && replay.vehicle.brand === "Edited later" && replayFixture.writes() === 0 && replayFixture.audits.length === 0);

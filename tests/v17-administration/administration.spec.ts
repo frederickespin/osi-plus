@@ -62,6 +62,7 @@ async function session(page: Page, initialPermissions: string[], initialDenied: 
     if ([
       "/api/logistics/rules", "/api/costing/rules", "/api/costing/exchange-rates",
       "/api/communications/templates", "/api/crm/services/catalog",
+      "/api/customer-custody/access-grants", "/api/customer-custody/catalog-items",
       "/api/crm/services/modes", "/api/crm/services/catalog-modes",
       "/api/crm/services/packages", "/api/crm/services/material-policies",
     ].includes(path)) return fulfill({ ok: true, data: [] });
@@ -106,7 +107,7 @@ test("logística y comunicaciones se abren por separado sin permiso de membresí
 
   await selectSection(page, "/administration/communications");
   await expect(page).toHaveURL(/\/administration\/communications$/);
-  await expect(page.getByRole("heading", { name: "Plantillas y Comunicaciones", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Centro de plantillas", exact: true })).toBeVisible();
   await expect(page.getByTestId("logistics-rules-admin")).toHaveCount(0);
   await expect.poll(() => seen.apiRequests.includes("/api/communications/templates")).toBe(true);
   expect(seen.apiRequests.some((path) => path.startsWith("/api/admin/"))).toBe(false);
@@ -300,6 +301,65 @@ test("la guía del Motor Logístico sigue el editor y deja configurar una sede",
   await page.getByRole("tab", { name: "Reglas operativas" }).click();
   await expect(guide.getByRole("region", { name: "Guía de Reglas operativas" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Nueva regla", exact: true })).toBeVisible();
+});
+
+test("la guía de Accesos a almacenes permite configurar permisos, recepción y catálogos", async ({ page }, testInfo) => {
+  const seen = await session(page, ["warehouse-access:manage", "membership:view", "inventory:stock:view"]);
+  const warehouseRef = "44444444-4444-4444-8444-444444444444";
+  const locationRef = "55555555-5555-4555-8555-555555555555";
+  await page.route("**/api/admin/memberships?**", (route) => route.fulfill({ json: {
+    ok: true, page: 1, pageSize: 100, total: 1, catalog: ADMIN_BROWSER_CATALOG,
+    data: [{
+      membershipRef: MEMBERSHIP_REF, name: "Usuario de prueba", email: "almacen@example.invalid", role: "A", status: "ACTIVE",
+      grantedPermissions: [], deniedPermissions: [], authorizationVersion: 1, updatedAt: "2026-11-20T12:00:00Z",
+    }],
+  } }));
+  await page.route("**/api/materials/warehouses", (route) => route.fulfill({ json: {
+    ok: true, data: [{
+      warehouseRef, code: "ALM", name: "Almacén de prueba", status: "ACTIVE", version: 1,
+      locations: [{ locationRef, parentLocationRef: null, code: "EXC", name: "Excedentes", kind: "BIN", depth: 1, path: "ALM/EXC", status: "ACTIVE", version: 1 }],
+    }],
+  } }));
+  await page.route("**/api/customer-custody/warehouse-settings", (route) => route.fulfill({ json: {
+    ok: true, data: [{
+      warehouseRef, code: "ALM", name: "Almacén de prueba", version: 1,
+      unloadTargetMinutes: 90, excessGraceHours: 24, excessDailyRate: 0, excessCurrency: "DOP", excessExitLocation: null,
+    }],
+  } }));
+  await page.goto("/administration/warehouse-access");
+
+  const trigger = page.getByRole("button", { name: "Guía de Accesos a almacenes e inventarios" });
+  const guide = page.getByRole("complementary", { name: "Guía de configuración" });
+  const tabs = page.getByRole("tablist", { name: "Configuración de almacenes" });
+  if (testInfo.project.name.includes("mobile")) await trigger.tap();
+  else await trigger.press("Enter");
+  await expect(guide.getByRole("region", { name: "Guía de Accesos" })).toContainText("Ana Pérez (ejemplo)");
+  await expect(page.getByRole("button", { name: "Asignar acceso" })).toBeEnabled();
+  await page.getByRole("combobox", { name: "Ubicación", exact: true }).selectOption(locationRef);
+  await page.getByRole("checkbox", { name: "Recibir", exact: true }).check();
+
+  const helpTopic = guide.getByRole("combobox", { name: "Tema de ayuda" });
+  await helpTopic.selectOption("CATALOGS");
+  await expect(guide.getByRole("region", { name: "Guía de Catálogos" })).toContainText("Caja especial");
+  await expect(page.getByRole("checkbox", { name: "Recibir", exact: true })).toBeChecked();
+  await expect(page.getByRole("combobox", { name: "Ubicación", exact: true })).toHaveValue(locationRef);
+
+  await helpTopic.selectOption("");
+  await tabs.getByRole("tab", { name: "Recepción" }).click();
+  await expect(guide.getByRole("region", { name: "Guía de Recepción" })).toContainText("Área temporal de excedentes");
+  const unloadingMinutes = page.getByLabel("Descarga (min)", { exact: true });
+  await unloadingMinutes.fill("75");
+  await guide.getByRole("button", { name: "Cerrar guía" }).click();
+  await expect(trigger).toBeFocused();
+  await expect(unloadingMinutes).toHaveValue("75");
+  await trigger.click();
+  await tabs.getByRole("tab", { name: "Catálogos" }).click();
+  await expect(guide.getByRole("region", { name: "Guía de Catálogos" })).toBeVisible();
+  const option = page.getByPlaceholder("Escriba el nombre");
+  await option.fill("Opción de catálogo de prueba");
+  await guide.getByRole("button", { name: "Cerrar guía" }).click();
+  await expect(option).toHaveValue("Opción de catálogo de prueba");
+  expect(seen.unexpected).toEqual([]);
 });
 
 test("las seis opciones se pueden recorrer sin desbordar el ancho del dispositivo", async ({ page }, testInfo) => {

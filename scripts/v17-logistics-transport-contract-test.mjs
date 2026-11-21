@@ -153,6 +153,29 @@ const exportRoute = { ...localRoute, destination: routeAddress("Exterior", null,
 equal((await caseDailyTravel(localZones, exportRoute, {}, provider)).legs.length, 0);
 const exportTravel = await caseDailyTravel(localZones, exportRoute, { localTerminalAddress: payload.baseAddress }, provider);
 equal(exportTravel.legs.map((leg) => leg.distanceKm), [12, 18, 0]);
+const registeredOffice = { baseRef: randomUUID(), name: "Sede principal", address: "Avenida principal 10", kind: "OFFICE", point: [-70.3, 18.8], active: true };
+const registeredWarehouse = { baseRef: randomUUID(), name: "Almacén", address: "Calle almacén 1", kind: "WAREHOUSE", point: [-69.5, 18.5], active: true };
+const inactiveWarehouse = { ...registeredWarehouse, baseRef: randomUUID(), name: "Almacén cerrado", active: false };
+const geography = { bases: [registeredOffice, registeredWarehouse, inactiveWarehouse], metro: {
+  localities: [{ city: "Ciudad uno", sector: "Sector especial", classification: "METRO" }],
+} };
+const lookups = [];
+const pinnedProvider = {
+  locate: async (address) => { lookups.push(address); return [-69.8, 18.4]; },
+  legs: async (points) => points.slice(1).map(() => ({ distanceKm: 15, durationMinutes: 22, source: "Motor de prueba", estimated: false })),
+};
+const registeredTravel = await caseDailyTravel(localZones, exportRoute, {
+  geography, baseRef: registeredOffice.baseRef, localTerminalRef: registeredWarehouse.baseRef,
+}, pinnedProvider);
+equal(registeredTravel.area, { origin: "METRO", destination: null });
+equal(registeredTravel.bases.map((base) => base.name), ["Almacén", "Sede principal"]);
+equal(registeredTravel.terminals.map((base) => base.name), ["Almacén"]);
+equal(registeredTravel.legs.map((leg) => leg.durationMinutes), [22, 22, 22]);
+equal(registeredTravel.legs[0].origin, registeredOffice.point);
+equal(registeredTravel.legs[1].destination, registeredWarehouse.point);
+equal(lookups.length, 1);
+equal((await caseDailyTravel(localZones, localRoute, { geography, baseRef: registeredOffice.baseRef }, provider)).area.destination, null);
+equal((await caseDailyTravel(localZones, exportRoute, { geography, baseRef: registeredOffice.baseRef, localTerminalRef: inactiveWarehouse.baseRef }, provider)).legs, []);
 const returnLeg = { ...journey, origin: [-69.8, 18.4], destination: [-70.3, 18.8], returnToOrigin: false,
   operatingBaseAddress: payload.baseAddress, returnToBase: true };
 equal(selectTransportZone(localZones.slice(0, 1), returnLeg, "QUOTE").zone.ruleRef, localZones[0].ruleRef);

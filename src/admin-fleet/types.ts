@@ -12,7 +12,7 @@ export type FleetListFilters = Readonly<{ search: string; operationalStatus: Fle
 export type FleetCreate = Omit<VehicleValues, "businessCode"> & { requestId: string; businessCode?: string };
 export type FleetUpdate = AdminFleetPatchInput;
 export type FleetVehicleType = Readonly<{ name: string; variableVolume: boolean; registered: boolean }>;
-export type FleetBase = Readonly<{ code: string; name: string; address: string }>;
+export type FleetBase = Readonly<{ code: string; name: string; address: string; selectable?: boolean }>;
 export type FleetOptions = Readonly<{ types: readonly FleetVehicleType[]; bases: readonly FleetBase[] }>;
 
 export const FLEET_STATUS_LABELS: Readonly<Record<FleetStatus, string>> = {

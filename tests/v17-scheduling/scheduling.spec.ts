@@ -811,6 +811,41 @@ test("fuera de horario ofrece solicitud excepcional tenant-first", async ({
   expect(exceptionBody).not.toHaveProperty("userId");
 });
 
+test("Survey consulta la zona de la dirección que el usuario selecciona", async ({ page }) => {
+  await session(page);
+  await crm(page);
+  const requestedLocations: string[] = [];
+  await page.route("**/api/crm/survey/scheduling**", async (route) => {
+    const url = new URL(route.request().url());
+    const location = url.searchParams.get("visitLocation");
+    if (location) requestedLocations.push(location);
+    const data = readyWorkspace();
+    return route.fulfill({
+      json: { ok: true, data: {
+        ...data,
+        visitLocations: data.visitLocations.map((entry) => ({
+          ...entry, metroZone: entry.role === "ORIGIN" ? "METRO" : "INTERIOR",
+        })),
+        schedulingContext: location === "DESTINATION:0" ? null : data.schedulingContext,
+      } },
+      headers: privateHeaders,
+    });
+  });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Survey" }).click();
+  await page.getByRole("button", { name: "Programación" }).click();
+  const editor = page.getByTestId("survey-schedule-editor");
+  await expect(editor.getByText("Zona metro", { exact: true })).toBeVisible();
+  await editor.getByLabel("Lugar de la visita").click();
+  await page.getByRole("option", { name: "Destino · Naco" }).click();
+  await expect(editor.getByText("Fuera de zona metro", { exact: true })).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Confirmar visita" })).toHaveCount(0);
+  await editor.getByLabel("Lugar de la visita").click();
+  await page.getByRole("option", { name: "Origen · Piantini" }).click();
+  await expect(editor.getByRole("button", { name: "Confirmar visita" })).toBeVisible();
+  await expect.poll(() => requestedLocations).toEqual(["DESTINATION:0", "ORIGIN:0"]);
+});
+
 test("viewer consulta agenda y comunicaciones sin controles de gestión", async ({
   page,
 }) => {

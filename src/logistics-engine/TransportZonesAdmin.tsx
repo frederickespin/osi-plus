@@ -6,7 +6,7 @@ import { isAdminFleetEnabled } from "@/admin-fleet/mode";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { getMembershipRef } from "@/lib/sessionStore";
 import { cn } from "@/lib/utils";
-import { isTransportUnauthorized, transportApi, transportErrorMessage, TransportRequestError, type TransportZone, type TransportZoneInput } from "./transportApi";
+import { isTransportUnauthorized, logisticsGeographyApi, transportApi, transportErrorMessage, TransportRequestError, type LogisticsBase, type TransportZone, type TransportZoneInput } from "./transportApi";
 import type { TransportUiAccess } from "./transportAccess";
 import { PURPOSE_LABELS, STATE_LABELS } from "./transportPresentation";
 import type { TransportZoneEditorTab } from "./TransportZoneEditor";
@@ -32,6 +32,7 @@ export default function TransportZonesAdmin({ authorization, access, editorTab, 
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [fleetTypes, setFleetTypes] = useState<{ authorization?: string; membership: string; names: readonly string[] } | null>(null);
+  const [registryBases, setRegistryBases] = useState<{ authorization?: string; membership: string; bases: readonly LogisticsBase[] } | null>(null);
   const membership = getMembershipRef();
   const editing = editor !== null && access.canZonesManage;
   const scope = useRef(0);
@@ -47,12 +48,18 @@ export default function TransportZonesAdmin({ authorization, access, editorTab, 
   }, [fleetTypes, latest, authorization, membership]);
   const bases = useMemo(() => {
     const registered = new Map<string, { baseName: string; baseAddress: string }>();
+    const addressKey = (value: string) => value.trim().toLocaleLowerCase("es");
     for (const { baseName, baseAddress } of latest) {
       if (!baseName || !baseAddress || baseAddress === "Dirección pendiente de confirmar") continue;
-      registered.set(JSON.stringify([baseName, baseAddress]), { baseName, baseAddress });
+      registered.set(addressKey(baseAddress), { baseName, baseAddress });
+    }
+    if (registryBases?.authorization === authorization && registryBases?.membership === membership) {
+      for (const { name, address, active } of registryBases.bases) {
+        if (active) registered.set(addressKey(address), { baseName: name, baseAddress: address });
+      }
     }
     return [...registered.values()].sort((a, b) => a.baseName.localeCompare(b.baseName, "es"));
-  }, [latest]);
+  }, [latest, registryBases, authorization, membership]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!access.canZonesView) return null;
@@ -86,6 +93,17 @@ export default function TransportZonesAdmin({ authorization, access, editorTab, 
       if (!controller.signal.aborted) setFleetTypes({ authorization, membership, names: types.map(({ name }) => name) });
     }).catch(() => {
       if (!controller.signal.aborted) setFleetTypes(null);
+    });
+    return () => controller.abort();
+  }, [authorization, editing, membership]);
+
+  useEffect(() => {
+    if (!editing || !membership) return;
+    const controller = new AbortController();
+    void logisticsGeographyApi.load(authorization, controller.signal).then(({ bases }) => {
+      if (!controller.signal.aborted) setRegistryBases({ authorization, membership, bases });
+    }).catch(() => {
+      if (!controller.signal.aborted) setRegistryBases(null);
     });
     return () => controller.abort();
   }, [authorization, editing, membership]);

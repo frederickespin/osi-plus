@@ -49,8 +49,9 @@ function vehicleTypeOf(value: unknown): FleetVehicleType {
 
 function baseOf(value: unknown): FleetBase {
   if (!record(value) || typeof value.code !== "string" || !/^BASE-[0-9A-F]{20}$/u.test(value.code)
-    || !text(value.name, 160) || !text(value.address, 240)) return fail();
-  return { code: value.code, name: String(value.name), address: String(value.address) };
+    || !text(value.name, 160) || !text(value.address, 240)
+    || value.selectable !== undefined && typeof value.selectable !== "boolean") return fail();
+  return { code: value.code, name: String(value.name), address: String(value.address), selectable: value.selectable as boolean | undefined };
 }
 
 export class FleetApi {

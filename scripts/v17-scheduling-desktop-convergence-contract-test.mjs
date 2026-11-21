@@ -9,11 +9,39 @@ import {
   validateVisitFeeSource,
 } from "../api/_lib/surveySchedulingContract.js";
 import { calculateLogisticsPlan } from "../api/_lib/logisticsEngineContract.js";
+import { classifyLogisticsMetro, logisticsVisitReferenceKm } from "../api/_lib/logisticsMetroClassification.js";
 
 let checks = 0;
 function check(name, run) { run(); checks += 1; process.stdout.write(`PASS ${name}\n`); }
 function fails(name, run, code) { check(name, () => assert.throws(run, (error) => error?.code === code)); }
 const uuid = (suffix) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
+
+const metro = {
+  geometry: [[-70, 18], [-69, 18], [-69, 19], [-70, 19]],
+  localities: [
+    { city: "Municipio Á", sector: null, classification: "METRO" },
+    { city: "Municipio Á", sector: "Sector Exterior", classification: "INTERIOR" },
+  ],
+};
+check("la misma zona reconoce la localidad del lugar de visita y prefiere el sector", () => {
+  const address = { countryCode: "DO", cityMunicipality: "municipio a" };
+  assert.equal(classifyLogisticsMetro(metro, address), "METRO");
+  assert.equal(classifyLogisticsMetro(metro, { ...address, sector: "sector exterior" }), "INTERIOR");
+  assert.equal(classifyLogisticsMetro(metro, { ...address, cityMunicipality: "Sin clasificar" }), null);
+  assert.equal(classifyLogisticsMetro(metro, { ...address, countryCode: "ES" }, [-69.5, 18.5]), null);
+  assert.equal(classifyLogisticsMetro(metro, null, [-69.5, 18.5]), "METRO");
+  assert.equal(classifyLogisticsMetro(metro, null, [-71, 18.5]), "INTERIOR");
+});
+check("la referencia de visita exige coincidencia y kilómetros sin conflicto", () => {
+  const address = { countryCode: "DO", cityMunicipality: "municipio a", sector: "sector exterior" };
+  const zone = {
+    purposes: ["VISIT"], locationType: "SECTOR", city: "Municipio Á", sector: "Sector Exterior",
+    zoneType: "INTERIOR", referenceDistanceKm: "42", referenceDistanceSource: "Medición de prueba", baseAddress: "Avenida de prueba",
+  };
+  assert.equal(logisticsVisitReferenceKm([zone], address, [{ active: true, address: zone.baseAddress }]), 42);
+  assert.equal(logisticsVisitReferenceKm([zone, { ...zone, referenceDistanceKm: "30" }], address, []), null);
+  assert.equal(logisticsVisitReferenceKm([{ ...zone, purposes: ["SERVICE"] }], address, []), null);
+});
 
 check("METRO histórico conserva 2 slots y capacidad 2", () => {
   const profile = resolveScheduleProfile(HISTORICAL_POLICY_TEMPLATE, "METRO", 10);

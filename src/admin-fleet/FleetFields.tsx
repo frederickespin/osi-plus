@@ -70,9 +70,10 @@ export default function FleetFields({ draft, onChange, options, calculatedVolume
           {draft.hubCode && !options?.bases.some(({ code }) => code === draft.hubCode) && <option value={draft.hubCode}>
             {/^BASE-[0-9A-F]{20}$/u.test(draft.hubCode) ? "Sede guardada fuera de la lista" : draft.hubCode}
           </option>}
-          {options?.bases.map(({ code, name, address }) => <option key={code} value={code}>{name} · {address}</option>)}
+          {options?.bases.filter((base) => base.selectable !== false || base.code === draft.hubCode)
+            .map(({ code, name, address, selectable }) => <option key={code} value={code} disabled={selectable === false}>{name} · {address}</option>)}
         </select>
-        {options?.bases.length === 0 && <p className="mt-1 text-xs text-slate-500">Registre la sede en Motor Logístico.</p>}
+        {options && !options.bases.some((base) => base.selectable !== false) && <p className="mt-1 text-xs text-slate-500">Registre la sede en Motor Logístico.</p>}
       </div>
     </>)}
     {group("Capacidades", <>

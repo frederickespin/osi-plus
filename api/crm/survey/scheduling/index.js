@@ -6,6 +6,6 @@ export default createCrmSurveyHandler({
   prismaClient: prisma,
   methods: ["GET", "POST"],
   execute: ({ context, input, prisma: database, method, req }) => method === "GET"
-    ? getSurveySchedulingWorkspace(context, { caseRef: req.query?.caseRef, date: req.query?.date }, database)
+    ? getSurveySchedulingWorkspace(context, { caseRef: req.query?.caseRef, date: req.query?.date, visitLocation: req.query?.visitLocation }, database)
     : mutateSurveyScheduling(context, input, database),
 });

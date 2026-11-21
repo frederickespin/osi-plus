@@ -210,19 +210,37 @@ export async function getCaseRouteCoverage(context, ref, { longitude, latitude }
     || !/^-?\d{1,3}(?:\.\d{1,8})?$/.test(longitude) || !/^-?\d{1,3}(?:\.\d{1,8})?$/.test(latitude)
     || Math.abs(Number(longitude)) > 180 || Math.abs(Number(latitude)) > 90) fail("CRM_CASE_ROUTE_INPUT_INVALID");
   await caseAuthority(database, context, ref);
-  const { transportCoverageAt } = await import("./logisticsTransportZones.js");
-  return { areas: await transportCoverageAt(database, context.tenantId, [Number(longitude), Number(latitude)]) };
+  const point = [Number(longitude), Number(latitude)];
+  const [{ loadLogisticsGeography }, { classifyLogisticsMetro }, { transportCoverageAt }] = await Promise.all([
+    import("./logisticsGeography.js"), import("./logisticsMetroClassification.js"), import("./logisticsTransportZones.js"),
+  ]);
+  const { metro } = await loadLogisticsGeography(database, context.tenantId);
+  if (metro) {
+    const [first] = metro.geometry;
+    const last = metro.geometry.at(-1);
+    const ring = first[0] === last[0] && first[1] === last[1] ? metro.geometry : [...metro.geometry, first];
+    return {
+      areas: [{ label: metro.name, geometry: { type: "Polygon", coordinates: [ring] } }],
+      classification: classifyLogisticsMetro(metro, { countryCode: "DO" }, point),
+    };
+  }
+  return { areas: await transportCoverageAt(database, context.tenantId, point) };
 }
 
-export async function getCaseRouteTravel(context, ref, { baseAddress, localTerminalAddress }, database = prisma) {
-  for (const value of [baseAddress, localTerminalAddress]) {
-    if (value !== undefined && (typeof value !== "string" || value.length > 240)) fail("CRM_CASE_ROUTE_INPUT_INVALID");
+export async function getCaseRouteTravel(context, ref, { baseRef, baseAddress, localTerminalRef, localTerminalAddress }, database = prisma) {
+  for (const [reference, address] of [[baseRef, baseAddress], [localTerminalRef, localTerminalAddress]]) {
+    if (reference !== undefined && (typeof reference !== "string" || !PUBLIC_REF.test(reference) || address !== undefined)
+      || address !== undefined && (typeof address !== "string" || address.length > 240)) fail("CRM_CASE_ROUTE_INPUT_INVALID");
   }
   const item = await caseAuthority(database, context, ref);
-  const [{ caseDailyTravel }, { loadTransportZones }, route] = await Promise.all([
-    import("./caseDailyTravel.js"), import("./logisticsTransportZones.js"), currentRoute(database, context.tenantId, item),
+  const [{ caseDailyTravel }, { loadTransportZones }, { loadLogisticsGeography }, route] = await Promise.all([
+    import("./caseDailyTravel.js"), import("./logisticsTransportZones.js"), import("./logisticsGeography.js"), currentRoute(database, context.tenantId, item),
   ]);
-  return caseDailyTravel(await loadTransportZones(database, context.tenantId, new Date()), route, { baseAddress, localTerminalAddress });
+  const [zones, geography] = await Promise.all([
+    loadTransportZones(database, context.tenantId, new Date()),
+    loadLogisticsGeography(database, context.tenantId),
+  ]);
+  return caseDailyTravel(zones, route, { baseRef, baseAddress, localTerminalRef, localTerminalAddress, geography });
 }
 
 async function materializeAddress(tx, actorRow, clientId, address) {

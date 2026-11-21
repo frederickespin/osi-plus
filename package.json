@@ -180,7 +180,7 @@
     "test:v17-fleet-drivers": "node scripts/v17-fleet-drivers-contract-test.mjs && node scripts/v17-fleet-drivers-transactions-test.mjs && node scripts/v17-fleet-drivers-preview-migrate-test.mjs",
     "test:v17-fleet-drivers:http": "node scripts/v17-fleet-drivers-http-test.mjs",
     "test:v17-fleet-drivers:db": "node scripts/v17-fleet-drivers-db-test.mjs",
-    "test:v17-logistics-transport": "node scripts/v17-logistics-transport-contract-test.mjs && node scripts/v17-logistics-transport-zones-test.mjs && node scripts/v17-logistics-transport-http-test.mjs && node scripts/v17-logistics-transport-integration-test.mjs",
+    "test:v17-logistics-transport": "node scripts/v17-logistics-transport-contract-test.mjs && node scripts/v17-logistics-transport-zones-test.mjs && node scripts/v17-logistics-geography-test.mjs && node scripts/v17-logistics-transport-http-test.mjs && node scripts/v17-logistics-transport-integration-test.mjs",
     "test:v17-logistics-transport:db": "node scripts/v17-logistics-transport-db-test.mjs",
     "test:v17-logistics-transport:browser": "playwright test -c playwright.v17-transport.config.ts",
     "test:v17-warehouse-configuration": "node scripts/v17-warehouse-configuration-contract-test.mjs && node scripts/v17-warehouse-configuration-http-test.mjs && node scripts/v17-warehouse-configuration-client-test.mjs && node scripts/v17-warehouse-location-policy-test.mjs && node scripts/v17-warehouse-configuration-preview-migrate-test.mjs",

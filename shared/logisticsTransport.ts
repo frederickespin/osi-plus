@@ -65,15 +65,19 @@ export type TransportPublication = Readonly<{
   revisionRef: string; revision: number; publishedAt: string; context: TransportContext; routeRevision?: number;
   calculationRef: string; result: TransportResult; input: TransportCalculateInput;
 }>;
-export type TransportReferenceBase = Readonly<{ name: string; address: string }>;
+export type TransportReferenceBase = Readonly<{
+  name: string; address: string;
+  baseRef?: string; kind?: "OFFICE" | "WAREHOUSE" | "YARD"; point?: TransportCoordinate;
+}>;
 export type CaseTravelLeg = Readonly<{
   from: Readonly<{ label: string; address: string }>; to: Readonly<{ label: string; address: string }>;
   origin: TransportCoordinate | null; destination: TransportCoordinate | null;
-  distanceKm: number | null; source: string | null; estimated: boolean; returnToBase: boolean;
+  distanceKm: number | null; durationMinutes?: number | null; source: string | null; estimated: boolean; returnToBase: boolean;
 }>;
 export type CaseDailyTravel = Readonly<{
   revision: number; bases: readonly TransportReferenceBase[]; base: TransportReferenceBase | null;
-  terminal: TransportReferenceBase | null; foreignOrigin: boolean; foreignDestination: boolean;
+  terminals?: readonly TransportReferenceBase[]; terminal: TransportReferenceBase | null; foreignOrigin: boolean; foreignDestination: boolean;
+  metroVersion?: number | null;
   area: Readonly<{ origin: "METRO" | "INTERIOR" | null; destination: "METRO" | "INTERIOR" | null }>;
   legs: readonly CaseTravelLeg[]; preparation: readonly CaseTravelLeg[]; distanceKm: number | null; estimated: boolean;
 }>;

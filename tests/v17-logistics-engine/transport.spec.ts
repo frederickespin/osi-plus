@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { TransportCalculateInput, TransportCalculation, TransportPublication, TransportResult, TransportZone, TransportZoneInput } from "../../shared/logisticsTransport";
+import type { LogisticsBase, LogisticsGeographyCommand, MetroPerimeter } from "../../src/logistics-engine/transportApi";
 
 const CASE = "118f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const MEMBERSHIP = "228f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
@@ -60,6 +61,7 @@ async function session(page: Page, grants = permissions, denied: string[] = []) 
     body: JSON.stringify({ code: "Ok", routes: [{ distance: 80_000, duration: 5_400 }] }),
   }));
   await page.route("**/api/logistics/rules", (route) => route.fulfill(json([])));
+  await page.route("**/api/logistics/transport/geography", (route) => route.fulfill(json({ bases: [], metro: null })));
 }
 
 function result(input: TransportCalculateInput): TransportResult {
@@ -448,7 +450,7 @@ test("Servicios usa la ruta del caso y Cotización aplica el transporte sin fech
 test("el caso muestra los kilómetros diarios y los tramos se cargan en cotización por jornada", async ({ page }) => {
   await session(page);
   const seen = await calculator(page);
-  const base = { name: "Oficina de prueba", address: "Avenida de prueba 1" };
+  const base = { baseRef: "a294b93b-10d5-4d7d-af33-119a2b935fd7", name: "Oficina de prueba", address: "Avenida de prueba 1" };
   const origin = { label: "Origen", address: "Calle de prueba 2" };
   const destination = { label: "Destino", address: "Calle de prueba 3" };
   const leg = (from: typeof origin, to: typeof destination, distanceKm: number, returnToBase = false) => ({
@@ -457,7 +459,7 @@ test("el caso muestra los kilómetros diarios y los tramos se cargan en cotizaci
   const office = { label: base.name, address: base.address };
   await page.route(`**/api/crm/pipeline-cases/${CASE}/route?travel=1`, (route) => route.fulfill({
     ...json({ revision: 3, bases: [base], base, terminal: null, foreignOrigin: false, foreignDestination: false,
-      area: { origin: "METRO", destination: "INTERIOR" }, distanceKm: 45, estimated: false,
+      area: { origin: "METRO", destination: "INTERIOR" }, metroVersion: 1, distanceKm: 45, estimated: false,
       legs: [leg(office, origin, 12), leg(origin, destination, 18), leg(destination, office, 15, true)],
       preparation: [leg(office, origin, 12), leg(origin, office, 13, true)] }),
     headers: { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" },
@@ -471,6 +473,8 @@ test("el caso muestra los kilómetros diarios y los tramos se cargan en cotizaci
   await plan.getByLabel("Días solo en origen").fill("1");
   await expect(plan).toContainText("160 km en total");
   await page.getByRole("button", { name: "Ver costo de transporte" }).click();
+  await expect(page.getByLabel("Cobertura del caso")).toContainText("Origen · Zona metro");
+  await expect(page.getByLabel("Cobertura del caso")).toContainText("Destino · Fuera de zona metro");
   const form = page.getByTestId("transport-calculation-form");
   await form.getByRole("combobox", { name: "Vehículo de flota" }).selectOption(VEHICLE);
   await form.getByRole("button", { name: "Cargar tramos del caso" }).click();
@@ -513,6 +517,74 @@ test("Administración configura zonas sin abrir planes ni consultar casos", asyn
   await expect(page.getByRole("tab", { name: "Calcular transporte" })).toHaveCount(0);
   await expect(page.locator("input[type=datetime-local]")).toHaveCount(0);
   expect(caseQueries).toBe(0);
+});
+
+test("Sedes y Zona metro se pueden configurar con el mapa y sin permiso de tarifas", async ({ page }) => {
+  await session(page, permissions.filter((permission) => !permission.startsWith("costing:")));
+  let base: LogisticsBase | null = null;
+  let metro: MetroPerimeter | null = null;
+  const writes: LogisticsGeographyCommand[] = [];
+  const point = [-69.9, 18.5];
+  const ring = [[-69.9, 18.5], [-69.8, 18.5], [-69.8, 18.6], [-69.9, 18.5]];
+  await page.route("https://photon.komoot.io/**", (route) => {
+    const area = new URL(route.request().url()).searchParams.get("q") === "Municipio de ejemplo";
+    return route.fulfill({ json: { features: [area ? {
+      geometry: { type: "Polygon", coordinates: [ring] },
+      properties: { name: "Municipio de ejemplo", countrycode: "DO", type: "city" },
+    } : {
+      geometry: { type: "Point", coordinates: point },
+      properties: { name: "Entrada de camiones", street: "Avenida Principal", housenumber: "12", city: "Santo Domingo", countrycode: "DO" },
+    }] } });
+  });
+  await page.route("**/api/logistics/transport/geography", (route) => {
+    if (route.request().method() === "GET") return route.fulfill(json({ bases: base ? [base] : [], metro }));
+    const command = route.request().postDataJSON() as LogisticsGeographyCommand;
+    writes.push(command);
+    if (command.operation === "SAVE_BASE") {
+      const { name, address, kind, active, point, expectedVersion } = command;
+      base = { baseRef: ZONE, code: "BASE-12345678901234567890", name, address, kind, active, point, version: expectedVersion + 1 };
+      return route.fulfill(json(base));
+    }
+    const { expectedVersion, name, geometry, localities } = command;
+    metro = { code: "METRO", version: expectedVersion + 1, name, geometry, localities };
+    return route.fulfill(json(metro));
+  });
+  await page.goto("/administration/logistics");
+  await page.getByRole("tab", { name: "Sedes", exact: true }).click();
+  await page.getByRole("button", { name: "Nueva sede", exact: true }).click();
+  await page.getByLabel("Nombre de la sede", { exact: true }).fill("Almacén de ejemplo");
+  await page.getByLabel("Tipo de sede", { exact: true }).selectOption("WAREHOUSE");
+  const search = page.getByRole("search", { name: "Buscar en el mapa" });
+  await search.getByRole("textbox").fill("Entrada de camiones");
+  await search.getByRole("button").click();
+  await page.getByRole("button", { name: /Entrada de camiones/ }).click();
+  await expect(page.getByLabel("Dirección de la sede")).toHaveValue("Avenida Principal 12, Santo Domingo");
+  await expect(page.getByLabel(/Latitud|Longitud/)).toHaveCount(0);
+  await page.getByRole("button", { name: "Guardar sede" }).click();
+  await expect(page.getByRole("table", { name: "Sedes registradas" })).toContainText("Almacén de ejemplo");
+  await page.getByRole("button", { name: "Editar sede Almacén de ejemplo" }).click();
+  await page.getByLabel("Nombre de la sede", { exact: true }).fill("Almacén principal");
+  await page.getByRole("button", { name: "Guardar sede" }).click();
+  await expect(page.getByRole("table", { name: "Sedes registradas" })).toContainText("Almacén principal");
+  expect(writes[0]).toMatchObject({ operation: "SAVE_BASE", baseRef: null, expectedVersion: 0, kind: "WAREHOUSE", point });
+  expect(writes[1]).toMatchObject({ operation: "SAVE_BASE", baseRef: ZONE, expectedVersion: 1, name: "Almacén principal", point });
+
+  await page.getByRole("tab", { name: "Zona metro", exact: true }).click();
+  await page.getByRole("button", { name: "Configurar zona metro" }).click();
+  await search.getByRole("textbox").fill("Municipio de ejemplo");
+  await search.getByRole("button").click();
+  await page.getByRole("button", { name: /Municipio de ejemplo/ }).click();
+  await page.getByRole("button", { name: "Usar contorno sugerido" }).click();
+  await page.getByRole("button", { name: "Añadir ciudad o sector" }).click();
+  await page.getByRole("textbox", { name: "Ciudad o municipio 1" }).fill("Municipio de ejemplo");
+  await page.getByRole("textbox", { name: "Sector 1" }).fill("Sector de ejemplo");
+  await page.getByRole("combobox", { name: "Clasificación 1" }).selectOption("INTERIOR");
+  await page.getByRole("button", { name: "Guardar zona metro" }).click();
+  await expect(page.getByRole("table", { name: "Ciudades y sectores de cobertura" })).toContainText("Fuera de zona metro");
+  expect(writes[2]).toMatchObject({
+    operation: "SAVE_METRO", expectedVersion: 0, geometry: ring.slice(0, -1),
+    localities: [{ city: "Municipio de ejemplo", sector: "Sector de ejemplo", classification: "INTERIOR" }],
+  });
 });
 
 test("publicación con respuesta perdida se consulta sin repetir el envío", async ({ page }) => {

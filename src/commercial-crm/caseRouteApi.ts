@@ -39,6 +39,7 @@ export type CaseRouteWorkspace = Readonly<{
 }>;
 export type ClientRouteOptions = Readonly<{ clientRef: string; options: readonly CaseRouteOption[] }>;
 export type CaseRouteArea = Readonly<{ label: string; geometry: TransportPolygon }>;
+export type CaseRouteCoverage = Readonly<{ areas: readonly CaseRouteArea[]; classification?: "METRO" | "INTERIOR" | null }>;
 
 export class CaseRouteClientError extends Error {
   readonly status: number;
@@ -109,23 +110,26 @@ export class CaseRouteApi {
     if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
     return this.parseWorkspace(await this.read(await this.fetchImpl(`/api/crm/pipeline-cases/${encodeURIComponent(caseRef)}/route`, { headers: this.headers(), credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" })));
   }
-  async travel(caseRef: string, baseAddress: string, localTerminalAddress: string, signal: AbortSignal): Promise<CaseDailyTravel> {
+  async travel(caseRef: string, base: string, terminal: string, signal: AbortSignal): Promise<CaseDailyTravel> {
     if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
     const query = new URLSearchParams({ travel: "1" });
-    if (baseAddress) query.set("baseAddress", baseAddress);
-    if (localTerminalAddress) query.set("localTerminalAddress", localTerminalAddress);
+    if (base) query.set(UUID.test(base) ? "baseRef" : "baseAddress", base);
+    if (terminal) query.set(UUID.test(terminal) ? "localTerminalRef" : "localTerminalAddress", terminal);
     const data = await this.read(await this.fetchImpl(`/api/crm/pipeline-cases/${encodeURIComponent(caseRef)}/route?${query}`, { headers: this.headers(), credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", signal }));
     if (!Number.isInteger(data.revision) || !Array.isArray(data.bases) || !Array.isArray(data.legs) || !Array.isArray(data.preparation) || !data.area) {
       throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
     }
     return data as CaseDailyTravel;
   }
-  async coverage(caseRef: string, [longitude, latitude]: TransportCoordinate, signal: AbortSignal): Promise<readonly CaseRouteArea[]> {
+  async coverage(caseRef: string, [longitude, latitude]: TransportCoordinate, signal: AbortSignal): Promise<CaseRouteCoverage> {
     if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
     const query = new URLSearchParams({ longitude: longitude.toFixed(6), latitude: latitude.toFixed(6) });
     const data = await this.read(await this.fetchImpl(`/api/crm/pipeline-cases/${encodeURIComponent(caseRef)}/route?${query}`, { headers: this.headers(), credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", signal }));
-    if (!Array.isArray(data.areas)) throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
-    return data.areas as CaseRouteArea[];
+    if (!Array.isArray(data.areas)
+      || data.classification !== undefined && data.classification !== null && data.classification !== "METRO" && data.classification !== "INTERIOR") {
+      throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    }
+    return { areas: data.areas as CaseRouteArea[], classification: data.classification };
   }
   async update(caseRef: string, value: Omit<CaseRouteWorkspace["route"], "revision"> & Readonly<{ expectedVersion: number; expectedRouteRevision: number }>): Promise<CaseRouteWorkspace> {
     if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");

@@ -1,15 +1,39 @@
 import { ExampleFields, type SetupLesson } from "@/administration/AdministrationSetupGuide";
 import type { TransportZoneEditorTab } from "./TransportZoneEditor";
 
-export type LogisticsSetupTopic = TransportZoneEditorTab | "rules";
+export type LogisticsSetupTopic = TransportZoneEditorTab | "bases" | "metro" | "rules";
 
 export const LOGISTICS_SETUP_LABELS: Record<LogisticsSetupTopic, string> = {
+  bases: "Sedes operativas",
+  metro: "Zona metro",
   location: "Ubicación",
   operation: "Operación y costos",
   rules: "Reglas operativas",
 };
 
 export const LOGISTICS_SETUP_LESSONS: Record<LogisticsSetupTopic, SetupLesson> = {
+  bases: {
+    title: "Ubica los puntos de salida",
+    purpose: "Registra cada oficina, almacén o patio que se usa como origen habitual de los vehículos.",
+    steps: [
+      <>En <strong>Sedes</strong>, pulsa el botón <strong>Nueva sede</strong> y completa el nombre, tipo y dirección.</>,
+      <>Busca la dirección o señala la salida de los vehículos en el mapa. Pulsa <strong>Guardar sede</strong>.</>,
+      <>En <strong>Flota vehicular</strong>, selecciona el registro como <strong>Sede habitual</strong>.</>,
+    ],
+    example: <ExampleFields rows={[["Tipo", "Almacén"], ["Nombre de la sede", "Almacén Santo Domingo"], ["Punto en el mapa", "Entrada de camiones"]]} />,
+    check: "Al editar el nombre o la dirección de una sede, la ficha del vehículo conserva su sede habitual.",
+  },
+  metro: {
+    title: "Define la cobertura metropolitana",
+    purpose: "Un solo perímetro permite reconocer la zona de las direcciones en las visitas y servicios.",
+    steps: [
+      <>Abre <strong>Zona metro</strong> y pulsa <strong>Configurar zona metro</strong>.</>,
+      <>Busca una localidad como referencia o traza el perímetro en el mapa. Usa el contorno sugerido si representa tu cobertura.</>,
+      <>Añade los municipios y sectores que el equipo usa al registrar direcciones. Elige <strong>Zona metro</strong> o <strong>Fuera de zona metro</strong> en cada fila.</>,
+    ],
+    example: <ExampleFields rows={[["Ciudad o municipio", "Santo Domingo Este"], ["Sector", "Sector validado por Logística"], ["Clasificación", "Zona metro"]]} />,
+    check: "Deja Sector vacío si la clasificación corresponde a todo el municipio.",
+  },
   location: {
     title: "Delimita la ciudad o el sector",
     purpose: "El perímetro permite reconocer qué perfil aplica a una dirección del caso.",

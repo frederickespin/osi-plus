@@ -18,6 +18,13 @@ La zona metropolitana debe quedar delimitada expresamente por la empresa. No se 
 
 ## Modelo funcional propuesto
 
+### Tiempos de traslado, ejecución y personal
+
+- Motor Logístico estima cada recorrido de ida y regreso por separado. Los **80 a 100 km/h** son una referencia de planificación para los tramos de carretera. Los tramos urbanos y las rutas con restricciones requieren su propio tiempo. Los minutos deben identificarse como estimados hasta confirmar el itinerario.
+- El traslado suma una o dos pausas cortas según el recorrido, con cantidad y duración configurables. Las pausas forman parte del tiempo de traslado.
+- Servicios y combinaciones define el tiempo estimado de **ejecución** de cada paquete. Ejemplo: el tiempo para empacar, cargar, descargar y organizar puede venir del paquete. La jornada prevista combina ejecución y traslado y puede orientar la decisión sobre cuántos días reservar.
+- Comercial define el personal a partir de volumen, peso, acceso y condiciones de trabajo. La distancia y el horario del itinerario orientan esa decisión y permiten evaluar viáticos por persona y jornada elegible tras confirmar la cuadrilla.
+
 ### Geocercas, zonas y recorridos
 
 Administración debe permitir identificar las zonas por código y nombre, definir sus límites geográficos, reconocer las localidades cubiertas y distinguir la zona metropolitana de otras zonas. Una ubicación debe poder resolverse contra esos límites con un resultado explicable. Una región guardada por nombre o una etiqueta METRO/INTERIOR no sustituye esa evaluación geográfica.

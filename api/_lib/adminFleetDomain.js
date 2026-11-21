@@ -136,7 +136,7 @@ async function validateFleetOptions(tx, tenantId, vehicle, { type, base }) {
       fleetFail("VARIABLE_VOLUME");
     }
   }
-  if (base && vehicle.hubCode !== null && !options.bases.some(({ code }) => code === vehicle.hubCode)) fleetFail("BASE_NOT_REGISTERED");
+  if (base && vehicle.hubCode !== null && !options.bases.some(({ code, selectable }) => code === vehicle.hubCode && selectable !== false)) fleetFail("BASE_NOT_REGISTERED");
 }
 
 async function nextVehicleCode(tx, tenantId) {

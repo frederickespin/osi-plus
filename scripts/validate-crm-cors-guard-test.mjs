@@ -66,7 +66,7 @@ function mutateManifest(mutator) {
 }
 
 const current = validateCrmCorsGuard({ overrides: baseline });
-for (const endpoint of ["zones", "calculate", "publish", "plans", "context"]) {
+for (const endpoint of ["zones", "calculate", "publish", "plans", "context", "geography"]) {
   const route = `/api/logistics/transport/${endpoint}`;
   rejected("transporte sin clasificación: " + route, "scripts/protected-cors-route-inventory.json", mutateManifest((categories) => {
     categories.protectedSameOrigin = categories.protectedSameOrigin.filter((value) => value !== route);

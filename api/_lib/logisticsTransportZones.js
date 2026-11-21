@@ -233,10 +233,11 @@ export async function listTransportZones(prisma, context, query = {}) {
 // Internal projection for the fleet forms. The caller supplies an authenticated
 // tenant, and this read never returns a tariff or a zone rule.
 export async function transportFleetOptions(tx, tenantId) {
-  const rows = await tx.logisticsRule.findMany({
+  const { loadLogisticsGeography } = await import("./logisticsGeography.js");
+  const [rows, geography] = await Promise.all([tx.logisticsRule.findMany({
     where: namespaceWhere(tenantId), distinct: ["seriesRef"],
     orderBy: [{ seriesRef: "asc" }, { version: "desc" }], take: MAX_ZONES + 1,
-  });
+  }), loadLogisticsGeography(tx, tenantId)]);
   if (rows.length > MAX_ZONES) fail("ZONE_LIMIT");
   const bases = new Map();
   const types = new Set();
@@ -247,8 +248,11 @@ export async function transportFleetOptions(tx, tenantId) {
     if (row.conditions.vehicleType) types.add(row.conditions.vehicleType);
     if (name && address) {
       const code = "BASE-" + canonicalHash({ name, address }).slice(0, 20).toUpperCase();
-      bases.set(code, { code, name, address });
+      bases.set(code, { code, name, address, ...(geography.bases.length > 0 && { selectable: false }) });
     }
+  }
+  for (const { code, name, address, active } of geography.bases) {
+    bases.set(code, { code, name, address, selectable: active });
   }
   return {
     bases: [...bases.values()].sort((a, b) => a.name.localeCompare(b.name, "es") || a.address.localeCompare(b.address, "es")),

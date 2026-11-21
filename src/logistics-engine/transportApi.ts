@@ -1,5 +1,5 @@
 import { getMembershipRef } from "@/lib/sessionStore";
-import type { TransportCalculateInput, TransportCalculation, TransportPublication, TransportPurpose, TransportWorkspace, TransportZone, TransportZoneInput } from "../../shared/logisticsTransport";
+import type { TransportCalculateInput, TransportCalculation, TransportCoordinate, TransportPublication, TransportPurpose, TransportWorkspace, TransportZone, TransportZoneInput } from "../../shared/logisticsTransport";
 
 export type * from "../../shared/logisticsTransport";
 
@@ -53,6 +53,38 @@ async function command<T>(authorization: string | undefined, path: string, opera
 }
 
 export type TransportPublicationQuery = Readonly<{ caseRef: string; purpose: TransportPurpose; contextRef: string | null }>;
+
+export type LogisticsBaseKind = "OFFICE" | "WAREHOUSE" | "YARD";
+export type LogisticsBase = Readonly<{
+  baseRef: string;
+  version: number;
+  code: string;
+  name: string;
+  address: string;
+  kind: LogisticsBaseKind;
+  point: TransportCoordinate;
+  active: boolean;
+}>;
+export type MetroLocality = Readonly<{ city: string; sector: string | null; classification: "METRO" | "INTERIOR" }>;
+export type MetroPerimeter = Readonly<{
+  code: "METRO";
+  version: number;
+  name: string;
+  geometry: readonly TransportCoordinate[];
+  localities: readonly MetroLocality[];
+}>;
+export type LogisticsGeography = Readonly<{ bases: readonly LogisticsBase[]; metro: MetroPerimeter | null }>;
+export type LogisticsGeographyCommand =
+  | (Omit<LogisticsBase, "baseRef" | "version" | "code"> & { operation: "SAVE_BASE"; requestId: string; expectedVersion: number; baseRef: string | null })
+  | (Omit<MetroPerimeter, "version" | "code"> & { operation: "SAVE_METRO"; requestId: string; expectedVersion: number });
+
+const geographyPath = "/api/logistics/transport/geography";
+
+export const logisticsGeographyApi = Object.freeze({
+  load: (authorization?: string, signal?: AbortSignal) => request<LogisticsGeography>(authorization, geographyPath, { signal }),
+  save: (authorization: string | undefined, input: LogisticsGeographyCommand, signal?: AbortSignal) =>
+    request<LogisticsBase | MetroPerimeter>(authorization, geographyPath, { method: "POST", body: JSON.stringify(input), signal }),
+});
 
 export const transportApi = Object.freeze({
   zones: (authorization?: string, signal?: AbortSignal) => request<readonly TransportZone[]>(authorization, "/api/logistics/transport/zones", { signal }),

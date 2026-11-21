@@ -18,3 +18,8 @@ export function formatTransportDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Fecha pendiente" : date.toLocaleString("es-DO", { dateStyle: "short", timeStyle: "short" });
 }
+export function formatTransportCoverage(value: "METRO" | "INTERIOR" | null) {
+  if (value === "METRO") return "Zona metro";
+  if (value === "INTERIOR") return "Fuera de zona metro";
+  return "Zona por verificar";
+}

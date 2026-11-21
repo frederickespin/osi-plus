@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { isLegacyTransportContext, latestLogisticsRevision, QUOTE_TRANSPORT_CONTEXT, sameTransportContext, TRANSPORT_CONTEXT_CONTRACT, transportContextOf } from "./logisticsTransportContext.js";
+import { loadLogisticsGeography } from "./logisticsGeography.js";
+import { classifyLogisticsMetro, logisticsVisitReferenceKm } from "./logisticsMetroClassification.js";
+import { loadTransportZones } from "./logisticsTransportZones.js";
 
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import { PERMS, permsForRole } from "./rbac.js";
@@ -267,6 +270,27 @@ function motorZone(revision, routeVersion) {
     distanceKm: route.distanceKm == null ? null : Number(route.distanceKm),
   };
 }
+async function visitZone(tx, tenantId, geography, location, motor, routeVersion) {
+  if (!geography.metro) return motorZone(motor, routeVersion);
+  const zoneType = classifyLogisticsMetro(geography.metro, location);
+  if (!zoneType) schedulingFail("CRM_SURVEY_ZONE_UNRESOLVED", 409);
+  const distanceKm = zoneType === "INTERIOR"
+    ? logisticsVisitReferenceKm(await loadTransportZones(tx, tenantId, new Date()), location, geography.bases)
+    : null;
+  return { zoneType, zoneCode: zoneType, distanceKm, metroVersion: geography.metro.version };
+}
+
+function selectedVisitRoute(routes, selection, assignment = null) {
+  if (selection !== undefined) {
+    const selected = routes.find((item) => `${item.role}:${item.stopOrder}` === selection);
+    if (!selected) schedulingFail("CRM_SURVEY_ROUTE_LOCATION_INVALID", 409);
+    return selected;
+  }
+  const assigned = assignment?.contextSnapshot?.visitLocation;
+  return routes.find((item) => item.role === assigned?.role && item.stopOrder === assigned?.order)
+    || routes.find((item) => item.role === "ORIGIN") || routes[0] || null;
+}
+
 function routeSummary(route) {
   if (!route) return null;
   return (
@@ -378,6 +402,7 @@ function evaluatorContext(
       type: zone.zoneType,
       code: zone.zoneCode,
       distanceKm: zone.distanceKm,
+      ...(zone.metroVersion !== undefined && { metroVersion: zone.metroVersion }),
     },
   });
 }
@@ -574,6 +599,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       communications,
       publication,
       motor,
+      geography,
     ] = await Promise.all([
       tx.surveySchedulePolicyVersion.findFirst({
         where: { tenantId: who.tenantId, state: "ACTIVE" },
@@ -616,25 +642,28 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
         },
       }),
       latestMotor(tx, who.tenantId, pipelineCase.id, decision?.decisionRef),
+      decision?.method === "IN_PERSON" ? loadLogisticsGeography(tx, who.tenantId) : { metro: null },
     ]);
+    const visitLocation = decision?.method === "IN_PERSON"
+      ? selectedVisitRoute(currentRoutes, query?.visitLocation, assignment) : null;
+    const bookedZone = assignment?.contextSnapshot?.zone;
+    const useBookedZone = bookedZone?.metroVersion !== undefined
+      && assignment.contextSnapshot.routeVersion === pipelineCase.routeRevision && query?.visitLocation === undefined;
     const requestedDate =
       query?.date == null || query.date === "" ? null : String(query.date);
     let schedulingContext = null;
     let availability = null;
     if (
       policy &&
-      (motor || (decision?.method && decision.method !== "IN_PERSON"))
+      (motor || geography.metro || useBookedZone || (decision?.method && decision.method !== "IN_PERSON"))
     ) {
       let resolved = null;
       try {
         const physical = decision?.method === "IN_PERSON";
-        const zone = physical
-          ? motorZone(motor, pipelineCase.routeRevision)
-          : {
-              zoneType: policy.configuration.profiles[0].zoneType,
-              zoneCode: "VIRTUAL",
-              distanceKm: null,
-            };
+        let zone;
+        if (!physical) zone = { zoneType: policy.configuration.profiles[0].zoneType, zoneCode: "VIRTUAL", distanceKm: null };
+        else if (useBookedZone) zone = { zoneType: bookedZone.type, zoneCode: bookedZone.code, distanceKm: bookedZone.distanceKm };
+        else zone = await visitZone(tx, who.tenantId, geography, visitLocation, motor, pipelineCase.routeRevision);
         const profile = physical
           ? resolveScheduleProfile(
               policy.configuration,
@@ -895,7 +924,10 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
         code: row.code,
         name: row.name,
       })),
-      visitLocations: currentRoutes.map(routeDto),
+      visitLocations: currentRoutes.map((location) => ({
+        ...routeDto(location),
+                ...(geography.metro ? { metroZone: classifyLogisticsMetro(geography.metro, location) } : {}),
+      })),
       schedulingContext,
       availability,
       evaluatorCandidates: operationalPolicy
@@ -1118,23 +1150,14 @@ async function schedule(tx, who, command) {
   const currentRoutes = pipelineCase.routeSnapshots.filter(
     (route) => route.routeVersion === pipelineCase.routeRevision,
   );
-  const visitLocation = command.visitRouteRole
-    ? currentRoutes.find(
-        (route) =>
-          route.role === command.visitRouteRole &&
-          route.stopOrder === command.visitRouteOrder,
-      )
-    : currentRoutes.find((route) => route.role === "ORIGIN") ||
-      currentRoutes[0] ||
-      null;
-  if (command.visitRouteRole && !visitLocation)
-    schedulingFail("CRM_SURVEY_ROUTE_LOCATION_INVALID", 409);
+  const visitLocation = selectedVisitRoute(currentRoutes, command.visitRouteRole
+    ? `${command.visitRouteRole}:${command.visitRouteOrder}` : undefined);
   const policy = await activePolicy(tx, who.tenantId);
   const motor = await latestMotor(tx, who.tenantId, pipelineCase.id, decision.decisionRef);
   const physical = decision.method === "IN_PERSON";
   const fallbackProfile = policy.configuration.profiles[0];
   const zone = physical
-    ? motorZone(motor, pipelineCase.routeRevision)
+    ? await visitZone(tx, who.tenantId, await loadLogisticsGeography(tx, who.tenantId), visitLocation, motor, pipelineCase.routeRevision)
     : {
         zoneType: fallbackProfile.zoneType,
         zoneCode: "VIRTUAL",

@@ -4,6 +4,7 @@ import { AdministrationHelp } from "@/administration/AdministrationHelp";
 import AdministrationSetupGuide from "@/administration/AdministrationSetupGuide";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { NumericInput } from "@/components/ui/numeric-input";
+import { getMembershipRef } from "@/lib/sessionStore";
 import { cn } from "@/lib/utils";
 import { logisticsApi, logisticsErrorMessage, type LogisticsRule } from "./api";
 import type { LogisticsUiAccess } from "./access";
@@ -14,8 +15,14 @@ import type { TransportZoneEditorTab } from "./TransportZoneEditor";
 import { LOGISTICS_SETUP_LABELS, LOGISTICS_SETUP_LESSONS, type LogisticsSetupTopic } from "./LogisticsSetupGuide";
 
 const TransportZonesAdmin = lazy(() => import("./TransportZonesAdmin"));
-const ALL_GUIDE_TOPICS: readonly LogisticsSetupTopic[] = ["location", "operation", "rules"];
-const RULE_GUIDE_TOPICS: readonly LogisticsSetupTopic[] = ["rules"];
+const LogisticsGeographyAdmin = lazy(() => import("./LogisticsGeographyAdmin"));
+const ALL_GUIDE_TOPICS: readonly LogisticsSetupTopic[] = ["bases", "metro", "location", "operation", "rules"];
+const BASIC_GUIDE_TOPICS: readonly LogisticsSetupTopic[] = ["bases", "metro", "rules"];
+const LOGISTICS_TABS = [
+  { id: "bases", label: "Sedes" }, { id: "metro", label: "Zona metro" },
+  { id: "zones", label: "Ciudades y sectores" }, { id: "rules", label: "Reglas operativas" },
+] as const;
+type LogisticsTab = typeof LOGISTICS_TABS[number]["id"];
 
 type Props = Readonly<{ authorization?: string; access: LogisticsUiAccess; costingAccess?: CostingUiAccess; onUnauthorized(): void }>;
 type Draft = Readonly<{
@@ -58,18 +65,22 @@ function fromRule(rule: LogisticsRule): Draft {
 
 export default function LogisticsRulesAdmin({ authorization, access, costingAccess = NO_COSTING_ACCESS, onUnauthorized }: Props) {
   const transportAccess = resolveTransportUiAccess(access, isCostingUiEnabled() ? costingAccess : NO_COSTING_ACCESS);
-  const [selected, setSelected] = useState<"zones" | "rules">(() => transportAccess.canZonesView ? "zones" : "rules");
+  const [selected, setSelected] = useState<LogisticsTab>(() => transportAccess.canZonesView ? "zones" : "rules");
   const [editorTab, setEditorTab] = useState<TransportZoneEditorTab>("location");
-  const visible = transportAccess.canZonesView ? selected : "rules";
+  const visible = selected === "zones" && !transportAccess.canZonesView ? "rules" : selected;
+  const tabs = transportAccess.canZonesView ? LOGISTICS_TABS : LOGISTICS_TABS.filter((tab) => tab.id !== "zones");
   if (!access.canRulesView) return null;
   return <section id="admin-logistics-engine" data-testid="logistics-rules-admin" className="mt-3 min-w-0 scroll-mt-3 space-y-3">
-    <AdministrationSetupGuide title="Motor Logístico" activeTopic={visible === "zones" ? editorTab : "rules"}
-      topics={transportAccess.canZonesView ? ALL_GUIDE_TOPICS : RULE_GUIDE_TOPICS} labels={LOGISTICS_SETUP_LABELS} lessons={LOGISTICS_SETUP_LESSONS}
+    <AdministrationSetupGuide title="Motor Logístico" activeTopic={visible === "zones" ? editorTab : visible}
+      topics={transportAccess.canZonesView ? ALL_GUIDE_TOPICS : BASIC_GUIDE_TOPICS} labels={LOGISTICS_SETUP_LABELS} lessons={LOGISTICS_SETUP_LESSONS}
       navigation={<div role="tablist" aria-label="Configuración del Motor Logístico" className="flex gap-1 overflow-x-auto border-b border-slate-200">
-        {transportAccess.canZonesView && <button type="button" role="tab" aria-selected={visible === "zones"} onClick={() => setSelected("zones")} className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium ${visible === "zones" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500"}`}>Ciudades y sectores</button>}
-        <button type="button" role="tab" aria-selected={visible === "rules"} onClick={() => { setSelected("rules"); setEditorTab("location"); }} className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium ${visible === "rules" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500"}`}>Reglas operativas</button>
+        {tabs.map(({ id, label }) => <button key={id} type="button" role="tab" aria-selected={visible === id}
+          onClick={() => { setSelected(id); if (id !== "zones") setEditorTab("location"); }}
+          className={cn("shrink-0 border-b-2 px-3 py-2 text-xs font-medium", visible === id ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500")}>{label}</button>)}
       </div>}>
       <Suspense fallback={<p role="status" className="py-8 text-center text-sm text-slate-500">Cargando transporte…</p>}>
+        {(visible === "bases" || visible === "metro") && <LogisticsGeographyAdmin key={[visible, getMembershipRef()].join(":")} section={visible}
+          authorization={authorization} canManage={access.canRulesManage} onUnauthorized={onUnauthorized} />}
         {visible === "zones" && <TransportZonesAdmin authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized}
           editorTab={editorTab} onEditorTabChange={setEditorTab} />}
         {visible === "rules" && <OperationalRules authorization={authorization} access={access} onUnauthorized={onUnauthorized} />}

@@ -27,7 +27,12 @@ export function createSurveySchedulingApi(authorization?: string) {
     return privateJson<T>(authorization, "/api/crm/survey/scheduling", { method: "POST", body: JSON.stringify({ ...command, payloadHash: await sha256(command) }) });
   };
   return Object.freeze({
-    workspace: (caseRef: string, date?: string) => privateJson<SchedulingWorkspace>(authorization, `/api/crm/survey/scheduling?caseRef=${encodeURIComponent(caseRef)}${date ? `&date=${encodeURIComponent(date)}` : ""}`),
+    workspace: (caseRef: string, date?: string, visitLocation?: string) => {
+      const query = new URLSearchParams({ caseRef });
+      if (date) query.set("date", date);
+      if (visitLocation) query.set("visitLocation", visitLocation);
+      return privateJson<SchedulingWorkspace>(authorization, `/api/crm/survey/scheduling?${query}`);
+    },
     decide: (payload: Record<string, unknown>) => mutate("DECIDE_METHOD", payload),
     schedule: (payload: Record<string, unknown>) => mutate("SCHEDULE", payload),
     reschedule: (payload: Record<string, unknown>) => mutate("RESCHEDULE", payload),

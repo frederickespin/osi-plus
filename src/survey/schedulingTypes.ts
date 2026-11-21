@@ -101,6 +101,7 @@ export type SchedulingWorkspace = Readonly<{
     floorUnit: string | null;
     arrivalReference: string | null;
     compactAddress: string | null;
+    metroZone?: "METRO" | "INTERIOR" | null;
   }>[];
   schedulingContext: null | Readonly<{
     profile: string;

@@ -197,14 +197,14 @@ export default function SurveyCasePanel({
   const loadVersion = useRef(0);
 
   const load = useCallback(
-    async (availabilityDate?: string) => {
+    async (availabilityDate?: string, selectedLocation?: string) => {
       const version = ++loadVersion.current;
       setLoading(true);
       setError(null);
       try {
         const [nextWorkspace, nextCommercial] =
           await Promise.all([
-            api.workspace(caseRef, availabilityDate),
+            api.workspace(caseRef, availabilityDate, selectedLocation),
             isCommercialRelationshipsUiEnabled()
               ? commercialApi.caseContext(caseRef)
               : Promise.resolve(null),
@@ -246,6 +246,10 @@ export default function SurveyCasePanel({
   const selectedVisitLocation = workspace?.visitLocations.find(
     (location) => locationKey(location) === visitLocationKey,
   );
+  function changeVisitLocation(value: string) {
+    setVisitLocationKey(value);
+    if (selectedVisitLocation?.metroZone !== undefined) void load(date, value);
+  }
   useEffect(() => {
     if (!workspace) return;
     const availableKeys = new Set(
@@ -823,12 +827,12 @@ export default function SurveyCasePanel({
                     date={date}
                     setDate={(value) => {
                       setDate(value);
-                      void load(value);
+                      void load(value, selectedVisitLocation?.metroZone !== undefined ? visitLocationKey : undefined);
                     }}
                     slotKey={slotKey}
                     setSlotKey={setSlotKey}
                     visitLocationKey={visitLocationKey}
-                    setVisitLocationKey={setVisitLocationKey}
+                    setVisitLocationKey={changeVisitLocation}
                     durationMinutes={durationMinutes}
                     setDurationMinutes={setDurationMinutes}
                     evaluatorRef={evaluatorRef}
@@ -985,7 +989,13 @@ export default function SurveyCasePanel({
                 {workspace.decision?.method === "VIRTUAL" ? (
                   <p className="mt-2 text-sm font-bold text-emerald-700">Virtual · sin tiempo ni costo de traslado</p>
                 ) : !workspace.schedulingContext ? (
-                  <p className="mt-2 text-sm font-semibold text-amber-700">Clasificando la dirección del caso</p>
+                  <p className="mt-2 text-sm font-semibold text-amber-700">
+                    {selectedVisitLocation?.metroZone === "INTERIOR"
+                      ? "Fuera de zona metro · distancia pendiente para la agenda"
+                      : selectedVisitLocation?.metroZone === null
+                        ? "Zona por confirmar en Motor Logístico"
+                        : "Clasificando la dirección del caso"}
+                  </p>
                 ) : !access.canViewFee ? (
                   <p className="mt-2 text-sm text-slate-500">
                     {workspace.schedulingContext.zoneType === "METRO" ? "Zona metropolitana" : "Fuera de zona metropolitana"}
@@ -1277,13 +1287,44 @@ function ScheduleEditor({
   const afternoonSlots = slots.filter(
     (slot) => timeMinutes(slot.startTime) >= 12 * 60,
   );
+  const location = workspace.visitLocations.find((row) => locationKey(row) === visitLocationKey);
+  const locationPicker = !reprogramming && physicalVisit && workspace.visitLocations.length > 0 && (
+    <div>
+      <Label>Lugar de la visita</Label>
+      <Select value={visitLocationKey} onValueChange={setVisitLocationKey}>
+        <SelectTrigger aria-label="Lugar de la visita">
+          <SelectValue placeholder="Seleccione origen o destino" />
+        </SelectTrigger>
+        <SelectContent>
+          {workspace.visitLocations.map((row) => (
+            <SelectItem key={locationKey(row)} value={locationKey(row)}>
+              {locationRoleLabel(row.role)} · {row.sector || row.cityMunicipality}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {location && <div className="mt-2 rounded border border-sky-100 bg-white px-3 py-2">
+        <p className="text-xs font-bold text-[#003366]">{location.compactAddress}</p>
+        {location.metroZone !== undefined && (
+          <p className="mt-1 text-xs font-medium text-slate-600">
+            {location.metroZone === "METRO" ? "Zona metro"
+              : location.metroZone === "INTERIOR" ? "Fuera de zona metro" : "Zona por confirmar"}
+          </p>
+        )}
+        {location.arrivalReference && (
+          <p className="mt-1 text-[11px] text-slate-500">Referencia de llegada · {location.arrivalReference}</p>
+        )}
+      </div>}
+    </div>
+  );
   if (!workspace.policy || !workspace.schedulingContext)
     return (
-      <p className="mt-4 border border-dashed border-slate-300 p-3 text-sm text-slate-600">
-        Confirme primero la zona de la dirección. La agenda utilizará la ciudad
-        y el sector del caso; la distancia vial se conserva para calcular el
-        traslado y los cargos que correspondan.
-      </p>
+      <div className="mt-4 space-y-3" data-testid="survey-schedule-editor">
+        {locationPicker}
+        <p className="text-sm text-slate-600">
+          Confirme la zona y los datos viales para consultar la disponibilidad.
+        </p>
+      </div>
     );
   const availability = workspace.availability;
   const availabilityFor = (key: string) =>
@@ -1348,43 +1389,7 @@ function ScheduleEditor({
       className="mt-4 space-y-4 rounded border border-slate-200 bg-slate-50 p-3"
       data-testid="survey-schedule-editor"
     >
-      {!reprogramming && physicalVisit && workspace.visitLocations.length > 0 && (
-        <div>
-          <Label>Lugar de la visita</Label>
-          <Select
-            value={visitLocationKey}
-            onValueChange={setVisitLocationKey}
-          >
-            <SelectTrigger aria-label="Lugar de la visita">
-              <SelectValue placeholder="Seleccione origen o destino" />
-            </SelectTrigger>
-            <SelectContent>
-              {workspace.visitLocations.map((location) => (
-                <SelectItem key={locationKey(location)} value={locationKey(location)}>
-                  {locationRoleLabel(location.role)} · {location.sector || location.cityMunicipality}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {workspace.visitLocations
-            .filter((location) => locationKey(location) === visitLocationKey)
-            .map((location) => (
-              <div
-                key={locationKey(location)}
-                className="mt-2 rounded border border-sky-100 bg-white px-3 py-2"
-              >
-                <p className="text-xs font-bold text-[#003366]">
-                  {location.compactAddress}
-                </p>
-                {location.arrivalReference && (
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Referencia: {location.arrivalReference}
-                  </p>
-                )}
-              </div>
-            ))}
-        </div>
-      )}
+      {locationPicker}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div>

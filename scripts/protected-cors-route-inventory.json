@@ -3,6 +3,7 @@
   "categories": {
     "protectedSameOrigin": [
       "/api/admin/fleet/drivers/options",
+      "/api/admin/fleet/options",
       "/api/admin/fleet/vehicles",
       "/api/admin/fleet/vehicles/[vehicleRef]",
       "/api/admin/fleet/vehicles/[vehicleRef]/drivers",
@@ -143,6 +144,7 @@
       "/api/logistics/transport/plans",
       "/api/logistics/transport/publish",
       "/api/logistics/transport/calculate",
+      "/api/logistics/transport/geography",
       "/api/logistics/transport/zones",
       "/api/materials/catalog",
       "/api/materials/catalog/[materialRef]",

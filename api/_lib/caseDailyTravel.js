@@ -1,3 +1,5 @@
+import { classifyLogisticsMetro } from "./logisticsMetroClassification.js";
+
 const key = (value) => String(value || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
 const fields = (address) => [address.streetAndNumber, address.sector, address.cityMunicipality, address.provinceState, "República Dominicana"];
 const roadProfiles = (zones) => zones.filter((zone) => zone.purposes.some((purpose) => purpose === "SERVICE" || purpose === "QUOTE"));
@@ -60,38 +62,52 @@ export function configuredCaseRoadProvider(env = process.env, fetcher = fetch) {
       const legs = routes?.[0]?.legs;
       if (code !== "Ok" || !Array.isArray(legs) || legs.length !== points.length - 1
         || legs.some(({ distance }) => !Number.isFinite(distance) || distance < 0 || distance > 999999999)) return null;
-      return legs.map(({ distance }) => ({ distanceKm: Math.round(distance / 10) / 100, source: "Ruta vial medida", estimated: false }));
+      return legs.map(({ distance, duration }) => ({
+        distanceKm: Math.round(distance / 10) / 100,
+        durationMinutes: Number.isFinite(duration) && duration >= 0 ? Math.ceil(duration / 60) : null,
+        source: "Ruta vial medida",
+        estimated: false,
+      }));
     },
   };
 }
 
 const attempt = async (work) => { try { return await work(); } catch { return null; } };
 
-export async function caseDailyTravel(zones, route, { baseAddress, localTerminalAddress } = {}, provider = configuredCaseRoadProvider()) {
+export async function caseDailyTravel(zones, route, { baseRef, baseAddress, localTerminalRef, localTerminalAddress, geography } = {}, provider = configuredCaseRoadProvider()) {
   const profiles = roadProfiles(zones);
-  const bases = [...new Map(profiles.filter((zone) => zone.baseName && zone.baseAddress)
-    .map((zone) => [zone.baseAddress, { address: zone.baseAddress, name: zone.baseName }])).values()]
-    .sort((a, b) => a.name.localeCompare(b.name, "es"));
-  const base = bases.find((row) => row.address === baseAddress) ?? (!baseAddress && bases.length === 1 ? bases[0] : null);
+  const savedBases = geography?.bases ?? [];
+  const availableBases = savedBases.length
+    ? savedBases.filter((base) => base.active).map(({ baseRef, address, name, kind, point }) => ({ baseRef, address, name, kind, point }))
+    : [...new Map(profiles.filter((zone) => zone.baseName && zone.baseAddress)
+      .map((zone) => [zone.baseAddress, { address: zone.baseAddress, name: zone.baseName }])).values()];
+  const bases = availableBases.sort((a, b) => a.name.localeCompare(b.name, "es") || a.address.localeCompare(b.address, "es"));
+  const terminals = savedBases.length ? bases.filter((row) => row.kind === "WAREHOUSE") : bases;
+  const find = (list, ref, address) => list.find((row) => ref ? row.baseRef === ref : row.address === address);
+  const base = find(bases, baseRef, baseAddress) ?? (!baseRef && !baseAddress && bases.length === 1 ? bases[0] : null);
   const foreignOrigin = route.origin.countryCode !== "DO";
   const foreignDestination = Boolean(route.destination && route.destination.countryCode !== "DO");
-  const terminal = bases.find((row) => row.address === localTerminalAddress) ?? null;
-  const originProfiles = localityProfiles(zones, route.origin);
-  const destinationProfiles = localityProfiles(zones, route.destination);
-  const area = { origin: uniqueValue(originProfiles.map((zone) => zone.zoneType)), destination: uniqueValue(destinationProfiles.map((zone) => zone.zoneType)) };
-  const result = { revision: route.revision, bases, base, terminal, foreignOrigin, foreignDestination, area, legs: [], preparation: [], distanceKm: null, estimated: false };
+  const terminal = find(terminals, localTerminalRef, localTerminalAddress) ?? null;
+  const classify = (address) => geography?.metro
+    ? classifyLogisticsMetro(geography.metro, address)
+    : uniqueValue(localityProfiles(zones, address).map((zone) => zone.zoneType));
+  const area = { origin: classify(route.origin), destination: classify(route.destination) };
+  const result = { revision: route.revision, bases, terminals, base, terminal, foreignOrigin, foreignDestination, area,
+    metroVersion: geography?.metro?.version ?? null, legs: [], preparation: [], distanceKm: null, estimated: false };
   if (!base || !route.destination || ((foreignOrigin || foreignDestination) && !terminal)) return result;
   const format = (address) => fields(address).filter(Boolean).join(", ");
+  const stopAt = (base) => ({ label: base.name, address: base.address + ", República Dominicana", ...(base.point && { point: base.point }) });
   const stops = [
-    { label: base.name, address: base.address + ", República Dominicana" },
-    foreignOrigin ? { label: terminal.name, address: terminal.address + ", República Dominicana" } : { label: "Origen", address: format(route.origin), city: route.origin.cityMunicipality },
-    foreignDestination ? { label: terminal.name, address: terminal.address + ", República Dominicana" } : { label: "Destino", address: format(route.destination), city: route.destination.cityMunicipality },
+    stopAt(base),
+    foreignOrigin ? stopAt(terminal) : { label: "Origen", address: format(route.origin), city: route.origin.cityMunicipality },
+    foreignDestination ? stopAt(terminal) : { label: "Destino", address: format(route.destination), city: route.destination.cityMunicipality },
   ];
-  const pointAtBase = provider ? attempt(() => provider.locate(stops[0].address)) : null;
-  const points = provider ? await Promise.all(stops.map((stop) => {
+  const pointAtBase = base.point ?? (provider ? attempt(() => provider.locate(stops[0].address)) : null);
+  const points = await Promise.all(stops.map((stop) => {
+    if (stop.point) return stop.point;
     if (key(stop.address) === key(stops[0].address)) return pointAtBase;
-    return attempt(() => provider.locate(stop.address, stop.city));
-  })) : [null, null, null];
+    return provider ? attempt(() => provider.locate(stop.address, stop.city)) : null;
+  }));
   const loop = [0, 1, 2, 0];
   const prep = [0, 1, 0];
   const measure = (sequence) => provider && sequence.every((index) => points[index])
@@ -99,20 +115,25 @@ export async function caseDailyTravel(zones, route, { baseAddress, localTerminal
   const [measured, measuredPrep] = await Promise.all([measure(loop), measure(prep)]);
   const originReference = foreignOrigin ? null : reference(localityProfiles(profiles, route.origin), base);
   const destinationReference = foreignDestination ? null : reference(localityProfiles(profiles, route.destination), base);
+  const sameStop = (first, second) => points[first] && points[second]
+    ? points[first][0] === points[second][0] && points[first][1] === points[second][1]
+    : key(stops[first].address) === key(stops[second].address);
   const references = [
     originReference,
-    terminal?.address === base.address ? (foreignDestination ? originReference : destinationReference) : null,
+    terminal && sameStop(foreignOrigin ? 1 : 2, 0) ? (foreignDestination ? originReference : destinationReference) : null,
     destinationReference,
   ];
   const build = (sequence, measurements, fallback) => sequence.slice(1).map((to, index) => {
     const from = sequence[index];
-    const sameAddress = key(stops[from].address) === key(stops[to].address);
-    const distance = sameAddress ? { distanceKm: 0, source: "Mismo punto", estimated: false }
+    const distance = sameStop(from, to) ? { distanceKm: 0, durationMinutes: 0, source: "Mismo punto", estimated: false }
       : measurements?.[index] ?? fallback[index];
-    return { from: stops[from], to: stops[to], origin: points[from], destination: points[to],
+    const { label: fromLabel, address: fromAddress } = stops[from];
+    const { label: toLabel, address: toAddress } = stops[to];
+    return { from: { label: fromLabel, address: fromAddress }, to: { label: toLabel, address: toAddress }, origin: points[from], destination: points[to],
       distanceKm: distance?.distanceKm ?? null, source: distance?.source ?? null,
+      durationMinutes: distance?.durationMinutes ?? null,
       estimated: Boolean(distance?.estimated) || route.destinationStatus === "APPROXIMATE",
-      returnToBase: key(stops[to].address) === key(stops[0].address) };
+      returnToBase: sameStop(to, 0) };
   });
   const legs = build(loop, measured, references);
   const preparation = build(prep, measuredPrep, [references[0], references[0]]);

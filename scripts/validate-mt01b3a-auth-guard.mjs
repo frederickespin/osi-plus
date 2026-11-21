@@ -8,6 +8,7 @@ import ts from "typescript";
 // separately from employee AuthorizationContext, public metadata, and retired APIs.
 const FACTORY_GROUPS = [
   ["TENANT", "adminFleetHttp.js", "createAdminFleetCollectionHandler", ["api/admin/fleet/vehicles/index.js"]],
+  ["TENANT", "adminFleetHttp.js", "createAdminFleetOptionsHandler", ["api/admin/fleet/options.js"]],
   ["TENANT", "adminFleetHttp.js", "createAdminFleetDetailHandler", ["api/admin/fleet/vehicles/[vehicleRef]/index.js"]],
   ["TENANT", "fleetDriversHttp.js", "createFleetDriverOptionsHandler", ["api/admin/fleet/drivers/options.js"]],
   ["TENANT", "fleetDriversHttp.js", "createFleetDriversHandler", ["api/admin/fleet/vehicles/[vehicleRef]/drivers/index.js"]],
@@ -48,7 +49,7 @@ const FACTORY_GROUPS = [
   ]],
   ["TENANT", "logisticsEngineHttp.js", "createLogisticsHandler", [
     "api/logistics/plans/[caseRef].js", "api/logistics/plans/calculate.js", "api/logistics/plans/issues/resolve.js",
-    "api/logistics/plans/overrides.js", "api/logistics/plans/publish.js", "api/logistics/rules/index.js",
+    "api/logistics/plans/overrides.js", "api/logistics/plans/publish.js", "api/logistics/rules/index.js", "api/logistics/transport/geography.js",
   ]],
   ["TENANT", "logisticsTransportHttp.js", "createLogisticsTransportHandler", [
     "api/logistics/transport/calculate.js", "api/logistics/transport/context.js", "api/logistics/transport/plans.js",

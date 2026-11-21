@@ -1,8 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { runInNewContext } from "node:vm";
 
 const CATALOG_URL = "/api/crm/survey/catalog";
 const MEMBERSHIP_REF = "22222222-2222-4222-8222-222222222222";
 const CATALOG_PERMISSION = "survey:assignment:manage";
+const EXCEL_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const AREA = { areaRef: "33333333-3333-4333-8333-333333333333", code: "SALA", name: "Sala" };
 const CONDITION = {
   conditionRef: "44444444-4444-4444-8444-444444444444", code: "ASCENSOR", name: "Ascensor", kind: "FACILITY",
@@ -36,6 +40,25 @@ type PublishCommand = {
   conditions: { code: string; name: string; kind: string }[];
 };
 
+type Worksheet = Record<string, unknown>;
+type Workbook = { SheetNames: string[]; Sheets: Record<string, Worksheet> };
+type ExcelTestApi = {
+  read(data: Uint8Array, options: { type: "array" }): Workbook;
+  write(workbook: Workbook, options: { type: "array"; bookType: "xlsx" }): ArrayBuffer;
+  utils: {
+    book_new(): Workbook;
+    book_append_sheet(workbook: Workbook, sheet: Worksheet, name: string): void;
+    aoa_to_sheet(rows: readonly (readonly (string | number)[])[]): Worksheet;
+    sheet_add_aoa(sheet: Worksheet, rows: readonly (readonly (string | number)[])[], options: { origin: string }): void;
+    sheet_to_json(sheet: Worksheet, options: { header: 1; blankrows: false }): unknown[][];
+  };
+};
+
+async function excelTestApi(): Promise<ExcelTestApi> {
+  const source = await readFile(resolve("src/internal-tools/archaeological-packing/vendor/xlsx.full.min.js"), "utf8");
+  return runInNewContext(`${source}\nXLSX`) as ExcelTestApi;
+}
+
 async function installSession(page: Page, permissions: string[], deniedPermissions: string[] = []) {
   const membership = { membershipRef: MEMBERSHIP_REF, tenantName: "Empresa sintética", role: "A", preferred: true };
   await page.addInitScript((member) => {
@@ -54,8 +77,7 @@ async function installSession(page: Page, permissions: string[], deniedPermissio
   return unexpected;
 }
 
-test("busca artículos por sinónimo y publica una revisión explícita del catálogo", async ({ page }) => {
-  const unexpected = await installSession(page, [CATALOG_PERMISSION]);
+async function mockCatalogPublication(page: Page) {
   const commands: PublishCommand[] = [];
   let catalog = INITIAL_CATALOG;
   await page.route(`**${CATALOG_URL}`, async (route) => {
@@ -77,6 +99,12 @@ test("busca artículos por sinónimo y publica una revisión explícita del cat�
     };
     return route.fulfill({ status: 201, json: { ok: true, data: { catalogRef: catalog.catalogRef, version: catalog.version, replayed: false } } });
   });
+  return commands;
+}
+
+test("busca artículos por sinónimo y publica una revisión explícita del catálogo", async ({ page }) => {
+  const unexpected = await installSession(page, [CATALOG_PERMISSION]);
+  const commands = await mockCatalogPublication(page);
 
   await page.goto("/administration/articles");
   const editor = page.getByTestId("article-catalog-admin");
@@ -126,6 +154,90 @@ test("busca artículos por sinónimo y publica una revisión explícita del cat�
   await expect(editor.getByRole("row", { name: /Lámpara de sala/ })).toBeVisible();
   await expect(editor.getByRole("row", { name: /Sofá de dos plazas/ })).toBeVisible();
   await expect(editor.getByRole("row", { name: /Cajonera/ })).toBeVisible();
+  expect(unexpected).toEqual([]);
+});
+
+test("descarga una plantilla de Excel e incorpora sus artículos al borrador antes de publicar", async ({ page }) => {
+  const unexpected = await installSession(page, [CATALOG_PERMISSION]);
+  const commands = await mockCatalogPublication(page);
+  const excel = await excelTestApi();
+  await page.goto("/administration/articles");
+  const editor = page.getByTestId("article-catalog-admin");
+  await expect(editor.getByRole("row", { name: /Cajonera/ })).toBeVisible();
+
+  const downloaded = page.waitForEvent("download");
+  await editor.getByRole("button", { name: "Descargar plantilla de Excel" }).click();
+  const download = await downloaded;
+  expect(download.suggestedFilename()).toMatch(/\.xlsx$/u);
+  const bytes = await readFile(await download.path());
+  expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  const workbook = excel.read(new Uint8Array(bytes), { type: "array" });
+  expect(workbook.SheetNames[0]).toBe("Artículos");
+  const sheet = workbook.Sheets["Artículos"];
+  expect(excel.utils.sheet_to_json(sheet, { header: 1, blankrows: false })).toEqual([
+    ["Código", "Artículo", "Sinónimos", "Volumen m³"],
+  ]);
+  excel.utils.sheet_add_aoa(sheet, [
+    [OTHER_ARTICLE.code, "Cajonera alta", "Gavetero, Cómoda", "0,75"],
+    ["", "Sofá de dos plazas", "Sillón doble", 1.25],
+  ], { origin: "A2" });
+
+  const importButton = editor.getByRole("button", { name: "Importar archivo de Excel" });
+  const openingFile = page.waitForEvent("filechooser");
+  await importButton.click();
+  const chooser = await openingFile;
+  await chooser.setFiles({
+    name: "artículos-actualizados.xlsx",
+    mimeType: EXCEL_TYPE,
+    buffer: Buffer.from(excel.write(workbook, { type: "array", bookType: "xlsx" })),
+  });
+  await expect(page.getByRole("heading", { name: "Revisar importación" })).toBeVisible();
+  expect(commands).toHaveLength(0);
+  await page.getByRole("button", { name: "Aplicar al borrador" }).click();
+  const articles = editor.getByRole("table", { name: "Artículos del catálogo" });
+  await expect(articles.getByRole("row", { name: /Cajonera alta.*Borrador/ })).toBeVisible();
+  await expect(articles.getByRole("row", { name: /Sofá de dos plazas.*Borrador/ })).toBeVisible();
+  await expect(articles.getByRole("row", { name: /Lámpara auxiliar/ })).toBeVisible();
+  expect(commands).toHaveLength(0);
+
+  await editor.getByRole("button", { name: "Publicar catálogo", exact: true }).click();
+  await expect(editor.getByText("Versión 4 publicada.", { exact: true })).toBeVisible();
+  expect(commands).toHaveLength(1);
+  expect(commands[0].expectedLatestVersion).toBe(3);
+  expect(commands[0].articles).toHaveLength(3);
+  expect(commands[0].articles).toEqual(expect.arrayContaining([
+    { code: ARTICLE.code, name: ARTICLE.name, aliases: ARTICLE.aliases, frequentAreaCodes: [AREA.code], defaultVolumeM3: 0.35, defaultWeightKg: null },
+    { code: OTHER_ARTICLE.code, name: "Cajonera alta", aliases: ["Gavetero", "Cómoda"], frequentAreaCodes: [AREA.code], defaultVolumeM3: 0.75, defaultWeightKg: null },
+    { code: expect.stringMatching(/^ART_[A-F0-9]{12}$/u), name: "Sofá de dos plazas", aliases: ["Sillón doble"], frequentAreaCodes: [], defaultVolumeM3: 1.25, defaultWeightKg: null },
+  ]));
+  expect(unexpected).toEqual([]);
+});
+
+test("muestra la fila inválida de un Excel externo antes de cambiar el borrador", async ({ page }) => {
+  const unexpected = await installSession(page, [CATALOG_PERMISSION]);
+  const commands = await mockCatalogPublication(page);
+  const excel = await excelTestApi();
+  const workbook = excel.utils.book_new();
+  const sheet = excel.utils.aoa_to_sheet([
+    ["Nombre", "Volumen m3"],
+    ["Mesa pequeña", 0.4],
+    ["Caja rota", -2],
+  ]);
+  excel.utils.book_append_sheet(workbook, sheet, "Inventario");
+
+  await page.goto("/administration/articles");
+  const editor = page.getByTestId("article-catalog-admin");
+  await expect(editor.getByRole("row", { name: /Cajonera/ })).toBeVisible();
+  await editor.locator('input[type="file"]').setInputFiles({
+    name: "inventario.xlsx",
+    mimeType: EXCEL_TYPE,
+    buffer: Buffer.from(excel.write(workbook, { type: "array", bookType: "xlsx" })),
+  });
+  await expect(page.getByRole("heading", { name: "Revisar importación" })).toBeVisible();
+  const invalidRow = page.getByRole("row", { name: /Caja rota/ });
+  await expect(invalidRow).toContainText(/volumen/i);
+  await expect(page.getByRole("button", { name: "Aplicar al borrador" })).toBeDisabled();
+  expect(commands).toHaveLength(0);
   expect(unexpected).toEqual([]);
 });
 

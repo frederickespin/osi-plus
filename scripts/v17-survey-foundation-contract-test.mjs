@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
   canonicalPayloadHash,
+  normalizeCatalogCreate,
   normalizeDraftMutation,
   normalizePhotoCommand,
   normalizePhotoMetadata,
@@ -9,6 +10,8 @@ import {
 } from "../api/_lib/crmSurveyContract.js";
 import {
   CRM_SURVEY_API_MODES,
+  CRM_SURVEY_CATALOG_MAX_JSON_BYTES,
+  createCrmSurveyHandler,
   resolveCrmSurveyApiMode,
 } from "../api/_lib/crmSurveyHttp.js";
 import { getSurveyCatalog } from "../api/_lib/crmSurveyDomain.js";
@@ -252,6 +255,39 @@ await assert.rejects(
   getSurveyCatalog(catalogContext, catalogDatabase([management], [], null)),
   { code: "CRM_SURVEY_CATALOG_NOT_READY", status: 409 },
 );
+
+const batch = sign("CATALOG_CREATE", {
+  expectedLatestVersion: 1,
+  articles: Array.from({ length: 500 }, (_, index) => ({
+    code: `ART_${index}`, name: `Artículo ${index}`,
+    aliases: Array.from({ length: 10 }, (_, number) => `Descripción de búsqueda ${index} variante ${number}`),
+    frequentAreaCodes: [], defaultVolumeM3: 1.25, defaultWeightKg: null,
+  })),
+  areas: [{ code: "GENERAL", name: "General" }],
+  conditions: [],
+});
+assert.ok(Buffer.byteLength(JSON.stringify(batch)) > 128 * 1024);
+function catalogResponse() {
+  return {
+    statusCode: null, body: null, setHeader() {},
+    status(code) { this.statusCode = code; return this; },
+    json(data) { this.body = data; return this; },
+  };
+}
+const config = {
+  env: { ...previewEnv, VERCEL_GIT_COMMIT_REF: "feature/v17-storage-commercial-contract-22a" },
+  methods: ["POST"],
+  resolveContext: async () => catalogContext,
+  execute: ({ input }) => normalizeCatalogCreate(input).articles.length,
+};
+const request = { method: "POST", headers: { "content-type": "application/json" }, body: batch };
+const standardResponse = catalogResponse();
+await createCrmSurveyHandler(config)(request, standardResponse);
+assert.equal(standardResponse.statusCode, 413);
+const batchResponse = catalogResponse();
+await createCrmSurveyHandler({ ...config, maxJsonBytes: CRM_SURVEY_CATALOG_MAX_JSON_BYTES })(request, batchResponse);
+assert.equal(batchResponse.statusCode, 201);
+assert.equal(batchResponse.body.data, 500);
 process.stdout.write(
-  `${JSON.stringify({ ok: true, assertions: 27 }, null, 2)}\n`,
+  `${JSON.stringify({ ok: true, assertions: 31 }, null, 2)}\n`,
 );

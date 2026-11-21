@@ -9,6 +9,7 @@ export const CRM_SURVEY_API_MODES = Object.freeze({ DISABLED: "DISABLED", LOCAL_
 export const CRM_SURVEY_PREVIEW_BRANCH = "feature/v17-survey-foundation";
 export const CRM_SURVEY_CUSTOMER_CUSTODY_PREVIEW_BRANCH = "feature/v17-storage-commercial-contract-22a";
 export const CRM_SURVEY_PREVIEW_BATCH = "V17-SURVEY-FOUNDATION-04A-PREVIEW";
+export const CRM_SURVEY_CATALOG_MAX_JSON_BYTES = 4 * 1024 * 1024;
 
 function fail(code, status) { throw new CrmSurveyError(code, status); }
 function hasVercel(env) { return Object.keys(env || {}).some((key) => key.toUpperCase().startsWith("VERCEL")); }
@@ -52,7 +53,7 @@ export function prepareCrmSurveyRequest(req, res, env = process.env) {
   setCrmPrivateHeaders(res);
   try { resolveCrmSurveyApiMode(env, req); sameOrigin(req); return true; } catch (error) { sendCrmSurveyError(res, error, req.method === "HEAD"); return false; }
 }
-export function createCrmSurveyHandler({ env = process.env, prismaClient, methods, execute, response = (value) => ({ ok: true, data: value }), resolveContext = resolveCrmPipelineContext } = {}) {
+export function createCrmSurveyHandler({ env = process.env, prismaClient, methods, execute, response = (value) => ({ ok: true, data: value }), resolveContext = resolveCrmPipelineContext, maxJsonBytes = 128 * 1024 } = {}) {
   return withPrivateApiHeaders(async (req, res) => {
     if (!prepareCrmSurveyRequest(req, res, env)) return;
     if (req.method === "OPTIONS") return res.status(204).end();
@@ -61,7 +62,7 @@ export function createCrmSurveyHandler({ env = process.env, prismaClient, method
     try {
       const context = await resolveContext(req, { env, prisma: prismaClient });
       const method = req.method === "HEAD" ? "GET" : req.method;
-      const input = method === "GET" ? undefined : await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 128 * 1024 });
+      const input = method === "GET" ? undefined : await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: maxJsonBytes });
       const value = await execute({ req, context, input, prisma: prismaClient, method });
       if (req.method === "HEAD") return res.status(200).end();
       return res.status(req.method === "POST" ? 201 : 200).json(response(value));

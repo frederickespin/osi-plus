@@ -37,9 +37,9 @@ function roundUpUnits(value) {
 
 export function packageMeasures(volumeM3, grossKg, shipment) {
   const volumeFt3 = volumeM3 / M3_PER_FT3;
-  const estimatedKg = shipment.mode === "SEA" ? volumeM3 * shipment.factor : null;
-  const volumetricKg = shipment.mode === "AIR" ? volumeM3 * (1_000_000 / shipment.factor) : null;
-  const preRoundKg = volumetricKg === null ? null : Math.max(grossKg ?? 0, volumetricKg);
+  const estimatedKg = shipment.mode === "SEA" || shipment.mode === "ROAD" ? volumeM3 * shipment.factor : null;
+  const volumetricKg = shipment.mode === "AIR" ? volumeM3 * (1_000_000 / shipment.factor) : estimatedKg;
+  const preRoundKg = shipment.mode === "AIR" ? Math.max(grossKg ?? 0, volumetricKg) : null;
   const chargeableKg = preRoundKg === null || shipment.roundKg === 0
     ? preRoundKg
     : roundUpUnits(preRoundKg / shipment.roundKg) * shipment.roundKg;

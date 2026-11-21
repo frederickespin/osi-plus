@@ -11,6 +11,9 @@ function cleanText(value) {
 }
 
 function publishedLines(snapshot) {
+  const weightSummary = snapshot.totalWeightKg == null
+    ? "Peso volumetrico pendiente segun el servicio"
+    : `${snapshot.totalWeightKg.toFixed(2)} kg / ${(snapshot.totalWeightKg * 2.20462262).toFixed(2)} lb`;
   const lines = [
     "OSI PLUS | SURVEY PUBLICADO",
     `Referencia: ${cleanText(snapshot.publicationRef)}`,
@@ -22,7 +25,7 @@ function publishedLines(snapshot) {
     `Evaluador: ${cleanText(snapshot.evaluatorDisplayName)}`,
     `Firmante: ${cleanText(snapshot.signerName)} (${cleanText(snapshot.relationship)})`,
     `Publicado: ${cleanText(snapshot.publishedAt)}`,
-    `Total: ${snapshot.totalQuantity} articulos | ${snapshot.totalVolumeM3.toFixed(3)} m3 / ${(snapshot.totalVolumeM3 * 35.3146667).toFixed(2)} ft3 | ${snapshot.totalWeightKg.toFixed(2)} kg / ${(snapshot.totalWeightKg * 2.20462262).toFixed(2)} lb`,
+    `Total: ${snapshot.totalQuantity} articulos | ${snapshot.totalVolumeM3.toFixed(3)} m3 / ${(snapshot.totalVolumeM3 * 35.3146667).toFixed(2)} ft3 | ${weightSummary}`,
     "",
     "INVENTARIO OBSERVADO",
   ];

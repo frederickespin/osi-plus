@@ -160,6 +160,7 @@ function TariffSimulation({ components, choices, shipment, recommended, minimum,
     </div>
     <div className="flex flex-wrap gap-x-5 gap-y-2 border-y border-slate-200 bg-white py-2 text-xs">
       {values.filter((item) => item.row.basis === "CAPACITY" && item.quantity).map(({ row, quantity }) => <span key={row.ruleSeriesRef}>{row.concept} <strong>{quantity} {costUnitLabel(row.unit)}</strong></span>)}
+      {measures?.volumetricKg != null && <span>Peso volumétrico <strong>{pricingQuantity.format(measures.volumetricKg)} kg</strong></span>}
       {measures?.chargeableKg != null && <span>Kg cobrables <strong>{pricingQuantity.format(measures.chargeableKg)}</strong></span>}
       {tier && <span>Mínimo <strong>{pricingMoney(tier.minimumSale, currency)}</strong></span>}
       {complete && <><span>Costo <strong>{pricingMoney(totalCost, currency)}</strong></span>
@@ -380,7 +381,7 @@ function RecipeForm({ pkg, rule, choices, authorization, canManage, onBack, onSa
         <label className="w-44 font-semibold">Perfil de peso<select aria-label="Perfil de peso" className={FIELD} value={mode} onChange={(event) => {
           const next = event.target.value as PackageShipment["mode"];
           setMode(next); setFactor(next === "AIR" ? "6000" : next === "SEA" ? "100" : "");
-        }}><option value="NONE">Peso bruto si aplica</option><option value="SEA">Marítimo</option><option value="AIR">Aéreo</option></select></label>
+        }}><option value="NONE">Peso bruto si aplica</option><option value="SEA">Marítimo</option><option value="AIR">Aéreo</option><option value="ROAD">Terrestre</option></select></label>
         {mode !== "NONE" && <label className="w-36 font-semibold">{mode === "AIR" ? "Divisor (cm³/kg)" : "Densidad (kg/m³)"}
           <NumericInput className={AMOUNT} allowDecimalComma min={1} max={100_000} step="0.0001" value={factor} onChange={(event) => setFactor(event.target.value)} /></label>}
         {mode === "AIR" && <label className="w-44 font-semibold">Redondeo aéreo<select aria-label="Redondeo aéreo" className={FIELD} value={roundKg} onChange={(event) => setRoundKg(Number(event.target.value))}>
@@ -388,7 +389,7 @@ function RecipeForm({ pkg, rule, choices, authorization, canManage, onBack, onSa
         </select></label>}
         <label className="flex min-h-9 items-center gap-2 font-semibold"><input type="checkbox" checked={routeTransport} onChange={(event) => setRouteTransport(event.target.checked)} />Incluir transporte por ruta</label>
         <label className="flex min-h-9 items-center gap-2 font-semibold"><input type="checkbox" checked={allowEdits} onChange={(event) => setAllowEdits(event.target.checked)} />Permitir ajustes en Cotización</label>
-        <AdministrationHelp title="peso y ruta"><p>Para flete aéreo se usa el mayor entre el peso bruto y el volumétrico. Añade choferes, cuadrillas, dietas y viáticos como componentes del paquete. El transporte por ruta aporta el costo del vehículo y sus peajes.</p><p>Los ajustes en Cotización dependen de los permisos del usuario.</p></AdministrationHelp>
+        <AdministrationHelp title="peso y ruta"><p>El peso volumétrico se calcula con el divisor del perfil aéreo o la densidad del perfil marítimo o terrestre. Para flete aéreo se usa el mayor entre el peso bruto medido y el volumétrico.</p><p>Añade choferes, cuadrillas, dietas y viáticos como componentes del paquete. El transporte por ruta aporta el costo del vehículo y sus peajes. Los ajustes en Cotización dependen de los permisos del usuario.</p></AdministrationHelp>
       </fieldset>
     </section>
     <div hidden={panel !== "SIMULATION"}>

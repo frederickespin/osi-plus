@@ -85,17 +85,17 @@ function PackageOptionsForm({ options, busy, current, actionLabel = "Calcular pa
 
 export function PackageCostingSummary({ value, totals, currency }: { value: CostingPackagePricing; totals: CostingTotals; currency: string }) {
   const { measures } = value;
+  const volumetricKg = measures.volumetricKg ?? measures.estimatedKg;
   const format = pricingQuantity.format;
   const measurements: [string, number, string][] = [
     ["Volumen", measures.volumeM3, "m³"],
     ["Volumen", measures.volumeFt3, "pie³"],
   ];
   if (measures.grossKg !== null) measurements.push(["Peso bruto", measures.grossKg, "kg"]);
-  if (measures.estimatedKg !== null && measures.grossKg === null) measurements.push(["Peso estimado", measures.estimatedKg, "kg"]);
-  if (measures.volumetricKg !== null) measurements.push(["Peso volumétrico", measures.volumetricKg, "kg"]);
+  if (volumetricKg !== null) measurements.push(["Peso volumétrico", volumetricKg, "kg"]);
   if (measures.chargeableKg !== null) measurements.push([measures.grossKg === null ? "Kg cobrables estimados" : "Peso cobrable", measures.chargeableKg, "kg"]);
   if (measures.cwt !== null) {
-    const label = measures.cwtBasis === "CHARGEABLE" ? "Peso cobrable" : measures.cwtBasis === "GROSS" ? "Peso bruto" : "Peso estimado";
+    const label = measures.cwtBasis === "CHARGEABLE" ? "Peso cobrable" : measures.cwtBasis === "GROSS" ? "Peso bruto" : "Peso volumétrico";
     measurements.push([label, measures.cwt, "CWT"]);
   }
 

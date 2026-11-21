@@ -11,51 +11,47 @@ import {
 } from "@/components/ui/compact-form";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { filterBySearch } from "@/costing/componentLabels";
-import { createArticleCatalogApi, type ArticleCatalogEntry } from "./articleCatalogApi";
-import type { SurveyCatalog } from "./types";
+import { createArticleCatalogApi, type ArticleCatalogEntry, type ArticleCatalogRevision } from "./articleCatalogApi";
 
 type Editor = {
   entry: ArticleCatalogEntry;
   name: string;
   synonyms: string;
   volume: string;
-  weight: string;
 };
 
 const ARTICLE_LIMIT = 500;
 const COLLATOR = new Intl.Collator("es-DO", { sensitivity: "base", numeric: true });
 const VOLUME = new Intl.NumberFormat("es-DO", { maximumFractionDigits: 6 });
-const WEIGHT = new Intl.NumberFormat("es-DO", { maximumFractionDigits: 3 });
 const GUIDE_LABELS = { catalog: "Catálogo", article: "Ficha del artículo" } as const;
 type GuideTopic = keyof typeof GUIDE_LABELS;
 const GUIDE_TOPICS: readonly GuideTopic[] = ["catalog", "article"];
 const GUIDE_LESSONS: Record<GuideTopic, SetupLesson> = {
   catalog: {
     title: "Mantén el catálogo en español",
-    purpose: "OSi Survey usa la versión publicada para sugerir artículos al empezar un levantamiento.",
+    purpose: "Los procesos que usan el catálogo consultan los mismos artículos, sinónimos y volúmenes.",
     steps: [
       <>Busca por nombre, código o sinónimo. Usa el lápiz para editar un artículo o pulsa <strong>Nuevo artículo</strong> para agregar uno.</>,
       <>Guarda la fila en el borrador de esta pantalla. Puedes editar varias filas antes de publicar.</>,
-      <>Pulsa <strong>Publicar catálogo</strong> para que los cambios estén disponibles en los nuevos levantamientos.</>,
+      <>Pulsa <strong>Publicar catálogo</strong> para que la nueva versión esté disponible para los procesos que consultan el catálogo.</>,
     ],
     example: <p>Al buscar «gavetero» puedes encontrar «Cómoda de madera» por su sinónimo.</p>,
-    check: "Cada levantamiento conserva la versión del catálogo con la que empezó.",
+    check: "Las versiones publicadas se conservan para consultar los registros anteriores.",
   },
   article: {
     title: "Completa una ficha por tipo de artículo",
-    purpose: "Los valores de la ficha son referencias por unidad para estimar en Survey.",
+    purpose: "El volumen de referencia corresponde a una unidad del artículo.",
     steps: [
       <>Escribe un <strong>Nombre del artículo</strong> reconocible en español. Anota los <strong>Sinónimos</strong> separados por comas.</>,
-      <>Registra el <strong>Volumen de referencia</strong> en m³ y el <strong>Peso estimado de referencia</strong> en kg cuando conozcas esos datos.</>,
+      <>Registra el <strong>Volumen de referencia</strong> en m³ si lo conoces.</>,
       <>Usa <strong>Guardar en borrador</strong> para conservar la fila mientras preparas el catálogo.</>,
     ],
     example: <ExampleFields rows={[
       ["Nombre", "Sofá de 3 plazas"],
       ["Sinónimos", "Sofá, sillón de sala"],
       ["Volumen de referencia", "1,2 m³"],
-      ["Peso estimado de referencia", "84 kg"],
     ]} />,
-    check: "En el ejemplo, 1,2 m³ × 70 kg/m³ da 84 kg estimados. El peso medido se obtiene en la báscula.",
+    check: "El peso volumétrico se calcula con los parámetros de la tarifa del servicio aéreo, marítimo o terrestre.",
   },
 };
 
@@ -64,9 +60,7 @@ function newEntry(): ArticleCatalogEntry {
     code: "ART_" + crypto.randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase(),
     name: "",
     aliases: [],
-    frequentAreaRefs: [],
     defaultVolumeM3: null,
-    defaultWeightKg: null,
   };
 }
 
@@ -76,7 +70,6 @@ function toEditor(entry: ArticleCatalogEntry): Editor {
     name: entry.name,
     synonyms: entry.aliases.join(", "),
     volume: entry.defaultVolumeM3?.toString() ?? "",
-    weight: entry.defaultWeightKg?.toString() ?? "",
   };
 }
 
@@ -107,7 +100,7 @@ export default function ArticleCatalogAdmin({ authorization, onUnauthorized }: {
   const formId = useId();
   const api = useMemo(() => createArticleCatalogApi(authorization), [authorization]);
   const readRef = useRef<AbortController | null>(null);
-  const [snapshot, setSnapshot] = useState<{ catalog: SurveyCatalog | null } | null>(null);
+  const [snapshot, setSnapshot] = useState<{ catalog: ArticleCatalogRevision | null } | null>(null);
   const [changes, setChanges] = useState<readonly ArticleCatalogEntry[]>([]);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [search, setSearch] = useState("");
@@ -173,7 +166,6 @@ export default function ArticleCatalogAdmin({ authorization, onUnauthorized }: {
       ? editor.entry.aliases
       : [...new Set(editor.synonyms.split(",").map((part) => part.trim()).filter(Boolean))];
     const defaultVolumeM3 = optionalDecimal(editor.volume);
-    const defaultWeightKg = optionalDecimal(editor.weight);
     if (!name) {
       setRowError("Escribe el nombre del artículo.");
       return;
@@ -182,12 +174,11 @@ export default function ArticleCatalogAdmin({ authorization, onUnauthorized }: {
       setRowError("Registra hasta 20 sinónimos, con un máximo de 80 caracteres por sinónimo.");
       return;
     }
-    if ((defaultVolumeM3 !== null && !Number.isFinite(defaultVolumeM3)) ||
-      (defaultWeightKg !== null && !Number.isFinite(defaultWeightKg))) {
-      setRowError("Revisa el volumen y el peso estimado.");
+    if (defaultVolumeM3 !== null && !Number.isFinite(defaultVolumeM3)) {
+      setRowError("Revisa el volumen de referencia.");
       return;
     }
-    const entry = { ...editor.entry, name, aliases, defaultVolumeM3, defaultWeightKg };
+    const entry = { ...editor.entry, name, aliases, defaultVolumeM3 };
     setChanges((prior) => [...prior.filter((item) => item.code !== entry.code), entry]);
     setEditor(null);
     setRowError("");
@@ -224,9 +215,6 @@ export default function ArticleCatalogAdmin({ authorization, onUnauthorized }: {
     <td><NumericInput form={formId} aria-label="Volumen de referencia (m³)" placeholder="—"
       className={COMPACT_TABLE_FIELD + " text-right"} allowDecimalComma min={0} max="999999.999999" step="0.000001" disabled={busy}
       value={editor.volume} onChange={(event) => setEditor({ ...editor, volume: event.target.value })} /></td>
-    <td><NumericInput form={formId} aria-label="Peso estimado de referencia (kg)" placeholder="—"
-      className={COMPACT_TABLE_FIELD + " text-right"} allowDecimalComma min={0} max={1_000_000} step="0.001" disabled={busy}
-      value={editor.weight} onChange={(event) => setEditor({ ...editor, weight: event.target.value })} /></td>
     <td><form id={formId} onSubmit={stage} className="flex justify-end gap-1">
       <AdministrationIconAction type="submit" label="Guardar en borrador" disabled={busy || !editor.name.trim()}>
         <Check aria-hidden="true" className="size-4 text-emerald-700" />
@@ -270,13 +258,12 @@ export default function ArticleCatalogAdmin({ authorization, onUnauthorized }: {
       {error && <p role="alert" className="py-2 text-xs text-red-800">{error}</p>}
       {rowError && <p role="alert" className="py-2 text-xs text-red-800">{rowError}</p>}
       {snapshot && <div className="max-h-[max(15rem,calc(100dvh-16rem))] overflow-auto border-b border-slate-200">
-        <table aria-label="Artículos del catálogo" className="w-full min-w-[650px] table-fixed text-left">
+        <table aria-label="Artículos del catálogo" className="w-full min-w-[580px] table-fixed text-left">
           <thead className={COMPACT_TABLE_HEAD}><tr>
-            <th scope="col" className="w-[13%]">Código</th>
-            <th scope="col" className="w-[24%]">Artículo</th>
-            <th scope="col" className="w-[25%]">Sinónimos</th>
-            <th scope="col" className="w-[12%] text-right">Volumen m³</th>
-            <th scope="col" className="w-[14%] text-right">Peso estimado kg</th>
+            <th scope="col" className="w-[16%]">Código</th>
+            <th scope="col" className="w-[30%]">Artículo</th>
+            <th scope="col" className="w-[27%]">Sinónimos</th>
+            <th scope="col" className="w-[15%] text-right">Volumen m³</th>
             <th scope="col" className="w-[12%]"><span className="sr-only">Acciones</span></th>
           </tr></thead>
           <tbody className={COMPACT_TABLE_BODY}>
@@ -291,7 +278,6 @@ export default function ArticleCatalogAdmin({ authorization, onUnauthorized }: {
                 </td>
                 <td className="break-words">{item.aliases.join(", ") || "—"}</td>
                 <td className="text-right tabular-nums">{item.defaultVolumeM3 === null ? "—" : VOLUME.format(item.defaultVolumeM3)}</td>
-                <td className="text-right tabular-nums">{item.defaultWeightKg === null ? "—" : WEIGHT.format(item.defaultWeightKg)}</td>
                 <td><div className="flex justify-end">
                   <AdministrationIconAction label={`Editar artículo ${item.name}`} disabled={busy || !!editor}
                     className="border-transparent bg-transparent" onClick={() => start(item)}>
@@ -299,7 +285,7 @@ export default function ArticleCatalogAdmin({ authorization, onUnauthorized }: {
                   </AdministrationIconAction>
                 </div></td>
               </tr>)}
-            {!shown.length && !editor && <tr><td colSpan={6} className="h-11 text-slate-500">
+            {!shown.length && !editor && <tr><td colSpan={5} className="h-11 text-slate-500">
               {search.trim() ? "Sin coincidencias." : "Agrega el primer artículo para empezar el catálogo."}
             </td></tr>}
           </tbody>

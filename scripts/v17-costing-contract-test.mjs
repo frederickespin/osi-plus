@@ -66,10 +66,14 @@ assert.equal(air.grossKg, 100);
 assert.equal(air.chargeableKg, 167);
 assert.ok(Math.abs(air.volumetricKg - 166.6667) < 0.0001);
 assert.equal(packageMeasures(1, 180, { mode: "AIR", factor: 6000, roundKg: 1 }).chargeableKg, 180);
-assert.equal(packageQuantity({ basis: "CWT", factor: 1, minimumQuantity: 0 }, packageMeasures(1, null, { mode: "NONE", factor: null, roundKg: 0 })), null);
+assert.equal(packageMeasures(1, null, { mode: "AIR", factor: 6000, roundKg: 1 }).chargeableKg, 167);
+const noProfileMeasures = packageMeasures(1, null, { mode: "NONE", factor: null, roundKg: 0 });
+assert.equal(noProfileMeasures.volumetricKg, null);
+assert.equal(packageQuantity({ basis: "CWT", factor: 1, minimumQuantity: 0 }, noProfileMeasures), null);
 
 const packageVersionRef = ref(2010);
 const seaProfile = { mode: "SEA", factor: 100, roundKg: 0 };
+const roadProfile = { mode: "ROAD", factor: 125, roundKg: 0 };
 const packageCost = {
   seriesRef: null, expectedVersion: 0, family: "ADDITIONAL", code: "PACKAGE_DEMO",
   name: "Mudanza de prueba", currency: "DOP", classification: "PR", source: "COMBO", priority: 100, specificity: 1,
@@ -88,6 +92,10 @@ const packageCost = {
   },
 };
 assert.equal(normalizeCostingRule(signed("COSTING_RULE_VERSION", packageCost)).result.kind, PACKAGE_PRICING_KIND);
+const roadCost = (shipment) => ({ ...packageCost, result: { ...packageCost.result, shipment } });
+assert.deepEqual(normalizeCostingRule(signed("COSTING_RULE_VERSION", roadCost(roadProfile))).result.shipment, roadProfile);
+assert.throws(() => normalizeCostingRule(signed("COSTING_RULE_VERSION", roadCost({ ...roadProfile, factor: null }))), /COSTING_PACKAGE_RULE_INVALID/);
+assert.throws(() => normalizeCostingRule(signed("COSTING_RULE_VERSION", roadCost({ ...roadProfile, roundKg: 0.5 }))), /COSTING_PACKAGE_RULE_INVALID/);
 assert.throws(() => normalizeCostingRule(signed("COSTING_RULE_VERSION", {
   ...packageCost, result: { ...packageCost.result, components: [packageCost.result.components[0], packageCost.result.components[0]] },
 })), /COSTING_PACKAGE_RULE_INVALID/);
@@ -97,6 +105,18 @@ assert.throws(() => normalizeCostingRule(signed("COSTING_RULE_VERSION", {
 assert.equal(packageQuantity(packageCost.result.components[0], packageMeasures(5, null, seaProfile)), "8");
 assert.deepEqual([18, 18.01, 30].map((m3) => packageQuantity(packageCost.result.components[1], packageMeasures(m3, null, seaProfile))), ["1", "2", "2"]);
 assert.equal(packageQuantity({ ...packageCost.result.components[1], factor: 0.02 }, packageMeasures(0.14, null, seaProfile)), "7");
+for (const [profile, volumetricKg] of [[seaProfile, 240], [roadProfile, 300]]) {
+  const withoutGross = packageMeasures(2.4, null, profile);
+  assert.equal(withoutGross.volumetricKg, volumetricKg);
+  assert.equal(withoutGross.chargeableKg, null);
+  assert.equal(withoutGross.cwtBasis, "ESTIMATED");
+  assert.equal(withoutGross.cwt, volumetricKg / 45.359237);
+  const withGross = packageMeasures(2.4, 175, profile);
+  assert.equal(withGross.volumetricKg, volumetricKg);
+  assert.equal(withGross.chargeableKg, null);
+  assert.equal(withGross.cwtBasis, "GROSS");
+  assert.equal(withGross.cwt, 175 / 45.359237);
+}
 const airQuote = packageMeasures(1, 100, { mode: "AIR", factor: 6000, roundKg: 1 });
 assert.equal(airQuote.cwtBasis, "CHARGEABLE");
 assert.equal(packageQuantity({ basis: "CWT", factor: 1, minimumQuantity: 0, roundUp: false }, airQuote), "3.6817");
@@ -119,6 +139,7 @@ const packageRules = [
   resourceRule(3, "MATERIAL", "100"), resourceRule(4, "PERMIT", "600", "DE"),
   { ...packageCost, ruleRef: ref(2099), seriesRef: ref(2098), version: 1, conditionHash: "e".repeat(64) },
 ];
+const oldSurveyTotals = { totalVolumeM3: 30, totalWeightKg: 9200 };
 const travelRule = resourceRule(5, "TRAVEL", "500");
 const routePackage = {
   ...packageCost,
@@ -149,7 +170,7 @@ const tx = {
   } },
   pipelineCaseServiceRevision: { findFirst: async () => ({ selectionRef, revision: 2, modeSnapshot: "EXPORT", items: [{ serviceId: "service-id", kind: "PRIMARY", codeSnapshot: "MOVING" }] }) },
   caseServiceConfigurationRevision: { findFirst: async () => null },
-  surveyPublication: { findFirst: async ({ select }) => select.totalsSnapshot ? ({ totalsSnapshot: { totalVolumeM3: 30 } }) : null },
+  surveyPublication: { findFirst: async ({ select }) => select.totalsSnapshot ? ({ totalsSnapshot: oldSurveyTotals }) : null },
   servicePackageVersion: { findMany: async ({ where }) => {
     assert.equal(where.tenantId, context.tenantId);
     assert.equal(where.services.some.serviceId, "service-id");
@@ -161,7 +182,10 @@ const tx = {
     assert.equal(where.plan.pipelineCaseId, caseRecord.id);
     return {
       id: "logistics-id", revisionRef: logisticsRef, revision: 2, status: "PUBLISHED", logicalSha256: "a".repeat(64), plan: { planRef: ref(1103) },
-      inputSnapshot: { services: { selectionRef, revision: 2, codes: ["MOVING"] }, route: { version: 2 } },
+      inputSnapshot: {
+        services: { selectionRef, revision: 2, codes: ["MOVING"] }, route: { version: 2 },
+        survey: { publicationRef: ref(1104), volumeM3: oldSurveyTotals.totalVolumeM3, weightKg: oldSurveyTotals.totalWeightKg },
+      },
       items: [item(99, "LABOR", "ADMIN_RULE", { quantity: 99 })], issues: [],
     };
   }, create: async ({ data }) => {
@@ -184,6 +208,7 @@ const database = { ...tx, $transaction: async (operation) => operation(tx) };
 const options = await getCostingPackageOptions(database, context, caseRecord.publicRef);
 assert.equal(options.volumeM3, 30);
 assert.equal(options.packages[0].versionRef, packageVersionRef);
+assert.equal(Object.hasOwn(options, "grossKg"), false);
 const packageCommand = signed("COSTING_CALCULATE", {
   caseRef: caseRecord.publicRef, logisticsPlanRevisionRef: logisticsRef, baseCurrency: "DOP",
   packageEstimate: { versionRef: packageVersionRef, volumeM3: "30", grossKg: null },
@@ -195,6 +220,7 @@ assert.equal(calculatedPackage.totals.suggestedPrice, "32000");
 assert.equal(calculatedPackage.totals.disbursements, "600");
 assert.deepEqual(calculatedPackage.issues, []);
 assert.equal(calculatedPackage.lines.at(-1).suggestedPrice, "1400");
+assert.equal(calculatedPackage.packagePricing.measures.volumetricKg, 3000);
 assert.ok(Math.abs(calculatedPackage.packagePricing.measures.cwt - 66.1387) < 0.0001);
 const { requestId: _request, payloadHash: _hash, ...packageInput } = packageCommand;
 const configuredOnly = (await calculateCosting(database, context, signed("COSTING_CALCULATE", {
@@ -208,6 +234,30 @@ const nextTier = (await calculateCosting(database, context, signed("COSTING_CALC
 }))).result;
 assert.equal(nextTier.packagePricing.minimumSale, "32000");
 assert.equal(storedBasis.inputSnapshot.kind, "PACKAGE_QUOTATION");
+latestRules = [...packageRules.slice(0, -1), {
+  ...packageRules.at(-1), result: { ...packageCost.result, shipment: roadProfile },
+}];
+const roadOptions = await getCostingPackageOptions(database, context, caseRecord.publicRef);
+const roadOption = roadOptions.packages.find((option) => option.versionRef === packageVersionRef);
+assert.deepEqual(roadOption.shipment, roadProfile);
+assert.equal(roadOption.needsWeight, false);
+const roadQuote = (await calculateCosting(database, context, signed("COSTING_CALCULATE", {
+  ...packageInput, packageEstimate: { versionRef: roadOption.versionRef, volumeM3: String(roadOptions.volumeM3), grossKg: null },
+}))).result;
+assert.equal(roadQuote.packagePricing.measures.volumetricKg, 3750);
+assert.equal(roadQuote.packagePricing.measures.chargeableKg, null);
+assert.deepEqual(roadQuote.totals, calculatedPackage.totals);
+latestRules = [...packageRules.slice(0, -1), {
+  ...packageRules.at(-1), result: { ...packageCost.result, shipment: { mode: "AIR", factor: 6000, roundKg: 0.5 } },
+}];
+const airQuoteWithoutWeighing = (await calculateCosting(database, context, packageCommand)).result;
+assert.equal(airQuoteWithoutWeighing.packagePricing.measures.grossKg, null);
+assert.equal(airQuoteWithoutWeighing.packagePricing.measures.chargeableKg, 5000);
+const airQuoteWithWeighing = (await calculateCosting(database, context, signed("COSTING_CALCULATE", {
+  ...packageInput, packageEstimate: { ...packageInput.packageEstimate, grossKg: "5400.1" },
+}))).result;
+assert.equal(airQuoteWithWeighing.packagePricing.measures.grossKg, 5400.1);
+assert.equal(airQuoteWithWeighing.packagePricing.measures.chargeableKg, 5400.5);
 latestRules = packageRules.filter((rule) => rule.family !== "PERMIT");
 const incompletePackage = (await calculateCosting(database, context, packageCommand)).result;
 assert.equal(incompletePackage.issues[0].code, "COSTING_PACKAGE_COMPONENT_MISSING");

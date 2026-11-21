@@ -193,7 +193,7 @@ function validatePackagePricing(rule) {
     }
   }
   exactKeys(shipment, ["mode", "factor", "roundKg"]);
-  const mode = asEnum(shipment.mode, ["NONE", "SEA", "AIR"]);
+  const mode = asEnum(shipment.mode, ["NONE", "SEA", "AIR", "ROAD"]);
   if (mode === "NONE" ? shipment.factor !== null : !Number.isFinite(shipment.factor) || shipment.factor < 1 || shipment.factor > 100_000) {
     costingFail("COSTING_PACKAGE_RULE_INVALID");
   }

@@ -37,7 +37,7 @@ function portalData() {
       { reasonRef: REASON_REF, name: "Cambio solicitado por cliente", kind: "RESCHEDULE" },
       { reasonRef: "99999999-9999-4999-8999-999999999999", name: "Ya no requiere visita", kind: "CANCELLATION" },
     ],
-    miniCatalog: Array.from({ length: 10 }, (_, index) => ({ articleRef: index === 0 ? ARTICLE_REF : `55555555-5555-4555-8555-5555555555${String(index).padStart(2, "0")}`, name: `Artículo sintético ${index + 1}` })),
+    miniCatalog: Array.from({ length: 10 }, (_, index) => ({ articleRef: index === 0 ? ARTICLE_REF : `55555555-5555-4555-8555-5555555555${String(index).padStart(2, "0")}`, name: `Artículo sintético ${index + 1}`, aliases: [`Sinónimo único ${index + 1}`], defaultVolumeM3: 0.12 })),
     contribution: null,
     notices: { surveySource: "CLIENT_SUPPLIED", quoteAcceptanceAvailable: false, externalTransportEnabled: false },
   };
@@ -58,7 +58,10 @@ async function installPortal(page: Page) {
       return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { ...data.visit.clientResponse, accepted: true, schedulingChanged: false } }) });
     }
     if (pathname.endsWith("/mini")) {
-      data.contribution = { contributionRef: "66666666-6666-4666-8666-666666666666", revision: 1, version: 0, status: "SUBMITTED", source: "CLIENT_SUPPLIED", notes: null, estimatedWeightKg: 4.5, estimatedVolumeM3: 0.12, metricLabel: "Información suministrada por el cliente / Mini Survey", items: [{ itemRef: "77777777-7777-4777-8777-777777777777", articleRef: ARTICLE_REF, name: "Caja sintética", quantity: 1, measurements: null, notes: null, unitWeightKg: 4.5, unitVolumeM3: 0.12 }], assets: [] } as never;
+      const body = request.postDataJSON() as { items: { articleRef: string; quantity: number }[] };
+      const [{ articleRef, quantity }] = body.items;
+      expect(articleRef).toBe(ARTICLE_REF);
+      data.contribution = { contributionRef: "66666666-6666-4666-8666-666666666666", revision: 1, version: 0, status: "SUBMITTED", source: "CLIENT_SUPPLIED", notes: null, estimatedWeightKg: 0, estimatedVolumeM3: quantity * 0.12, metricLabel: "Información suministrada por el cliente / Mini Survey", items: [{ itemRef: "77777777-7777-4777-8777-777777777777", articleRef, name: "Caja sintética", quantity, measurements: null, notes: null, unitWeightKg: null, unitVolumeM3: 0.12 }], assets: [] } as never;
       return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { contribution: data.contribution, missingMetricCount: 0 } }) });
     }
     if (pathname.endsWith("/upload")) return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { assetRef: "88888888-8888-4888-8888-888888888888", category: "PHOTO" } }) });
@@ -90,9 +93,16 @@ test("acceso temporal ejecuta visita, Mini, carga y QR sin montar el ERP", async
   await page.getByRole("button", { name: "Enviar solicitud" }).click();
   await expect(page.getByText("Cambio solicitado")).toBeVisible();
 
-  await page.getByRole("button", { name: "Agregar tipo de artículo" }).click();
+  await page.getByRole("searchbox", { name: "Buscar artículo" }).fill("sinonimo unico 1");
+  await page.getByRole("button", { name: /Artículo sintético 1 0.12 m³/ }).first().click();
+  const quantity = page.getByRole("textbox", { name: "Cantidad del artículo 1" });
+  await quantity.click();
+  await quantity.press("2");
+  await expect(quantity).toHaveValue("2");
   await page.getByRole("button", { name: "Completar Mini" }).click();
-  await expect(page.getByText("4.5 kg")).toBeVisible();
+  await expect(page.getByText("Caja sintética")).toBeVisible();
+  await expect(page.getByText("Según el servicio", { exact: true })).toBeVisible();
+  await expect(page.getByText("0.24 m³", { exact: true })).toBeVisible();
   await page.locator('input[type="file"][accept^="image/"]').setInputFiles({ name: "portal.webp", mimeType: "image/webp", buffer: Buffer.from("synthetic-image") });
   await page.getByLabel("Código QR de visita").fill(`osi-visit:v1:${ASSIGNMENT_REF}:${EVALUATOR_REF}`);
   await page.getByRole("button", { name: "Verificar código" }).click();
@@ -119,7 +129,10 @@ test("inválido, expirado y revocado son indistinguibles y no revelan contexto",
 test("el artículo 11 conserva el método y ofrece escalamiento informativo", async ({ page }) => {
   await installPortal(page);
   await page.goto(`/client-access/${ACCESS_REF}#token=${TOKEN}`);
-  for (let index = 0; index < 10; index += 1) await page.getByRole("button", { name: "Agregar tipo de artículo" }).click();
+  for (let index = 1; index <= 10; index += 1) {
+    await page.getByRole("searchbox", { name: "Buscar artículo" }).fill(`Artículo sintético ${index}`);
+    await page.getByRole("button", { name: new RegExp(`^Artículo sintético ${index} `) }).click();
+  }
   await page.getByRole("button", { name: "Necesito registrar más artículos" }).click();
   await expect(page.getByText("La información requiere un Survey más detallado.")).toBeVisible();
   await expect(page.getByText("visita presencial, visita virtual o listado/fotos", { exact: false })).toBeVisible();

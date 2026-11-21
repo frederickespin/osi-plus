@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Camera, CheckCircle2, Clock3, FileUp, MapPin, QrCode, RefreshCw, ShieldCheck, UserRound } from "lucide-react";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { createClientPortalApi, type ClientPortalData } from "./api";
 import { resolveClientTemporaryPortalMode } from "./mode";
 
@@ -20,17 +21,53 @@ function dateTime(value: string) { return new Intl.DateTimeFormat("es-DO", { dat
 function address(value: ClientPortalData["visit"] extends infer V ? V extends { route: infer R } ? R extends readonly (infer I)[] ? I : never : never : never) { return [value.streetAndNumber, value.buildingResidential, value.floorUnit, value.sector, value.cityMunicipality, value.provinceState, value.countryCode].filter(Boolean).join(", "); }
 function clientResponseLabel(value: string) { return ({ PENDING: "Pendiente de confirmación", CONFIRMED: "Visita confirmada", CHANGE_REQUESTED: "Cambio solicitado", CANCEL_REQUESTED: "Cancelación solicitada" } as Record<string, string>)[value] || "Estado no disponible"; }
 
+function articleSearchText(value: string) {
+  return value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
+type MiniDraftItem = Readonly<{ articleRef: string; quantity: string }>;
+
+function isMiniQuantityValid(items: readonly MiniDraftItem[]) {
+  return items.length > 0 && items.every(({ quantity }) => {
+    const numeric = Number(quantity);
+    return /^\d+$/.test(quantity) && numeric >= 1 && numeric <= 10_000;
+  });
+}
+
 export default function ClientTemporaryPortal() {
   const mode = resolveClientTemporaryPortalMode(); const accessRef = accessRefFromPath(); const token = useRef(tokenFromFragment());
   const api = useMemo(() => createClientPortalApi(accessRef, token.current), [accessRef]);
-  const [data, setData] = useState<ClientPortalData | null>(null); const [loading, setLoading] = useState(Boolean(token.current)); const [error, setError] = useState<string | null>(null); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [action, setAction] = useState<"CHANGE" | "CANCEL" | null>(null); const [reasonRef, setReasonRef] = useState(""); const [comment, setComment] = useState(""); const [availability, setAvailability] = useState(""); const [mini, setMini] = useState<readonly { articleRef: string; quantity: number }[]>([]); const [miniMessage, setMiniMessage] = useState<string | null>(null); const [qr, setQr] = useState(""); const heading = useRef<HTMLHeadingElement>(null);
+  const [data, setData] = useState<ClientPortalData | null>(null); const [loading, setLoading] = useState(Boolean(token.current)); const [error, setError] = useState<string | null>(null); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [action, setAction] = useState<"CHANGE" | "CANCEL" | null>(null); const [reasonRef, setReasonRef] = useState(""); const [comment, setComment] = useState(""); const [availability, setAvailability] = useState(""); const [mini, setMini] = useState<readonly MiniDraftItem[]>([]); const [miniMessage, setMiniMessage] = useState<string | null>(null); const [qr, setQr] = useState(""); const heading = useRef<HTMLHeadingElement>(null);
   const scopes = useMemo(() => new Set(data?.scopes || []), [data]); const fullToken = data?.credentialKind === "TOKEN";
+  const [miniSearch, setMiniSearch] = useState("");
 
-  const load = useCallback(async (byCode?: string) => { setLoading(true); setError(null); try { const value = byCode ? await api.openWithCode(byCode) : await api.open(); setData(value); setMini(value.contribution?.items.map((item) => ({ articleRef: item.articleRef, quantity: item.quantity })) || []); queueMicrotask(() => heading.current?.focus()); } catch { setError("Este acceso ya no está disponible."); setData(null); } finally { setLoading(false); } }, [api]);
+  const load = useCallback(async (byCode?: string) => { setLoading(true); setError(null); try { const value = byCode ? await api.openWithCode(byCode) : await api.open(); setData(value); setMini(value.contribution?.items.map((item) => ({ articleRef: item.articleRef, quantity: String(item.quantity) })) || []); queueMicrotask(() => heading.current?.focus()); } catch { setError("Este acceso ya no está disponible."); setData(null); } finally { setLoading(false); } }, [api]);
   useEffect(() => { if (mode.enabled && token.current) void load(); }, [load, mode.enabled]); // token is intentionally memory-only
   const visitAction = async (kind: "VISIT_CONFIRM" | "VISIT_CHANGE_REQUEST" | "VISIT_CANCEL_REQUEST") => { if (!data?.visit || !fullToken) return; setBusy(true); setError(null); try { await api.visit(kind, data.visit.clientResponse.version, reasonRef || null, comment || null, kind === "VISIT_CHANGE_REQUEST" && availability ? [new Date(availability).toISOString()] : []); await load(); setAction(null); } catch (cause) { setError(cause instanceof Error && cause.message === "CLIENT_TEMPORARY_VERSION_CONFLICT" ? "La visita cambió. Actualice la información antes de continuar." : "No pudimos registrar la solicitud."); } finally { setBusy(false); } };
-  const addMini = () => { if (mini.length >= 10) { setMiniMessage("La información requiere un Survey más detallado."); return; } const next = data?.miniCatalog.find((item) => !mini.some((selected) => selected.articleRef === item.articleRef)); if (next) setMini([...mini, { articleRef: next.articleRef, quantity: 1 }]); };
-  const saveMini = async (submit: boolean) => { if (!data || !fullToken || !mini.length) return; setBusy(true); setError(null); try { await api.mini(data.contribution?.version || 0, submit, null, mini.map((item) => ({ ...item, measurements: null, notes: null }))); await load(); } catch (cause) { setError(cause instanceof Error && cause.message === "CLIENT_TEMPORARY_MINI_REQUIRES_DETAILED_SURVEY" ? "La información requiere un Survey más detallado." : "No pudimos guardar la información."); } finally { setBusy(false); } };
+  const addMini = (articleRef: string) => {
+    setMini((entries) => entries.length >= 10 || entries.some((entry) => entry.articleRef === articleRef)
+      ? entries
+      : [...entries, { articleRef, quantity: "1" }]);
+    setMiniMessage(null);
+    setMiniSearch("");
+  };
+  const saveMini = async (submit: boolean) => {
+    if (!data || !fullToken || !isMiniQuantityValid(mini)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.mini(data.contribution?.version || 0, submit, null, mini.map(({ articleRef, quantity }) => ({
+        articleRef, quantity: Number(quantity), measurements: null, notes: null,
+      })));
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error && cause.message === "CLIENT_TEMPORARY_MINI_REQUIRES_DETAILED_SURVEY"
+        ? "La información requiere un Survey más detallado."
+        : "No pudimos guardar la información.");
+    } finally {
+      setBusy(false);
+    }
+  };
   const upload = async (file: File | undefined, category: "PHOTO" | "DOCUMENT") => { if (!file || !fullToken) return; setBusy(true); setError(null); try { await api.upload(file, category, category === "DOCUMENT" ? "INVENTORY_LIST" : null); await load(); } catch { setError("El archivo no cumple el tipo o tamaño autorizado."); } finally { setBusy(false); } };
 
   if (!mode.enabled || !mode.valid) return <Unavailable />;
@@ -38,12 +75,89 @@ export default function ClientTemporaryPortal() {
   if (!data) return <main className="grid min-h-screen place-items-center bg-slate-50 p-5"><section className="w-full max-w-sm rounded-2xl border bg-white p-6 shadow-sm"><h1 ref={heading} tabIndex={-1} className="text-xl font-black text-[#003366]">Acceso temporal</h1><p className="mt-2 text-sm text-slate-600">Ingrese el código de seis dígitos recibido. El código permite consultar; para confirmar o aportar información utilice el enlace seguro.</p><label className="mt-5 block text-xs font-bold uppercase tracking-wide text-slate-500">Código temporal<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} className="mt-2 h-12 w-full rounded-xl border px-4 text-center font-mono text-xl tracking-[.35em]" /></label><button type="button" disabled={code.length !== 6} onClick={() => void load(code)} className="mt-4 w-full rounded-xl bg-[#003366] px-4 py-3 font-bold text-white disabled:opacity-40">Consultar acceso</button>{error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}</section></main>;
 
   const visit = data.visit; const origin = visit?.route.find((item) => item.role === "ORIGIN"); const destination = visit?.route.find((item) => item.role === "DESTINATION");
+  const normalizedMiniSearch = articleSearchText(miniSearch);
+  const miniResults = normalizedMiniSearch
+    ? data.miniCatalog.filter((item) =>
+      !mini.some((selected) => selected.articleRef === item.articleRef) &&
+      [item.name, ...(item.aliases || [])].some((value) => articleSearchText(value).includes(normalizedMiniSearch))
+    ).slice(0, 8)
+    : [];
+  const recordedMiniWeight = data.contribution?.items.length &&
+    data.contribution.items.every((item) => item.unitWeightKg != null)
+    ? data.contribution.estimatedWeightKg
+    : null;
+  const canSaveMini = fullToken && !busy && isMiniQuantityValid(mini);
   return <main className="min-h-screen bg-slate-50 text-slate-950"><header className="bg-[#003366] px-5 py-5 text-white"><div className="mx-auto max-w-2xl"><p className="text-xs font-bold uppercase tracking-[.2em] text-sky-200">International Packers · OSi Plus</p><h1 ref={heading} tabIndex={-1} className="mt-1 text-2xl font-black">Su visita</h1><p className="mt-1 text-sm text-sky-100">{data.case.caseCode} · acceso limitado y temporal</p></div></header><div className="mx-auto max-w-2xl space-y-4 p-4 pb-12 sm:p-6">
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {!fullToken && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Consulta con código temporal. Abra el enlace seguro para confirmar o aportar información.</p>}
     {visit && scopes.has("VISIT_VIEW") && <section className="overflow-hidden rounded-2xl border bg-white shadow-sm"><div className="border-b p-5"><p className="text-xs font-bold uppercase tracking-wide text-sky-700">{visit.method === "VIRTUAL" ? "Visita virtual" : "Visita programada"}</p><h2 className="mt-1 text-xl font-black">{dateTime(visit.scheduledStart)}</h2><p className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">{clientResponseLabel(visit.clientResponse.state)}</p></div><dl className="divide-y text-sm"><Info icon={UserRound} label="Evaluador autorizado" value={`${visit.evaluator.displayName} · ${visit.evaluator.role}`} /><Info icon={CalendarDays} label="Motivo" value={visit.reason || "Visita de evaluación"} /><Info icon={Clock3} label="Instrucciones" value={visit.instructions || "Sin instrucciones adicionales"} />{origin && <Info icon={MapPin} label="Origen" value={address(origin)} />}{destination && <Info icon={MapPin} label="Destino" value={address(destination)} />}{visit.fee && <Info icon={ShieldCheck} label="Costo de visita que autoriza al confirmar" value={`${visit.fee.currency} ${visit.fee.amount.toLocaleString("es-DO")}`} />}</dl>{visit.fee && <p className="border-t bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-950">Al confirmar, acepta la fecha, la hora y el costo de visita mostrado.</p>}<div className="grid gap-2 border-t p-4 sm:grid-cols-2">{scopes.has("VISIT_CONFIRM") && <button disabled={!fullToken || busy} onClick={() => void visitAction("VISIT_CONFIRM")} className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-40"><CheckCircle2 className="mr-2 inline h-5 w-5" />{visit.fee ? "Autorizar costo y confirmar" : "Confirmar visita"}</button>}{scopes.has("VISIT_CHANGE_REQUEST") && <button disabled={!fullToken || busy} onClick={() => setAction("CHANGE")} className="rounded-xl border border-slate-300 px-4 py-3 font-bold disabled:opacity-40"><RefreshCw className="mr-2 inline h-5 w-5" />Solicitar cambio</button>}{scopes.has("VISIT_CANCEL_REQUEST") && <button disabled={!fullToken || busy} onClick={() => setAction("CANCEL")} className="rounded-xl border border-red-200 px-4 py-3 font-bold text-red-700 disabled:opacity-40">Solicitar cancelación</button>}</div></section>}
     {action && visit && <section className="rounded-2xl border bg-white p-5"><h2 className="font-black">{action === "CHANGE" ? "Solicitud de cambio" : "Solicitud de cancelación"}</h2><p className="mt-1 text-sm text-slate-600">La solicitud no modifica automáticamente la cita; el equipo la revisará según las políticas de Scheduling.</p><label className="mt-4 block text-sm font-semibold">Razón<select value={reasonRef} onChange={(event) => setReasonRef(event.target.value)} className="mt-1 h-11 w-full rounded-lg border px-3"><option value="">Seleccione</option>{data.reasons.filter((item) => item.kind === (action === "CHANGE" ? "RESCHEDULE" : "CANCELLATION")).map((item) => <option key={item.reasonRef} value={item.reasonRef}>{item.name}</option>)}</select></label>{action === "CHANGE" && <label className="mt-3 block text-sm font-semibold">Disponibilidad sugerida<input type="datetime-local" value={availability} onChange={(event) => setAvailability(event.target.value)} className="mt-1 h-11 w-full rounded-lg border px-3" /></label>}<label className="mt-3 block text-sm font-semibold">Comentario opcional<textarea value={comment} maxLength={1000} onChange={(event) => setComment(event.target.value)} className="mt-1 min-h-24 w-full rounded-lg border p-3" /></label><div className="mt-4 flex gap-2"><button onClick={() => setAction(null)} className="flex-1 rounded-lg border px-3 py-2 font-semibold">Volver</button><button disabled={busy || action === "CHANGE" && !reasonRef} onClick={() => void visitAction(action === "CHANGE" ? "VISIT_CHANGE_REQUEST" : "VISIT_CANCEL_REQUEST")} className="flex-1 rounded-lg bg-[#003366] px-3 py-2 font-bold text-white disabled:opacity-40">Enviar solicitud</button></div></section>}
-    {scopes.has("MINI_SURVEY_EDIT") && <section className="rounded-2xl border bg-white p-5 shadow-sm"><h2 className="text-lg font-black text-[#003366]">Mini-visita</h2><p className="mt-1 text-sm text-slate-600">Agregue hasta 10 tipos de artículos. El peso y volumen se calculan con la versión vigente del catálogo y quedan como aproximados.</p><div className="mt-4 divide-y rounded-xl border">{mini.map((item, index) => <div key={item.articleRef} className="flex items-center gap-3 p-3"><span className="min-w-0 flex-1 truncate text-sm font-semibold">{data.miniCatalog.find((entry) => entry.articleRef === item.articleRef)?.name || `Artículo ${index + 1}`}</span><input aria-label={`Cantidad del artículo ${index + 1}`} type="number" min={1} max={10000} value={item.quantity} onChange={(event) => setMini(mini.map((entry) => entry.articleRef === item.articleRef ? { ...entry, quantity: Math.max(1, Number(event.target.value)) } : entry))} className="h-9 w-20 rounded-lg border px-2" /><button aria-label={`Quitar artículo ${index + 1}`} onClick={() => setMini(mini.filter((entry) => entry.articleRef !== item.articleRef))} className="rounded px-2 py-1 text-red-700">Quitar</button></div>)}</div><button disabled={!fullToken || busy || (mini.length < 10 && mini.length >= data.miniCatalog.length)} onClick={addMini} className="mt-3 w-full rounded-lg border border-dashed px-4 py-3 text-sm font-bold disabled:opacity-40">{mini.length >= 10 ? "Necesito registrar más artículos" : "Agregar tipo de artículo"}</button>{miniMessage && <div role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"><p className="font-semibold">{miniMessage}</p><p className="mt-1">Opciones disponibles: visita presencial, visita virtual o listado/fotos. El método no cambia automáticamente.</p></div>}<div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3"><Metric label="Peso aproximado" value={`${data.contribution?.estimatedWeightKg || 0} kg`} /><Metric label="Volumen aproximado" value={`${data.contribution?.estimatedVolumeM3 || 0} m³`} /><p className="col-span-2 text-xs text-slate-500">Información suministrada por el cliente / Mini Survey · no verificada por evaluador.</p></div><div className="mt-4 grid grid-cols-2 gap-2"><button disabled={!fullToken || busy || !mini.length} onClick={() => void saveMini(false)} className="rounded-lg border px-3 py-2 font-semibold disabled:opacity-40">Guardar borrador</button><button disabled={!fullToken || busy || !mini.length} onClick={() => void saveMini(true)} className="rounded-lg bg-[#003366] px-3 py-2 font-bold text-white disabled:opacity-40">Completar Mini</button></div></section>}
+    {scopes.has("MINI_SURVEY_EDIT") && (
+      <section className="rounded-2xl border bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-black text-[#003366]">Mini-visita</h2>
+        <p className="mt-1 text-sm text-slate-600">Agregue hasta 10 tipos de artículos. El catálogo estima el volumen. El peso volumétrico se calcula según el servicio.</p>
+        {mini.length > 0 && (
+          <div className="mt-4 divide-y rounded-xl border">
+            {mini.map((item, index) => (
+              <div key={item.articleRef} className="flex items-center gap-3 p-3">
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                  {data.contribution?.items.find((entry) => entry.articleRef === item.articleRef)?.name
+                    || data.miniCatalog.find((entry) => entry.articleRef === item.articleRef)?.name
+                    || `Artículo ${index + 1}`}
+                </span>
+                <NumericInput aria-label={`Cantidad del artículo ${index + 1}`} min={1} max={10_000} value={item.quantity}
+                  onChange={(event) => setMini(mini.map((entry) => entry.articleRef === item.articleRef ? { ...entry, quantity: event.target.value } : entry))}
+                  className="h-9 w-20 rounded-lg border px-2" />
+                <button aria-label={`Quitar artículo ${index + 1}`} onClick={() => setMini(mini.filter((entry) => entry.articleRef !== item.articleRef))} className="rounded px-2 py-1 text-red-700">Quitar</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {mini.length < 10 ? (
+          <div className="mt-3">
+            <input type="search" aria-label="Buscar artículo" placeholder="Buscar artículo" value={miniSearch}
+              disabled={!fullToken || busy} onChange={(event) => setMiniSearch(event.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm" />
+            {normalizedMiniSearch && (
+              miniResults.length ? (
+                <ul className="mt-1 divide-y rounded-lg border">
+                  {miniResults.map((article) => (
+                    <li key={article.articleRef}>
+                      <button type="button" onClick={() => addMini(article.articleRef)} disabled={!fullToken || busy}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50">
+                        <span>{article.name}</span>
+                        {article.defaultVolumeM3 != null && <span className="shrink-0 text-xs text-slate-500">{article.defaultVolumeM3} m³</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p role="status" className="mt-2 text-sm text-slate-600">Sin coincidencias disponibles.</p>
+            )}
+          </div>
+        ) : (
+          <button type="button" disabled={!fullToken || busy} onClick={() => setMiniMessage("La información requiere un Survey más detallado.")}
+            className="mt-3 w-full rounded-lg border border-dashed px-4 py-3 text-sm font-bold disabled:opacity-40">
+            Necesito registrar más artículos
+          </button>
+        )}
+        {miniMessage && mini.length >= 10 && (
+          <div role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-semibold">{miniMessage}</p>
+            <p className="mt-1">Opciones disponibles: visita presencial, visita virtual o listado/fotos. El método no cambia automáticamente.</p>
+          </div>
+        )}
+        <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
+          <Metric label={recordedMiniWeight == null ? "Peso volumétrico" : "Peso aproximado registrado"}
+            value={recordedMiniWeight == null ? "Según el servicio" : `${recordedMiniWeight} kg`} />
+          <Metric label="Volumen aproximado" value={data.contribution ? `${data.contribution.estimatedVolumeM3} m³` : "Pendiente"} />
+          <p className="col-span-2 text-xs text-slate-500">Información suministrada por el cliente / Mini Survey · pendiente de verificación.</p>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button disabled={!canSaveMini} onClick={() => void saveMini(false)} className="rounded-lg border px-3 py-2 font-semibold disabled:opacity-40">Guardar borrador</button>
+          <button disabled={!canSaveMini} onClick={() => void saveMini(true)} className="rounded-lg bg-[#003366] px-3 py-2 font-bold text-white disabled:opacity-40">Completar Mini</button>
+        </div>
+      </section>
+    )}
     {scopes.has("SURVEY_INFO_UPLOAD") && <section className="rounded-2xl border bg-white p-5 shadow-sm"><h2 className="text-lg font-black text-[#003366]">Fotos y documentos</h2><p className="mt-1 text-sm text-slate-600">Fotos JPG, PNG o WebP (máx. 10 MB). Listados PDF autorizados (máx. 12 MB).</p><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="cursor-pointer rounded-xl border p-4 text-center font-bold"><Camera className="mx-auto mb-2" />Agregar foto<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => void upload(event.target.files?.[0], "PHOTO")} /></label><label className="cursor-pointer rounded-xl border p-4 text-center font-bold"><FileUp className="mx-auto mb-2" />Agregar PDF<input className="sr-only" type="file" accept="application/pdf" onChange={(event) => void upload(event.target.files?.[0], "DOCUMENT")} /></label></div><p className="mt-3 text-xs text-slate-500">{data.contribution?.assets.length || 0} archivo(s) asociados. El contenido permanece como CLIENT_SUPPLIED.</p></section>}
     {scopes.has("VISIT_QR_CONFIRM") && <section className="rounded-2xl border bg-white p-5 shadow-sm"><h2 className="text-lg font-black text-[#003366]"><QrCode className="mr-2 inline" />Confirmar evaluador</h2><p className="mt-1 text-sm text-slate-600">Escanee o pegue el código que muestra el evaluador. El QR sólo confirma esta visita y no crea una cuenta.</p><input aria-label="Código QR de visita" value={qr} onChange={(event) => setQr(event.target.value)} className="mt-4 h-11 w-full rounded-lg border px-3" /><button disabled={!fullToken || busy || !qr} onClick={() => void api.qr(qr).then((value) => setError(value.verified ? null : "El código no corresponde a esta visita."))} className="mt-3 w-full rounded-lg bg-[#003366] px-4 py-3 font-bold text-white disabled:opacity-40">Verificar código</button></section>}
     <footer className="text-center text-xs text-slate-500"><ShieldCheck className="mx-auto mb-1 h-5 w-5" />Acceso temporal · vence {dateTime(data.expiresAt)} · no es una sesión del ERP.</footer>

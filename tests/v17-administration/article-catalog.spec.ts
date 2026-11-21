@@ -13,7 +13,7 @@ const ARTICLE = {
 };
 const OTHER_ARTICLE = {
   articleRef: "66666666-6666-4666-8666-666666666666", code: "CAJONERA", name: "Cajonera",
-  aliases: ["Gavetero"], frequentAreaRefs: [AREA.areaRef], defaultVolumeM3: 0.62, defaultWeightKg: null,
+  aliases: ["Gavetero"], frequentAreaRefs: [AREA.areaRef], defaultVolumeM3: 0.62, defaultWeightKg: 14,
 };
 const INITIAL_CATALOG = {
   catalogRef: "77777777-7777-4777-8777-777777777777", version: 3,
@@ -82,6 +82,7 @@ test("busca artículos por sinónimo y publica una revisión explícita del cat�
   const editor = page.getByTestId("article-catalog-admin");
   await expect(editor.getByRole("heading", { name: "Catálogo de artículos", exact: true })).toBeVisible();
   await expect(editor.getByRole("row", { name: /Lámpara auxiliar/ })).toBeVisible();
+  await expect(editor.getByRole("columnheader", { name: /peso|módulo|mini/i })).toHaveCount(0);
   const search = editor.getByLabel("Buscar artículo");
   await search.fill("Lámpara de pie");
   await expect(editor.getByRole("row", { name: /Lámpara auxiliar/ })).toBeVisible();
@@ -94,6 +95,8 @@ test("busca artículos por sinónimo y publica una revisión explícita del cat�
   await expect(editor.getByRole("row", { name: /Lámpara de sala/ })).toBeVisible();
 
   await editor.getByRole("button", { name: "Nuevo artículo", exact: true }).click();
+  await expect(editor.getByLabel(/peso/i)).toHaveCount(0);
+  await expect(editor.getByRole("combobox", { name: /módulo|inventario|mini/i })).toHaveCount(0);
   await editor.getByLabel("Nombre del artículo", { exact: true }).fill("Sofá de dos plazas");
   await editor.getByLabel("Sinónimos", { exact: true }).fill("Sillón doble");
   await editor.getByLabel("Volumen de referencia (m³)", { exact: true }).fill("1.25");
@@ -110,7 +113,7 @@ test("busca artículos por sinónimo y publica una revisión explícita del cat�
     payloadHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
     expectedLatestVersion: 3,
     articles: expect.arrayContaining([
-      { code: ARTICLE.code, name: "Lámpara de sala", aliases: ARTICLE.aliases, frequentAreaCodes: [AREA.code], defaultVolumeM3: 0.35, defaultWeightKg: 8 },
+      { code: ARTICLE.code, name: "Lámpara de sala", aliases: ARTICLE.aliases, frequentAreaCodes: [AREA.code], defaultVolumeM3: 0.35, defaultWeightKg: null },
       { code: OTHER_ARTICLE.code, name: OTHER_ARTICLE.name, aliases: OTHER_ARTICLE.aliases, frequentAreaCodes: [AREA.code], defaultVolumeM3: 0.62, defaultWeightKg: null },
       { code: expect.stringMatching(/^[A-Z][A-Z0-9_]{1,63}$/u), name: "Sofá de dos plazas", aliases: ["Sillón doble"], frequentAreaCodes: [], defaultVolumeM3: 1.25, defaultWeightKg: null },
     ]),
@@ -132,6 +135,52 @@ test("mantiene el catálogo fuera del alcance de quien sólo consulta asignacion
   await expect(page.getByTestId("hub-forbidden")).toBeVisible();
   await expect(page.getByTestId("article-catalog-admin")).toHaveCount(0);
   expect(unexpected).not.toContain(CATALOG_URL);
+});
+
+test("Recepción usa los nombres y volúmenes del catálogo publicado al describir un bulto", async ({ page }) => {
+  const unexpected = await installSession(page, ["customer-custody:view", "customer-custody:operate"]);
+  const location = { locationRef: "receiving-area", path: "Recepción", name: "Recepción" };
+  const item = {
+    itemRef: "stored-item", itemCode: "LBL-CATALOG-001", inventoryNumber: 1,
+    externalCode: null, status: "IN_CUSTODY", inspectionStatus: "FULL_REQUIRED",
+    identitySource: "MANIFEST", condition: "GOOD", location, evidence: null, version: 1,
+    genericContents: [], unitType: "BOX", packageFormCode: "BOX", notes: null,
+    volumeM3: null, weightKg: null,
+  };
+  const lot = {
+    storageRef: "storage-lot", lotCode: "CST-CATALOG-001", manifestCode: "MAN-CATALOG-001",
+    receptionStage: "RECEIVING", status: "RECEIVED", version: 2,
+    client: { name: "Cliente de prueba" }, receptionLocation: location,
+    warehouse: { name: "Almacén de prueba", excessExitLocation: null },
+    items: [item], movements: [],
+  };
+  await page.route("**/api/materials/warehouses", (route) => route.fulfill({ json: { ok: true, data: [] } }));
+  await page.route("**/api/customer-custody/**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/authorizations")) return route.fulfill({ json: { ok: true, data: [] } });
+    if (url.pathname.endsWith("/lots")) return route.fulfill({ json: { ok: true, data: [lot] } });
+    if (url.pathname.endsWith("/catalog-items")) {
+      const { articleRef, code, name, aliases, defaultVolumeM3 } = OTHER_ARTICLE;
+      const data = url.searchParams.get("view") === "articles"
+        ? { version: INITIAL_CATALOG.version, articles: [{ articleRef, code, name, aliases, defaultVolumeM3 }] }
+        : [];
+      return route.fulfill({ json: { ok: true, data } });
+    }
+    return route.fallback();
+  });
+
+  await page.goto("/mobile/custody");
+  await page.getByRole("button", { name: /Cliente de prueba/ }).click();
+  const scan = page.getByPlaceholder(/Escanee el artículo que va a describir/);
+  await scan.pressSequentially(item.itemCode);
+  await scan.press("Enter");
+  await page.getByLabel("Contenido", { exact: true }).fill("Gavetero");
+  await page.getByRole("button", { name: "Agregar contenido" }).click();
+  const selected = page.getByRole("list", { name: "Contenido seleccionado" });
+  await expect(selected.getByText(OTHER_ARTICLE.name, { exact: true })).toBeVisible();
+  await expect(selected.getByText(/0[.,]62 m³ ref\./)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Guardar descripción" })).toBeEnabled();
+  expect(unexpected).toEqual([]);
 });
 
 test("publica el primer artículo cuando la empresa aún no tiene catálogo", async ({ page }) => {

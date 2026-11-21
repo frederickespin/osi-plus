@@ -233,9 +233,9 @@ async function surveyApi(page: Page) {
             dimensions: body.dimensions,
             normalizedCm: null,
             unitVolumeM3: 1.2,
-            unitWeightKg: 60,
+            unitWeightKg: null,
             volumeSource: "CATALOG",
-            weightSource: "CATALOG",
+            weightSource: null,
             note: null,
             version: body.itemRef ? Number(draft.items[0]?.version || 0) + 1 : 1,
             photos: [],
@@ -244,7 +244,7 @@ async function surveyApi(page: Page) {
         totals: {
           quantity: body.quantity,
           volumeM3: body.quantity * 1.2,
-          weightKg: body.quantity * 60,
+          weightKg: 0,
         },
       };
     if (body.operation === "DELETE_ITEM")
@@ -410,6 +410,7 @@ test("agenda, inventario, accesos, revisión y firma conservan el flujo móvil a
   await page.getByRole("button", { name: "Guardar acceso" }).click();
   await page.getByRole("button", { name: "Revisión" }).click();
   await expect(page.getByText("Vista previa A4")).toBeVisible();
+  await expect(page.getByText("Según el servicio", { exact: true })).toBeVisible();
   await expect(page.getByText("Materiales derivados:")).toBeVisible();
   await page.getByRole("button", { name: "Confirmar revisión" }).click();
   await page.getByLabel("Nombre del firmante").fill("Firmante Sintético");

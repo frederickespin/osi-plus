@@ -146,7 +146,7 @@ const signature = renderSurveySignatureSvg([
   ],
 ]);
 assert.match(signature.toString(), /polyline/);
-const pdf = renderSurveyPublicationPdf({
+const pdfInput = {
   publicationRef: randomUUID(),
   caseCode: "SUR-1",
   clientDisplayName: "Cliente",
@@ -172,10 +172,15 @@ const pdf = renderSurveyPublicationPdf({
     },
   ],
   access: [{ side: "ORIGIN", summary: "Piso 1", photoRefs: [] }],
-});
+};
+const pdf = renderSurveyPublicationPdf(pdfInput);
 assert.equal(pdf.bytes.subarray(0, 4).toString(), "%PDF");
 assert.equal(pdf.pdfSha256.length, 64);
 assert.match(pdf.bytes.toString("latin1"), /RG .* m .* l S/);
+assert.match(pdf.bytes.toString("latin1"), /10\.00 kg/);
+const withoutWeight = renderSurveyPublicationPdf({ ...pdfInput, totalWeightKg: null });
+assert.match(withoutWeight.bytes.toString("latin1"), /Peso volumetrico pendiente segun el servicio/);
+assert.doesNotMatch(withoutWeight.bytes.toString("latin1"), /\b0\.00 kg/);
 assert.throws(
   () => renderSurveyPublicationPdf({ price: 10 }),
   /CRM_SURVEY_PDF_PRIVATE_FIELD/,

@@ -481,6 +481,10 @@ try {
     "volumen autoritativo deriva del inventario Survey",
     draft.totals.volumeM3 > 0 && draft.totals.quantity === 2,
   );
+  check(
+    "los artículos nuevos mantienen el peso pendiente incluso con un peso legado en catálogo",
+    draft.items[0].unitWeightKg === null && draft.items[0].weightSource === null,
+  );
   await reject(
     "daño bloquea revisión sin foto",
     "CRM_SURVEY_DAMAGE_PHOTO_REQUIRED",

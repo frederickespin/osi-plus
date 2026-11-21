@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db.js";
+import { readActiveArticleCatalog } from "./articleCatalog.js";
 import { PERMS, permsForRole } from "./rbac.js";
 import { createLocalSurveyStorage, surveyBlobSha256 } from "./crmSurveyStorage.js";
 import {
@@ -157,7 +158,13 @@ async function locateAccess(database, accessRef, token, { scope, consume = false
 function publicRoute(row) { return row.pipelineCase.routeSnapshots.filter((item) => item.routeVersion === row.surveyAssignment?.routeVersion).map((item) => Object.freeze({ role: item.role, order: item.stopOrder, countryCode: item.countryCode, provinceState: item.provinceState, cityMunicipality: item.cityMunicipality, sector: item.sector, streetAndNumber: item.streetAndNumber, buildingResidential: item.buildingResidential, floorUnit: item.floorUnit, arrivalReference: item.arrivalReference })); }
 function contributionDto(value) { if (!value) return null; return Object.freeze({ contributionRef: value.contributionRef, revision: value.revision, version: value.version, status: value.status, source: value.source, notes: value.notes, estimatedWeightKg: Number(value.estimatedWeightKg), estimatedVolumeM3: Number(value.estimatedVolumeM3), metricLabel: "Información suministrada por el cliente / Mini Survey", items: Object.freeze(value.items.map((item) => Object.freeze({ itemRef: item.itemRef, articleRef: item.articleRefSnapshot, name: item.articleNameSnapshot, quantity: item.quantity, measurements: item.clientMeasurements, notes: item.notes, unitWeightKg: item.unitWeightKg === null ? null : Number(item.unitWeightKg), unitVolumeM3: item.unitVolumeM3 === null ? null : Number(item.unitVolumeM3) }))), assets: Object.freeze(value.assets) }); }
 async function clientReasons(database, row) { return database.visitReason.findMany({ where: { tenantId: row.tenantId, status: "ACTIVE", visibleToClient: true, OR: [{ requesterOrigin: "CLIENT" }, { requesterOrigin: null }] }, select: { reasonRef: true, name: true, kind: true }, orderBy: { sortOrder: "asc" }, take: 50 }); }
-async function miniCatalog(database, row) { if (!row.grants.some((grant) => grant.scope === "MINI_SURVEY_EDIT")) return []; const version = await database.surveyCatalogVersion.findFirst({ where: { tenantId: row.tenantId, status: "ACTIVE" }, orderBy: { version: "desc" }, include: { articles: { where: { status: "ACTIVE" }, select: { articleRef: true, name: true }, orderBy: { sortOrder: "asc" }, take: 100 } } }); return version?.articles || []; }
+async function miniCatalog(database, row) {
+  if (!row.grants.some((grant) => grant.scope === "MINI_SURVEY_EDIT")) return [];
+  const catalog = await readActiveArticleCatalog(database, row.tenantId);
+  return catalog?.articles.map(({ articleRef, name, aliases, defaultVolumeM3 }) => ({
+    articleRef, name, aliases, defaultVolumeM3,
+  })) || [];
+}
 function publicAccessDto(row, reasons, catalog, credentialKind = "TOKEN") {
   const assignment = row.surveyAssignment; const fee = assignment?.visitFees?.[0]; const scopes = row.grants.map((grant) => grant.scope);
   return Object.freeze({ accessRef: row.accessRef, purpose: row.purpose, expiresAt: row.expiresAt.toISOString(), credentialKind, scopes: Object.freeze(scopes), contactName: row.selectedContact.displayName, case: Object.freeze({ caseCode: row.pipelineCase.caseCode }), visit: assignment ? Object.freeze({ visitRef: assignment.assignmentRef, method: assignment.evaluationDecision?.method || null, scheduledStart: assignment.scheduledStart.toISOString(), scheduledEnd: assignment.scheduledEnd?.toISOString() || null, status: assignment.status, instructions: assignment.instructionSnapshot, reason: assignment.visitReason?.visibleToClient ? assignment.visitReason.name : null, evaluator: Object.freeze({ evaluatorRef: assignment.evaluatorMembership.employeeProfile?.profileRef || null, displayName: assignment.evaluatorMembership.user.name, role: assignment.evaluatorMembership.employeeProfile?.jobTitle || "Evaluador autorizado" }), route: Object.freeze(publicRoute(row)), fee: fee && fee.suggestedAmount !== null && fee.currency ? Object.freeze({ disposition: fee.disposition, amount: Number(fee.suggestedAmount), currency: fee.currency }) : null, clientResponse: Object.freeze({ state: row.visitResponse?.state || "PENDING", version: row.visitResponse?.version || 0 }) }) : null, reasons: Object.freeze(reasons), miniCatalog: Object.freeze(catalog), contribution: contributionDto(row.contributions[0]), notices: Object.freeze({ surveySource: "CLIENT_SUPPLIED", quoteAcceptanceAvailable: false, externalTransportEnabled: false }) });
@@ -211,13 +218,31 @@ export async function saveClientMiniSurvey(accessRef, token, raw, database = pri
     const catalog = await tx.surveyCatalogVersion.findFirst({ where: { tenantId: row.tenantId, status: "ACTIVE" }, orderBy: { version: "desc" }, include: { articles: { where: { articleRef: { in: command.items.map((item) => item.articleRef) }, status: "ACTIVE" } } } });
     if (!catalog || catalog.articles.length !== command.items.length) fail("CLIENT_TEMPORARY_RESOURCE_NOT_FOUND", 404);
     const byRef = new Map(catalog.articles.map((item) => [item.articleRef, item]));
-    const items = command.items.map((item, index) => { const authority = byRef.get(item.articleRef); const unitVolume = authority.defaultVolumeM3 === null ? null : Number(authority.defaultVolumeM3); const unitWeight = authority.defaultWeightKg === null ? null : Number(authority.defaultWeightKg); return { catalogVersionId: catalog.id, catalogItemId: authority.id, articleRefSnapshot: authority.articleRef, articleCodeSnapshot: authority.code, articleNameSnapshot: authority.name, quantity: item.quantity, unitVolumeM3: unitVolume, unitWeightKg: unitWeight, totalVolumeM3: unitVolume === null ? null : unitVolume * item.quantity, totalWeightKg: unitWeight === null ? null : unitWeight * item.quantity, clientMeasurements: item.measurements === null ? Prisma.DbNull : item.measurements, notes: item.notes, sortOrder: index }; });
-    const estimatedVolumeM3 = items.reduce((sum, item) => sum + (item.totalVolumeM3 || 0), 0); const estimatedWeightKg = items.reduce((sum, item) => sum + (item.totalWeightKg || 0), 0);
+    const items = command.items.map((item, index) => {
+      const authority = byRef.get(item.articleRef);
+      const unitVolume = authority.defaultVolumeM3 === null ? null : Number(authority.defaultVolumeM3);
+      return {
+        catalogVersionId: catalog.id,
+        catalogItemId: authority.id,
+        articleRefSnapshot: authority.articleRef,
+        articleCodeSnapshot: authority.code,
+        articleNameSnapshot: authority.name,
+        quantity: item.quantity,
+        unitVolumeM3: unitVolume,
+        unitWeightKg: null,
+        totalVolumeM3: unitVolume === null ? null : unitVolume * item.quantity,
+        totalWeightKg: null,
+        clientMeasurements: item.measurements === null ? Prisma.DbNull : item.measurements,
+        notes: item.notes,
+        sortOrder: index,
+      };
+    });
+    const estimatedVolumeM3 = items.reduce((sum, item) => sum + (item.totalVolumeM3 || 0), 0);
     if (current) await tx.clientTemporarySurveyContribution.update({ where: { id: current.id }, data: { status: "SUPERSEDED", version: { increment: 1 } } });
-    const createdContribution = await tx.clientTemporarySurveyContribution.create({ data: { tenantId: row.tenantId, accessId: row.id, surveyAssignmentId: row.surveyAssignment.id, catalogVersionId: catalog.id, revision: (current?.revision || 0) + 1, status: command.submit ? "SUBMITTED" : "DRAFT", source: "CLIENT_SUPPLIED", notes: command.notes, estimatedWeightKg, estimatedVolumeM3, submittedAt: command.submit ? now : null } });
+    const createdContribution = await tx.clientTemporarySurveyContribution.create({ data: { tenantId: row.tenantId, accessId: row.id, surveyAssignmentId: row.surveyAssignment.id, catalogVersionId: catalog.id, revision: (current?.revision || 0) + 1, status: command.submit ? "SUBMITTED" : "DRAFT", source: "CLIENT_SUPPLIED", notes: command.notes, estimatedVolumeM3, submittedAt: command.submit ? now : null } });
     await tx.clientTemporarySurveyContributionItem.createMany({ data: items.map((item) => ({ ...item, tenantId: row.tenantId, contributionId: createdContribution.id })) });
     const contribution = await tx.clientTemporarySurveyContribution.findUniqueOrThrow({ where: { id: createdContribution.id }, include: { items: { orderBy: { sortOrder: "asc" } }, assets: true } });
-    const result = Object.freeze({ contribution: contributionDto(contribution), missingMetricCount: items.filter((item) => item.unitVolumeM3 === null || item.unitWeightKg === null).length, replayed: false });
+    const result = Object.freeze({ contribution: contributionDto(contribution), missingMetricCount: items.filter((item) => item.unitVolumeM3 === null).length, replayed: false });
     await tx.clientTemporaryAccessEvent.create({ data: { tenantId: row.tenantId, accessId: row.id, eventType: command.submit ? "MINI_SURVEY_COMPLETED" : "MINI_SURVEY_SAVED", actorKind: "CLIENT_TEMPORARY", metadata: { contributionRef: contribution.contributionRef, revision: contribution.revision, typeCount: items.length, source: "CLIENT_SUPPLIED" } } });
     await tx.clientTemporaryAccessCommand.create({ data: { tenantId: row.tenantId, accessId: row.id, requestId: command.requestId, operation: command.operation, payloadHash: command.payloadHash, resultJson: result } }); return result;
   }, MUTATION_OPTIONS); } catch (error) { throw databaseError(error); }

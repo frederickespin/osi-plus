@@ -20,7 +20,7 @@ export type ClientPortalData = Readonly<{
     clientResponse: Readonly<{ state: string; version: number }>;
   }> | null;
   reasons: readonly Readonly<{ reasonRef: string; name: string; kind: string }>[];
-  miniCatalog: readonly Readonly<{ articleRef: string; name: string }>[];
+  miniCatalog: readonly Readonly<{ articleRef: string; name: string; aliases?: readonly string[]; defaultVolumeM3?: number | null }>[];
   contribution: Readonly<{ contributionRef: string; revision: number; version: number; status: string; source: string; notes: string | null; estimatedWeightKg: number; estimatedVolumeM3: number; metricLabel: string; items: readonly Readonly<{ itemRef: string; articleRef: string; name: string; quantity: number; measurements: unknown; notes: string | null; unitWeightKg: number | null; unitVolumeM3: number | null }>[]; assets: readonly Readonly<{ assetRef: string; category: string; documentType: string | null }>[] }> | null;
   notices: Readonly<{ surveySource: string; quoteAcceptanceAvailable: false; externalTransportEnabled: false }>;
 }>;

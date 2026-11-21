@@ -358,6 +358,7 @@ function publicDraft(row) {
       source: "CLIENT_SUPPLIED",
       typeCount: clientContribution.items.length,
       estimatedWeightKg: asNumber(clientContribution.estimatedWeightKg) || 0,
+      weightPending: clientContribution.items.some((item) => item.unitWeightKg == null),
       estimatedVolumeM3: asNumber(clientContribution.estimatedVolumeM3) || 0,
       items: Object.freeze(clientContribution.items.map((item) => Object.freeze({
         itemRef: item.itemRef,
@@ -951,7 +952,6 @@ export async function mutateSurveyDraft(
               command.dimensions.heightCm) /
             1_000_000
           : asNumber(article.defaultVolumeM3);
-        const weight = asNumber(article.defaultWeightKg);
         if (command.itemRef) {
           const current = draft.items.find(
             (entry) => entry.itemRef === command.itemRef && !entry.deletedAt,
@@ -959,6 +959,7 @@ export async function mutateSurveyDraft(
           if (!current) surveyFail("CRM_SURVEY_RESOURCE_NOT_FOUND", 404);
           if (current.version !== command.expectedItemVersion)
             surveyFail("CRM_SURVEY_VERSION_CONFLICT", 409);
+          const sameArticle = current.articleRefSnapshot === article.articleRef;
           const updated = await tx.surveyDraftItem.update({
             where: { id: current.id },
             data: {
@@ -981,13 +982,13 @@ export async function mutateSurveyDraft(
               widthCm: command.dimensions?.widthCm || null,
               heightCm: command.dimensions?.heightCm || null,
               unitVolumeM3: volume,
-              unitWeightKg: weight,
+              unitWeightKg: sameArticle ? current.unitWeightKg : null,
               volumeSource: command.dimensions
                 ? "MEASURED"
                 : volume == null
                   ? null
                   : "CATALOG",
-              weightSource: weight == null ? null : "CATALOG",
+              weightSource: sameArticle ? current.weightSource : null,
               note: command.note,
               version: { increment: 1 },
             },
@@ -1031,13 +1032,13 @@ export async function mutateSurveyDraft(
               widthCm: command.dimensions?.widthCm || null,
               heightCm: command.dimensions?.heightCm || null,
               unitVolumeM3: volume,
-              unitWeightKg: weight,
+              unitWeightKg: null,
               volumeSource: command.dimensions
                 ? "MEASURED"
                 : volume == null
                   ? null
                   : "CATALOG",
-              weightSource: weight == null ? null : "CATALOG",
+              weightSource: null,
               note: command.note,
               sortOrder: next + 1,
             },
@@ -1367,7 +1368,9 @@ export async function publishSurvey(
         publishedAt: publishedAt.toISOString(),
         totalQuantity: metricTotals.quantity,
         totalVolumeM3: metricTotals.volumeM3,
-        totalWeightKg: metricTotals.weightKg,
+        totalWeightKg: logical.items.every((item) => item.unitWeightKg !== null)
+          ? metricTotals.weightKg
+          : null,
         items: logical.items.map((item) => ({
           ...item,
           totalVolumeM3: (item.unitVolumeM3 || 0) * item.quantity,

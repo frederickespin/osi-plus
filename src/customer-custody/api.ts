@@ -1,4 +1,5 @@
 import { getMembershipRef } from "@/lib/sessionStore";
+import type { ActiveArticleCatalog } from "@/article-catalog/types";
 
 export type CustomerStorageType = "PERSONAL_EFFECTS" | "IMPORT_STORAGE" | "INTERNATIONAL_DISPATCH" | "COMMERCIAL_STORAGE";
 export type CustomerCustodyIntakeSource = "OWN_PICKUP" | "EXTERNAL_ORIGIN" | "COMMERCIAL_PRE_ADVICE" | "DIRECT_WAREHOUSE";
@@ -40,6 +41,7 @@ export class CustomerCustodyApi {
   async activateStorageAgreement(agreementRef: string, payload: Record<string, unknown>) { const requestId = crypto.randomUUID(); const operation = "CUSTOMER_STORAGE_AGREEMENT_ACTIVATE"; const payloadHash = await hash({ operation, requestId, ...payload }); return this.request<CustomerStorageAgreement>(`/api/customer-custody/storage-agreements/${encodeURIComponent(agreementRef)}`, { method: "PATCH", body: JSON.stringify({ requestId, payloadHash, ...payload }) }); }
   receptionAction(payload: Record<string, unknown>) { return this.command<CustomerStorageLot>("/api/customer-custody/reception-actions", "CUSTOMER_CUSTODY_RECEPTION_ACTION", payload); }
   catalogItems(kind?: CustomerCustodyCatalogKind, signal?: AbortSignal) { const search = new URLSearchParams(); if (kind) search.set("kind", kind); return this.request<readonly CustomerCustodyCatalogItem[]>(`/api/customer-custody/catalog-items?${search}`, { signal }); }
+  articleCatalog(signal?: AbortSignal) { return this.request<ActiveArticleCatalog | null>("/api/customer-custody/catalog-items?view=articles", { signal }); }
   createCatalogItem(payload: Record<string, unknown>) { return this.command<CustomerCustodyCatalogItem>("/api/customer-custody/catalog-items", "CUSTOMER_CUSTODY_CATALOG_CREATE", payload); }
   async updateCatalogItem(catalogRef: string, payload: Record<string, unknown>) { const requestId = crypto.randomUUID(); const operation = "CUSTOMER_CUSTODY_CATALOG_UPDATE"; const payloadHash = await hash({ operation, requestId, catalogRef, ...payload }); return this.request<CustomerCustodyCatalogItem>(`/api/customer-custody/catalog-items/${encodeURIComponent(catalogRef)}`, { method: "PATCH", body: JSON.stringify({ requestId, payloadHash, ...payload }) }); }
   resetPreviewReception(storageRef: string, confirmLotCode: string) { return this.command<{ storageRef: string; lotCode: string; archivedStorageRef: string; archivedItems: number; archivedMovements: number }>("/api/customer-custody/preview-reset", "CUSTOMER_CUSTODY_PREVIEW_RESET", { storageRef, confirmLotCode }); }

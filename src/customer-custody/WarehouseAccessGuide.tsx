@@ -48,9 +48,9 @@ export const WAREHOUSE_GUIDE_LESSONS: Record<WarehouseGuideTopic, SetupLesson> =
   },
   CATALOGS: {
     title: "Mantén las opciones de recepción",
-    purpose: "Configura las opciones que el equipo elige al identificar artículos, empaques, condiciones y localizaciones de daños.",
+    purpose: "Configura empaques, condiciones y localizaciones de daños. Los nombres y volúmenes de referencia se mantienen en Administración → Catálogo de artículos.",
     steps: [
-      <>Abre <strong>Catálogos</strong> y elige <strong>Ubic.</strong> (localizaciones de daños), <strong>Cond.</strong> (condiciones), <strong>Artíc.</strong> (nombres de artículos) o <strong>Empaq.</strong> (formas de empaque).</>,
+      <>Abre <strong>Catálogos</strong> y elige <strong>Ubic.</strong> (localizaciones de daños), <strong>Cond.</strong> (condiciones) o <strong>Empaq.</strong> (formas de empaque).</>,
       <>Para agregar una opción, escríbela en <strong>Nueva opción</strong> y pulsa <strong>Agregar opción</strong> (+). Usa el lápiz para cambiar el nombre o el botón de encendido para desactivar la opción.</>,
       <>Para cargar varias opciones, pulsa <strong>Descargar plantilla del catálogo</strong>. Completa la columna <strong>Nombre</strong> y carga el archivo con <strong>Importar listado al catálogo activo</strong>.</>,
       <>Revisa en <strong>Vista previa de importación</strong> qué filas se crearán, actualizarán u omitirán. Corrige los errores del archivo antes de pulsar <strong>Importar</strong>.</>,

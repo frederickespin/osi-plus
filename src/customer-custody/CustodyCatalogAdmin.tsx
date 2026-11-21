@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, FileDown, MapPin, Package, Pencil, Plus, Power, ShieldAlert, Tags, Upload, X } from "lucide-react";
+import { Check, FileDown, MapPin, Package, Pencil, Plus, Power, ShieldAlert, Upload, X } from "lucide-react";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import spreadsheetLibraryUrl from "@/internal-tools/archaeological-packing/vendor/xlsx.full.min.js?url";
 import { CustomerCustodyApi, customerCustodyErrorText, type CustomerCustodyCatalogItem, type CustomerCustodyCatalogKind } from "./api";
@@ -7,7 +7,6 @@ import { CustomerCustodyApi, customerCustodyErrorText, type CustomerCustodyCatal
 const KINDS: readonly { code: CustomerCustodyCatalogKind; label: string; short: string; icon: typeof MapPin }[] = [
   { code: "DAMAGE_LOCATION", label: "Localizaciones de daños", short: "Ubic.", icon: MapPin },
   { code: "CONDITION", label: "Condiciones", short: "Cond.", icon: ShieldAlert },
-  { code: "ITEM_NAME", label: "Nombres de artículos", short: "Artíc.", icon: Tags },
   { code: "PACKAGE_FORM", label: "Formas de empaque", short: "Empaq.", icon: Package },
 ];
 const ICON_BUTTON = "grid h-9 w-9 shrink-0 place-items-center rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40";
@@ -152,7 +151,7 @@ export default function CustodyCatalogAdmin({ authorization, onUnauthorized }: {
   };
 
   return <section className="rounded-xl border bg-white p-4" data-testid="custody-catalog-admin">
-    <header className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-sky-700">Configuración tenant-first</p><h3 className="text-lg font-black text-[#003366]">Catálogos de recepción</h3><p className="mt-1 text-xs text-slate-500">Edite opciones o importe listados. El historial conserva el texto utilizado en cada recepción.</p></div><div className="flex items-center gap-1"><input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" className="hidden" onChange={(event) => void readFile(event.target.files?.[0])} /><button type="button" className={ICON_BUTTON} onClick={downloadTemplate} title="Descargar plantilla CSV" aria-label="Descargar plantilla del catálogo"><FileDown className="h-4 w-4" /></button><button type="button" className={ICON_BUTTON} disabled={saving} onClick={() => inputRef.current?.click()} title="Importar Excel, CSV o TSV" aria-label="Importar listado al catálogo activo"><Upload className="h-4 w-4" /></button></div></header>
+    <header className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-sky-700">Configuración tenant-first</p><h3 className="text-lg font-black text-[#003366]">Catálogos de recepción</h3><p className="mt-1 text-xs text-slate-500">Edite opciones o importe listados. Los nombres y volúmenes se mantienen en Administración → Catálogo de artículos.</p></div><div className="flex items-center gap-1"><input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" className="hidden" onChange={(event) => void readFile(event.target.files?.[0])} /><button type="button" className={ICON_BUTTON} onClick={downloadTemplate} title="Descargar plantilla CSV" aria-label="Descargar plantilla del catálogo"><FileDown className="h-4 w-4" /></button><button type="button" className={ICON_BUTTON} disabled={saving} onClick={() => inputRef.current?.click()} title="Importar Excel, CSV o TSV" aria-label="Importar listado al catálogo activo"><Upload className="h-4 w-4" /></button></div></header>
 
     <div role="tablist" aria-label="Catálogos de recepción" className="mt-3 flex flex-wrap gap-1 border-y bg-slate-50 p-1">{KINDS.map((row) => { const Icon = row.icon; const active = kind === row.code; return <button key={row.code} type="button" role="tab" aria-selected={active} title={row.label} onClick={() => { setKind(row.code); setEditingRef(null); setImportOpen(false); setImportRows([]); setNotice(null); }} className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 text-xs font-bold ${active ? "bg-[#003366] text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}><Icon className="h-3.5 w-3.5" />{row.short}<span className={`rounded px-1 text-[9px] ${active ? "bg-white/20" : "bg-slate-200"}`}>{items.filter((item) => item.kind === row.code).length}</span></button>; })}</div>
 

@@ -2,7 +2,7 @@ export const PACKAGE_PRICING_KIND: "SERVICE_PACKAGE_PRICING";
 export const PACKAGE_QUOTE_BASIS: "PACKAGE_QUOTATION";
 export const PACKAGE_BASE_LABELS: Readonly<Record<PackageBasis, string>>;
 export type PackageBasis = "FIXED" | "M3" | "FT3" | "CWT" | "CHARGEABLE_KG" | "CAPACITY";
-export type PackageShipment = Readonly<{ mode: "NONE" | "SEA" | "AIR"; factor: number | null; roundKg: number }>;
+export type PackageShipment = Readonly<{ mode: "NONE" | "SEA" | "AIR" | "ROAD"; factor: number | null; roundKg: number }>;
 export type PackageComponent = Readonly<{
   ruleSeriesRef: string;
   concept: string;

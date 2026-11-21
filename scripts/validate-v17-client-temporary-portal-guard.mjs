@@ -29,7 +29,7 @@ export function validateClientTemporaryPortal(overrides = {}) {
   need(domain, /commercialEntityContact\.findFirst[\s\S]*pipelineCaseId[\s\S]*state: "PUBLISHED"/, "contacto no procede del contexto publicado del caso");
   need(domain, /randomBytes\(32\)\.toString\("base64url"\)[\s\S]*tokenHash = digest\(token\)/, "token criptográfico/hash ausente");
   need(domain, /source: "CLIENT_SUPPLIED"/, "Mini no conserva fuente CLIENT_SUPPLIED");
-  need(domain, /estimatedVolumeM3 = items\.reduce[\s\S]*estimatedWeightKg = items\.reduce/, "Mini no calcula totales desde catálogo versionado");
+  need(domain, /unitWeightKg: null,[\s\S]*totalWeightKg: null,[\s\S]*estimatedVolumeM3 = items\.reduce/, "Mini debe estimar el volumen y dejar el peso pendiente del servicio");
   need(domain, /communicationStatus: "COMMUNICATED"/, "Visit Fee no exige comunicación explícita");
   need(domain, /failures >= 5[\s\S]*return Object\.freeze\(\{ unavailable: true \}\)/, "código corto no conserva contador de fuerza bruta");
   need(contract, /items\.length > 10\) fail\("CLIENT_TEMPORARY_MINI_REQUIRES_DETAILED_SURVEY"/, "límite Mini exacto ausente");

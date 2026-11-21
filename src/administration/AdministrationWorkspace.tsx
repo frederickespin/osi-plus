@@ -12,7 +12,7 @@ import { administrationSectionFromRoute, type AdministrationSection, type Admini
 const AdminTenantMembershipModule = lazy(() => import("@/admin-tenant/AdminTenantMembershipModule"));
 const FleetModule = lazy(() => import("@/admin-fleet/FleetModule"));
 const ServiceConfigurationAdmin = lazy(() => import("@/crm-services/ServiceConfigurationAdmin"));
-const ArticleCatalogAdmin = lazy(() => import("@/survey/ArticleCatalogAdmin"));
+const ArticleCatalogAdmin = lazy(() => import("@/article-catalog/ArticleCatalogAdmin"));
 const LogisticsRulesAdmin = lazy(() => import("@/logistics-engine/LogisticsRulesAdmin"));
 const CostingRulesAdmin = lazy(() => import("@/costing/CostingRulesAdmin"));
 const CommunicationTemplatesAdmin = lazy(() => import("@/communications/CommunicationTemplatesAdmin"));

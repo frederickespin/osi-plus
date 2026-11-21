@@ -29,13 +29,13 @@ Cada valor conserva fuente y revisión: `CLIENT_DECLARED`, `COMMERCIAL_ESTIMATE`
 
 ## Catálogo común e idioma de entrega
 
-La primera versión de **Administración → Catálogo de artículos** se redactará y consultará en español. Cada artículo tendrá un código estable y una ficha por empresa. El equipo editará en español el nombre, los sinónimos y la descripción. La ficha compartirá su categoría y datos de referencia, como dimensiones, volumen y densidad, en todos los idiomas.
+En **Administración → Catálogo de artículos**, cada empresa mantiene un catálogo común en español. Cada artículo tiene un código estable, nombre, sinónimos y volumen de referencia.
 
-Comercial asignará la visita desde el caso. OSi Survey, dentro de OSi Plus Mobile, usará el catálogo para el levantamiento. Recepción usará los nombres y sinónimos al describir el contenido de un bulto. Cada registro conservará los datos y la revisión usados en ese momento.
+Comercial asigna la visita desde el caso. Survey y Mini Survey consultan el catálogo para estimar el volumen del inventario. Recepción consulta los mismos artículos al describir bultos y conserva el contenido registrado. Cotización usa el volumen del servicio y el factor configurado en su perfil del Tarifario para determinar los kilogramos volumétricos. El perfil registra un divisor para aéreo o una densidad en kg/m³ para marítimo o terrestre. El peso bruto medido se registra por separado.
 
 Cuando se habiliten otros idiomas, el idioma se elegirá al generar el resultado para el destinatario. El español será el idioma inicial de entrega. El sistema tomará el texto de la revisión correspondiente y generará la traducción con un glosario de la empresa. Esta traducción se guardará asociada a la misma ficha y revisión para reutilizarla en otras entregas. Si el texto original cambia, la revisión siguiente podrá generar su propia traducción. Cada documento emitido conservará el idioma y el texto que se entregaron.
 
-Por ejemplo, la ficha `ART-001` se redacta como «Sofá de 3 plazas». Una entrega en inglés puede mostrar «Three-seat sofa», con el mismo código y el mismo volumen de referencia. El idioma de entrega determina cómo se presentan los textos y los formatos. Las cantidades y los valores de volumen, densidad y peso conservan su significado y su fuente.
+Por ejemplo, la ficha `ART-001` se redacta como «Sofá de 3 plazas». Una entrega en inglés puede mostrar «Three-seat sofa», con el mismo código y el mismo volumen de referencia. Las cantidades y mediciones conservan su fuente y el peso volumétrico conserva la regla del servicio.
 
 Al habilitar la traducción automática, la vista previa mostrará qué textos del catálogo se traducirán. El sistema señalará las traducciones pendientes antes de emitir el resultado y permitirá elegir una entrega en español.
 

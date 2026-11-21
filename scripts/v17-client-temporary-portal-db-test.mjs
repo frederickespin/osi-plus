@@ -89,7 +89,7 @@ try {
 
   const miniBody = { requestId: requestId("mini"), expectedVersion: 0, submit: true, notes: null, items: [{ articleRef: article.articleRef, quantity: 2, measurements: null, notes: null }] };
   const mini = await saveClientMiniSurvey(accessRef, token, signed("MINI_SURVEY_COMPLETE", miniBody), prisma, new Date("2026-09-16T12:03:00.000Z"));
-  pass(mini.contribution.source === "CLIENT_SUPPLIED" && mini.contribution.estimatedVolumeM3 === 0.24 && mini.contribution.estimatedWeightKg === 9, "Mini usa catálogo versionado y fuente no verificada");
+  pass(mini.contribution.source === "CLIENT_SUPPLIED" && mini.contribution.estimatedVolumeM3 === 0.24 && mini.contribution.items[0].unitWeightKg === null, "Mini usa el volumen del catálogo versionado con el peso pendiente del servicio");
   const uploadBytes = Buffer.from("synthetic-client-photo"); const uploadRequestId = requestId("upload"); const uploadSha = createHash("sha256").update(uploadBytes).digest("hex");
   const uploadSigned = { operation: "SURVEY_ASSET_UPLOAD", requestId: uploadRequestId, category: "PHOTO", documentType: null, mimeType: "image/webp", sizeBytes: uploadBytes.length, sha256: uploadSha };
   const upload = await uploadClientSurveyAsset(accessRef, token, { requestId: uploadRequestId, payloadHash: clientTemporaryPayloadHash(uploadSigned), category: "PHOTO", documentType: null, mimeType: "image/webp" }, uploadBytes, prisma, createMemorySurveyStorage(), new Date("2026-09-16T12:03:30.000Z"));

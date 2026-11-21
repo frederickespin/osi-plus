@@ -215,11 +215,19 @@ export async function getTransportWorkspace(prisma, context, query = {}) {
     const scopedCase = query.caseRef ? await resolveCase(tx, actor, query.caseRef) : null;
     const [cases, vehicles, decision, referenceBases] = await Promise.all([
       scopedCase && query.search === undefined ? Promise.resolve([]) : tx.pipelineCase.findMany({ where: { tenantId: actor.tenantId, ...caseScope(actor), ...(query.search ? { OR: [{ caseCode: { contains: query.search, mode: "insensitive" } }, { clientName: { contains: query.search, mode: "insensitive" } }] } : {}) }, select: { publicRef: true, caseCode: true, mode: true }, orderBy: [{ updatedAt: "desc" }, { publicRef: "asc" }], take: 50 }),
-      tx.vehicle.findMany({ where: { tenant_id: actor.tenantId, operational_status: "AVAILABLE", available_for_calculation: true, retired_at: null }, select: { id: true, business_code: true, vehicle_type: true }, orderBy: { normalized_code: "asc" }, take: 500 }),
+      tx.vehicle.findMany({
+        where: { tenant_id: actor.tenantId, operational_status: "AVAILABLE", available_for_calculation: true, retired_at: null },
+        select: { id: true, business_code: true, vehicle_type: true, transit_configuration: true, transit_axles: true, toll_category: true },
+        orderBy: { normalized_code: "asc" }, take: 500,
+      }),
       scopedCase ? tx.surveyEvaluationDecision.findFirst({ where: { tenantId: actor.tenantId, pipelineCaseId: scopedCase.id }, orderBy: { version: "desc" }, select: { decisionRef: true, version: true, method: true, commercialState: true, routeVersion: true } }) : Promise.resolve(null),
       scopedCase ? transportReferenceBases(tx, actor.tenantId, new Date()) : Promise.resolve([]),
     ]);
     if (scopedCase && !cases.some((row) => row.publicRef === scopedCase.publicRef)) cases.unshift({ publicRef: scopedCase.publicRef, caseCode: scopedCase.caseCode, mode: scopedCase.mode });
-    return { referenceBases, cases: cases.map((row) => ({ caseRef: row.publicRef, label: row.caseCode, mode: row.mode })), vehicles: vehicles.map((row) => ({ vehicleRef: row.id, businessCode: row.business_code, vehicleType: row.vehicle_type })), visits: decision && decision.method === "IN_PERSON" && !["CANCELLED", "NOT_REQUIRED"].includes(decision.commercialState) && decision.routeVersion === scopedCase.routeRevision ? [{ contextRef: decision.decisionRef, label: `Visita presencial · decisión ${decision.version}` }] : [] };
+    const fleet = vehicles.map((row) => ({
+      vehicleRef: row.id, businessCode: row.business_code, vehicleType: row.vehicle_type,
+      transitConfiguration: row.transit_configuration ?? null, transitAxles: row.transit_axles ?? null, tollCategory: row.toll_category ?? null,
+    }));
+    return { referenceBases, cases: cases.map((row) => ({ caseRef: row.publicRef, label: row.caseCode, mode: row.mode })), vehicles: fleet, visits: decision && decision.method === "IN_PERSON" && !["CANCELLED", "NOT_REQUIRED"].includes(decision.commercialState) && decision.routeVersion === scopedCase.routeRevision ? [{ contextRef: decision.decisionRef, label: `Visita presencial · decisión ${decision.version}` }] : [] };
   });
 }

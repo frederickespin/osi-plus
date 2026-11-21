@@ -1,4 +1,5 @@
 import { getMembershipRef } from "@/lib/sessionStore";
+import { ADMIN_FLEET_TRANSIT_CONFIGURATIONS } from "../../shared/adminFleet.js";
 import type { FleetBase, FleetCreate, FleetList, FleetListFilters, FleetOptions, FleetUpdate, FleetVehicle, FleetVehicleType } from "./types";
 
 export class FleetApiError extends Error {
@@ -8,6 +9,7 @@ export class FleetApiError extends Error {
 }
 
 const VEHICLE_KEYS = ["vehicleRef", "businessCode", "plate", "vin", "vehicleType", "brand", "model", "modelYear", "capacityWeight", "capacityVolume", "usableLength", "usableWidth", "usableHeight", "weightUnit", "volumeUnit", "dimensionUnit", "operationalStatus", "availableForCalculation", "effectiveFrom", "effectiveTo", "hubCode", "rowVersion", "updatedAt", "retiredAt", "calculationLocked"];
+const TRANSIT_KEYS = ["transitConfiguration", "transitAxles", "tollCategory"];
 const fail = (): never => { throw new FleetApiError("ADMIN_FLEET_RESPONSE_INVALID", 502); };
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const iso = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value) && Number.isFinite(Date.parse(value));
@@ -15,7 +17,8 @@ const text = (value: unknown, maximum: number, nullable = false) => nullable && 
 const ref = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9_-]{1,191}$/u.test(value);
 
 function vehicleOf(value: unknown): FleetVehicle {
-  if (!record(value) || Object.keys(value).length !== VEHICLE_KEYS.length || VEHICLE_KEYS.some((key) => !(key in value))) return fail();
+  if (!record(value) || VEHICLE_KEYS.some((key) => !(key in value))
+    || Object.keys(value).some((key) => !VEHICLE_KEYS.includes(key) && !TRANSIT_KEYS.includes(key))) return fail();
   if (!ref(value.vehicleRef) || !text(value.businessCode, 80) || !text(value.vehicleType, 80)
     || !text(value.plate, 40, true) || !text(value.vin, 80, true) || !text(value.brand, 120, true)
     || !text(value.model, 120, true) || !text(value.hubCode, 80, true)) return fail();
@@ -30,7 +33,11 @@ function vehicleOf(value: unknown): FleetVehicle {
     || !Number.isInteger(value.rowVersion) || Number(value.rowVersion) < 1 || !iso(value.updatedAt) || !iso(value.effectiveFrom)
     || value.effectiveTo !== null && !iso(value.effectiveTo) || value.retiredAt !== null && !iso(value.retiredAt)) return fail();
   if (["UNAVAILABLE", "RETIRED"].includes(String(value.operationalStatus)) && value.availableForCalculation) return fail();
-  return value as FleetVehicle;
+  const { transitConfiguration = null, transitAxles = null, tollCategory = null } = value;
+  if (transitConfiguration !== null && !ADMIN_FLEET_TRANSIT_CONFIGURATIONS.some((option) => option === transitConfiguration)
+    || transitAxles !== null && (typeof transitAxles !== "number" || !Number.isInteger(transitAxles) || transitAxles < 2 || transitAxles > 32)
+    || tollCategory !== null && (typeof tollCategory !== "number" || !Number.isInteger(tollCategory) || tollCategory < 1 || tollCategory > 5)) return fail();
+  return { ...value, transitConfiguration, transitAxles, tollCategory } as FleetVehicle;
 }
 
 async function bodyOf(response: Response) {

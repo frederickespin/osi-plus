@@ -1,14 +1,15 @@
 import { createHash } from "node:crypto";
 import { normalizeVehicleInput } from "./vehicleNormalization.js";
 import {
-  ADMIN_FLEET_STATUSES, ADMIN_FLEET_WEIGHT_UNITS, ADMIN_FLEET_VOLUME_UNITS, ADMIN_FLEET_DIMENSION_UNITS, calculateFleetLoadVolume,
+  ADMIN_FLEET_STATUSES, ADMIN_FLEET_WEIGHT_UNITS, ADMIN_FLEET_VOLUME_UNITS, ADMIN_FLEET_DIMENSION_UNITS,
+  ADMIN_FLEET_TRANSIT_CONFIGURATIONS, calculateFleetLoadVolume,
 } from "../../shared/adminFleet.js";
 
 export const ADMIN_FLEET_EDITABLE_FIELDS = Object.freeze([
   "businessCode", "plate", "vin", "vehicleType", "brand", "model", "modelYear",
   "capacityWeight", "capacityVolume", "usableLength", "usableWidth", "usableHeight",
   "weightUnit", "volumeUnit", "dimensionUnit", "operationalStatus", "availableForCalculation",
-  "effectiveFrom", "effectiveTo", "hubCode",
+  "effectiveFrom", "effectiveTo", "hubCode", "transitConfiguration", "transitAxles", "tollCategory",
 ]);
 export const ADMIN_FLEET_TECHNICAL_FIELDS = Object.freeze([
   "vehicleType", "capacityWeight", "capacityVolume", "usableLength", "usableWidth", "usableHeight",
@@ -71,6 +72,13 @@ export function adminFleetEditableInput(fields) {
     } else if (key === "modelYear") {
       if (value !== null && (!Number.isInteger(value) || value < 1900 || value > 2200)) fleetFail("INPUT_INVALID");
       output[key] = value;
+    } else if (key === "transitConfiguration") {
+      if (value !== null && !ADMIN_FLEET_TRANSIT_CONFIGURATIONS.includes(value)) fleetFail("INPUT_INVALID");
+      output[key] = value;
+    } else if (key === "transitAxles" || key === "tollCategory") {
+      const [minimum, maximum] = key === "transitAxles" ? [2, 32] : [1, 5];
+      if (value !== null && (!Number.isInteger(value) || value < minimum || value > maximum)) fleetFail("INPUT_INVALID");
+      output[key] = value;
     } else if (Object.hasOwn(UNITS, key)) {
       if (!UNITS[key].includes(value)) fleetFail("INPUT_INVALID");
       output[key] = value;
@@ -85,9 +93,15 @@ export function adminFleetEditableInput(fields) {
 }
 export function normalizeAdminFleetVehicle(fields, { source = "V17_ADMINISTRATION_FLEET_19D", sourceStableId = null } = {}) {
   try {
-    const normalized = normalizeVehicleInput({ ...fields, source, sourceStableId });
+    const { transitConfiguration = null, transitAxles = null, tollCategory = null, ...baseFields } = fields;
+    const normalized = normalizeVehicleInput({ ...baseFields, source, sourceStableId });
     if (!normalized.normalizedCode) fleetFail("INPUT_INVALID");
-    return normalized;
+    const transit = { transitConfiguration, transitAxles, tollCategory };
+    // Vehicles created before transit data was available retain their original idempotency fingerprint.
+    if (Object.values(transit).some((value) => value !== null)) {
+      normalized.payloadHash = createHash("sha256").update(JSON.stringify([normalized.payloadHash, transit])).digest("hex");
+    }
+    return { ...normalized, ...transit };
   } catch (error) {
     if (error instanceof AdminFleetError) throw error;
     if (error?.code === "VEHICLE_INPUT_INVALID" || error?.code === "LOGISTICS_GEO_INPUT_INVALID") fleetFail("INPUT_INVALID");
@@ -157,6 +171,8 @@ export function adminFleetVehicleDto(row) {
     weightUnit: row.weight_unit, volumeUnit: row.volume_unit, dimensionUnit: row.dimension_unit,
     operationalStatus: String(row.operational_status), availableForCalculation: row.available_for_calculation,
     effectiveFrom: isoOrNull(row.effective_from), effectiveTo: isoOrNull(row.effective_to), hubCode: row.hub_code ?? null,
+    transitConfiguration: row.transit_configuration ?? null, transitAxles: numberOrNull(row.transit_axles),
+    tollCategory: numberOrNull(row.toll_category),
     rowVersion: Number(row.row_version), updatedAt: isoOrNull(row.updated_at), retiredAt: isoOrNull(row.retired_at),
     calculationLocked: row.calculation_locked_at != null,
   });

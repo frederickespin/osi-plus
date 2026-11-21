@@ -1,7 +1,7 @@
 import { calculateFleetLoadVolume } from "../../shared/adminFleet.js";
 import type { FleetVehicle, VehicleValues } from "./types";
 
-type StringField = "businessCode" | "plate" | "vin" | "vehicleType" | "brand" | "model" | "modelYear" | "capacityWeight" | "capacityVolume" | "usableLength" | "usableWidth" | "usableHeight" | "effectiveFrom" | "effectiveTo" | "hubCode";
+type StringField = "businessCode" | "plate" | "vin" | "vehicleType" | "brand" | "model" | "modelYear" | "capacityWeight" | "capacityVolume" | "usableLength" | "usableWidth" | "usableHeight" | "effectiveFrom" | "effectiveTo" | "hubCode" | "transitAxles";
 export type VehicleDraft = Omit<VehicleValues, StringField> & Record<StringField, string>;
 
 export function vehicleDraft(vehicle?: FleetVehicle): VehicleDraft {
@@ -15,6 +15,9 @@ export function vehicleDraft(vehicle?: FleetVehicle): VehicleDraft {
     operationalStatus: vehicle?.operationalStatus || "UNAVAILABLE", availableForCalculation: vehicle?.availableForCalculation ?? false,
     effectiveFrom: vehicle?.effectiveFrom.slice(0, 10) || new Date().toISOString().slice(0, 10), effectiveTo: vehicle?.effectiveTo?.slice(0, 10) || "",
     hubCode: vehicle?.hubCode || "",
+    transitConfiguration: vehicle?.transitConfiguration ?? null,
+    transitAxles: vehicle?.transitAxles?.toString() ?? "",
+    tollCategory: vehicle?.tollCategory ?? null,
   };
 }
 
@@ -60,6 +63,11 @@ export function vehicleValues(draft: VehicleDraft, original?: FleetVehicle, calc
   if (!vehicleType) throw new Error("Seleccione el tipo de vehículo.");
   const modelYear = numeric(draft.modelYear, "Año", 0, 2200);
   if (modelYear !== null && modelYear < 1900) throw new Error("El año debe estar entre 1900 y 2200.");
+  const axleInput = draft.transitAxles.trim();
+  const transitAxles = axleInput ? Number(axleInput) : null;
+  if (transitAxles !== null && (!/^\d{1,2}$/u.test(axleInput) || transitAxles < 2 || transitAxles > 32)) {
+    throw new Error("Indique un número entero de ejes entre 2 y 32.");
+  }
   const effectiveFrom = effectiveDate(draft.effectiveFrom, original?.effectiveFrom);
   const effectiveTo = effectiveDate(draft.effectiveTo, original?.effectiveTo);
   if (!effectiveFrom) throw new Error("Indique la fecha inicial de vigencia.");
@@ -76,6 +84,7 @@ export function vehicleValues(draft: VehicleDraft, original?: FleetVehicle, calc
     operationalStatus: draft.operationalStatus,
     availableForCalculation: ["AVAILABLE", "IN_USE"].includes(draft.operationalStatus) && draft.availableForCalculation,
     effectiveFrom, effectiveTo, hubCode: text(draft.hubCode),
+    transitConfiguration: draft.transitConfiguration, transitAxles, tollCategory: draft.tollCategory,
   };
 }
 

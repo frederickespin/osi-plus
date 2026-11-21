@@ -9,7 +9,8 @@ import { V17_COMMERCIAL_STORAGE_SERVICES_PREVIEW_BRANCH } from "../shared/v17Con
 import { validateMigrationFiles } from "./canonical-migrations.mjs";
 import { RETAINED_PREVIEW_EXTENSION } from "./v17-customer-custody-preview-migrate.mjs";
 
-const MIGRATION = "20261120010000_v17_fleet_vehicle_types";
+const CATALOG_MIGRATION = "20261120010000_v17_fleet_vehicle_types";
+const TRANSIT_MIGRATION = "20261121010000_v17_fleet_transit_classification";
 
 async function migrateFleetCatalog(env = process.env) {
   const commit = env.V17_FLEET_CATALOG_PREVIEW_COMMIT;
@@ -25,7 +26,7 @@ async function migrateFleetCatalog(env = process.env) {
     || direct.searchParams.get("schema") !== "osi" || direct.hash) throw new Error("DIRECT_TARGET_INVALID");
 
   const names = validateMigrationFiles();
-  if (names.at(-1) !== MIGRATION) throw new Error("MIGRATION_INVENTORY_INVALID");
+  if (names.at(-2) !== CATALOG_MIGRATION || names.at(-1) !== TRANSIT_MIGRATION) throw new Error("MIGRATION_INVENTORY_INVALID");
   const checksums = new Map(names.map((name) => [
     name, createHash("sha256").update(readFileSync(resolve("prisma/migrations", name, "migration.sql"))).digest("hex"),
   ]));
@@ -44,9 +45,17 @@ async function migrateFleetCatalog(env = process.env) {
         || !row.finished_at || row.rolled_back_at || row.applied_steps_count !== 1) throw new Error("MIGRATION_HISTORY_INVALID");
       applied.add(row.migration_name);
     }
-    const [{ exists }] = await prisma.$queryRaw`SELECT to_regclass('osi.fleet_vehicle_types') IS NOT NULL AS "exists"`;
-    if (names.slice(0, -1).some((name) => !applied.has(name)) || exists !== applied.has(MIGRATION)) throw new Error("MIGRATION_STATE_INVALID");
-    return exists;
+    const [schema] = await prisma.$queryRaw`
+      SELECT to_regclass('osi.fleet_vehicle_types') IS NOT NULL AS "catalog_exists",
+        (SELECT COUNT(*)::integer FROM "information_schema"."columns"
+          WHERE "table_schema"='osi' AND "table_name"='osi_vehicles'
+            AND "column_name" IN ('transit_configuration', 'transit_axles', 'toll_category')) AS "transit_column_count"
+    `;
+    const catalogApplied = applied.has(CATALOG_MIGRATION);
+    const transitApplied = applied.has(TRANSIT_MIGRATION);
+    if (names.slice(0, -2).some((name) => !applied.has(name)) || schema.catalog_exists !== catalogApplied
+      || transitApplied && !catalogApplied || schema.transit_column_count !== (transitApplied ? 3 : 0)) throw new Error("MIGRATION_STATE_INVALID");
+    return transitApplied;
   }
   try {
     if (!await readApplied()) {
@@ -62,7 +71,7 @@ async function migrateFleetCatalog(env = process.env) {
 }
 
 try {
-  if (await migrateFleetCatalog()) process.stdout.write("Fleet vehicle catalog verified in the commercial Preview.\n");
+  if (await migrateFleetCatalog()) process.stdout.write("Fleet vehicle catalog and transit classification verified in the commercial Preview.\n");
 } catch (error) {
   const message = /^[A-Z_]+$/u.test(error?.message ?? "") ? error.message : "DATABASE_OPERATION_FAILED";
   process.stderr.write("FLEET_CATALOG_PREVIEW_MIGRATION_" + message + "\n");

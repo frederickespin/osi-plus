@@ -5,6 +5,7 @@ const MEMBERSHIP = "11111111-1111-4111-8111-111111111111";
 const BASE = "/api/admin/fleet/vehicles";
 const BASE_CODE = "BASE-AA000000000000000093";
 export const vehicleFixture = (index = 1): FleetVehicle => ({
+  transitConfiguration: null, transitAxles: null, tollCategory: null,
   vehicleRef: `synthetic-vehicle-${index}`, businessCode: `IP-${String(index).padStart(3, "0")}`,
   plate: `L${String(index).padStart(6, "0")}`, vin: `VIN${String(index).padStart(5, "0")}`, vehicleType: index === 2 ? "Furgón" : "Camión",
   brand: "Marca de prueba", model: "Modelo sintético", modelYear: 2025,
@@ -161,6 +162,9 @@ test("alta incluye unidades elegidas y edición envía sólo campos cambiados", 
   await dialog.getByLabel("Tipo de vehículo *", { exact: true }).selectOption("Furgón");
   await dialog.getByLabel("Sede habitual", { exact: true }).selectOption(BASE_CODE);
   await dialog.getByLabel("Matrícula", { exact: true }).fill("l555555");
+  await dialog.getByRole("combobox", { name: "Configuración vial", exact: true }).selectOption("RIGID");
+  await dialog.getByLabel("Ejes totales", { exact: true }).fill("2");
+  await dialog.getByRole("combobox", { name: "Categoría de peaje", exact: true }).selectOption("2");
   await dialog.getByLabel("Unidad de peso").selectOption("LB");
   await dialog.getByLabel("Capacidad de peso (lb)", { exact: true }).fill("8000");
   await dialog.getByLabel("Unidad de volumen").selectOption("CFT");
@@ -172,8 +176,12 @@ test("alta incluye unidades elegidas y edición envía sólo campos cambiados", 
   await expect(dialog.getByText("Vehículo guardado.", { exact: true })).toBeVisible();
   expect(seen.writes[0]).toMatchObject({ method: "POST", body: { requestId: expect.stringMatching(/^[0-9a-f-]{36}$/), vehicleType: "Furgón", hubCode: BASE_CODE, capacityWeight: 8000, weightUnit: "LB", capacityVolume: 1500, volumeUnit: "CFT", usableLength: 20, dimensionUnit: "FT", operationalStatus: "UNAVAILABLE", availableForCalculation: false } });
   expect(seen.writes[0].body).not.toHaveProperty("businessCode");
+  expect(seen.writes[0].body).toMatchObject({ transitConfiguration: "RIGID", transitAxles: 2, tollCategory: 2 });
   await expect(dialog.getByLabel("Código", { exact: true })).toHaveValue("V001");
   await expect(dialog.getByLabel("Matrícula", { exact: true })).toHaveValue("L555555");
+  await expect(dialog.getByRole("combobox", { name: "Configuración vial", exact: true })).toHaveValue("RIGID");
+  await expect(dialog.getByLabel("Ejes totales", { exact: true })).toHaveValue("2");
+  await expect(dialog.getByRole("combobox", { name: "Categoría de peaje", exact: true })).toHaveValue("2");
   await dialog.getByLabel("Modelo", { exact: true }).fill("Nuevo modelo");
   await dialog.getByRole("button", { name: "Guardar vehículo", exact: true }).click();
   await expect(dialog.getByText("Vehículo guardado.", { exact: true })).toBeVisible();

@@ -27,6 +27,7 @@ export function mountFleetHarness() {
   let resolveList: (response: Response) => void = () => undefined;
   let switchContext = () => undefined;
   const vehicle = (context: string): FleetVehicle => ({
+    transitConfiguration: null, transitAxles: null, tollCategory: null,
     vehicleRef: `synthetic-vehicle-${context}`, businessCode: `VEHICULO-${context}`, plate: null, vin: null, vehicleType: "Camión",
     brand: null, model: null, modelYear: null, capacityWeight: 4500, capacityVolume: 20, usableLength: null, usableWidth: null, usableHeight: null,
     weightUnit: "KG", volumeUnit: "CBM", dimensionUnit: "M", operationalStatus: "AVAILABLE", availableForCalculation: true,

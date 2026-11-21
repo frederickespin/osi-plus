@@ -3088,6 +3088,9 @@ model Vehicle {
   effective_from            DateTime                   @default(now()) @db.Timestamptz(3)
   effective_to              DateTime?                  @db.Timestamptz(3)
   hub_code                  String?                    @db.VarChar(80)
+  transit_configuration     String?                    @db.VarChar(24)
+  transit_axles             Int?
+  toll_category             Int?
   source                    String                     @db.VarChar(80)
   import_batch_id           String?
   request_id                String                     @db.VarChar(191)

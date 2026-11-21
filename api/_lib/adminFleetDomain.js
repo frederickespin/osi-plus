@@ -247,11 +247,13 @@ export async function createAdminFleetVehicle(prisma, context, input, { auditWri
         "id", "tenant_id", "business_code", "normalized_code", "plate", "normalized_plate", "vin", "normalized_vin",
         "vehicle_type", "brand", "model", "model_year", "capacity_weight", "capacity_volume", "usable_length", "usable_width", "usable_height",
         "weight_unit", "volume_unit", "dimension_unit", "operational_status", "available_for_calculation", "effective_from", "effective_to", "hub_code",
+        "transit_configuration", "transit_axles", "toll_category",
         "source", "request_id", "payload_hash", "created_by_user_id", "created_by_membership_id", "retired_at"
       ) VALUES (
         ${id}, ${actor.tenantId}, ${vehicle.businessCode}, ${vehicle.normalizedCode}, ${vehicle.plate}, ${vehicle.normalizedPlate}, ${vehicle.vin}, ${vehicle.normalizedVin},
         ${vehicle.vehicleType}, ${vehicle.brand}, ${vehicle.model}, ${vehicle.modelYear}, ${vehicle.capacityWeight}, ${vehicle.capacityVolume}, ${vehicle.usableLength}, ${vehicle.usableWidth}, ${vehicle.usableHeight},
         ${vehicle.weightUnit}, ${vehicle.volumeUnit}, ${vehicle.dimensionUnit}, ${vehicle.operationalStatus}::"osi"."VehicleOperationalStatus", ${vehicle.availableForCalculation}, ${effectiveFrom}, ${vehicle.effectiveTo}, ${vehicle.hubCode},
+        ${vehicle.transitConfiguration}, ${vehicle.transitAxles}, ${vehicle.tollCategory},
         ${SOURCE}, ${requestId}, ${vehicle.payloadHash}, ${actor.userId}, ${actor.membershipId},
         CASE WHEN ${vehicle.operationalStatus}='RETIRED' THEN CURRENT_TIMESTAMP ELSE NULL END
       ) RETURNING *
@@ -298,6 +300,7 @@ export async function updateAdminFleetVehicle(prisma, context, vehicleRef, input
         "weight_unit"=${vehicle.weightUnit}, "volume_unit"=${vehicle.volumeUnit}, "dimension_unit"=${vehicle.dimensionUnit},
         "operational_status"=${vehicle.operationalStatus}::"osi"."VehicleOperationalStatus", "available_for_calculation"=${vehicle.availableForCalculation},
         "effective_from"=${vehicle.effectiveFrom}, "effective_to"=${vehicle.effectiveTo}, "hub_code"=${vehicle.hubCode},
+        "transit_configuration"=${vehicle.transitConfiguration}, "transit_axles"=${vehicle.transitAxles}, "toll_category"=${vehicle.tollCategory},
         "retired_at"=CASE WHEN ${vehicle.operationalStatus}='RETIRED' THEN COALESCE("retired_at", CURRENT_TIMESTAMP) ELSE "retired_at" END,
         "row_version"="row_version"+1, "updated_at"=CURRENT_TIMESTAMP
       WHERE "tenant_id"=${actor.tenantId} AND "id"=${ref} AND "row_version"=${expectedVersion}

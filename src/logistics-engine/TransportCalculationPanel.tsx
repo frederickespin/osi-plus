@@ -6,6 +6,7 @@ import { NumericInput } from "@/components/ui/numeric-input";
 import { cn } from "@/lib/utils";
 import { isTransportUnauthorized, transportApi, transportErrorMessage, TransportRequestError, type CaseTravelLeg, type TransportCalculateInput, type TransportCalculation, type TransportCaseAddresses, type TransportCoordinate, type TransportJourney, type TransportLine, type TransportPublication, type TransportReferenceBase, type TransportResult, type TransportWorkspace } from "./transportApi";
 import { isRoadTransportComponent } from "../../shared/transportCostScope.js";
+import { ADMIN_FLEET_TRANSIT_CONFIGURATION_LABELS } from "../../shared/adminFleet.js";
 import type { TransportUiAccess } from "./transportAccess";
 import { BASIS_LABELS, PURPOSE_LABELS, UNIT_LABELS, formatTransportCoverage, formatTransportDate, formatTransportNumber } from "./transportPresentation";
 import { calculateRoadRoute, reverseTransportLocation, searchTransportLocations, type TransportLocation } from "./transportRouting";
@@ -321,6 +322,12 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
     return [origin, pointValue(journey.destination)].filter((point): point is TransportCoordinate => point !== null);
   }, [journey.destination, journey.origin, mapPoint]);
   const hasOrigin = Boolean(originPoint || journey.referenceBaseAddress);
+  const fleetVehicle = vehicles.find((vehicle) => vehicle.vehicleRef === journey.vehicleRef);
+  const transitSummary = fleetVehicle && [
+    fleetVehicle.transitConfiguration && ADMIN_FLEET_TRANSIT_CONFIGURATION_LABELS[fleetVehicle.transitConfiguration],
+    fleetVehicle.transitAxles && `${fleetVehicle.transitAxles} ejes`,
+    fleetVehicle.tollCategory && `Peaje cat. ${fleetVehicle.tollCategory} (referencia)`,
+  ].filter(Boolean).join(" · ");
   const quantities = useMemo(() => [...new Map(lines.filter((line) => line.basis === "PASS" || line.basis === "FIXED").map((line) => [line.componentCode, line])).values()], [lines]);
   const unmatchedQuantities = Object.keys(journey.quantities).filter((code) => journey.quantities[code].trim() && lines.length > 0 && !quantities.some((line) => line.componentCode === code));
   const set = <K extends keyof JourneyDraft>(key: K, value: JourneyDraft[K]) => {
@@ -402,7 +409,15 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
   };
 
   return <section className="space-y-2 rounded border border-slate-200 bg-white p-2" aria-label={`Recorrido ${index + 1}`}>
-    <div className="flex items-center justify-between gap-2"><h4 className="text-xs font-bold text-[#003366]">Recorrido {index + 1}</h4>{canRemove && <button type="button" aria-label={`Quitar recorrido ${index + 1}`} onClick={onRemove} className="grid h-8 w-8 place-items-center rounded border text-slate-500"><Trash2 className="h-3.5 w-3.5" /></button>}</div>
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h4 className="text-xs font-bold text-[#003366]">Recorrido {index + 1}</h4>
+        {fleetVehicle && <p className={`text-[11px] ${transitSummary ? "text-slate-600" : "text-amber-800"}`}>
+          {transitSummary || "Clasificación de tránsito pendiente"}
+        </p>}
+      </div>
+      {canRemove && <button type="button" aria-label={`Quitar recorrido ${index + 1}`} onClick={onRemove} className="grid h-8 w-8 place-items-center rounded border text-slate-500"><Trash2 className="h-3.5 w-3.5" /></button>}
+    </div>
     <div className="grid gap-2 sm:grid-cols-3"><label className="text-[11px] font-medium text-slate-600">Descripción *<input required maxLength={120} value={journey.label} onChange={(event) => set("label", event.target.value)} className={field} /></label><label className="text-[11px] font-medium text-slate-600">Vehículo de flota<select value={journey.vehicleRef || ""} onChange={(event) => chooseVehicle(event.target.value)} className={field}><option value="">Usar un tipo de vehículo</option>{journey.vehicleRef && !vehicles.some((vehicle) => vehicle.vehicleRef === journey.vehicleRef) && <option value={journey.vehicleRef}>Vehículo guardado · {journey.vehicleType}</option>}{vehicles.map((vehicle) => <option key={vehicle.vehicleRef} value={vehicle.vehicleRef}>{vehicle.businessCode} · {vehicle.vehicleType}</option>)}</select></label><label className="text-[11px] font-medium text-slate-600">Tipo de vehículo *<input required maxLength={80} disabled={Boolean(journey.vehicleRef)} value={journey.vehicleType} onChange={(event) => set("vehicleType", event.target.value)} placeholder="Perfil configurado" className={field} /></label></div>
     <div className="grid gap-2 sm:grid-cols-2">{(["origin", "destination"] as const).map((point) => { const selected = point === "origin" ? hasOrigin : destinationPoint; const destinationDisabled = point === "destination" && !hasOrigin; return <button key={point} type="button" disabled={disabled || destinationDisabled} aria-label={`Ubicar ${point === "origin" ? "salida" : "destino"} en mapa`} aria-pressed={mapPoint === point} onClick={() => mapPoint === point ? setMapPoint(null) : openMap(point)} className={`flex min-h-14 items-center gap-2 rounded border px-3 py-2 text-left disabled:opacity-50 ${mapPoint === point ? "border-[#0070a8] bg-sky-50" : "border-slate-200 bg-white hover:border-sky-300"}`}><span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${selected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{selected ? <CheckCircle2 className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}</span><span className="min-w-0 flex-1"><strong className="block text-xs text-slate-800">{point === "origin" ? "Salida" : "Destino"}</strong><span className="block truncate text-[11px] text-slate-500">{journey[point].address || addresses?.[point] || (destinationDisabled ? "Seleccione primero la salida" : "Buscar dirección o señalar en el mapa")}</span></span><MapPinned className="h-4 w-4 shrink-0 text-[#0070a8]" /></button>; })}</div>
     {mapPoint && <div className="space-y-2 rounded border border-sky-200 bg-sky-50/40 p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold text-[#003366]">{mapPoint === "origin" ? "Seleccione la salida" : "Seleccione el destino"}</p><p className="text-[11px] text-slate-500">Busque una dirección o pulse directamente el punto en el mapa.</p></div><button type="button" aria-label="Cerrar mapa del recorrido" onClick={() => setMapPoint(null)} className="grid h-8 w-8 place-items-center rounded text-slate-500"><X className="h-4 w-4" /></button></div>

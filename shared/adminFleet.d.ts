@@ -6,6 +6,9 @@ export const ADMIN_FLEET_STATUSES: readonly ["AVAILABLE", "IN_USE", "UNAVAILABLE
 export const ADMIN_FLEET_WEIGHT_UNITS: readonly ["KG", "LB"];
 export const ADMIN_FLEET_VOLUME_UNITS: readonly ["CBM", "CFT"];
 export const ADMIN_FLEET_DIMENSION_UNITS: readonly ["M", "CM", "FT", "IN"];
+export type AdminFleetTransitConfiguration = "RIGID" | "TRACTOR_SEMITRAILER" | "DOUBLE_TRAILER";
+export const ADMIN_FLEET_TRANSIT_CONFIGURATIONS: readonly AdminFleetTransitConfiguration[];
+export const ADMIN_FLEET_TRANSIT_CONFIGURATION_LABELS: Readonly<Record<AdminFleetTransitConfiguration, string>>;
 export type AdminFleetStatus = typeof ADMIN_FLEET_STATUSES[number];
 export interface AdminFleetVehicle {
   vehicleRef: string;
@@ -16,6 +19,9 @@ export interface AdminFleetVehicle {
   brand: string | null;
   model: string | null;
   modelYear: number | null;
+  transitConfiguration: AdminFleetTransitConfiguration | null;
+  transitAxles: number | null;
+  tollCategory: number | null;
   capacityWeight: number | null;
   capacityVolume: number | null;
   usableLength: number | null;
@@ -36,6 +42,7 @@ export interface AdminFleetVehicle {
 }
 export type AdminFleetEditableFields = Pick<AdminFleetVehicle,
   "businessCode" | "plate" | "vin" | "vehicleType" | "brand" | "model" | "modelYear" |
+  "transitConfiguration" | "transitAxles" | "tollCategory" |
   "capacityWeight" | "capacityVolume" | "usableLength" | "usableWidth" | "usableHeight" |
   "weightUnit" | "volumeUnit" | "dimensionUnit" | "operationalStatus" | "availableForCalculation" |
   "effectiveFrom" | "effectiveTo" | "hubCode">;

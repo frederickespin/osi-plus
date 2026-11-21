@@ -1,3 +1,5 @@
+import type { AdminFleetVehicle } from "./adminFleet.js";
+
 export const TRANSPORT_CONTRACT = "V17_TRANSPORT_ZONES_V1" as const;
 export type TransportPurpose = "QUOTE" | "SERVICE" | "VISIT";
 export type TransportContext = Readonly<{ contract: typeof TRANSPORT_CONTRACT; purpose: TransportPurpose; contextRef: string | null }>;
@@ -89,5 +91,6 @@ export type TransportWorkspace = Readonly<{
   referenceBases?: readonly TransportReferenceBase[];
   cases: readonly Readonly<{ caseRef: string; label: string; mode: string }>[];
   visits: readonly Readonly<{ contextRef: string; label: string }>[];
-  vehicles: readonly Readonly<{ vehicleRef: string; businessCode: string; vehicleType: string }>[];
+  vehicles: readonly Readonly<Pick<AdminFleetVehicle,
+    "vehicleRef" | "businessCode" | "vehicleType" | "transitConfiguration" | "transitAxles" | "tollCategory">>[];
 }>;

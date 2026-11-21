@@ -20,6 +20,7 @@ const authorization = (index = 1, changes: Partial<FleetDriverAuthorization> = {
   revokedBy: null, revokedAt: null, revocationReason: null, version: 1, canApprove: true, canReject: true, canRevoke: false, ...changes,
 });
 const vehicle: FleetVehicle = { vehicleRef: VEHICLE_REF, businessCode: "FLOT-01", plate: "L123456", vin: null, vehicleType: "Camión", brand: null, model: null, modelYear: null,
+  transitConfiguration: null, transitAxles: null, tollCategory: null,
   capacityWeight: 4500, capacityVolume: 20, usableLength: null, usableWidth: null, usableHeight: null, weightUnit: "KG", volumeUnit: "CBM", dimensionUnit: "M", operationalStatus: "AVAILABLE", availableForCalculation: true,
   effectiveFrom: "2026-10-01T00:00:00.000Z", effectiveTo: null, hubCode: null, rowVersion: 1, updatedAt: "2026-10-31T12:00:00.000Z", retiredAt: null, calculationLocked: false };
 

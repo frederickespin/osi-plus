@@ -1,9 +1,11 @@
 import { useId, type ReactNode } from "react";
 import { AdministrationHelp } from "@/administration/AdministrationHelp";
+import { ADMIN_FLEET_TRANSIT_CONFIGURATIONS, ADMIN_FLEET_TRANSIT_CONFIGURATION_LABELS } from "../../shared/adminFleet.js";
 import { DIMENSION_LABELS, VOLUME_LABELS, WEIGHT_LABELS, type FleetOptions } from "./types";
 import type { VehicleDraft } from "./vehicleForm";
 
 const fieldClass = "mt-1 h-10 min-w-0 rounded border border-slate-300 bg-white px-2 text-sm text-slate-900 disabled:bg-slate-50 disabled:text-slate-500 sm:h-9";
+const tollCategories = [1, 2, 3, 4, 5] as const;
 
 export default function FleetFields({ draft, onChange, options, calculatedVolume, disabled, technicalLocked }: {
   draft: VehicleDraft;
@@ -75,6 +77,26 @@ export default function FleetFields({ draft, onChange, options, calculatedVolume
         </select>
         {options && !options.bases.some((base) => base.selectable !== false) && <p className="mt-1 text-xs text-slate-500">Registre la sede en Motor Logístico.</p>}
       </div>
+    </>)}
+    {group("Clasificación de tránsito", <>
+      <label className="flex min-w-0 flex-col justify-end text-xs font-medium text-slate-600">Configuración vial
+        <select value={draft.transitConfiguration ?? ""} disabled={disabled} className={fieldClass}
+          onChange={(event) => update("transitConfiguration", ADMIN_FLEET_TRANSIT_CONFIGURATIONS.find((value) => value === event.target.value) ?? null)}>
+          <option value="">Sin clasificar</option>
+          {ADMIN_FLEET_TRANSIT_CONFIGURATIONS.map((value) => <option key={value} value={value}>{ADMIN_FLEET_TRANSIT_CONFIGURATION_LABELS[value]}</option>)}
+        </select>
+      </label>
+      {text("transitAxles", "Ejes totales", 2, { numeric: true, integer: true })}
+      <label className="flex min-w-0 flex-col justify-end text-xs font-medium text-slate-600">Categoría de peaje
+        <select value={draft.tollCategory ?? ""} disabled={disabled} className={fieldClass}
+          onChange={(event) => update("tollCategory", tollCategories.find((value) => String(value) === event.target.value) ?? null)}>
+          <option value="">Sin confirmar</option>
+          {tollCategories.map((category) => <option key={category} value={category}>Categoría {category}</option>)}
+        </select>
+      </label>
+    </>, "grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,0.8fr)]", <>
+      <p>En una patana, cuente los ejes del cabezote y del semirremolque. Si cambia el conjunto, confirme los ejes del viaje.</p>
+      <p>La categoría de peaje es una referencia que se confirma por estación. Los permisos se verifican según la ruta, la zona y la fecha del viaje.</p>
     </>)}
     {group("Capacidades", <>
       <div className="flex items-end gap-2">

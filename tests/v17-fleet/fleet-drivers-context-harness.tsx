@@ -20,6 +20,7 @@ export function mountFleetDriversHarness() {
   let switchContext = () => undefined;
   const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
   const vehicle = (context: "A" | "B"): FleetVehicle => ({ vehicleRef: vehicleRefs[context], businessCode: `FLOTA-${context}`, plate: null, vin: null, vehicleType: "Camión", brand: null, model: null, modelYear: null,
+    transitConfiguration: null, transitAxles: null, tollCategory: null,
     capacityWeight: 4000, capacityVolume: 20, usableLength: null, usableWidth: null, usableHeight: null, weightUnit: "KG", volumeUnit: "CBM", dimensionUnit: "M", operationalStatus: "AVAILABLE", availableForCalculation: true,
     effectiveFrom: "2026-10-01T00:00:00.000Z", effectiveTo: null, hubCode: null, rowVersion: 1, updatedAt: "2026-10-31T12:00:00.000Z", retiredAt: null, calculationLocked: false });
   const originalFetch = window.fetch.bind(window);

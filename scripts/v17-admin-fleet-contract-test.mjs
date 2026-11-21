@@ -22,6 +22,21 @@ check("create fingerprint is stable when the effective start was omitted", () =>
   const input = creation();
   assert.equal(parseAdminFleetCreate(input).vehicle.payloadHash, parseAdminFleetCreate(input).vehicle.payloadHash);
 });
+check("transit classification validates its fields and preserves a legacy fingerprint when unclassified", () => {
+  const input = creation();
+  const empty = { transitConfiguration: null, transitAxles: null, tollCategory: null };
+  const profile = { transitConfiguration: "TRACTOR_SEMITRAILER", transitAxles: 5, tollCategory: 4 };
+  const legacy = parseAdminFleetCreate(input).vehicle.payloadHash;
+  assert.equal(parseAdminFleetCreate({ ...input, ...empty }).vehicle.payloadHash, legacy);
+  const { vehicle } = parseAdminFleetCreate({ ...input, ...profile });
+  assert.deepEqual(Object.fromEntries(Object.keys(profile).map((key) => [key, vehicle[key]])), profile);
+  assert.notEqual(vehicle.payloadHash, legacy);
+  assert.deepEqual(parseAdminFleetPatch({ requestId: input.requestId, expectedVersion: 1, changes: empty }).changes, empty);
+  for (const changes of [{ transitConfiguration: "PESADO" }, { transitAxles: "5" }, { transitAxles: 1 }, { transitAxles: 33 }, { transitAxles: 2.5 }, { tollCategory: 0 }, { tollCategory: 6 }]) {
+    invalid(() => parseAdminFleetCreate({ ...input, ...changes }));
+    invalid(() => parseAdminFleetPatch({ requestId: input.requestId, expectedVersion: 1, changes }));
+  }
+});
 check("normalization shares historical code, plate and VIN duplicate semantics", () => {
   const { vehicle } = parseAdminFleetCreate({ ...creation(), plate: " ab-123 ", vin: " ab-12345 " });
   assert.equal(vehicle.normalizedPlate, "AB123");
@@ -81,7 +96,9 @@ check("DTO is an exact allowlist and numeric units stay paired", () => {
     tenant_id: "private-tenant", created_by_user_id: "private-user", request_id: "private-request", payload_hash: "private-hash", source: "private-source" });
   assert.equal(dto.vehicleRef, "legacy-cuid"); assert.equal(dto.capacityWeight, 200.125); assert.equal(dto.weightUnit, "LB");
   assert.equal(dto.capacityVolume, null); assert.equal(dto.retiredAt, null); assert.equal(dto.calculationLocked, false);
+  assert.equal(dto.transitConfiguration, null); assert.equal(dto.transitAxles, null); assert.equal(dto.tollCategory, null);
   assert.deepEqual(Object.keys(dto).sort(), ["vehicleRef", "businessCode", "plate", "vin", "vehicleType", "brand", "model", "modelYear",
+    "transitConfiguration", "transitAxles", "tollCategory",
     "capacityWeight", "capacityVolume", "usableLength", "usableWidth", "usableHeight", "weightUnit", "volumeUnit", "dimensionUnit",
     "operationalStatus", "availableForCalculation", "effectiveFrom", "effectiveTo", "hubCode", "rowVersion", "updatedAt", "retiredAt", "calculationLocked"].sort());
   assert.ok(!JSON.stringify(dto).includes("private-"));

@@ -59,7 +59,7 @@ try {
   const actor = await user("actor"); const foreignActor = await user("foreign");
   const member = await membership(tenant, actor); const foreignMember = await membership(foreignTenant, foreignActor);
   const ctx = context(tenant, actor, member); const foreignCtx = context(foreignTenant, foreignActor, foreignMember);
-  const originalInput = input("001");
+  const originalInput = input("001", { transitConfiguration: "RIGID", transitAxles: 2, tollCategory: 2 });
   const created = await createAdminFleetVehicle(prisma, ctx, originalInput);
   let vehicle = created.vehicle;
   const ref = vehicle.vehicleRef;
@@ -68,6 +68,9 @@ try {
   check("vehicle DTO excludes tenant, actors, import sources, fingerprints and audit internals",
     !["id", "tenantId", "tenant_id", "userId", "created_by_user_id", "created_by_membership_id", "source", "request_id", "payload_hash", "import_batch_id"].some((key) => Object.hasOwn(vehicle, key)));
   const originalRow = await prisma.vehicle.findUnique({ where: { id: ref } });
+  check("transit classification survives creation and a fresh read",
+    vehicle.transitConfiguration === "RIGID" && vehicle.transitAxles === 2 && vehicle.tollCategory === 2
+    && originalRow.transit_configuration === "RIGID" && originalRow.transit_axles === 2 && originalRow.toll_category === 2);
   check("persistence binds the existing company and authenticated actor", originalRow.tenant_id === tenant.id
     && originalRow.created_by_user_id === actor.id && originalRow.created_by_membership_id === member.id);
   check("create writes one critical audit in the same database", await auditCount(tenant.id, originalInput.requestId) === 1);
@@ -150,8 +153,14 @@ try {
   check("calculation lock is visible without exposing internal dates", (await getAdminFleetVehicle(prisma, ctx, ref)).calculationLocked);
   await rejects("used technical capacity is protected from editing", () => updateAdminFleetVehicle(prisma, ctx, ref, patch(3, { capacityWeight: 13000 })), "ADMIN_FLEET_CALCULATION_LOCKED");
   await rejects("used technical units are protected from editing", () => updateAdminFleetVehicle(prisma, ctx, ref, patch(3, { weightUnit: "KG" })), "ADMIN_FLEET_CALCULATION_LOCKED");
-  vehicle = await updateAdminFleetVehicle(prisma, ctx, ref, patch(3, { operationalStatus: "UNAVAILABLE" }));
+  vehicle = await updateAdminFleetVehicle(prisma, ctx, ref, patch(3, {
+    operationalStatus: "UNAVAILABLE", transitConfiguration: "TRACTOR_SEMITRAILER", transitAxles: 5, tollCategory: null,
+  }));
   check("operational state remains editable after calculation and disables availability", vehicle.rowVersion === 4 && vehicle.operationalStatus === "UNAVAILABLE" && !vehicle.availableForCalculation);
+  const updatedTransit = await getAdminFleetVehicle(prisma, ctx, ref);
+  check("transit classification can be corrected after calculations",
+    updatedTransit.calculationLocked && updatedTransit.transitConfiguration === "TRACTOR_SEMITRAILER"
+    && updatedTransit.transitAxles === 5 && updatedTransit.tollCategory === null);
   const retirementRequest = randomUUID();
   vehicle = await updateAdminFleetVehicle(prisma, ctx, ref, patch(4, { operationalStatus: "RETIRED" }, retirementRequest));
   check("retirement preserves the record and records date, version and audit", vehicle.operationalStatus === "RETIRED" && !vehicle.availableForCalculation

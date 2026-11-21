@@ -11,6 +11,7 @@ import {
   CRM_SURVEY_API_MODES,
   resolveCrmSurveyApiMode,
 } from "../api/_lib/crmSurveyHttp.js";
+import { getSurveyCatalog } from "../api/_lib/crmSurveyDomain.js";
 import {
   renderSurveyPublicationPdf,
   renderSurveySignatureSvg,
@@ -218,6 +219,34 @@ assert.throws(
   () => resolveCrmSurveyApiMode({ ...previewEnv, VERCEL_GIT_COMMIT_REF: "main" }, {}),
   /CRM_SURVEY_CONFIGURATION_INVALID/,
 );
+
+const catalogContext = { tenantId: "tenant", membershipId: "membership", userId: "user" };
+const catalogVersion = { catalogRef: randomUUID(), version: 1, articles: [], areas: [], conditions: [] };
+function catalogDatabase(granted, denied = [], activeVersion = catalogVersion) {
+  return {
+    $transaction: (run) => run({
+      $queryRaw: async () => [{
+        id: catalogContext.membershipId, public_ref: randomUUID(), user_id: catalogContext.userId,
+        user_name: "Persona de prueba", role: "A", user_status: "ACTIVE",
+        membership_status: "ACTIVE", tenant_status: "ACTIVE",
+        granted_permissions: granted, denied_permissions: denied,
+      }],
+      surveyCatalogVersion: { findFirst: async () => activeVersion },
+    }),
+  };
+}
+const management = "survey:assignment:manage";
+const reading = "survey:assignment:view";
+assert.deepEqual(await getSurveyCatalog(catalogContext, catalogDatabase([management])), catalogVersion);
+assert.deepEqual(await getSurveyCatalog(catalogContext, catalogDatabase([reading], [management])), catalogVersion);
+await assert.rejects(
+  getSurveyCatalog(catalogContext, catalogDatabase([management], [reading])),
+  { code: "CRM_SURVEY_PERMISSION_FORBIDDEN", status: 403 },
+);
+await assert.rejects(
+  getSurveyCatalog(catalogContext, catalogDatabase([management], [], null)),
+  { code: "CRM_SURVEY_CATALOG_NOT_READY", status: 409 },
+);
 process.stdout.write(
-  `${JSON.stringify({ ok: true, assertions: 23 }, null, 2)}\n`,
+  `${JSON.stringify({ ok: true, assertions: 27 }, null, 2)}\n`,
 );

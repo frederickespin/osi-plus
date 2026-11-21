@@ -198,6 +198,7 @@ export default function HubWorkspace({ userName, authorization, accessContext, c
     "warehouse-access": customerCustodyEnabled,
     fleet: isAdminFleetEnabled() && resolveFleetAccess(accessContext.role, accessContext.effectivePermissions, accessContext.deniedPermissions).canView,
     services: servicesAdminAvailable,
+    articles: surveyEnabled,
     logistics: logisticsAdminAvailable,
     costing: costingAdminAvailable,
     communications: communicationsAdminAvailable,

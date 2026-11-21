@@ -22,8 +22,11 @@ async function hashBytes(value: ArrayBuffer) {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
-async function command(operation: string, payload: Record<string, unknown>) {
-  const requestId = crypto.randomUUID();
+async function command(
+  operation: string,
+  payload: Record<string, unknown>,
+  requestId: string = crypto.randomUUID(),
+) {
   return {
     requestId,
     payloadHash: await hash({ operation, requestId, ...payload }),
@@ -51,6 +54,8 @@ async function json<T>(
     });
   return body.data as T;
 }
+
+export { command as buildSurveyCommand, json as requestSurveyJson };
 export function createSurveyApi(authorization?: string) {
   return Object.freeze({
     agenda: () =>

@@ -37,7 +37,9 @@ function contextText(value) {
   return value;
 }
 
-async function actor(tx, context, required, { any = false } = {}) {
+async function actor(
+  tx, context, required, { any = false, additionalPermission } = {},
+) {
   const tenantId = contextText(context?.tenantId);
   const membershipId = contextText(context?.membershipId);
   const userId = contextText(context?.userId);
@@ -70,7 +72,10 @@ async function actor(tx, context, required, { any = false } = {}) {
   const allowed = any
     ? permissions.some((permission) => effective.has(permission))
     : permissions.every((permission) => effective.has(permission));
-  if (!allowed || permissions.some((permission) => denied.has(permission)))
+  if (
+    (!allowed && !effective.has(additionalPermission)) ||
+    permissions.some((permission) => denied.has(permission))
+  )
     surveyFail("CRM_SURVEY_PERMISSION_FORBIDDEN", 403);
   return Object.freeze({
     tenantId,
@@ -457,7 +462,7 @@ export async function getSurveyCatalog(context, database = prisma) {
         tx,
         context,
         [PERMS.SURVEY_ASSIGNMENT_VIEW, PERMS.SURVEY_PERFORM, PERMS.SURVEY_READ],
-        { any: true },
+        { any: true, additionalPermission: PERMS.SURVEY_ASSIGNMENT_MANAGE },
       );
       const row = await tx.surveyCatalogVersion.findFirst({
         where: { tenantId: who.tenantId, status: "ACTIVE" },

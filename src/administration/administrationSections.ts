@@ -1,4 +1,4 @@
-export type AdministrationSectionId = "access" | "warehouse-access" | "fleet" | "services" | "logistics" | "costing" | "communications" | "policies";
+export type AdministrationSectionId = "access" | "warehouse-access" | "fleet" | "services" | "articles" | "logistics" | "costing" | "communications" | "policies";
 
 export type AdministrationSection = Readonly<{
   id: AdministrationSectionId;
@@ -14,6 +14,7 @@ export const ADMINISTRATION_SECTIONS: readonly AdministrationSection[] = Object.
   { id: "warehouse-access", label: "Accesos a almacenes", route: "/administration/warehouse-access", permissions: ["warehouse-access:manage"] },
   { id: "fleet", label: "Flota vehicular", route: "/administration/fleet", permissions: ["fleet:view"] },
   { id: "services", label: "Servicios y combinaciones", route: "/administration/services", permissions: ["services:catalog:view", "services:packages:view", "services:materials:view"] },
+  { id: "articles", label: "Catálogo de artículos", route: "/administration/articles", permissions: ["survey:assignment:manage"] },
   { id: "logistics", label: "Motor Logístico", route: "/administration/logistics", permissions: ["logistics:rules:view"] },
   { id: "costing", label: "Costos y monedas", route: "/administration/costing", permissions: ["costing:rules:view"] },
   { id: "communications", label: "Centro de plantillas", route: "/administration/communications", permissions: ["communications:templates:view"] },

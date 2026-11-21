@@ -27,6 +27,18 @@ Cliente → Caso → Modo/alcance → Principal + secundarios
 
 Cada valor conserva fuente y revisión: `CLIENT_DECLARED`, `COMMERCIAL_ESTIMATE`, `SURVEY_VERIFIED` o `WAREHOUSE_CONFIRMED`. Ninguna actualización borra silenciosamente la anterior.
 
+## Catálogo común e idioma de entrega
+
+La primera versión de **Administración → Catálogo de artículos** se redactará y consultará en español. Cada artículo tendrá un código estable y una ficha por empresa. El equipo editará en español el nombre, los sinónimos y la descripción. La ficha compartirá su categoría y datos de referencia, como dimensiones, volumen y densidad, en todos los idiomas.
+
+Comercial asignará la visita desde el caso. OSi Survey, dentro de OSi Plus Mobile, usará el catálogo para el levantamiento. Recepción usará los nombres y sinónimos al describir el contenido de un bulto. Cada registro conservará los datos y la revisión usados en ese momento.
+
+Cuando se habiliten otros idiomas, el idioma se elegirá al generar el resultado para el destinatario. El español será el idioma inicial de entrega. El sistema tomará el texto de la revisión correspondiente y generará la traducción con un glosario de la empresa. Esta traducción se guardará asociada a la misma ficha y revisión para reutilizarla en otras entregas. Si el texto original cambia, la revisión siguiente podrá generar su propia traducción. Cada documento emitido conservará el idioma y el texto que se entregaron.
+
+Por ejemplo, la ficha `ART-001` se redacta como «Sofá de 3 plazas». Una entrega en inglés puede mostrar «Three-seat sofa», con el mismo código y el mismo volumen de referencia. El idioma de entrega determina cómo se presentan los textos y los formatos. Las cantidades y los valores de volumen, densidad y peso conservan su significado y su fuente.
+
+Al habilitar la traducción automática, la vista previa mostrará qué textos del catálogo se traducirán. El sistema señalará las traducciones pendientes antes de emitir el resultado y permitirá elegir una entrega en español.
+
 ## Tarifas y permanencia
 
 - El tarifario puede incluir planes mes a mes y compromisos de 3, 6, 9, 12, 24 meses u otros configurables.

@@ -43,7 +43,7 @@ const {
 } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
 
 const administration = HUB_APPLICATIONS.find((application) => application.appId === "administration");
-const enabled = Object.freeze({ access: true, fleet: true, services: true, logistics: true, costing: true, communications: true, policies: true });
+const enabled = Object.freeze({ access: true, fleet: true, services: true, articles: true, logistics: true, costing: true, communications: true, policies: true });
 const context = (permissions, denied = [], role = "A") => ({
   role,
   effectivePermissions: permissions,
@@ -74,6 +74,16 @@ test("Costos funciona con su permiso lector y sin membership:view", () => {
   assert.equal(evaluateHubRouteAccess("/administration/costing", access).allowed, true);
   assert.equal(evaluateHubRouteAccess("/administration/access", access).allowed, false);
   assert.deepEqual(sectionsFor(access.effectivePermissions), ["costing"]);
+});
+
+test("Catálogo de artículos requiere gestión explícita del catálogo de Survey y el modo activo", () => {
+  const permission = "survey:assignment:manage";
+  const path = "/administration/articles";
+  assert.equal(evaluateHubRouteAccess(path, context([permission])).allowed, true);
+  assert.deepEqual(sectionsFor([permission]), ["articles"]);
+  assert.deepEqual(sectionsFor([permission], [], { ...enabled, articles: false }), []);
+  assert.equal(evaluateHubRouteAccess(path, context([permission, "membership:view"], [permission])).allowed, false);
+  assert.equal(evaluateHubRouteAccess(path, context(["survey:assignment:view", "survey:perform"])).allowed, false);
 });
 
 test("Usuarios y roles exige administrador sin bloquear otras secciones autorizadas", () => {
@@ -221,7 +231,7 @@ test("otras aplicaciones conservan la denegación global, incluso para permisos 
 
 test("catálogo y secciones coinciden en rutas y permisos explícitos", () => {
   const routes = ADMINISTRATION_SECTIONS.map((section) => section.route);
-  assert.equal(new Set(routes).size, 8);
+  assert.equal(new Set(routes).size, 9);
   assert.deepEqual(new Set(administration.routeAliases), new Set(routes));
   assert.deepEqual(new Set(administration.requiredPermissions), new Set(ADMINISTRATION_SECTIONS.flatMap((section) => section.permissions)));
   assert.equal(administration.requiresExplicitPermissions, true);

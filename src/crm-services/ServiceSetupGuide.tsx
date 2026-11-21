@@ -1,7 +1,4 @@
-import { useId, useState, type ReactNode } from "react";
-import { BookOpen, X } from "lucide-react";
-import { AdministrationIconAction } from "@/administration/AdministrationHelp";
-import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
+import { ExampleFields, type SetupLesson } from "@/administration/AdministrationSetupGuide";
 
 export const SERVICE_SETUP_LABELS = {
   PRICING: "Tarifario",
@@ -14,26 +11,10 @@ export const SERVICE_SETUP_LABELS = {
 
 export type ServiceSetupTab = keyof typeof SERVICE_SETUP_LABELS;
 
-type Lesson = {
-  title: string;
-  purpose: string;
-  steps: readonly ReactNode[];
-  example: ReactNode;
-  check: string;
-};
-
 const EXAMPLE_PACKAGE = "Mudanza local de 1 a 6 m³";
-const SETUP_ORDER: readonly ServiceSetupTab[] = ["MODES", "CATALOG", "COSTS", "PACKAGES", "MATERIALS", "PRICING"];
+export const SERVICE_SETUP_ORDER: readonly ServiceSetupTab[] = ["MODES", "CATALOG", "COSTS", "PACKAGES", "MATERIALS", "PRICING"];
 
-function ExampleFields({ rows }: { rows: readonly (readonly [string, string])[] }) {
-  return <dl className="divide-y divide-sky-100">
-    {rows.map(([field, value]) => <div key={field} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] gap-x-2 py-1">
-      <dt className="text-slate-600">{field}</dt><dd className="font-medium text-slate-900">{value}</dd>
-    </div>)}
-  </dl>;
-}
-
-const LESSONS: Record<ServiceSetupTab, Lesson> = {
+export const SERVICE_SETUP_LESSONS: Record<ServiceSetupTab, SetupLesson> = {
   MODES: {
     title: "Dónde se ofrece el servicio",
     purpose: "La modalidad identifica el alcance del trabajo. Una mudanza dentro del país usa Local / Nacional.",
@@ -101,63 +82,11 @@ const LESSONS: Record<ServiceSetupTab, Lesson> = {
       <ExampleFields rows={[["Paquete", EXAMPLE_PACKAGE], ["Moneda · Margen venta · Mín.", "DOP · 20 % · 15 %"], ["Empacador", "Cantidad fija · 2"], ["Camión local", "Por viaje según capacidad · 6 m³"], ["Caja de cartón", "Por m³ · 0,5 · Red. marcada"], ["Tramo", "Hasta 6 m³ · mínimo RD$6.500"]]} />
       <p className="mt-2">Para <strong>5 m³</strong> se calculan 2 jornadas de empacador, 1 viaje y 3 cajas. Costo <strong>RD$4.800</strong>, precio por margen <strong>RD$6.000</strong> y venta estimada <strong>RD$6.500</strong> por el mínimo.</p>
     </>,
+    reference: <details>
+      <summary className="cursor-pointer font-semibold text-[#0070a8]">Ejemplo de peso para flete</summary>
+      <p className="mt-1"><strong>Aéreo.</strong> En Peso y ruta, un divisor de 6.000 y un volumen de 1 m³ dan 166,67 kg volumétricos. Con 100 kg brutos y redondeo al kg superior, se cotizan 167 kg.</p>
+      <p className="mt-1"><strong>Marítimo.</strong> Con densidad de 100 kg/m³ y 3 m³, el peso estimado es 300 kg cuando falta el peso bruto. Si la tarifa está en CWT, cada CWT equivale a 100 lb.</p>
+    </details>,
     check: "En Comercial, selecciona el paquete publicado. Los componentes con precio adicional se pueden agregar por separado.",
   },
 };
-
-export default function ServiceSetupGuide({ id, activeTab, allowedTabs, onClose }: {
-  id: string;
-  activeTab: ServiceSetupTab;
-  allowedTabs: readonly ServiceSetupTab[];
-  onClose(): void;
-}) {
-  const titleId = useId();
-  const topicId = useId();
-  const [pinnedTopic, setPinnedTopic] = useState<ServiceSetupTab | "">("");
-  const topic = pinnedTopic && allowedTabs.includes(pinnedTopic) ? pinnedTopic : activeTab;
-  const lesson = LESSONS[topic];
-
-  return <aside id={id} aria-labelledby={titleId}
-    className="min-w-0 self-start rounded border border-slate-200 bg-white xl:sticky xl:top-3 xl:order-2">
-    <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-1.5">
-      <h3 id={titleId} className="flex items-center gap-1.5 text-sm font-bold text-[#003366]">
-        <BookOpen aria-hidden="true" className="size-4 shrink-0" />Guía de configuración
-      </h3>
-      <AdministrationIconAction label="Cerrar guía" onClick={onClose} className="border-transparent">
-        <X aria-hidden="true" className="size-4" />
-      </AdministrationIconAction>
-    </div>
-    <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">
-      <label htmlFor={topicId}>Tema de ayuda</label>
-      <select id={topicId} className={COMPACT_FORM_FIELD + " min-w-0 flex-1"} value={pinnedTopic}
-        onChange={(event) => setPinnedTopic(event.target.value as ServiceSetupTab | "")}>
-        <option value="">Seguir la pestaña</option>
-        {allowedTabs.map((tab) => <option key={tab} value={tab}>{SERVICE_SETUP_LABELS[tab]}</option>)}
-      </select>
-    </div>
-    <div key={topic} role="region" aria-label={"Guía de " + SERVICE_SETUP_LABELS[topic]} tabIndex={0}
-      className="max-h-[min(15rem,38dvh)] space-y-3 overflow-y-auto px-3 py-2 text-xs leading-5 text-slate-700 xl:max-h-[calc(100dvh-7.5rem)]">
-      <details>
-        <summary className="cursor-pointer font-semibold text-[#0070a8]">Orden recomendado</summary>
-        <p className="mt-1">{SETUP_ORDER.filter((tab) => allowedTabs.includes(tab)).map((tab) => SERVICE_SETUP_LABELS[tab]).join(" → ")}</p>
-      </details>
-      <div>
-        <h4 className="font-bold text-slate-900">{lesson.title}</h4>
-        <p>{lesson.purpose}</p>
-      </div>
-      <ol className="list-decimal space-y-1.5 pl-4">
-        {lesson.steps.map((step, index) => <li key={index}>{step}</li>)}
-      </ol>
-      <div className="rounded border border-sky-100 bg-sky-50 px-2.5 py-1.5">
-        <h5 className="font-bold text-[#003366]">Ejemplo de llenado</h5>
-        {lesson.example}
-      </div>
-      {topic === "PRICING" && <details>
-        <summary className="cursor-pointer font-semibold text-[#0070a8]">Ejemplo de peso para flete</summary>
-        <p className="mt-1"><strong>Aéreo.</strong> En Peso y ruta, un divisor de 6.000 y un volumen de 1 m³ dan 166,67 kg volumétricos. Con 100 kg brutos y redondeo al kg superior, se cotizan 167 kg.</p>
-        <p className="mt-1"><strong>Marítimo.</strong> Con densidad de 100 kg/m³ y 3 m³, el peso estimado es 300 kg cuando falta el peso bruto. Si la tarifa está en CWT, cada CWT equivale a 100 lb.</p>
-      </details>}
-      <p>{lesson.check}</p>
-    </div>
-  </aside>;
-}

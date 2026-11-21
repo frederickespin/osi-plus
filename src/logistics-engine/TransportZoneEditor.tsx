@@ -23,11 +23,14 @@ type Draft = TransportZoneLocationDraft & {
   components: ComponentDraft[]; state: "DRAFT" | "ACTIVE" | "INACTIVE";
 };
 type OperatingBase = Readonly<{ baseName: string; baseAddress: string }>;
+export type TransportZoneEditorTab = "location" | "operation";
 type Props = Readonly<{
   zone: TransportZone | null; vehicleTypes: readonly string[]; saving: boolean; error: string | null; uncertain: boolean;
   area?: TransportZone | null;
   bases: readonly OperatingBase[];
   readOnly?: boolean;
+  tab: TransportZoneEditorTab;
+  onTabChange(tab: TransportZoneEditorTab): void;
   onSave(input: TransportZoneInput): void; onClose(): void; onRefresh(): void;
 }>;
 type RoadTransportKind = typeof ROAD_TRANSPORT_KINDS[number];
@@ -72,10 +75,9 @@ function coordinate(point: TransportZoneLocationDraft["points"][number]): Transp
   return Number.isFinite(longitude) && Number.isFinite(latitude) && Math.abs(longitude) <= 180 && Math.abs(latitude) <= 90 ? [longitude, latitude] : null;
 }
 
-export default function TransportZoneEditor({ zone, area, bases, vehicleTypes, saving, error, uncertain, readOnly = false, onSave, onClose, onRefresh }: Props) {
+export default function TransportZoneEditor({ zone, area, bases, vehicleTypes, saving, error, uncertain, readOnly = false, tab, onTabChange, onSave, onClose, onRefresh }: Props) {
   const formId = useId();
   const [draft, setDraft] = useState<Draft>(() => fromZone(zone, area));
-  const [tab, setTab] = useState("location");
   const [validation, setValidation] = useState<string | null>(null);
   const points = useMemo(() => draft.points.map(coordinate), [draft.points]);
   const mapPoints = useMemo(() => points.filter((point): point is TransportCoordinate => point !== null), [points]);
@@ -88,8 +90,8 @@ export default function TransportZoneEditor({ zone, area, bases, vehicleTypes, s
     change("mode", mode);
     if (mode === "FACTOR" && !draft.components.some((component) => component.kind === "BASE")) change("components", [newComponent("BASE"), ...draft.components]);
   };
-  function incomplete(section: string, message: string) {
-    setTab(section);
+  function incomplete(section: TransportZoneEditorTab, message: string) {
+    onTabChange(section);
     setValidation(message);
   }
   function setBase(base: OperatingBase) {
@@ -140,7 +142,7 @@ export default function TransportZoneEditor({ zone, area, bases, vehicleTypes, s
           {zone && <p className="text-xs text-slate-600">{zone.name} · {STATE_LABELS[zone.state]} · v{zone.version}</p>}
         </div>
       </header>
-      <Tabs value={tab} onValueChange={setTab} className="gap-3">
+      <Tabs value={tab} onValueChange={(value) => onTabChange(value === "operation" ? "operation" : "location")} className="gap-3">
         <TabsList aria-label="Configuración de la ubicación" className="w-full justify-start overflow-x-auto sm:w-fit">
           <TabsTrigger value="location" className="data-[state=active]:bg-[#003366] data-[state=active]:text-white"><MapPin aria-hidden="true" />Ubicación</TabsTrigger>
           <TabsTrigger value="operation" className="data-[state=active]:bg-[#003366] data-[state=active]:text-white"><SlidersHorizontal aria-hidden="true" />Operación y costos</TabsTrigger>

@@ -1,6 +1,7 @@
 import { Fragment, lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
-import { ArrowLeft, Check, CircleHelp, Pencil, Plus, RefreshCw, Save, X } from "lucide-react";
+import AdministrationSetupGuide from "@/administration/AdministrationSetupGuide";
+import { ArrowLeft, Check, Pencil, Plus, RefreshCw, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { COMPACT_TABLE_BODY, COMPACT_TABLE_FIELD as FIELD, COMPACT_TABLE_HEAD } from "@/components/ui/compact-form";
 import { NumericInput } from "@/components/ui/numeric-input";
@@ -10,7 +11,7 @@ import type { CrmServicesUiAccess } from "./access";
 import { CrmServicesApi, CrmServicesApiError, type ServiceCatalogItem, type ServiceMaterialPolicy, type ServiceMode, type ServicePackage } from "./api";
 import ServiceCatalogAdmin from "./ServiceCatalogAdmin";
 import MaterialPolicySheet from "./MaterialPolicySheet";
-import ServiceSetupGuide, { SERVICE_SETUP_LABELS, type ServiceSetupTab } from "./ServiceSetupGuide";
+import { SERVICE_SETUP_LABELS, SERVICE_SETUP_LESSONS, SERVICE_SETUP_ORDER, type ServiceSetupTab } from "./ServiceSetupGuide";
 import { draftFromPolicy, newPolicyDraft, policySavePayload, validatePolicyDraft, type PolicyDraft } from "./materialPolicyDraft";
 
 const PackagePricingAdmin = lazy(() => import("@/costing/PackagePricingAdmin"));
@@ -39,9 +40,6 @@ const ACTION = "border-transparent bg-transparent";
 export default function ServiceConfigurationAdmin({ authorization, access, costingAccess, onUnauthorized }: Props) {
   const modeForm = useId();
   const requirementForm = useId();
-  const guideId = useId();
-  const guideTrigger = useRef<HTMLButtonElement>(null);
-  const [guideOpen, setGuideOpen] = useState(false);
   const api = useMemo(() => new CrmServicesApi(() => authorization || null), [authorization]);
   const [tab, setTab] = useState<ServiceSetupTab>(access.canPackagesView && costingAccess?.canRulesView ? "PRICING" : "CATALOG");
   const [modes, setModes] = useState<readonly ServiceMode[]>([]); const [catalog, setCatalog] = useState<readonly ServiceCatalogItem[]>([]); const [catalogModes, setCatalogModes] = useState<readonly Readonly<{ serviceRef: string; modeRefs: readonly string[] }>[]>([]); const [packages, setPackages] = useState<readonly ServicePackage[]>([]); const [policies, setPolicies] = useState<readonly ServiceMaterialPolicy[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [packageDraft, setPackageDraft] = useState<PackageDraft | null>(null); const [policyDraft, setPolicyDraft] = useState<PolicyDraft | null>(null); const [modeDraft, setModeDraft] = useState<ServiceMode | NewModeDraft | null>(null); const [requirementDraft, setRequirementDraft] = useState<RequirementDraft | null>(null); const [saving, setSaving] = useState(false);
@@ -268,30 +266,15 @@ export default function ServiceConfigurationAdmin({ authorization, access, costi
 
   if (!activeTab) return null;
   return <section id="admin-service-configuration" className="mt-3 min-w-0" data-testid="service-configuration-admin">
-    <header className="flex items-center justify-between gap-2 border-b border-slate-200 pb-1.5">
-      <div className="flex items-center gap-1">
-        <h2 className="text-base font-semibold text-slate-950">Servicios y combinaciones</h2>
-        <button ref={guideTrigger} type="button" aria-label="Guía de Servicios y combinaciones"
-          aria-expanded={guideOpen} aria-controls={guideOpen ? guideId : undefined} onClick={() => setGuideOpen(!guideOpen)}
-          className={"inline-flex h-8 items-center gap-1 rounded px-2 text-xs font-semibold hover:bg-sky-50 hover:text-[#003366] " +
-            (guideOpen ? "bg-sky-100 text-[#003366]" : "text-slate-600")}>
-          <CircleHelp aria-hidden="true" className="size-4 shrink-0" /><span>Guía</span>
-        </button>
-      </div>
-      <AdministrationIconAction label="Actualizar configuración de Servicios" disabled={loading || saving} onClick={load}><RefreshCw aria-hidden="true" className="size-4" /></AdministrationIconAction>
-    </header>
-    <nav aria-label="Configuración de Servicios" className="flex gap-1 overflow-x-auto border-b border-slate-200 pt-1">
+    <AdministrationSetupGuide title="Servicios y combinaciones" activeTopic={activeTab} topics={allowedTabs}
+      labels={SERVICE_SETUP_LABELS} lessons={SERVICE_SETUP_LESSONS} setupOrder={SERVICE_SETUP_ORDER}
+      actions={<AdministrationIconAction label="Actualizar configuración de Servicios" disabled={loading || saving} onClick={load}><RefreshCw aria-hidden="true" className="size-4" /></AdministrationIconAction>}
+      navigation={<nav aria-label="Configuración de Servicios" className="flex gap-1 overflow-x-auto border-b border-slate-200 pt-1">
       {allowedTabs.map((value) => <button key={value} type="button" disabled={saving} onClick={() => setTab(value)}
         aria-current={activeTab === value ? "page" : undefined}
         className={"whitespace-nowrap border-b-2 px-3 py-2 text-xs font-bold " + (activeTab === value
           ? "border-[#0070a8] bg-sky-50 text-[#003366]" : "border-transparent text-slate-600 hover:bg-slate-100")}>{SERVICE_SETUP_LABELS[value]}</button>)}
-    </nav>
-    <div className={guideOpen ? "grid min-w-0 gap-2 pt-2 xl:grid-cols-[minmax(0,1fr)_18.5rem] xl:items-start" : "min-w-0"}>
-      {guideOpen && <ServiceSetupGuide id={guideId} activeTab={activeTab} allowedTabs={allowedTabs} onClose={() => {
-        setGuideOpen(false);
-        guideTrigger.current?.focus();
-      }} />}
-      <div className="min-w-0 xl:order-1">
+      </nav>}>
     {!loading && dataReady && (activeTab === "PRICING" || activeTab === "COSTS") && costingAccess?.canRulesView && <Suspense fallback={<p role="status" className="py-3 text-xs text-slate-600">Cargando tarifas…</p>}>
       <PackagePricingAdmin view={activeTab} authorization={authorization} packages={packages} canManage={costingAccess.canRulesManage} onUnauthorized={onUnauthorized}
         modes={modes} services={primaries} catalogModes={catalogModes} onCreate={canEditPackage && costingAccess.canRulesManage ? createTariffPackage : undefined} />
@@ -474,7 +457,6 @@ export default function ServiceConfigurationAdmin({ authorization, access, costi
           </table>
         </div>
       </section>)}
-      </div>
-    </div>
+    </AdministrationSetupGuide>
   </section>;
 }

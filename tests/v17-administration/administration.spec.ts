@@ -258,6 +258,50 @@ test("revocar el permiso antes de navegar impide cargar la siguiente sección", 
   expect(seen.unexpected).toEqual([]);
 });
 
+test("la guía del Motor Logístico sigue el editor y deja configurar una sede", async ({ page }, testInfo) => {
+  await session(page, ["logistics:rules:view", "logistics:rules:manage", "costing:rules:view", "costing:rules:manage"]);
+  await page.route("https://tile.openstreetmap.org/**", (route) => route.abort());
+  await page.goto("/administration/logistics");
+  const trigger = page.getByRole("button", { name: "Guía de Motor Logístico" });
+  const guide = page.getByRole("complementary", { name: "Guía de configuración" });
+  if (testInfo.project.name.includes("mobile")) await trigger.tap();
+  else await trigger.press("Enter");
+  await expect(guide.getByRole("region", { name: "Guía de Ubicación" })).toContainText("Santiago de los Caballeros");
+
+  await page.getByRole("button", { name: "Nueva ciudad o sector" }).click();
+  const editor = page.getByTestId("transport-zone-form");
+  await editor.getByRole("tab", { name: "Operación y costos" }).click();
+  const costsHelp = guide.getByRole("region", { name: "Guía de Operación y costos" });
+  await expect(costsHelp).toContainText("International Packers");
+  await costsHelp.getByText("Ejemplo de recorrido en Comercial", { exact: true }).click();
+  await expect(costsHelp.getByText("RD$20,800", { exact: true })).toBeVisible();
+  const base = editor.getByRole("textbox", { name: "Base operativa", exact: true });
+  await base.fill("Sede Santo Domingo");
+
+  const workBounds = (await editor.boundingBox())!;
+  const guideBounds = (await guide.boundingBox())!;
+  if (testInfo.project.name.includes("mobile")) {
+    expect(guideBounds.y + guideBounds.height).toBeLessThan(workBounds.y);
+  } else {
+    expect(guideBounds.x).toBeGreaterThan(workBounds.x + workBounds.width);
+    expect(await guide.evaluate((element) => getComputedStyle(element).position)).toBe("sticky");
+  }
+  const topic = guide.getByLabel("Tema de ayuda");
+  await topic.selectOption("rules");
+  await expect(guide.getByRole("region", { name: "Guía de Reglas operativas" })).toContainText("Empacadores locales");
+  await expect(base).toHaveValue("Sede Santo Domingo");
+  await guide.getByRole("button", { name: "Cerrar guía" }).click();
+  await expect(trigger).toBeFocused();
+  await expect(base).toHaveValue("Sede Santo Domingo");
+  await trigger.click();
+  await expect(costsHelp).toBeVisible();
+  await editor.getByRole("button", { name: "Volver a ciudades y sectores" }).click();
+  await expect(guide.getByRole("region", { name: "Guía de Ubicación" })).toBeVisible();
+  await page.getByRole("tab", { name: "Reglas operativas" }).click();
+  await expect(guide.getByRole("region", { name: "Guía de Reglas operativas" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Nueva regla", exact: true })).toBeVisible();
+});
+
 test("las seis opciones se pueden recorrer sin desbordar el ancho del dispositivo", async ({ page }, testInfo) => {
   const seen = await session(page, ALL_SECTIONS);
   await page.goto("/administration");

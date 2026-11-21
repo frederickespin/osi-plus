@@ -1,6 +1,7 @@
 import { type FormEvent, lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Plus, RefreshCw } from "lucide-react";
 import { AdministrationHelp } from "@/administration/AdministrationHelp";
+import AdministrationSetupGuide from "@/administration/AdministrationSetupGuide";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { cn } from "@/lib/utils";
@@ -9,8 +10,12 @@ import type { LogisticsUiAccess } from "./access";
 import { NO_COSTING_ACCESS, type CostingUiAccess } from "@/costing/access";
 import { isCostingUiEnabled } from "@/costing/mode";
 import { resolveTransportUiAccess } from "./transportAccess";
+import type { TransportZoneEditorTab } from "./TransportZoneEditor";
+import { LOGISTICS_SETUP_LABELS, LOGISTICS_SETUP_LESSONS, type LogisticsSetupTopic } from "./LogisticsSetupGuide";
 
 const TransportZonesAdmin = lazy(() => import("./TransportZonesAdmin"));
+const ALL_GUIDE_TOPICS: readonly LogisticsSetupTopic[] = ["location", "operation", "rules"];
+const RULE_GUIDE_TOPICS: readonly LogisticsSetupTopic[] = ["rules"];
 
 type Props = Readonly<{ authorization?: string; access: LogisticsUiAccess; costingAccess?: CostingUiAccess; onUnauthorized(): void }>;
 type Draft = Readonly<{
@@ -54,18 +59,22 @@ function fromRule(rule: LogisticsRule): Draft {
 export default function LogisticsRulesAdmin({ authorization, access, costingAccess = NO_COSTING_ACCESS, onUnauthorized }: Props) {
   const transportAccess = resolveTransportUiAccess(access, isCostingUiEnabled() ? costingAccess : NO_COSTING_ACCESS);
   const [selected, setSelected] = useState<"zones" | "rules">(() => transportAccess.canZonesView ? "zones" : "rules");
+  const [editorTab, setEditorTab] = useState<TransportZoneEditorTab>("location");
   const visible = transportAccess.canZonesView ? selected : "rules";
   if (!access.canRulesView) return null;
   return <section id="admin-logistics-engine" data-testid="logistics-rules-admin" className="mt-3 min-w-0 scroll-mt-3 space-y-3">
-    <header className="flex items-center gap-1"><h2 className="text-base font-semibold text-[#003366]">Motor Logístico</h2><AdministrationHelp title="Motor Logístico"><p>Defina ciudades y sectores, su perímetro, kilómetros viales y costos desde cada base operativa.</p><p>Los recorridos usan distancia, rendimiento del vehículo y peajes. El personal, el chofer y los viáticos se costean en Servicios y combinaciones.</p><p>Servicios y Cotización usan estos parámetros para las direcciones del caso.</p></AdministrationHelp></header>
-    <div role="tablist" aria-label="Configuración del Motor Logístico" className="flex gap-1 overflow-x-auto border-b border-slate-200">
-      {transportAccess.canZonesView && <button type="button" role="tab" aria-selected={visible === "zones"} onClick={() => setSelected("zones")} className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium ${visible === "zones" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500"}`}>Ciudades y sectores</button>}
-      <button type="button" role="tab" aria-selected={visible === "rules"} onClick={() => setSelected("rules")} className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium ${visible === "rules" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500"}`}>Reglas operativas</button>
-    </div>
-    <Suspense fallback={<p role="status" className="py-8 text-center text-sm text-slate-500">Cargando transporte…</p>}>
-      {visible === "zones" && <TransportZonesAdmin authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized} />}
-      {visible === "rules" && <OperationalRules authorization={authorization} access={access} onUnauthorized={onUnauthorized} />}
-    </Suspense>
+    <AdministrationSetupGuide title="Motor Logístico" activeTopic={visible === "zones" ? editorTab : "rules"}
+      topics={transportAccess.canZonesView ? ALL_GUIDE_TOPICS : RULE_GUIDE_TOPICS} labels={LOGISTICS_SETUP_LABELS} lessons={LOGISTICS_SETUP_LESSONS}
+      navigation={<div role="tablist" aria-label="Configuración del Motor Logístico" className="flex gap-1 overflow-x-auto border-b border-slate-200">
+        {transportAccess.canZonesView && <button type="button" role="tab" aria-selected={visible === "zones"} onClick={() => setSelected("zones")} className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium ${visible === "zones" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500"}`}>Ciudades y sectores</button>}
+        <button type="button" role="tab" aria-selected={visible === "rules"} onClick={() => { setSelected("rules"); setEditorTab("location"); }} className={`shrink-0 border-b-2 px-3 py-2 text-xs font-medium ${visible === "rules" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500"}`}>Reglas operativas</button>
+      </div>}>
+      <Suspense fallback={<p role="status" className="py-8 text-center text-sm text-slate-500">Cargando transporte…</p>}>
+        {visible === "zones" && <TransportZonesAdmin authorization={authorization} access={transportAccess} onUnauthorized={onUnauthorized}
+          editorTab={editorTab} onEditorTabChange={setEditorTab} />}
+        {visible === "rules" && <OperationalRules authorization={authorization} access={access} onUnauthorized={onUnauthorized} />}
+      </Suspense>
+    </AdministrationSetupGuide>
   </section>;
 }
 
@@ -104,23 +113,7 @@ function OperationalRules({ authorization, access, onUnauthorized }: Props) {
   if (!access.canRulesView) return null;
   return <section className="min-w-0" data-testid="logistics-operational-rules">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-      <div className="flex items-center gap-1"><h2 className="text-base font-semibold text-slate-950">Reglas operativas</h2><AdministrationHelp title="Reglas operativas">
-        <p>Una regla indica qué recurso sugiere el plan y en qué cantidad. La modalidad determina a qué casos se aplica una regla nueva de este formulario.</p>
-        <div className="space-y-1.5 rounded bg-slate-50 p-2.5">
-          <h4 className="font-semibold text-slate-900">Ejemplo para practicar en Nueva regla</h4>
-          <dl className="grid grid-cols-2 gap-x-2 gap-y-1">
-            <dt>Familia</dt><dd className="font-medium">Personal</dd>
-            <dt>Nombre de la regla</dt><dd className="font-medium">Empacadores locales</dd>
-            <dt>Modalidad</dt><dd className="font-medium">Local / Nacional</dd>
-            <dt>Tipo de necesidad</dt><dd className="font-medium">EMPACADOR</dd>
-            <dt>Descripción para el plan</dt><dd className="font-medium">Empacadores</dd>
-            <dt>Cantidad</dt><dd className="font-medium">2</dd>
-            <dt>Estado</dt><dd className="font-medium">Borrador</dd>
-          </dl>
-        </div>
-        <p>Este ejemplo activo sugeriría dos empacadores en todos los casos Local / Nacional que se calculen. Manténgalo en borrador para practicar. Los rangos de volumen, la distancia y la condición fuera de zona metropolitana requieren configuración adicional.</p>
-        <p><strong>Dietas fuera de zona metro.</strong> Consulte la localidad del trabajo en Ciudades y sectores. Si la empresa asigna una dieta por persona y día, 4 personas × 2 días = 8 dietas. Registre el costo por dieta en Servicios y combinaciones → Costos y la cantidad del ejemplo en el Tarifario del paquete, si corresponde.</p>
-      </AdministrationHelp></div>
+      <h3 className="text-base font-semibold text-slate-950">Reglas operativas</h3>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <select aria-label="Familia logística" value={family} onChange={(event) => setFamily(event.target.value)} className={cn(COMPACT_FORM_FIELD, "max-w-full")}><option value="ALL">Todas las familias</option>{Object.entries(FAMILY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
         <button type="button" disabled={saving} onClick={() => void load()} aria-label="Actualizar reglas" className="grid h-9 w-9 place-items-center rounded border text-slate-600 disabled:opacity-40"><RefreshCw aria-hidden="true" className="h-4 w-4" /></button>

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, MapPinned, Plus, RefreshCw, Search } from "lucide-react";
-import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
+import { AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { FleetApi } from "@/admin-fleet/api";
 import { isAdminFleetEnabled } from "@/admin-fleet/mode";
 import { COMPACT_FORM_FIELD } from "@/components/ui/compact-form";
@@ -9,11 +9,18 @@ import { cn } from "@/lib/utils";
 import { isTransportUnauthorized, transportApi, transportErrorMessage, TransportRequestError, type TransportZone, type TransportZoneInput } from "./transportApi";
 import type { TransportUiAccess } from "./transportAccess";
 import { PURPOSE_LABELS, STATE_LABELS } from "./transportPresentation";
+import type { TransportZoneEditorTab } from "./TransportZoneEditor";
 
 const TransportZoneEditor = lazy(() => import("./TransportZoneEditor"));
-type Props = Readonly<{ authorization?: string; access: TransportUiAccess; onUnauthorized(): void }>;
+type Props = Readonly<{
+  authorization?: string;
+  access: TransportUiAccess;
+  editorTab: TransportZoneEditorTab;
+  onEditorTabChange(tab: TransportZoneEditorTab): void;
+  onUnauthorized(): void;
+}>;
 
-export default function TransportZonesAdmin({ authorization, access, onUnauthorized }: Props) {
+export default function TransportZonesAdmin({ authorization, access, editorTab, onEditorTabChange, onUnauthorized }: Props) {
   const [zones, setZones] = useState<readonly TransportZone[]>([]);
   const [search, setSearch] = useState("");
   const [state, setState] = useState("ALL");
@@ -84,6 +91,10 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
   }, [authorization, editing, membership]);
 
   const open = (zone: TransportZone | null, area: TransportZone | null = null) => { if (uncertain) return; setEditor({ zone, area, requestId: crypto.randomUUID() }); setSaveError(null); setNotice(null); };
+  function closeEditor() {
+    setEditor(null);
+    onEditorTabChange("location");
+  }
   const save = async (input: TransportZoneInput) => {
     if (!access.canZonesManage || !editor || saving || uncertain) return;
     const currentScope = scope.current;
@@ -93,7 +104,7 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
       const saved = await transportApi.versionZone(authorization, input, undefined, editor.requestId);
       if (currentScope !== scope.current) return;
       setZones((current) => [...current.filter((zone) => zone.ruleRef !== saved.ruleRef), saved]);
-      setEditor(null);
+      closeEditor();
       setNotice(saved.state === "DRAFT" ? `${saved.name} · borrador guardado.` : `${saved.name} · versión ${saved.version} guardada.`);
       void load();
     } catch (cause) {
@@ -108,7 +119,7 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
     const loaded = await load();
     if (loaded) {
       setUncertain(false);
-      setEditor(null);
+      closeEditor();
       setNotice("Listado actualizado. Revise la versión y el estado de la ubicación antes de iniciar otro cambio.");
     }
   };
@@ -118,13 +129,14 @@ export default function TransportZonesAdmin({ authorization, access, onUnauthori
     <TransportZoneEditor
       key={editor.requestId} zone={editor.zone} area={editor.area}
       vehicleTypes={vehicleTypes} bases={bases} saving={saving} error={saveError} uncertain={uncertain}
+      tab={editorTab} onTabChange={onEditorTabChange}
       readOnly={!access.canZonesManage} onSave={(input) => void save(input)}
-      onClose={() => { if (!saving) setEditor(null); }} onRefresh={() => void reconcile()}
+      onClose={() => { if (!saving) closeEditor(); }} onRefresh={() => void reconcile()}
     />
   </Suspense>;
   return <section className="space-y-3" data-testid="transport-zones-admin">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex items-center gap-1"><h3 className="text-sm font-semibold text-slate-900">Ciudades, sectores y costos</h3><AdministrationHelp title="Ciudades y sectores"><p>Registre cada ciudad o sector con ayuda del mapa y confirme sus kilómetros viales desde la oficina o almacén de salida.</p><p>Visitas y servicios en camión pueden usar el mismo perímetro, pero deben tener perfiles distintos cuando cambien la ruta, el vehículo o los costos.</p><p>La clasificación metropolitana se conserva únicamente para reglas operativas. El costo vial se obtiene de la distancia, el perfil del vehículo y los peajes.</p></AdministrationHelp></div>
+      <h3 className="text-sm font-semibold text-slate-900">Ciudades, sectores y costos</h3>
       <div className="flex items-center gap-2"><AdministrationIconAction label="Actualizar ubicaciones" disabled={loading || saving} onClick={() => void (uncertain ? reconcile() : load())}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></AdministrationIconAction>{access.canZonesManage && <button type="button" disabled={loading || saving || uncertain || Boolean(error)} onClick={() => open(null)} className="inline-flex min-h-10 items-center gap-1.5 rounded bg-[#003366] px-3 text-xs font-semibold text-white disabled:opacity-40"><Plus className="h-4 w-4" />Nueva ciudad o sector</button>}</div>
     </div>
     <div className="flex flex-wrap gap-2"><label className="relative min-w-48 flex-1"><span className="sr-only">Buscar ciudades o sectores</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ciudad, sector, código o vehículo…" className={cn(COMPACT_FORM_FIELD, "w-full pl-9 pr-3")} /></label><select aria-label="Estado de la ubicación" value={state} onChange={(event) => setState(event.target.value)} className={COMPACT_FORM_FIELD}><option value="ALL">Todos los estados</option>{Object.entries(STATE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>

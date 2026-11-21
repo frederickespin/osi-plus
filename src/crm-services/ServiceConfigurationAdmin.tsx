@@ -1,6 +1,6 @@
 import { Fragment, lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
-import { ArrowLeft, Check, Pencil, Plus, RefreshCw, Save, X } from "lucide-react";
+import { ArrowLeft, Check, CircleHelp, Pencil, Plus, RefreshCw, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { COMPACT_TABLE_BODY, COMPACT_TABLE_FIELD as FIELD, COMPACT_TABLE_HEAD } from "@/components/ui/compact-form";
 import { NumericInput } from "@/components/ui/numeric-input";
@@ -10,12 +10,12 @@ import type { CrmServicesUiAccess } from "./access";
 import { CrmServicesApi, CrmServicesApiError, type ServiceCatalogItem, type ServiceMaterialPolicy, type ServiceMode, type ServicePackage } from "./api";
 import ServiceCatalogAdmin from "./ServiceCatalogAdmin";
 import MaterialPolicySheet from "./MaterialPolicySheet";
+import ServiceSetupGuide, { SERVICE_SETUP_LABELS, type ServiceSetupTab } from "./ServiceSetupGuide";
 import { draftFromPolicy, newPolicyDraft, policySavePayload, validatePolicyDraft, type PolicyDraft } from "./materialPolicyDraft";
 
 const PackagePricingAdmin = lazy(() => import("@/costing/PackagePricingAdmin"));
 
 type Props = Readonly<{ authorization?: string; access: CrmServicesUiAccess; costingAccess?: CostingUiAccess; onUnauthorized(): void }>;
-type Tab = "CATALOG" | "MODES" | "PACKAGES" | "PRICING" | "COSTS" | "MATERIALS";
 type NewModeDraft = Readonly<{ modeRef: null; code: string; scope: "LOCAL" | "EXPORT" | "IMPORT"; name: string; description: null; state: "DRAFT" | "PUBLISHED"; version: 0 }>;
 const MODE_SCOPES = [
   { code: "LOCAL", label: "Local / Nacional" }, { code: "EXPORT", label: "Exportación" }, { code: "IMPORT", label: "Importación" },
@@ -39,8 +39,11 @@ const ACTION = "border-transparent bg-transparent";
 export default function ServiceConfigurationAdmin({ authorization, access, costingAccess, onUnauthorized }: Props) {
   const modeForm = useId();
   const requirementForm = useId();
+  const guideId = useId();
+  const guideTrigger = useRef<HTMLButtonElement>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
   const api = useMemo(() => new CrmServicesApi(() => authorization || null), [authorization]);
-  const [tab, setTab] = useState<Tab>(access.canPackagesView && costingAccess?.canRulesView ? "PRICING" : "CATALOG");
+  const [tab, setTab] = useState<ServiceSetupTab>(access.canPackagesView && costingAccess?.canRulesView ? "PRICING" : "CATALOG");
   const [modes, setModes] = useState<readonly ServiceMode[]>([]); const [catalog, setCatalog] = useState<readonly ServiceCatalogItem[]>([]); const [catalogModes, setCatalogModes] = useState<readonly Readonly<{ serviceRef: string; modeRefs: readonly string[] }>[]>([]); const [packages, setPackages] = useState<readonly ServicePackage[]>([]); const [policies, setPolicies] = useState<readonly ServiceMaterialPolicy[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [packageDraft, setPackageDraft] = useState<PackageDraft | null>(null); const [policyDraft, setPolicyDraft] = useState<PolicyDraft | null>(null); const [modeDraft, setModeDraft] = useState<ServiceMode | NewModeDraft | null>(null); const [requirementDraft, setRequirementDraft] = useState<RequirementDraft | null>(null); const [saving, setSaving] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [dataReady, setDataReady] = useState(false);
@@ -53,16 +56,12 @@ export default function ServiceConfigurationAdmin({ authorization, access, costi
     if (!pendingCommands.current[operation]) pendingCommands.current[operation] = crypto.randomUUID();
     return { ...payload, requestId: pendingCommands.current[operation] };
   };
-  const allowedTabs: Tab[] = [];
+  const allowedTabs: ServiceSetupTab[] = [];
   if (access.canPackagesView && costingAccess?.canRulesView) allowedTabs.push("PRICING", "COSTS");
   if (access.canCatalogView) allowedTabs.push("CATALOG");
   if (access.canCatalogView && access.canPackagesView) allowedTabs.push("MODES");
   if (access.canPackagesView) allowedTabs.push("PACKAGES");
   if (access.canMaterialsView) allowedTabs.push("MATERIALS");
-  const tabLabels: Record<Tab, string> = {
-    CATALOG: "Servicios", MODES: "Modalidades",
-    PACKAGES: "Operación", PRICING: "Tarifario", COSTS: "Costos", MATERIALS: "Políticas de materiales",
-  };
   const activeTab = allowedTabs.includes(tab) ? tab : allowedTabs[0];
   const dataTab = activeTab === "COSTS" ? "PRICING" : activeTab;
   const canEditPackage = access.canPackagesView && access.canPackagesManage && access.canCatalogView;
@@ -272,11 +271,12 @@ export default function ServiceConfigurationAdmin({ authorization, access, costi
     <header className="flex items-center justify-between gap-2 border-b border-slate-200 pb-1.5">
       <div className="flex items-center gap-1">
         <h2 className="text-base font-semibold text-slate-950">Servicios y combinaciones</h2>
-        <AdministrationHelp title="Servicios y combinaciones">
-          <p>En Costos registra productos, servicios y cargos. En Tarifario arma los paquetes con esos costos y publica sus precios para Comercial.</p>
-          <p>Servicios y Modalidades determinan qué se puede ofrecer. Operación configura los recursos y la duración, y Políticas de materiales define el uso y los cargos de esos recursos.</p>
-          <p>La sección Costos y monedas del menú lateral reúne las tasas de cambio y las reglas internas.</p>
-        </AdministrationHelp>
+        <button ref={guideTrigger} type="button" aria-label="Guía de Servicios y combinaciones"
+          aria-expanded={guideOpen} aria-controls={guideOpen ? guideId : undefined} onClick={() => setGuideOpen(!guideOpen)}
+          className={"inline-flex h-8 items-center gap-1 rounded px-2 text-xs font-semibold hover:bg-sky-50 hover:text-[#003366] " +
+            (guideOpen ? "bg-sky-100 text-[#003366]" : "text-slate-600")}>
+          <CircleHelp aria-hidden="true" className="size-4 shrink-0" /><span>Guía</span>
+        </button>
       </div>
       <AdministrationIconAction label="Actualizar configuración de Servicios" disabled={loading || saving} onClick={load}><RefreshCw aria-hidden="true" className="size-4" /></AdministrationIconAction>
     </header>
@@ -284,8 +284,14 @@ export default function ServiceConfigurationAdmin({ authorization, access, costi
       {allowedTabs.map((value) => <button key={value} type="button" disabled={saving} onClick={() => setTab(value)}
         aria-current={activeTab === value ? "page" : undefined}
         className={"whitespace-nowrap border-b-2 px-3 py-2 text-xs font-bold " + (activeTab === value
-          ? "border-[#0070a8] bg-sky-50 text-[#003366]" : "border-transparent text-slate-600 hover:bg-slate-100")}>{tabLabels[value]}</button>)}
+          ? "border-[#0070a8] bg-sky-50 text-[#003366]" : "border-transparent text-slate-600 hover:bg-slate-100")}>{SERVICE_SETUP_LABELS[value]}</button>)}
     </nav>
+    <div className={guideOpen ? "grid min-w-0 gap-2 pt-2 xl:grid-cols-[minmax(0,1fr)_18.5rem] xl:items-start" : "min-w-0"}>
+      {guideOpen && <ServiceSetupGuide id={guideId} activeTab={activeTab} allowedTabs={allowedTabs} onClose={() => {
+        setGuideOpen(false);
+        guideTrigger.current?.focus();
+      }} />}
+      <div className="min-w-0 xl:order-1">
     {!loading && dataReady && (activeTab === "PRICING" || activeTab === "COSTS") && costingAccess?.canRulesView && <Suspense fallback={<p role="status" className="py-3 text-xs text-slate-600">Cargando tarifas…</p>}>
       <PackagePricingAdmin view={activeTab} authorization={authorization} packages={packages} canManage={costingAccess.canRulesManage} onUnauthorized={onUnauthorized}
         modes={modes} services={primaries} catalogModes={catalogModes} onCreate={canEditPackage && costingAccess.canRulesManage ? createTariffPackage : undefined} />
@@ -468,5 +474,7 @@ export default function ServiceConfigurationAdmin({ authorization, access, costi
           </table>
         </div>
       </section>)}
+      </div>
+    </div>
   </section>;
 }

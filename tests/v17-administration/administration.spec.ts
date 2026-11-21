@@ -154,6 +154,47 @@ test("un lector sólo del catálogo de Servicios no consulta paquetes ni materia
   expect(seen.unexpected).toEqual([]);
 });
 
+test("la guía de Servicios cambia de tema y permite configurar sin perder el borrador", async ({ page }, testInfo) => {
+  await session(page, [...ALL_SECTIONS, "services:catalog:manage"]);
+  await page.goto("/administration/services");
+  const trigger = page.getByRole("button", { name: "Guía de Servicios y combinaciones" });
+  const guide = page.getByRole("complementary", { name: "Guía de configuración" });
+  const tabs = page.getByRole("navigation", { name: "Configuración de Servicios" });
+  if (testInfo.project.name.includes("mobile")) await trigger.tap();
+  else await trigger.press("Enter");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await expect(guide.getByRole("region", { name: "Guía de Tarifario" })).toContainText("RD$6.500");
+
+  for (const [tab, example] of [
+    ["Modalidades", "Local / Nacional marcada"],
+    ["Operación", "Duración estimada · 4 horas"],
+    ["Políticas de materiales", "Colcha reutilizable"],
+    ["Costos", "Caja de cartón"],
+    ["Servicios", "Empaque y embalaje"],
+  ]) {
+    await tabs.getByRole("button", { name: tab, exact: true }).click();
+    await expect(guide.getByRole("region", { name: "Guía de " + tab })).toContainText(example);
+  }
+
+  await page.getByRole("button", { name: "Nuevo servicio" }).click();
+  const name = page.getByRole("textbox", { name: "Nombre del servicio" });
+  await name.fill("Mudanza de prueba");
+  const topic = guide.getByLabel("Tema de ayuda");
+  await topic.selectOption("COSTS");
+  await expect(guide.getByRole("region", { name: "Guía de Costos" })).toContainText("RD$300");
+  await expect(tabs.getByRole("button", { name: "Servicios", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(name).toHaveValue("Mudanza de prueba");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+
+  await guide.getByRole("button", { name: "Cerrar guía" }).click();
+  await expect(guide).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(name).toHaveValue("Mudanza de prueba");
+  await trigger.click();
+  await expect(guide.getByRole("region", { name: "Guía de Servicios" })).toBeVisible();
+  await expect(name).toHaveValue("Mudanza de prueba");
+});
+
 test("un lector sólo de paquetes abre su pestaña y no consulta el catálogo", async ({ page }) => {
   const seen = await session(page, ["services:packages:view"]);
   await page.goto("/administration/services");

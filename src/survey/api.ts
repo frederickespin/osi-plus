@@ -73,7 +73,7 @@ export function createSurveyApi(authorization?: string) {
       operation: string,
       expectedVersion: number,
     ) =>
-      json<{ surveyRef?: string; version: number }>(
+      json<{ surveyRef?: string; version: number; returnedToMetroAt?: string }>(
         authorization,
         `/api/crm/survey/assignments/${encodeURIComponent(assignmentRef)}`,
         {

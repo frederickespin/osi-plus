@@ -8,6 +8,13 @@ import {
 } from "./communicationsContract.js";
 import { PERMS, permsForRole } from "./rbac.js";
 import {
+  findSurveyEvaluatorDayConflict,
+  isOutsideMetroAssignment,
+  lockSurveyEvaluatorDay,
+  metroReturnAt,
+  replacementAssignmentContext,
+} from "./surveyEvaluatorDay.js";
+import {
   PersonnelPoliciesError,
   normalizePersonnelPoliciesQuery,
   normalizePersonnelPolicyMutation,
@@ -510,6 +517,65 @@ function minuteOfDay(date, timezone) {
     date: `${get("year")}-${get("month")}-${get("day")}`,
   };
 }
+
+export function personnelScheduleWindow({
+  policy,
+  method,
+  start,
+  end,
+  overrides,
+  zoneIds,
+  motorTravelMinutes = 0,
+}) {
+  if (
+    overrides.length > 1 &&
+    overrides[0].createdAt.getTime() === overrides[1].createdAt.getTime()
+  )
+    personnelFail("PERSONNEL_VISIT_POLICY_CONFLICT", 409);
+  const override = overrides[0];
+  const local = minuteOfDay(start, policy.timezone);
+  const scopedWindows = policy.windows.filter(
+    (window) =>
+      window.weekday === local.weekday &&
+      window.method === method &&
+      (!window.logisticsRuleId || zoneIds.has(window.logisticsRuleId)) &&
+      window.startMinute <= local.minute &&
+      window.endMinute >= local.minute + Math.ceil((end - start) / 60_000),
+  );
+  const datedWindows = scopedWindows.filter(
+    (window) => window.calendarDate?.toISOString().slice(0, 10) === local.date,
+  );
+  const effectiveWindows = datedWindows.length
+    ? datedWindows
+    : scopedWindows.filter((window) => !window.calendarDate);
+  const windows = effectiveWindows.some((window) => window.kind === "SPECIAL_CLOSURE")
+    ? []
+    : effectiveWindows;
+  const buffer = method === "IN_PERSON"
+    ? Math.max(
+        policy.minimumTravelBufferMinutes,
+        override?.kind === "TRAVEL_BUFFER" ? override.travelBufferMinutes || 0 : 0,
+        Number.isFinite(Number(motorTravelMinutes)) ? Number(motorTravelMinutes) : 0,
+      )
+    : policy.virtualPreparationMinutes;
+  return {
+    window: windows[0] || null,
+    windowConflict: windows.length > 1,
+    local,
+    buffer,
+    unavailable: override?.kind === "UNAVAILABLE",
+    requiresApproval:
+      override?.kind !== "AVAILABLE" && (!windows.length || windows[0].requiresApproval),
+  };
+}
+
+export function personnelVisitInWindow(scheduledStart, start, timezone, window, weekday) {
+  if (scheduledStart < new Date(start.getTime() - 864e5) ||
+      scheduledStart >= new Date(start.getTime() + 864e5)) return false;
+  const local = minuteOfDay(scheduledStart, timezone);
+  return local.weekday === weekday &&
+    local.minute >= window.startMinute && local.minute < window.endMinute;
+}
 function conflicts(windows) {
   const ordered = [...windows].sort(
     (a, b) =>
@@ -558,6 +624,7 @@ export async function resolvePersonnelScheduleAuthority(
   exceptionRef = null,
   motorTravelMinutes = 0,
   excludeAssignmentId = null,
+  checkEvaluatorDay = true,
 ) {
   if (end <= start) personnelFail("PERSONNEL_POLICIES_INPUT_INVALID");
   await evaluatorAuthority(tx, who, profile, method);
@@ -574,14 +641,6 @@ export async function resolvePersonnelScheduleAuthority(
     orderBy: { createdAt: "desc" },
     take: 2,
   });
-  if (
-    overrides.length > 1 &&
-    overrides[0].createdAt.getTime() === overrides[1].createdAt.getTime()
-  )
-    personnelFail("PERSONNEL_VISIT_POLICY_CONFLICT", 409);
-  const override = overrides[0] || null;
-  if (override?.kind === "UNAVAILABLE")
-    personnelFail("PERSONNEL_AFTER_HOURS_REQUEST_REQUIRED", 409);
   const activeZones = await tx.operationalZoneAssignment.findMany({
     where: {
       tenantId: who.tenantId,
@@ -595,26 +654,11 @@ export async function resolvePersonnelScheduleAuthority(
     select: { logisticsRuleId: true },
   });
   const zoneIds = new Set(activeZones.map((entry) => entry.logisticsRuleId));
-  const local = minuteOfDay(start, policy.timezone);
-  const scopedWindows = policy.windows.filter(
-    (window) =>
-      window.weekday === local.weekday &&
-      window.method === method &&
-      (!window.logisticsRuleId || zoneIds.has(window.logisticsRuleId)) &&
-      window.startMinute <= local.minute &&
-      window.endMinute >= local.minute + Math.ceil((end - start) / 60_000),
-  );
-  const datedWindows = scopedWindows.filter(
-    (window) => window.calendarDate?.toISOString().slice(0, 10) === local.date,
-  );
-  const effectiveWindows = datedWindows.length
-    ? datedWindows
-    : scopedWindows.filter((window) => !window.calendarDate);
-  const windows = effectiveWindows.some(
-    (window) => window.kind === "SPECIAL_CLOSURE",
-  )
-    ? []
-    : effectiveWindows;
+  const windowEvaluation = personnelScheduleWindow({
+    policy, method, start, end, overrides, zoneIds, motorTravelMinutes,
+  });
+  if (windowEvaluation.unavailable)
+    personnelFail("PERSONNEL_AFTER_HOURS_REQUEST_REQUIRED", 409);
   const approved = exceptionRef
     ? await tx.afterHoursVisitRequest.findFirst({
         where: {
@@ -627,41 +671,16 @@ export async function resolvePersonnelScheduleAuthority(
         },
       })
     : null;
-  if (
-    override?.kind !== "AVAILABLE" &&
-    (!windows.length || windows[0]?.requiresApproval) &&
-    !approved
-  )
+  if (windowEvaluation.requiresApproval && !approved)
     personnelFail("PERSONNEL_AFTER_HOURS_REQUEST_REQUIRED", 409);
-  if (windows.length > 1) personnelFail("PERSONNEL_VISIT_POLICY_CONFLICT", 409);
-  const physical = method === "IN_PERSON";
-  const buffer = physical
-    ? Math.max(
-        policy.minimumTravelBufferMinutes,
-        override?.kind === "TRAVEL_BUFFER"
-          ? override.travelBufferMinutes || 0
-          : 0,
-        Number.isFinite(Number(motorTravelMinutes))
-          ? Number(motorTravelMinutes)
-          : 0,
-      )
-    : policy.virtualPreparationMinutes;
-  const occupied = await tx.surveyAssignment.count({
-    where: {
-      tenantId: who.tenantId,
-      ...(excludeAssignmentId ? { id: { not: excludeAssignmentId } } : {}),
-      evaluatorMembershipId: profile.membershipId,
-      evaluatorUserId: profile.userId,
-      status: { in: ["ASSIGNED", "ARRIVED", "IN_PROGRESS"] },
-      scheduledStart: { lt: new Date(end.getTime() + buffer * 60_000) },
-      OR: [
-        { scheduledEnd: null },
-        { scheduledEnd: { gt: new Date(start.getTime() - buffer * 60_000) } },
-      ],
-    },
-  });
-  if (occupied > 0) personnelFail("PERSONNEL_EVALUATOR_UNAVAILABLE", 409);
-  if (windows[0]) {
+  if (windowEvaluation.windowConflict)
+    personnelFail("PERSONNEL_VISIT_POLICY_CONFLICT", 409);
+  const { buffer, window, local } = windowEvaluation;
+  if (checkEvaluatorDay && await findSurveyEvaluatorDayConflict(
+    tx, who.tenantId, { id: profile.membershipId, userId: profile.userId },
+    { start, end, timezone: policy.timezone, outsideMetro: false, bufferMinutes: buffer, excludeAssignmentId },
+  )) personnelFail("PERSONNEL_EVALUATOR_UNAVAILABLE", 409);
+  if (window) {
     const candidates = await tx.surveyAssignment.findMany({
       where: {
         tenantId: who.tenantId,
@@ -676,18 +695,13 @@ export async function resolvePersonnelScheduleAuthority(
       },
       select: { scheduledStart: true },
     });
-    const matchingCount = candidates.filter((entry) => {
-      const localEntry = minuteOfDay(entry.scheduledStart, policy.timezone);
-      return (
-        localEntry.weekday === local.weekday &&
-        localEntry.minute >= windows[0].startMinute &&
-        localEntry.minute < windows[0].endMinute
-      );
-    }).length;
-    if (matchingCount >= windows[0].capacity)
+    const matchingCount = candidates.filter((entry) =>
+      personnelVisitInWindow(entry.scheduledStart, start, policy.timezone, window, local.weekday),
+    ).length;
+    if (matchingCount >= window.capacity)
       personnelFail("PERSONNEL_VISIT_WINDOW_FULL", 409);
   }
-  return { policy, buffer, window: windows[0] || null };
+  return { policy, buffer, window };
 }
 
 async function latestLogistics(tx, who, pipelineCaseId) {
@@ -1463,7 +1477,8 @@ async function execute(tx, who, command) {
     const current = await byAssignment(tx, who, command.assignmentRef);
     if (
       current.version !== command.expectedVersion ||
-      ["CANCELLED", "COMPLETED", "SUPERSEDED"].includes(current.status)
+      ["CANCELLED", "COMPLETED", "SUPERSEDED"].includes(current.status) ||
+      (command.operation === "REBOOK_VISIT" && metroReturnAt(current))
     )
       personnelFail("PERSONNEL_POLICIES_VERSION_CONFLICT", 409);
     if (command.operation === "RECORD_CLIENT_CONFIRMATION") {
@@ -1571,7 +1586,23 @@ async function execute(tx, who, command) {
       null,
       resources.impact.travelMinutes || 0,
       current.id,
+      false,
     );
+    if (!(await lockSurveyEvaluatorDay(tx, who.tenantId, start))) {
+      personnelFail("PERSONNEL_EVALUATOR_UNAVAILABLE", 409);
+    }
+    const conflict = await findSurveyEvaluatorDayConflict(tx, who.tenantId, {
+      id: current.evaluatorMembershipId,
+      userId: current.evaluatorUserId,
+    }, {
+      start,
+      end,
+      timezone: authority.policy.timezone,
+      outsideMetro: isOutsideMetroAssignment(current),
+      bufferMinutes: authority.buffer,
+      excludeAssignmentId: current.id,
+    });
+    if (conflict) personnelFail("PERSONNEL_EVALUATOR_UNAVAILABLE", 409);
     const replacement = await tx.surveyAssignment.create({
       data: {
         tenantId: who.tenantId,
@@ -1583,7 +1614,7 @@ async function execute(tx, who, command) {
         scheduledStart: start,
         scheduledEnd: end,
         contextSnapshot: {
-          ...(current.contextSnapshot || {}),
+          ...replacementAssignmentContext(current),
           rebookingOrigin: command.requesterOrigin,
           rebookingReason: command.reasonDescription,
         },

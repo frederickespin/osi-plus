@@ -26,6 +26,8 @@ const assignment = {
   status: "ASSIGNED",
   arrivalAt: null as string | null,
   punctualityConfirmedAt: null as string | null,
+  canReportMetroReturn: false,
+  returnedToMetroAt: null as string | null,
   context: {
     origin: "Origen estructurado",
     destination: "Destino estructurado",
@@ -141,11 +143,13 @@ async function session(page: Page, denied = false) {
     }),
   );
 }
-async function surveyApi(page: Page) {
+async function surveyApi(page: Page, canReportMetroReturn = false) {
   Object.assign(assignment, {
-    status: "ASSIGNED",
+    status: canReportMetroReturn ? "COMPLETED" : "ASSIGNED",
     arrivalAt: null,
     punctualityConfirmedAt: null,
+    canReportMetroReturn,
+    returnedToMetroAt: null,
     version: 1,
     surveyRef: null,
   });
@@ -184,6 +188,12 @@ async function surveyApi(page: Page) {
         assignment.surveyRef = SURVEY_REF;
         assignment.version = 4;
       }
+      if (body.operation === "RETURN_TO_METRO") {
+        expect(body.expectedVersion).toBe(assignment.version);
+        assignment.returnedToMetroAt = "2026-09-06T16:30:00.000Z";
+        assignment.canReportMetroReturn = false;
+        assignment.version++;
+      }
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -197,6 +207,7 @@ async function surveyApi(page: Page) {
             version: assignment.version,
             arrivalAt: assignment.arrivalAt,
             punctualityConfirmedAt: assignment.punctualityConfirmedAt,
+            returnedToMetroAt: assignment.returnedToMetroAt,
           },
         }),
       });
@@ -351,6 +362,18 @@ async function surveyApi(page: Page) {
   return () => mutations;
 }
 
+test("registra el regreso de una visita fuera de zona metro desde la agenda", async ({ page }) => {
+  await session(page);
+  await surveyApi(page, true);
+  await page.goto("/survey");
+  const reportReturn = page.getByRole("button", { name: "Ya regresé y estoy disponible" });
+  await reportReturn.click();
+  await expect(page.getByRole("status").filter({ hasText: "Regreso registrado" })).toBeVisible();
+  await expect(reportReturn).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("status").filter({ hasText: "Regreso registrado" })).toBeVisible();
+});
+
 test("agenda, inventario, accesos, revisión y firma conservan el flujo móvil aprobado", async ({
   page,
 }) => {
@@ -362,6 +385,7 @@ test("agenda, inventario, accesos, revisión y firma conservan el flujo móvil a
   ).toBeVisible();
   await expect(page.getByText("Origen estructurado")).toBeVisible();
   await expect(page.getByText("Método · Visita presencial")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ya regresé y estoy disponible" })).toHaveCount(0);
   await page.getByRole("button", { name: "Llegué", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Llegué a la hora acordada" }),

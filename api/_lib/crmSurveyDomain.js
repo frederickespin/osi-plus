@@ -2,7 +2,16 @@ import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db.js";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
+import { loadLogisticsGeography } from "./logisticsGeography.js";
+import { classifyLogisticsMetro } from "./logisticsMetroClassification.js";
 import { PERMS, permsForRole } from "./rbac.js";
+import {
+  canReportMetroReturn,
+  DEFAULT_SURVEY_TIMEZONE,
+  findSurveyEvaluatorDayConflict,
+  lockSurveyEvaluatorDay,
+  metroReturnAt,
+} from "./surveyEvaluatorDay.js";
 import {
   CrmSurveyError,
   assertPublicSurveyRef,
@@ -103,14 +112,16 @@ async function commandLock(tx, tenantId, requestId) {
   );
   if (rows[0]?.ok !== true) surveyFail("CRM_SURVEY_COMMAND_IN_PROGRESS", 409);
 }
-async function priorCommand(tx, tenantId, command) {
+async function priorCommand(tx, tenantId, command, owner = null, targetRef = null) {
   const row = await tx.surveyMutationCommand.findFirst({
     where: { tenantId, requestId: command.requestId },
   });
   if (!row) return null;
   if (
     row.operation !== command.operation ||
-    row.payloadHash !== command.payloadHash
+    row.payloadHash !== command.payloadHash ||
+    (owner && (row.actorMembershipId !== owner.membershipId ||
+      row.actorUserId !== owner.userId || row.targetRef !== targetRef))
   )
     surveyFail("CRM_SURVEY_IDEMPOTENCY_CONFLICT", 409);
   return row.resultJson;
@@ -192,7 +203,13 @@ function routeSummary(route) {
     .filter(Boolean)
     .join(", ");
 }
-function publicAssignment(row) {
+function surveyAssignmentTimezone(row) {
+  return row.operationalPolicy?.timezone || row.schedulePolicy?.timezone || DEFAULT_SURVEY_TIMEZONE;
+}
+function isAssignedEvaluator(row, who) {
+  return row.evaluatorMembershipId === who.membershipId && row.evaluatorUserId === who.userId;
+}
+function publicAssignment(row, who, now) {
   return Object.freeze({
     assignmentRef: row.assignmentRef,
     caseRef: row.pipelineCase.publicRef,
@@ -213,6 +230,9 @@ function publicAssignment(row) {
     status: row.status,
     arrivalAt: row.arrivalAt,
     punctualityConfirmedAt: row.punctualityConfirmedAt,
+    returnedToMetroAt: metroReturnAt(row),
+    canReportMetroReturn: isAssignedEvaluator(row, who) && who.effective.has(PERMS.SURVEY_PERFORM) &&
+      canReportMetroReturn(row, surveyAssignmentTimezone(row), now),
     context: row.contextSnapshot,
     instruction: row.instructionSnapshot,
     version: row.version,
@@ -425,6 +445,8 @@ async function scopedAssignment(
       pipelineCase: { include: { client: true } },
       evaluatorMembership: { include: { user: true } },
       evaluationDecision: true,
+      operationalPolicy: { select: { timezone: true } },
+      schedulePolicy: { select: { timezone: true } },
       serviceRevision: true,
       drafts: { orderBy: { revision: "desc" }, take: 1 },
     },
@@ -620,11 +642,14 @@ export async function listSurveyAgenda(context, database = prisma) {
           pipelineCase: { include: { client: true } },
           evaluatorMembership: { include: { user: true } },
           evaluationDecision: true,
+          operationalPolicy: { select: { timezone: true } },
+          schedulePolicy: { select: { timezone: true } },
           serviceRevision: true,
           drafts: { orderBy: { revision: "desc" }, take: 1 },
         },
       });
-      return Object.freeze(rows.map(publicAssignment));
+      const now = new Date();
+      return Object.freeze(rows.map((row) => publicAssignment(row, who, now)));
     });
   } catch (error) {
     throw databaseError(error);
@@ -690,6 +715,8 @@ export async function createSurveyAssignment(
       );
       const origin = routes.find((route) => route.role === "ORIGIN");
       const destination = routes.find((route) => route.role === "DESTINATION");
+      const { metro } = await loadLogisticsGeography(tx, who.tenantId);
+      const zoneType = metro && classifyLogisticsMetro(metro, origin);
       const contextSnapshot = {
         caseCode: pipelineCase.caseCode,
         clientDisplayName: pipelineCase.client?.displayName || null,
@@ -698,6 +725,7 @@ export async function createSurveyAssignment(
         booker: null,
         origin: routeSummary(origin),
         destination: routeSummary(destination),
+        ...(zoneType ? { zone: { type: zoneType, code: zoneType, metroVersion: metro.version } } : {}),
         routeVersion,
         serviceSelectionRef: serviceRevision.selectionRef,
         services: serviceRevision.items.map((item) => ({
@@ -706,6 +734,18 @@ export async function createSurveyAssignment(
           name: item.nameSnapshot,
         })),
       };
+      const start = new Date(command.scheduledStart);
+      const end = command.scheduledEnd ? new Date(command.scheduledEnd) : null;
+      if (!(await lockSurveyEvaluatorDay(tx, who.tenantId, start))) {
+        surveyFail("CRM_SURVEY_CONFLICT", 409);
+      }
+      const conflict = await findSurveyEvaluatorDayConflict(tx, who.tenantId, evaluator, {
+        start,
+        end: end || new Date(start.getTime() + 45 * 60_000),
+        timezone: DEFAULT_SURVEY_TIMEZONE,
+        outsideMetro: Boolean(zoneType && zoneType !== "METRO"),
+      });
+      if (conflict) surveyFail(conflict, 409);
       const row = await tx.surveyAssignment.create({
         data: {
           tenantId: who.tenantId,
@@ -714,10 +754,8 @@ export async function createSurveyAssignment(
           routeVersion,
           evaluatorMembershipId: evaluator.id,
           evaluatorUserId: evaluator.userId,
-          scheduledStart: new Date(command.scheduledStart),
-          scheduledEnd: command.scheduledEnd
-            ? new Date(command.scheduledEnd)
-            : null,
+          scheduledStart: start,
+          scheduledEnd: end,
           contextSnapshot,
           instructionSnapshot: command.instruction,
           createdByMembershipId: who.membershipId,
@@ -764,7 +802,8 @@ export async function actOnSurveyAssignment(
           ? PERMS.SURVEY_ASSIGNMENT_MANAGE
           : PERMS.SURVEY_PERFORM,
       );
-      const replay = await priorCommand(tx, who.tenantId, command);
+      const returning = command.operation === "RETURN_TO_METRO";
+      const replay = await priorCommand(tx, who.tenantId, command, returning ? who : null, assignmentRef);
       if (replay) return replay;
       const row = await scopedAssignment(
         tx,
@@ -772,11 +811,32 @@ export async function actOnSurveyAssignment(
         assignmentRef,
         PERMS.SURVEY_PERFORM,
       );
+      if (returning && !isAssignedEvaluator(row, who)) {
+        surveyFail("CRM_SURVEY_RESOURCE_NOT_FOUND", 404);
+      }
       if (row.version !== command.expectedVersion)
         surveyFail("CRM_SURVEY_VERSION_CONFLICT", 409);
       let result;
       let action;
-      if (command.operation === "ARRIVAL_RECORD") {
+      if (returning) {
+        const now = new Date();
+        if (!canReportMetroReturn(row, surveyAssignmentTimezone(row), now)) {
+          surveyFail("CRM_SURVEY_RETURN_NOT_AVAILABLE", 409);
+        }
+        if (!(await lockSurveyEvaluatorDay(tx, who.tenantId, row.scheduledStart))) {
+          surveyFail("CRM_SURVEY_CONFLICT", 409);
+        }
+        const returnedToMetroAt = now.toISOString();
+        const updated = await tx.surveyAssignment.update({
+          where: { id: row.id },
+          data: {
+            contextSnapshot: { ...row.contextSnapshot, metroReturnRecordedAt: returnedToMetroAt },
+            version: { increment: 1 },
+          },
+        });
+        result = { assignmentRef, status: updated.status, returnedToMetroAt, version: updated.version };
+        action = "SURVEY_METRO_RETURN_RECORDED";
+      } else if (command.operation === "ARRIVAL_RECORD") {
         if (row.arrivalAt || row.status !== "ASSIGNED")
           surveyFail("CRM_SURVEY_STATE_INVALID", 409);
         const updated = await tx.surveyAssignment.update({
@@ -884,6 +944,7 @@ export async function actOnSurveyAssignment(
         result.version,
         result,
         action,
+        returning ? { returnedToMetroAt: result.returnedToMetroAt } : undefined,
       );
       return result;
     }, MUTATION_OPTIONS);

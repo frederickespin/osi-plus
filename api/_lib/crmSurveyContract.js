@@ -278,6 +278,7 @@ export function normalizeAssignmentAction(input) {
     new Set([
       "ARRIVAL_RECORD",
       "PUNCTUALITY_CONFIRM",
+      "RETURN_TO_METRO",
       "START_SURVEY",
       "CANCEL_ASSIGNMENT",
     ]),

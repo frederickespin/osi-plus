@@ -15,6 +15,30 @@ export type EvaluationState =
   | "IN_PROGRESS"
   | "COMPLETED"
   | "CANCELLED";
+export type SurveyTimeAvailability = Readonly<{
+  date: string;
+  time: string;
+  durationMinutes: number;
+  timezone: string;
+  scheduledStart: string | null;
+  scheduledEnd: string | null;
+  slotKey: string | null;
+  requiresApproval?: boolean;
+  evaluators: readonly string[];
+  alternatives: readonly Readonly<{
+    time: string;
+    slotKey: string;
+    evaluatorMembershipRefs: readonly string[];
+  }>[];
+  agenda: readonly Readonly<{
+    evaluatorMembershipRef: string;
+    scheduledStart: string;
+    scheduledEnd: string | null;
+    label: string;
+    outsideMetro: boolean;
+    returnedToMetroAt: string | null;
+  }>[];
+}>;
 export type SchedulingWorkspace = Readonly<{
   caseRef: string;
   caseCode: string;
@@ -33,13 +57,14 @@ export type SchedulingWorkspace = Readonly<{
     assignmentRef: string;
     scheduledStart: string;
     scheduledEnd: string | null;
-    evaluator: { displayName: string };
+    evaluator: { displayName: string; membershipRef?: string };
     reason: null | { reasonRef: string; code: string; name: string };
     slotKey: string;
     profile: string;
     zoneCode: string;
     status: string;
     version: number;
+    returnedToMetroAt?: string | null;
     travelBufferMinutes: number;
     clientConfirmation: string;
     evaluatorConfirmation: string;
@@ -124,6 +149,7 @@ export type SchedulingWorkspace = Readonly<{
       available: boolean;
     }>[];
   }>;
+  timeAvailability?: SurveyTimeAvailability | null;
   evaluatorCandidates: readonly Readonly<{
     membershipRef: string;
     profileRef: string | null;

@@ -497,6 +497,33 @@ function readyWorkspace() {
   };
 }
 
+function exactAvailability(url: URL, available = true) {
+  const date = url.searchParams.get("date");
+  const time = url.searchParams.get("time");
+  if (!date || !time) return null;
+  const durationMinutes = Number(url.searchParams.get("durationMinutes"));
+  const start = new Date(`${date}T${time}:00-04:00`);
+  return {
+    date,
+    time,
+    durationMinutes,
+    timezone: "America/Santo_Domingo",
+    scheduledStart: start.toISOString(),
+    scheduledEnd: new Date(start.getTime() + durationMinutes * 60_000).toISOString(),
+    slotKey: "AFTERNOON",
+    evaluators: available ? [MEMBERSHIP_REF] : [],
+    alternatives: available ? [] : [{ time: "15:15", slotKey: "AFTERNOON", evaluatorMembershipRefs: [MEMBERSHIP_REF] }],
+    agenda: [{
+      evaluatorMembershipRef: MEMBERSHIP_REF,
+      scheduledStart: `${date}T13:00:00.000Z`,
+      scheduledEnd: `${date}T13:45:00.000Z`,
+      label: "Visita fuera de zona metro",
+      outsideMetro: true,
+      returnedToMetroAt: available ? `${date}T18:15:00.000Z` : null,
+    }],
+  };
+}
+
 async function communicationsApi(page: Page) {
   let prepared = false;
   let mutations = 0;
@@ -619,13 +646,14 @@ async function communicationsApi(page: Page) {
 async function openSurveyCommunications(page: Page) {
   const survey = page.getByTestId("survey-scheduling-workspace");
   await expect(survey).toBeVisible();
+  await survey.getByRole("button", { name: /^Programación/ }).click();
   const openCommunications = survey.getByRole("button", {
     name: "Ver comunicaciones de Survey",
     exact: true,
   });
   await expect(openCommunications).toBeVisible();
   await openCommunications.click();
-  await expect(page.getByRole("tab", { name: "Resumen", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Survey", exact: true })).toHaveAttribute("aria-selected", "true");
   const activity = page.getByRole("region", { name: "Actividad y Comunicaciones", exact: true });
   await expect(activity).toBeVisible();
   const communications = activity.getByTestId("communications-scheduling");
@@ -646,7 +674,8 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Survey" }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Survey", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Coordinar Survey", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Programación/ }).click();
   await expect(
     page.getByText(
       "Evaluadora sintética · METRO · METRO_SANTO_DOMINGO · MORNING",
@@ -654,10 +683,11 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Zona metropolitana · sin cargo publicado",
+      /Zona metropolitana · visita sin cargo/,
     ),
   ).toBeVisible();
-  await expect(page.getByText("Visita programada")).toBeVisible();
+  await page.getByRole("button", { name: "Resultado", exact: true }).click();
+  await expect(page.getByText("Visita programada", { exact: true })).toBeVisible();
   const communications = await openSurveyCommunications(page);
   await expect(
     communications.getByText("Transporte externo desactivado en Preview"),
@@ -706,7 +736,7 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   }
 });
 
-test("volver a Survey descarta el borrador de comunicación sin arrastrar destinatario ni hito", async ({ page }) => {
+test("cerrar las comunicaciones descarta el borrador sin arrastrar destinatario ni hito", async ({ page }) => {
   await session(page);
   await crm(page);
   const schedulingMutations = await schedulingApi(page);
@@ -720,7 +750,7 @@ test("volver a Survey descarta el borrador de comunicación sin arrastrar destin
   await communications.getByLabel("Hito").selectOption("SURVEY_PIC_CLIENT");
   await expect(communications.getByRole("button", { name: "Guardar como PREPARED" })).toBeEnabled();
 
-  await page.getByRole("tab", { name: "Survey", exact: true }).click();
+  await page.getByRole("region", { name: "Actividad y Comunicaciones", exact: true }).getByRole("button", { name: "Cerrar", exact: true }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
   await expect(page.locator('[data-testid^="communications-"]')).toHaveCount(0);
   const reopenedCommunications = await openSurveyCommunications(page);
@@ -762,7 +792,9 @@ test("fuera de horario ofrece solicitud excepcional tenant-first", async ({
       status: 200,
       contentType: "application/json",
       headers: privateHeaders,
-      body: JSON.stringify({ ok: true, data: readyWorkspace() }),
+      body: JSON.stringify({ ok: true, data: {
+        ...readyWorkspace(), timeAvailability: exactAvailability(new URL(route.request().url())),
+      } }),
     });
   });
   await page.route("**/api/personnel/policies", async (route) => {
@@ -776,30 +808,16 @@ test("fuera de horario ofrece solicitud excepcional tenant-first", async ({
   });
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Survey" }).click();
-  const availabilityResponse = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return response.request().method() === "GET" && url.pathname === "/api/crm/survey/scheduling" && url.searchParams.get("date") === "2030-09-16";
-  });
-  await page.getByLabel("Fecha").fill("2030-09-16");
-  await (await availabilityResponse).finished();
-  await expect(page.getByText("Consultando decisión, agenda e historial…", { exact: true })).toHaveCount(0);
-  await expect(page.getByTestId("survey-schedule-editor")).toBeVisible();
-  await page.getByRole("button", { name: /2:00/ }).click();
-  await page.getByLabel("Evaluador recomendado").click();
-  await page.getByRole("option", { name: /Evaluadora sintética/ }).click();
-  await page.getByLabel("Tipo de visita").click();
-  await page.getByRole("option", { name: "Evaluación inicial" }).click();
-  await page.getByRole("button", { name: "Confirmar visita" }).click();
-  await page
-    .getByLabel("Motivo para autorización extraordinaria")
-    .fill("Cliente requiere horario extraordinario");
-  await expect(
-    page.getByRole("button", { name: "Solicitar excepción" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Solicitar excepción" }).click();
-  await expect(page.getByRole("status")).toContainText(
+  await page.getByRole("button", { name: "Programación" }).click();
+  const editor = page.getByTestId("survey-schedule-editor");
+  await editor.getByLabel("Fecha").fill("2030-09-16");
+  await editor.getByLabel("Hora de llegada").fill("14:15");
+  await editor.getByRole("button", { name: "Confirmar visita" }).click();
+  await editor.getByLabel("Motivo para la autorización").fill("Cliente requiere horario extraordinario");
+  await editor.getByRole("button", { name: "Solicitar excepción" }).click();
+  await expect(page.getByText(
     "Solicitud excepcional registrada",
-  );
+  )).toBeVisible();
   expect(schedulingPosts).toBe(1);
   expect(exceptionBody).toMatchObject({
     operation: "EXCEPTION_REQUEST",
@@ -835,15 +853,64 @@ test("Survey consulta la zona de la dirección que el usuario selecciona", async
   await page.getByRole("tab", { name: "Survey" }).click();
   await page.getByRole("button", { name: "Programación" }).click();
   const editor = page.getByTestId("survey-schedule-editor");
-  await expect(editor.getByText("Zona metro", { exact: true })).toBeVisible();
-  await editor.getByLabel("Lugar de la visita").click();
-  await page.getByRole("option", { name: "Destino · Naco" }).click();
-  await expect(editor.getByText("Fuera de zona metro", { exact: true })).toBeVisible();
-  await expect(editor.getByRole("button", { name: "Confirmar visita" })).toHaveCount(0);
-  await editor.getByLabel("Lugar de la visita").click();
-  await page.getByRole("option", { name: "Origen · Piantini" }).click();
-  await expect(editor.getByRole("button", { name: "Confirmar visita" })).toBeVisible();
+  await expect(editor.getByText(/^Zona metro(?: · Sin cargo)?$/)).toBeVisible();
+  await editor.getByLabel("Lugar de la visita").selectOption("DESTINATION:0");
+  await expect(editor.getByText(/^Fuera de zona metro/)).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Confirmar visita" })).toBeDisabled();
+  await expect.poll(() => requestedLocations).toEqual(["DESTINATION:0"]);
+  await editor.getByLabel("Lugar de la visita").selectOption("ORIGIN:0");
+  await expect(editor.getByText(/^Zona metro(?: · Sin cargo)?$/)).toBeVisible();
   await expect.poll(() => requestedLocations).toEqual(["DESTINATION:0", "ORIGIN:0"]);
+});
+
+test("consulta una hora, ofrece alternativas y confirma la llegada elegida", async ({ page }) => {
+  await page.clock.install();
+  await session(page);
+  await crm(page);
+  let command: Record<string, unknown> | undefined;
+  let reportedReturn = false;
+  await page.route("**/api/crm/survey/scheduling**", async (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === "POST") {
+      command = route.request().postDataJSON();
+      return route.fulfill({ json: { ok: true, data: { status: "ASSIGNED" } }, headers: privateHeaders });
+    }
+    const timeAvailability = exactAvailability(url, reportedReturn || url.searchParams.get("time") !== "14:00");
+    return route.fulfill({ json: { ok: true, data: { ...readyWorkspace(), timeAvailability } }, headers: privateHeaders });
+  });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Survey" }).click();
+  await page.getByRole("button", { name: "Programación" }).click();
+  const editor = page.getByTestId("survey-schedule-editor");
+  const arrival = editor.getByLabel("Hora de llegada");
+  await expect(editor.locator("input[type=time]")).toHaveCount(1);
+  await expect(editor.getByLabel("Duración")).toHaveValue("45");
+  await editor.getByLabel("Fecha").fill("2030-09-16");
+  await arrival.fill("14:00");
+  await expect(editor.getByText("Hora sin disponibilidad")).toBeVisible();
+  await expect(editor.getByText(/regreso pendiente/)).toBeVisible();
+  await expect(editor.getByLabel("Evaluador disponible")).toBeDisabled();
+  await expect(editor.getByRole("button", { name: "Confirmar visita" })).toBeDisabled();
+  await editor.getByRole("button", { name: /3:15/ }).click();
+  await expect(arrival).toHaveValue("15:15");
+  await expect(editor.getByText("Hora disponible")).toBeVisible();
+  await expect(editor.getByLabel("Evaluador disponible")).toHaveValue(MEMBERSHIP_REF);
+  await expect(editor.getByText(/Regreso registrado/)).toBeVisible();
+  await arrival.fill("14:00");
+  await expect(editor.getByText(/regreso pendiente/)).toBeVisible();
+  reportedReturn = true;
+  await page.clock.fastForward(30_000);
+  await expect(editor.getByText("Hora disponible")).toBeVisible();
+  await expect(editor.getByText(/Regreso registrado/)).toBeVisible();
+  await arrival.fill("15:15");
+  await editor.getByLabel("Duración").selectOption("60");
+  await editor.getByRole("button", { name: "Confirmar visita" }).click();
+  await expect.poll(() => command).toMatchObject({
+    operation: "SCHEDULE",
+    evaluatorMembershipRef: MEMBERSHIP_REF,
+    scheduledStart: "2030-09-16T19:15:00.000Z",
+    scheduledEnd: "2030-09-16T20:15:00.000Z",
+  });
 });
 
 test("viewer consulta agenda y comunicaciones sin controles de gestión", async ({

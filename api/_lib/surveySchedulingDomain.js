@@ -4,6 +4,15 @@ import { isLegacyTransportContext, latestLogisticsRevision, QUOTE_TRANSPORT_CONT
 import { loadLogisticsGeography } from "./logisticsGeography.js";
 import { classifyLogisticsMetro, logisticsVisitReferenceKm } from "./logisticsMetroClassification.js";
 import { loadTransportZones } from "./logisticsTransportZones.js";
+import { loadExactSurveyAvailability, parseSurveyExactQuery } from "./surveyExactAvailability.js";
+import {
+  findSurveyEvaluatorDayConflict,
+  isOutsideMetroAssignment,
+  localCalendarDate,
+  lockSurveyEvaluatorDay,
+  metroReturnAt,
+  replacementAssignmentContext,
+} from "./surveyEvaluatorDay.js";
 
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import { PERMS, permsForRole } from "./rbac.js";
@@ -320,49 +329,6 @@ function routeDto(route) {
     compactAddress: routeSummary(route),
   });
 }
-function localCalendarDate(value, timezone) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(value);
-}
-async function assertInteriorDailyEvaluatorLimit(
-  tx,
-  who,
-  {
-    evaluatorMembershipId,
-    start,
-    timezone,
-    interiorProfiles,
-    excludeAssignmentId = null,
-  },
-) {
-  if (!interiorProfiles.length) return;
-  const rows = await tx.surveyAssignment.findMany({
-    where: {
-      tenantId: who.tenantId,
-      evaluatorMembershipId,
-      ...(excludeAssignmentId ? { id: { not: excludeAssignmentId } } : {}),
-      scheduleProfile: { in: interiorProfiles },
-      status: { not: "CANCELLED" },
-      scheduledStart: {
-        gte: new Date(start.getTime() - 36 * 60 * 60 * 1000),
-        lt: new Date(start.getTime() + 36 * 60 * 60 * 1000),
-      },
-    },
-    select: { scheduledStart: true },
-  });
-  const date = localCalendarDate(start, timezone);
-  if (
-    rows.some(
-      (assignment) =>
-        localCalendarDate(assignment.scheduledStart, timezone) === date,
-    )
-  )
-    schedulingFail("CRM_SURVEY_INTERIOR_DAILY_LIMIT", 409);
-}
 function evaluatorContext(
   pipelineCase,
   serviceRevision,
@@ -477,7 +443,7 @@ async function scheduleCapacity(
       gte: new Date(`${date}T00:00:00.000Z`),
       lt: new Date(`${date}T23:59:59.999Z`),
     },
-    status: { not: "CANCELLED" },
+    status: { notIn: ["CANCELLED", "SUPERSEDED"] },
     routeInvalidatedAt: null,
     ...(excludeId ? { id: { not: excludeId } } : {}),
   };
@@ -494,31 +460,12 @@ async function scheduleCapacity(
     saturdayApproved,
   });
 }
-async function assertEvaluatorInterval(
-  tx,
-  who,
-  evaluatorRow,
-  start,
-  end,
-  excludeId = null,
-  bufferMinutes = 0,
-) {
-  const bufferedStart = new Date(start.getTime() - bufferMinutes * 60_000);
-  const bufferedEnd = new Date(end.getTime() + bufferMinutes * 60_000);
-  const overlap = await tx.surveyAssignment.findFirst({
-    where: {
-      tenantId: who.tenantId,
-      evaluatorMembershipId: evaluatorRow.id,
-      evaluatorUserId: evaluatorRow.userId,
-      status: { notIn: ["CANCELLED", "SUPERSEDED"] },
-      routeInvalidatedAt: null,
-      scheduledStart: { lt: bufferedEnd },
-      OR: [{ scheduledEnd: null }, { scheduledEnd: { gt: bufferedStart } }],
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-    },
-    select: { id: true },
-  });
-  if (overlap) schedulingFail("CRM_SURVEY_EVALUATOR_CONFLICT", 409);
+async function assertEvaluatorDay(tx, who, evaluatorRow, options) {
+  if (!(await lockSurveyEvaluatorDay(tx, who.tenantId, options.start))) {
+    schedulingFail("CRM_SURVEY_SCHEDULING_CONFLICT", 409);
+  }
+  const conflict = await findSurveyEvaluatorDayConflict(tx, who.tenantId, evaluatorRow, options);
+  if (conflict) schedulingFail(conflict, 409);
 }
 function snapshotAssignment(row) {
   return {
@@ -529,6 +476,7 @@ function snapshotAssignment(row) {
     slotKey: row.slotKey,
     profile: row.scheduleProfile,
     zoneCode: row.zoneCode,
+    returnedToMetroAt: metroReturnAt(row),
     status: row.status,
     version: row.version,
   };
@@ -571,6 +519,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       { any: true },
     );
     const caseRef = String(query?.caseRef || "");
+    const exactQuery = parseSurveyExactQuery(query);
     const pipelineCase = await caseByRef(tx, who, caseRef);
     const currentRoutes = pipelineCase.routeSnapshots.filter(
       (route) => route.routeVersion === pipelineCase.routeRevision,
@@ -701,7 +650,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
               gte: new Date(`${requestedDate}T00:00:00.000Z`),
               lt: new Date(`${requestedDate}T23:59:59.999Z`),
             },
-            status: { not: "CANCELLED" },
+            status: { notIn: ["CANCELLED", "SUPERSEDED"] },
             routeInvalidatedAt: null,
           };
           const rows = await tx.surveyAssignment.groupBy({
@@ -743,7 +692,13 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
         }
       }
     }
-    const canAssign = who.effective.has(PERMS.SURVEY_SCHEDULE_ASSIGN) && policy;
+    const reprogramming = exactQuery?.mode === "reschedule";
+    const canAssign = who.effective.has(
+      reprogramming ? PERMS.SURVEY_SCHEDULE_RESCHEDULE : PERMS.SURVEY_SCHEDULE_ASSIGN,
+    ) && policy;
+    const assignedMembership = reprogramming
+      ? { id: assignment?.evaluatorMembershipId || "" }
+      : {};
     const capabilityCode = decision
       ? operationalCapabilityCode(decision.method)
       : null;
@@ -754,7 +709,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
               tenantId: who.tenantId,
               employmentStatus: "ACTIVE",
               availabilityStatus: { not: "UNAVAILABLE" },
-              membership: { status: "ACTIVE", user: { status: "ACTIVE" } },
+              membership: { ...assignedMembership, status: "ACTIVE", user: { status: "ACTIVE" } },
               ...(capabilityCode
                 ? {
                     capabilityAssignments: {
@@ -780,6 +735,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       canAssign && !operationalPolicy
         ? await tx.tenantMembership.findMany({
             where: {
+              ...assignedMembership,
               tenantId: who.tenantId,
               status: "ACTIVE",
               publicRef: {
@@ -800,7 +756,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       : [];
     const dailyInteriorCounts = new Map();
     if (
-      requestedDate &&
+      !exactQuery && requestedDate &&
       schedulingContext?.zoneType !== "METRO" &&
       operationalProfiles.length &&
       interiorProfiles.length
@@ -834,6 +790,53 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
         );
       }
     }
+    let timeAvailability = null;
+    if (exactQuery && policy && decision && canAssign) {
+      const bookedPolicy = reprogramming && assignment?.schedulePolicyId !== policy.id
+        ? assignment?.schedulePolicyId
+          ? await tx.surveySchedulePolicyVersion.findFirst({
+              where: { tenantId: who.tenantId, id: assignment.schedulePolicyId },
+            })
+          : null
+        : policy;
+      const zoneCode = reprogramming ? assignment?.zoneCode : schedulingContext?.zoneCode;
+      const profileCode = reprogramming ? assignment?.scheduleProfile : schedulingContext?.profile;
+      const profile = bookedPolicy?.configuration.profiles.find((entry) => entry.code === profileCode);
+      const canReschedule = assignment && !["COMPLETED", "CANCELLED", "SUPERSEDED"].includes(assignment.status) &&
+        assignment.routeVersion === pipelineCase.routeRevision && !assignment.routeInvalidatedAt &&
+        !metroReturnAt(assignment);
+      if (profile && zoneCode && (!reprogramming || canReschedule)) {
+        const now = new Date();
+        const canPerform = (membership) => !membership.deniedPermissions?.includes(PERMS.SURVEY_PERFORM) &&
+          (membership.grantedPermissions?.includes(PERMS.SURVEY_PERFORM) ||
+            permsForRole(membership.role).includes(PERMS.SURVEY_PERFORM));
+        const exactCandidates = operationalPolicy
+          ? operationalProfiles.filter((row) =>
+              canPerform(row.membership) && (!capabilityCode || row.capabilityAssignments.filter((entry) =>
+                entry.capability.code === capabilityCode && entry.capability.status === "ACTIVE" &&
+                (!entry.validFrom || entry.validFrom <= now) && (!entry.validTo || entry.validTo > now),
+              ).length === 1),
+            ).map((row) => ({ membershipId: row.membershipId, membershipRef: row.membership.publicRef, profileId: row.id }))
+          : candidates.filter((row) => canPerform(row) && resolveOperationalCapability(
+              bookedPolicy.configuration, row.publicRef, decision.method, profile.code,
+            )).map((row) => ({ membershipId: row.id, membershipRef: row.publicRef }));
+        timeAvailability = await loadExactSurveyAvailability(tx, {
+          tenantId: who.tenantId,
+          query: exactQuery,
+          policy: bookedPolicy,
+          operationalPolicy,
+          profile,
+          zoneCode,
+          method: decision.method,
+          candidates: exactCandidates,
+          motorTravelMinutes: decision.method === "IN_PERSON"
+            ? Number(motor?.resultSnapshot?.travelMinutes ?? motor?.inputSnapshot?.route?.travelMinutes ?? 0)
+            : 0,
+          excludedAssignmentId: reprogramming ? assignment.id : null,
+          pipelineCaseId: pipelineCase.id,
+        });
+      }
+    }
     return Object.freeze({
       caseRef: pipelineCase.publicRef,
       caseCode: pipelineCase.caseCode,
@@ -855,6 +858,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
             ...snapshotAssignment(assignment),
             evaluator: {
               displayName: assignment.evaluatorMembership.user.name,
+              membershipRef: assignment.evaluatorMembership.publicRef,
             },
             reason: assignment.visitReason
               ? {
@@ -930,6 +934,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       })),
       schedulingContext,
       availability,
+      timeAvailability,
       evaluatorCandidates: operationalPolicy
         ? operationalProfiles.map((row) => ({
             membershipRef: row.membership.publicRef,
@@ -1219,20 +1224,13 @@ async function schedule(tx, who, command) {
       end,
       null,
       motorTravel,
+      null,
+      false,
     );
     if (authority.policy.id !== operationalPolicy.id)
       schedulingFail("CRM_SURVEY_SCHEDULE_POLICY_NOT_READY", 409);
     travelBufferMinutes = authority.buffer;
   }
-  if (physical && profileConfig.zoneType !== "METRO")
-    await assertInteriorDailyEvaluatorLimit(tx, who, {
-      evaluatorMembershipId: evaluatorRow.id,
-      start,
-      timezone: operationalPolicy?.timezone || policy.timezone,
-      interiorProfiles: policy.configuration.profiles
-        .filter((profile) => profile.zoneType !== "METRO")
-        .map((profile) => profile.code),
-    });
   const saturdayApproved = Boolean(command.saturdayApprovalReason);
   await scheduleCapacity(
     tx,
@@ -1246,15 +1244,13 @@ async function schedule(tx, who, command) {
     null,
     saturdayApproved,
   );
-  await assertEvaluatorInterval(
-    tx,
-    who,
-    evaluatorRow,
+  await assertEvaluatorDay(tx, who, evaluatorRow, {
     start,
     end,
-    null,
-    travelBufferMinutes,
-  );
+    timezone: operationalPolicy?.timezone || policy.timezone,
+    outsideMetro: physical && profileConfig.zoneType !== "METRO",
+    bufferMinutes: travelBufferMinutes,
+  });
   const nextDecision = await tx.surveyEvaluationDecision.create({
     data: {
       tenantId: who.tenantId,
@@ -1400,7 +1396,8 @@ async function changeAssignment(tx, who, command) {
   const current = await assignmentByRef(tx, who, command.assignmentRef);
   if (
     current.row.version !== command.expectedVersion ||
-    ["COMPLETED", "CANCELLED"].includes(current.row.status)
+    ["COMPLETED", "CANCELLED", "SUPERSEDED"].includes(current.row.status) ||
+    (command.operation !== "CANCEL" && metroReturnAt(current.row))
   )
     schedulingFail("CRM_SURVEY_VERSION_CONFLICT", 409);
   await lock(tx, who.tenantId, `ASSIGNMENT:${current.row.id}`);
@@ -1443,32 +1440,24 @@ async function changeAssignment(tx, who, command) {
       current.decision.method,
       current.row.scheduleProfile,
     );
-    await assertEvaluatorInterval(
-      tx,
-      who,
-      evaluatorRow,
-      current.row.scheduledStart,
-      current.row.scheduledEnd ||
-        new Date(current.row.scheduledStart.getTime() + 60 * 60 * 1000),
-      current.row.id,
-    );
-    const profileConfig = current.policy.configuration.profiles.find(
-      (profile) => profile.code === current.row.scheduleProfile,
-    );
-    if (
-      current.decision.method === "IN_PERSON" &&
-      profileConfig &&
-      profileConfig.zoneType !== "METRO"
-    )
-      await assertInteriorDailyEvaluatorLimit(tx, who, {
-        evaluatorMembershipId: evaluatorRow.id,
-        start: current.row.scheduledStart,
-        timezone: current.policy.timezone,
-        interiorProfiles: current.policy.configuration.profiles
-          .filter((profile) => profile.zoneType !== "METRO")
-          .map((profile) => profile.code),
-        excludeAssignmentId: current.row.id,
-      });
+    const start = current.row.scheduledStart;
+    const end = current.row.scheduledEnd || new Date(start.getTime() + 60 * 60_000);
+    const operationalPolicy = await activeOperationalPolicy(tx, who.tenantId);
+    const profile = await operationalEvaluatorProfile(tx, who, evaluatorRow, current.decision.method, operationalPolicy);
+    const authority = profile
+      ? await resolvePersonnelScheduleAuthority(
+          tx, who, profile, current.decision.method, start, end,
+          null, current.row.travelBufferMinutes, current.row.id, false,
+        )
+      : null;
+    await assertEvaluatorDay(tx, who, evaluatorRow, {
+      start,
+      end,
+      timezone: operationalPolicy?.timezone || current.policy.timezone,
+      outsideMetro: isOutsideMetroAssignment(current.row),
+      bufferMinutes: authority?.buffer ?? current.row.travelBufferMinutes,
+      excludeAssignmentId: current.row.id,
+    });
     data = {
       evaluatorMembershipId: evaluatorRow.id,
       evaluatorUserId: evaluatorRow.userId,
@@ -1481,23 +1470,6 @@ async function changeAssignment(tx, who, command) {
       schedulingFail("CRM_SURVEY_ROUTE_REVALIDATION_REQUIRED", 409);
     const start = new Date(command.scheduledStart);
     const end = new Date(command.scheduledEnd);
-    const profileConfig = current.policy.configuration.profiles.find(
-      (profile) => profile.code === current.row.scheduleProfile,
-    );
-    if (
-      current.decision.method === "IN_PERSON" &&
-      profileConfig &&
-      profileConfig.zoneType !== "METRO"
-    )
-      await assertInteriorDailyEvaluatorLimit(tx, who, {
-        evaluatorMembershipId: current.row.evaluatorMembershipId,
-        start,
-        timezone: current.policy.timezone,
-        interiorProfiles: current.policy.configuration.profiles
-          .filter((profile) => profile.zoneType !== "METRO")
-          .map((profile) => profile.code),
-        excludeAssignmentId: current.row.id,
-      });
     await scheduleCapacity(
       tx,
       who,
@@ -1559,8 +1531,17 @@ async function changeAssignment(tx, who, command) {
         null,
         motorTravel,
         current.row.id,
+        false,
       );
       const buffer = authority.buffer;
+      await assertEvaluatorDay(tx, who, current.row.evaluatorMembership, {
+        start,
+        end,
+        timezone: operationalPolicy.timezone,
+        outsideMetro: isOutsideMetroAssignment(current.row),
+        bufferMinutes: buffer,
+        excludeAssignmentId: current.row.id,
+      });
       const replacement = await tx.surveyAssignment.create({
         data: {
           tenantId: who.tenantId,
@@ -1572,7 +1553,7 @@ async function changeAssignment(tx, who, command) {
           scheduledStart: start,
           scheduledEnd: end,
           contextSnapshot: {
-            ...(current.row.contextSnapshot || {}),
+            ...replacementAssignmentContext(current.row),
             rescheduleOrigin: "OTHER",
             rescheduleReason: command.reasonCode,
           },
@@ -1626,14 +1607,13 @@ async function changeAssignment(tx, who, command) {
         "SURVEY_ASSIGNMENT_RESCHEDULED",
       );
     }
-    await assertEvaluatorInterval(
-      tx,
-      who,
-      current.row.evaluatorMembership,
+    await assertEvaluatorDay(tx, who, current.row.evaluatorMembership, {
       start,
       end,
-      current.row.id,
-    );
+      timezone: current.policy.timezone,
+      outsideMetro: isOutsideMetroAssignment(current.row),
+      excludeAssignmentId: current.row.id,
+    });
     data = {
       scheduledStart: start,
       scheduledEnd: end,

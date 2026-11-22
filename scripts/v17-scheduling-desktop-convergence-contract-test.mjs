@@ -10,6 +10,8 @@ import {
 } from "../api/_lib/surveySchedulingContract.js";
 import { calculateLogisticsPlan } from "../api/_lib/logisticsEngineContract.js";
 import { classifyLogisticsMetro, logisticsVisitReferenceKm } from "../api/_lib/logisticsMetroClassification.js";
+import { canReportMetroReturn, evaluatorDayConflict, replacementAssignmentContext } from "../api/_lib/surveyEvaluatorDay.js";
+import { evaluateExactSurveySlots, parseSurveyExactQuery } from "../api/_lib/surveyExactAvailability.js";
 
 let checks = 0;
 function check(name, run) { run(); checks += 1; process.stdout.write(`PASS ${name}\n`); }
@@ -75,6 +77,59 @@ check("agenda conserva lugar estructurado y duración exacta de la visita", () =
   assert.equal(command.visitRouteOrder, 0);
   assert.equal(new Date(command.scheduledEnd) - new Date(command.scheduledStart), 45 * 60_000);
 });
+
+const timezone = "America/Santo_Domingo";
+const offMetro = {
+  id: "out-of-area",
+  scheduledStart: new Date("2026-11-24T13:00:00.000Z"),
+  scheduledEnd: new Date("2026-11-24T20:00:00.000Z"),
+  contextSnapshot: { zone: { type: "INTERIOR" } },
+  status: "COMPLETED",
+};
+const returned = {
+  ...offMetro,
+  contextSnapshot: {
+    ...offMetro.contextSnapshot,
+    metroReturnRecordedAt: "2026-11-24T16:30:00.000Z",
+  },
+};
+function conflictFor(rows, when, options = {}) {
+  const start = new Date(when);
+  return evaluatorDayConflict(rows, {
+    start, end: new Date(start.getTime() + 45 * 60_000),
+    timezone, bufferMinutes: 45, outsideMetro: false, ...options,
+  });
+}
+check("una visita fuera de zona bloquea el día hasta el regreso registrado", () => {
+  assert.equal(conflictFor([offMetro], "2026-11-24T23:00:00.000Z"), "CRM_SURVEY_EVALUATOR_OUTSIDE_METRO");
+  assert.equal(conflictFor([offMetro], "2026-11-25T13:00:00.000Z"), null);
+  assert.equal(conflictFor([{ ...offMetro, status: "SUPERSEDED" }], "2026-11-24T18:00:00.000Z"), null);
+});
+check("el regreso libera visitas posteriores según el tiempo de traslado", () => {
+  assert.equal(conflictFor([returned], "2026-11-24T17:14:00.000Z"), "CRM_SURVEY_EVALUATOR_CONFLICT");
+  assert.equal(conflictFor([returned], "2026-11-24T17:15:00.000Z"), null);
+  assert.equal(conflictFor([returned], "2026-11-24T16:30:00.000Z", { bufferMinutes: 0 }), null);
+});
+check("el regreso no permite una segunda salida de zona ni elimina citas existentes", () => {
+  assert.equal(conflictFor([returned], "2026-11-24T19:30:00.000Z", { outsideMetro: true }), "CRM_SURVEY_INTERIOR_DAILY_LIMIT");
+  const metroVisit = { ...offMetro, id: "metro", contextSnapshot: { zone: { type: "METRO" } } };
+  assert.equal(conflictFor([metroVisit], "2026-11-24T22:00:00.000Z", { outsideMetro: true }), "CRM_SURVEY_EVALUATOR_DAY_BLOCKED");
+  assert.equal(conflictFor([offMetro], "2026-11-24T18:00:00.000Z", { outsideMetro: true, excludeAssignmentId: offMetro.id }), null);
+});
+check("una salida realizada permanece en su fecha y una cita nueva no hereda el regreso", () => {
+  const invalidated = { ...offMetro, routeInvalidatedAt: new Date("2026-11-24T17:00:00.000Z") };
+  assert.equal(conflictFor([invalidated], "2026-11-24T18:00:00.000Z", { outsideMetro: true }), "CRM_SURVEY_INTERIOR_DAILY_LIMIT");
+  assert.equal(conflictFor([{ ...returned, status: "CANCELLED" }], "2026-11-24T18:00:00.000Z", { outsideMetro: true }), "CRM_SURVEY_INTERIOR_DAILY_LIMIT");
+  assert.equal(conflictFor([{ ...returned, scheduledEnd: new Date("2026-11-25T18:00:00.000Z") }], "2026-11-25T13:00:00.000Z"), null);
+  assert.deepEqual(replacementAssignmentContext(returned), { zone: { type: "INTERIOR" } });
+  assert.equal(returned.contextSnapshot.metroReturnRecordedAt, "2026-11-24T16:30:00.000Z");
+});
+check("el evaluador registra el regreso solo en la fecha local de la visita y una vez", () => {
+  assert.equal(canReportMetroReturn(offMetro, timezone, new Date("2026-11-25T02:00:00.000Z")), true);
+  assert.equal(canReportMetroReturn(offMetro, timezone, new Date("2026-11-25T04:00:00.000Z")), false);
+  assert.equal(canReportMetroReturn(offMetro, timezone, new Date("2026-11-24T12:00:00.000Z")), false);
+  assert.equal(canReportMetroReturn(returned, timezone, new Date("2026-11-24T17:00:00.000Z")), false);
+});
 fails("hash recibido se recalcula en servidor", () => normalizeSchedulingMutation({ ...signed("DECIDE_METHOD", { caseRef: uuid(4), expectedVersion: null, method: "NONE", commercialState: "NOT_REQUIRED", informationSource: null, rationaleCode: null }), payloadHash: "0".repeat(64) }), "CRM_SURVEY_PAYLOAD_HASH_MISMATCH");
 
 check("Visit Fee gratuito no inventa importe", () => assert.equal(validateVisitFeeSource({ disposition: "FREE", suggestedAmount: null }).suggestedAmount, null));
@@ -86,5 +141,107 @@ check("Motor publica clasificación de zona administrada", () => {
   assert.deepEqual(calculateLogisticsPlan(facts, [rule]).items[0].snapshot.zoneType, "METRO");
 });
 fails("Motor rechaza zona no administrada", () => calculateLogisticsPlan({ mode: "LOCAL", route: { distanceStatus: "KNOWN", distanceKm: 1, destinationStatus: "CONFIRMED", version: 1 }, services: { codes: [] }, survey: { volumeM3: 1, weightKg: 1, itemCount: 1, accessFlags: [] }, materials: { lines: [] }, assets: [], vehicles: [], externalOffers: [], availabilityObservedAt: "2026-09-05T00:00:00.000Z" }, [{ ruleRef: uuid(12), seriesRef: uuid(13), family: "ZONE", code: "BAD_ZONE", priority: 1, specificity: 1, version: 1, conditionHash: "b".repeat(64), state: "ACTIVE", conditions: {}, result: { kind: "VISIT_ZONE", label: "Bad", quantity: 1, zoneType: "UNKNOWN", zoneCode: "UNKNOWN" } }]), "LOGISTICS_RULE_RESULT_INVALID");
+
+const surveyDate = "2030-09-16";
+const surveyTimezone = "America/Santo_Domingo";
+const exactProfile = { code: "METRO", zoneType: "METRO", dailyCapacity: 8 };
+const exactPolicy = {
+  id: "survey-policy",
+  timezone: surveyTimezone,
+  configuration: {
+    ...HISTORICAL_POLICY_TEMPLATE,
+    profiles: [exactProfile],
+    slots: [{ profile: "METRO", key: "DAY", startTime: "09:00", endTime: "17:00", capacity: 8 }],
+  },
+};
+const exactOperationalPolicy = {
+  id: "operational-policy",
+  timezone: surveyTimezone,
+  minimumTravelBufferMinutes: 45,
+  virtualPreparationMinutes: 0,
+  windows: [{
+    weekday: 1, method: "IN_PERSON", startMinute: 540, endMinute: 1020, capacity: 8,
+  }],
+};
+const candidates = [
+  { membershipId: "ana", membershipRef: uuid(20), profileId: "ana-profile" },
+  { membershipId: "luis", membershipRef: uuid(21), profileId: "luis-profile" },
+];
+const otherVisit = {
+  id: "visit-luis", pipelineCaseId: "other-case", evaluatorMembershipId: "luis",
+  scheduledStart: new Date(`${surveyDate}T19:00:00Z`),
+  scheduledEnd: new Date(`${surveyDate}T19:45:00Z`),
+  zoneCode: "METRO", scheduleProfile: "METRO", status: "ASSIGNED",
+  contextSnapshot: { privateCustomerName: "Cliente de otro caso" },
+};
+const outsideTrip = {
+  id: "trip-ana", pipelineCaseId: "other-outside-case", evaluatorMembershipId: "ana",
+  scheduledStart: new Date(`${surveyDate}T13:00:00Z`),
+  scheduledEnd: new Date(`${surveyDate}T15:00:00Z`),
+  zoneCode: "INTERIOR", scheduleProfile: "INTERIOR_SHORT", status: "COMPLETED",
+};
+function exactSlots(time, options = {}) {
+  return evaluateExactSurveySlots({
+    query: parseSurveyExactQuery({ date: surveyDate, time }),
+    policy: exactPolicy, operationalPolicy: exactOperationalPolicy,
+    profile: exactProfile, zoneCode: "METRO", method: "IN_PERSON",
+    candidates, assignments: [], overrides: [], zoneAssignments: [],
+    pipelineCaseId: "current-case", ...options,
+  });
+}
+fails("la hora y la fecha exactas se validan", () =>
+  parseSurveyExactQuery({ date: "2030-02-29", time: "10:00" }), "CRM_SURVEY_SLOT_INVALID");
+check("acepta cualquier minuto disponible y emite hora de RD y duración de 45 minutos", () => {
+  const observed = exactSlots("09:07");
+  assert.equal(observed.scheduledStart, `${surveyDate}T13:07:00.000Z`);
+  assert.equal(observed.scheduledEnd, `${surveyDate}T13:52:00.000Z`);
+  assert.equal(observed.slotKey, "DAY");
+  assert.deepEqual(observed.evaluators, candidates.map((candidate) => candidate.membershipRef));
+  assert.deepEqual(observed.alternatives, []);
+});
+check("ofrece horas realmente disponibles si la visita y el traslado ocupan la hora pedida", () => {
+  const observed = exactSlots("14:00", { assignments: [otherVisit, outsideTrip] });
+  assert.deepEqual(observed.evaluators, []);
+  assert.equal(observed.alternatives[0]?.time, "13:30");
+  assert.deepEqual(observed.alternatives[0]?.evaluatorMembershipRefs, [uuid(21)]);
+  assert.deepEqual(observed.agenda.map((entry) => entry.label), ["Visita programada", "Visita fuera de zona metro"]);
+  assert.doesNotMatch(JSON.stringify(observed.agenda), /Cliente de otro caso|other-case/);
+});
+check("el regreso abre agenda solamente después del margen de traslado", () => {
+  const returned = {
+    ...outsideTrip,
+    contextSnapshot: { metroReturnRecordedAt: `${surveyDate}T16:30:00Z` },
+  };
+  assert.deepEqual(exactSlots("13:14", { assignments: [returned] }).evaluators, [uuid(21)]);
+  assert.deepEqual(exactSlots("13:15", { assignments: [returned] }).evaluators, [uuid(20), uuid(21)]);
+});
+check("la agenda no sugiere otra salida para quien ya regresó de una visita fuera de zona", () => {
+  const profile = { ...exactProfile, code: "INTERIOR_SHORT", zoneType: "INTERIOR" };
+  const policy = { ...exactPolicy, configuration: {
+    ...exactPolicy.configuration,
+    profiles: [profile],
+    slots: exactPolicy.configuration.slots.map((slot) => ({ ...slot, profile: profile.code })),
+  } };
+  const completedTrip = {
+    ...outsideTrip,
+    routeInvalidatedAt: new Date(`${surveyDate}T17:00:00Z`),
+    contextSnapshot: { metroReturnRecordedAt: `${surveyDate}T16:30:00Z` },
+  };
+  const result = exactSlots("14:00", { profile, policy, zoneCode: "INTERIOR", assignments: [completedTrip] });
+  assert.deepEqual(result.evaluators, [uuid(21)]);
+  assert.equal(result.agenda[0]?.returnedToMetroAt, completedTrip.contextSnapshot.metroReturnRecordedAt);
+});
+check("el horario extraordinario se marca y la duración editable puede hacerlo ordinario", () => {
+  assert.equal(exactSlots("16:20").requiresApproval, true);
+  const query = parseSurveyExactQuery({ date: surveyDate, time: "16:20", durationMinutes: "30" });
+  assert.equal(exactSlots("16:20", { query }).requiresApproval, false);
+});
+check("la reprogramación excluye la cita que está reemplazando", () => {
+  const observed = exactSlots("15:00", {
+    candidates: [candidates[1]], assignments: [otherVisit], excludedAssignmentId: otherVisit.id,
+  });
+  assert.deepEqual(observed.evaluators, [uuid(21)]);
+  assert.deepEqual(observed.agenda, []);
+});
 
 process.stdout.write(`Scheduling 11B contract: ${checks}/${checks}\n`);

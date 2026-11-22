@@ -14,7 +14,7 @@ import {
   createCrmSurveyHandler,
   resolveCrmSurveyApiMode,
 } from "../api/_lib/crmSurveyHttp.js";
-import { getSurveyCatalog } from "../api/_lib/crmSurveyDomain.js";
+import { actOnSurveyAssignment, getSurveyCatalog } from "../api/_lib/crmSurveyDomain.js";
 import {
   renderSurveyPublicationPdf,
   renderSurveySignatureSvg,
@@ -256,6 +256,64 @@ await assert.rejects(
   { code: "CRM_SURVEY_CATALOG_NOT_READY", status: 409 },
 );
 
+const assignmentRef = randomUUID();
+const evaluator = { ...catalogContext, membershipId: "evaluator", userId: "evaluating-user" };
+const assignment = {
+  id: "assignment",
+  evaluatorMembershipId: evaluator.membershipId,
+  evaluatorUserId: evaluator.userId,
+  contextSnapshot: { zone: { type: "INTERIOR" } },
+  scheduledStart: new Date(),
+  status: "COMPLETED",
+  version: 1,
+};
+const commands = new Map();
+const auditActions = [];
+const returnDatabase = {
+  $transaction: (run) => run({
+    $executeRawUnsafe: async () => {},
+    $executeRaw: async () => {},
+    $queryRaw: async (sql) => {
+      if (sql.text.includes("pg_try_advisory_xact_lock")) return [{ ok: true }];
+      if (sql.text.includes("FOR KEY SHARE")) return [{
+        id: sql.values[1], public_ref: randomUUID(), user_id: sql.values[2],
+        user_name: "Persona de prueba", role: "A", user_status: "ACTIVE",
+        membership_status: "ACTIVE", tenant_status: "ACTIVE",
+        granted_permissions: [management, "survey:perform"], denied_permissions: [],
+      }];
+      if (sql.text.includes("commercial_audit_logs")) {
+        auditActions.push(sql.values[5]);
+        return [{ action: sql.values[5] }];
+      }
+      return [{ id: evaluator.membershipId, tenant_id: evaluator.tenantId, user_id: evaluator.userId, role: "A", status: "ACTIVE" }];
+    },
+    surveyAssignment: {
+      findFirst: async () => assignment,
+      update: async ({ data }) => {
+        assignment.contextSnapshot = data.contextSnapshot;
+        assignment.version += data.version.increment;
+        return assignment;
+      },
+    },
+    surveyMutationCommand: {
+      findFirst: async ({ where }) => commands.get(where.requestId),
+      create: async ({ data }) => commands.set(data.requestId, data),
+    },
+  }),
+};
+const returnCommand = sign("RETURN_TO_METRO", { operation: "RETURN_TO_METRO", expectedVersion: 1 });
+await assert.rejects(actOnSurveyAssignment(catalogContext, assignmentRef, returnCommand, returnDatabase), {
+  code: "CRM_SURVEY_RESOURCE_NOT_FOUND", status: 404,
+});
+const reportedReturn = await actOnSurveyAssignment(evaluator, assignmentRef, returnCommand, returnDatabase);
+assert.equal(reportedReturn.returnedToMetroAt, assignment.contextSnapshot.metroReturnRecordedAt);
+assert.equal(reportedReturn.version, 2);
+assert.deepEqual(await actOnSurveyAssignment(evaluator, assignmentRef, returnCommand, returnDatabase), reportedReturn);
+assert.deepEqual(auditActions, ["SURVEY_METRO_RETURN_RECORDED"]);
+await assert.rejects(actOnSurveyAssignment(catalogContext, assignmentRef, returnCommand, returnDatabase), {
+  code: "CRM_SURVEY_IDEMPOTENCY_CONFLICT", status: 409,
+});
+
 const batch = sign("CATALOG_CREATE", {
   expectedLatestVersion: 1,
   articles: Array.from({ length: 500 }, (_, index) => ({
@@ -289,5 +347,5 @@ await createCrmSurveyHandler({ ...config, maxJsonBytes: CRM_SURVEY_CATALOG_MAX_J
 assert.equal(batchResponse.statusCode, 201);
 assert.equal(batchResponse.body.data, 500);
 process.stdout.write(
-  `${JSON.stringify({ ok: true, assertions: 31 }, null, 2)}\n`,
+  `${JSON.stringify({ ok: true, assertions: 37 }, null, 2)}\n`,
 );

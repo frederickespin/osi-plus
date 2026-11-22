@@ -27,11 +27,28 @@ export function createSurveySchedulingApi(authorization?: string) {
     return privateJson<T>(authorization, "/api/crm/survey/scheduling", { method: "POST", body: JSON.stringify({ ...command, payloadHash: await sha256(command) }) });
   };
   return Object.freeze({
-    workspace: (caseRef: string, date?: string, visitLocation?: string) => {
+    workspace: (
+      caseRef: string,
+      appointment?: Readonly<{
+        date?: string;
+        time?: string;
+        durationMinutes?: number;
+        visitLocation?: string;
+        rescheduling?: boolean;
+        signal?: AbortSignal;
+      }>,
+    ) => {
       const query = new URLSearchParams({ caseRef });
-      if (date) query.set("date", date);
-      if (visitLocation) query.set("visitLocation", visitLocation);
-      return privateJson<SchedulingWorkspace>(authorization, `/api/crm/survey/scheduling?${query}`);
+      if (appointment) {
+        if (appointment.date) query.set("date", appointment.date);
+        if (appointment.time) query.set("time", appointment.time);
+        if (appointment.durationMinutes) query.set("durationMinutes", String(appointment.durationMinutes));
+        if (appointment.visitLocation) query.set("visitLocation", appointment.visitLocation);
+        if (appointment.rescheduling) query.set("mode", "reschedule");
+      }
+      return privateJson<SchedulingWorkspace>(authorization, `/api/crm/survey/scheduling?${query}`, {
+        signal: appointment?.signal,
+      });
     },
     decide: (payload: Record<string, unknown>) => mutate("DECIDE_METHOD", payload),
     schedule: (payload: Record<string, unknown>) => mutate("SCHEDULE", payload),

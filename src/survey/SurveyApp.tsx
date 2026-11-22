@@ -9,8 +9,10 @@ import {
   ClipboardCheck,
   Download,
   MapPin,
+  MapPinCheck,
   Minus,
   Plus,
+  RefreshCw,
   Search,
   Signature,
   Trash2,
@@ -53,6 +55,9 @@ const label: Record<string, string> = {
   ASSIGNED: "Asignada",
   ARRIVED: "Llegada registrada",
   IN_PROGRESS: "En progreso",
+  COMPLETED: "Completada",
+  CANCELLED: "Cancelada",
+  SUPERSEDED: "Reemplazada",
   READY_FOR_REVIEW: "Lista para revisión",
   GOOD: "Bueno",
   USED: "Usado",
@@ -103,11 +108,15 @@ const inputClass =
 function Agenda({
   rows,
   busy,
+  error,
   onAction,
+  onRefresh,
 }: {
   rows: readonly SurveyAssignment[];
   busy: boolean;
+  error: string | null;
   onAction: (row: SurveyAssignment, operation: string) => void;
+  onRefresh: () => void;
 }) {
   const [now] = useState(() => Date.now());
   const upcoming = rows.find(
@@ -117,17 +126,29 @@ function Agenda({
   );
   return (
     <section className="mx-auto max-w-4xl p-4 sm:p-6">
-      <header className="mb-5">
-        <p className="text-xs font-black uppercase tracking-[.2em] text-indigo-600">
-          OSi Survey
-        </p>
-        <h1 className="mt-1 text-2xl font-black text-slate-950">
-          Agenda de visitas
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Hechos observados, borrador persistente y publicaciones inmutables.
-        </p>
+      <header className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[.2em] text-indigo-600">
+            OSi Survey
+          </p>
+          <h1 className="mt-1 text-2xl font-black text-slate-950">Agenda de visitas</h1>
+        </div>
+        <button
+          type="button"
+          aria-label="Actualizar agenda"
+          title="Actualizar agenda"
+          onClick={onRefresh}
+          disabled={busy}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+        >
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+        </button>
       </header>
+      {error && (
+        <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">
+          {error}
+        </p>
+      )}
       {upcoming && (
         <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
           <p className="text-xs font-bold uppercase text-indigo-700">
@@ -142,6 +163,7 @@ function Agenda({
         {rows.map((row) => {
           const distant =
             new Date(row.scheduledStart).getTime() - now > 7 * 864e5;
+          const canPerform = ["ASSIGNED", "ARRIVED", "IN_PROGRESS"].includes(row.status);
           return (
             <article
               key={row.assignmentRef}
@@ -190,7 +212,7 @@ function Agenda({
                 </p>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
-                {!row.arrivalAt && (
+                {row.status === "ASSIGNED" && !row.arrivalAt && (
                   <Button
                     disabled={busy}
                     onClick={() => onAction(row, "ARRIVAL_RECORD")}
@@ -209,12 +231,30 @@ function Agenda({
                     Llegué a la hora acordada
                   </Button>
                 )}
-                <Button
-                  disabled={busy}
-                  onClick={() => onAction(row, "START_SURVEY")}
-                >
-                  {row.surveyRef ? "Continuar Survey" : "Iniciar Survey"}
-                </Button>
+                {canPerform && (
+                  <Button
+                    disabled={busy}
+                    onClick={() => onAction(row, "START_SURVEY")}
+                  >
+                    {row.surveyRef ? "Continuar Survey" : "Iniciar Survey"}
+                  </Button>
+                )}
+                {row.canReportMetroReturn && !row.returnedToMetroAt && (
+                  <Button
+                    secondary
+                    disabled={busy}
+                    onClick={() => onAction(row, "RETURN_TO_METRO")}
+                  >
+                    <MapPinCheck className="mr-2 inline h-4 w-4" aria-hidden="true" />
+                    Ya regresé y estoy disponible
+                  </Button>
+                )}
+                {row.returnedToMetroAt && (
+                  <p role="status" className="flex min-h-11 items-center gap-2 rounded-lg bg-emerald-50 px-3 text-sm font-semibold text-emerald-800">
+                    <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    Regreso registrado · {new Date(row.returnedToMetroAt).toLocaleTimeString("es-DO", { hour: "numeric", minute: "2-digit" })}
+                  </p>
+                )}
               </div>
             </article>
           );
@@ -928,7 +968,7 @@ export default function SurveyApp({
     pdfSha256: string;
   } | null>(null);
   const guard = useCallback(
-    (error: unknown) => {
+    (error: unknown, fallbackMessage?: string) => {
       if (
         typeof error === "object" &&
         error &&
@@ -940,7 +980,7 @@ export default function SurveyApp({
         setError(
           error instanceof Error && error.message === "CRM_SURVEY_MINI_ITEM_TYPE_LIMIT"
             ? "Mini-visita admite hasta 10 tipos. Continúe con Survey presencial, visita virtual o Listado + fotografías."
-            : error instanceof Error ? error.message : "CRM_SURVEY_REQUEST_FAILED",
+            : fallbackMessage || (error instanceof Error ? error.message : "CRM_SURVEY_REQUEST_FAILED"),
         );
     },
     [onUnauthorized],
@@ -960,14 +1000,14 @@ export default function SurveyApp({
   useEffect(() => {
     void loadAgenda();
   }, [loadAgenda]);
-  const run = async (task: () => Promise<void>) => {
+  const run = async (task: () => Promise<void>, fallbackMessage?: string) => {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
       await task();
     } catch (cause) {
-      guard(cause);
+      guard(cause, fallbackMessage);
     } finally {
       setBusy(false);
     }
@@ -982,8 +1022,14 @@ export default function SurveyApp({
       if (operation === "START_SURVEY" && result.surveyRef) {
         await loadDraft(result.surveyRef);
         setScreen("INVENTORY");
+      } else if (operation === "RETURN_TO_METRO" && result.returnedToMetroAt) {
+        setAgenda((rows) => rows.map((entry) => entry.assignmentRef === row.assignmentRef
+          ? { ...entry, canReportMetroReturn: false, returnedToMetroAt: result.returnedToMetroAt, version: result.version }
+          : entry));
       } else await loadAgenda();
-    });
+    }, operation === "RETURN_TO_METRO"
+      ? "No se pudo registrar tu regreso. Actualiza la agenda e inténtalo de nuevo."
+      : undefined);
   const mutate = (
     operation: string,
     payload: Record<string, unknown>,
@@ -1018,7 +1064,7 @@ export default function SurveyApp({
   if (screen === "AGENDA")
     return <>
       {onBack && <div className="border-b bg-white px-4 py-2"><div className="mx-auto max-w-5xl"><button type="button" onClick={onBack} disabled={busy} className="flex min-h-11 items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"><ChevronLeft className="h-4 w-4" aria-hidden="true" />{backLabel}</button></div></div>}
-      <Agenda rows={agenda} busy={busy} onAction={assignmentAction} />
+      <Agenda rows={agenda} busy={busy} error={error} onAction={assignmentAction} onRefresh={() => void run(loadAgenda)} />
     </>;
   if (!draft) return <div className="p-8">Cargando Survey…</div>;
   return (

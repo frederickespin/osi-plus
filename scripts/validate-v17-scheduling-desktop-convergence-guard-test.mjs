@@ -89,7 +89,7 @@ const cases = [
     "PIC",
     "src/survey/SurveyCasePanel.tsx",
     (value) =>
-      value.replace("PREPARED no envía mensajes externos", "Mensaje enviado"),
+      value.replace("onOpenCommunications(workspace.assignment.assignmentRef)", "sendMessageImmediately()"),
   ],
   [
     "CORS",
@@ -102,7 +102,7 @@ const cases = [
     "api/_lib/surveySchedulingDomain.js",
     (value) =>
       value.replace(
-        /contextSnapshot:\s*evaluatorContext\(\s*pipelineCase,\s*serviceRevision,\s*nextDecision,\s*policy,\s*zone,?\s*\)/u,
+        /contextSnapshot:\s*evaluatorContext\(\s*pipelineCase,\s*serviceRevision,\s*nextDecision,\s*policy,\s*zone,\s*visitLocation,?\s*\)/u,
         "contextSnapshot: { services: [] }",
       ),
   ],

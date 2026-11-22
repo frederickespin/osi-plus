@@ -81,7 +81,7 @@ export function validateSchedulingConvergence(overrides = {}) {
   );
   assert.match(
     domain,
-    /contextSnapshot:\s*evaluatorContext\(\s*pipelineCase,\s*serviceRevision,\s*nextDecision,\s*policy,\s*zone,?\s*\)/,
+    /contextSnapshot:\s*evaluatorContext\(\s*pipelineCase,\s*serviceRevision,\s*nextDecision,\s*policy,\s*zone,\s*visitLocation,?\s*\)/,
     "Assignment no recibe el contexto autoritativo de Scheduling",
   );
   assert.match(
@@ -136,8 +136,8 @@ export function validateSchedulingConvergence(overrides = {}) {
   );
   assert.match(
     panel,
-    /PREPARED no envía mensajes externos/,
-    "PIC simula transporte externo",
+    /onOpenCommunications\(workspace\.assignment\.assignmentRef\)/,
+    "Survey no abre el historial centralizado de comunicaciones de la visita",
   );
   assert.match(
     panel,
@@ -146,7 +146,7 @@ export function validateSchedulingConvergence(overrides = {}) {
   );
   assert.match(
     panel,
-    /Solicitud y programación de Survey[\s\S]*survey-workspace-views/,
+    /<nav[\s\S]*?data-testid="survey-workspace-views"/,
     "Solicitud y Programación dejaron de estar sectorizadas",
   );
   assert.match(
@@ -161,7 +161,7 @@ export function validateSchedulingConvergence(overrides = {}) {
   );
   assert.match(
     panel,
-    /Instrucciones para el evaluador/,
+    /Instrucciones especiales/,
     "instrucciones operativas del Survey ausentes",
   );
   assert.match(

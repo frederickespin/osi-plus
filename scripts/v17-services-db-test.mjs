@@ -138,7 +138,7 @@ try {
   const workspaceAfterRename = await getCaseServiceWorkspace(admin, pipelineCase.publicRef, prisma);
   check("snapshot histórico conserva nombre y versión anteriores", updated.item.version === 2 && workspaceAfterRename.selection.primary.name === "Mudanza residencial" && workspaceAfterRename.selection.primary.catalogVersion === 1);
   check("plan vigente publica resumen versionado e inmutable", workspaceAfterRename.planHistory.length === 1 && workspaceAfterRename.planHistory[0].revision === 1
-    && workspaceAfterRename.planHistory[0].primary.name === "Mudanza residencial" && workspaceAfterRename.planHistory[0].associatedServices[0].name === "Empaque sintético"
+    && workspaceAfterRename.planHistory[0].primary.name === "Mudanza residencial" && workspaceAfterRename.planHistory[0].associatedServices[0].name === comp.item.name
     && workspaceAfterRename.planHistory[0].otherServices[0] === "Servicio sintético por clasificar" && !Number.isNaN(Date.parse(workspaceAfterRename.planHistory[0].createdAt)));
   check("historial de catálogo está auditado", (await getServiceCatalogHistory(admin, primary.item.serviceRef, prisma)).events.length === 2);
 
@@ -164,8 +164,8 @@ try {
     && await prisma.serviceMutationCommand.count({ where: { tenantId, requestId: automaticInput.requestId } }) === 1);
   await rejects("código automático no evita control de payload al reintentar", "CRM_SERVICES_IDEMPOTENCY_CONFLICT", () => createServiceCatalogItem(admin, signed("CATALOG_CREATE", { ...automaticInput, name: "Alterado" }), prisma));
   const automaticRace = await Promise.all([
-    createServiceCatalogItem(admin, signed("CATALOG_CREATE", { ...automaticInput, requestId: request("auto-race-a") }), prisma),
-    createServiceCatalogItem(admin, signed("CATALOG_CREATE", { ...automaticInput, requestId: request("auto-race-b") }), prisma),
+    createServiceCatalogItem(admin, signed("CATALOG_CREATE", { ...automaticInput, requestId: request("auto-race-a"), name: "Inventario inicial" }), prisma),
+    createServiceCatalogItem(admin, signed("CATALOG_CREATE", { ...automaticInput, requestId: request("auto-race-b"), name: "Inventario final" }), prisma),
   ]);
   check("dos altas simultáneas generan códigos distintos", automaticRace[0].item.code !== automaticRace[1].item.code
     && automaticRace.every((result) => /^SER_[A-F0-9]{16}$/.test(result.item.code)));
@@ -174,6 +174,63 @@ try {
     usage: "COMPLEMENTARY", compatibleModes: [], status: "ACTIVE", sortOrder: 20, allowedComplementaryRefs: [],
   }), prisma);
   check("renombrar conserva código automático", automaticRenamed.item.code === automatic.item.code && automaticRenamed.item.version === 2);
+
+  const duplicateName = "CRM_SERVICES_DUPLICATE_NAME";
+  const catalogCreate = (name, category) => signed("CATALOG_CREATE", {
+    ...automaticInput, name, category, requestId: request("catalog-name-create"),
+  });
+  const updateCatalog = (item, changes) => updateServiceCatalogItem(admin, item.serviceRef, signed("CATALOG_UPDATE", {
+    requestId: request("catalog-name-update"), expectedVersion: item.version,
+    name: item.name, category: item.category, usage: item.usage, compatibleModes: item.compatibleModes,
+    status: item.status, sortOrder: item.sortOrder, allowedComplementaryRefs: item.allowedComplementaryRefs ?? [],
+    ...changes,
+  }), prisma);
+
+  const protection = await createServiceCatalogItem(admin, catalogCreate("Protección   de muebles", "Preparación"), prisma);
+  const normalizedProtection = catalogCreate("PROTECCION DE  MUEBLES", "Preparación");
+  await rejects("alta detecta duplicado activo sin distinguir espacios, tildes ni mayúsculas", duplicateName,
+    () => createServiceCatalogItem(admin, normalizedProtection, prisma));
+  const differentCategory = await createServiceCatalogItem(admin, catalogCreate(normalizedProtection.name, "Almacenaje"), prisma);
+  check("nombres iguales de categorías distintas conservan registros independientes", differentCategory.item.serviceRef !== protection.item.serviceRef);
+  await rejects("cambiar de categoría no puede introducir un duplicado", duplicateName,
+    () => updateCatalog(differentCategory.item, { category: protection.item.category }));
+  await rejects("renombrar no puede introducir un duplicado", duplicateName,
+    () => updateCatalog(automaticRace[0].item, { name: normalizedProtection.name }));
+  await rejects("los servicios sin categoría también reservan su nombre", duplicateName,
+    () => createServiceCatalogItem(admin, catalogCreate("SERVICIO AUTOMATICO RENOMBRADO", null), prisma));
+  const inactiveProtection = await updateCatalog(protection.item, { status: "INACTIVE" });
+  await rejects("un registro inactivo evita el alta con el mismo nombre", duplicateName,
+    () => createServiceCatalogItem(admin, normalizedProtection, prisma));
+  check("se puede reactivar el registro existente",
+    (await updateCatalog(inactiveProtection.item, { status: "ACTIVE" })).item.status === "ACTIVE");
+
+  const legacyActive = await prisma.serviceCatalogItem.create({
+    data: { tenantId, code: "LEGACY_FURNITURE_A", name: "Trasládo de mobiliario", category: "Mudanzas", usage: "COMPLEMENTARY", status: "ACTIVE" },
+  });
+  const legacyInactive = await prisma.serviceCatalogItem.create({
+    data: { tenantId, code: "LEGACY_FURNITURE_B", name: "TRASLADO  DE MOBILIARIO", category: "Mudanzas", usage: "COMPLEMENTARY", status: "INACTIVE" },
+  });
+  await rejects("una copia histórica inactiva queda bloqueada mientras la otra esté activa", duplicateName,
+    () => updateCatalog(legacyInactive, { status: "ACTIVE" }));
+  const legacyEdited = await updateCatalog(legacyActive, { sortOrder: 25 });
+  check("se puede editar una copia histórica conservando su nombre y categoría", legacyEdited.item.sortOrder === 25);
+  const legacyDeactivated = await updateCatalog(legacyEdited.item, { status: "INACTIVE" });
+  check("se puede desactivar una copia histórica y reactivar otra", legacyDeactivated.item.status === "INACTIVE"
+    && (await updateCatalog(legacyInactive, { status: "ACTIVE" })).item.status === "ACTIVE");
+
+  const raceCategory = "Concurrencia de catálogo";
+  const sameNameInputs = [catalogCreate("Carga  compartída", raceCategory), catalogCreate("CARGA COMPARTIDA", raceCategory)];
+  const duplicatesRace = await Promise.allSettled(sameNameInputs.map((input) => createServiceCatalogItem(admin, input, prisma)));
+  check("altas simultáneas con nombre equivalente dejan un solo registro", duplicatesRace.filter((result) => result.status === "fulfilled").length === 1
+    && await prisma.serviceCatalogItem.count({ where: { tenantId, category: raceCategory } }) === 1);
+  const losingIndex = duplicatesRace.findIndex((result) => result.status === "rejected");
+  const loser = duplicatesRace[losingIndex];
+  check("la otra alta simultánea recibe un conflicto", loser?.reason.code === duplicateName || loser?.reason.code === "CRM_SERVICES_COMMAND_IN_PROGRESS");
+  if (loser.reason.code === "CRM_SERVICES_COMMAND_IN_PROGRESS") {
+    await rejects("reintentar el alta simultánea detecta el duplicado ya guardado", duplicateName,
+      () => createServiceCatalogItem(admin, sameNameInputs[losingIndex], prisma));
+  }
+
   const automaticDefaultInput = signed("DEFAULTS_SAVE", { ...defaultsInput, requestId: request("auto-default"), code: null, name: "Combinación automática", isDefault: false });
   const automaticDefault = await saveServiceDefaults(admin, automaticDefaultInput, prisma);
   const automaticDefaultReplay = await saveServiceDefaults(admin, automaticDefaultInput, prisma);

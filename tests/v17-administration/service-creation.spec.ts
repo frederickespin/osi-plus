@@ -9,10 +9,9 @@ const primary = { serviceRef: SERVICE_REF, code: "LEGACY_LOCAL", name: "Mudanza 
 const localMode = { modeRef: MODE_REF, code: "LOCAL", name: "Local / Nacional", description: null, state: "PUBLISHED", version: 1 };
 type Json = Record<string, unknown>;
 
-async function setup(page: Page, withPrimary = false, uncertainCreate = false) {
+async function setup(page: Page, withPrimary = false, uncertainCreate = false, catalog = withPrimary ? [{ ...primary }] : []) {
   const writes: { path: string; body: Json }[] = [];
   const unexpected: string[] = [];
-  const catalog = withPrimary ? [{ ...primary }] : [];
   const modes = [{ ...localMode }];
   let createCount = 0;
   await page.addInitScript(({ membershipRef }) => {
@@ -41,7 +40,7 @@ async function setup(page: Page, withPrimary = false, uncertainCreate = false) {
         return fulfill({ service: catalog[0], replayed: createCount > 1 });
       }
       if (path === `/api/crm/services/catalog/${SERVICE_REF}` && method === "PATCH") {
-        Object.assign(catalog[0], { name: String(body.name), version: 2 });
+        Object.assign(catalog[0], { name: String(body.name), status: String(body.status), version: 2 });
         return fulfill({ service: catalog[0], replayed: false });
       }
       if (path === "/api/crm/services/modes") {
@@ -58,6 +57,50 @@ async function setup(page: Page, withPrimary = false, uncertainCreate = false) {
   await expect(page.getByTestId("service-catalog-admin")).toBeVisible();
   return { writes, unexpected };
 }
+
+test("el catálogo avisa de duplicados y permite abrir o reactivar el servicio existente", async ({ page }) => {
+  const inactive = { ...primary, name: "Instalación de lámparas", category: "INSTALLATION", status: "INACTIVE" };
+  const active = { ...primary, serviceRef: "63333333-3333-4333-8333-333333333333", name: "Empaque", category: "PACKING" };
+  const seen = await setup(page, false, false, [inactive, active]);
+  const table = page.getByRole("table", { name: "Servicios disponibles" });
+  const name = table.getByRole("textbox", { name: "Nombre del servicio" });
+  const category = table.getByRole("combobox", { name: "Categoría" });
+  const save = table.getByRole("button", { name: "Guardar servicio" });
+
+  await page.getByRole("button", { name: "Nuevo servicio" }).click();
+  await category.selectOption("TRANSPORT");
+  await name.fill("EMPAQUE");
+  await expect(table.getByRole("status")).toContainText("El nombre está registrado en");
+  await expect(save).toBeEnabled();
+  await name.fill("Empaqe");
+  await expect(table.getByRole("status")).toContainText("Nombre parecido");
+  await expect(save).toBeEnabled();
+  await name.fill("EMPAQUE");
+  await category.selectOption("PACKING");
+  await expect(table.getByRole("status")).toContainText("Activo");
+  await expect(save).toBeDisabled();
+  await table.getByRole("button", { name: "Abrir servicio Empaque" }).click();
+  await expect(name).toHaveValue("Empaque");
+  await table.getByRole("button", { name: "Cancelar edición del servicio" }).click();
+  expect(seen.writes).toHaveLength(0);
+
+  await page.getByRole("button", { name: "Nuevo servicio" }).click();
+  await category.selectOption("INSTALLATION");
+  await name.fill("INSTALACION   DE LAMPARAS");
+  await expect(table.getByRole("status")).toContainText("Inactivo");
+  await expect(save).toBeDisabled();
+  await table.getByRole("button", { name: "Abrir servicio Instalación de lámparas" }).click();
+  await expect(name).toHaveValue("Instalación de lámparas");
+  expect(seen.writes).toHaveLength(0);
+  await table.getByRole("button", { name: "Reactivar", exact: true }).click();
+  await expect(table.getByRole("row", { name: /Instalación de lámparas/ })).toContainText("Activo");
+  expect(seen.writes).toHaveLength(1);
+  expect(seen.writes[0]).toMatchObject({
+    path: `/api/crm/services/catalog/${SERVICE_REF}`,
+    body: { name: inactive.name, status: "ACTIVE", expectedVersion: 1 },
+  });
+  expect(seen.unexpected).toEqual([]);
+});
 
 test("crear un servicio asigna código automático y reintentar conserva la solicitud", async ({ page }) => {
   const seen = await setup(page, false, true);

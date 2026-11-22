@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { serviceCatalogNameKey } from "../../shared/serviceCatalogNames.js";
 import { prisma } from "./db.js";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import { PERMS, permsForRole } from "./rbac.js";
@@ -91,6 +92,23 @@ async function catalogByRef(tx, tenantId, ref, options = {}) {
   if (!item) serviceFail("CRM_SERVICES_RESOURCE_NOT_FOUND", 404);
   return item;
 }
+async function requireUniqueCatalogName(tx, tenantId, { name, category }, { exceptId, activeOnly = false } = {}) {
+  const nameKey = serviceCatalogNameKey(name);
+  const lockKey = `SERVICES-CATALOG-NAME:${JSON.stringify([tenantId, category, nameKey])}`;
+  await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+  const candidates = await tx.serviceCatalogItem.findMany({
+    where: {
+      tenantId,
+      category,
+      ...(exceptId ? { id: { not: exceptId } } : {}),
+      ...(activeOnly ? { status: "ACTIVE" } : {}),
+    },
+    select: { name: true },
+  });
+  if (candidates.some((item) => serviceCatalogNameKey(item.name) === nameKey)) {
+    serviceFail("CRM_SERVICES_DUPLICATE_NAME", 409);
+  }
+}
 async function publicCatalogByRef(tx, tenantId, ref) {
   const item = await tx.serviceCatalogItem.findFirst({
     where: { tenantId, serviceRef: serviceRef(ref) },
@@ -143,6 +161,7 @@ export async function createServiceCatalogItem(context, input, database = prisma
       const who = await actor(tx, context, PERMS.SERVICES_CATALOG_MANAGE, { manage: true });
       const replay = await prior(tx, who.tenantId, command);
       if (replay) return Object.freeze({ item: await publicCatalogByRef(tx, who.tenantId, replay.targetRef), replayed: true });
+      await requireUniqueCatalogName(tx, who.tenantId, command);
       const item = await tx.serviceCatalogItem.create({ data: { id: randomUUID(), tenantId: who.tenantId, code: command.code ?? automaticServiceConfigurationCode(who.tenantId, command), name: command.name, category: command.category, usage: command.usage, compatibleModes: command.compatibleModes, sortOrder: command.sortOrder } });
       if (["PRIMARY", "BOTH"].includes(item.usage)) await replaceCompatibility(tx, who, item, command.allowedComplementaryRefs);
       await journal(tx, who, command, item.serviceRef, 1, "SERVICE_CATALOG_CREATED", null, { code: item.code, usage: item.usage, modes: item.compatibleModes, status: item.status });
@@ -162,7 +181,26 @@ export async function updateServiceCatalogItem(context, ref, input, database = p
       const current = await catalogByRef(tx, who.tenantId, ref);
       if (current.version !== command.expectedVersion) serviceFail("CRM_SERVICES_VERSION_CONFLICT", 409);
       if (current.usage !== command.usage && await tx.pipelineCaseServiceItem.count({ where: { tenantId: who.tenantId, serviceId: current.id } }) > 0) serviceFail("CRM_SERVICES_USED_TYPE_IMMUTABLE", 409);
-      const item = await tx.serviceCatalogItem.update({ where: { id: current.id }, data: { name: command.name, category: command.category, usage: command.usage, compatibleModes: command.compatibleModes, status: command.status, sortOrder: command.sortOrder, version: { increment: 1 } } });
+      const identityChanged = current.category !== command.category || serviceCatalogNameKey(current.name) !== serviceCatalogNameKey(command.name);
+      const reactivating = current.status === "INACTIVE" && command.status === "ACTIVE";
+      if (identityChanged || reactivating) {
+        await requireUniqueCatalogName(tx, who.tenantId, command, { exceptId: current.id, activeOnly: !identityChanged });
+      }
+      const item = await tx.serviceCatalogItem.update({
+        where: { id: current.id, version: command.expectedVersion },
+        data: {
+          name: command.name,
+          category: command.category,
+          usage: command.usage,
+          compatibleModes: command.compatibleModes,
+          status: command.status,
+          sortOrder: command.sortOrder,
+          version: { increment: 1 },
+        },
+      }).catch((error) => {
+        if (error?.code === "P2025") serviceFail("CRM_SERVICES_VERSION_CONFLICT", 409);
+        throw error;
+      });
       if (["PRIMARY", "BOTH"].includes(item.usage)) await replaceCompatibility(tx, who, item, command.allowedComplementaryRefs);
       else if (command.allowedComplementaryRefs.length) serviceFail("CRM_SERVICES_COMPLEMENTARY_NOT_ALLOWED", 409);
       await journal(tx, who, command, item.serviceRef, item.version, item.status === current.status ? "SERVICE_CATALOG_UPDATED" : item.status === "ACTIVE" ? "SERVICE_CATALOG_ACTIVATED" : "SERVICE_CATALOG_DEACTIVATED", { version: current.version, status: current.status }, { version: item.version, status: item.status });

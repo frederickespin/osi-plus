@@ -1,9 +1,10 @@
-import { Fragment, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, Check, History, Layers3, Pencil, Plus, Power, Search, X } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { Button } from "@/components/ui/button";
 import { COMPACT_TABLE_BODY, COMPACT_TABLE_FIELD as FIELD, COMPACT_TABLE_HEAD } from "@/components/ui/compact-form";
 import { filterBySearch } from "@/costing/componentLabels";
+import { serviceCatalogNameKey } from "../../shared/serviceCatalogNames.js";
 import { CrmServicesApi, CrmServicesApiError, type ServiceCatalogItem } from "./api";
 
 type Props = Readonly<{
@@ -31,6 +32,7 @@ const SERVICE_CATEGORIES = new Map([
 ]);
 const ROLE_LABELS = { PRIMARY: "Principal", COMPLEMENTARY: "Complementario", BOTH: "Ambos" };
 const ROLE_LOCKED_HELP = "El rol queda fijo cuando el servicio figura en un plan guardado.";
+const DUPLICATE_NAME_ERROR = "Ya existe un servicio con este nombre en la categoría seleccionada.";
 const SCOPES: Record<Scope, string> = { LOCAL: "Local / Nacional", EXPORT: "Exportación", IMPORT: "Importación" };
 const STATUS = { ACTIVE: "Activo", INACTIVE: "Inactivo" };
 const EVENT_LABELS: Record<string, string> = {
@@ -49,8 +51,29 @@ function categoryLabel(category: string | null) {
   return SERVICE_CATEGORIES.get(category) ?? category;
 }
 
+function similarName(name: string, candidate: string) {
+  const shortest = Math.min(name.length, candidate.length);
+  const tolerance = shortest >= 12 ? 2 : 1;
+  if (shortest < 5 || Math.abs(name.length - candidate.length) > tolerance ||
+    name.startsWith(candidate) || candidate.startsWith(name)) return false;
+
+  let previous = Array.from({ length: candidate.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= name.length; row++) {
+    const next = [row];
+    for (let column = 1; column <= candidate.length; column++) {
+      next[column] = Math.min(previous[column] + 1, next[column - 1] + 1,
+        previous[column - 1] + Number(name[row - 1] !== candidate[column - 1]));
+    }
+    if (Math.min(...next) > tolerance) return false;
+    previous = next;
+  }
+  return previous[candidate.length] <= tolerance;
+}
+
 export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, onUnauthorized }: Props) {
   const form = useId();
+  const nameNotice = useId();
+  const nameInput = useRef<HTMLInputElement>(null);
   const request = useRef("");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -65,14 +88,46 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
   const roleLocked = (editedService?.usageCount ?? 0) > 0;
   const savedCategory = editedService?.category;
   const legacyCategory = savedCategory && !SERVICE_CATEGORIES.has(savedCategory) ? savedCategory : null;
-  const canSaveDraft = Boolean(draft && draft.name.trim() && draft.compatibleModes.length &&
-    (SERVICE_CATEGORIES.has(draft.category) || draft.category === legacyCategory));
   const orderedRows = useMemo(() => [...rows].sort((a, b) => SERVICE_NAME_ORDER.compare(a.name, b.name)), [rows]);
+  const nameIndex = useMemo(() => orderedRows.map((item) => ({ item, key: serviceCatalogNameKey(item.name) })), [orderedRows]);
+  const nameKey = draft ? serviceCatalogNameKey(draft.name) : "";
+  const nameChanged = draft && (!editedService ||
+    nameKey !== serviceCatalogNameKey(editedService.name) || draft.category !== (savedCategory ?? ""));
+  const matches = nameKey && nameChanged ? nameIndex.filter(({ item, key }) => key === nameKey && item.serviceRef !== draft?.serviceRef) : [];
+  const sameCategory = draft?.category ? matches.filter(({ item }) => item.category === draft.category) : [];
+  const duplicate = (sameCategory.find(({ item }) => item.status === "ACTIVE") ?? sameCategory[0])?.item;
+  const sameName = duplicate ? undefined : matches[0]?.item;
+  const similar = !duplicate && !sameName && nameChanged && nameKey.length >= 5
+    ? nameIndex.find(({ item, key }) => item.serviceRef !== draft?.serviceRef && similarName(nameKey, key))?.item
+    : undefined;
+  const canSaveDraft = Boolean(draft && nameKey && draft.compatibleModes.length && !duplicate &&
+    (SERVICE_CATEGORIES.has(draft.category) || draft.category === legacyCategory));
+  const reactivationConflict = editedService?.status === "INACTIVE" ? findActiveDuplicate(editedService) : undefined;
+  const offerReactivation = editedService?.status === "INACTIVE" && draft &&
+    draft.name === editedService.name && draft.category === (savedCategory ?? "") && draft.usage === editedService.usage &&
+    draft.compatibleModes.length === editedService.compatibleModes.length &&
+    draft.compatibleModes.every((mode) => editedService.compatibleModes.includes(mode)) &&
+    draft.allowedComplementaryRefs.length === editedService.allowedComplementaryRefs.length &&
+    draft.allowedComplementaryRefs.every((ref) => editedService.allowedComplementaryRefs.includes(ref));
+  const matchedService = duplicate ?? sameName ?? similar ?? (offerReactivation ? reactivationConflict : undefined);
+  const nameNoticeText = duplicate ? "Ya existe en esta categoría" :
+    sameName ? "El nombre está registrado en" : similar ? "Nombre parecido" : "Ya existe un servicio activo en esta categoría";
+  const editorKey = draft ? draft.serviceRef ?? "new" : undefined;
   const complementary = orderedRows.filter((item) => item.status === "ACTIVE" && item.usage !== "PRIMARY");
   const visible = orderedRows.filter((item) => item.serviceRef === draft?.serviceRef || filterBySearch(
     [item.name, item.category, categoryLabel(item.category), ROLE_LABELS[item.usage], ...item.compatibleModes.map((mode) => SCOPES[mode])].join(" "), search,
   ));
   const allowDefaults = details?.kind === "DEFAULTS" && details.service.usage !== "COMPLEMENTARY";
+
+  useEffect(() => {
+    if (editorKey) nameInput.current?.focus();
+  }, [editorKey]);
+
+  function findActiveDuplicate(service: ServiceCatalogItem) {
+    const key = serviceCatalogNameKey(service.name);
+    return nameIndex.find(({ item, key: candidate }) => candidate === key && item.serviceRef !== service.serviceRef &&
+      item.status === "ACTIVE" && item.category === service.category)?.item;
+  }
 
   function openDraft(item?: ServiceCatalogItem) {
     request.current = crypto.randomUUID();
@@ -83,10 +138,22 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
     if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized();
     else setError(message);
   }
+  function changeNameOrCategory(patch: Partial<Pick<Draft, "name" | "category">>) {
+    setDraft((value) => value && { ...value, ...patch });
+    if (error === DUPLICATE_NAME_ERROR) setError("");
+  }
   async function refresh() {
     try {
       onUpdate(await api.catalog());
     } catch (cause) { report(cause, "El servicio se guardó. Actualiza el listado para ver el cambio."); }
+  }
+  async function reportDuplicate() {
+    setError(DUPLICATE_NAME_ERROR);
+    try {
+      onUpdate(await api.catalog());
+    } catch (cause) {
+      if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized();
+    }
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -104,6 +171,10 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
       setDraft(null);
       await refresh();
     } catch (cause) {
+      if (cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_DUPLICATE_NAME") {
+        await reportDuplicate();
+        return;
+      }
       if (cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_USED_TYPE_IMMUTABLE") {
         setError("El servicio figura en un plan guardado. Actualiza el catálogo para revisar su rol.");
         return;
@@ -117,6 +188,10 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
   }
   async function toggleStatus(item: ServiceCatalogItem) {
     if (!canManage || saving) return;
+    if (item.status === "INACTIVE" && findActiveDuplicate(item)) {
+      openDraft(item);
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -125,8 +200,16 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
         requestId: crypto.randomUUID(), expectedVersion: item.version, name, category, usage, sortOrder, allowedComplementaryRefs,
         compatibleModes: [...compatibleModes].sort(), status: item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
       });
+      if (draft?.serviceRef === item.serviceRef) setDraft(null);
       await refresh();
-    } catch (cause) { report(cause, "No se pudo cambiar el estado del servicio. Revisa sus usos."); }
+    } catch (cause) {
+      if (cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_DUPLICATE_NAME") {
+        openDraft(item);
+        await reportDuplicate();
+      } else {
+        report(cause, "No se pudo cambiar el estado del servicio. Revisa sus usos.");
+      }
+    }
     finally { setSaving(false); }
   }
   async function openDetails(service: ServiceCatalogItem, kind: "DEFAULTS" | "HISTORY") {
@@ -169,11 +252,12 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
 
   const editor = draft && <>
     <tr className="bg-sky-50/70">
-      <td><input form={form} aria-label="Nombre del servicio" placeholder="Nombre del servicio" className={FIELD} required maxLength={160}
-        disabled={saving} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></td>
+      <td><input ref={nameInput} form={form} aria-label="Nombre del servicio" aria-invalid={duplicate ? true : undefined}
+        aria-describedby={matchedService ? nameNotice : undefined} placeholder="Nombre del servicio" className={FIELD} required maxLength={160}
+        disabled={saving} value={draft.name} onChange={(event) => changeNameOrCategory({ name: event.target.value })} /></td>
       <td><select form={form} aria-label="Categoría" className={FIELD} required disabled={saving}
         title={draft.category ? categoryLabel(draft.category) : undefined}
-        value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>
+        value={draft.category} onChange={(event) => changeNameOrCategory({ category: event.target.value })}>
         <option value="" disabled>Selecciona categoría</option>
         {legacyCategory && <option value={legacyCategory}>{categoryLabel(legacyCategory)} (registrada)</option>}
         {Array.from(SERVICE_CATEGORIES, ([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -194,6 +278,22 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
         <AdministrationIconAction label="Cancelar edición del servicio" className={ACTION} disabled={saving} onClick={() => { setDraft(null); setError(""); }}><X aria-hidden="true" className="size-4" /></AdministrationIconAction>
       </form></td>
     </tr>
+    {matchedService && <tr><td colSpan={7}>
+      <div className={"flex flex-wrap items-center gap-x-2 gap-y-1 py-1 " + (duplicate || matchedService === reactivationConflict ? "text-red-800" : "text-amber-900")}>
+        <p id={nameNotice} role="status">
+          {nameNoticeText} · <strong>{matchedService.name}</strong> · {categoryLabel(matchedService.category)} · {STATUS[matchedService.status]}
+        </p>
+        <button type="button" disabled={saving} onClick={() => openDraft(matchedService)}
+          aria-label={"Abrir servicio " + matchedService.name}
+          className="font-semibold text-[#003366] underline underline-offset-2 disabled:opacity-50">
+          {matchedService.status === "INACTIVE" ? "Ver para reactivar" : "Abrir"}
+        </button>
+      </div>
+    </td></tr>}
+    {offerReactivation && !reactivationConflict && <tr><td colSpan={7}>
+      <button type="button" disabled={saving} onClick={() => void toggleStatus(editedService)}
+        className="py-1 font-semibold text-[#003366] underline underline-offset-2 disabled:opacity-50">Reactivar</button>
+    </td></tr>}
     {draft.usage !== "COMPLEMENTARY" && <tr className="bg-sky-50/70"><td colSpan={7}>
       <details className="py-1.5">
         <summary className="cursor-pointer font-semibold text-[#003366]">Complementarios permitidos · {draft.allowedComplementaryRefs.length}</summary>
@@ -208,7 +308,8 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
         </div>
       </details>
     </td></tr>}
-    {error && <tr><td colSpan={7}><p role="alert" className="py-1 text-red-800">{error}</p></td></tr>}
+    {error && !(error === DUPLICATE_NAME_ERROR && (duplicate || reactivationConflict)) &&
+      <tr><td colSpan={7}><p role="alert" className="py-1 text-red-800">{error}</p></td></tr>}
   </>;
 
   return <section data-testid="service-catalog-admin" aria-label="Catálogo de servicios" className="min-w-0 pt-1">
@@ -250,6 +351,7 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
           <p><strong>En planes.</strong> Indica cuántas veces figura el servicio en planes guardados de Comercial. Incluye las versiones anteriores de un mismo caso.</p>
           <p><strong>Complementarios.</strong> En la edición, marca los servicios que se pueden agregar cuando este sea el principal. El icono de capas permite elegir cuáles de ellos quedan preseleccionados en Comercial.</p>
           <p>La categoría agrupa servicios en el catálogo. Almacenaje con custodia habilita el flujo de contrato y autorizaciones de almacén cuando el servicio se agrega a un caso. Selecciona la categoría propia de cada trabajo, como Empaque y embalaje o Transporte.</p>
+          <p>Si el nombre ya existe en la categoría, abre el servicio existente. Puedes reactivarlo desde su ficha si está inactivo y no hay otro activo con ese nombre.</p>
         </AdministrationHelp>
       </div>
       {error && !draft && <p role="alert" className="py-2 text-xs text-red-800">{error}</p>}

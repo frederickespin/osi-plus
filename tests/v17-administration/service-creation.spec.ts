@@ -1,9 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
+import { DEFAULT_SERVICE_CATEGORIES } from "../../shared/serviceCatalogCategories.js";
 
 const MEMBERSHIP_REF = "22222222-2222-4222-8222-222222222222";
 const SERVICE_REF = "33333333-3333-4333-8333-333333333333";
 const MODE_REF = "44444444-4444-4444-8444-444444444444";
 const NEW_MODE_REF = "55555555-5555-4555-8555-555555555555";
+const NEW_CATEGORY_CODE = "CAT_0123456789ABCDEF";
 const permissions = ["services:catalog:view", "services:catalog:manage", "services:packages:view", "services:packages:manage"];
 const primary = { serviceRef: SERVICE_REF, code: "LEGACY_LOCAL", name: "Mudanza local", category: null, usage: "PRIMARY", compatibleModes: ["LOCAL"], status: "ACTIVE", sortOrder: 0, version: 1, usageCount: 0, allowedComplementaryRefs: [] };
 const localMode = { modeRef: MODE_REF, code: "LOCAL", name: "Local / Nacional", description: null, state: "PUBLISHED", version: 1 };
@@ -13,6 +15,7 @@ async function setup(page: Page, withPrimary = false, uncertainCreate = false, c
   const writes: { path: string; body: Json }[] = [];
   const unexpected: string[] = [];
   const modes = [{ ...localMode }];
+  const categories = DEFAULT_SERVICE_CATEGORIES.map((category) => ({ ...category }));
   let createCount = 0;
   await page.addInitScript(({ membershipRef }) => {
     localStorage.setItem("osi-plus.token", "synthetic.service.creation.token");
@@ -26,12 +29,23 @@ async function setup(page: Page, withPrimary = false, uncertainCreate = false, c
     expect(route.request().headers()["x-osi-membership-ref"]).toBe(MEMBERSHIP_REF);
     if (method === "GET") {
       if (path === "/api/crm/services/catalog") return fulfill(catalog);
+      if (path === "/api/crm/services/categories") return fulfill(categories);
       if (path === "/api/crm/services/modes") return fulfill(modes);
       if (["/api/crm/services/catalog-modes", "/api/crm/services/packages", "/api/crm/services/defaults"].includes(path)) return fulfill([]);
     }
     if (method === "POST" || method === "PATCH") {
       const body = route.request().postDataJSON() as Json;
       writes.push({ path, body });
+      if (path === "/api/crm/services/categories") {
+        if (method === "POST") {
+          const item = { code: NEW_CATEGORY_CODE, name: String(body.name), version: 1 };
+          categories.push(item);
+          return fulfill({ item, replayed: false }, 201);
+        }
+        const item = categories.find((category) => category.code === body.code)!;
+        Object.assign(item, { name: String(body.name), version: item.version + 1 });
+        return fulfill({ item, replayed: false });
+      }
       if (path === "/api/crm/services/catalog" && method === "POST") {
         createCount += 1;
         if (createCount === 1) catalog.push({ ...primary, code: "SER_0123456789ABCDEF", name: String(body.name) });
@@ -40,7 +54,7 @@ async function setup(page: Page, withPrimary = false, uncertainCreate = false, c
         return fulfill({ service: catalog[0], replayed: createCount > 1 });
       }
       if (path === `/api/crm/services/catalog/${SERVICE_REF}` && method === "PATCH") {
-        Object.assign(catalog[0], { name: String(body.name), status: String(body.status), version: 2 });
+        Object.assign(catalog[0], { name: String(body.name), category: body.category, status: String(body.status), version: 2 });
         return fulfill({ service: catalog[0], replayed: false });
       }
       if (path === "/api/crm/services/modes") {
@@ -57,6 +71,41 @@ async function setup(page: Page, withPrimary = false, uncertainCreate = false, c
   await expect(page.getByTestId("service-catalog-admin")).toBeVisible();
   return { writes, unexpected };
 }
+
+test("las categorías se añaden y renombran desde Servicios con código estable", async ({ page }) => {
+  const seen = await setup(page, false, false, [{ ...primary, name: "Guardamuebles", category: "STORAGE" }]);
+  const catalog = page.getByTestId("service-catalog-admin");
+  await catalog.getByRole("button", { name: "Categorías", exact: true }).click();
+  const categories = page.getByRole("table", { name: "Categorías de servicios" });
+  const name = categories.getByRole("textbox", { name: "Nombre de la categoría" });
+  const save = categories.getByRole("button", { name: "Guardar categoría" });
+
+  await page.getByRole("button", { name: "Nueva categoría" }).click();
+  await name.fill("  EMPAQUE   Y EMBALAJE");
+  await expect(categories.getByText("Ya existe una categoría con ese nombre.", { exact: true })).toBeVisible();
+  await expect(save).toBeDisabled();
+  await name.fill("Montaje especializado");
+  await save.click();
+  await expect(categories.getByText("Montaje especializado", { exact: true })).toBeVisible();
+  expect(seen.writes[0]).toMatchObject({ path: "/api/crm/services/categories", body: { name: "Montaje especializado" } });
+
+  await categories.getByRole("button", { name: "Editar categoría Almacenaje con custodia" }).click();
+  await name.fill("Guardamuebles y custodia");
+  await save.click();
+  await expect(categories.getByText("Guardamuebles y custodia", { exact: true })).toBeVisible();
+  expect(seen.writes[1].body).toMatchObject({ code: "STORAGE", name: "Guardamuebles y custodia", expectedVersion: 0 });
+
+  await page.getByRole("button", { name: "Volver a servicios" }).click();
+  const serviceTable = catalog.getByRole("table", { name: "Servicios disponibles" });
+  await expect(serviceTable.getByRole("row", { name: /Guardamuebles/ })).toContainText("Guardamuebles y custodia");
+  await catalog.getByRole("button", { name: "Nuevo servicio" }).click();
+  const category = serviceTable.getByRole("combobox", { name: "Categoría" });
+  await category.selectOption({ label: "Montaje especializado" });
+  await expect(category).toHaveValue(NEW_CATEGORY_CODE);
+  await serviceTable.getByRole("button", { name: "Cancelar edición del servicio" }).click();
+  expect(seen.writes).toHaveLength(2);
+  expect(seen.unexpected).toEqual([]);
+});
 
 test("el catálogo avisa de duplicados y permite abrir o reactivar el servicio existente", async ({ page }) => {
   const inactive = { ...primary, name: "Instalación de lámparas", category: "INSTALLATION", status: "INACTIVE" };

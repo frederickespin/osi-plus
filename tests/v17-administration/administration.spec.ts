@@ -61,7 +61,7 @@ async function session(page: Page, initialPermissions: string[], initialDenied: 
     if (path === "/api/crm/services/material-policies") return fulfill({ ok: true, data: materialPolicies });
     if ([
       "/api/logistics/rules", "/api/costing/rules", "/api/costing/exchange-rates",
-      "/api/communications/templates", "/api/crm/services/catalog",
+      "/api/communications/templates", "/api/crm/services/catalog", "/api/crm/services/categories",
       "/api/customer-custody/access-grants", "/api/customer-custody/catalog-items",
       "/api/crm/services/modes", "/api/crm/services/catalog-modes",
       "/api/crm/services/packages", "/api/crm/services/material-policies",
@@ -150,8 +150,9 @@ test("un lector sólo del catálogo de Servicios no consulta paquetes ni materia
   await page.goto("/administration");
   await expect(page.getByTestId("service-configuration-admin")).toBeVisible();
   await expect.poll(() => seen.apiRequests.includes("/api/crm/services/catalog")).toBe(true);
+  await expect.poll(() => seen.apiRequests.includes("/api/crm/services/categories")).toBe(true);
   await expect(page.getByText("Cargando configuración…", { exact: true })).toHaveCount(0);
-  expect(new Set(nonAuth(seen.apiRequests))).toEqual(new Set(["/api/crm/services/catalog"]));
+  expect(new Set(nonAuth(seen.apiRequests))).toEqual(new Set(["/api/crm/services/catalog", "/api/crm/services/categories"]));
   expect(seen.unexpected).toEqual([]);
 });
 

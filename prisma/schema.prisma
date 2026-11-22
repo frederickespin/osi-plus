@@ -94,6 +94,7 @@ model Tenant {
   pipelineCaseRouteSnapshots        PipelineCaseRouteSnapshot[]
   pipelineCaseCommands              PipelineCaseCommand[]
   serviceCatalogItems               ServiceCatalogItem[]
+  serviceCatalogCategories          ServiceCatalogCategory[]
   serviceCatalogCompatibilities     ServiceCatalogCompatibility[]
   serviceDefaultCombinations        ServiceDefaultCombination[]
   serviceDefaultCombinationItems    ServiceDefaultCombinationItem[]
@@ -1767,6 +1768,22 @@ model ServiceCatalogItem {
   @@unique([tenantId, code], map: "service_catalog_items_tenant_code_key")
   @@index([tenantId, usage, status, sortOrder], map: "service_catalog_items_tenant_usage_status_order_idx")
   @@map("service_catalog_items")
+}
+
+model ServiceCatalogCategory {
+  id          String   @id @default(cuid())
+  categoryRef String   @default(dbgenerated("gen_random_uuid()")) @map("category_ref") @db.Uuid
+  tenantId    String   @map("tenant_id")
+  code        String   @db.VarChar(80)
+  name        String   @db.VarChar(80)
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "service_catalog_categories_tenant_fkey")
+
+  @@unique([tenantId, code], map: "service_catalog_categories_tenant_code_key")
+  @@unique([tenantId, categoryRef], map: "service_catalog_categories_tenant_ref_key")
+  @@map("service_catalog_categories")
 }
 
 model ServiceCatalogCompatibility {

@@ -1,4 +1,5 @@
 import { getMembershipRef } from "@/lib/sessionStore";
+import type { ServiceCatalogCategory } from "../../shared/serviceCatalogCategories.js";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 type RecordValue = Record<string, unknown>;
@@ -22,6 +23,10 @@ function integer(value: unknown) { if (!Number.isSafeInteger(value) || Number(va
 function nullableString(value: unknown) { return value === null ? null : text(value); }
 function nullableNumber(value: unknown) { if (value === null) return null; if (typeof value !== "number" || !Number.isFinite(value)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID"); return value; }
 function publicRecord(value: unknown, keys: readonly string[]): RecordValue { const row = record(value); exact(row, keys); return row; }
+function serviceCategory(value: unknown): ServiceCatalogCategory {
+  const row = publicRecord(value, ["code", "name", "version"]);
+  return Object.freeze({ code: text(row.code), name: text(row.name), version: integer(row.version) });
+}
 function mode(value: unknown): ServiceMode { const row = publicRecord(value, ["modeRef", "code", "name", "description", "state", "version"]); return Object.freeze({ modeRef: text(row.modeRef, true), code: text(row.code), name: text(row.name), description: nullableString(row.description), state: text(row.state) as ServiceMode["state"], version: integer(row.version) }); }
 function requirement(value: unknown): ServiceRequirement { const row = publicRecord(value, ["requirementRef", "kind", "code", "name", "quantity", "unitCode", "hours", "days", "phaseCode", "materialRef", "assetModelRef", "capabilityRef", "disposition", "chargeType", "configuration", "position"]); record(row.configuration); return Object.freeze({ requirementRef: text(row.requirementRef, true), kind: text(row.kind) as ServiceRequirement["kind"], code: text(row.code), name: text(row.name), quantity: nullableNumber(row.quantity), unitCode: nullableString(row.unitCode), hours: nullableNumber(row.hours), days: nullableNumber(row.days), phaseCode: nullableString(row.phaseCode), materialRef: row.materialRef === null ? null : text(row.materialRef, true), assetModelRef: row.assetModelRef === null ? null : text(row.assetModelRef, true), capabilityRef: row.capabilityRef === null ? null : text(row.capabilityRef, true), disposition: nullableString(row.disposition), chargeType: nullableString(row.chargeType), configuration: row.configuration as RecordValue, position: integer(row.position) }); }
 function servicePackage(value: unknown): ServicePackage { const row = publicRecord(value, ["packageRef", "versionRef", "code", "name", "description", "category", "tags", "state", "version", "validFrom", "validTo", "modes", "primary", "complementaries", "requirements"]); if (!Array.isArray(row.tags) || !Array.isArray(row.modes) || !Array.isArray(row.complementaries) || !Array.isArray(row.requirements)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID"); const item = (entry: unknown) => { const current = publicRecord(entry, ["serviceRef", "code", "name"]); return Object.freeze({ serviceRef: text(current.serviceRef, true), code: text(current.code), name: text(current.name) }); }; return Object.freeze({ packageRef: text(row.packageRef, true), versionRef: text(row.versionRef, true), code: text(row.code), name: text(row.name), description: nullableString(row.description), category: nullableString(row.category), tags: Object.freeze(row.tags.map((entry) => text(entry))), state: text(row.state) as ServicePackage["state"], version: integer(row.version), validFrom: nullableString(row.validFrom), validTo: nullableString(row.validTo), modes: Object.freeze(row.modes.map((entry) => { const current = publicRecord(entry, ["modeRef", "code", "name"]); return Object.freeze({ modeRef: text(current.modeRef, true), code: text(current.code), name: text(current.name) }); })), primary: row.primary === null ? null : item(row.primary), complementaries: Object.freeze(row.complementaries.map(item)), requirements: Object.freeze(row.requirements.map(requirement)) }); }
@@ -82,6 +87,20 @@ export class CrmServicesApi {
     return this.request(`/cases/${encodeURIComponent(caseRef)}`, { method: "PATCH", body: JSON.stringify(body) });
   }
   async catalog(signal?: AbortSignal): Promise<readonly ServiceCatalogItem[]> { const value = await this.request("/catalog", { signal }); if (!Array.isArray(value)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID"); return Object.freeze(value.map(catalog)); }
+  async categories(signal?: AbortSignal): Promise<readonly ServiceCatalogCategory[]> {
+    const value = await this.request("/categories", { signal });
+    if (!Array.isArray(value)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID");
+    return Object.freeze(value.map(serviceCategory));
+  }
+  async saveCategory(unsigned: { requestId: string; name: string; code?: string; expectedVersion?: number }): Promise<ServiceCatalogCategory> {
+    const isEdit = unsigned.code !== undefined;
+    const operation = isEdit ? "CATEGORY_UPDATE" : "CATEGORY_CREATE";
+    const result = record(await this.request("/categories", {
+      method: isEdit ? "PATCH" : "POST",
+      body: JSON.stringify({ ...unsigned, payloadHash: await hash({ operation, ...unsigned }) }),
+    }));
+    return serviceCategory(result.item);
+  }
   async createCatalog(unsigned: Omit<RecordValue, "payloadHash">) { const payload = { operation: "CATALOG_CREATE", ...unsigned }; return this.request("/catalog", { method: "POST", body: JSON.stringify({ ...unsigned, payloadHash: await hash(payload) }) }); }
   async updateCatalog(serviceRef: string, unsigned: Omit<RecordValue, "payloadHash">) { const payload = { operation: "CATALOG_UPDATE", ...unsigned }; return this.request(`/catalog/${encodeURIComponent(serviceRef)}`, { method: "PATCH", body: JSON.stringify({ ...unsigned, payloadHash: await hash(payload) }) }); }
   async history(serviceRef: string) { return this.request(`/catalog/${encodeURIComponent(serviceRef)}`) as Promise<Readonly<{ serviceRef: string; events: readonly Readonly<{ action: string; version: number; createdAt: string }>[] }>>; }

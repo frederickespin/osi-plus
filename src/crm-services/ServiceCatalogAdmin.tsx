@@ -1,11 +1,13 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
-import { ArrowLeft, Check, History, Layers3, Pencil, Plus, Power, Search, X } from "lucide-react";
+import { ArrowLeft, Check, History, Layers3, Pencil, Plus, Power, Search, Tags, X } from "lucide-react";
 import { AdministrationHelp, AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { Button } from "@/components/ui/button";
 import { COMPACT_TABLE_BODY, COMPACT_TABLE_FIELD as FIELD, COMPACT_TABLE_HEAD } from "@/components/ui/compact-form";
 import { filterBySearch } from "@/costing/componentLabels";
+import { DEFAULT_SERVICE_CATEGORIES, type ServiceCatalogCategory } from "../../shared/serviceCatalogCategories.js";
 import { serviceCatalogNameKey } from "../../shared/serviceCatalogNames.js";
 import { CrmServicesApi, CrmServicesApiError, type ServiceCatalogItem } from "./api";
+import ServiceCategoryAdmin from "./ServiceCategoryAdmin";
 
 type Props = Readonly<{
   api: CrmServicesApi; rows: readonly ServiceCatalogItem[]; canManage: boolean;
@@ -18,18 +20,6 @@ type Defaults = { combinationRef: string; code: string; name: string; version: n
 type Event = { action: string; version: number; createdAt: string };
 
 const EMPTY: Draft = { name: "", category: "", usage: "PRIMARY", compatibleModes: ["LOCAL"], status: "ACTIVE", sortOrder: 0, allowedComplementaryRefs: [] };
-const SERVICE_CATEGORIES = new Map([
-  ["CUSTOMS", "Aduanas y documentación"],
-  ["STORAGE", "Almacenaje con custodia"],
-  ["PACKING", "Empaque y embalaje"],
-  ["FREIGHT", "Flete internacional"],
-  ["ENGINEERING", "Ingeniería y huacales"],
-  ["INSTALLATION", "Instalación y desmontaje"],
-  ["INVENTORY", "Inventario y etiquetado"],
-  ["MOVING", "Mudanzas"],
-  ["TRANSPORT", "Transporte"],
-  ["OTHER", "Otros servicios"],
-]);
 const ROLE_LABELS = { PRIMARY: "Principal", COMPLEMENTARY: "Complementario", BOTH: "Ambos" };
 const ROLE_LOCKED_HELP = "El rol queda fijo cuando el servicio figura en un plan guardado.";
 const DUPLICATE_NAME_ERROR = "Ya existe un servicio con este nombre en la categoría seleccionada.";
@@ -44,12 +34,6 @@ const DATE = new Intl.DateTimeFormat("es-DO", { timeZone: "America/Santo_Domingo
 const SERVICE_NAME_ORDER = new Intl.Collator("es-DO", { sensitivity: "base", numeric: true });
 const ACTION = "border-transparent bg-transparent";
 const TABLE_WRAP = "overflow-auto border-b border-slate-200 max-h-[max(15rem,calc(100dvh-17rem))]";
-
-function categoryLabel(category: string | null) {
-  if (!category) return "Sin clasificar";
-  if (category === "PREVIEW_SYNTHETIC") return "Demostración";
-  return SERVICE_CATEGORIES.get(category) ?? category;
-}
 
 function similarName(name: string, candidate: string) {
   const shortest = Math.min(name.length, candidate.length);
@@ -84,10 +68,20 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
   const [detailStatus, setDetailStatus] = useState<"loading" | "ready" | "error">("loading");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showCategories, setShowCategories] = useState(false);
+  const [categories, setCategories] = useState<readonly ServiceCatalogCategory[]>(DEFAULT_SERVICE_CATEGORIES);
+  const [categoryState, setCategoryState] = useState<"loading" | "ready" | "error">("loading");
+  const [categoryReload, setCategoryReload] = useState(0);
+  const orderedCategories = useMemo(() => [...categories].sort((a, b) => SERVICE_NAME_ORDER.compare(a.name, b.name)), [categories]);
+  const categoryLabels = useMemo(() => new Map(orderedCategories.map(({ code, name }) => [code, name])), [orderedCategories]);
+  function categoryLabel(category: string | null) {
+    if (!category) return "Sin clasificar";
+    return categoryLabels.get(category) ?? (category === "PREVIEW_SYNTHETIC" ? "Demostración" : category);
+  }
   const editedService = rows.find((item) => item.serviceRef === draft?.serviceRef);
   const roleLocked = (editedService?.usageCount ?? 0) > 0;
   const savedCategory = editedService?.category;
-  const legacyCategory = savedCategory && !SERVICE_CATEGORIES.has(savedCategory) ? savedCategory : null;
+  const legacyCategory = savedCategory && !categoryLabels.has(savedCategory) ? savedCategory : null;
   const orderedRows = useMemo(() => [...rows].sort((a, b) => SERVICE_NAME_ORDER.compare(a.name, b.name)), [rows]);
   const nameIndex = useMemo(() => orderedRows.map((item) => ({ item, key: serviceCatalogNameKey(item.name) })), [orderedRows]);
   const nameKey = draft ? serviceCatalogNameKey(draft.name) : "";
@@ -101,7 +95,7 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
     ? nameIndex.find(({ item, key }) => item.serviceRef !== draft?.serviceRef && similarName(nameKey, key))?.item
     : undefined;
   const canSaveDraft = Boolean(draft && nameKey && draft.compatibleModes.length && !duplicate &&
-    (SERVICE_CATEGORIES.has(draft.category) || draft.category === legacyCategory));
+    (categoryLabels.has(draft.category) || draft.category === legacyCategory));
   const reactivationConflict = editedService?.status === "INACTIVE" ? findActiveDuplicate(editedService) : undefined;
   const offerReactivation = editedService?.status === "INACTIVE" && draft &&
     draft.name === editedService.name && draft.category === (savedCategory ?? "") && draft.usage === editedService.usage &&
@@ -118,6 +112,21 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
     [item.name, item.category, categoryLabel(item.category), ROLE_LABELS[item.usage], ...item.compatibleModes.map((mode) => SCOPES[mode])].join(" "), search,
   ));
   const allowDefaults = details?.kind === "DEFAULTS" && details.service.usage !== "COMPLEMENTARY";
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setCategoryState("loading");
+    void api.categories(controller.signal).then((nextCategories) => {
+      if (controller.signal.aborted) return;
+      setCategories(nextCategories);
+      setCategoryState("ready");
+    }).catch((cause: unknown) => {
+      if (controller.signal.aborted) return;
+      if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized();
+      setCategoryState("error");
+    });
+    return () => controller.abort();
+  }, [api, categoryReload, onUnauthorized]);
 
   useEffect(() => {
     if (editorKey) nameInput.current?.focus();
@@ -177,6 +186,11 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
       }
       if (cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_USED_TYPE_IMMUTABLE") {
         setError("El servicio figura en un plan guardado. Actualiza el catálogo para revisar su rol.");
+        return;
+      }
+      if (cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_CATEGORY_NOT_FOUND") {
+        setError("La categoría seleccionada ya no está disponible. Elige otra en la lista.");
+        setCategoryReload((current) => current + 1);
         return;
       }
       report(cause, cause instanceof CrmServicesApiError && cause.code === "CRM_SERVICES_VERSION_CONFLICT"
@@ -260,7 +274,7 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
         value={draft.category} onChange={(event) => changeNameOrCategory({ category: event.target.value })}>
         <option value="" disabled>Selecciona categoría</option>
         {legacyCategory && <option value={legacyCategory}>{categoryLabel(legacyCategory)} (registrada)</option>}
-        {Array.from(SERVICE_CATEGORIES, ([value, label]) => <option key={value} value={value}>{label}</option>)}
+        {orderedCategories.map(({ code, name }) => <option key={code} value={code}>{name}</option>)}
       </select></td>
       <td title={roleLocked ? ROLE_LOCKED_HELP : undefined}><select form={form} aria-label="Rol en el caso" className={FIELD} disabled={saving || roleLocked} value={draft.usage}
         onChange={(event) => setDraft({ ...draft, usage: event.target.value as Draft["usage"] })}>
@@ -313,7 +327,10 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
   </>;
 
   return <section data-testid="service-catalog-admin" aria-label="Catálogo de servicios" className="min-w-0 pt-1">
-    {details ? <>
+    {showCategories ? <ServiceCategoryAdmin api={api} categories={orderedCategories} state={categoryState} canManage={canManage}
+      onBack={() => setShowCategories(false)} onReload={() => setCategoryReload((current) => current + 1)}
+      onSaved={(category) => setCategories((current) => [...current.filter((item) => item.code !== category.code), category])}
+      onUnauthorized={onUnauthorized} /> : details ? <>
       <header className="flex flex-wrap items-center gap-2 border-b py-2">
         <AdministrationIconAction label="Volver a servicios" className={ACTION} disabled={detailStatus === "loading" || saving}
           onClick={() => { setDetails(null); setError(""); }}><ArrowLeft aria-hidden="true" className="size-4" /></AdministrationIconAction>
@@ -346,11 +363,14 @@ export default function ServiceCatalogAdmin({ api, rows, canManage, onUpdate, on
         </div>
         {canManage && <AdministrationIconAction label="Nuevo servicio" mobileLabel="Nuevo" disabled={Boolean(draft) || saving}
           onClick={() => openDraft()}><Plus aria-hidden="true" className="size-4" /></AdministrationIconAction>}
+        <AdministrationIconAction label="Categorías" disabled={Boolean(draft) || saving} onClick={() => setShowCategories(true)}>
+          <Tags aria-hidden="true" className="size-4" /><span>Categorías</span>
+        </AdministrationIconAction>
         <AdministrationHelp title="catálogo de servicios">
           <p><strong>Rol en el caso.</strong> Elige si el servicio puede ser principal, complementario o ambos. {ROLE_LOCKED_HELP}</p>
           <p><strong>En planes.</strong> Indica cuántas veces figura el servicio en planes guardados de Comercial. Incluye las versiones anteriores de un mismo caso.</p>
           <p><strong>Complementarios.</strong> En la edición, marca los servicios que se pueden agregar cuando este sea el principal. El icono de capas permite elegir cuáles de ellos quedan preseleccionados en Comercial.</p>
-          <p>La categoría agrupa servicios en el catálogo. Almacenaje con custodia habilita el flujo de contrato y autorizaciones de almacén cuando el servicio se agrega a un caso. Selecciona la categoría propia de cada trabajo, como Empaque y embalaje o Transporte.</p>
+          <p>La categoría agrupa servicios. Usa el botón Categorías para consultar la lista o ampliarla si tienes permisos de edición.</p>
           <p>Si el nombre ya existe en la categoría, abre el servicio existente. Puedes reactivarlo desde su ficha si está inactivo y no hay otro activo con ese nombre.</p>
         </AdministrationHelp>
       </div>

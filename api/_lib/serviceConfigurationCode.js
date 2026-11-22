@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 const PREFIXES = Object.freeze({
   CATALOG_CREATE: "SER",
+  CATEGORY_CREATE: "CAT",
   PACKAGE_SAVE: "COM",
   MATERIAL_POLICY_SAVE: "POL",
   DEFAULTS_SAVE: "PRE",

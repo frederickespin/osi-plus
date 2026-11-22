@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { DEFAULT_SERVICE_CATEGORIES } from "../../shared/serviceCatalogCategories.js";
 import { serviceCatalogNameKey } from "../../shared/serviceCatalogNames.js";
 import { prisma } from "./db.js";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
@@ -10,6 +11,8 @@ import {
   normalizeCaseServiceSelection,
   normalizeServiceCatalogCreate,
   normalizeServiceCatalogUpdate,
+  normalizeServiceCategoryCreate,
+  normalizeServiceCategoryUpdate,
   normalizeServiceDefaults,
   serviceFail,
   serviceRef,
@@ -17,6 +20,8 @@ import {
 
 const ALLOWED_ROLES = new Set(["A", "V"]);
 const SOURCE = "V17_SERVICES_TENANT_FIRST_03A";
+const CUSTOM_CATEGORY_CODE = /^CAT_[0-9A-F]{16}$/u;
+const CATEGORY_ORDER = new Intl.Collator("es-DO", { sensitivity: "base", numeric: true });
 
 function contextText(value) {
   if (typeof value !== "string" || value.length < 1 || value.length > 191) serviceFail("CRM_SERVICES_RESOURCE_NOT_FOUND", 404);
@@ -76,6 +81,10 @@ async function journal(tx, who, command, targetRef, resultingVersion, action, be
 }
 function databaseError(error) {
   if (error instanceof CrmServicesError) return error;
+  if (error?.code === "P2021" && (error.meta?.modelName === "ServiceCatalogCategory" ||
+    error.meta?.table === "osi.service_catalog_categories")) {
+    return new CrmServicesError("CRM_SERVICES_CATEGORY_STORAGE_UNAVAILABLE", 503, { cause: error });
+  }
   const code = [error?.meta?.code, error?.cause?.code, error?.code].find((value) => typeof value === "string");
   if (["P2002", "23505"].includes(code)) return new CrmServicesError("CRM_SERVICES_CONFLICT", 409, { cause: error });
   if (["P2003", "P2025", "23503", "23514"].includes(code)) return new CrmServicesError("CRM_SERVICES_STATE_INVALID", 409, { cause: error });
@@ -140,6 +149,105 @@ async function replaceCompatibility(tx, who, primary, refs) {
   if (complementaries.length) await tx.serviceCatalogCompatibility.createMany({ data: complementaries.map((item) => ({ id: randomUUID(), tenantId: who.tenantId, primaryServiceId: primary.id, complementaryServiceId: item.id })) });
 }
 
+function publicCategory({ code, name, version }) {
+  return Object.freeze({ code, name, version });
+}
+
+async function categoryRecords(tx, tenantId, includeStored = true) {
+  const legacy = await tx.serviceCatalogItem.groupBy({
+    by: ["category"], where: { tenantId, category: { not: null } },
+  });
+  const categories = new Map(DEFAULT_SERVICE_CATEGORIES.map((category) => [category.code, category]));
+  for (const { category: code } of legacy) {
+    if (!code || CUSTOM_CATEGORY_CODE.test(code) || categories.has(code)) continue;
+    categories.set(code, { code, name: code === "PREVIEW_SYNTHETIC" ? "Demostración" : code, version: 0 });
+  }
+  if (includeStored) {
+    const records = await tx.serviceCatalogCategory.findMany({ where: { tenantId } });
+    for (const category of records) categories.set(category.code, category);
+  }
+  return categories;
+}
+
+export async function listServiceCatalogCategories(context, database = prisma) {
+  try {
+    return await database.$transaction(async (tx) => {
+      const who = await actor(tx, context, PERMS.SERVICES_CATALOG_VIEW, { manage: true });
+      const [storage] = await tx.$queryRaw`
+        SELECT to_regclass('osi.service_catalog_categories') IS NOT NULL AS "exists"
+      `;
+      const categories = await categoryRecords(tx, who.tenantId, storage?.exists === true);
+      return Object.freeze(Array.from(categories.values(), publicCategory).sort((a, b) =>
+        CATEGORY_ORDER.compare(a.name, b.name) || a.code.localeCompare(b.code)));
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  } catch (error) { throw databaseError(error); }
+}
+
+async function saveServiceCatalogCategory(context, command, database) {
+  try {
+    return await database.$transaction(async (tx) => {
+      await limits(tx);
+      await lock(tx, contextText(context?.tenantId), command.requestId);
+      const who = await actor(tx, context, PERMS.SERVICES_CATALOG_MANAGE, { manage: true });
+      const replay = await prior(tx, who.tenantId, command);
+      if (replay) {
+        const item = await tx.serviceCatalogCategory.findFirst({
+          where: { tenantId: who.tenantId, categoryRef: replay.targetRef },
+        });
+        if (!item) serviceFail("CRM_SERVICES_CATEGORY_NOT_FOUND", 404);
+        return Object.freeze({ item: publicCategory(item), replayed: true });
+      }
+
+      // Serializing category writes per tenant protects duplicate names and the first edit of built-in labels.
+      const lockKey = `SERVICES-CATALOG-CATEGORIES:${who.tenantId}`;
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+      const categories = await categoryRecords(tx, who.tenantId);
+      const editing = command.operation === "CATEGORY_UPDATE";
+      const code = editing ? command.code : automaticServiceConfigurationCode(who.tenantId, command);
+      const current = editing ? categories.get(code) : undefined;
+      if (editing) {
+        if (!current) serviceFail("CRM_SERVICES_CATEGORY_NOT_FOUND", 404);
+        if (current.version !== command.expectedVersion) serviceFail("CRM_SERVICES_VERSION_CONFLICT", 409);
+      }
+
+      const key = serviceCatalogNameKey(command.name);
+      const existingKey = current ? serviceCatalogNameKey(current.name) : null;
+      if (key !== existingKey && [...categories.values()].some((category) =>
+        category.code !== code && serviceCatalogNameKey(category.name) === key)) {
+        serviceFail("CRM_SERVICES_CATEGORY_DUPLICATE_NAME", 409);
+      }
+      const item = current?.id
+        ? await tx.serviceCatalogCategory.update({
+          where: { id: current.id }, data: { name: command.name, version: { increment: 1 } },
+        })
+        : await tx.serviceCatalogCategory.create({
+          data: { id: randomUUID(), tenantId: who.tenantId, code, name: command.name },
+        });
+      const result = publicCategory(item);
+      await journal(tx, who, command, item.categoryRef, item.version,
+        editing ? "SERVICE_CATEGORY_UPDATED" : "SERVICE_CATEGORY_CREATED",
+        current ? publicCategory(current) : null, result);
+      return Object.freeze({ item: result, replayed: false });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 3_000, timeout: 10_000 });
+  } catch (error) { throw databaseError(error); }
+}
+
+export function createServiceCatalogCategory(context, input, database = prisma) {
+  return saveServiceCatalogCategory(context, normalizeServiceCategoryCreate(input), database);
+}
+
+export function updateServiceCatalogCategory(context, input, database = prisma) {
+  return saveServiceCatalogCategory(context, normalizeServiceCategoryUpdate(input), database);
+}
+
+async function requireCustomCategory(tx, tenantId, code) {
+  if (!CUSTOM_CATEGORY_CODE.test(code ?? "")) return;
+  const category = await tx.serviceCatalogCategory.findUnique({
+    where: { tenantId_code: { tenantId, code } }, select: { id: true },
+  });
+  if (!category) serviceFail("CRM_SERVICES_CATEGORY_NOT_FOUND", 404);
+}
+
 export async function listServiceCatalog(context, query = {}, database = prisma) {
   try {
     return await database.$transaction(async (tx) => {
@@ -161,6 +269,7 @@ export async function createServiceCatalogItem(context, input, database = prisma
       const who = await actor(tx, context, PERMS.SERVICES_CATALOG_MANAGE, { manage: true });
       const replay = await prior(tx, who.tenantId, command);
       if (replay) return Object.freeze({ item: await publicCatalogByRef(tx, who.tenantId, replay.targetRef), replayed: true });
+      await requireCustomCategory(tx, who.tenantId, command.category);
       await requireUniqueCatalogName(tx, who.tenantId, command);
       const item = await tx.serviceCatalogItem.create({ data: { id: randomUUID(), tenantId: who.tenantId, code: command.code ?? automaticServiceConfigurationCode(who.tenantId, command), name: command.name, category: command.category, usage: command.usage, compatibleModes: command.compatibleModes, sortOrder: command.sortOrder } });
       if (["PRIMARY", "BOTH"].includes(item.usage)) await replaceCompatibility(tx, who, item, command.allowedComplementaryRefs);
@@ -181,6 +290,7 @@ export async function updateServiceCatalogItem(context, ref, input, database = p
       const current = await catalogByRef(tx, who.tenantId, ref);
       if (current.version !== command.expectedVersion) serviceFail("CRM_SERVICES_VERSION_CONFLICT", 409);
       if (current.usage !== command.usage && await tx.pipelineCaseServiceItem.count({ where: { tenantId: who.tenantId, serviceId: current.id } }) > 0) serviceFail("CRM_SERVICES_USED_TYPE_IMMUTABLE", 409);
+      if (current.category !== command.category) await requireCustomCategory(tx, who.tenantId, command.category);
       const identityChanged = current.category !== command.category || serviceCatalogNameKey(current.name) !== serviceCatalogNameKey(command.name);
       const reactivating = current.status === "INACTIVE" && command.status === "ACTIVE";
       if (identityChanged || reactivating) {

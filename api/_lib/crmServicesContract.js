@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { serviceCatalogNameKey } from "../../shared/serviceCatalogNames.js";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,190}$/;
@@ -72,6 +73,32 @@ export function normalizeServiceCatalogUpdate(input) {
   if (usage !== "COMPLEMENTARY" && compatibleModes.length === 0) serviceFail("CRM_SERVICES_MODE_REQUIRED");
   const payload = Object.freeze({ operation: "CATALOG_UPDATE", requestId: serviceRequestId(input.requestId), expectedVersion: integer(input.expectedVersion, 1), name: text(input.name, 160), category: nullableText(input.category, 80), usage, compatibleModes: Object.freeze(compatibleModes), status: oneOf(input.status, STATUSES), sortOrder: integer(input.sortOrder), allowedComplementaryRefs: refs(input.allowedComplementaryRefs) });
   return signed(input, payload);
+}
+
+function categoryName(value) {
+  const name = text(value, 80);
+  if (!serviceCatalogNameKey(name)) serviceFail("CRM_SERVICES_INPUT_INVALID");
+  return name;
+}
+
+export function normalizeServiceCategoryCreate(input) {
+  exact(input, ["requestId", "payloadHash", "name"]);
+  return signed(input, {
+    operation: "CATEGORY_CREATE",
+    requestId: serviceRequestId(input.requestId),
+    name: categoryName(input.name),
+  });
+}
+
+export function normalizeServiceCategoryUpdate(input) {
+  exact(input, ["requestId", "payloadHash", "code", "name", "expectedVersion"]);
+  return signed(input, {
+    operation: "CATEGORY_UPDATE",
+    requestId: serviceRequestId(input.requestId),
+    code: text(input.code, 80),
+    name: categoryName(input.name),
+    expectedVersion: integer(input.expectedVersion),
+  });
 }
 
 export function normalizeServiceDefaults(input) {

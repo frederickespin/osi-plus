@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
+  createServiceCatalogCategory,
   createServiceCatalogItem,
   getCaseServiceWorkspace,
   getServiceCatalogHistory,
   listServiceCatalog,
+  listServiceCatalogCategories,
   listServiceDefaults,
   saveCaseServiceSelection,
   saveServiceDefaults,
+  updateServiceCatalogCategory,
   updateServiceCatalogItem,
 } from "../api/_lib/crmServicesApiDomain.js";
 import { hashCrmServicesPayload } from "../api/_lib/crmServicesContract.js";
@@ -40,11 +43,13 @@ const tenantId = `svc_t_${marker}`;
 const otherTenantId = `svc_x_${marker}`;
 const userId = `svc_u_${marker}`;
 const membershipId = `svc_m_${marker}`;
+const otherMembershipId = `svc_xm_${marker}`;
 const sellerUserId = `svc_vu_${marker}`;
 const sellerMembershipId = `svc_vm_${marker}`;
 const caseId = `svc_c_${marker}`;
 const sellerCaseId = `svc_vc_${marker}`;
 const admin = Object.freeze({ tenantId, userId, membershipId });
+const otherAdmin = Object.freeze({ tenantId: otherTenantId, userId, membershipId: otherMembershipId });
 const seller = Object.freeze({ tenantId, userId: sellerUserId, membershipId: sellerMembershipId });
 let cleaned = false;
 let targetVerified = false;
@@ -63,8 +68,9 @@ async function cleanup() {
       await tx.serviceDefaultCombination.deleteMany({ where: { tenantId } });
       await tx.serviceCatalogCompatibility.deleteMany({ where: { tenantId } });
       await tx.serviceCatalogItem.deleteMany({ where: { tenantId } });
+      await tx.serviceCatalogCategory.deleteMany({ where: { tenantId: { in: [tenantId, otherTenantId] } } });
       await tx.pipelineCase.deleteMany({ where: { tenantId } });
-      await tx.tenantMembership.deleteMany({ where: { tenantId } });
+      await tx.tenantMembership.deleteMany({ where: { tenantId: { in: [tenantId, otherTenantId] } } });
       await tx.user.deleteMany({ where: { id: { in: [userId, sellerUserId] } } });
       await tx.tenant.deleteMany({ where: { id: { in: [tenantId, otherTenantId] } } });
     });
@@ -90,6 +96,7 @@ try {
   ] });
   await prisma.tenantMembership.createMany({ data: [
     { id: membershipId, tenantId, userId, role: "A", status: "ACTIVE", isDefault: true, grantedPermissions: ["services:catalog:view", "services:catalog:manage", "services:case:view", "services:case:update"] },
+    { id: otherMembershipId, tenantId: otherTenantId, userId, role: "A", status: "ACTIVE", isDefault: false, grantedPermissions: ["services:catalog:view", "services:catalog:manage"] },
     { id: sellerMembershipId, tenantId, userId: sellerUserId, role: "V", status: "ACTIVE", isDefault: true, grantedPermissions: ["services:case:view", "services:case:update"] },
   ] });
   await prisma.pipelineCase.createMany({ data: [
@@ -179,6 +186,44 @@ try {
   const catalogCreate = (name, category) => signed("CATALOG_CREATE", {
     ...automaticInput, name, category, requestId: request("catalog-name-create"),
   });
+
+  const categoriesBefore = await listServiceCatalogCategories(admin, prisma);
+  check("la lista incluye las categorías iniciales y las utilizadas previamente",
+    categoriesBefore.some(({ code, version }) => code === "STORAGE" && version === 0)
+    && categoriesBefore.some(({ code, name }) => code === "Preparación" && name === "Preparación"));
+  const categoryCreate = (name) => signed("CATEGORY_CREATE", { requestId: request("category-create"), name });
+  const categoryUpdate = (code, name, expectedVersion) => signed("CATEGORY_UPDATE", {
+    requestId: request("category-update"), code, name, expectedVersion,
+  });
+  const createCategoryInput = categoryCreate("Montaje técnico");
+  const createdCategory = await createServiceCatalogCategory(admin, createCategoryInput, prisma);
+  const categoryCode = createdCategory.item.code;
+  const replayedCategory = await createServiceCatalogCategory(admin, createCategoryInput, prisma);
+  check("alta de categoría genera un código y el reintento recupera el mismo registro",
+    /^CAT_[A-F0-9]{16}$/.test(categoryCode) && replayedCategory.replayed && replayedCategory.item.code === categoryCode);
+  await rejects("la categoría no admite nombres equivalentes", "CRM_SERVICES_CATEGORY_DUPLICATE_NAME",
+    () => createServiceCatalogCategory(admin, categoryCreate("MONTAJE  TECNICO"), prisma));
+  await rejects("la categoría tampoco permite duplicar una opción inicial", "CRM_SERVICES_CATEGORY_DUPLICATE_NAME",
+    () => createServiceCatalogCategory(admin, categoryCreate("EMPAQUE  Y EMBALAJE"), prisma));
+  check("las categorías personalizadas son específicas de la empresa",
+    !(await listServiceCatalogCategories(otherAdmin, prisma)).some(({ code }) => code === categoryCode));
+  await rejects("otra empresa no puede asignar una categoría ajena", "CRM_SERVICES_CATEGORY_NOT_FOUND",
+    () => createServiceCatalogItem(otherAdmin, catalogCreate("Servicio con categoría ajena", categoryCode), prisma));
+
+  const categorized = await createServiceCatalogItem(admin, catalogCreate("Instalación de módulos", categoryCode), prisma);
+  const renamed = await updateServiceCatalogCategory(admin, categoryUpdate(categoryCode, "Montaje de equipos", 1), prisma);
+  const storageLabel = await updateServiceCatalogCategory(admin, categoryUpdate("STORAGE", "Guardamuebles y custodia", 0), prisma);
+  check("renombrar cambia el nombre visible y conserva la referencia del servicio",
+    renamed.item.code === categoryCode && renamed.item.version === 2 && storageLabel.item.code === "STORAGE"
+    && (await listServiceCatalog(admin, {}, prisma)).some(({ serviceRef, category }) =>
+      serviceRef === categorized.item.serviceRef && category === categoryCode)
+    && (await listServiceCatalogCategories(admin, prisma)).some(({ code, name }) =>
+      code === categoryCode && name === "Montaje de equipos"));
+  await rejects("una versión anterior no sobrescribe una categoría modificada", "CRM_SERVICES_VERSION_CONFLICT",
+    () => updateServiceCatalogCategory(admin, categoryUpdate(categoryCode, "Edición anterior", 1), prisma));
+  await rejects("un vendedor no administra las categorías", "CRM_SERVICES_PERMISSION_FORBIDDEN",
+    () => createServiceCatalogCategory(seller, categoryCreate("Categoría sin autorización"), prisma));
+
   const updateCatalog = (item, changes) => updateServiceCatalogItem(admin, item.serviceRef, signed("CATALOG_UPDATE", {
     requestId: request("catalog-name-update"), expectedVersion: item.version,
     name: item.name, category: item.category, usage: item.usage, compatibleModes: item.compatibleModes,

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "prisma generate && node scripts/v17-fleet-drivers-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-configuration-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-sheet-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-routes-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-localities-preview-migrate.mjs --build-hook && node scripts/v17-customer-custody-preview-migrate.mjs --build-hook && node scripts/v17-fleet-catalog-preview-migrate.mjs && node scripts/v17-operational-demo-flows-preview-seed.mjs --build-hook && vite build",
+    "build": "prisma generate && node scripts/v17-fleet-drivers-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-configuration-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-sheet-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-routes-preview-migrate.mjs --build-hook && node scripts/v17-warehouse-localities-preview-migrate.mjs --build-hook && node scripts/v17-customer-custody-preview-migrate.mjs --build-hook && node scripts/v17-fleet-catalog-preview-migrate.mjs && node scripts/v17-service-catalog-categories-preview-migrate.mjs && node scripts/v17-operational-demo-flows-preview-seed.mjs --build-hook && vite build",
     "postinstall": "prisma generate",
     "lint": "eslint .",
     "test:auth-null:browser": "playwright test -c playwright.auth-null.config.ts",

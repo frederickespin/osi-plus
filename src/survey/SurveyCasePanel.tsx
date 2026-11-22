@@ -41,10 +41,13 @@ import { createPersonnelPoliciesApi } from "@/personnel-policies/api";
 import type { ClientTemporaryAccessUi } from "@/client-portal/access";
 import ClientTemporaryAccessPanel from "@/client-portal/ClientTemporaryAccessPanel";
 
+export type SurveyIntakeMethod = "IN_PERSON" | "VIRTUAL" | "MINI" | "SPECIAL";
+
 type Props = Readonly<{
   caseRef: string;
   authorization?: string;
   access: SurveySchedulingUiAccess;
+  intakeMethod?: SurveyIntakeMethod;
   communicationsEnabled?: boolean;
   communicationsAccess?: CommunicationsAccess;
   logisticsSummaryEnabled?: boolean;
@@ -96,6 +99,15 @@ function stateFor(method: EvaluationMethod) {
   if (method === "NONE") return "NOT_REQUIRED";
   if (["CLIENT_PHOTOS_DOCUMENTS", "WRITTEN_REPORT", "VOXME"].includes(method)) return "WAITING_CLIENT_INFO";
   return "READY_TO_SCHEDULE";
+}
+function canOpenScheduling(decision: SchedulingWorkspace["decision"] | undefined) {
+  return Boolean(decision && [
+    "READY_TO_SCHEDULE",
+    "SCHEDULED",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "CANCELLED",
+  ].includes(decision.state));
 }
 function localDateTime(date: string, time: string) {
   return new Date(`${date}T${time}:00`).toISOString();
@@ -152,6 +164,7 @@ export default function SurveyCasePanel({
   caseRef,
   authorization,
   access,
+  intakeMethod,
   communicationsEnabled = false,
   communicationsAccess,
   clientTemporaryAccessEnabled = false,
@@ -195,6 +208,7 @@ export default function SurveyCasePanel({
   const [activeView, setActiveView] =
     useState<SurveyWorkspaceView>("REQUEST");
   const loadVersion = useRef(0);
+  const openedIntake = useRef<string | null>(null);
 
   const load = useCallback(
     async (availabilityDate?: string, selectedLocation?: string) => {
@@ -211,8 +225,21 @@ export default function SurveyCasePanel({
           ]);
         if (version !== loadVersion.current) return;
         setWorkspace(nextWorkspace);
-        if (nextWorkspace.decision) setMethod(nextWorkspace.decision.method);
         setCommercialContext(nextCommercial);
+        const decision = nextWorkspace.decision;
+        const intakeKey = intakeMethod ? `${caseRef}:${intakeMethod}` : null;
+        if (intakeMethod && openedIntake.current !== intakeKey) {
+          openedIntake.current = intakeKey;
+          const requestedMethod = intakeMethod === "SPECIAL" ? "IN_PERSON" : intakeMethod;
+          const hasAppointment = nextWorkspace.assignment && nextWorkspace.assignment.status !== "CANCELLED";
+          const canPrepareRequest = access.canManage && !hasAppointment;
+          const readyForRequestedMethod = decision?.method === requestedMethod && decision.state === "READY_TO_SCHEDULE";
+          setMethod(canPrepareRequest ? requestedMethod : decision?.method ?? "IN_PERSON");
+          if (canPrepareRequest && intakeMethod === "SPECIAL") setInstruction("Visita especial. ");
+          setActiveView(canOpenScheduling(decision) && (!canPrepareRequest || readyForRequestedMethod) ? "SCHEDULE" : "REQUEST");
+        } else if (decision) {
+          setMethod(decision.method);
+        }
       } catch (cause) {
         if (version !== loadVersion.current) return;
         const code =
@@ -227,6 +254,8 @@ export default function SurveyCasePanel({
       api,
       caseRef,
       commercialApi,
+      access.canManage,
+      intakeMethod,
       onUnauthorized,
     ],
   );
@@ -508,16 +537,7 @@ export default function SurveyCasePanel({
       }),
     );
   };
-  const canOpenSchedule = Boolean(
-    workspace?.decision &&
-      [
-        "READY_TO_SCHEDULE",
-        "SCHEDULED",
-        "IN_PROGRESS",
-        "COMPLETED",
-        "CANCELLED",
-      ].includes(workspace.decision.state),
-  );
+  const canOpenSchedule = canOpenScheduling(workspace?.decision);
   const canOpenResult = Boolean(workspace?.assignment || workspace?.publication);
   if (!access.canView)
     return (

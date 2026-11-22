@@ -121,7 +121,7 @@ const airQuote = packageMeasures(1, 100, { mode: "AIR", factor: 6000, roundKg: 1
 assert.equal(airQuote.cwtBasis, "CHARGEABLE");
 assert.equal(packageQuantity({ basis: "CWT", factor: 1, minimumQuantity: 0, roundUp: false }, airQuote), "3.6817");
 
-const caseRecord = { id: "case-id", publicRef: ref(1100), mode: "EXPORT", routeRevision: 2 };
+const caseRecord = { id: "case-id", publicRef: ref(1100), mode: "EXPORT", routeRevision: 2, estimatedCbm: 20 };
 const logisticsRef = ref(1101);
 const selectionRef = ref(1102);
 const context = {
@@ -162,6 +162,8 @@ await assert.rejects(() => assertPackagePricingRule(packageConfiguration, contex
 }, null, [packageRules[1]]), /COSTING_PACKAGE_TRANSPORT_DUPLICATE/);
 let latestRules = packageRules;
 let storedBasis;
+let currentPreference = null;
+let publishedSurveyTotals = oldSurveyTotals;
 const tx = {
   $executeRaw: async () => {},
   pipelineCase: { findFirst: async ({ where }) => {
@@ -169,8 +171,11 @@ const tx = {
     return where.publicRef === caseRecord.publicRef ? caseRecord : null;
   } },
   pipelineCaseServiceRevision: { findFirst: async () => ({ selectionRef, revision: 2, modeSnapshot: "EXPORT", items: [{ serviceId: "service-id", kind: "PRIMARY", codeSnapshot: "MOVING" }] }) },
-  caseServiceConfigurationRevision: { findFirst: async () => null },
-  surveyPublication: { findFirst: async ({ select }) => select.totalsSnapshot ? ({ totalsSnapshot: oldSurveyTotals }) : null },
+  caseServiceConfigurationRevision: { findFirst: async ({ where }) => {
+    assert.equal(where.serviceSelectionRef, selectionRef);
+    return currentPreference ? { preferenceSnapshot: currentPreference } : null;
+  } },
+  surveyPublication: { findFirst: async ({ select }) => select.totalsSnapshot && publishedSurveyTotals ? ({ totalsSnapshot: publishedSurveyTotals }) : null },
   servicePackageVersion: { findMany: async ({ where }) => {
     assert.equal(where.tenantId, context.tenantId);
     assert.equal(where.services.some.serviceId, "service-id");
@@ -209,6 +214,17 @@ const options = await getCostingPackageOptions(database, context, caseRecord.pub
 assert.equal(options.volumeM3, 30);
 assert.equal(options.packages[0].versionRef, packageVersionRef);
 assert.equal(Object.hasOwn(options, "grossKg"), false);
+currentPreference = { quickQuote: { volumeM3: 32 } };
+assert.equal((await getCostingPackageOptions(database, context, caseRecord.publicRef)).volumeM3, 32);
+currentPreference.directQuote = { source: "ESTIMATE", volumeM3: 18.75 };
+assert.equal((await getCostingPackageOptions(database, context, caseRecord.publicRef)).volumeM3, 30);
+publishedSurveyTotals = null;
+assert.equal((await getCostingPackageOptions(database, context, caseRecord.publicRef)).volumeM3, 18.75);
+currentPreference.directQuote = { source: "CLIENT_LIST", clientList: "4 sofás", volumeM3: null };
+assert.equal((await getCostingPackageOptions(database, context, caseRecord.publicRef)).volumeM3, null);
+currentPreference = null;
+assert.equal((await getCostingPackageOptions(database, context, caseRecord.publicRef)).volumeM3, 20);
+publishedSurveyTotals = oldSurveyTotals;
 const packageCommand = signed("COSTING_CALCULATE", {
   caseRef: caseRecord.publicRef, logisticsPlanRevisionRef: logisticsRef, baseCurrency: "DOP",
   packageEstimate: { versionRef: packageVersionRef, volumeM3: "30", grossKg: null },

@@ -4,9 +4,11 @@ import { prisma } from "./db.js";
 import { PERMS, permsForRole } from "./rbac.js";
 import { CrmServicesError } from "./crmServicesContract.js";
 import { automaticServiceConfigurationCode } from "./serviceConfigurationCode.js";
-import { normalizeCaseConfigurationSave, normalizeCatalogModesSave, normalizeConfigurationConflictResolve, normalizeMaterialPolicySave, normalizeModeSave, normalizePackageSave } from "./servicePackagesContract.js";
+import { normalizeCaseConfigurationSave, normalizeCaseIntakeSave, normalizeCatalogModesSave, normalizeConfigurationConflictResolve, normalizeMaterialPolicySave, normalizeModeSave, normalizePackageSave } from "./servicePackagesContract.js";
 
 const ALLOWED_ROLES = new Set(["A", "V"]);
+const CONFIG_PRECEDENCE = Object.freeze(["CASE_OVERRIDE", "COMMERCIAL_AGREEMENT", "SERVICE_PACKAGE", "SERVICE_MODE_DEFAULT", "MANUAL_RESOLUTION"]);
+const INTAKE_PREFERENCE_FIELDS = ["serviceStartDate", "directQuote", "directQuoteRecordedAt"];
 const fail = (code, status = 400) => { throw new CrmServicesError(code, status); };
 const contextText = (value) => { if (typeof value !== "string" || !value || value.length > 191) fail("SERVICE_PACKAGES_RESOURCE_NOT_FOUND", 404); return value; };
 const digest = (value) => createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
@@ -161,25 +163,143 @@ const caseConfigInclude = { items: { orderBy: { position: "asc" } }, conflicts: 
 export async function getCaseServiceConfiguration(context, caseRef, database = prisma) { try { return await transaction(database, async (tx) => { const who = await actor(tx, context, PERMS.SERVICES_CASE_CONFIG_VIEW); const pipelineCase = await scopedCase(tx, who, caseRef); const current = await tx.caseServiceConfigurationRevision.findFirst({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id }, include: caseConfigInclude, orderBy: { revision: "desc" } }); const packages = await tx.servicePackageVersion.findMany({ where: { tenantId: who.tenantId, state: "PUBLISHED", modes: { some: { mode: { code: pipelineCase.mode } } } }, include: packageInclude, orderBy: [{ package: { code: "asc" } }] }); const policies = await tx.serviceMaterialPolicyVersion.findMany({ where: { tenantId: who.tenantId, state: "PUBLISHED", OR: [{ modeId: null }, { mode: { code: pipelineCase.mode } }] }, include: policyInclude, orderBy: [{ policy: { code: "asc" } }] }); return Object.freeze({ caseRef: pipelineCase.publicRef, mode: pipelineCase.mode, current: publicCaseConfiguration(current), packages: Object.freeze(packages.map(publicPackage)), materialPolicies: Object.freeze(policies.map(publicPolicy)), precedence: Object.freeze(["CASE_OVERRIDE", "COMMERCIAL_AGREEMENT", "SERVICE_PACKAGE", "SERVICE_MODE_DEFAULT", "MANUAL_RESOLUTION"]) }); }); } catch (error) { throw databaseError(error); } }
 
 function configItem(item, position) { return { id: randomUUID(), kind: item.kind, source: item.source, authorityRef: item.authorityRef, codeSnapshot: item.code, nameSnapshot: item.name, quantity: item.quantity, unitCode: item.unitCode, hours: item.hours, days: item.days, disposition: item.disposition, chargeType: item.chargeType, proportion: item.proportion, details: item.details || {}, position }; }
+
+function selectionConfigurationItems(selection) {
+  return selection.items.filter((item) => item.kind !== "OTHER").map((item, position) => configItem({
+    kind: item.kind === "PRIMARY" ? "PRIMARY_SERVICE" : "COMPLEMENTARY_SERVICE",
+    source: "SERVICE_DEFAULT", authorityRef: item.serviceRefSnapshot, code: item.codeSnapshot, name: item.nameSnapshot,
+    details: { catalogVersion: item.catalogVersionSnapshot },
+  }, position));
+}
+
+function belongsToSelection(configuration, selection) {
+  return configuration?.serviceSelectionRef === selection.selectionRef &&
+    configuration.serviceSelectionRevision === selection.revision && configuration.modeCodeSnapshot === selection.modeSnapshot;
+}
+
+async function replayCaseConfiguration(tx, who, pipelineCase, command) {
+  const replay = await prior(tx, who.tenantId, command);
+  if (!replay) return null;
+  const row = await tx.caseServiceConfigurationRevision.findFirst({
+    where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, configurationRef: replay.targetRef },
+    include: caseConfigInclude,
+  });
+  if (!row) fail("SERVICE_PACKAGES_IDEMPOTENCY_CONFLICT", 409);
+  return Object.freeze({ configuration: publicCaseConfiguration(row), replayed: true });
+}
+
+export async function saveCaseIntake(context, caseRef, input, database = prisma) {
+  const command = normalizeCaseIntakeSave(input);
+  try {
+    return await transaction(database, async (tx) => {
+      await limits(tx);
+      const who = await actor(tx, context, PERMS.SERVICES_CASE_CONFIG_UPDATE);
+      await commandLock(tx, who.tenantId, command.requestId);
+      const pipelineCase = await scopedCase(tx, who, caseRef);
+      const replay = await replayCaseConfiguration(tx, who, pipelineCase, command);
+      if (replay) return replay;
+      await commandLock(tx, who.tenantId, `CASE_CONFIGURATION:${pipelineCase.id}`);
+      const where = { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id };
+      const current = await tx.caseServiceConfigurationRevision.findFirst({
+        where, orderBy: { revision: "desc" }, include: caseConfigInclude,
+      });
+      const revision = (current?.revision ?? 0) + 1;
+      if (revision - 1 !== command.expectedRevision) fail("SERVICE_PACKAGES_VERSION_CONFLICT", 409);
+      const selection = await tx.pipelineCaseServiceRevision.findFirst({
+        where, orderBy: { revision: "desc" }, include: { items: { orderBy: { position: "asc" } } },
+      });
+      if (!selection || selection.selectionRef !== command.serviceSelectionRef ||
+        selection.revision !== command.serviceSelectionRevision || selection.modeSnapshot !== pipelineCase.mode) {
+        fail("SERVICE_PACKAGES_SELECTION_INVALID", 409);
+      }
+
+      const base = belongsToSelection(current, selection) ? current : null;
+      const preferenceSnapshot = { ...base?.preferenceSnapshot, serviceStartDate: command.intake.serviceStartDate };
+      const directQuote = command.intake.directQuote;
+      if (directQuote === null) {
+        delete preferenceSnapshot.directQuote;
+        delete preferenceSnapshot.directQuoteRecordedAt;
+      } else if (directQuote !== undefined) {
+        const previousQuote = preferenceSnapshot.directQuote;
+        const unchanged = previousQuote && Object.entries(directQuote).every(([key, value]) => previousQuote[key] === value);
+        preferenceSnapshot.directQuote = directQuote;
+        if (!unchanged || !preferenceSnapshot.directQuoteRecordedAt) preferenceSnapshot.directQuoteRecordedAt = new Date().toISOString();
+      }
+      const pinnedReferences = {
+        packageVersionId: base?.packageVersionId ?? null,
+        packageRefSnapshot: base?.packageRefSnapshot ?? null,
+        packageVersionSnapshot: base?.packageVersionSnapshot ?? null,
+        materialPolicyVersionId: base?.materialPolicyVersionId ?? null,
+        materialPolicyRefSnapshot: base?.materialPolicyRefSnapshot ?? null,
+        materialPolicyVersionSnapshot: base?.materialPolicyVersionSnapshot ?? null,
+        surveyPublicationRef: base?.surveyPublicationRef ?? null,
+        commercialAgreementRef: base?.commercialAgreementRef ?? null,
+      };
+      const items = base
+        ? base.items.map(({ id: _id, itemRef: _ref, configurationId: _config, tenantId: _tenant, ...item }) => ({ id: randomUUID(), ...item }))
+        : selectionConfigurationItems(selection);
+      const conflicts = (base?.conflicts ?? []).map(({ id: _id, conflictRef: _ref, configurationId: _config, tenantId: _tenant, resolution, ...conflict }) => ({
+        id: randomUUID(), ...conflict, ...(resolution !== null ? { resolution } : {}),
+      }));
+      const durationSnapshot = base?.durationSnapshot ?? {};
+      const precedenceSnapshot = base?.precedenceSnapshot ?? {
+        order: CONFIG_PRECEDENCE, agreementApplied: false, surveyFactsApplied: false, unresolvedConflict: false,
+      };
+      const logicalSha256 = digest({
+        mode: pipelineCase.mode, selection: selection.selectionRef, previous: base?.logicalSha256 ?? null,
+        preferenceSnapshot, items: items.map(({ id: _id, ...item }) => item),
+        conflicts: conflicts.map(({ id: _id, ...conflict }) => conflict),
+      });
+      const row = await tx.caseServiceConfigurationRevision.create({ data: {
+        id: randomUUID(), ...where, revision, modeCodeSnapshot: pipelineCase.mode,
+        serviceSelectionRef: selection.selectionRef, serviceSelectionRevision: selection.revision,
+        ...pinnedReferences, preferenceSnapshot, durationSnapshot, precedenceSnapshot, logicalSha256,
+        source: base?.source ?? "MANUAL_RESOLUTION",
+        createdByMembershipId: who.membershipId, createdByUserId: who.userId,
+      } });
+      if (items.length) await tx.caseServiceConfigurationItem.createMany({
+        data: items.map((item) => ({ ...item, tenantId: who.tenantId, configurationId: row.id })),
+      });
+      if (conflicts.length) await tx.serviceConfigurationConflict.createMany({
+        data: conflicts.map((conflict) => ({ ...conflict, tenantId: who.tenantId, configurationId: row.id })),
+      });
+      await journal(tx, who, command, row.configurationRef, revision, "CASE_SERVICE_CONFIGURATION", "CASE_INTAKE_SAVED", {
+        caseRef: pipelineCase.publicRef, revision, logicalSha256, itemCount: items.length,
+      });
+      const result = await tx.caseServiceConfigurationRevision.findFirst({ where: { id: row.id }, include: caseConfigInclude });
+      return Object.freeze({ configuration: publicCaseConfiguration(result), replayed: false });
+    }, true);
+  } catch (error) { throw databaseError(error); }
+}
+
 export async function saveCaseServiceConfiguration(context, caseRef, input, database = prisma) {
   const command = normalizeCaseConfigurationSave(input);
   try { return await transaction(database, async (tx) => {
-    await limits(tx); const who = await actor(tx, context, PERMS.SERVICES_CASE_CONFIG_UPDATE); await commandLock(tx, who.tenantId, command.requestId); const replay = await prior(tx, who.tenantId, command); if (replay) { const row = await tx.caseServiceConfigurationRevision.findFirst({ where: { tenantId: who.tenantId, configurationRef: replay.targetRef }, include: caseConfigInclude }); return Object.freeze({ configuration: publicCaseConfiguration(row), replayed: true }); }
-    const pipelineCase = await scopedCase(tx, who, caseRef); const current = await tx.caseServiceConfigurationRevision.findFirst({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id }, orderBy: { revision: "desc" } }); const revision = current?.revision || 0; if (revision !== command.expectedRevision) fail("SERVICE_PACKAGES_VERSION_CONFLICT", 409);
+    await limits(tx); const who = await actor(tx, context, PERMS.SERVICES_CASE_CONFIG_UPDATE); await commandLock(tx, who.tenantId, command.requestId);
+    const pipelineCase = await scopedCase(tx, who, caseRef);
+    const replay = await replayCaseConfiguration(tx, who, pipelineCase, command); if (replay) return replay;
+    await commandLock(tx, who.tenantId, `CASE_CONFIGURATION:${pipelineCase.id}`);
+    const current = await tx.caseServiceConfigurationRevision.findFirst({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id }, orderBy: { revision: "desc" } }); const revision = current?.revision || 0; if (revision !== command.expectedRevision) fail("SERVICE_PACKAGES_VERSION_CONFLICT", 409);
     const selection = await tx.pipelineCaseServiceRevision.findFirst({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, selectionRef: command.serviceSelectionRef, revision: command.serviceSelectionRevision }, include: { items: { orderBy: { position: "asc" } } } }); if (!selection || selection.modeSnapshot !== pipelineCase.mode) fail("SERVICE_PACKAGES_SELECTION_INVALID", 409);
     const packageVersion = command.packageVersionRef ? await packageByRef(tx, who.tenantId, command.packageVersionRef) : null; if (packageVersion && packageVersion.state !== "PUBLISHED") fail("SERVICE_PACKAGES_STATE_INVALID", 409);
     const packageMode = packageVersion?.modes.some((entry) => entry.mode.code === pipelineCase.mode) ?? true; const selectedCodes = new Set(selection.items.filter((item) => item.kind !== "OTHER").map((item) => item.codeSnapshot)); const packageCodes = new Set(packageVersion?.services.map((item) => item.service.code) || []); if (!packageMode || (packageVersion && [...packageCodes].some((code) => !selectedCodes.has(code)))) fail("SERVICE_PACKAGES_PACKAGE_SELECTION_MISMATCH", 409);
     const policy = command.materialPolicyVersionRef ? await policyByVersionRef(tx, who.tenantId, command.materialPolicyVersionRef) : null; if (policy && policy.state !== "PUBLISHED") fail("SERVICE_PACKAGES_STATE_INVALID", 409); if (policy?.packageVersionId && policy.packageVersionId !== packageVersion?.id) fail("SERVICE_PACKAGES_POLICY_SCOPE_MISMATCH", 409);
     const survey = command.surveyPublicationRef ? await tx.surveyPublication.findFirst({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, publicationRef: command.surveyPublicationRef, status: "CURRENT" } }) : null; if (command.surveyPublicationRef && !survey) fail("SERVICE_PACKAGES_RESOURCE_NOT_FOUND", 404);
     const agreementContext = command.commercialAgreementRef ? await tx.pipelineCaseCommercialContextVersion.findFirst({ where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, state: "PUBLISHED", pricingAgreement: { agreementRef: command.commercialAgreementRef, state: "PUBLISHED" } }, include: { pricingAgreement: true }, orderBy: { version: "desc" } }) : null; if (command.commercialAgreementRef && !agreementContext) fail("SERVICE_PACKAGES_RESOURCE_NOT_FOUND", 404);
-    const items = []; for (const item of selection.items.filter((entry) => entry.kind !== "OTHER")) items.push(configItem({ kind: item.kind === "PRIMARY" ? "PRIMARY_SERVICE" : "COMPLEMENTARY_SERVICE", source: "SERVICE_DEFAULT", authorityRef: item.serviceRefSnapshot, code: item.codeSnapshot, name: item.nameSnapshot, details: { catalogVersion: item.catalogVersionSnapshot } }, items.length));
+    const items = selectionConfigurationItems(selection);
     for (const item of packageVersion?.requirements || []) items.push(configItem({ kind: item.kind, source: "PACKAGE", authorityRef: item.requirementRef, code: item.code, name: item.name, quantity: item.quantity, unitCode: item.unitCode, hours: item.hours, days: item.days, disposition: item.disposition, chargeType: item.chargeType, details: { phaseCode: item.phaseCode, configuration: item.configuration } }, items.length));
     for (const line of policy?.lines || []) items.push(configItem({ kind: line.material ? "MATERIAL" : "ASSET", source: "MATERIAL_POLICY", authorityRef: line.lineRef, code: line.material?.code || line.assetModel?.code, name: line.material?.name || line.assetModel?.name, disposition: line.disposition, chargeType: line.chargeType, proportion: line.proportion, details: { materialClass: line.materialClass, conditions: line.conditions } }, items.length));
     for (const item of command.overrides) items.push(configItem(item, items.length));
     const competing = await tx.serviceMaterialPolicyVersion.findMany({ where: { tenantId: who.tenantId, state: "PUBLISHED", standardCode: policy?.standardCode, preferenceCode: policy?.preferenceCode, packageVersionId: packageVersion?.id || null, modeId: policy?.modeId || null, serviceId: policy?.serviceId || null }, select: { versionRef: true } });
-    const precedence = { order: ["CASE_OVERRIDE", "COMMERCIAL_AGREEMENT", "SERVICE_PACKAGE", "SERVICE_MODE_DEFAULT", "MANUAL_RESOLUTION"], agreementApplied: Boolean(agreementContext), surveyFactsApplied: Boolean(survey), unresolvedConflict: competing.length > 1 };
-    const logical = digest({ mode: pipelineCase.mode, selection: command.serviceSelectionRef, package: packageVersion?.versionRef || null, policy: policy?.versionRef || null, preference: command.preference, duration: command.duration, items: items.map(({ id: _id, ...item }) => item) });
-    const row = await tx.caseServiceConfigurationRevision.create({ data: { id: randomUUID(), tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, revision: revision + 1, modeCodeSnapshot: pipelineCase.mode, serviceSelectionRef: command.serviceSelectionRef, serviceSelectionRevision: command.serviceSelectionRevision, packageVersionId: packageVersion?.id || null, packageRefSnapshot: packageVersion?.package.packageRef || null, packageVersionSnapshot: packageVersion?.version || null, materialPolicyVersionId: policy?.id || null, materialPolicyRefSnapshot: policy?.policy.policyRef || null, materialPolicyVersionSnapshot: policy?.version || null, surveyPublicationRef: survey?.publicationRef || null, commercialAgreementRef: agreementContext?.pricingAgreement?.agreementRef || null, preferenceSnapshot: command.preference, durationSnapshot: command.duration, precedenceSnapshot: precedence, logicalSha256: logical, source: command.source, createdByMembershipId: who.membershipId, createdByUserId: who.userId } });
+    const precedence = { order: CONFIG_PRECEDENCE, agreementApplied: Boolean(agreementContext), surveyFactsApplied: Boolean(survey), unresolvedConflict: competing.length > 1 };
+    const preference = { ...command.preference };
+    const previousIntake = belongsToSelection(current, selection) ? current.preferenceSnapshot : {};
+    for (const field of INTAKE_PREFERENCE_FIELDS) {
+      delete preference[field];
+      if (Object.hasOwn(previousIntake, field)) preference[field] = previousIntake[field];
+    }
+    const logical = digest({ mode: pipelineCase.mode, selection: command.serviceSelectionRef, package: packageVersion?.versionRef || null, policy: policy?.versionRef || null, preference, duration: command.duration, items: items.map(({ id: _id, ...item }) => item) });
+    const row = await tx.caseServiceConfigurationRevision.create({ data: { id: randomUUID(), tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, revision: revision + 1, modeCodeSnapshot: pipelineCase.mode, serviceSelectionRef: command.serviceSelectionRef, serviceSelectionRevision: command.serviceSelectionRevision, packageVersionId: packageVersion?.id || null, packageRefSnapshot: packageVersion?.package.packageRef || null, packageVersionSnapshot: packageVersion?.version || null, materialPolicyVersionId: policy?.id || null, materialPolicyRefSnapshot: policy?.policy.policyRef || null, materialPolicyVersionSnapshot: policy?.version || null, surveyPublicationRef: survey?.publicationRef || null, commercialAgreementRef: agreementContext?.pricingAgreement?.agreementRef || null, preferenceSnapshot: preference, durationSnapshot: command.duration, precedenceSnapshot: precedence, logicalSha256: logical, source: command.source, createdByMembershipId: who.membershipId, createdByUserId: who.userId } });
     if (items.length) await tx.caseServiceConfigurationItem.createMany({ data: items.map((item) => ({ ...item, tenantId: who.tenantId, configurationId: row.id })) });
     if (competing.length > 1) await tx.serviceConfigurationConflict.create({ data: { id: randomUUID(), tenantId: who.tenantId, configurationId: row.id, kind: "EQUIVALENT_MATERIAL_POLICIES", competingAuthorityRefs: competing.map((entry) => entry.versionRef) } });
     await journal(tx, who, command, row.configurationRef, row.revision, "CASE_SERVICE_CONFIGURATION", competing.length > 1 ? "CASE_CONFIGURATION_CONFLICTED" : revision ? "CASE_CONFIGURATION_OVERRIDDEN" : "CASE_CONFIGURATION_CREATED", { caseRef: pipelineCase.publicRef, revision: row.revision, logicalSha256: logical, itemCount: items.length });

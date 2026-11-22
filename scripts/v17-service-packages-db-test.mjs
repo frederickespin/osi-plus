@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { CANONICAL_MIGRATIONS, validateAppliedMigrationHistory } from "./canonical-migrations.mjs";
 import { validateV17ServicesTestUrl, verifyV17ServicesLocalDatabase } from "./v17-services-local-target.mjs";
-import { getCaseServiceConfiguration, listMaterialPolicies, listServiceModes, listServicePackages, resolveServiceConfigurationConflict, saveCaseServiceConfiguration, saveMaterialPolicy, saveServiceCatalogModes, saveServiceMode, saveServicePackage } from "../api/_lib/servicePackagesDomain.js";
+import { getCaseServiceConfiguration, listMaterialPolicies, listServiceModes, listServicePackages, resolveServiceConfigurationConflict, saveCaseIntake, saveCaseServiceConfiguration, saveMaterialPolicy, saveServiceCatalogModes, saveServiceMode, saveServicePackage } from "../api/_lib/servicePackagesDomain.js";
 import { serviceConfigurationPayloadHash } from "../api/_lib/servicePackagesContract.js";
 import { listServiceMaterialResources } from "../api/_lib/serviceMaterialResources.js";
 
@@ -45,6 +45,58 @@ try {
   const latestWorkspace = await getCaseServiceConfiguration(seller, pipelineCase.publicRef, prisma); const openConflict = latestWorkspace.current.conflicts.find((item) => item.state === "OPEN"); pass(latestWorkspace.current.revision === 2 && Boolean(openConflict), "revisión concurrente conserva conflicto abierto"); const conflictUnsigned = { expectedState: "OPEN", resolutionCode: "SELECTED_AUTHORITY", selectedAuthorityRef: competingPolicy.policy.versionRef }; const conflictRace = await Promise.allSettled([resolveServiceConfigurationConflict(seller, openConflict.conflictRef, signed("CONFIGURATION_CONFLICT_RESOLVE", { requestId: request("resolve-a"), ...conflictUnsigned }), prisma), resolveServiceConfigurationConflict(seller, openConflict.conflictRef, signed("CONFIGURATION_CONFLICT_RESOLVE", { requestId: request("resolve-b"), ...conflictUnsigned }), prisma)]); pass(conflictRace.filter((item) => item.status === "fulfilled").length === 1 && conflictRace.filter((item) => item.status === "rejected" && item.reason?.status === 409).length === 1, "resolución concurrente tiene un ganador"); pass(await prisma.serviceConfigurationConflict.count({ where: { tenantId: tenant.id, conflictRef: openConflict.conflictRef, state: "RESOLVED" } }) === 1, "conflicto resuelto y auditado una vez");
   const packageUnsigned = Object.fromEntries(Object.entries(packageCommand).filter(([key]) => key !== "payloadHash")); const packageRace = await Promise.allSettled([saveServicePackage(admin, signed("PACKAGE_SAVE", { ...packageUnsigned, requestId: request("publish-a"), packageRef: createdPackage.package.packageRef, expectedVersion: 1, name: "Mudanza local v2 A" }), prisma), saveServicePackage(admin, signed("PACKAGE_SAVE", { ...packageUnsigned, requestId: request("publish-b"), packageRef: createdPackage.package.packageRef, expectedVersion: 1, name: "Mudanza local v2 B" }), prisma)]); pass(packageRace.filter((item) => item.status === "fulfilled").length === 1 && packageRace.filter((item) => item.status === "rejected" && item.reason?.status === 409).length === 1, "publicación/edición concurrente tiene una versión ganadora"); pass(await prisma.servicePackageVersion.count({ where: { tenantId: tenant.id, packageId: (await prisma.servicePackage.findFirstOrThrow({ where: { tenantId: tenant.id, packageRef: createdPackage.package.packageRef } })).id, state: "PUBLISHED" } }) === 1, "una sola versión publicada por paquete");
   const foreignCase = await prisma.pipelineCase.create({ data: { id: `sp_fc_${marker}`, tenantId: other.id, caseCode: `SPX-${marker}`, mode: "LOCAL", serviceType: "PENDING_DEFINITION", customerType: "L4_PERSONAL", ownerName: "None", originLocation: "Synthetic", destinationLocation: "Synthetic" } }); await rejected("SERVICE_PACKAGES_RESOURCE_NOT_FOUND", () => getCaseServiceConfiguration(seller, foreignCase.publicRef, prisma)); await rejected("SERVICE_PACKAGES_PERMISSION_FORBIDDEN", () => listServicePackages(seller, prisma)); pass((await listServiceModes(admin, prisma)).length === 1 && (await listServicePackages(admin, prisma)).length === 2, "lecturas administrativas cerradas"); pass(await prisma.serviceConfigurationCommand.count({ where: { tenantId: tenant.id } }) === await prisma.serviceConfigurationAuditEvent.count({ where: { tenantId: tenant.id } }), "cada comando tiene auditoría");
+  const createIntakeCommand = (expectedRevision, intake, plan = selection) => signed("CASE_INTAKE_SAVE", {
+    requestId: request("intake"), expectedRevision, serviceSelectionRef: plan.selectionRef, serviceSelectionRevision: plan.revision, intake,
+  });
+  const directQuote = {
+    source: "CLIENT_LIST", clientList: "Sofá\nCajas", volumeM3: null,
+    originAccess: "Escalera", destinationAccess: null, specialWork: "Desmontaje",
+  };
+  const directRequest = createIntakeCommand(2, { serviceStartDate: "2028-02-29", directQuote });
+  const direct = (await saveCaseIntake(seller, pipelineCase.publicRef, directRequest, prisma)).configuration;
+  pass(direct.revision === 3 && direct.serviceSelectionRef === selection.selectionRef, "el ingreso incrementa revisión con plan vigente");
+  assert.deepEqual(direct.preference.directQuote, directQuote);
+  pass(direct.preference.serviceStartDate === "2028-02-29" && Number.isFinite(Date.parse(direct.preference.directQuoteRecordedAt))
+    && direct.preference.materialPreference === latestWorkspace.current.preference.materialPreference, "el listado sin medidas, la fecha y la preparación previa permanecen disponibles");
+  assert.deepEqual(direct.duration, latestWorkspace.current.duration);
+  const itemFacts = (items) => items.map(({ itemRef: _ref, ...item }) => item);
+  assert.deepEqual(itemFacts(direct.items), itemFacts(latestWorkspace.current.items));
+  pass(direct.packageRef === latestWorkspace.current.packageRef && direct.packageVersion === latestWorkspace.current.packageVersion
+    && direct.materialPolicyVersion === latestWorkspace.current.materialPolicyVersion && direct.conflicts[0].state === "RESOLVED"
+    && direct.source === latestWorkspace.current.source, "el ingreso conserva el paquete reemplazado, la política, los ajustes y el conflicto resuelto");
+  const intakeReplay = await saveCaseIntake(seller, pipelineCase.publicRef, directRequest, prisma);
+  pass(intakeReplay.replayed && intakeReplay.configuration.configurationRef === direct.configurationRef, "el guardado preliminar reintenta sin crear otra versión");
+  await rejected("SERVICE_PACKAGES_RESOURCE_NOT_FOUND", () => saveCaseIntake(seller, foreignCase.publicRef, directRequest, prisma));
+  await rejected("SERVICE_PACKAGES_VERSION_CONFLICT", () => saveCaseIntake(seller, pipelineCase.publicRef,
+    createIntakeCommand(2, { serviceStartDate: "2028-03-01" }), prisma));
+  const dateOnly = (await saveCaseIntake(seller, pipelineCase.publicRef, createIntakeCommand(3, { serviceStartDate: "2028-03-01" }), prisma)).configuration;
+  pass(dateOnly.preference.serviceStartDate === "2028-03-01" && dateOnly.preference.directQuoteRecordedAt === direct.preference.directQuoteRecordedAt,
+    "editar solo la fecha conserva el levantamiento anterior y su momento de registro");
+  const edited = (await saveCaseServiceConfiguration(seller, pipelineCase.publicRef, signed("CASE_CONFIGURATION_SAVE", {
+    ...configUnsigned, requestId: request("configuration-after-intake"), expectedRevision: 4, packageVersionRef: null,
+    materialPolicyVersionRef: null, source: "MANUAL_RESOLUTION", preference: { materialPreference: "NEW" },
+  }), prisma)).configuration;
+  assert.deepEqual(edited.preference.directQuote, directQuote);
+  pass(edited.preference.directQuoteRecordedAt === direct.preference.directQuoteRecordedAt && edited.preference.serviceStartDate === "2028-03-01"
+    && edited.preference.materialPreference === "NEW", "la configuración ordinaria conserva el ingreso de la misma revisión del plan");
+  const nextSelection = await prisma.pipelineCaseServiceRevision.create({ data: {
+    tenantId: tenant.id, pipelineCaseId: pipelineCase.id, revision: 2, modeSnapshot: "LOCAL", source: "MANUAL",
+    createdByMembershipId: adminMembership.id, createdByUserId: adminUser.id,
+  } });
+  await prisma.pipelineCaseServiceItem.create({ data: {
+    tenantId: tenant.id, revisionId: nextSelection.id, serviceId: primary.id, kind: "PRIMARY", source: "MANUAL", position: 0,
+    serviceRefSnapshot: primary.serviceRef, codeSnapshot: primary.code, nameSnapshot: primary.name, catalogVersionSnapshot: 1,
+  } });
+  await rejected("SERVICE_PACKAGES_SELECTION_INVALID", () => saveCaseIntake(seller, pipelineCase.publicRef,
+    createIntakeCommand(5, { serviceStartDate: "2028-03-02" }), prisma));
+  const next = (await saveCaseIntake(seller, pipelineCase.publicRef,
+    createIntakeCommand(5, { serviceStartDate: "2028-03-02" }, nextSelection), prisma)).configuration;
+  pass(next.revision === 6 && next.items.length === 1 && next.items[0].kind === "PRIMARY_SERVICE" && next.packageRef === null
+    && !Object.hasOwn(next.preference, "directQuote") && !Object.hasOwn(next.preference, "directQuoteRecordedAt"),
+  "el ingreso de un nuevo plan usa sus propios servicios y mantiene las notas anteriores en el historial");
+  pass((await saveCaseIntake(seller, pipelineCase.publicRef, directRequest, prisma)).configuration.configurationRef === direct.configurationRef,
+    "el reintento anterior solo devuelve su referencia histórica");
+
   const unsigned = (value) => Object.fromEntries(Object.entries(value).filter(([key]) => key !== "payloadHash"));
   const automaticModeCommand = signed("MODE_SAVE", { ...unsigned(modeCommand), requestId: request("auto-mode"), code: null, scope: "EXPORT", name: "Exportación sintética", state: "PUBLISHED" });
   const automaticMode = await saveServiceMode(admin, automaticModeCommand, prisma);

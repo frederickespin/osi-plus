@@ -364,11 +364,12 @@ export async function getCostingPackageOptions(prisma, context, caseRef) {
     prisma.caseServiceConfigurationRevision.findFirst({ where, orderBy: { revision: "desc" }, select: { preferenceSnapshot: true } }),
     prisma.surveyPublication.findFirst({ where: { ...where, status: "CURRENT" }, select: { totalsSnapshot: true } }),
   ]);
-  const volumeM3 = [
-    configuration?.preferenceSnapshot?.quickQuote?.volumeM3,
-    survey?.totalsSnapshot?.totalVolumeM3 ?? survey?.totalsSnapshot?.volumeM3,
-    pipelineCase.estimatedCbm,
-  ].map(Number).find((value) => Number.isFinite(value) && value > 0) ?? null;
+  const preference = configuration?.preferenceSnapshot;
+  const publishedVolume = survey?.totalsSnapshot?.totalVolumeM3 ?? survey?.totalsSnapshot?.volumeM3;
+  const candidates = preference?.directQuote
+    ? [publishedVolume, preference.directQuote.volumeM3]
+    : [preference?.quickQuote?.volumeM3, publishedVolume, pipelineCase.estimatedCbm];
+  const volumeM3 = candidates.map(Number).find((value) => Number.isFinite(value) && value > 0) ?? null;
   return {
     hasService: eligible.hasService,
     packages: eligible.packages.map(({ rule, ...pkg }) => ({

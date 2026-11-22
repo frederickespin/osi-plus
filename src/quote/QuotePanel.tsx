@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, ArrowDown, ArrowUp, Check, RefreshCw, Send } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp, Check, ChevronDown, RefreshCw, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { QuoteUiAccess } from "./access";
@@ -7,14 +7,18 @@ import { quoteApi, type QuoteCase, type QuoteProposal } from "./api";
 import { costingApi, type CostingPackageEstimate, type CostingRevision } from "@/costing/api";
 import { PackageCostingForm } from "@/costing/PackageCosting";
 import type { CommunicationsAccess } from "@/communications/access";
+import type { CaseCommercialIntake } from "@/commercial-crm/caseCommercialIntake";
 import { pricingQuantity } from "@/costing/pricingInput";
 import ProposalComposer from "./ProposalComposer";
 
 type Props = Readonly<{
   caseRef: string; authorization?: string; access: QuoteUiAccess; defaultPayer?: string; canPreparePackage?: boolean;
+  intake?: CaseCommercialIntake;
   communicationsEnabled?: boolean; communicationsAccess?: CommunicationsAccess;
-  onOpenCommunications?(quoteRevisionRef: string): void; onOpenTransport?(): void; onUnauthorized(): void;
+  onOpenCommunications?(quoteRevisionRef: string): void; onOpenTransport?(): void; onOpenCosts?(): void; onUnauthorized(): void;
 }>;
+
+const SERVICE_DATE = new Intl.DateTimeFormat("es-DO", { dateStyle: "medium", timeZone: "UTC" });
 
 function money(value: number | string | null | undefined, currency: string) {
   if (value == null) return "Pendiente";
@@ -71,7 +75,38 @@ function PackageQuoteSummary({ proposal }: { proposal: QuoteProposal }) {
   </div>;
 }
 
-export default function QuotePanel({ caseRef, authorization, access, defaultPayer, canPreparePackage = false, communicationsEnabled = false, communicationsAccess, onOpenCommunications, onOpenTransport, onUnauthorized }: Props) {
+function QuoteIntake({ intake }: { intake: CaseCommercialIntake }) {
+  const { directQuote, serviceStartDate } = intake;
+  const serviceDate = Date.parse(serviceStartDate ?? "");
+  const showDate = Boolean(serviceStartDate) && Number.isFinite(serviceDate);
+  if (!directQuote && !showDate) return null;
+  const capturedDetails = [
+    ["Listado del cliente", directQuote?.clientList],
+    ["Acceso en origen", directQuote?.originAccess],
+    ["Acceso en destino", directQuote?.destinationAccess],
+    ["Trabajos especiales", directQuote?.specialWork],
+  ];
+
+  return <details className="group border-b border-slate-200 px-3 text-xs" data-testid="quote-intake">
+    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 py-2 text-slate-600 [&::-webkit-details-marker]:hidden">
+      <ChevronDown aria-hidden="true" className="size-4 shrink-0 transition-transform group-open:rotate-180" />
+      <strong className="text-[#003366]">Datos para cotizar</strong>
+      {directQuote?.volumeM3 === null && <span className="font-semibold text-amber-800">Volumen pendiente en Servicios</span>}
+    </summary>
+    <dl className="grid min-w-0 gap-2 pb-3 pl-7 sm:grid-cols-2">
+      {showDate && <div><dt className="font-semibold text-slate-600">Fecha prevista del servicio</dt>
+        <dd><time dateTime={serviceStartDate ?? undefined}>{SERVICE_DATE.format(serviceDate)}</time></dd></div>}
+      {directQuote && <div><dt className="font-semibold text-slate-600">Fuente</dt>
+        <dd>{directQuote.source === "CLIENT_LIST" ? "Listado del cliente" : "Estimación preliminar"}
+          {directQuote.volumeM3 !== null && <> · {pricingQuantity.format(directQuote.volumeM3)} m³</>}</dd></div>}
+      {capturedDetails.map(([label, detail]) => detail && <div className="min-w-0" key={label}>
+        <dt className="font-semibold text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words">{detail}</dd>
+      </div>)}
+    </dl>
+  </details>;
+}
+
+export default function QuotePanel({ caseRef, authorization, access, defaultPayer, canPreparePackage = false, intake, communicationsEnabled = false, communicationsAccess, onOpenCommunications, onOpenTransport, onOpenCosts, onUnauthorized }: Props) {
   const [value, setValue] = useState<QuoteCase | null>(null);
   const [costing, setCosting] = useState<CostingRevision | null>(null);
   const [activeRef, setActiveRef] = useState<string | null>(null);
@@ -97,10 +132,13 @@ export default function QuotePanel({ caseRef, authorization, access, defaultPaye
   const accepted = useMemo(() => value?.proposals.find((proposal) => proposal.state === "ACCEPTED") || null, [value]);
   const nextPosition = [1, 2, 3].find((position) => !value?.proposals.some((proposal) => proposal.position === position));
   const offerPackage = canPreparePackage && access.canCreate && !accepted && Boolean(nextPosition);
-  const proposalCosting = prepared ?? (costing?.packagePricing && offerPackage ? null : costing);
+  const costingForProposal = prepared ?? (costing?.packagePricing && offerPackage ? null : costing);
+  const directQuoteRecordedAt = Date.parse(intake?.directQuoteRecordedAt ?? "");
+  const staleCosting = Boolean(intake?.directQuote && costingForProposal && Date.parse(costingForProposal.publishedAt) < directQuoteRecordedAt);
+  const proposalCosting = staleCosting ? null : costingForProposal;
 
   async function preparePackage(estimate: CostingPackageEstimate, currency: string, includeRoute: boolean) {
-    if (packageBusy) return;
+    if (packageBusy || !offerPackage) return;
     setPackageBusy(true);
     setPackageDirty(true);
     setMissingTransport(false);
@@ -137,11 +175,17 @@ export default function QuotePanel({ caseRef, authorization, access, defaultPaye
     {loading && <p className="p-8 text-center text-sm text-slate-500">Cargando Cotización…</p>}
     {error && <div role="alert" className="m-4 flex gap-2 border border-red-200 bg-red-50 p-3 text-sm text-red-800"><AlertCircle className="h-4 w-4" />{error}</div>}
     {!loading && value && <>
+      {intake && <QuoteIntake intake={intake} />}
       {offerPackage && <div className="border-b p-3">
         <PackageCostingForm caseRef={caseRef} authorization={authorization} busy={packageBusy} actionLabel="Aplicar paquete"
-          current={(prepared ?? costing)?.packagePricing} onCalculate={(estimate, currency, route) => void preparePackage(estimate, currency, route)}
+          current={intake?.directQuote ? prepared?.packagePricing : (prepared ?? costing)?.packagePricing}
+          onCalculate={(estimate, currency, route) => void preparePackage(estimate, currency, route)}
           onChange={() => { setPackageDirty(true); setError(null); setMissingTransport(false); }} onUnauthorized={onUnauthorized} />
         {missingTransport && onOpenTransport && <Button type="button" size="sm" variant="outline" className="mt-2" onClick={onOpenTransport}>Calcular ruta</Button>}
+      </div>}
+      {!accepted && access.canCreate && nextPosition && staleCosting && <div className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <p role="status">Los datos para cotizar son más recientes que los costos publicados. Actualiza los costos antes de crear una propuesta.</p>
+        {onOpenCosts && <Button type="button" size="sm" variant="outline" onClick={onOpenCosts}>Ir a Costos internos</Button>}
       </div>}
       {accepted && <div className="border-b border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900" data-testid="quote-ready-for-operations">Propuesta aceptada · Listo para Operaciones <span className="font-normal">(handoff aún no implementado)</span></div>}
       <div className="flex gap-2 overflow-x-auto border-b border-slate-200 p-3">
@@ -149,7 +193,7 @@ export default function QuotePanel({ caseRef, authorization, access, defaultPaye
           <ProposalHeader proposal={proposal} active={proposal.proposalRef === activeRef} onClick={() => setActiveRef(proposal.proposalRef)} />
           {accepted && proposal.proposalRef !== accepted.proposalRef && <span className="mt-1 block text-[10px] font-semibold text-slate-500">Histórica · no operativa</span>}
         </div>)}
-        {!proposalCosting && !offerPackage && value.proposals.length === 0 && <p className="p-2 text-xs text-amber-800">Calcule y publique los costos para preparar la propuesta.</p>}
+        {!proposalCosting && !staleCosting && !offerPackage && value.proposals.length === 0 && <p className="p-2 text-xs text-amber-800">Calcule y publique los costos para preparar la propuesta.</p>}
       </div>
       {!accepted && access.canCreate && proposalCosting && nextPosition && <div className="min-w-0 border-b p-3">
         <ProposalComposer key={`${caseRef}:${nextPosition}`} caseRef={caseRef} authorization={authorization} costing={proposalCosting}

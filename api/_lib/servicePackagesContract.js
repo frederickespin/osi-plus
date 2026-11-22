@@ -38,6 +38,34 @@ function code(value) { const result = text(value, 64, 2); if (!CODE.test(result)
 function identityCode(value) { return value === null ? null : code(value); }
 function optionalRule(value) { if (!value || typeof value !== "object" || Array.isArray(value) || JSON.stringify(value).length > 2_000) fail("SERVICE_PACKAGES_INPUT_INVALID"); return Object.freeze({ ...value }); }
 
+function validateDirectQuote(value) {
+  const textLimits = { clientList: 800, originAccess: 100, destinationAccess: 100, specialWork: 260 };
+  exact(value, ["source", "volumeM3", ...Object.keys(textLimits)]);
+  if (value.source !== "CLIENT_LIST" && value.source !== "ESTIMATE") fail("SERVICE_PACKAGES_INPUT_INVALID");
+  const volume = decimal(value.volumeM3, { max: 100_000 });
+  if (volume !== null && volume < 0.0001) fail("SERVICE_PACKAGES_INPUT_INVALID");
+  for (const [field, max] of Object.entries(textLimits)) {
+    const detail = value[field];
+    // The client's list and the access notes may have multiple lines.
+    if (detail !== null && (typeof detail !== "string" || !detail || detail !== detail.trim()
+      || detail.length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\ufeff]/u.test(detail))) {
+      fail("SERVICE_PACKAGES_INPUT_INVALID");
+    }
+  }
+}
+
+function serviceStartDate(value) {
+  if (value === null) return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/u.test(value) || value.startsWith("0000")) {
+    fail("SERVICE_PACKAGES_INPUT_INVALID");
+  }
+  const day = new Date(value + "T00:00:00.000Z");
+  if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== value) {
+    fail("SERVICE_PACKAGES_INPUT_INVALID");
+  }
+  return value;
+}
+
 function requirement(value) {
   exact(value, ["kind", "code", "name", "quantity", "unitCode", "hours", "days", "phaseCode", "materialRef", "assetModelRef", "capabilityRef", "disposition", "chargeType", "configuration"]);
   const kind = choice(value.kind, REQUIREMENT_KINDS);
@@ -98,8 +126,24 @@ function override(value) {
 export function normalizeCaseConfigurationSave(input) {
   exact(input, ["requestId", "payloadHash", "expectedRevision", "serviceSelectionRef", "serviceSelectionRevision", "packageVersionRef", "materialPolicyVersionRef", "surveyPublicationRef", "commercialAgreementRef", "preference", "duration", "source", "overrides"]);
   if (!Array.isArray(input.overrides) || input.overrides.length > 100) fail("SERVICE_PACKAGES_INPUT_INVALID");
-  const payload = Object.freeze({ operation: "CASE_CONFIGURATION_SAVE", requestId: requestId(input.requestId), expectedRevision: integer(input.expectedRevision), serviceSelectionRef: ref(input.serviceSelectionRef), serviceSelectionRevision: integer(input.serviceSelectionRevision, 1), packageVersionRef: ref(input.packageVersionRef, true), materialPolicyVersionRef: ref(input.materialPolicyVersionRef, true), surveyPublicationRef: ref(input.surveyPublicationRef, true), commercialAgreementRef: ref(input.commercialAgreementRef, true), preference: optionalRule(input.preference), duration: optionalRule(input.duration), source: choice(input.source, SOURCES), overrides: Object.freeze(input.overrides.map(override)) });
+  const preference = optionalRule(input.preference);
+  if (Object.hasOwn(preference, "directQuote")) validateDirectQuote(preference.directQuote);
+  if (Object.hasOwn(preference, "serviceStartDate")) serviceStartDate(preference.serviceStartDate);
+  const payload = Object.freeze({ operation: "CASE_CONFIGURATION_SAVE", requestId: requestId(input.requestId), expectedRevision: integer(input.expectedRevision), serviceSelectionRef: ref(input.serviceSelectionRef), serviceSelectionRevision: integer(input.serviceSelectionRevision, 1), packageVersionRef: ref(input.packageVersionRef, true), materialPolicyVersionRef: ref(input.materialPolicyVersionRef, true), surveyPublicationRef: ref(input.surveyPublicationRef, true), commercialAgreementRef: ref(input.commercialAgreementRef, true), preference, duration: optionalRule(input.duration), source: choice(input.source, SOURCES), overrides: Object.freeze(input.overrides.map(override)) });
   return signed(input, payload);
+}
+
+export function normalizeCaseIntakeSave(input) {
+  exact(input, ["requestId", "payloadHash", "expectedRevision", "serviceSelectionRef", "serviceSelectionRevision", "intake"]);
+  const intake = optionalRule(input.intake);
+  const hasDirectQuote = Object.hasOwn(intake, "directQuote");
+  exact(intake, hasDirectQuote ? ["serviceStartDate", "directQuote"] : ["serviceStartDate"]);
+  serviceStartDate(intake.serviceStartDate);
+  if (hasDirectQuote && intake.directQuote !== null) validateDirectQuote(intake.directQuote);
+  return signed(input, {
+    operation: "CASE_INTAKE_SAVE", requestId: requestId(input.requestId), expectedRevision: integer(input.expectedRevision),
+    serviceSelectionRef: ref(input.serviceSelectionRef), serviceSelectionRevision: integer(input.serviceSelectionRevision, 1), intake,
+  });
 }
 
 export function normalizeConfigurationConflictResolve(input) {

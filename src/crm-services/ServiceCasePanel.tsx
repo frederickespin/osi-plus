@@ -1,18 +1,46 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calculator, History, Layers3, Plus, Save, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { AlertTriangle, Calculator, History, MapPin, Plus, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { COMPACT_TABLE_FIELD } from "@/components/ui/compact-form";
+import { cn } from "@/lib/utils";
 import { CrmServicesApi, CrmServicesApiError, type CaseServiceConfigurationWorkspace, type CaseServiceWorkspace } from "./api";
 import CommercialStorageAuthorizationPanel from "@/customer-custody/CommercialStorageAuthorizationPanel";
 import QuickQuoteConfigurator from "./QuickQuoteConfigurator";
 
-type Props = Readonly<{ caseRef: string; authorization?: string; canUpdate: boolean; canConfigure?: boolean; canViewConfiguration?: boolean; onUnauthorized(): void }>;
-type GuidedStage = "plan" | "movements" | "configuration";
+export type ServiceCaseIntake = Readonly<{
+  origin: string;
+  destination: string;
+  onOpenRoute?: () => void;
+  onOpenTransport?: () => void;
+  saving?: boolean;
+  nextStep?: (plan: Readonly<{
+    canContinue: boolean;
+    selectionRef: string | null;
+    selectionRevision: number;
+    configuration: CaseServiceConfigurationWorkspace | null;
+    configurationLoading: boolean;
+    configurationUnavailable: boolean;
+    reloadConfiguration: () => void;
+  }>) => ReactNode;
+}>;
+type Props = Readonly<{
+  caseRef: string;
+  authorization?: string;
+  canUpdate: boolean;
+  canConfigure?: boolean;
+  canViewConfiguration?: boolean;
+  intake?: ServiceCaseIntake;
+  onUnauthorized(): void;
+}>;
+type GuidedStage = "plan" | "storage" | "movements" | "configuration";
+const MODE_LABEL = { LOCAL: "LOCAL / NACIONAL", EXPORT: "EXPORTACIÓN", IMPORT: "IMPORTACIÓN" };
+const FIELD = cn(COMPACT_TABLE_FIELD, "bg-slate-50 px-2");
 function errorCopy(error: unknown) {
   const code = error instanceof CrmServicesApiError ? error.code : "CRM_SERVICES_UNAVAILABLE";
   return ({ CRM_SERVICES_VERSION_CONFLICT: "El plan cambió. Recargue antes de guardar una nueva versión.", CRM_SERVICES_PRIMARY_INCOMPATIBLE: "La necesidad principal ya no es compatible con el modo del caso.", CRM_SERVICES_COMPLEMENTARY_NOT_ALLOWED: "Un servicio asociado ya no está permitido para la necesidad principal.", CRM_SERVICES_DISABLED: "Servicios permanece desactivado en este entorno." } as Record<string, string>)[code] || "No fue posible cargar o guardar el plan de Servicios.";
 }
 
-export default function ServiceCasePanel({ caseRef, authorization, canUpdate, canConfigure = false, canViewConfiguration = false, onUnauthorized }: Props) {
+export default function ServiceCasePanel({ caseRef, authorization, canUpdate, canConfigure = false, canViewConfiguration = false, intake, onUnauthorized }: Props) {
   const api = useMemo(() => new CrmServicesApi(() => authorization || null), [authorization]);
   const [workspace, setWorkspace] = useState<CaseServiceWorkspace | null>(null);
   const [primaryRef, setPrimaryRef] = useState("");
@@ -25,7 +53,10 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [configuration, setConfiguration] = useState<CaseServiceConfigurationWorkspace | null>(null);
+  const [configurationWorkspace, setConfiguration] = useState<CaseServiceConfigurationWorkspace | null>(null);
+  const [configurationLoading, setConfigurationLoading] = useState(canViewConfiguration);
+  const [configurationUnavailable, setConfigurationUnavailable] = useState(false);
+  const [configurationRefresh, setConfigurationRefresh] = useState(0);
   const [packageVersionRef, setPackageVersionRef] = useState("");
   const [policyVersionRef, setPolicyVersionRef] = useState("");
   const [durationHours, setDurationHours] = useState("");
@@ -34,23 +65,48 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
   const load = useCallback(() => {
     const controller = new AbortController(); setLoading(true); setError(null);
     void api.workspace(caseRef, controller.signal).then((value) => {
+      if (controller.signal.aborted) return;
       setWorkspace(value); setPrimaryRef(value.selection.primary?.serviceRef || ""); setComplementaryRefs(value.selection.complementaries.map((item) => item.serviceRef)); setDefaultRef(value.selection.defaultCombinationRef); setOthers(value.selection.otherServices.map((item) => item.description)); setDirty(false);
-    }).catch((cause) => { if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized(); else if (!controller.signal.aborted) setError(errorCopy(cause)); }).finally(() => setLoading(false));
+    }).catch((cause) => {
+      if (controller.signal.aborted) return;
+      if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized();
+      else setError(errorCopy(cause));
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [api, caseRef, onUnauthorized]);
   useEffect(load, [load]);
-  const loadConfiguration = useCallback(() => {
-    if (!canViewConfiguration) { setConfiguration(null); return () => undefined; }
+  const reloadConfiguration = useCallback(() => { setConfigurationRefresh((count) => count + 1); }, []);
+  const configuration = canViewConfiguration && configurationWorkspace?.caseRef === caseRef ? configurationWorkspace : null;
+  useEffect(() => {
+    if (!canViewConfiguration) {
+      setConfiguration(null);
+      setConfigurationLoading(false);
+      setConfigurationUnavailable(false);
+      return;
+    }
     const controller = new AbortController();
-    void api.caseConfiguration(caseRef, controller.signal).then((value) => { setConfiguration(value); setPackageVersionRef(value.packages.find((item) => item.packageRef === value.current?.packageRef && item.version === value.current?.packageVersion)?.versionRef || ""); setPolicyVersionRef(value.materialPolicies.find((item) => item.policyRef === value.current?.materialPolicyRef && item.version === value.current?.materialPolicyVersion)?.versionRef || ""); setDurationHours(String(typeof value.current?.duration.hours === "number" ? value.current.duration.hours : "")); }).catch((cause) => { if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized(); else if (!controller.signal.aborted) setError(errorCopy(cause)); });
+    setConfigurationLoading(true);
+    setConfigurationUnavailable(false);
+    void api.caseConfiguration(caseRef, controller.signal).then((value) => {
+      if (controller.signal.aborted) return;
+      setConfiguration(value);
+      setPackageVersionRef(value.packages.find((item) =>
+        item.packageRef === value.current?.packageRef && item.version === value.current?.packageVersion)?.versionRef || "");
+      setPolicyVersionRef(value.materialPolicies.find((item) =>
+        item.policyRef === value.current?.materialPolicyRef && item.version === value.current?.materialPolicyVersion)?.versionRef || "");
+      setDurationHours(String(typeof value.current?.duration.hours === "number" ? value.current.duration.hours : ""));
+    }).catch((cause) => {
+      if (controller.signal.aborted) return;
+      if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized();
+      setConfigurationUnavailable(true);
+    }).finally(() => { if (!controller.signal.aborted) setConfigurationLoading(false); });
     return () => controller.abort();
-  }, [api, canViewConfiguration, caseRef, onUnauthorized]);
-  useEffect(loadConfiguration, [loadConfiguration]);
+  }, [api, canViewConfiguration, caseRef, onUnauthorized, configurationRefresh]);
   const compatible = useMemo(() => workspace?.allowedComplementaries.filter((item) => item.primaryServiceRef === primaryRef).map((item) => item.service) || [], [primaryRef, workspace]);
   const compatibleByRef = useMemo(() => new Map(compatible.map((item) => [item.serviceRef, item])), [compatible]);
   const availableCatalog = useMemo(() => compatible.filter((item) => !complementaryRefs.includes(item.serviceRef)), [compatible, complementaryRefs]);
   const selectedCatalogServices = useMemo(() => complementaryRefs.flatMap((ref) => {
-    const item = compatibleByRef.get(ref) || workspace?.allowedComplementaries.find((entry) => entry.service.serviceRef === ref)?.service;
+    const item = compatibleByRef.get(ref) ?? workspace?.selection.complementaries.find((entry) => entry.serviceRef === ref);
     return item ? [item] : [];
   }), [compatibleByRef, complementaryRefs, workspace]);
   const storageSelected = useMemo(() => [workspace?.selection.primary, ...(workspace?.selection.complementaries || [])].some((item) => Boolean(item && (item.category === "STORAGE" || ["STORAGE", "ALMACENAJE"].includes(item.code)))), [workspace]);
@@ -60,8 +116,12 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
     return configuration.packages.filter((item) => [item.primary, ...item.complementaries].filter(Boolean).every((service) => Boolean(service && selectedCodes.has(service.code))));
   }, [configuration, workspace]);
   useEffect(() => {
-    if ((!storageSelected && activeStage === "movements") || (!canViewConfiguration && activeStage === "configuration")) setActiveStage("plan");
+    if ((!storageSelected && (activeStage === "storage" || activeStage === "movements")) ||
+      (!canViewConfiguration && activeStage === "configuration")) setActiveStage("plan");
   }, [activeStage, canViewConfiguration, storageSelected]);
+  const pendingService = Boolean(catalogRef || otherDraft.trim());
+  const canEditPlan = canUpdate && !saving && !loading && !intake?.saving;
+  const canContinue = Boolean(workspace?.selection.selectionRef && !dirty && !pendingService && !saving && !loading);
   const primaryChanged = Boolean(workspace?.selection.primary?.serviceRef && primaryRef && workspace.selection.primary.serviceRef !== primaryRef);
   const changePrimary = (next: string) => {
     const changesPublishedNeed = Boolean(workspace?.selection.primary?.serviceRef && workspace.selection.primary.serviceRef !== next);
@@ -75,58 +135,218 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
   };
   const removeCatalogService = (ref: string) => { setComplementaryRefs((current) => current.filter((item) => item !== ref)); setDefaultRef(null); setDirty(true); };
   const save = async () => {
-    if (!workspace || !primaryRef) return; setSaving(true); setError(null);
+    if (!workspace || !primaryRef || !canEditPlan || !dirty || pendingService) return;
+    setSaving(true); setError(null);
     try {
       await api.saveSelection(caseRef, { requestId: crypto.randomUUID(), expectedRevision: workspace.selection.revision, primaryServiceRef: primaryRef, complementaryRefs, defaultCombinationRef: defaultRef, otherServices: others.map((description) => ({ description })) });
       load();
     } catch (cause) { if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized(); else setError(errorCopy(cause)); } finally { setSaving(false); }
   };
   const saveConfiguration = async (draft?: Readonly<{ packageVersionRef: string; policyVersionRef: string; durationHours: string; preference: Record<string, unknown> }>) => {
-    if (!workspace?.selection.selectionRef || !configuration) return; setConfigurationSaving(true); setError(null);
+    if (!workspace?.selection.selectionRef || !configuration || !canContinue || !canConfigure ||
+      configurationSaving || configurationLoading || configurationUnavailable) return;
+    setConfigurationSaving(true); setError(null);
     const nextPackageRef = draft?.packageVersionRef ?? packageVersionRef;
     const nextPolicyRef = draft?.policyVersionRef ?? policyVersionRef;
     const nextDuration = draft?.durationHours ?? durationHours;
-    try { await api.saveCaseConfiguration(caseRef, { requestId: crypto.randomUUID(), expectedRevision: configuration.current?.revision || 0, serviceSelectionRef: workspace.selection.selectionRef, serviceSelectionRevision: workspace.selection.revision, packageVersionRef: nextPackageRef || null, materialPolicyVersionRef: nextPolicyRef || null, surveyPublicationRef: null, commercialAgreementRef: null, preference: draft ? { quickQuote: draft.preference } : configuration.current?.preference || {}, duration: nextDuration ? { hours: Number(nextDuration) } : {}, source: nextPackageRef ? "PACKAGE" : "MANUAL_RESOLUTION", overrides: [] }); loadConfiguration(); }
+    const preference = { ...configuration.current?.preference };
+    delete preference.serviceStartDate;
+    delete preference.directQuote;
+    delete preference.directQuoteRecordedAt;
+    if (draft) preference.quickQuote = draft.preference;
+    try {
+      await api.saveCaseConfiguration(caseRef, {
+        requestId: crypto.randomUUID(), expectedRevision: configuration.current?.revision || 0,
+        serviceSelectionRef: workspace.selection.selectionRef, serviceSelectionRevision: workspace.selection.revision,
+        packageVersionRef: nextPackageRef || null, materialPolicyVersionRef: nextPolicyRef || null,
+        surveyPublicationRef: null, commercialAgreementRef: null,
+        preference,
+        duration: nextDuration ? { hours: Number(nextDuration) } : {},
+        source: nextPackageRef ? "PACKAGE" : "MANUAL_RESOLUTION", overrides: [],
+      });
+      reloadConfiguration();
+    }
     catch (cause) { if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized(); else setError(errorCopy(cause)); } finally { setConfigurationSaving(false); }
   };
-  if (loading) return <div role="status" className="p-8 text-center text-sm text-slate-500">Cargando Servicios autorizados…</div>;
-  if (error && !workspace) return <div role="alert" className="m-4 border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}<Button className="ml-3" size="sm" variant="outline" onClick={load}>Reintentar</Button></div>;
-  if (!workspace) return null;
-  const stages: readonly { id: GuidedStage; label: string; disabled: boolean }[] = [
-    { id: "plan", label: "Plan", disabled: false },
-    { id: "movements", label: "Movimientos", disabled: !storageSelected },
-    { id: "configuration", label: "Configuración", disabled: !canViewConfiguration },
-  ];
-  return <section role="tabpanel" aria-labelledby="services-tab" className="w-full p-4" data-testid="case-services-panel">
-    <header className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#0070a8]">Flujo comercial del almacenaje</p><h2 className="mt-1 text-xl font-black text-[#003366]">Servicios y almacenaje</h2><p className="mt-1 text-xs text-slate-500">Cada proceso se trabaja en una pantalla independiente; el estado general permanece visible.</p></div><span className="flex items-center gap-1 rounded bg-sky-50 px-2 py-1 text-xs font-bold text-sky-800"><Layers3 className="h-4 w-4" />{workspace.selection.revision ? `Plan V${workspace.selection.revision}` : "Plan sin publicar"}</span></header>
-    <nav role="tablist" aria-label="Flujo guiado de almacenaje" className="mt-3 grid grid-cols-3 gap-1 border-y border-slate-200 py-1">
-      {stages.map((stage) => <button key={stage.id} id={`storage-${stage.id}-tab`} role="tab" type="button" aria-selected={activeStage === stage.id} aria-controls={`storage-${stage.id}-panel`} disabled={stage.disabled} onClick={() => setActiveStage(stage.id)} className={`min-h-10 rounded px-2 text-[11px] font-bold transition-colors sm:text-sm ${activeStage === stage.id ? "bg-[#003366] text-white shadow-sm" : "bg-white text-slate-600 hover:bg-slate-100 disabled:bg-slate-50 disabled:text-slate-300"}`}>{stage.label}</button>)}
-    </nav>
-    <div id={activeStage === "configuration" ? undefined : `storage-${activeStage}-panel`} role={activeStage === "configuration" ? undefined : "tabpanel"} aria-labelledby={activeStage === "configuration" ? undefined : `storage-${activeStage}-tab`} hidden={activeStage === "configuration"} className={activeStage === "plan" ? "mt-4 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,.75fr)]" : "mt-4"}>
-      <div hidden={activeStage !== "plan"} className="min-w-0">
-    <header className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#0070a8]">Modo/Alcance — Necesidad principal — Servicios asociados al caso</p><h3 className="mt-1 text-lg font-black text-[#003366]">Plan del servicio</h3><p className="mt-1 text-xs text-slate-500">La necesidad principal dirige el flujo. Cada servicio asociado conserva su propia tarifa, regla de cálculo y estado en Cotización.</p></div><span className="flex items-center gap-1 rounded bg-sky-50 px-2 py-1 text-xs font-bold text-sky-800"><Layers3 className="h-4 w-4" />{workspace.selection.revision ? `Plan vigente V${workspace.selection.revision}` : "Plan sin publicar"}</span></header>
-    {workspace.planHistory.length > 0 && <details className="mt-3 rounded border border-slate-200 bg-slate-50"><summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-bold text-slate-700"><span className="flex items-center gap-1"><History className="h-4 w-4" />Historial del plan de servicios</span><span>{workspace.selection.historyCount} versión(es)</span></summary><div className="divide-y border-t bg-white">{workspace.planHistory.map((plan) => <div key={plan.selectionRef} className="grid gap-1 px-3 py-2 text-xs sm:grid-cols-[70px_120px_minmax(180px,1fr)_minmax(220px,1.4fr)_150px]"><strong className="text-[#003366]">V{plan.revision}{plan.revision === workspace.selection.revision ? " · Vigente" : ""}</strong><span>{plan.mode === "LOCAL" ? "LOCAL / NACIONAL" : plan.mode === "EXPORT" ? "EXPORTACIÓN" : "IMPORTACIÓN"}</span><span><b>Principal:</b> {plan.primary?.name || "Sin definir"}</span><span><b>Asociados:</b> {[...plan.associatedServices.map((item) => item.name), ...plan.otherServices].join(", ") || "Ninguno"}</span><time dateTime={plan.createdAt}>{new Date(plan.createdAt).toLocaleString("es-DO")}</time></div>)}</div>{workspace.selection.historyCount > workspace.planHistory.length && <p className="border-t px-3 py-2 text-[11px] text-slate-500">Se muestran las 20 versiones más recientes; el historial completo permanece auditado.</p>}</details>}
-    {primaryChanged && <p role="status" className="mt-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><b>Cambio de necesidad principal.</b> Al guardar se creará el Plan V{workspace.selection.revision + 1}; el Plan V{workspace.selection.revision} permanecerá intacto en el historial.</p>}
-    <div className="mt-4 grid gap-4 lg:grid-cols-[180px_minmax(230px,1fr)_minmax(280px,1.35fr)]">
-      <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Modo / Alcance<input readOnly value={workspace.mode === "LOCAL" ? "LOCAL / NACIONAL" : workspace.mode === "EXPORT" ? "EXPORTACIÓN" : "IMPORTACIÓN"} className="mt-1 h-10 w-full rounded-lg border bg-slate-100 px-3 text-sm font-semibold text-slate-800" /></label>
-      <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Necesidad principal<select disabled={!canUpdate} value={primaryRef} onChange={(event) => changePrimary(event.target.value)} className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm text-slate-900"><option value="">Seleccionar necesidad</option>{workspace.primaries.map((item) => <option key={item.serviceRef} value={item.serviceRef}>{item.name}</option>)}</select></label>
-      <fieldset disabled={!canUpdate || !primaryRef} className="min-w-0"><legend className="text-xs font-bold uppercase tracking-wide text-slate-500">Agregar desde el catálogo</legend><div className="mt-1 flex h-10 overflow-hidden rounded-lg border bg-white"><select aria-label="Servicio asociado del catálogo" value={catalogRef} onChange={(event) => setCatalogRef(event.target.value)} className="min-w-0 flex-1 border-0 bg-white px-3 text-sm outline-none"><option value="">{availableCatalog.length ? "Seleccionar servicio…" : "No hay más servicios disponibles"}</option>{availableCatalog.map((item) => <option key={item.serviceRef} value={item.serviceRef}>{item.code} · {item.name}</option>)}</select><button type="button" aria-label="Agregar servicio seleccionado" title="Agregar servicio" disabled={!catalogRef} onClick={addCatalogService} className="grid w-10 place-items-center border-l bg-[#003366] text-white disabled:bg-slate-200 disabled:text-slate-500"><Plus className="h-4 w-4" /></button></div><p className="mt-1 text-[10px] normal-case tracking-normal text-slate-500">El catálogo se filtra por el modo y la necesidad principal.</p></fieldset>
-    </div>
-    <section className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white" aria-labelledby="selected-services-heading"><div className="flex flex-wrap items-center justify-between gap-2 border-b bg-slate-50 px-3 py-2"><div><h3 id="selected-services-heading" className="text-xs font-black uppercase tracking-wide text-[#003366]">Servicios asociados al caso</h3><p className="text-[10px] text-slate-500">Listado compacto del Plan V{workspace.selection.revision + (dirty ? 1 : 0)}.</p></div><span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-800"><Calculator className="h-3.5 w-3.5" />Costos automáticos en Cotización</span></div><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-xs"><thead className="bg-white text-[10px] uppercase text-slate-500"><tr><th className="border-b px-3 py-2">Rol</th><th className="border-b px-3 py-2">Código</th><th className="border-b px-3 py-2">Servicio</th><th className="border-b px-3 py-2">Base tarifaria</th><th className="border-b px-3 py-2">Estado</th><th className="w-12 border-b px-3 py-2"><span className="sr-only">Acciones</span></th></tr></thead><tbody>{primaryRef && (() => { const item = workspace.primaries.find((entry) => entry.serviceRef === primaryRef); return item ? <tr className="bg-sky-50/50"><td className="border-b px-3 py-2 font-bold text-[#003366]">Principal</td><td className="border-b px-3 py-2 font-mono text-[11px]">{item.code}</td><td className="border-b px-3 py-2 font-semibold">{item.name}</td><td className="border-b px-3 py-2 text-slate-600">Según regla publicada</td><td className="border-b px-3 py-2"><span className="rounded bg-sky-100 px-2 py-1 text-[10px] font-bold text-sky-800">{dirty ? "Borrador" : "Vigente"}</span></td><td className="border-b px-3 py-2" /></tr> : null; })()}{selectedCatalogServices.map((item) => <tr key={item.serviceRef}><td className="border-b px-3 py-2">Asociado</td><td className="border-b px-3 py-2 font-mono text-[11px]">{item.code}</td><td className="border-b px-3 py-2 font-semibold">{item.name}</td><td className="border-b px-3 py-2 text-slate-600">Volumen, peso o unidad del tarifario</td><td className="border-b px-3 py-2"><span className="rounded bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">{dirty ? "Borrador" : "Vigente"}</span></td><td className="border-b px-3 py-2">{canUpdate && <button type="button" aria-label={`Quitar ${item.name}`} title="Quitar servicio" onClick={() => removeCatalogService(item.serviceRef)} className="grid h-7 w-7 place-items-center rounded text-rose-700 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>}</td></tr>)}{others.map((description, index) => <tr key={`${description}-${index}`} className="bg-amber-50/40"><td className="border-b px-3 py-2">Asociado</td><td className="border-b px-3 py-2">—</td><td className="border-b px-3 py-2 font-semibold">{description}</td><td className="border-b px-3 py-2 text-amber-900">Sin tarifa hasta clasificar</td><td className="border-b px-3 py-2"><span className="rounded bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900">Pendiente</span></td><td className="border-b px-3 py-2">{canUpdate && <button type="button" aria-label={`Quitar ${description}`} title="Quitar servicio" onClick={() => { setOthers((current) => current.filter((_, position) => position !== index)); setDirty(true); }} className="grid h-7 w-7 place-items-center rounded text-rose-700 hover:bg-rose-50"><X className="h-4 w-4" /></button>}</td></tr>)}{!primaryRef && <tr><td colSpan={6} className="px-3 py-5 text-center text-slate-500">Seleccione la necesidad principal para formar el plan.</td></tr>}</tbody></table></div></section>
-    <div className="mt-3 border-t border-slate-200 pt-3"><div className="flex flex-wrap items-end gap-2"><label className="min-w-60 flex-1 text-xs font-bold uppercase tracking-wide text-slate-500">Servicio que aún no aparece en el catálogo<input disabled={!canUpdate} value={otherDraft} onChange={(event) => setOtherDraft(event.target.value)} maxLength={320} placeholder="Descripción para revisión administrativa" className="mt-1 h-10 w-full rounded-lg border px-3 text-sm normal-case tracking-normal" /></label><Button type="button" variant="outline" disabled={!canUpdate || otherDraft.trim().length < 3} onClick={() => { setOthers((current) => [...current, otherDraft.trim()]); setOtherDraft(""); setDirty(true); }}><Plus />Agregar pendiente</Button></div></div>
-    <p className="mt-3 flex items-start gap-2 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950"><Calculator className="mt-0.5 h-4 w-4 shrink-0" /><span><b>Cálculo económico:</b> Servicios conserva la selección. Cuando Survey, el cliente o la operación publiquen volumen, peso o cantidad autorizada, Costos aplica el tarifario versionado y Cotización muestra el monto sugerido. El monto puede editarse allí, conservando comparación, motivo, margen y aprobación.</span></p>
-    {error && <p role="alert" className="mt-3 flex items-center gap-2 bg-red-50 p-3 text-sm text-red-800"><AlertTriangle className="h-4 w-4" />{error}</p>}
-    <footer className="mt-4 flex justify-end"><Button disabled={!canUpdate || !dirty || !primaryRef || saving} onClick={() => void save()}><Save />{saving ? "Guardando…" : workspace.selection.revision ? `Guardar Plan V${workspace.selection.revision + 1}` : "Crear plan de servicios"}</Button></footer>
+  if (loading && workspace?.caseRef !== caseRef) {
+    return <div role="status" className="p-6 text-center text-sm text-slate-500">Cargando plan de servicios…</div>;
+  }
+  if (error && workspace?.caseRef !== caseRef) {
+    return <div role="alert" className="m-3 border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+      {error}<Button className="ml-2" size="sm" variant="outline" onClick={load}>Reintentar</Button>
+    </div>;
+  }
+  if (!workspace || workspace.caseRef !== caseRef) return null;
+
+  const stages: { id: GuidedStage; label: string }[] = [{ id: "plan", label: "Plan" }];
+  if (storageSelected) stages.push({ id: "storage", label: "Almacenaje" }, { id: "movements", label: "Movimientos" });
+  if (canViewConfiguration) stages.push({ id: "configuration", label: "Configuración" });
+  const selectedPrimary = workspace.primaries.find((item) => item.serviceRef === primaryRef) ??
+    (workspace.selection.primary?.serviceRef === primaryRef ? workspace.selection.primary : undefined);
+  const savedPrimary = workspace.selection.primary;
+  const unavailableSavedPrimary = savedPrimary && !workspace.primaries.some((item) => item.serviceRef === savedPrimary.serviceRef);
+  const total = selectedCatalogServices.length + others.length + Number(Boolean(selectedPrimary));
+  const hasViews = stages.length > 1;
+  const viewingStorage = activeStage === "storage" || activeStage === "movements";
+  const canChangeStage = !dirty && !pendingService && !saving && !loading && !configurationSaving && !intake?.saving;
+
+  return <section role="tabpanel" aria-labelledby="services-tab" className="w-full min-w-0 px-2 py-3 sm:px-4" data-testid="case-services-panel">
+    {hasViews && <nav role="tablist" aria-label="Áreas del plan de servicios" className="mb-3 flex flex-wrap gap-1 border-b border-slate-200 pb-1">
+      {stages.map((stage) => <button key={stage.id} id={"storage-" + stage.id + "-tab"} type="button" role="tab"
+        aria-selected={activeStage === stage.id} aria-controls={"storage-" + stage.id + "-panel"}
+        disabled={stage.id !== "plan" && !canChangeStage}
+        onClick={() => setActiveStage(stage.id)}
+        className={"rounded px-2.5 py-1.5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0070a8] disabled:opacity-40 " +
+          (activeStage === stage.id ? "bg-[#003366] text-white" : "text-slate-600 hover:bg-slate-100")}>{stage.label}</button>)}
+    </nav>}
+    {error && <p role="alert" className="mb-2 flex items-center gap-2 rounded bg-red-50 px-2 py-1.5 text-xs text-red-800">
+      <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />{error}
+    </p>}
+    <div id="storage-plan-panel" role={hasViews ? "tabpanel" : undefined} aria-labelledby={hasViews ? "storage-plan-tab" : undefined}
+      hidden={activeStage !== "plan"}>
+      <div className="grid min-w-0 items-start gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+        <section aria-labelledby="case-intake-heading" className="min-w-0 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="case-intake-heading" className="text-sm font-semibold text-[#003366]">Datos del caso</h2>
+            {intake?.onOpenRoute && <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs"
+              onClick={intake.onOpenRoute}><MapPin aria-hidden="true" className="size-4" />Editar ruta</Button>}
+          </div>
+          {intake && <section aria-label="Ruta para cotizar" className="space-y-1">
+            <dl className="grid min-w-0 gap-2 sm:grid-cols-2">
+            <div className="min-w-0"><dt className="text-xs font-semibold text-slate-600">Origen</dt>
+              <dd className="mt-0.5 break-words rounded-sm bg-slate-50 px-2 py-1.5 text-xs text-slate-900">{intake.origin || "Pendiente"}</dd></div>
+            <div className="min-w-0"><dt className="text-xs font-semibold text-slate-600">Destino</dt>
+              <dd className="mt-0.5 break-words rounded-sm bg-slate-50 px-2 py-1.5 text-xs text-slate-900">{intake.destination || "Pendiente"}</dd></div>
+            </dl>
+            {intake.onOpenTransport && <Button type="button" variant="ghost" size="sm" className="h-7 px-1 text-xs"
+              onClick={intake.onOpenTransport}><Calculator aria-hidden="true" className="size-3.5" />Ver costo de transporte</Button>}
+          </section>}
+          <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
+            <label className="min-w-0 text-xs font-semibold text-slate-600">Modo / Alcance
+              <input readOnly value={MODE_LABEL[workspace.mode]} className={FIELD + " mt-0.5"} />
+            </label>
+            <label className="min-w-0 text-xs font-semibold text-slate-600">Necesidad principal
+              <select disabled={!canEditPlan} value={primaryRef} onChange={(event) => changePrimary(event.target.value)}
+                className={FIELD + " mt-0.5"}>
+                <option value="">Seleccionar necesidad</option>
+                {unavailableSavedPrimary && <option value={savedPrimary.serviceRef} disabled>{savedPrimary.name} · no disponible</option>}
+                {workspace.primaries.map((item) => <option key={item.serviceRef} value={item.serviceRef}>{item.name}</option>)}
+              </select>
+            </label>
+          </div>
+          {intake?.nextStep?.({
+            canContinue, selectionRef: workspace.selection.selectionRef, selectionRevision: workspace.selection.revision,
+            configuration, configurationLoading, configurationUnavailable, reloadConfiguration,
+          })}
+        </section>
+
+        <section aria-labelledby="selected-services-heading" className="min-w-0">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+            <h2 id="selected-services-heading" className="text-sm font-semibold text-[#003366]">Servicios asociados al caso</h2>
+            <p aria-live="polite" className="text-xs text-slate-600">{total} {total === 1 ? "servicio" : "servicios"}</p>
+          </div>
+          {canUpdate && <fieldset disabled={!canEditPlan || !primaryRef} className="mt-2 min-w-0">
+            <legend className="text-xs font-semibold text-slate-600">Agregar desde el catálogo</legend>
+            <div className="mt-0.5 flex min-w-0 items-center gap-1">
+              <select aria-label="Servicio asociado del catálogo" value={catalogRef} onChange={(event) => setCatalogRef(event.target.value)}
+                className={FIELD}>
+                <option value="">{availableCatalog.length ? "Seleccionar servicio…" : "Sin servicios disponibles"}</option>
+                {availableCatalog.map((item) => <option key={item.serviceRef} value={item.serviceRef}>{item.name}</option>)}
+              </select>
+              <Button type="button" variant="ghost" size="icon" aria-label="Agregar servicio seleccionado"
+                disabled={!catalogRef} onClick={addCatalogService} className="size-8 shrink-0"><Plus aria-hidden="true" className="size-4" /></Button>
+            </div>
+          </fieldset>}
+          <table aria-labelledby="selected-services-heading" className="mt-2 w-full table-fixed border-b border-slate-200 text-left text-xs">
+            <colgroup><col /><col className="w-[24%]" /><col className="w-[26%]" /><col className="w-9" /></colgroup>
+            <thead className="bg-slate-50 text-slate-600"><tr>
+              <th scope="col" className="px-2 py-1.5 font-semibold">Servicio</th>
+              <th scope="col" className="px-1 py-1.5 font-semibold">Rol</th>
+              <th scope="col" className="px-1 py-1.5 font-semibold">Base</th>
+              <th scope="col"><span className="sr-only">Acciones</span></th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100 text-slate-700">
+              {selectedPrimary && <tr className="bg-sky-50/60">
+                <th scope="row" className="break-words px-2 py-1.5 font-semibold text-[#003366]">{selectedPrimary.name}</th>
+                <td className="break-words px-1 py-1.5">Principal</td><td className="break-words px-1 py-1.5">Según tarifario</td><td />
+              </tr>}
+              {selectedCatalogServices.map((item) => <tr key={item.serviceRef}>
+                <th scope="row" className="break-words px-2 py-1.5 font-medium text-slate-900">{item.name}</th>
+                <td className="break-words px-1 py-1.5">Asociado</td><td className="break-words px-1 py-1.5">Según tarifario</td>
+                <td className="text-right">{canUpdate && <Button type="button" size="icon" variant="ghost" aria-label={"Quitar " + item.name}
+                  disabled={!canEditPlan} onClick={() => removeCatalogService(item.serviceRef)} className="size-8 text-rose-700">
+                  <X aria-hidden="true" className="size-4" />
+                </Button>}</td>
+              </tr>)}
+              {others.map((description, index) => <tr key={description + "-" + index}>
+                <th scope="row" className="break-words px-2 py-1.5 font-medium text-slate-900">{description}</th>
+                <td className="break-words px-1 py-1.5">Asociado</td><td className="break-words px-1 py-1.5 text-amber-900">Pendiente</td>
+                <td className="text-right">{canUpdate && <Button type="button" size="icon" variant="ghost" aria-label={"Quitar " + description}
+                  disabled={!canEditPlan} onClick={() => { setOthers((current) => current.filter((_, position) => position !== index)); setDirty(true); }}
+                  className="size-8 text-rose-700"><X aria-hidden="true" className="size-4" /></Button>}</td>
+              </tr>)}
+              {!primaryRef && <tr><td colSpan={4} className="px-2 py-3 text-center text-slate-600">Selecciona la necesidad principal para formar el plan.</td></tr>}
+            </tbody>
+          </table>
+          {canUpdate && <details className="mt-2 text-xs">
+            <summary className="cursor-pointer font-semibold text-[#003366]">Añadir otro servicio</summary>
+            <div className="mt-1 flex min-w-0 items-center gap-1">
+              <input aria-label="Otro servicio" disabled={!canEditPlan || !primaryRef} value={otherDraft}
+                onChange={(event) => setOtherDraft(event.target.value)} maxLength={320}
+                placeholder="Descripción para revisar" className={FIELD} />
+              <Button type="button" variant="ghost" size="icon" aria-label="Agregar pendiente"
+                disabled={!canEditPlan || !primaryRef || otherDraft.trim().length < 3}
+                onClick={() => { setOthers((current) => [...current, otherDraft.trim()]); setOtherDraft(""); setDirty(true); }}
+                className="size-8 shrink-0"><Plus aria-hidden="true" className="size-4" /></Button>
+            </div>
+          </details>}
+          {pendingService && <p className="mt-1 text-xs text-amber-900">Agrega el servicio pendiente o limpia el campo.</p>}
+        </section>
       </div>
-      <div className="min-w-0">
-        <CommercialStorageAuthorizationPanel caseRef={caseRef} selectionRef={workspace.selection.selectionRef} primary={workspace.selection.primary} complementaries={workspace.selection.complementaries} authorization={authorization} canAuthorize={canUpdate} activeView={activeStage === "movements" ? "authorization" : "requirement"} compactRequirement={activeStage === "plan"} />
-      </div>
+
+      <footer className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <p role="status" className="text-xs text-slate-600">
+            {workspace.selection.revision ? "Plan vigente V" + workspace.selection.revision : "Plan sin publicar"}
+            {dirty && <span className="ml-2 font-semibold text-amber-900">Cambios pendientes</span>}
+          </p>
+          {workspace.planHistory.length > 0 && <details className="text-xs">
+            <summary className="flex cursor-pointer list-none items-center gap-1 font-semibold text-[#003366]">
+              <History aria-hidden="true" className="size-4" />Historial del plan
+            </summary>
+            <ol className="mt-1 divide-y divide-slate-100">
+              {workspace.planHistory.map((plan) => <li key={plan.selectionRef} className="flex flex-wrap gap-x-2 gap-y-1 py-1">
+                <strong className="text-[#003366]">V{plan.revision}</strong>
+                <span>{MODE_LABEL[plan.mode]}</span>
+                <span>{plan.primary?.name || "Sin necesidad principal"}</span>
+                <span>{[...plan.associatedServices.map((item) => item.name), ...plan.otherServices].join(", ")}</span>
+                <time dateTime={plan.createdAt} className="text-slate-600">{new Date(plan.createdAt).toLocaleString("es-DO")}</time>
+              </li>)}
+            </ol>
+            {workspace.selection.historyCount > workspace.planHistory.length && <p className="text-slate-600">20 versiones más recientes.</p>}
+          </details>}
+        </div>
+        {canUpdate && <Button type="button" size="sm" disabled={!canEditPlan || !dirty || !primaryRef || pendingService}
+          onClick={() => void save()}><Save aria-hidden="true" />{saving || loading ? "Guardando…" :
+            workspace.selection.revision ? "Guardar Plan V" + (workspace.selection.revision + 1) : "Crear plan de servicios"}</Button>}
+        {primaryChanged && <p className="basis-full text-xs text-amber-900">El cambio de necesidad principal creará una nueva versión.</p>}
+      </footer>
     </div>
+    {storageSelected && <div id={viewingStorage ? "storage-" + activeStage + "-panel" : undefined}
+      role="tabpanel" aria-labelledby={viewingStorage ? "storage-" + activeStage + "-tab" : undefined} hidden={!viewingStorage}>
+      <CommercialStorageAuthorizationPanel caseRef={caseRef} selectionRef={workspace.selection.selectionRef}
+        primary={workspace.selection.primary} complementaries={workspace.selection.complementaries} authorization={authorization}
+        canAuthorize={canUpdate && canContinue} activeView={activeStage === "movements" ? "authorization" : "requirement"} />
+    </div>}
     <div id="storage-configuration-panel" role="tabpanel" aria-labelledby="storage-configuration-tab" hidden={activeStage !== "configuration"}>
       {canViewConfiguration && <section className="mt-4" data-testid="case-service-configuration">
         <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#0070a8]">Después de Survey · antes de Costos</p><h3 className="text-lg font-black text-[#003366]">Preparación rápida de la propuesta</h3><p className="text-xs text-slate-500">Seleccione lo esencial en una sola pantalla. El detalle técnico y el tarifario permanecen versionados.</p></div><span className="rounded bg-slate-100 px-2 py-1 text-xs font-bold">Revisión {configuration?.current?.revision || 0}</span></div>
+        {configurationLoading && <p role="status" className="mt-2 text-xs text-slate-600">Cargando preparación…</p>}
+        {configurationUnavailable && <p role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-800">
+          No fue posible cargar la preparación.<Button type="button" variant="ghost" size="sm" onClick={reloadConfiguration}>Reintentar</Button>
+        </p>}
         {configuration && <>
-          <QuickQuoteConfigurator key={configuration.current?.revision || 0} packages={eligiblePackages} policies={configuration.materialPolicies} initialPackageVersionRef={packageVersionRef} initialPolicyVersionRef={policyVersionRef} initialDurationHours={durationHours} initialPreference={configuration.current?.preference || {}} disabled={!canConfigure || !workspace.selection.selectionRef} saving={configurationSaving} onConfirm={(draft) => void saveConfiguration(draft)} />
+          <QuickQuoteConfigurator key={configuration.current?.revision || 0} packages={eligiblePackages} policies={configuration.materialPolicies} initialPackageVersionRef={packageVersionRef} initialPolicyVersionRef={policyVersionRef} initialDurationHours={durationHours} initialPreference={configuration.current?.preference || {}} disabled={!canConfigure || !canContinue || configurationLoading || configurationUnavailable} saving={configurationSaving} onConfirm={(draft) => void saveConfiguration(draft)} />
           <details className="mt-4 rounded-lg border border-slate-200 bg-white"><summary className="cursor-pointer px-3 py-2 text-xs font-bold text-slate-700">Ver recursos y requerimientos confirmados</summary><div className="overflow-x-auto border-t"><div className="grid min-w-[700px] grid-cols-[120px_minmax(180px,1fr)_100px_110px_120px] border-b bg-slate-50 px-3 py-2 text-[10px] font-black uppercase text-slate-500"><span>Tipo</span><span>Requerimiento</span><span>Cantidad</span><span>Disposición</span><span>Fuente</span></div>{configuration.current?.items.map((item) => <div key={item.itemRef} className="grid min-w-[700px] grid-cols-[120px_minmax(180px,1fr)_100px_110px_120px] border-b px-3 py-2 text-xs"><span>{item.kind}</span><strong>{item.name}</strong><span>{item.quantity ?? item.hours ?? item.days ?? "—"} {item.unitCode || ""}</span><span>{item.disposition || item.chargeType || "—"}</span><span>{item.source}</span></div>)}{!configuration.current && <p className="p-4 text-xs text-slate-500">Aún no existe una preparación confirmada.</p>}</div></details>
           {configuration.current?.conflicts.some((item) => item.state === "OPEN") && <p role="alert" className="mt-3 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Existe un conflicto de configuraciones equivalentes. Debe resolverse administrativamente; no se eligió una al azar.</p>}
           <p className="mt-3 text-[11px] text-slate-500">Precedencia: ajuste del caso → acuerdo comercial → paquete → modo/servicio → resolución manual.</p>

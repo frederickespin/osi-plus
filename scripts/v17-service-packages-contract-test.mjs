@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { normalizeCaseConfigurationSave, normalizeCatalogModesSave, normalizeConfigurationConflictResolve, normalizeMaterialPolicySave, normalizeModeSave, normalizePackageSave, serviceConfigurationPayloadHash } from "../api/_lib/servicePackagesContract.js";
+import { normalizeCaseConfigurationSave, normalizeCaseIntakeSave, normalizeCatalogModesSave, normalizeConfigurationConflictResolve, normalizeMaterialPolicySave, normalizeModeSave, normalizePackageSave, serviceConfigurationPayloadHash } from "../api/_lib/servicePackagesContract.js";
 
 let checks = 0; const pass = (condition, message) => { assert.ok(condition, message); checks += 1; };
 const signed = (operation, value) => { const payload = { operation, ...value }; return { ...value, payloadHash: serviceConfigurationPayloadHash(payload) }; };
@@ -45,6 +45,20 @@ pass(normalizeCaseConfigurationSave(configuration).source === "PACKAGE", "snapsh
 assert.throws(() => normalizeCaseConfigurationSave({ ...configuration, ownerId: "forbidden" }), /SERVICE_PACKAGES_INPUT_INVALID/); checks += 1;
 assert.throws(() => normalizeCaseConfigurationSave({ ...configuration, packageVersionRef: "cuid-internal" }), /SERVICE_PACKAGES_RESOURCE_NOT_FOUND/); checks += 1;
 pass(!JSON.stringify(normalizeCaseConfigurationSave(configuration)).match(/tenantId|membershipId|userId/), "contrato no acepta autoridad cliente");
+const directQuote = { source: "CLIENT_LIST", clientList: "4 sofás\n12 cajas", volumeM3: null, originAccess: "Escalera", destinationAccess: null, specialWork: "Desmontaje de lámparas" };
+const intakeCommand = (intake) => signed("CASE_INTAKE_SAVE", {
+  requestId: requestId(), expectedRevision: 0, serviceSelectionRef: id(), serviceSelectionRevision: 1, intake,
+});
+const savedDirectQuote = normalizeCaseIntakeSave(intakeCommand({ serviceStartDate: "2028-02-29", directQuote }));
+assert.deepEqual(savedDirectQuote.intake, { serviceStartDate: "2028-02-29", directQuote }); checks += 1;
+assert.deepEqual(normalizeCaseIntakeSave(intakeCommand({ serviceStartDate: null })).intake, { serviceStartDate: null }); checks += 1;
+assert.deepEqual(normalizeCaseIntakeSave(intakeCommand({ serviceStartDate: null, directQuote: null })).intake, { serviceStartDate: null, directQuote: null }); checks += 1;
+for (const invalid of [{ volumeM3: 0 }, { volumeM3: 100_001 }, { volumeM3: "12" }, { clientList: "x".repeat(801) }, { specialWork: "Piso\u0000" }, { source: "SURVEY" }]) {
+  assert.throws(() => normalizeCaseIntakeSave(intakeCommand({ serviceStartDate: null, directQuote: { ...directQuote, ...invalid } })), /SERVICE_PACKAGES_INPUT_INVALID/); checks += 1;
+}
+for (const serviceStartDate of ["2026-02-29", "2028-04-31", "2028-1-01", "2028-01-01T00:00:00.000Z", "0000-01-01"]) {
+  assert.throws(() => normalizeCaseIntakeSave(intakeCommand({ serviceStartDate })), /SERVICE_PACKAGES_INPUT_INVALID/); checks += 1;
+}
 const conflict = signed("CONFIGURATION_CONFLICT_RESOLVE", { requestId: requestId(), expectedState: "OPEN", resolutionCode: "SELECTED_AUTHORITY", selectedAuthorityRef: id() });
 pass(normalizeConfigurationConflictResolve(conflict).expectedState === "OPEN", "resolución de conflicto cerrada e idempotente");
 assert.throws(() => normalizeConfigurationConflictResolve({ ...conflict, tenantId: "forbidden" }), /SERVICE_PACKAGES_INPUT_INVALID/); checks += 1;

@@ -22,6 +22,7 @@ import {
   resolvePersonnelScheduleAuthority,
 } from "./personnelPoliciesDomain.js";
 import {
+  normalizeProspectiveSurveyMethod,
   normalizeSchedulingMutation,
   resolveOperationalCapability,
   resolveScheduleProfile,
@@ -38,6 +39,8 @@ const SERIALIZABLE = Object.freeze({
 });
 
 function requiredPermission(operation) {
+  if (operation === "DECIDE_AND_SCHEDULE")
+    return [PERMS.SURVEY_SCHEDULE_MANAGE, PERMS.SURVEY_SCHEDULE_ASSIGN];
   if (
     operation === "PUBLISH_POLICY" ||
     operation === "DECIDE_METHOD" ||
@@ -280,6 +283,8 @@ function motorZone(revision, routeVersion) {
   };
 }
 async function visitZone(tx, tenantId, geography, location, motor, routeVersion) {
+  if (location?.countryCode && location.countryCode !== "DO")
+    schedulingFail("CRM_SURVEY_ZONE_UNRESOLVED", 409);
   if (!geography.metro) return motorZone(motor, routeVersion);
   const zoneType = classifyLogisticsMetro(geography.metro, location);
   if (!zoneType) schedulingFail("CRM_SURVEY_ZONE_UNRESOLVED", 409);
@@ -372,11 +377,14 @@ function evaluatorContext(
     },
   });
 }
-async function latestMotor(tx, tenantId, pipelineCaseId, decisionRef) {
-  if (!decisionRef) return null;
+async function latestMotor(tx, tenantId, pipelineCaseId, decisionRef, allowLegacyWithoutDecision = false) {
+  if (!decisionRef && !allowLegacyWithoutDecision) return null;
   return latestLogisticsRevision(tx, {
     where: { tenantId, plan: { pipelineCaseId } },
-    context: { contract: TRANSPORT_CONTEXT_CONTRACT, purpose: "VISIT", contextRef: decisionRef },
+    context: decisionRef
+      ? { contract: TRANSPORT_CONTEXT_CONTRACT, purpose: "VISIT", contextRef: decisionRef }
+      : QUOTE_TRANSPORT_CONTEXT,
+    legacyOnly: !decisionRef,
     fallbackContext: QUOTE_TRANSPORT_CONTEXT,
     fallbackLegacyOnly: true,
   });
@@ -510,6 +518,22 @@ async function event(
   });
 }
 
+async function latestCoordinationDraft(tx, tenantId, decision) {
+  if (!decision || !["READY_TO_SCHEDULE", "WAITING_CLIENT_INFO"].includes(decision.commercialState))
+    return null;
+  const row = await tx.surveyAssignmentEvent.findFirst({
+    where: { tenantId, evaluationDecisionId: decision.id, eventType: "METHOD_DECIDED" },
+    orderBy: { createdAt: "desc" },
+    select: { eventRef: true, afterSnapshot: true },
+  });
+  const draft = row?.afterSnapshot?.coordinationDraft;
+  return draft ? { ref: row.eventRef, draft } : null;
+}
+
+function visitLocationKey(location) {
+  return location ? `${location.role}:${location.stopOrder}` : null;
+}
+
 export async function getSurveySchedulingWorkspace(context, query, database) {
   return database.$transaction(async (tx) => {
     const who = await resolveSurveyAuthorization(
@@ -520,6 +544,9 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
     );
     const caseRef = String(query?.caseRef || "");
     const exactQuery = parseSurveyExactQuery(query);
+    const prospectiveMethod = normalizeProspectiveSurveyMethod(query?.method);
+    if (prospectiveMethod && query?.mode === "reschedule")
+      schedulingFail("CRM_SURVEY_SCHEDULING_INPUT_INVALID");
     const pipelineCase = await caseByRef(tx, who, caseRef);
     const currentRoutes = pipelineCase.routeSnapshots.filter(
       (route) => route.routeVersion === pipelineCase.routeRevision,
@@ -528,8 +555,12 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id },
       orderBy: { version: "desc" },
     });
-    const assignment = decision
-      ? await tx.surveyAssignment.findFirst({
+    const changingMethod = Boolean(prospectiveMethod && prospectiveMethod !== decision?.method);
+    if (changingMethod && !who.effective.has(PERMS.SURVEY_SCHEDULE_MANAGE))
+      schedulingFail("CRM_SURVEY_PERMISSION_FORBIDDEN", 403);
+    const method = prospectiveMethod ?? decision?.method ?? null;
+    const [assignment, savedCoordination] = await Promise.all([
+      decision ? tx.surveyAssignment.findFirst({
           where: { tenantId: who.tenantId, evaluationDecisionId: decision.id },
           include: {
             evaluatorMembership: { include: { user: true } },
@@ -537,8 +568,21 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
             drafts: { orderBy: { revision: "desc" }, take: 1 },
           },
           orderBy: { createdAt: "desc" },
-        })
-      : null;
+        }) : null,
+      latestCoordinationDraft(tx, who.tenantId, decision),
+    ]);
+    const draft = savedCoordination?.draft ?? null;
+    const draftRouteCurrent = decision?.routeVersion === pipelineCase.routeRevision;
+    const draftLocation = draftRouteCurrent ? draft?.visitLocation : null;
+    const visitLocation = method === "IN_PERSON"
+      ? selectedVisitRoute(currentRoutes, query?.visitLocation ?? draftLocation ?? undefined, assignment) : null;
+    const pricedLocation = method === "IN_PERSON"
+      ? selectedVisitRoute(currentRoutes, draftLocation ?? undefined, assignment) : null;
+    const sameVisitAddress = visitLocationKey(visitLocation) === visitLocationKey(pricedLocation);
+    const useDecisionContext = !changingMethod && (!prospectiveMethod || (
+      decision.commercialState === "READY_TO_SCHEDULE" && draftRouteCurrent && sameVisitAddress &&
+      decision.serviceRevisionId === (pipelineCase.serviceRevisions[0]?.id ?? null)
+    ));
     const [
       policy,
       operationalPolicy,
@@ -563,8 +607,13 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
         ? tx.surveyVisitFee.findFirst({
             where: {
               tenantId: who.tenantId,
-              evaluationDecisionId: decision.id,
+              pipelineCaseId: pipelineCase.id,
+              OR: [
+                { evaluationDecisionId: decision.id },
+                ...(assignment ? [{ assignmentId: assignment.id }] : []),
+              ],
             },
+            orderBy: { createdAt: "desc" },
           })
         : null,
       tx.surveyAssignmentEvent.findMany({
@@ -590,25 +639,24 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
           accessSnapshots: true,
         },
       }),
-      latestMotor(tx, who.tenantId, pipelineCase.id, decision?.decisionRef),
-      decision?.method === "IN_PERSON" ? loadLogisticsGeography(tx, who.tenantId) : { metro: null },
+      latestMotor(tx, who.tenantId, pipelineCase.id, useDecisionContext ? decision?.decisionRef : null, !useDecisionContext && method === "IN_PERSON"),
+      method === "IN_PERSON" ? loadLogisticsGeography(tx, who.tenantId) : { metro: null },
     ]);
-    const visitLocation = decision?.method === "IN_PERSON"
-      ? selectedVisitRoute(currentRoutes, query?.visitLocation, assignment) : null;
     const bookedZone = assignment?.contextSnapshot?.zone;
-    const useBookedZone = bookedZone?.metroVersion !== undefined
+    const useBookedZone = !changingMethod && bookedZone?.metroVersion !== undefined
       && assignment.contextSnapshot.routeVersion === pipelineCase.routeRevision && query?.visitLocation === undefined;
     const requestedDate =
       query?.date == null || query.date === "" ? null : String(query.date);
     let schedulingContext = null;
     let availability = null;
+    let schedulingIssue = policy ? null : "CRM_SURVEY_SCHEDULE_POLICY_NOT_READY";
     if (
       policy &&
-      (motor || geography.metro || useBookedZone || (decision?.method && decision.method !== "IN_PERSON"))
+      (motor || geography.metro || useBookedZone || (method && method !== "IN_PERSON"))
     ) {
       let resolved = null;
       try {
-        const physical = decision?.method === "IN_PERSON";
+        const physical = method === "IN_PERSON";
         let zone;
         if (!physical) zone = { zoneType: policy.configuration.profiles[0].zoneType, zoneCode: "VIRTUAL", distanceKm: null };
         else if (useBookedZone) zone = { zoneType: bookedZone.type, zoneCode: bookedZone.code, distanceKm: bookedZone.distanceKm };
@@ -628,8 +676,9 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
           distanceKm: zone.distanceKm,
         };
         resolved = { zone, profile };
-      } catch {
-        schedulingContext = null;
+      } catch (error) {
+        if (!["CRM_SURVEY_ZONE_UNRESOLVED", "CRM_SURVEY_LOGISTICS_REVISION_REQUIRED"].includes(error?.code)) throw error;
+        schedulingIssue = error.code;
       }
       if (resolved) {
         const { zone, profile } = resolved;
@@ -691,6 +740,8 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
           };
         }
       }
+    } else if (policy && method === "IN_PERSON") {
+      schedulingIssue = "CRM_SURVEY_LOGISTICS_REVISION_REQUIRED";
     }
     const reprogramming = exactQuery?.mode === "reschedule";
     const canAssign = who.effective.has(
@@ -699,8 +750,8 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
     const assignedMembership = reprogramming
       ? { id: assignment?.evaluatorMembershipId || "" }
       : {};
-    const capabilityCode = decision
-      ? operationalCapabilityCode(decision.method)
+    const capabilityCode = method
+      ? operationalCapabilityCode(method)
       : null;
     const operationalProfiles =
       canAssign && operationalPolicy
@@ -791,7 +842,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       }
     }
     let timeAvailability = null;
-    if (exactQuery && policy && decision && canAssign) {
+    if (exactQuery && policy && method && canAssign) {
       const bookedPolicy = reprogramming && assignment?.schedulePolicyId !== policy.id
         ? assignment?.schedulePolicyId
           ? await tx.surveySchedulePolicyVersion.findFirst({
@@ -818,7 +869,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
               ).length === 1),
             ).map((row) => ({ membershipId: row.membershipId, membershipRef: row.membership.publicRef, profileId: row.id }))
           : candidates.filter((row) => canPerform(row) && resolveOperationalCapability(
-              bookedPolicy.configuration, row.publicRef, decision.method, profile.code,
+              bookedPolicy.configuration, row.publicRef, method, profile.code,
             )).map((row) => ({ membershipId: row.id, membershipRef: row.publicRef }));
         timeAvailability = await loadExactSurveyAvailability(tx, {
           tenantId: who.tenantId,
@@ -827,9 +878,9 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
           operationalPolicy,
           profile,
           zoneCode,
-          method: decision.method,
+          method,
           candidates: exactCandidates,
-          motorTravelMinutes: decision.method === "IN_PERSON"
+          motorTravelMinutes: method === "IN_PERSON"
             ? Number(motor?.resultSnapshot?.travelMinutes ?? motor?.inputSnapshot?.route?.travelMinutes ?? 0)
             : 0,
           excludedAssignmentId: reprogramming ? assignment.id : null,
@@ -841,6 +892,8 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
       caseRef: pipelineCase.publicRef,
       caseCode: pipelineCase.caseCode,
       routeVersion: pipelineCase.routeRevision,
+      coordinationRef: savedCoordination?.ref ?? null,
+      coordinationDraft: draft && !draftRouteCurrent ? { ...draft, visitLocation: null } : draft,
       decision: decision
         ? {
             decisionRef: decision.decisionRef,
@@ -933,6 +986,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
                 ...(geography.metro ? { metroZone: classifyLogisticsMetro(geography.metro, location) } : {}),
       })),
       schedulingContext,
+      schedulingIssue,
       availability,
       timeAvailability,
       evaluatorCandidates: operationalPolicy
@@ -945,7 +999,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
             ),
             dailyAssigned: dailyInteriorCounts.get(row.membershipId) || 0,
             dailyLimit:
-              decision?.method === "IN_PERSON" &&
+              method === "IN_PERSON" &&
               schedulingContext?.zoneType !== "METRO"
                 ? 1
                 : null,
@@ -960,12 +1014,13 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
               )?.capabilities || [],
             dailyAssigned: 0,
             dailyLimit:
-              decision?.method === "IN_PERSON" &&
+              method === "IN_PERSON" &&
               schedulingContext?.zoneType !== "METRO"
                 ? 1
                 : null,
           })),
-      visitFee: fee
+      visitFee: fee && !changingMethod && draftRouteCurrent && sameVisitAddress &&
+        (!prospectiveMethod || useDecisionContext)
         ? {
             feeRef: fee.feeRef,
             disposition: fee.disposition,
@@ -1015,7 +1070,7 @@ export async function getSurveySchedulingWorkspace(context, query, database) {
   });
 }
 
-async function decide(tx, who, command) {
+async function currentDecision(tx, who, command) {
   const pipelineCase = await caseByRef(tx, who, command.caseRef);
   await lock(tx, who.tenantId, `DECISION:${pipelineCase.id}`);
   const prior = await tx.surveyEvaluationDecision.findFirst({
@@ -1024,12 +1079,15 @@ async function decide(tx, who, command) {
   });
   if ((prior?.version || null) !== command.expectedVersion)
     schedulingFail("CRM_SURVEY_VERSION_CONFLICT", 409);
-  const service = pipelineCase.serviceRevisions[0] || null;
-  const row = await tx.surveyEvaluationDecision.create({
+  return { pipelineCase, prior };
+}
+
+async function createDecision(tx, who, pipelineCase, prior, command) {
+  return tx.surveyEvaluationDecision.create({
     data: {
       tenantId: who.tenantId,
       pipelineCaseId: pipelineCase.id,
-      serviceRevisionId: service?.id || null,
+      serviceRevisionId: pipelineCase.serviceRevisions[0]?.id || null,
       routeVersion: pipelineCase.routeRevision,
       version: (prior?.version || 0) + 1,
       method: command.method,
@@ -1042,11 +1100,37 @@ async function decide(tx, who, command) {
       createdByUserId: who.userId,
     },
   });
+}
+
+function validateOpenCoordination(prior) {
+  if (["SCHEDULED", "IN_PROGRESS", "COMPLETED"].includes(prior?.commercialState))
+    schedulingFail("CRM_SURVEY_VERSION_CONFLICT", 409);
+}
+
+async function checkCoordinationDraft(tx, who, prior, command) {
+  validateOpenCoordination(prior);
+  const saved = await latestCoordinationDraft(tx, who.tenantId, prior);
+  if ("expectedCoordinationRef" in command && (saved?.ref ?? null) !== command.expectedCoordinationRef)
+    schedulingFail("CRM_SURVEY_VERSION_CONFLICT", 409);
+  return saved?.draft ?? null;
+}
+
+function sameCoordination(pipelineCase, prior, method, state, draft, newLocation) {
+  if (!prior || prior.method !== method || prior.commercialState !== state ||
+      prior.routeVersion !== pipelineCase.routeRevision ||
+      prior.serviceRevisionId !== (pipelineCase.serviceRevisions[0]?.id ?? null)) return false;
+  if (method !== "IN_PERSON") return true;
+  const routes = pipelineCase.routeSnapshots.filter((route) => route.routeVersion === pipelineCase.routeRevision);
+  const oldLocation = selectedVisitRoute(routes, draft?.visitLocation ?? undefined);
+  return visitLocationKey(oldLocation) === visitLocationKey(selectedVisitRoute(routes, newLocation ?? undefined));
+}
+
+async function recordMethodDecision(tx, who, row, prior, coordinationDraft) {
   await event(
     tx,
     who,
     row,
-    pipelineCase.id,
+    row.pipelineCaseId,
     null,
     "METHOD_DECIDED",
     prior
@@ -1056,8 +1140,29 @@ async function decide(tx, who, command) {
           version: prior.version,
         }
       : null,
-    { method: row.method, state: row.commercialState, version: row.version },
+    {
+      method: row.method,
+      state: row.commercialState,
+      version: row.version,
+      ...(coordinationDraft !== undefined && { coordinationDraft }),
+    },
   );
+}
+
+async function decide(tx, who, command) {
+  const { pipelineCase, prior } = await currentDecision(tx, who, command);
+  let row = null;
+  if ("coordinationDraft" in command || "expectedCoordinationRef" in command) {
+    const savedDraft = await checkCoordinationDraft(tx, who, prior, command);
+    const newLocation = command.coordinationDraft?.visitLocation;
+    if (newLocation && command.method === "IN_PERSON")
+      selectedVisitRoute(pipelineCase.routeSnapshots.filter((route) => route.routeVersion === pipelineCase.routeRevision), newLocation);
+    if ("coordinationDraft" in command &&
+        sameCoordination(pipelineCase, prior, command.method, command.commercialState, savedDraft, newLocation))
+      row = prior;
+  }
+  row ??= await createDecision(tx, who, pipelineCase, prior, command);
+  await recordMethodDecision(tx, who, row, prior, command.coordinationDraft);
   return persist(
     tx,
     who,
@@ -1073,6 +1178,27 @@ async function decide(tx, who, command) {
     },
     "SURVEY_METHOD_DECIDED",
   );
+}
+
+async function decideAndSchedule(tx, who, command) {
+  const { pipelineCase, prior } = await currentDecision(tx, who, command);
+  const savedDraft = await checkCoordinationDraft(tx, who, prior, command);
+  const location = command.visitRouteRole ? `${command.visitRouteRole}:${command.visitRouteOrder}` : null;
+  let decision = prior;
+  if (!sameCoordination(pipelineCase, prior, command.method, "READY_TO_SCHEDULE", savedDraft, location)) {
+    decision = await createDecision(tx, who, pipelineCase, prior, {
+      method: command.method,
+      commercialState: "READY_TO_SCHEDULE",
+      informationSource: command.method === "MINI" ? "MINI" : "COMMERCIAL",
+      rationaleCode: null,
+    });
+    await recordMethodDecision(tx, who, decision, prior);
+  }
+  return schedule(tx, who, {
+    ...command,
+    decisionRef: decision.decisionRef,
+    expectedDecisionVersion: decision.version,
+  }, { decision, pipelineCase });
 }
 
 async function publishPolicy(tx, who, command) {
@@ -1123,8 +1249,8 @@ async function publishPolicy(tx, who, command) {
   );
 }
 
-async function schedule(tx, who, command) {
-  const { decision, pipelineCase } = await decisionByRef(
+async function schedule(tx, who, command, coordination = null) {
+  const { decision, pipelineCase } = coordination ?? await decisionByRef(
     tx,
     who,
     command.decisionRef,
@@ -1175,6 +1301,13 @@ async function schedule(tx, who, command) {
         zone.distanceKm,
       )
     : fallbackProfile;
+  const existingFee = coordination && physical && zone.zoneType !== "METRO"
+    ? await tx.surveyVisitFee.findFirst({
+        where: { tenantId: who.tenantId, pipelineCaseId: pipelineCase.id, evaluationDecisionId: decision.id },
+      })
+    : null;
+  if (existingFee?.disposition === "CHARGEABLE" && existingFee.approvalStatus !== "APPROVED")
+    schedulingFail("CRM_SURVEY_VISIT_FEE_APPROVAL_REQUIRED", 409);
   const evaluatorRow = await evaluator(
     tx,
     who,
@@ -1318,6 +1451,10 @@ async function schedule(tx, who, command) {
       evaluatorMembership: { include: { user: true } },
       evaluationDecision: true,
     },
+  });
+  if (existingFee) await tx.surveyVisitFee.update({
+    where: { id: existingFee.id },
+    data: { assignmentId: assignment.id },
   });
   const preparedCommunications = operationalPolicy
     ? [
@@ -1883,6 +2020,8 @@ export async function mutateSurveyScheduling(context, raw, database) {
       if (prior) return prior;
       if (command.operation === "DECIDE_METHOD")
         return decide(tx, who, command);
+      if (command.operation === "DECIDE_AND_SCHEDULE")
+        return decideAndSchedule(tx, who, command);
       if (command.operation === "PUBLISH_POLICY")
         return publishPolicy(tx, who, command);
       if (command.operation === "SCHEDULE") return schedule(tx, who, command);

@@ -92,6 +92,11 @@ const cases = [
       value.replace("onOpenCommunications(workspace.assignment.assignmentRef)", "sendMessageImmediately()"),
   ],
   [
+    "coordinación unificada",
+    "src/survey/SurveyCasePanel.tsx",
+    (value) => value.replace('label="Coordinar"', 'label="Solicitud"'),
+  ],
+  [
     "CORS",
     "scripts/protected-cors-route-inventory.json",
     (value) =>

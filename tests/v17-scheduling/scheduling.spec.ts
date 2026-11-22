@@ -6,6 +6,7 @@ const MEMBERSHIP_REF = "238f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const ASSIGNMENT_REF = "338f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const DECISION_REF = "438f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const TEMPLATE_REF = "538f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
+const COORDINATION_REF = "e38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012";
 const privateHeaders = {
   "Cache-Control": "private, no-store",
   Vary: "Authorization, Origin",
@@ -22,7 +23,7 @@ const schedulingPermissions = [
 
 async function session(
   page: Page,
-  access: "manager" | "viewer" | "deny" = "manager",
+  access: "manager" | "scheduler" | "viewer" | "deny" = "manager",
 ) {
   const permissions = [
     "pipeline:view",
@@ -37,7 +38,9 @@ async function session(
             "communications:prepare",
             "communications:templates:view",
           ]
-        : ["survey:schedule:view", "communications:view"]),
+        : access === "scheduler"
+          ? ["survey:schedule:view", "survey:schedule:assign"]
+          : ["survey:schedule:view", "communications:view"]),
   ];
   const deniedPermissions = access === "deny" ? ["survey:schedule:view"] : [];
   await page.addInitScript(
@@ -646,7 +649,7 @@ async function communicationsApi(page: Page) {
 async function openSurveyCommunications(page: Page) {
   const survey = page.getByTestId("survey-scheduling-workspace");
   await expect(survey).toBeVisible();
-  await survey.getByRole("button", { name: /^Programación/ }).click();
+  await survey.getByRole("button", { name: /^Coordinar/ }).click();
   const openCommunications = survey.getByRole("button", {
     name: "Ver comunicaciones de Survey",
     exact: true,
@@ -675,7 +678,7 @@ test("integra Evaluación, Agenda, Visit Fee, PIC e historial sin reescribir Sur
   await page.getByRole("tab", { name: "Survey" }).click();
   await expect(page.getByTestId("survey-scheduling-workspace")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Coordinar Survey", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /^Programación/ }).click();
+  await page.getByRole("button", { name: /^Coordinar/ }).click();
   await expect(
     page.getByText(
       "Evaluadora sintética · METRO · METRO_SANTO_DOMINGO · MORNING",
@@ -808,7 +811,6 @@ test("fuera de horario ofrece solicitud excepcional tenant-first", async ({
   });
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Survey" }).click();
-  await page.getByRole("button", { name: "Programación" }).click();
   const editor = page.getByTestId("survey-schedule-editor");
   await editor.getByLabel("Fecha").fill("2030-09-16");
   await editor.getByLabel("Hora de llegada").fill("14:15");
@@ -851,13 +853,16 @@ test("Survey consulta la zona de la dirección que el usuario selecciona", async
   });
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Survey" }).click();
-  await page.getByRole("button", { name: "Programación" }).click();
   const editor = page.getByTestId("survey-schedule-editor");
   await expect(editor.getByText(/^Zona metro(?: · Sin cargo)?$/)).toBeVisible();
+  await expect(editor.getByLabel("Fecha")).toBeEnabled();
+  requestedLocations.length = 0;
   await editor.getByLabel("Lugar de la visita").selectOption("DESTINATION:0");
   await expect(editor.getByText(/^Fuera de zona metro/)).toBeVisible();
   await expect(editor.getByRole("button", { name: "Confirmar visita" })).toBeDisabled();
   await expect.poll(() => requestedLocations).toEqual(["DESTINATION:0"]);
+  await expect(editor.getByLabel("Fecha")).toBeDisabled();
+  await expect(editor.getByRole("button", { name: "Editar dirección del caso" })).toBeVisible();
   await editor.getByLabel("Lugar de la visita").selectOption("ORIGIN:0");
   await expect(editor.getByText(/^Zona metro(?: · Sin cargo)?$/)).toBeVisible();
   await expect.poll(() => requestedLocations).toEqual(["DESTINATION:0", "ORIGIN:0"]);
@@ -865,7 +870,7 @@ test("Survey consulta la zona de la dirección que el usuario selecciona", async
 
 test("consulta una hora, ofrece alternativas y confirma la llegada elegida", async ({ page }) => {
   await page.clock.install();
-  await session(page);
+  await session(page, "scheduler");
   await crm(page);
   let command: Record<string, unknown> | undefined;
   let reportedReturn = false;
@@ -880,7 +885,6 @@ test("consulta una hora, ofrece alternativas y confirma la llegada elegida", asy
   });
   await page.goto(`/commercial/cases/${CASE_REF}`);
   await page.getByRole("tab", { name: "Survey" }).click();
-  await page.getByRole("button", { name: "Programación" }).click();
   const editor = page.getByTestId("survey-schedule-editor");
   const arrival = editor.getByLabel("Hora de llegada");
   await expect(editor.locator("input[type=time]")).toHaveCount(1);
@@ -911,6 +915,153 @@ test("consulta una hora, ofrece alternativas y confirma la llegada elegida", asy
     scheduledStart: "2030-09-16T19:15:00.000Z",
     scheduledEnd: "2030-09-16T20:15:00.000Z",
   });
+});
+
+test("coordina una visita nueva y guarda solicitud y cita en una sola confirmación", async ({ page }) => {
+  await session(page);
+  await crm(page);
+  const commands: Record<string, unknown>[] = [];
+  const fixture = readyWorkspace();
+  const appointment = workspace();
+  const arrival = "15:15";
+  const date = "2030-09-16";
+  await page.route("**/api/crm/survey/scheduling**", async (route) => {
+    if (route.request().method() === "POST") {
+      commands.push(route.request().postDataJSON());
+      return route.fulfill({
+        json: { ok: true, data: { assignmentRef: ASSIGNMENT_REF, status: "ASSIGNED" } },
+        headers: privateHeaders,
+      });
+    }
+    const url = new URL(route.request().url());
+    const confirmed = commands.some(({ operation }) => operation === "DECIDE_AND_SCHEDULE");
+    const proposedMethod = url.searchParams.get("method");
+    const timeAvailability = proposedMethod === "IN_PERSON" ? exactAvailability(url) : null;
+    return route.fulfill({
+      json: { ok: true, data: confirmed ? appointment : { ...fixture, decision: null, timeAvailability } },
+      headers: privateHeaders,
+    });
+  });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Survey", exact: true }).click();
+  const survey = page.getByTestId("survey-scheduling-workspace");
+  const steps = survey.getByTestId("survey-workspace-views");
+  await expect(steps.getByRole("button", { name: /^Coordinar/ })).toBeVisible();
+  await expect(steps.getByRole("button", { name: /^Resultado/ })).toBeVisible();
+  await expect(steps.getByRole("button")).toHaveCount(2);
+  const method = survey.getByLabel("Método de Survey");
+  await method.selectOption("CLIENT_PHOTOS_DOCUMENTS");
+  await expect(survey.getByLabel("Hora de llegada")).toHaveCount(0);
+  await method.selectOption("IN_PERSON");
+  await survey.getByLabel("Fecha").fill(date);
+  await survey.getByLabel("Hora de llegada").fill(arrival);
+  await expect(survey.getByLabel("Duración")).toHaveValue("45");
+  await expect(survey.getByLabel("Evaluador disponible")).toHaveValue(MEMBERSHIP_REF);
+  expect(commands).toHaveLength(0);
+  await survey.getByRole("button", { name: "Confirmar visita" }).click();
+  await expect.poll(() => commands).toEqual([expect.objectContaining({
+    operation: "DECIDE_AND_SCHEDULE",
+    caseRef: CASE_REF,
+    expectedVersion: null,
+    expectedCoordinationRef: null,
+    method: "IN_PERSON",
+    slotKey: "AFTERNOON",
+    evaluatorMembershipRef: MEMBERSHIP_REF,
+    scheduledStart: "2030-09-16T19:15:00.000Z",
+    scheduledEnd: "2030-09-16T20:00:00.000Z",
+  })]);
+  await expect(steps.getByRole("button", { name: /^Resultado/ })).toBeEnabled();
+});
+
+test("prepara la solicitud de información desde Coordinar", async ({ page }) => {
+  await session(page);
+  await crm(page);
+  const communicationAudit = await communicationsApi(page);
+  const fixture = readyWorkspace();
+  const commands: Record<string, unknown>[] = [];
+  await page.route("**/api/crm/survey/scheduling**", async (route) => {
+    const command = route.request().method() === "POST" ? route.request().postDataJSON() : null;
+    if (command) commands.push(command);
+    const decision = commands.length ? {
+      ...fixture.decision,
+      method: "CLIENT_PHOTOS_DOCUMENTS",
+      state: "WAITING_CLIENT_INFO",
+    } : null;
+    return route.fulfill({ json: { ok: true, data: { ...fixture, decision } }, headers: privateHeaders });
+  });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Survey", exact: true }).click();
+  const survey = page.getByTestId("survey-scheduling-workspace");
+  await survey.getByLabel("Método de Survey").selectOption("CLIENT_PHOTOS_DOCUMENTS");
+  await survey.getByLabel("Información recibida o por pedir").fill("Pedir fotos del mobiliario");
+  await survey.getByRole("button", { name: "Solicitar información", exact: true }).click();
+  const communications = page.getByTestId("communications-case");
+  await expect(communications.getByLabel("Plantilla")).toBeVisible();
+  await expect(communications.getByLabel("Hito")).toHaveValue("CLIENT_INFORMATION_REQUEST");
+  expect(commands).toEqual([expect.objectContaining({
+    operation: "DECIDE_METHOD",
+    method: "CLIENT_PHOTOS_DOCUMENTS",
+    commercialState: "WAITING_CLIENT_INFO",
+    coordinationDraft: expect.objectContaining({ instruction: "Pedir fotos del mobiliario" }),
+  })]);
+  expect(communicationAudit.mutations()).toBe(0);
+});
+
+test("retoma una visita pendiente con los datos que guardó", async ({ page }) => {
+  await session(page);
+  await crm(page);
+  const fixture = readyWorkspace();
+  const commands: Record<string, unknown>[] = [];
+  let coordinationDraft: Record<string, unknown> | null = null;
+  await page.route("**/api/crm/survey/scheduling**", async (route) => {
+    if (route.request().method() === "POST") {
+      const command = route.request().postDataJSON();
+      commands.push(command);
+      if (command.operation === "DECIDE_METHOD") coordinationDraft = command.coordinationDraft;
+      return route.fulfill({
+        json: { ok: true, data: { decisionRef: DECISION_REF, coordinationRef: COORDINATION_REF, version: 1, state: "READY_TO_SCHEDULE" } },
+        headers: privateHeaders,
+      });
+    }
+    return route.fulfill({
+      json: {
+        ok: true,
+        data: { ...fixture, decision: coordinationDraft ? fixture.decision : null, coordinationRef: coordinationDraft ? COORDINATION_REF : null, coordinationDraft },
+      },
+      headers: privateHeaders,
+    });
+  });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Survey", exact: true }).click();
+  const survey = page.getByTestId("survey-scheduling-workspace");
+  await survey.getByLabel("Método de Survey").selectOption("IN_PERSON");
+  await survey.getByLabel("Lugar de la visita").selectOption("DESTINATION:0");
+  await survey.getByLabel("Fecha").fill("2030-09-16");
+  await survey.getByLabel("Duración").selectOption("60");
+  await survey.getByLabel("Notas para el evaluador").fill("Llamar al llegar");
+  await survey.getByRole("button", { name: "Guardar pendiente", exact: true }).click();
+  await expect.poll(() => commands).toEqual([expect.objectContaining({
+    operation: "DECIDE_METHOD",
+    caseRef: CASE_REF,
+    expectedCoordinationRef: null,
+    method: "IN_PERSON",
+    commercialState: "READY_TO_SCHEDULE",
+    coordinationDraft: expect.objectContaining({
+      visitLocation: "DESTINATION:0",
+      date: "2030-09-16",
+      time: null,
+      durationMinutes: 60,
+      instruction: "Llamar al llegar",
+    }),
+  })]);
+  await page.reload();
+  await page.getByRole("tab", { name: "Survey", exact: true }).click();
+  await expect(survey.getByLabel("Lugar de la visita")).toHaveValue("DESTINATION:0");
+  await expect(survey.getByLabel("Fecha")).toHaveValue("2030-09-16");
+  await expect(survey.getByLabel("Hora de llegada")).toHaveValue("");
+  await expect(survey.getByLabel("Duración")).toHaveValue("60");
+  await expect(survey.getByLabel("Notas para el evaluador")).toHaveValue("Llamar al llegar");
+  await expect(survey.getByRole("button", { name: "Confirmar visita" })).toBeDisabled();
 });
 
 test("viewer consulta agenda y comunicaciones sin controles de gestión", async ({

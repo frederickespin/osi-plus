@@ -6,6 +6,17 @@ export type EvaluationMethod =
   | "VOXME"
   | "MINI"
   | "NONE";
+export type ScheduledEvaluationMethod = Extract<EvaluationMethod, "IN_PERSON" | "VIRTUAL" | "MINI">;
+export type SurveyCoordinationDraft = Readonly<{
+  visitLocation: string | null;
+  date: string | null;
+  time: string | null;
+  durationMinutes: number;
+  evaluatorMembershipRef: string | null;
+  visitReasonRef: string | null;
+  instruction: string | null;
+  approvalReason: string | null;
+}>;
 export type EvaluationState =
   | "NOT_REQUIRED"
   | "PENDING_METHOD"
@@ -43,6 +54,9 @@ export type SchedulingWorkspace = Readonly<{
   caseRef: string;
   caseCode: string;
   routeVersion: number;
+  coordinationDraft?: SurveyCoordinationDraft | null;
+  coordinationRef?: string | null;
+  schedulingIssue?: string | null;
   decision: null | Readonly<{
     decisionRef: string;
     method: EvaluationMethod;

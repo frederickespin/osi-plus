@@ -13,6 +13,7 @@ export default createCrmSurveyHandler({
         time: req.query?.time,
         durationMinutes: req.query?.durationMinutes,
         mode: req.query?.mode,
+        method: req.query?.method,
       }, database)
     : mutateSurveyScheduling(context, input, database),
 });

@@ -1,4 +1,4 @@
-import type { SchedulingWorkspace } from "./schedulingTypes";
+import type { ScheduledEvaluationMethod, SchedulingWorkspace } from "./schedulingTypes";
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -34,6 +34,7 @@ export function createSurveySchedulingApi(authorization?: string) {
         time?: string;
         durationMinutes?: number;
         visitLocation?: string;
+        method?: ScheduledEvaluationMethod;
         rescheduling?: boolean;
         signal?: AbortSignal;
       }>,
@@ -44,6 +45,7 @@ export function createSurveySchedulingApi(authorization?: string) {
         if (appointment.time) query.set("time", appointment.time);
         if (appointment.durationMinutes) query.set("durationMinutes", String(appointment.durationMinutes));
         if (appointment.visitLocation) query.set("visitLocation", appointment.visitLocation);
+        if (appointment.method) query.set("method", appointment.method);
         if (appointment.rescheduling) query.set("mode", "reschedule");
       }
       return privateJson<SchedulingWorkspace>(authorization, `/api/crm/survey/scheduling?${query}`, {
@@ -52,6 +54,7 @@ export function createSurveySchedulingApi(authorization?: string) {
     },
     decide: (payload: Record<string, unknown>) => mutate("DECIDE_METHOD", payload),
     schedule: (payload: Record<string, unknown>) => mutate("SCHEDULE", payload),
+    decideAndSchedule: (payload: Record<string, unknown>) => mutate("DECIDE_AND_SCHEDULE", payload),
     reschedule: (payload: Record<string, unknown>) => mutate("RESCHEDULE", payload),
     cancel: (payload: Record<string, unknown>) => mutate("CANCEL", payload),
     changeEvaluator: (payload: Record<string, unknown>) => mutate("CHANGE_EVALUATOR", payload),

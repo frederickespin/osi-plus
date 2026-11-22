@@ -4,7 +4,6 @@ import {
   ClipboardCheck,
   FileCheck2,
   History,
-  ListChecks,
   MapPin,
   MessageSquareText,
   RefreshCw,
@@ -15,7 +14,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { createSurveySchedulingApi } from "./schedulingApi";
 import type { SurveySchedulingUiAccess } from "./schedulingAccess";
-import type { EvaluationMethod, SchedulingWorkspace, SurveyTimeAvailability } from "./schedulingTypes";
+import type { EvaluationMethod, ScheduledEvaluationMethod, SchedulingWorkspace, SurveyCoordinationDraft, SurveyTimeAvailability } from "./schedulingTypes";
 import {
   CommercialRelationshipsApi,
   type CommercialCaseSnapshot,
@@ -45,6 +43,7 @@ export type SurveyIntakeMethod = "IN_PERSON" | "VIRTUAL" | "MINI" | "SPECIAL";
 type Props = Readonly<{
   caseRef: string;
   authorization?: string;
+  routeVersion?: number;
   access: SurveySchedulingUiAccess;
   intakeMethod?: SurveyIntakeMethod;
   communicationsEnabled?: boolean;
@@ -54,18 +53,20 @@ type Props = Readonly<{
   clientTemporaryAccessEnabled?: boolean;
   clientTemporaryAccess?: ClientTemporaryAccessUi;
   onOpenCommunications?(surveyAssignmentRef: string): void;
+  onPrepareClientMessage?(): void;
+  onEditRoute?(): void;
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
 
-type SurveyWorkspaceView = "REQUEST" | "SCHEDULE" | "RESULT";
+type SurveyWorkspaceView = "COORDINATE" | "RESULT";
 
 const METHOD_LABELS: Readonly<Record<EvaluationMethod, string>> = Object.freeze(
   {
     IN_PERSON: "Visita presencial",
     VIRTUAL: "Visita virtual",
     CLIENT_PHOTOS_DOCUMENTS: "Listado + fotografías",
-    WRITTEN_REPORT: "Reporte o listado escrito",
+    WRITTEN_REPORT: "Listado o informe escrito",
     VOXME: "Voxme",
     MINI: "Mini-visita",
     NONE: "No requiere Survey",
@@ -99,14 +100,8 @@ function stateFor(method: EvaluationMethod) {
   if (["CLIENT_PHOTOS_DOCUMENTS", "WRITTEN_REPORT", "VOXME"].includes(method)) return "WAITING_CLIENT_INFO";
   return "READY_TO_SCHEDULE";
 }
-function canOpenScheduling(decision: SchedulingWorkspace["decision"] | undefined) {
-  return Boolean(decision && [
-    "READY_TO_SCHEDULE",
-    "SCHEDULED",
-    "IN_PROGRESS",
-    "COMPLETED",
-    "CANCELLED",
-  ].includes(decision.state));
+function isScheduledMethod(method: EvaluationMethod | ""): method is ScheduledEvaluationMethod {
+  return method === "IN_PERSON" || method === "VIRTUAL" || method === "MINI";
 }
 function clientTime(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
@@ -144,6 +139,10 @@ function schedulingErrorMessage(code: string) {
     return "El evaluador está fuera de zona metro. Seleccione otro horario o evaluador.";
   if (code === "CRM_SURVEY_EVALUATOR_DAY_BLOCKED")
     return "El evaluador ya tiene otra visita ese día. Seleccione otro evaluador o fecha para la visita fuera de zona metro.";
+  if (code === "CRM_SURVEY_VERSION_CONFLICT" || code === "CRM_SURVEY_COORDINATION_CONFLICT")
+    return "La coordinación cambió en otra sesión. Actualice la ficha para revisar los datos.";
+  if (code === "CRM_SURVEY_VISIT_FEE_APPROVAL_REQUIRED")
+    return "El cargo de la visita está pendiente de autorización.";
   return code;
 }
 function appointmentCopy(workspace: SchedulingWorkspace) {
@@ -158,6 +157,7 @@ function appointmentCopy(workspace: SchedulingWorkspace) {
 export default function SurveyCasePanel({
   caseRef,
   authorization,
+  routeVersion,
   access,
   intakeMethod,
   communicationsEnabled = false,
@@ -165,6 +165,8 @@ export default function SurveyCasePanel({
   clientTemporaryAccessEnabled = false,
   clientTemporaryAccess,
   onOpenCommunications,
+  onPrepareClientMessage,
+  onEditRoute,
   onNavigate,
   onUnauthorized,
 }: Props) {
@@ -189,7 +191,7 @@ export default function SurveyCasePanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [exceptionQueryKey, setExceptionQueryKey] = useState("");
   const [requestedExceptionKey, setRequestedExceptionKey] = useState("");
-  const [method, setMethod] = useState<EvaluationMethod>("IN_PERSON");
+  const [method, setMethod] = useState<EvaluationMethod | "">("");
   const [date, setDate] = useState("");
   const [arrivalTime, setArrivalTime] = useState("");
   const [evaluatorRef, setEvaluatorRef] = useState("");
@@ -198,19 +200,21 @@ export default function SurveyCasePanel({
   const [durationMinutes, setDurationMinutes] = useState(45);
   const [reason, setReason] = useState("");
   const [instruction, setInstruction] = useState("");
+  const [informationNotes, setInformationNotes] = useState("");
   const [editingSchedule, setEditingSchedule] = useState(false);
   const [editingEvaluator, setEditingEvaluator] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [activeView, setActiveView] =
-    useState<SurveyWorkspaceView>("REQUEST");
+    useState<SurveyWorkspaceView>("COORDINATE");
   const [agendaRefresh, setAgendaRefresh] = useState(0);
   const [agendaResponse, setAgendaResponse] = useState<{
     key: string;
+    contextKey: string;
     workspace?: SchedulingWorkspace;
     error?: string;
   } | null>(null);
   const loadVersion = useRef(0);
-  const openedIntake = useRef<string | null>(null);
+  const loadedIntake = useRef<string | null>(null);
 
   const load = useCallback(
     async () => {
@@ -218,29 +222,30 @@ export default function SurveyCasePanel({
       setLoading(true);
       setError(null);
       try {
-        const [nextWorkspace, nextCommercial] =
-          await Promise.all([
-            api.workspace(caseRef),
-            isCommercialRelationshipsUiEnabled()
-              ? commercialApi.caseContext(caseRef)
-              : Promise.resolve(null),
-          ]);
+        const nextWorkspace = await api.workspace(caseRef);
         if (version !== loadVersion.current) return;
         setWorkspace(nextWorkspace);
-        setCommercialContext(nextCommercial);
-        const decision = nextWorkspace.decision;
-        const intakeKey = intakeMethod ? `${caseRef}:${intakeMethod}` : null;
-        if (intakeMethod && openedIntake.current !== intakeKey) {
-          openedIntake.current = intakeKey;
+        const intakeKey = `${caseRef}:${intakeMethod ?? ""}`;
+        if (loadedIntake.current !== intakeKey) {
+          loadedIntake.current = intakeKey;
+          const savedMethod = nextWorkspace.decision?.method ?? "";
           const requestedMethod = intakeMethod === "SPECIAL" ? "IN_PERSON" : intakeMethod;
           const hasAppointment = nextWorkspace.assignment && nextWorkspace.assignment.status !== "CANCELLED";
-          const canPrepareRequest = access.canManage && !hasAppointment;
-          const readyForRequestedMethod = decision?.method === requestedMethod && decision.state === "READY_TO_SCHEDULE";
-          setMethod(canPrepareRequest ? requestedMethod : decision?.method ?? "IN_PERSON");
-          if (canPrepareRequest && intakeMethod === "SPECIAL") setInstruction("Visita especial. ");
-          setActiveView(canOpenScheduling(decision) && (!canPrepareRequest || readyForRequestedMethod) ? "SCHEDULE" : "REQUEST");
-        } else if (decision) {
-          setMethod(decision.method);
+          const selectedMethod = access.canManage && !hasAppointment ? requestedMethod ?? savedMethod : savedMethod;
+          const draft = selectedMethod === savedMethod ? nextWorkspace.coordinationDraft : null;
+          setMethod(selectedMethod);
+          setVisitLocationKey(draft?.visitLocation ?? "");
+          setDate(draft?.date ?? "");
+          setArrivalTime(draft?.time ?? "");
+          setDurationMinutes(draft?.durationMinutes ?? 45);
+          setEvaluatorRef(draft?.evaluatorMembershipRef ?? "");
+          setVisitReasonRef(draft?.visitReasonRef ?? "");
+          setInstruction(isScheduledMethod(selectedMethod)
+            ? draft?.instruction ?? (intakeMethod === "SPECIAL" && !hasAppointment ? "Visita especial. " : "")
+            : "");
+          setInformationNotes(isScheduledMethod(selectedMethod) ? "" : draft?.instruction ?? "");
+          setReason(draft?.approvalReason ?? "");
+          setActiveView("COORDINATE");
         }
       } catch (cause) {
         if (version !== loadVersion.current) return;
@@ -255,7 +260,6 @@ export default function SurveyCasePanel({
     [
       api,
       caseRef,
-      commercialApi,
       access.canManage,
       intakeMethod,
       onUnauthorized,
@@ -264,29 +268,54 @@ export default function SurveyCasePanel({
   useEffect(() => {
     void load();
     return () => { loadVersion.current += 1; };
-  }, [load]);
+  }, [load, routeVersion]);
+  useEffect(() => {
+    if (!isCommercialRelationshipsUiEnabled()) return;
+    let active = true;
+    void commercialApi.caseContext(caseRef).then(
+      (context) => { if (active) setCommercialContext(context); },
+      () => { if (active) setCommercialContext(null); },
+    );
+    return () => { active = false; };
+  }, [caseRef, commercialApi]);
 
-  const selectedVisitLocation = workspace?.visitLocations.find(
-    (location) => locationKey(location) === chosenLocationKey,
-  ) ?? workspace?.visitLocations.find((location) => location.role === "ORIGIN")
+  const assignment = workspace?.assignment;
+  const hasAppointment = Boolean(assignment && !["CANCELLED", "SUPERSEDED"].includes(assignment.status));
+  const canDecide = access.canManage && !hasAppointment;
+  const scheduleMethod = editingSchedule ? workspace?.decision?.method ?? "" : method;
+  const selectedVisitLocation = workspace?.visitLocations.find((location) => locationKey(location) === chosenLocationKey)
+    ?? workspace?.visitLocations.find((location) => Boolean(location.metroZone))
+    ?? workspace?.visitLocations.find((location) => location.role === "ORIGIN")
     ?? workspace?.visitLocations[0];
   const visitLocationKey = selectedVisitLocation ? locationKey(selectedVisitLocation) : "";
-  const assignment = workspace?.assignment;
-  const creatingSchedule = workspace?.decision?.state === "READY_TO_SCHEDULE" && access.canAssign;
-  const canEditSchedule = activeView === "SCHEDULE" && (creatingSchedule || editingSchedule);
-  const queryLocation = !editingSchedule && workspace?.decision?.method === "IN_PERSON"
-    ? visitLocationKey
-    : "";
+  const sameReadyMethod = workspace?.decision?.state === "READY_TO_SCHEDULE" && workspace.decision.method === scheduleMethod;
+  const creatingSchedule = !hasAppointment && isScheduledMethod(scheduleMethod) && (canDecide || (sameReadyMethod && access.canAssign));
+  const canEditSchedule = activeView === "COORDINATE" && (creatingSchedule || editingSchedule);
+  const queryLocation = !editingSchedule && scheduleMethod === "IN_PERSON" ? visitLocationKey : "";
+  const previewMethod = !editingSchedule && canDecide && isScheduledMethod(scheduleMethod) ? scheduleMethod : undefined;
   const hasRequestedTime = Boolean(date && /^\d{2}:\d{2}$/.test(arrivalTime));
-  const queryKey = canEditSchedule && (hasRequestedTime || (queryLocation && chosenLocationKey))
-    ? JSON.stringify([caseRef, date, arrivalTime, durationMinutes, queryLocation, editingSchedule, agendaRefresh])
+  const contextKey = JSON.stringify([caseRef, workspace?.routeVersion, scheduleMethod, queryLocation, editingSchedule]);
+  const defaultOrigin = workspace?.visitLocations.find((location) => location.role === "ORIGIN");
+  const hasDifferentLocation = Boolean(queryLocation && (chosenLocationKey || (defaultOrigin && queryLocation !== locationKey(defaultOrigin))));
+  const queryKey = canEditSchedule && (hasRequestedTime || previewMethod || hasDifferentLocation)
+    ? JSON.stringify([contextKey, date, arrivalTime, durationMinutes, agendaRefresh, workspace?.decision?.version, workspace?.coordinationRef])
     : "";
   const currentAgenda = agendaResponse?.key === queryKey ? agendaResponse : null;
+  const routeWorkspace = agendaResponse?.contextKey === contextKey ? agendaResponse.workspace : undefined;
+  const coordinationWorkspace = routeWorkspace ?? workspace;
+  const awaitingZone = Boolean((previewMethod || hasDifferentLocation) && queryKey && !routeWorkspace && !currentAgenda?.error);
+  const zoneReady = scheduleMethod !== "IN_PERSON" || editingSchedule
+    || Boolean(coordinationWorkspace?.schedulingContext && !awaitingZone);
   const exactAvailability = currentAgenda?.workspace?.timeAvailability ?? null;
   const eligibleEvaluators = exactAvailability?.evaluators ?? [];
   const selectedEvaluatorRef = eligibleEvaluators.includes(evaluatorRef) ? evaluatorRef : eligibleEvaluators[0] ?? "";
-  const availabilityPending = Boolean(hasRequestedTime && queryKey && !currentAgenda);
+  const availabilityPending = Boolean((hasRequestedTime || awaitingZone) && queryKey && !currentAgenda);
   const scheduleNeedsException = Boolean(exactAvailability?.requiresApproval || (queryKey && exceptionQueryKey === queryKey));
+  const feeApprovalPending = scheduleMethod === "IN_PERSON" && coordinationWorkspace?.schedulingContext?.zoneType !== "METRO"
+    && coordinationWorkspace?.visitFee?.disposition === "CHARGEABLE"
+    && coordinationWorkspace.visitFee.approvalStatus !== "APPROVED";
+  const canPrepareClientMessage = communicationsEnabled && communicationsAccess?.canPrepare
+    && communicationsAccess.canTemplatesView && Boolean(onPrepareClientMessage);
 
   useEffect(() => {
     if (!queryKey) return;
@@ -299,18 +328,19 @@ export default function SurveyCasePanel({
           time: hasRequestedTime ? arrivalTime : undefined,
           durationMinutes: hasRequestedTime ? durationMinutes : undefined,
           visitLocation: queryLocation || undefined,
+          method: previewMethod,
           rescheduling: editingSchedule,
           signal: abort.signal,
         });
         if (abort.signal.aborted) return;
-        setAgendaResponse({ key: queryKey, workspace: updated });
+        setAgendaResponse({ key: queryKey, contextKey, workspace: updated });
         if (updated.timeAvailability?.agenda.some((visit) => visit.outsideMetro && !visit.returnedToMetroAt)) {
           timer = window.setTimeout(checkAvailability, 30_000);
         }
       } catch (cause) {
         if (abort.signal.aborted) return;
         if ((cause as {status?: number})?.status === 401) onUnauthorized();
-        setAgendaResponse({ key: queryKey, error: "No se pudo consultar la agenda." });
+        setAgendaResponse({ key: queryKey, contextKey, error: "No se pudo consultar la agenda." });
       }
     };
     timer = window.setTimeout(checkAvailability, 200);
@@ -318,7 +348,7 @@ export default function SurveyCasePanel({
       window.clearTimeout(timer);
       abort.abort();
     };
-  }, [api, queryKey, caseRef, date, arrivalTime, durationMinutes, queryLocation, editingSchedule, hasRequestedTime, onUnauthorized]);
+  }, [api, queryKey, contextKey, caseRef, date, arrivalTime, durationMinutes, queryLocation, previewMethod, editingSchedule, hasRequestedTime, onUnauthorized]);
 
   useEffect(() => {
     if (!workspace) return;
@@ -373,11 +403,25 @@ export default function SurveyCasePanel({
       setSaving(false);
     }
   };
-  const saveDecision = async () => {
+  const saveDecision = async (prepareMessage = false) => {
+    if (!workspace || !method || !canDecide) return;
+    setNotice(null);
+    const schedulesVisit = isScheduledMethod(method);
+    const coordinationDraft: SurveyCoordinationDraft = {
+      visitLocation: method === "IN_PERSON" ? visitLocationKey || null : null,
+      date: schedulesVisit ? date || null : null,
+      time: schedulesVisit ? arrivalTime || null : null,
+      durationMinutes,
+      evaluatorMembershipRef: schedulesVisit ? selectedEvaluatorRef || null : null,
+      visitReasonRef: schedulesVisit ? visitReasonRef || null : null,
+      instruction: method === "NONE" ? null : (schedulesVisit ? instruction : informationNotes).trim() || null,
+      approvalReason: schedulesVisit ? reason.trim() || null : null,
+    };
     const saved = await mutate(() =>
       api.decide({
         caseRef,
-        expectedVersion: workspace?.decision?.version || null,
+        expectedVersion: workspace.decision?.version ?? null,
+        expectedCoordinationRef: workspace.coordinationRef ?? null,
         method,
         commercialState: stateFor(method),
         informationSource:
@@ -389,30 +433,31 @@ export default function SurveyCasePanel({
                 ? "CLIENT"
                 : "COMMERCIAL",
         rationaleCode: method === "NONE" ? "COMMERCIAL_DECISION" : null,
+        coordinationDraft,
       }),
     );
-    if (saved && ["IN_PERSON", "VIRTUAL", "MINI"].includes(method)) {
-      setActiveView("SCHEDULE");
+    if (saved) {
+      setNotice(schedulesVisit ? "Coordinación guardada como pendiente." : "Decisión de Survey guardada.");
+      if (prepareMessage) onPrepareClientMessage?.();
     }
   };
   const saveSchedule = async () => {
-    if (!workspace?.decision || !exactAvailability?.slotKey || !exactAvailability.scheduledStart || !exactAvailability.scheduledEnd || !selectedEvaluatorRef) return;
+    if (!workspace || !isScheduledMethod(scheduleMethod) || !access.canAssign || feeApprovalPending
+      || !exactAvailability?.slotKey || !exactAvailability.scheduledStart || !exactAvailability.scheduledEnd || !selectedEvaluatorRef) return;
     const saturday = new Date(`${date}T12:00:00`).getDay() === 6;
     setSaving(true);
     setError(null);
     setNotice(null);
     setExceptionQueryKey("");
     try {
-      await api.schedule({
-        decisionRef: workspace.decision.decisionRef,
-        expectedDecisionVersion: workspace.decision.version,
+      const booking = {
         evaluatorMembershipRef: selectedEvaluatorRef,
         scheduledStart: exactAvailability.scheduledStart,
         scheduledEnd: exactAvailability.scheduledEnd,
         slotKey: exactAvailability.slotKey,
         instruction: instruction.trim() || null,
         saturdayApprovalReason: saturday ? reason || null : null,
-        ...(workspace.decision.method === "IN_PERSON" && selectedVisitLocation
+        ...(scheduleMethod === "IN_PERSON" && selectedVisitLocation
           ? {
               visitRouteRole: selectedVisitLocation.role,
               visitRouteOrder: selectedVisitLocation.order,
@@ -421,7 +466,22 @@ export default function SurveyCasePanel({
         visitReasonRef: workspace.operationalPolicy
           ? visitReasonRef || null
           : null,
-      });
+      };
+      if (canDecide) {
+        await api.decideAndSchedule({
+          ...booking,
+          caseRef,
+          method: scheduleMethod,
+          expectedVersion: workspace.decision?.version ?? null,
+          expectedCoordinationRef: workspace.coordinationRef ?? null,
+        });
+      } else if (sameReadyMethod && workspace.decision) {
+        await api.schedule({
+          ...booking,
+          decisionRef: workspace.decision.decisionRef,
+          expectedDecisionVersion: workspace.decision.version,
+        });
+      }
       await load();
     } catch (cause) {
       const code =
@@ -438,7 +498,7 @@ export default function SurveyCasePanel({
   const requestScheduleException = async () => {
     const reasonRef = editingSchedule ? assignment?.reason?.reasonRef : visitReasonRef;
     if (
-      !workspace?.decision ||
+      !workspace || !isScheduledMethod(scheduleMethod) ||
       !exactAvailability?.scheduledStart ||
       !exactAvailability.scheduledEnd ||
       !reasonRef ||
@@ -446,7 +506,7 @@ export default function SurveyCasePanel({
       !reason
     )
       return;
-    const evaluator = workspace.evaluatorCandidates.find(
+    const evaluator = coordinationWorkspace?.evaluatorCandidates.find(
       (entry) => entry.membershipRef === selectedEvaluatorRef,
     );
     if (!evaluator?.profileRef) {
@@ -462,7 +522,7 @@ export default function SurveyCasePanel({
         assignmentRef: editingSchedule ? assignment?.assignmentRef : null,
         profileRef: evaluator.profileRef,
         reasonRef,
-        method: workspace.decision.method,
+        method: scheduleMethod,
         requestedStart: exactAvailability.scheduledStart,
         requestedEnd: exactAvailability.scheduledEnd,
         requesterOrigin: "SALES",
@@ -543,7 +603,6 @@ export default function SurveyCasePanel({
       }),
     );
   };
-  const canOpenSchedule = canOpenScheduling(workspace?.decision);
   const canOpenResult = Boolean(workspace?.assignment || workspace?.publication);
   if (!access.canView)
     return (
@@ -563,6 +622,7 @@ export default function SurveyCasePanel({
       <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-slate-50 px-4 py-2">
         <h2 className="text-lg font-black text-[#003366]">Coordinar Survey</h2>
         <Button size="icon" variant="ghost" title="Actualizar agenda" aria-label="Actualizar agenda" onClick={() => {
+          if (error === "CRM_SURVEY_VERSION_CONFLICT" || error === "CRM_SURVEY_COORDINATION_CONFLICT") loadedIntake.current = null;
           refreshAgenda();
           void load();
         }}>
@@ -594,23 +654,15 @@ export default function SurveyCasePanel({
         <>
           <nav
             aria-label="Etapas de Survey"
-            className="grid border-b bg-white sm:grid-cols-3"
+            className="flex flex-wrap gap-1 border-b bg-white px-3"
             data-testid="survey-workspace-views"
           >
             <SurveyViewButton
-              active={activeView === "REQUEST"}
-              complete={Boolean(workspace.decision)}
-              icon={ListChecks}
-              label="Solicitud"
-              onClick={() => setActiveView("REQUEST")}
-            />
-            <SurveyViewButton
-              active={activeView === "SCHEDULE"}
-              complete={Boolean(workspace.assignment)}
-              disabled={!canOpenSchedule}
+              active={activeView === "COORDINATE"}
+              complete={hasAppointment}
               icon={CalendarClock}
-              label="Programación"
-              onClick={() => setActiveView("SCHEDULE")}
+              label="Coordinar"
+              onClick={() => setActiveView("COORDINATE")}
             />
             <SurveyViewButton
               active={activeView === "RESULT"}
@@ -629,129 +681,59 @@ export default function SurveyCasePanel({
             }
           >
           <div className="min-w-0 divide-y">
-            {activeView === "REQUEST" && <div className="divide-y">
-            {commercialContext && (
-              <section
-                className="bg-sky-50/50 p-4"
-                data-testid="scheduling-commercial-context"
-              >
-                <h3 className="text-xs font-black uppercase tracking-wide text-[#003366]">
-                  Contexto comercial para Scheduling
-                </h3>
-                <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
-                  <div>
-                    <dt className="font-bold text-slate-500">Booker</dt>
-                    <dd className="font-semibold">
-                      {commercialContext.parties.find(
-                        (item) => item.role === "BOOKER",
-                      )?.displayName || "No definido"}
-                    </dd>
+            {activeView === "COORDINATE" && <div className="divide-y">
+            <section className="space-y-3 p-4" aria-label="Coordinación de Survey">
+              {canDecide && (
+                <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+                  <div className="w-full max-w-80">
+                    <Label htmlFor="survey-method">Método de Survey</Label>
+                    <select id="survey-method" className={SCHEDULE_FIELD} value={method} disabled={saving}
+                      onChange={(event) => {
+                        setMethod(event.target.value as EvaluationMethod | "");
+                        setNotice(null);
+                        setError(null);
+                      }}>
+                      <option value="" disabled>¿Cómo obtendrá los datos para cotizar?</option>
+                      {Object.entries(METHOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
                   </div>
-                  <div>
-                    <dt className="font-bold text-slate-500">Lead Account</dt>
-                    <dd className="font-semibold">
-                      {commercialContext.parties.find(
-                        (item) => item.role === "LEAD_ACCOUNT",
-                      )?.displayName || "No definido"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="font-bold text-slate-500">
-                      Contactos relevantes
-                    </dt>
-                    <dd className="font-semibold">
-                      {commercialContext.parties
-                        .filter((item) =>
-                          ["BOOKER", "LEAD_ACCOUNT"].includes(item.role),
-                        )
-                        .flatMap((item) => item.contacts)
-                        .map((item) => item.displayName)
-                        .join(" · ") || "No definido"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="font-bold text-slate-500">
-                      Instrucciones especiales
-                    </dt>
-                    <dd className="font-semibold">
-                      {commercialContext.instructions.length
-                        ? `${commercialContext.instructions.length} publicada(s)`
-                        : "No definido"}
-                    </dd>
-                  </div>
-                </dl>
-              </section>
-            )}
-            <section
-              className="p-4"
-              aria-labelledby="evaluation-decision-title"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h3
-                    id="evaluation-decision-title"
-                    className="text-xs font-black uppercase tracking-wide text-slate-500"
-                  >
-                    Solicitud y método
-                  </h3>
-                  <p className="mt-1 text-lg font-black text-[#003366]">
-                    {workspace.decision
-                      ? METHOD_LABELS[workspace.decision.method]
-                      : "Pendiente de seleccionar método"}
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    {
-                      STATE_LABELS[
-                        workspace.decision?.state || "PENDING_METHOD"
-                      ]
-                    }
-                  </p>
+                  {workspace.coordinationDraft && workspace.decision?.method === method && (
+                    <span className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900">
+                      {STATE_LABELS[workspace.decision.state]}
+                    </span>
+                  )}
+                  {commercialContext?.parties.filter((party) => party.role === "BOOKER" || party.role === "LEAD_ACCOUNT").map((party) => (
+                    <span key={`${party.role}:${party.entityRef}`} className="mb-1 text-xs text-slate-600">
+                      {party.role === "BOOKER" ? "Booker" : "Empresa"} · {party.displayName}
+                    </span>
+                  ))}
                 </div>
-                {workspace.decision && (
-                  <Badge variant="outline">v{workspace.decision.version}</Badge>
-                )}
-              </div>
-              {access.canManage &&
-                (!workspace.assignment ||
-                  workspace.assignment.status === "CANCELLED") && (
-                  <div className="mt-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end"><div className="min-w-0 flex-1">
-                      <Label htmlFor="survey-method">
-                        Método de Survey
-                      </Label>
-                      <Select
-                        value={method}
-                        onValueChange={(value) =>
-                          setMethod(value as EvaluationMethod)
-                        }
-                      >
-                        <SelectTrigger id="survey-method">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(METHOD_LABELS).map(
-                            ([value, label]) => (
-                              <SelectItem key={value} value={value}>
-                                {label}
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button disabled={saving} onClick={() => void saveDecision()}>{saving ? "Guardando…" : workspace.decision ? "Actualizar solicitud" : "Crear solicitud"}</Button></div>
-                    <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2" data-testid="survey-method-guidance">
-                      <p className="border-l-2 border-sky-400 pl-2"><strong>Presencial o especial:</strong> usa la dirección del caso, calcula zona/costo y reserva traslado.</p>
-                      <p className="border-l-2 border-violet-400 pl-2"><strong>Virtual:</strong> reserva evaluador y hora, sin tiempo ni costo de traslado.</p>
-                    </div>
+              )}
+              {canDecide && method && !isScheduledMethod(method) && (
+                <div className="max-w-2xl space-y-2">
+                  {method !== "NONE" && <div>
+                    <Label htmlFor="survey-information-notes">Información recibida o por pedir</Label>
+                    <textarea id="survey-information-notes" rows={2} maxLength={1000}
+                      className="w-full rounded bg-slate-100 px-2.5 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-sky-600"
+                      value={informationNotes} onChange={(event) => setInformationNotes(event.target.value)}
+                      placeholder="Resumen del listado, las fotos o el informe del agente" />
+                  </div>}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {method !== "NONE" && canPrepareClientMessage && (
+                      <Button size="sm" disabled={saving} onClick={() => void saveDecision(true)}>
+                        <MessageSquareText />Solicitar información
+                      </Button>
+                    )}
+                    <Button size="sm" variant={method !== "NONE" && canPrepareClientMessage ? "ghost" : "default"}
+                      disabled={saving} onClick={() => void saveDecision()}>
+                      {method === "NONE" ? "Guardar decisión" : "Guardar información"}
+                    </Button>
                   </div>
-                )}
-            </section>
-
-            </div>}
-
-            {activeView === "SCHEDULE" && <div className="divide-y">
-            <section className="p-4" aria-label="Programación de visita">
+                </div>
+              )}
+              {!canDecide && !hasAppointment && !canEditSchedule && (
+                <p className="text-sm text-slate-600">{STATE_LABELS[workspace.decision?.state ?? "PENDING_METHOD"]}</p>
+              )}
               {workspace.assignment && <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3
@@ -779,12 +761,11 @@ export default function SurveyCasePanel({
                   )}
                   {workspace.assignment?.routeStale && (
                     <p className="mt-2 rounded bg-amber-50 p-2 text-xs font-semibold text-amber-900">
-                      La ruta cambió. Debe revalidarse zona, Visit Fee y
-                      disponibilidad antes de continuar.
+                      La ruta cambió. Verifique la zona, el cargo y la disponibilidad.
                     </p>
                   )}
                 </div>
-                {workspace.assignment && (
+                {hasAppointment && (
                   <div className="flex flex-wrap gap-2">
                     {access.canReschedule && !workspace.assignment.returnedToMetroAt && (
                       <Button
@@ -833,9 +814,10 @@ export default function SurveyCasePanel({
                   </div>
                 )}
               </div>}
-              {canEditSchedule && (
+              {canEditSchedule && isScheduledMethod(scheduleMethod) && (
                   <ScheduleEditor
-                    workspace={currentAgenda?.workspace ?? workspace}
+                    workspace={coordinationWorkspace ?? workspace}
+                    method={scheduleMethod}
                     date={date}
                     setDate={setDate}
                     arrivalTime={arrivalTime}
@@ -843,6 +825,9 @@ export default function SurveyCasePanel({
                     availability={exactAvailability}
                     availabilityPending={availabilityPending}
                     availabilityError={currentAgenda?.error}
+                    zoneReady={zoneReady}
+                    awaitingZone={awaitingZone}
+                    onEditRoute={onEditRoute}
                     refreshAgenda={refreshAgenda}
                     visitLocationKey={visitLocationKey}
                     setVisitLocationKey={setVisitLocationKey}
@@ -860,6 +845,10 @@ export default function SurveyCasePanel({
                     needsException={scheduleNeedsException}
                     exceptionRequested={Boolean(queryKey && requestedExceptionKey === queryKey)}
                     canViewFee={access.canViewFee}
+                    feeApprovalPending={feeApprovalPending}
+                    canConfirm={editingSchedule || access.canAssign}
+                    onSavePending={!editingSchedule && canDecide ? () => void saveDecision() : undefined}
+                    onPrepareFeeApproval={!editingSchedule && canDecide && canPrepareClientMessage ? () => void saveDecision(true) : undefined}
                     reprogramming={editingSchedule}
                     onSave={editingSchedule ? reschedule : saveSchedule}
                     onRequestException={requestScheduleException}
@@ -973,7 +962,7 @@ export default function SurveyCasePanel({
               onUnauthorized={onUnauthorized}
             />}
 
-            {!canEditSchedule && <section className="grid gap-3 bg-slate-50 p-4 sm:grid-cols-2" data-testid="survey-visit-readiness">
+            {!canEditSchedule && workspace.assignment && <section className="grid gap-3 bg-slate-50 p-4 sm:grid-cols-2" data-testid="survey-visit-readiness">
               <div>
                 <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-500">
                   <MapPin className="h-4 w-4" />
@@ -1135,7 +1124,7 @@ function SurveyViewButton({
     <button
       type="button"
       aria-current={active ? "step" : undefined}
-      className={`flex min-h-14 items-center justify-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition-colors sm:border-b-4 ${
+      className={`flex min-h-10 items-center justify-center gap-1.5 border-b-2 px-3 py-2 text-sm font-bold transition-colors ${
         active
           ? "border-[#0070a8] bg-sky-50 text-[#003366]"
           : "border-transparent text-slate-600 hover:bg-slate-50"
@@ -1174,6 +1163,7 @@ function ConfirmationStatus({
 
 type ScheduleEditorProps = Readonly<{
   workspace: SchedulingWorkspace;
+  method: ScheduledEvaluationMethod;
   date: string;
   setDate(value: string): void;
   arrivalTime: string;
@@ -1181,6 +1171,9 @@ type ScheduleEditorProps = Readonly<{
   availability: SurveyTimeAvailability | null;
   availabilityPending: boolean;
   availabilityError?: string;
+  zoneReady: boolean;
+  awaitingZone: boolean;
+  onEditRoute?(): void;
   refreshAgenda(): void;
   visitLocationKey: string;
   setVisitLocationKey(value: string): void;
@@ -1198,6 +1191,10 @@ type ScheduleEditorProps = Readonly<{
   needsException: boolean;
   exceptionRequested: boolean;
   canViewFee: boolean;
+  feeApprovalPending: boolean;
+  canConfirm: boolean;
+  onSavePending?(): void;
+  onPrepareFeeApproval?(): void;
   reprogramming: boolean;
   onSave(): void;
   onRequestException(): void;
@@ -1207,6 +1204,7 @@ const SCHEDULE_FIELD = "h-9 w-full min-w-0 rounded border-0 bg-slate-100 px-2.5 
 
 function ScheduleEditor({
   workspace,
+  method,
   date,
   setDate,
   arrivalTime,
@@ -1214,6 +1212,9 @@ function ScheduleEditor({
   availability,
   availabilityPending,
   availabilityError,
+  zoneReady,
+  awaitingZone,
+  onEditRoute,
   refreshAgenda,
   visitLocationKey,
   setVisitLocationKey,
@@ -1231,11 +1232,15 @@ function ScheduleEditor({
   needsException,
   exceptionRequested,
   canViewFee,
+  feeApprovalPending,
+  canConfirm,
+  onSavePending,
+  onPrepareFeeApproval,
   reprogramming,
   onSave,
   onRequestException,
 }: ScheduleEditorProps) {
-  const physicalVisit = workspace.decision?.method === "IN_PERSON";
+  const physicalVisit = method === "IN_PERSON";
   const location = workspace.visitLocations.find((row) => locationKey(row) === visitLocationKey);
   const locationRequired = !reprogramming && physicalVisit && workspace.visitLocations.length > 0;
   const availableEvaluators = workspace.evaluatorCandidates.filter((entry) => availability?.evaluators.includes(entry.membershipRef));
@@ -1263,7 +1268,8 @@ function ScheduleEditor({
   const saturdayApproval = workspace.availability?.date === date && workspace.availability.saturdayApprovalRequired;
   const reasonRequired = reprogramming || needsException || saturdayApproval;
   const alternatives = availability && (!availableEvaluators.length || needsException) ? availability.alternatives : [];
-  const valid = !saving && Boolean(evaluatorRef && availability?.scheduledStart && availability.scheduledEnd)
+  const valid = canConfirm && zoneReady && !feeApprovalPending && !saving
+    && Boolean(evaluatorRef && availability?.scheduledStart && availability.scheduledEnd)
     && (!reasonRequired || Boolean(reason.trim()));
   const reasonRef = reprogramming ? workspace.assignment?.reason?.reasonRef : visitReasonRef;
   const canSave = valid && Boolean(availability?.slotKey)
@@ -1283,40 +1289,50 @@ function ScheduleEditor({
   return (
     <div className="grid min-w-0 gap-x-5 gap-y-4 md:grid-cols-[minmax(0,1.2fr)_minmax(14rem,1fr)]" data-testid="survey-schedule-editor">
       <div className="min-w-0 space-y-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-          <strong className="text-sm text-[#003366]">{METHOD_LABELS[workspace.decision?.method ?? "IN_PERSON"]}</strong>
-          {physicalVisit ? (
-            <span className={zoneType === "METRO" ? "text-emerald-800" : "text-amber-800"}>
-              {zone}{canViewFee && zoneType ? " · " + feeLabel : ""}
-            </span>
-          ) : workspace.decision?.method === "VIRTUAL" ? <span>Sin traslado</span> : null}
-        </div>
-        {locationRequired && (
+        {physicalVisit && !reprogramming && (
           <div>
-            <Label htmlFor="survey-location">Lugar de la visita</Label>
-            <select id="survey-location" className={SCHEDULE_FIELD} value={visitLocationKey} onChange={(event) => setVisitLocationKey(event.target.value)}>
-              <option value="" disabled>Seleccione la dirección</option>
-              {workspace.visitLocations.map((entry) => (
-                <option key={locationKey(entry)} value={locationKey(entry)}>
-                  {locationRoleLabel(entry.role)} · {entry.compactAddress || entry.sector || entry.cityMunicipality}
-                </option>
-              ))}
-            </select>
+            {locationRequired && <>
+              <Label htmlFor="survey-location">Lugar de la visita</Label>
+              <select id="survey-location" className={SCHEDULE_FIELD} value={visitLocationKey} disabled={saving} onChange={(event) => setVisitLocationKey(event.target.value)}>
+                <option value="" disabled>Seleccione la dirección</option>
+                {workspace.visitLocations.map((entry) => (
+                  <option key={locationKey(entry)} value={locationKey(entry)}>
+                    {locationRoleLabel(entry.role)} · {entry.compactAddress || entry.sector || entry.cityMunicipality}
+                  </option>
+                ))}
+              </select>
+            </>}
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" aria-live="polite">
+              <span className={zoneReady && zoneType === "METRO" ? "text-emerald-800" : "text-amber-800"}>
+                {awaitingZone ? "Verificando dirección…" : zone + (canViewFee && zoneType ? " · " + feeLabel : "")}
+              </span>
+              {!awaitingZone && !zoneReady && <>
+                <span className="text-slate-600">
+                  {!location ? "Registre la dirección donde será la visita."
+                    : workspace.schedulingIssue === "CRM_SURVEY_SCHEDULE_POLICY_NOT_READY" ? "La agenda de visitas requiere configuración."
+                    : zoneType ? "Confirme la distancia o la cobertura de la agenda."
+                    : "Seleccione una dirección del caso que tenga cobertura."}
+                </span>
+                {onEditRoute && <button type="button" className="font-semibold text-sky-800 underline" onClick={onEditRoute}>Editar dirección del caso</button>}
+              </>}
+              {feeApprovalPending && <span className="font-semibold text-amber-800">Pendiente de autorización del cliente</span>}
+            </div>
             {location?.arrivalReference && <p className="mt-1 text-xs text-slate-600">{location.arrivalReference}</p>}
           </div>
         )}
+        {method === "VIRTUAL" && <p className="text-xs text-slate-600">Visita virtual · sin traslado</p>}
         <div className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(5.5rem,.62fr)]">
           <div>
             <Label htmlFor="survey-date">Fecha</Label>
-            <Input id="survey-date" type="date" className={SCHEDULE_FIELD} value={date} onChange={(event) => setDate(event.target.value)} />
+            <Input id="survey-date" type="date" className={SCHEDULE_FIELD} disabled={!zoneReady || saving} value={date} onChange={(event) => setDate(event.target.value)} />
           </div>
           <div>
             <Label htmlFor="survey-arrival">Hora de llegada</Label>
-            <Input id="survey-arrival" type="time" className={SCHEDULE_FIELD} value={arrivalTime} onChange={(event) => setArrivalTime(event.target.value)} />
+            <Input id="survey-arrival" type="time" className={SCHEDULE_FIELD} disabled={!zoneReady || saving} value={arrivalTime} onChange={(event) => setArrivalTime(event.target.value)} />
           </div>
           <div>
             <Label htmlFor="survey-duration">Duración</Label>
-            <select id="survey-duration" className={SCHEDULE_FIELD} value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))}>
+            <select id="survey-duration" className={SCHEDULE_FIELD} disabled={saving} value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))}>
               {durations.map((minutes) => <option key={minutes} value={minutes}>{minutes} min</option>)}
             </select>
           </div>
@@ -1327,7 +1343,7 @@ function ScheduleEditor({
             : availabilityError ? <>
               <span className="text-red-700">{availabilityError}</span>
               <Button size="icon-sm" variant="ghost" title="Reintentar consulta" aria-label="Reintentar consulta" onClick={refreshAgenda}><RefreshCw /></Button>
-            </> : date && arrivalTime && !availability ? <span className="text-amber-800">Confirme la zona y la configuración de agenda para consultar horarios.</span>
+            </> : zoneReady && date && arrivalTime && !availability ? <span className="text-amber-800">La agenda aún no está configurada para esta visita.</span>
             : availability && needsException && availableEvaluators.length > 0 ? <span className="rounded bg-amber-50 px-2 py-1 font-semibold text-amber-900">Requiere autorización extraordinaria</span>
             : availability && availableEvaluators.length > 0 ? <span className="rounded bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">{saturdayApproval ? "Disponible con autorización de sábado" : "Hora disponible"}</span>
             : availability ? <span className="rounded bg-amber-50 px-2 py-1 font-semibold text-amber-900">Hora sin disponibilidad</span>
@@ -1363,18 +1379,23 @@ function ScheduleEditor({
             </div>}
             <div className={workspace.operationalPolicy ? undefined : "sm:col-span-2"}>
               <Label htmlFor="survey-evaluator-instruction">Notas para el evaluador</Label>
-              <Input id="survey-evaluator-instruction" className={SCHEDULE_FIELD} value={instruction}
+              <Input id="survey-evaluator-instruction" className={SCHEDULE_FIELD} value={instruction} maxLength={1000}
                 placeholder="Acceso, alcance o indicaciones" onChange={(event) => setInstruction(event.target.value)} />
             </div>
           </div>
         )}
         {reasonRequired && <div>
           <Label htmlFor="schedule-reason">{reprogramming ? "Motivo de reprogramación" : "Motivo para la autorización"}</Label>
-          <Input id="schedule-reason" className={SCHEDULE_FIELD} value={reason} onChange={(event) => setReason(event.target.value)} />
+          <Input id="schedule-reason" className={SCHEDULE_FIELD} value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
         </div>}
-        <Button size="sm" disabled={needsException ? !canRequestException : !canSave} onClick={needsException ? onRequestException : onSave}>
-          {saving ? "Guardando…" : needsException ? exceptionRequested ? "Excepción solicitada" : "Solicitar excepción" : scheduleLabel}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {feeApprovalPending && onPrepareFeeApproval
+            ? <Button size="sm" disabled={saving} onClick={onPrepareFeeApproval}>Solicitar autorización</Button>
+            : canConfirm && <Button size="sm" disabled={needsException ? !canRequestException : !canSave} onClick={needsException ? onRequestException : onSave}>
+              {saving ? "Guardando…" : needsException ? exceptionRequested ? "Excepción solicitada" : "Solicitar excepción" : scheduleLabel}
+            </Button>}
+          {onSavePending && <Button size="sm" variant="ghost" disabled={saving} onClick={onSavePending}>Guardar pendiente</Button>}
+        </div>
       </div>
 
       <section className="min-w-0 md:pl-2" aria-label="Agenda del evaluador">

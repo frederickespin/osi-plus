@@ -144,15 +144,12 @@ export function validateSchedulingConvergence(overrides = {}) {
     /Abrir Survey App/,
     "integración con Survey App 04A ausente",
   );
-  assert.match(
-    panel,
-    /<nav[\s\S]*?data-testid="survey-workspace-views"/,
-    "Solicitud y Programación dejaron de estar sectorizadas",
-  );
-  assert.match(
-    panel,
-    /Solicitud[\s\S]*Programación[\s\S]*Resultado/,
-    "flujo guiado de Survey incompleto",
+  const surveyNavigation = panel.match(/<nav\b[^>]*data-testid="survey-workspace-views"[^>]*>[\s\S]*?<\/nav>/u)?.[0];
+  assert.ok(surveyNavigation, "navegación de Survey ausente");
+  assert.deepEqual(
+    Array.from(surveyNavigation.matchAll(/\slabel="([^"]+)"/gu), ([, label]) => label),
+    ["Coordinar", "Resultado"],
+    "la coordinación de Survey debe reunir solicitud y programación",
   );
   assert.match(
     panel,
@@ -161,7 +158,7 @@ export function validateSchedulingConvergence(overrides = {}) {
   );
   assert.match(
     panel,
-    /Instrucciones especiales/,
+    /Notas para el evaluador/,
     "instrucciones operativas del Survey ausentes",
   );
   assert.match(

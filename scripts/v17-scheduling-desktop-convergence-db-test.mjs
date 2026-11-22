@@ -236,6 +236,76 @@ try {
     prisma.surveyCommunicationRecord.count({ where: { tenantId: tenant.id } }),
   ]);
   assert.deepEqual(counts.slice(1), [1, 7, 1, 1]); assertions += 1;
+
+  const newCase = await createCase(tenant, adminMembership, admin, service, "03");
+  const freshDay = "2026-09-16";
+  const preview = await getSurveySchedulingWorkspace(context, {
+    caseRef: newCase.publicRef, method: "IN_PERSON", date: freshDay, time: "09:20",
+    durationMinutes: "45", visitLocation: "DESTINATION:0",
+  }, prisma);
+  assert.equal(preview.decision, null); assertions += 1;
+  assert.equal(preview.timeAvailability.scheduledStart, `${freshDay}T13:20:00.000Z`); assertions += 1;
+  check(preview.timeAvailability.evaluators.includes(evaluatorMembership.publicRef), "consulta provisional anuncia cupo sin una decisión registrada");
+  const newCaseScope = { tenantId: tenant.id, pipelineCaseId: newCase.id };
+  assert.equal(await prisma.surveyEvaluationDecision.count({ where: newCaseScope }), 0); assertions += 1;
+
+  const booking = {
+    caseRef: newCase.publicRef, expectedVersion: null, expectedCoordinationRef: null,
+    method: "IN_PERSON", evaluatorMembershipRef: evaluatorMembership.publicRef,
+    scheduledStart: `${freshDay}T13:20:00.000Z`, scheduledEnd: `${freshDay}T14:05:00.000Z`,
+    slotKey: "MORNING", instruction: "Visita coordinada en la misma pantalla",
+    saturdayApprovalReason: null, visitRouteRole: "DESTINATION", visitRouteOrder: 0,
+  };
+  const deliberateConflict = command("DECIDE_AND_SCHEDULE", { ...booking, slotKey: "NO_SUCH_SLOT" });
+  await assert.rejects(mutateSurveyScheduling(context, deliberateConflict, prisma), /CRM_SURVEY_SLOT_INVALID/); assertions += 1;
+  assert.deepEqual(await Promise.all([
+    prisma.surveyEvaluationDecision.count({ where: newCaseScope }),
+    prisma.surveyAssignmentEvent.count({ where: newCaseScope }),
+    prisma.surveyAssignment.count({ where: newCaseScope }),
+  ]), [0, 0, 0]); assertions += 1;
+  await prisma.tenantMembership.update({
+    where: { id: deniedMembership.id },
+    data: { grantedPermissions: ["survey:schedule:manage"], deniedPermissions: ["survey:schedule:assign"] },
+  });
+  await assert.rejects(mutateSurveyScheduling(deniedContext, command("DECIDE_AND_SCHEDULE", booking), prisma), /CRM_SURVEY_PERMISSION_FORBIDDEN/); assertions += 1;
+  const combinedCommand = command("DECIDE_AND_SCHEDULE", booking);
+  const combined = await mutateSurveyScheduling(context, combinedCommand, prisma);
+  assert.deepEqual(await mutateSurveyScheduling(context, combinedCommand, prisma), combined); assertions += 1;
+  const booked = await getSurveySchedulingWorkspace(context, { caseRef: newCase.publicRef }, prisma);
+  assert.equal(booked.decision.state, "SCHEDULED"); assertions += 1;
+  assert.equal(booked.assignment.assignmentRef, combined.assignmentRef); assertions += 1;
+  assert.equal(booked.assignment.instruction, booking.instruction); assertions += 1;
+  assert.equal(await prisma.surveyMutationCommand.count({ where: { tenantId: tenant.id, requestId: combinedCommand.requestId } }), 1); assertions += 1;
+
+  const pendingCase = await createCase(tenant, adminMembership, admin, service, "04");
+  const pending = {
+    visitLocation: "ORIGIN:0", date: null, time: "09:20", durationMinutes: 60,
+    evaluatorMembershipRef: null, visitReasonRef: null,
+    instruction: "Esperando fecha preferida del cliente", approvalReason: null,
+  };
+  const savePending = (expectedVersion, expectedCoordinationRef, coordinationDraft) => mutateSurveyScheduling(context,
+    command("DECIDE_METHOD", {
+      caseRef: pendingCase.publicRef, expectedVersion, expectedCoordinationRef, method: "IN_PERSON",
+      commercialState: "READY_TO_SCHEDULE", informationSource: "COMMERCIAL", rationaleCode: null,
+      coordinationDraft,
+    }), prisma);
+  const ready = await savePending(null, null, pending);
+  const firstPending = await getSurveySchedulingWorkspace(context, { caseRef: pendingCase.publicRef }, prisma);
+  assert.deepEqual(firstPending.coordinationDraft, pending); assertions += 1;
+  assert.equal(firstPending.assignment, null); assertions += 1;
+  await mutateSurveyScheduling(context, command("UPDATE_VISIT_FEE", { decisionRef: ready.decisionRef, expectedVersion: null, disposition: "FREE", suggestedAmount: null, currency: null, logisticsRevisionRef: null, costingRevisionRef: null, costingLineRef: null, communicationStatus: "NOT_COMMUNICATED", approvalStatus: "NOT_REQUIRED", paymentStatus: "NOT_REQUIRED", waiverReason: null }), prisma);
+  const updatedDraft = { ...pending, date: "2026-09-17" };
+  const samePending = await savePending(ready.version, firstPending.coordinationRef, updatedDraft);
+  assert.equal(samePending.decisionRef, ready.decisionRef); assertions += 1;
+  await assert.rejects(savePending(ready.version, firstPending.coordinationRef, pending), /CRM_SURVEY_VERSION_CONFLICT/); assertions += 1;
+  const updatedPending = await getSurveySchedulingWorkspace(context, { caseRef: pendingCase.publicRef }, prisma);
+  assert.deepEqual(updatedPending.coordinationDraft, updatedDraft); assertions += 1;
+  assert.equal(updatedPending.visitFee.disposition, "FREE"); assertions += 1;
+  const differentLocation = await savePending(samePending.version, updatedPending.coordinationRef, { ...updatedDraft, visitLocation: "DESTINATION:0" });
+  assert.notEqual(differentLocation.decisionRef, samePending.decisionRef); assertions += 1;
+  const differentPending = await getSurveySchedulingWorkspace(context, { caseRef: pendingCase.publicRef }, prisma);
+  assert.equal(differentPending.visitFee, null); assertions += 1;
+
   process.stdout.write(`${JSON.stringify({ ok: true, assertions, migrations: `${migrationNames.length}/${migrationNames.length}`, simultaneousSlotWinners: 1, simultaneousSlotLosers: 1, concurrentRescheduleWinners: 1, concurrentEvaluatorChangeWinners: 1, idempotentCommands: 1, routeRevalidation: "REQUIRED", counts })}\n`);
 } finally {
   await prisma.$disconnect();

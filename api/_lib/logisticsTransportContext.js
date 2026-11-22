@@ -33,7 +33,7 @@ export function sameTransportContext(left, right) {
   return !!a && !!b && a.purpose === b.purpose && a.contextRef === b.contextRef;
 }
 
-async function latestContextRevision(model, { where, context = QUOTE_TRANSPORT_CONTEXT, fallbackContext = null, fallbackLegacyOnly = false, include, select }) {
+async function latestContextRevision(model, { where, context = QUOTE_TRANSPORT_CONTEXT, legacyOnly = false, fallbackContext = null, fallbackLegacyOnly = false, include, select }) {
   const primary = normalizeTransportContext(context);
   const fallback = fallbackContext == null ? null : normalizeTransportContext(fallbackContext);
   if (!where?.tenantId || !primary || fallbackContext != null && !fallback || include && select) throw new TypeError("TRANSPORT_CONTEXT_SELECTOR_INVALID");
@@ -52,7 +52,7 @@ async function latestContextRevision(model, { where, context = QUOTE_TRANSPORT_C
     });
     for (const row of rows) {
       const rowContext = transportContextOf(row.inputSnapshot);
-      if (sameTransportContext(rowContext, primary)) { candidateId = row.id; break; }
+      if (sameTransportContext(rowContext, primary) && (!legacyOnly || isLegacyTransportContext(row.inputSnapshot))) { candidateId = row.id; break; }
       if (fallbackId == null && fallback && sameTransportContext(rowContext, fallback) && (!fallbackLegacyOnly || isLegacyTransportContext(row.inputSnapshot))) fallbackId = row.id;
     }
     if (candidateId != null || rows.length < PAGE_SIZE) break;

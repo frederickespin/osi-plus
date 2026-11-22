@@ -45,6 +45,7 @@ const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 const SHA256 = /^[0-9a-f]{64}$/;
 const CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
 const METHODS = new Set(["IN_PERSON", "VIRTUAL", "CLIENT_PHOTOS_DOCUMENTS", "WRITTEN_REPORT", "VOXME", "MINI", "NONE"]);
+const SCHEDULED_METHODS = new Set(["IN_PERSON", "VIRTUAL", "MINI"]);
 const STATES = new Set(["NOT_REQUIRED", "PENDING_METHOD", "WAITING_CLIENT_INFO", "READY_TO_SCHEDULE", "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]);
 const SOURCES = new Set(["CLIENT", "EVALUATOR", "COMMERCIAL", "VOXME", "MINI"]);
 const PROFILES = new Set(["METRO", "INTERIOR_SHORT", "INTERIOR_LONG", "CUSTOM"]);
@@ -110,6 +111,35 @@ function validateMethodState(method, state) {
   if (["NOT_REQUIRED", "PENDING_METHOD"].includes(state) && method !== "NONE") schedulingFail("CRM_SURVEY_METHOD_STATE_INVALID", 409);
   if (method === "NONE" && !["NOT_REQUIRED", "PENDING_METHOD", "CANCELLED"].includes(state)) schedulingFail("CRM_SURVEY_METHOD_STATE_INVALID", 409);
   if (method === "NONE" && state === "READY_TO_SCHEDULE") schedulingFail("CRM_SURVEY_METHOD_STATE_INVALID", 409);
+}
+
+export function normalizeProspectiveSurveyMethod(value) {
+  return value === undefined ? null : enumValue(value, SCHEDULED_METHODS);
+}
+
+function normalizeCoordinationDraft(raw) {
+  if (raw === null) return null;
+  const value = object(raw);
+  exact(value, [
+    "visitLocation", "date", "time", "durationMinutes", "evaluatorMembershipRef",
+    "visitReasonRef", "instruction", "approvalReason",
+  ]);
+  const date = text(value.date, 10, true);
+  const time = text(value.time, 5, true);
+  const visitLocation = text(value.visitLocation, 30, true);
+  const day = date && new Date(`${date}T12:00:00.000Z`);
+  if ((day && (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== date)) ||
+      (time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) ||
+      (visitLocation && !/^(?:ORIGIN|DESTINATION|ADDITIONAL):(?:0|[1-9]\d?|100)$/.test(visitLocation)))
+    schedulingFail("CRM_SURVEY_SCHEDULING_INPUT_INVALID");
+  return {
+    visitLocation, date, time,
+    durationMinutes: integer(value.durationMinutes, 15, 240),
+    evaluatorMembershipRef: uuid(value.evaluatorMembershipRef, true),
+    visitReasonRef: uuid(value.visitReasonRef, true),
+    instruction: text(value.instruction, 1000, true),
+    approvalReason: text(value.approvalReason, 500, true),
+  };
 }
 
 function normalizePolicyConfiguration(raw) {
@@ -197,16 +227,18 @@ export function normalizeSchedulingMutation(input) {
   const value = object(input);
   const operation = text(value.operation, 80);
   if (operation === "DECIDE_METHOD") {
-    exact(value, ["requestId", "payloadHash", "operation", "caseRef", "expectedVersion", "method", "commercialState", "informationSource", "rationaleCode"]);
+    exact(value, ["requestId", "payloadHash", "operation", "caseRef", "expectedVersion", "method", "commercialState", "informationSource", "rationaleCode", "coordinationDraft", "expectedCoordinationRef"]);
     const method = enumValue(value.method, METHODS); const commercialState = enumValue(value.commercialState, STATES); validateMethodState(method, commercialState);
-    return command(value, operation, { caseRef: uuid(value.caseRef), expectedVersion: value.expectedVersion == null ? null : integer(value.expectedVersion, 1), method, commercialState, informationSource: value.informationSource == null ? null : enumValue(value.informationSource, SOURCES), rationaleCode: value.rationaleCode == null ? null : text(value.rationaleCode, 80) });
+    return command(value, operation, { caseRef: uuid(value.caseRef), expectedVersion: value.expectedVersion == null ? null : integer(value.expectedVersion, 1), method, commercialState, informationSource: value.informationSource == null ? null : enumValue(value.informationSource, SOURCES), rationaleCode: value.rationaleCode == null ? null : text(value.rationaleCode, 80), ...("coordinationDraft" in value ? { coordinationDraft: normalizeCoordinationDraft(value.coordinationDraft) } : {}), ...("expectedCoordinationRef" in value ? { expectedCoordinationRef: uuid(value.expectedCoordinationRef, true) } : {}) });
   }
   if (operation === "PUBLISH_POLICY") {
     exact(value, ["requestId", "payloadHash", "operation", "seriesRef", "expectedVersion", "timezone", "configuration", "validFrom"]);
     return command(value, operation, { seriesRef: uuid(value.seriesRef, true), expectedVersion: integer(value.expectedVersion, 0), timezone: text(value.timezone, 64), configuration: normalizePolicyConfiguration(value.configuration), validFrom: timestamp(value.validFrom) });
   }
-  if (operation === "SCHEDULE") {
-    const keys = ["requestId", "payloadHash", "operation", "decisionRef", "expectedDecisionVersion", "evaluatorMembershipRef", "scheduledStart", "scheduledEnd", "slotKey", "instruction", "saturdayApprovalReason"];
+  if (operation === "SCHEDULE" || operation === "DECIDE_AND_SCHEDULE") {
+    const combined = operation === "DECIDE_AND_SCHEDULE";
+    const authorityKeys = combined ? ["caseRef", "expectedVersion", "method", "expectedCoordinationRef"] : ["decisionRef", "expectedDecisionVersion"];
+    const keys = ["requestId", "payloadHash", "operation", ...authorityKeys, "evaluatorMembershipRef", "scheduledStart", "scheduledEnd", "slotKey", "instruction", "saturdayApprovalReason"];
     if ("visitReasonRef" in value) keys.push("visitReasonRef");
     if ("visitRouteRole" in value) keys.push("visitRouteRole");
     if ("visitRouteOrder" in value) keys.push("visitRouteOrder");
@@ -214,7 +246,10 @@ export function normalizeSchedulingMutation(input) {
     const scheduledStart = timestamp(value.scheduledStart); const scheduledEnd = timestamp(value.scheduledEnd); if (scheduledEnd <= scheduledStart) schedulingFail("CRM_SURVEY_SCHEDULING_INPUT_INVALID");
     const visitRouteRole = "visitRouteRole" in value ? enumValue(value.visitRouteRole, new Set(["ORIGIN", "DESTINATION", "ADDITIONAL"])) : null;
     const visitRouteOrder = "visitRouteOrder" in value ? integer(value.visitRouteOrder, 0, 100) : 0;
-    return command(value, operation, { decisionRef: uuid(value.decisionRef), expectedDecisionVersion: integer(value.expectedDecisionVersion, 1), evaluatorMembershipRef: uuid(value.evaluatorMembershipRef), scheduledStart, scheduledEnd, slotKey: text(value.slotKey, 64), instruction: text(value.instruction, 1000, true), saturdayApprovalReason: text(value.saturdayApprovalReason, 500, true), ...(visitRouteRole ? { visitRouteRole, visitRouteOrder } : {}), ...("visitReasonRef" in value ? { visitReasonRef: value.visitReasonRef == null ? null : uuid(value.visitReasonRef) } : {}) });
+    const authority = combined
+      ? { caseRef: uuid(value.caseRef), expectedVersion: value.expectedVersion == null ? null : integer(value.expectedVersion, 1), method: enumValue(value.method, SCHEDULED_METHODS), ...("expectedCoordinationRef" in value ? { expectedCoordinationRef: uuid(value.expectedCoordinationRef, true) } : {}) }
+      : { decisionRef: uuid(value.decisionRef), expectedDecisionVersion: integer(value.expectedDecisionVersion, 1) };
+    return command(value, operation, { ...authority, evaluatorMembershipRef: uuid(value.evaluatorMembershipRef), scheduledStart, scheduledEnd, slotKey: text(value.slotKey, 64), instruction: text(value.instruction, 1000, true), saturdayApprovalReason: text(value.saturdayApprovalReason, 500, true), ...(visitRouteRole ? { visitRouteRole, visitRouteOrder } : {}), ...("visitReasonRef" in value ? { visitReasonRef: value.visitReasonRef == null ? null : uuid(value.visitReasonRef) } : {}) });
   }
   if (["RESCHEDULE", "CHANGE_EVALUATOR", "CANCEL"].includes(operation)) {
     const keys = operation === "RESCHEDULE" ? ["requestId", "payloadHash", "operation", "assignmentRef", "expectedVersion", "scheduledStart", "scheduledEnd", "slotKey", "reasonCode", "notificationRequired", "saturdayApprovalReason"] : operation === "CHANGE_EVALUATOR" ? ["requestId", "payloadHash", "operation", "assignmentRef", "expectedVersion", "evaluatorMembershipRef", "reasonCode", "notificationRequired"] : ["requestId", "payloadHash", "operation", "assignmentRef", "expectedVersion", "reasonCode", "notificationRequired"];

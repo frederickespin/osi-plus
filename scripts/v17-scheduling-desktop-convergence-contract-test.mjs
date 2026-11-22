@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   HISTORICAL_POLICY_TEMPLATE,
+  normalizeProspectiveSurveyMethod,
   normalizeSchedulingMutation,
   resolveOperationalCapability,
   resolveScheduleProfile,
@@ -77,6 +78,49 @@ check("agenda conserva lugar estructurado y duración exacta de la visita", () =
   assert.equal(command.visitRouteOrder, 0);
   assert.equal(new Date(command.scheduledEnd) - new Date(command.scheduledStart), 45 * 60_000);
 });
+const coordinationBooking = {
+  caseRef: uuid(4), expectedVersion: null, expectedCoordinationRef: null,
+  method: "IN_PERSON", evaluatorMembershipRef: uuid(15),
+  scheduledStart: "2030-09-16T13:20:00.000Z", scheduledEnd: "2030-09-16T14:05:00.000Z",
+  slotKey: "MORNING", instruction: null, saturdayApprovalReason: null,
+  visitRouteRole: "DESTINATION", visitRouteOrder: 0,
+};
+check("confirma método, lugar y hora con una sola orden versionada", () => {
+  const result = normalizeSchedulingMutation(signed("DECIDE_AND_SCHEDULE", coordinationBooking));
+  assert.equal(result.caseRef, coordinationBooking.caseRef);
+  assert.equal(result.expectedVersion, null);
+  assert.equal(result.expectedCoordinationRef, null);
+  assert.equal(result.scheduledEnd, coordinationBooking.scheduledEnd);
+  assert.ok(!Object.hasOwn(result, "decisionRef"));
+});
+fails("la confirmación unificada no agenda un método documental",
+  () => normalizeSchedulingMutation(signed("DECIDE_AND_SCHEDULE", { ...coordinationBooking, method: "WRITTEN_REPORT" })),
+  "CRM_SURVEY_SCHEDULING_INPUT_INVALID");
+check("la consulta provisional admite solo métodos de visita", () => {
+  for (const method of ["IN_PERSON", "VIRTUAL", "MINI"]) assert.equal(normalizeProspectiveSurveyMethod(method), method);
+  assert.equal(normalizeProspectiveSurveyMethod(undefined), null);
+  assert.throws(() => normalizeProspectiveSurveyMethod("CLIENT_PHOTOS_DOCUMENTS"), /CRM_SURVEY_SCHEDULING_INPUT_INVALID/);
+});
+const coordinationDecision = {
+  caseRef: uuid(4), expectedVersion: 1, expectedCoordinationRef: uuid(8), method: "IN_PERSON",
+  commercialState: "READY_TO_SCHEDULE", informationSource: "COMMERCIAL", rationaleCode: null,
+};
+const savedCoordination = {
+  visitLocation: "DESTINATION:0", date: null, time: "09:20", durationMinutes: 60,
+  evaluatorMembershipRef: null, visitReasonRef: null,
+  instruction: "Instrucciones de acceso", approvalReason: null,
+};
+check("la coordinación pendiente conserva hora y notas aunque falte la fecha", () => {
+  const result = normalizeSchedulingMutation(signed("DECIDE_METHOD", {
+    ...coordinationDecision, coordinationDraft: savedCoordination,
+  }));
+  assert.deepEqual(result.coordinationDraft, savedCoordination);
+  assert.equal(result.expectedCoordinationRef, uuid(8));
+});
+fails("la coordinación pendiente rechaza una fecha inexistente",
+  () => normalizeSchedulingMutation(signed("DECIDE_METHOD", {
+    ...coordinationDecision, coordinationDraft: { ...savedCoordination, date: "2030-02-30" },
+  })), "CRM_SURVEY_SCHEDULING_INPUT_INVALID");
 
 const timezone = "America/Santo_Domingo";
 const offMetro = {

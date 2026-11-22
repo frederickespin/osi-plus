@@ -3,13 +3,14 @@ import { Eye, MessageSquareText, Plus, ShieldCheck, X } from "lucide-react";
 import { communicationsApi, type CommunicationRecipient, type CommunicationRecord, type CommunicationTemplate } from "./api";
 import type { CommunicationsAccess } from "./access";
 
-type Props = Readonly<{ caseRef: string; authorization?: string; access: CommunicationsAccess; context: "CASE" | "SCHEDULING" | "QUOTE"; surveyAssignmentRef?: string | null; quoteRevisionRef?: string | null; onUnauthorized(): void }>;
+type Props = Readonly<{ caseRef: string; authorization?: string; access: CommunicationsAccess; context: "CASE" | "SCHEDULING" | "QUOTE"; surveyAssignmentRef?: string | null; quoteRevisionRef?: string | null; startPreparing?: boolean; onUnauthorized(): void }>;
 const MILESTONES: Record<Props["context"], readonly string[]> = { CASE: ["CLIENT_INFORMATION_REQUEST", "DOCUMENT_REQUEST", "BOOKER_NOTIFICATION", "AGENT_NOTIFICATION", "LEAD_ACCOUNT_NOTIFICATION"], SCHEDULING: ["VISIT_CONFIRMATION", "EVALUATOR_ASSIGNMENT", "SURVEY_PIC_CLIENT", "SURVEY_PIC_EVALUATOR", "VISIT_RESCHEDULED", "VISIT_CANCELLED"], QUOTE: ["QUOTE_SENT", "FOLLOW_UP_1", "FOLLOW_UP_2", "EXPIRY_REMINDER", "QUOTE_ACCEPTED", "QUOTE_REJECTED"] };
 function date(value: string) { return new Intl.DateTimeFormat("es-DO", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)); }
 export default function CommunicationPanel(props: Props) {
   const panelKey = JSON.stringify([
     props.caseRef,
     props.context,
+    Boolean(props.startPreparing),
     props.surveyAssignmentRef ?? null,
     props.quoteRevisionRef ?? null,
     props.authorization ?? null,
@@ -21,12 +22,12 @@ export default function CommunicationPanel(props: Props) {
   return <CommunicationPanelContent key={panelKey} {...props} />;
 }
 
-function CommunicationPanelContent({ caseRef, authorization, access, context, surveyAssignmentRef = null, quoteRevisionRef = null, onUnauthorized }: Props) {
+function CommunicationPanelContent({ caseRef, authorization, access, context, surveyAssignmentRef = null, quoteRevisionRef = null, startPreparing = false, onUnauthorized }: Props) {
   const canPrepare = access.canPrepare && access.canTemplatesView;
   const [records, setRecords] = useState<readonly CommunicationRecord[]>([]);
   const [templates, setTemplates] = useState<readonly CommunicationTemplate[]>([]);
   const [recipients, setRecipients] = useState<readonly CommunicationRecipient[]>([]);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startPreparing);
   const [selectedRecord, setSelectedRecord] = useState<CommunicationRecord | null>(null);
   const [templateRef, setTemplateRef] = useState("");
   const [recipientRef, setRecipientRef] = useState("");

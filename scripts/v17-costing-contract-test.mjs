@@ -173,7 +173,7 @@ const tx = {
   pipelineCaseServiceRevision: { findFirst: async () => ({ selectionRef, revision: 2, modeSnapshot: "EXPORT", items: [{ serviceId: "service-id", kind: "PRIMARY", codeSnapshot: "MOVING" }] }) },
   caseServiceConfigurationRevision: { findFirst: async ({ where }) => {
     assert.equal(where.serviceSelectionRef, selectionRef);
-    return currentPreference ? { preferenceSnapshot: currentPreference } : null;
+    return currentPreference ? { preferenceSnapshot: currentPreference, packageVersion: { versionRef: packageVersionRef } } : null;
   } },
   surveyPublication: { findFirst: async ({ select }) => select.totalsSnapshot && publishedSurveyTotals ? ({ totalsSnapshot: publishedSurveyTotals }) : null },
   servicePackageVersion: { findMany: async ({ where }) => {
@@ -215,7 +215,9 @@ assert.equal(options.volumeM3, 30);
 assert.equal(options.packages[0].versionRef, packageVersionRef);
 assert.equal(Object.hasOwn(options, "grossKg"), false);
 currentPreference = { quickQuote: { volumeM3: 32 } };
-assert.equal((await getCostingPackageOptions(database, context, caseRecord.publicRef)).volumeM3, 32);
+const preparedOptions = await getCostingPackageOptions(database, context, caseRecord.publicRef);
+assert.equal(preparedOptions.volumeM3, 32);
+assert.equal(preparedOptions.selectedPackageVersionRef, packageVersionRef);
 currentPreference.directQuote = { source: "ESTIMATE", volumeM3: 18.75 };
 assert.equal((await getCostingPackageOptions(database, context, caseRecord.publicRef)).volumeM3, 30);
 publishedSurveyTotals = null;
@@ -223,7 +225,9 @@ assert.equal((await getCostingPackageOptions(database, context, caseRecord.publi
 currentPreference.directQuote = { source: "CLIENT_LIST", clientList: "4 sofás", volumeM3: null };
 assert.equal((await getCostingPackageOptions(database, context, caseRecord.publicRef)).volumeM3, null);
 currentPreference = null;
-assert.equal((await getCostingPackageOptions(database, context, caseRecord.publicRef)).volumeM3, 20);
+const unpreparedOptions = await getCostingPackageOptions(database, context, caseRecord.publicRef);
+assert.equal(unpreparedOptions.volumeM3, 20);
+assert.equal(unpreparedOptions.selectedPackageVersionRef, undefined);
 publishedSurveyTotals = oldSurveyTotals;
 const packageCommand = signed("COSTING_CALCULATE", {
   caseRef: caseRecord.publicRef, logisticsPlanRevisionRef: logisticsRef, baseCurrency: "DOP",

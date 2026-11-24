@@ -80,8 +80,10 @@ export function createCostingHandler({ env = process.env, prismaClient, methods,
     if (!allowed.includes(req.method)) return methodNotAllowed(res, allowed);
     try {
       const context = await resolveContext(req, { env, prisma: prismaClient });
-      const required = typeof permission === "function" ? permission(req.method === "HEAD" ? "GET" : req.method) : permission;
-      if (!context.effectivePermissions?.includes(required) || context.deniedPermissions?.includes(required)) fail("COSTING_FORBIDDEN", 403);
+      const required = typeof permission === "function" ? permission(req.method === "HEAD" ? "GET" : req.method, req) : permission;
+      const allowedPermissions = Array.isArray(required) ? required : [required];
+      if (!allowedPermissions.some((entry) => context.effectivePermissions?.includes(entry) &&
+        !context.deniedPermissions?.includes(entry))) fail("COSTING_FORBIDDEN", 403);
       const method = req.method === "HEAD" ? "GET" : req.method;
       const input = method === "GET" ? undefined : await readJsonObject(req, { required: true, requireNonEmptyObject: true, maxBytes: 128 * 1024 });
       const value = await execute({ req, context, input, prisma: prismaClient, method });

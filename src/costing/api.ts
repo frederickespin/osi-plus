@@ -6,7 +6,9 @@ export type CostingPackageOption = Readonly<{
   shipment: PackageShipment; includeRouteTransport: boolean; needsWeight: boolean;
   minimumSale: string; volumeTiers: readonly PackageVolumeTier[];
 }>;
-export type CostingPackageOptions = Readonly<{ hasService: boolean; packages: readonly CostingPackageOption[]; volumeM3: number | null }>;
+export type CostingPackageOptions = Readonly<{
+  hasService: boolean; packages: readonly CostingPackageOption[]; volumeM3: number | null; selectedPackageVersionRef?: string;
+}>;
 export type CostingPackagePricing = Readonly<{
   versionRef: string; name: string; version: number; pricingVersion: number;
   minimumSale: string; minimumMarginBps: number; recommendedMarginBps: number;
@@ -52,7 +54,8 @@ async function command<T>(authorization: string | undefined, path: string, opera
 }
 
 export const costingApi = Object.freeze({
-  revision: (authorization: string | undefined, caseRef: string) => request<CostingRevision | null>(authorization, `/api/costing/revisions/${encodeURIComponent(caseRef)}`),
+  revision: (authorization: string | undefined, caseRef: string, revisionRef?: string, signal?: AbortSignal) =>
+    request<CostingRevision | null>(authorization, `/api/costing/revisions/${encodeURIComponent(caseRef)}${revisionRef ? "?revisionRef=" + encodeURIComponent(revisionRef) : ""}`, { signal }),
   currentLogistics: (authorization: string | undefined, caseRef: string) => request<{ revisionRef: string } | null>(authorization, `/api/logistics/plans/${encodeURIComponent(caseRef)}`),
   packageOptions: (authorization: string | undefined, caseRef: string, signal: AbortSignal) => request<CostingPackageOptions>(authorization, `/api/costing/revisions/${encodeURIComponent(caseRef)}?view=packages`, { signal }),
   calculate: (authorization: string | undefined, payload: { caseRef: string; logisticsPlanRevisionRef: string | null; baseCurrency: string; packageEstimate?: CostingPackageEstimate }, requestId?: string) => command<CostingCalculation>(authorization, "/api/costing/calculate", "COSTING_CALCULATE", payload, requestId),

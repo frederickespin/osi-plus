@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { calculateQuoteTotals, normalizeQuoteCreate, quoteHash } from "../api/_lib/quoteContract.js";
+import { calculateQuoteTotals, normalizeQuoteCreate, normalizeQuotePublish, normalizeQuoteRevise, quoteHash } from "../api/_lib/quoteContract.js";
 import { getQuoteClientProjection, quoteContractInternals } from "../api/_lib/quoteDomain.js";
 
 const ref = () => randomUUID();
@@ -15,7 +15,7 @@ function payload(overrides = {}) {
     ...overrides,
   };
 }
-function signed(data) { const requestId = ref(); return { requestId, payloadHash: quoteHash({ operation: "QUOTE_PROPOSAL_CREATE", requestId, ...data }), ...data }; }
+function signed(data, operation = "QUOTE_PROPOSAL_CREATE") { const requestId = ref(); return { requestId, payloadHash: quoteHash({ operation, requestId, ...data }), ...data }; }
 
 let assertions = 0;
 const normalized = normalizeQuoteCreate(signed(payload())); assert.equal(normalized.payer.kind, "CLIENT"); assertions += 1;
@@ -70,6 +70,31 @@ assert.equal(calculateQuoteTotals(adjustedLines, null).totalQuotedPrice, 160);
 await assert.rejects(quoteContractInternals.buildLines(catalogDatabase, adjustedPackage, tariff, { ...quoteContext, effectivePermissions: [] }), /QUOTE_FORBIDDEN/);
 await assert.rejects(quoteContractInternals.buildLines(catalogDatabase, { ...adjustedPackage, packageAdjustmentReason: null }, tariff, quoteContext), /QUOTE_PACKAGE_ADJUSTMENT_REASON_REQUIRED/);
 assertions += 4;
+const directPayload = { ...packageQuote, costingRevisionRef: null, terms: { ...packageQuote.terms, groupName: "Empaque y transporte" }, lines: [catalogExtra] };
+const direct = normalizeQuoteCreate(signed(directPayload));
+const catalogBasis = { lines: [] };
+const catalogSeller = { ...quoteContext, effectivePermissions: [] };
+assert.equal(direct.terms.groupName, "Empaque y transporte");
+assert.equal(direct.costingRevisionRef, null);
+assert.throws(() => normalizeQuoteCreate(signed({ ...directPayload, lines: packageQuote.lines })), /QUOTE_DIRECT_LINES_REQUIRED/);
+assert.throws(() => normalizeQuoteCreate(signed({ ...directPayload, lines: pending.lines })), /QUOTE_DIRECT_LINES_REQUIRED/);
+assert.throws(() => normalizeQuoteCreate(signed({ ...directPayload, lines: [{ ...catalogExtra, lineRef: ref(), manualAuthority: null }] })), /QUOTE_LINE_SOURCE_INVALID/);
+const [initialLine] = await quoteContractInternals.buildLines(catalogDatabase, direct, catalogBasis, catalogSeller);
+assert.deepEqual([initialLine.quotedPrice, initialLine.suggestedPrice, initialLine.capturedCost], ["60", "60.00", "36"]);
+const lineRef = ref();
+const existing = { lines: [{ ...initialLine, lineRef }] };
+const revisionPayload = { ...directPayload, proposalRef: ref(), expectedRevision: 1, lines: [
+  { ...catalogExtra, lineRef, manualAuthority: null, quantity: "5", quotedPrice: "100" },
+] };
+const revision = normalizeQuoteRevise(signed(revisionPayload, "QUOTE_PROPOSAL_REVISE"));
+const [revisedLine] = await quoteContractInternals.buildLines({}, revision, catalogBasis, catalogSeller, existing);
+assert.deepEqual([revisedLine.sourceRef, revisedLine.sourceVersion, revisedLine.suggestedPrice, revisedLine.capturedCost], [catalogRef, 2, "100", "60"]);
+await assert.rejects(quoteContractInternals.buildLines({}, revision, catalogBasis, catalogSeller, { lines: [] }), /QUOTE_LINE_SOURCE_INVALID/);
+await assert.rejects(quoteContractInternals.buildLines({}, { ...revision, lines: [{ ...revision.lines[0], quotedPrice: "90" }] }, catalogBasis, catalogSeller, existing), /QUOTE_FORBIDDEN/);
+const approvalInput = { proposalRef: revision.proposalRef, expectedRevision: 1, marginApprovalReason: "Descuento autorizado" };
+assert.equal(normalizeQuotePublish(signed(approvalInput, "QUOTE_PROPOSAL_PUBLISH")).marginApprovalReason, approvalInput.marginApprovalReason);
+assert.throws(() => normalizeQuotePublish(signed({ ...approvalInput, marginApprovalReason: "" }, "QUOTE_PROPOSAL_PUBLISH")), /QUOTE_PAYLOAD_INVALID/);
+assertions += 11;
 const client = getQuoteClientProjection({ proposalRef: ref(), reference: "Q-2026-000001-A", revisionRef: ref(), revision: 1, state: "SENT", proposalName: "A", currency: "USD", issueDate: "2026-09-05", validUntil: "2026-10-05", client: {}, commercialContext: {}, payer: {}, terms: {}, exchange: null, discount: null, totals: { capturedCost: 90, suggestedPrice: 130, grossQuotedPrice: 160, discountAmount: 0, totalQuotedPrice: 160 }, lines: [{ lineRef: ref(), sourceKind: "COSTING", concept: "Servicio", quantity: "1", unit: "SERVICE", economicClass: "PR", capturedCost: "90", suggestedPrice: "130", quotedPrice: "160", currency: "USD", priceStatus: "CONFIRMED", position: 1 }], logicalSha256: "a".repeat(64) });
 assert.equal("capturedCost" in client.lines[0], false); assert.equal("suggestedPrice" in client.lines[0], false); assert.equal("capturedCost" in client.totals, false); assertions += 3;
 console.log(`V17-QUOTE-09A contract: ${assertions}/${assertions}`);

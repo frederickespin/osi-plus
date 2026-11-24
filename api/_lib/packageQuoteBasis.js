@@ -3,8 +3,18 @@ import { PACKAGE_QUOTE_BASIS } from "../../shared/servicePackagePricing.js";
 import { costingHash } from "./costingContract.js";
 
 export const isPackageQuoteBasis = (snapshot) => snapshot?.kind === PACKAGE_QUOTE_BASIS && snapshot.transportContext === null;
+export const CATALOG_QUOTE_BASIS = "CATALOG_QUOTE_BASIS";
+export const isCatalogQuoteBasis = (snapshot) => snapshot?.kind === CATALOG_QUOTE_BASIS && snapshot.transportContext === null;
 
-export async function ensurePackageQuoteBasis(tx, context, pipelineCase, selection) {
+export function ensurePackageQuoteBasis(tx, context, pipelineCase, selection) {
+  return ensureQuoteLogisticsBasis(tx, context, pipelineCase, selection, PACKAGE_QUOTE_BASIS, "package-quote-basis");
+}
+
+export function ensureCatalogLogisticsBasis(tx, context, pipelineCase, selection) {
+  return ensureQuoteLogisticsBasis(tx, context, pipelineCase, selection, CATALOG_QUOTE_BASIS, "catalog-quote-basis");
+}
+
+async function ensureQuoteLogisticsBasis(tx, context, pipelineCase, selection, kind, namespace) {
   const tenantId = context.tenantId;
   await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${pipelineCase.id}:logistics-plan`}, 0))`);
   const plan = await tx.logisticsPlan.upsert({
@@ -14,16 +24,16 @@ export async function ensurePackageQuoteBasis(tx, context, pipelineCase, selecti
   });
   await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${plan.id}:logistics-revision`}, 0))`);
 
-  const survey = await tx.surveyPublication.findFirst({
+  const survey = selection ? await tx.surveyPublication.findFirst({
     where: { tenantId, pipelineCaseId: pipelineCase.id, serviceSelectionRef: selection.selectionRef, status: "CURRENT" },
     select: { publicationRef: true, logicalSha256: true },
-  });
-  // A package estimate records case facts. Its explicit null transport context
+  }) : null;
+  // A commercial estimate records case facts. Its explicit null transport context
   // keeps this evidence out of the route, staffing and scheduling plan readers.
   const facts = {
-    kind: PACKAGE_QUOTE_BASIS, transportContext: null, caseRef: pipelineCase.publicRef,
+    kind, transportContext: null, caseRef: pipelineCase.publicRef,
     route: { version: pipelineCase.routeRevision },
-    services: { selectionRef: selection.selectionRef, revision: selection.revision, mode: pipelineCase.mode, codes: selection.items.map((item) => item.codeSnapshot) },
+    services: selection ? { selectionRef: selection.selectionRef, revision: selection.revision, mode: pipelineCase.mode, codes: selection.items.map((item) => item.codeSnapshot) } : null,
     survey,
   };
   const basisHash = costingHash(facts);
@@ -37,13 +47,15 @@ export async function ensurePackageQuoteBasis(tx, context, pipelineCase, selecti
   const observedAt = new Date();
   const resultSnapshot = { items: [], issues: [], rules: [] };
   const calculation = await tx.logisticsCalculation.create({ data: {
-    tenantId, pipelineCaseId: pipelineCase.id, routeVersion: pipelineCase.routeRevision,
-    serviceSelectionRef: selection.selectionRef, serviceRevision: selection.revision,
+    tenantId, pipelineCaseId: pipelineCase.id, routeVersion: Math.max(1, pipelineCase.routeRevision),
+    // Required storage headers identify the case even when this estimate predates
+    // service selection. The snapshot records null and is never a transport plan.
+    serviceSelectionRef: selection?.selectionRef ?? pipelineCase.publicRef, serviceRevision: selection?.revision ?? 1,
     surveyPublicationRef: survey?.publicationRef ?? null, surveyLogicalSha256: survey?.logicalSha256 ?? null,
     // This is the observation interval for the estimate, not a reservation.
     intervalStart: observedAt, intervalEnd: new Date(observedAt.getTime() + 1000), availabilityObservedAt: observedAt,
     inputSnapshot, rulesSnapshot: [], resultSnapshot, inputHash: basisHash, resultHash: costingHash(resultSnapshot),
-    requestId: `package-quote-basis:${basisHash}`, payloadHash: basisHash,
+    requestId: `${namespace}:${basisHash}`, payloadHash: basisHash,
     actorMembershipId: context.membershipId, actorUserId: context.userId,
   } });
   const row = await tx.logisticsPlanRevision.create({ data: {

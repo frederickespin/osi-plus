@@ -156,10 +156,12 @@ function normalizePayer(raw) {
 
 function normalizeTerms(raw) {
   const value = object(raw);
-  exact(value, ["paymentTerms", "scope", "exclusions", "clientNotes", "specialConditions", "templateRef", "templateVersion"]);
+  const hasGroup = Object.hasOwn(value, "groupName");
+  exact(value, ["paymentTerms", "scope", "exclusions", "clientNotes", "specialConditions", "templateRef", "templateVersion", ...(hasGroup ? ["groupName"] : [])]);
   return {
     paymentTerms: text(value.paymentTerms, 1000),
     scope: text(value.scope, 2000),
+    ...(hasGroup && { groupName: nullableText(value.groupName, 120) }),
     exclusions: stringList(value.exclusions, 30, 500),
     clientNotes: nullableText(value.clientNotes, 2000),
     specialConditions: stringList(value.specialConditions, 30, 500),
@@ -200,12 +202,14 @@ function normalizeDiscount(raw) {
 
 function normalizeLine(raw, position, proposalCurrency) {
   const value = object(raw);
-  exact(value, ["sourceKind", "costingLineRef", "concept", "quantity", "unit", "economicClass", "quotedPrice", "currency", "reason", "manualAuthority"]);
+  const hasLineRef = Object.hasOwn(value, "lineRef");
+  exact(value, ["sourceKind", "costingLineRef", "concept", "quantity", "unit", "economicClass", "quotedPrice", "currency", "reason", "manualAuthority", ...(hasLineRef ? ["lineRef"] : [])]);
+  const lineRef = hasLineRef ? uuid(value.lineRef) : null;
   const sourceKind = enumeration(value.sourceKind, ["COSTING", "MANUAL"]);
   const manualAuthority = value.manualAuthority == null ? null : object(value.manualAuthority);
   if (manualAuthority) exact(manualAuthority, ["kind", "reference", "version", "status", "capturedCost", "suggestedPrice"]);
-  if (sourceKind === "COSTING" && (!value.costingLineRef || manualAuthority || value.reason != null)) quoteFail("QUOTE_LINE_SOURCE_INVALID");
-  if (sourceKind === "MANUAL" && (value.costingLineRef != null || !manualAuthority || !value.reason)) quoteFail("QUOTE_LINE_SOURCE_INVALID");
+  if (sourceKind === "COSTING" && (!value.costingLineRef || lineRef || manualAuthority || value.reason != null)) quoteFail("QUOTE_LINE_SOURCE_INVALID");
+  if (sourceKind === "MANUAL" && (value.costingLineRef != null || Boolean(manualAuthority) === Boolean(lineRef) || !value.reason)) quoteFail("QUOTE_LINE_SOURCE_INVALID");
   const normalizedAuthority = manualAuthority ? {
     kind: text(manualAuthority.kind, 80),
     reference: text(manualAuthority.reference, 191),
@@ -224,6 +228,7 @@ function normalizeLine(raw, position, proposalCurrency) {
   const lineCurrency = currency(value.currency);
   if (lineCurrency !== proposalCurrency) quoteFail("QUOTE_LINE_CURRENCY_INVALID");
   return {
+    ...(lineRef && { lineRef }),
     sourceKind,
     costingLineRef: sourceKind === "COSTING" ? uuid(value.costingLineRef) : null,
     concept: text(value.concept, 240),
@@ -246,7 +251,7 @@ function normalizeProposalPayload(value) {
   if (validUntil < issueDate) quoteFail("QUOTE_VALIDITY_INVALID");
   return {
     caseRef: uuid(value.caseRef),
-    costingRevisionRef: uuid(value.costingRevisionRef),
+    costingRevisionRef: value.costingRevisionRef === null ? null : uuid(value.costingRevisionRef),
     position: integer(value.position, 1, 3),
     proposalName: text(value.proposalName, 120),
     currency: proposalCurrency,
@@ -261,6 +266,18 @@ function normalizeProposalPayload(value) {
     ...(Object.hasOwn(value, "packageAdjustmentReason") && { packageAdjustmentReason: nullableText(value.packageAdjustmentReason, 1000) }),
     lines: value.lines.map((line, index) => normalizeLine(line, index + 1, proposalCurrency)),
   };
+}
+
+function assertQuoteLineAuthority(input, { revising = false } = {}) {
+  if (!revising && input.lines.some((line) => line.lineRef)) quoteFail("QUOTE_LINE_SOURCE_INVALID");
+  if (input.costingRevisionRef !== null) return;
+  if (input.exchange) quoteFail("QUOTE_EXCHANGE_SNAPSHOT_INVALID");
+  const valid = input.lines.every((line) => line.sourceKind === "MANUAL" && line.quotedPrice !== null && (
+    line.lineRef && revising ||
+    line.manualAuthority?.status === "CONFIRMED" &&
+      ["QUOTE_CATALOG_COMPONENT", "QUOTE_ADDITIONAL_CHARGE"].includes(line.manualAuthority.kind)
+  ));
+  if (!valid) quoteFail("QUOTE_DIRECT_LINES_REQUIRED");
 }
 
 function command(raw, operation, normalized, extra = {}) {
@@ -283,13 +300,17 @@ function proposalFields(value) {
 export function normalizeQuoteCreate(raw) {
   const value = object(raw);
   exact(value, proposalFields(value));
-  return command(value, "QUOTE_PROPOSAL_CREATE", normalizeProposalPayload(value));
+  const input = normalizeProposalPayload(value);
+  assertQuoteLineAuthority(input);
+  return command(value, "QUOTE_PROPOSAL_CREATE", input);
 }
 
 export function normalizeQuoteRevise(raw) {
   const value = object(raw);
   exact(value, [...proposalFields(value), "proposalRef", "expectedRevision"]);
-  return command(value, "QUOTE_PROPOSAL_REVISE", normalizeProposalPayload(value), { proposalRef: uuid(value.proposalRef), expectedRevision: integer(value.expectedRevision, 1) });
+  const input = normalizeProposalPayload(value);
+  assertQuoteLineAuthority(input, { revising: true });
+  return command(value, "QUOTE_PROPOSAL_REVISE", input, { proposalRef: uuid(value.proposalRef), expectedRevision: integer(value.expectedRevision, 1) });
 }
 
 function simple(raw, operation, fields, normalized) {
@@ -298,7 +319,15 @@ function simple(raw, operation, fields, normalized) {
   return command(value, operation, normalized(value));
 }
 
-export const normalizeQuotePublish = (raw) => simple(raw, "QUOTE_PROPOSAL_PUBLISH", ["proposalRef", "expectedRevision"], (value) => ({ proposalRef: uuid(value.proposalRef), expectedRevision: integer(value.expectedRevision, 1) }));
+export function normalizeQuotePublish(raw) {
+  const value = object(raw);
+  const approval = Object.hasOwn(value, "marginApprovalReason");
+  const fields = ["proposalRef", "expectedRevision", ...(approval ? ["marginApprovalReason"] : [])];
+  return simple(value, "QUOTE_PROPOSAL_PUBLISH", fields, (input) => ({
+    proposalRef: uuid(input.proposalRef), expectedRevision: integer(input.expectedRevision, 1),
+    ...(approval && { marginApprovalReason: text(input.marginApprovalReason, 1000) }),
+  }));
+}
 
 export const normalizeQuoteSend = (raw) => simple(raw, "QUOTE_PROPOSAL_SEND", ["proposalRef", "expectedRevision", "channel", "recipient", "evidenceRef"], (value) => ({
   proposalRef: uuid(value.proposalRef),

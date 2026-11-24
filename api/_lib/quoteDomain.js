@@ -2,7 +2,8 @@ import { Prisma } from "@prisma/client";
 import { latestCostingRevision, QUOTE_TRANSPORT_CONTEXT, sameTransportContext, transportContextOf } from "./logisticsTransportContext.js";
 import { resolveCommercialQuoteAuthority } from "./commercialRelationshipsDomain.js";
 import { toQuoteCatalogItem } from "./costingPackages.js";
-import { isPackageQuoteBasis } from "./packageQuoteBasis.js";
+import { currentCatalogSelection, ensureCatalogQuoteBasis } from "./catalogQuoteBasis.js";
+import { isCatalogQuoteBasis, isPackageQuoteBasis } from "./packageQuoteBasis.js";
 import { isPackageMinimumLine } from "../../shared/servicePackagePricing.js";
 import {
   QuoteError,
@@ -85,7 +86,8 @@ async function replay(tx, context, input) {
   await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${input.requestId}:quote-command`}, 0))`);
   const row = await tx.quoteMutationCommand.findUnique({ where: { tenantId_requestId: { tenantId: context.tenantId, requestId: input.requestId } } });
   if (!row) return null;
-  if (row.operation !== input.operation || row.payloadHash !== input.payloadHash) quoteFail("QUOTE_IDEMPOTENCY_CONFLICT", 409);
+  if (row.operation !== input.operation || row.payloadHash !== input.payloadHash ||
+    row.actorMembershipId !== context.membershipId || row.actorUserId !== context.userId) quoteFail("QUOTE_IDEMPOTENCY_CONFLICT", 409);
   return Object.freeze(row.resultJson);
 }
 
@@ -125,6 +127,7 @@ async function resolvePublishedCosting(tx, context, pipelineCaseId, revisionRef)
     },
   });
   if (!row) quoteFail("QUOTE_COSTING_REVISION_NOT_FOUND", 404);
+  if (isCatalogQuoteBasis(row.inputSnapshot) && isCatalogQuoteBasis(row.logisticsRevision?.inputSnapshot)) return row;
   const packageBasis = row.inputSnapshot?.packagePricing && isPackageQuoteBasis(row.logisticsRevision?.inputSnapshot);
   if ((!packageBasis && !sameTransportContext(transportContextOf(row.logisticsRevision?.inputSnapshot), QUOTE_TRANSPORT_CONTEXT))
     || !sameTransportContext(transportContextOf(row.inputSnapshot), QUOTE_TRANSPORT_CONTEXT)) quoteFail("QUOTE_COSTING_CONTEXT_INVALID", 409);
@@ -173,14 +176,52 @@ function findAuthorization(costing, authorizationRef) {
 
 const Decimal = Prisma.Decimal.clone({ precision: 40 });
 
+function carryQuoteLine(line, prior, context) {
+  if (!prior || isPackageMinimumLine(prior) || prior.sourceKind !== "MANUAL" || line.sourceKind !== prior.sourceKind ||
+    line.concept !== prior.concept || line.unit !== prior.unit ||
+    line.economicClass !== prior.economicClass || line.currency !== prior.currency) {
+    quoteFail("QUOTE_LINE_SOURCE_INVALID", 409);
+  }
+  const unchangedQuantity = new Decimal(line.quantity).equals(String(prior.quantity));
+  if (prior.priceStatus !== "CONFIRMED") {
+    if (line.quotedPrice !== null || !unchangedQuantity) quoteFail("QUOTE_LINE_SOURCE_INVALID", 409);
+    return { ...line, sourceRef: prior.sourceRef, sourceVersion: prior.sourceVersion, priceStatus: prior.priceStatus,
+      capturedCost: null, suggestedPrice: null, snapshot: prior.snapshot };
+  }
+  if (line.quotedPrice === null) quoteFail("QUOTE_MANUAL_AUTHORITY_INVALID");
+  const scale = new Decimal(line.quantity).div(String(prior.quantity));
+  const expected = prior.snapshot?.catalog
+    ? new Decimal(prior.snapshot.catalog.unitPrice).times(line.quantity)
+    : new Decimal(String(prior.suggestedPrice)).times(scale);
+  const quotedPrice = new Decimal(line.quotedPrice);
+  const priorFormattedPrice = new Decimal(String(prior.quotedPrice)).toDecimalPlaces(2);
+  const unchangedPrice = quotedPrice.equals(String(prior.quotedPrice)) || quotedPrice.equals(priorFormattedPrice);
+  if ((!unchangedQuantity || !unchangedPrice) && !quotedPrice.equals(expected.toDecimalPlaces(2))) {
+    requirePermission(context, QUOTE_PERMISSIONS.OVERRIDE_PRICE);
+  }
+  const catalogUnitCost = prior.snapshot?.valuation?.unitCost;
+  const capturedCost = catalogUnitCost == null
+    ? new Decimal(String(prior.capturedCost)).times(scale)
+    : new Decimal(catalogUnitCost).times(line.quantity);
+  return {
+    ...line, sourceRef: prior.sourceRef, sourceVersion: prior.sourceVersion, priceStatus: prior.priceStatus,
+    capturedCost: capturedCost.toDecimalPlaces(6).toString(),
+    suggestedPrice: unchangedQuantity ? String(prior.suggestedPrice) : expected.toDecimalPlaces(prior.snapshot?.catalog ? 2 : 6).toString(),
+    snapshot: prior.snapshot,
+  };
+}
+
 function packageEdit(context, pricing, input) {
   requirePermission(context, QUOTE_PERMISSIONS.OVERRIDE_PRICE);
   if (pricing.allowEdits === false) quoteFail("QUOTE_PACKAGE_EDIT_NOT_ALLOWED", 409);
   if (!input.packageAdjustmentReason) quoteFail("QUOTE_PACKAGE_ADJUSTMENT_REASON_REQUIRED");
 }
 
-async function buildLines(tx, input, costing, context) {
+async function buildLines(tx, input, costing, context, supersedes = null) {
   const costingByRef = new Map(costing.lines.map((line) => [line.lineRef, line]));
+  const carriedRefs = input.lines.flatMap((line) => line.lineRef ? [line.lineRef] : []);
+  if (new Set(carriedRefs).size !== carriedRefs.length) quoteFail("QUOTE_LINE_SOURCE_INVALID");
+  const priorByRef = new Map((supersedes?.lines ?? []).map((line) => [line.lineRef, line]));
   const pricing = costing.inputSnapshot?.packagePricing;
   const included = input.lines.filter((line) => line.sourceKind === "COSTING");
   const includedRefs = new Set(included.map((line) => line.costingLineRef));
@@ -224,6 +265,7 @@ async function buildLines(tx, input, costing, context) {
           ...(pricing && { originalQuantity: String(source.quantity), adjustmentReason: input.packageAdjustmentReason ?? null }) },
       };
     }
+    if (line.lineRef) return carryQuoteLine(line, priorByRef.get(line.lineRef), context);
     const authority = line.manualAuthority;
     if (authority.kind === "QUOTE_CATALOG_COMPONENT") {
       const rule = catalogByRef.get(authority.reference);
@@ -236,7 +278,8 @@ async function buildLines(tx, input, costing, context) {
         ...line, sourceRef: item.ruleRef, sourceVersion: item.version,
         capturedCost: new Decimal(String(rule.unitCost)).times(line.quantity).toDecimalPlaces(6).toString(),
         suggestedPrice: amount.toFixed(2), priceStatus: "CONFIRMED",
-        snapshot: { catalog: { ruleRef: item.ruleRef, version: item.version, unitPrice: item.unitPrice }, reason: line.reason },
+        snapshot: { catalog: { ruleRef: item.ruleRef, version: item.version, unitPrice: item.unitPrice }, reason: line.reason,
+          valuation: { family: rule.family, unitCost: String(rule.unitCost), minimumMarginBps: rule.minimumMarginBps ?? null, recommendedMarginBps: rule.recommendedMarginBps ?? null } },
       };
     }
     if ((costing.inputSnapshot?.packagePricing || authority.kind === "QUOTE_ADDITIONAL_CHARGE") && authority.status === "CONFIRMED") {
@@ -286,7 +329,13 @@ function buildIssues(pipelineCase, costing, lines, totals, authorization) {
   }
   const needsMinimumApproval = costing.inputSnapshot?.packagePricing && totals.discountAmount > 0
     && totals.packageSubtotal - totals.discountAmount < Number(costing.inputSnapshot.packagePricing.minimumSale);
-  if ((totals.foregoneRevenue > 0 || needsMinimumApproval) && !authorization) issues.push({ code: "MARGIN_AUTHORIZATION_REQUIRED", severity: "BLOCKER", message: "Todo descuento o exoneración de un servicio operativo requiere autorización de Administración.", status: "OPEN", sourceSnapshot: { comparison: needsMinimumApproval ? "BELOW_PACKAGE_MINIMUM" : "BELOW_SUGGESTED", regularPrice: totals.regularPrice, payablePrice: totals.payablePrice, foregoneRevenue: totals.foregoneRevenue } });
+  const needsCatalogApproval = isCatalogQuoteBasis(costing.inputSnapshot) && (totals.discountAmount > 0 || lines.some((line) => {
+    const quotedPrice = new Decimal(line.quotedPrice);
+    const cost = new Decimal(line.capturedCost);
+    const floor = line.economicClass === "PR" ? line.snapshot?.valuation?.minimumMarginBps ?? 0 : 0;
+    return quotedPrice.lt(line.suggestedPrice) || quotedPrice.times(10_000 - floor).lt(cost.times(10_000));
+  }));
+  if ((totals.foregoneRevenue > 0 || needsMinimumApproval || needsCatalogApproval) && !authorization) issues.push({ code: "MARGIN_AUTHORIZATION_REQUIRED", severity: "BLOCKER", message: "Todo descuento o exoneración de un servicio operativo requiere autorización de Administración.", status: "OPEN", sourceSnapshot: { comparison: needsMinimumApproval ? "BELOW_PACKAGE_MINIMUM" : "BELOW_SUGGESTED", regularPrice: totals.regularPrice, payablePrice: totals.payablePrice, foregoneRevenue: totals.foregoneRevenue } });
   return issues;
 }
 
@@ -331,22 +380,22 @@ function revisionLogical(input, costing, lines, totals, client) {
 }
 
 function outputReferences(costing, client) {
+  const logistics = costing.logisticsRevision;
   return {
     costingRevisionRef: costing.revisionRef,
-    logisticsPlanRevisionRef: isPackageQuoteBasis(costing.logisticsRevision.inputSnapshot) ? null : costing.logisticsRevision.revisionRef,
-    surveyPublicationRef: costing.logisticsRevision.inputSnapshot?.survey?.publicationRef || null,
-    servicesRevisionRef: costing.logisticsRevision.inputSnapshot?.services?.selectionRef || null,
+    logisticsPlanRevisionRef: isPackageQuoteBasis(logistics.inputSnapshot) || isCatalogQuoteBasis(logistics.inputSnapshot) ? null : logistics.revisionRef,
+    surveyPublicationRef: logistics.inputSnapshot?.survey?.publicationRef || null,
+    servicesRevisionRef: logistics.inputSnapshot?.services?.selectionRef || null,
     caseRef: client.caseRef,
   };
 }
 
-async function createRevision(tx, context, proposal, input, costing, pipelineCase, state, supersedes = null) {
-  const lines = await buildLines(tx, input, costing, context);
+async function createRevision(tx, context, proposal, input, costing, lines, pipelineCase, state, supersedes = null) {
   const totals = calculateQuoteTotals(lines, input.discount);
   if (costing.inputSnapshot?.packagePricing) {
     totals.packageSubtotal = quoteMoney(lines.filter((line) => line.sourceKind === "COSTING" || line.snapshot?.packageMinimum).reduce((sum, line) => sum + Number(line.quotedPrice), 0));
   }
-  const authorization = findAuthorization(costing, input.marginAuthorizationRef);
+  const authorization = isCatalogQuoteBasis(costing.inputSnapshot) ? null : findAuthorization(costing, input.marginAuthorizationRef);
   const issues = buildIssues(pipelineCase, costing, lines, totals, authorization);
   const client = clientSnapshot(pipelineCase);
   const revision = proposal.currentRevision + 1;
@@ -380,6 +429,7 @@ async function createRevision(tx, context, proposal, input, costing, pipelineCas
       internalSnapshot: {
         costingRevisionRef: costing.revisionRef, costingPublishedAt: costing.publishedAt.toISOString(),
         sourceReferences: outputReferences(costing, client), ...(packageScope && { packageScope }),
+        sourceMode: isCatalogQuoteBasis(costing.inputSnapshot) ? "CATALOG" : packageScope ? "PACKAGE" : "COSTING",
       },
       clientSnapshot: client,
       logicalSha256,
@@ -395,9 +445,14 @@ async function createRevision(tx, context, proposal, input, costing, pipelineCas
   return row;
 }
 
-function publicLine(line, internal) {
+function publicLine(line, internal, editing) {
   const base = { lineRef: line.lineRef, sourceKind: line.sourceKind, concept: line.concept, quantity: String(line.quantity), unit: line.unit, economicClass: line.economicClass, quotedPrice: line.quotedPrice == null ? null : String(line.quotedPrice), currency: line.currency, priceStatus: line.priceStatus, position: line.position };
   if (isPackageMinimumLine(line)) base.packageMinimum = true;
+  if (editing) {
+    base.costingLineRef = line.costingLineRef;
+    base.reason = line.reason;
+    if (line.snapshot?.catalog) base.catalog = line.snapshot.catalog;
+  }
   return internal ? { ...base, costingLineRef: line.costingLineRef, sourceRef: line.sourceRef, sourceVersion: line.sourceVersion, capturedCost: line.capturedCost == null ? null : String(line.capturedCost), suggestedPrice: line.suggestedPrice == null ? null : String(line.suggestedPrice), reason: line.reason } : base;
 }
 
@@ -411,6 +466,9 @@ function mapRevision(row, context, proposal) {
     revisionRef: row.revisionRef,
     revision: row.revision,
     proposalName: row.proposalName,
+    groupName: row.termsSnapshot?.groupName ?? null,
+    sourceMode: row.internalSnapshot?.sourceMode ?? (row.internalSnapshot?.packageScope ? "PACKAGE" : "COSTING"),
+    flexibleBasis: proposal.quote?.costingRevisionId === null,
     costingRevisionRef: row.internalSnapshot?.costingRevisionRef,
     ...(row.internalSnapshot?.packageScope && { packageScope: row.internalSnapshot.packageScope }),
     costingLogicalSha256: row.costingLogicalSha256,
@@ -425,7 +483,7 @@ function mapRevision(row, context, proposal) {
     totals: internal ? row.totalsSnapshot : { grossQuotedPrice: row.totalsSnapshot.grossQuotedPrice, discountAmount: row.totalsSnapshot.discountAmount, totalQuotedPrice: row.totalsSnapshot.totalQuotedPrice },
     marginAuthorization: internal ? row.marginAuthorizationSnapshot : undefined,
     client: row.clientSnapshot,
-    lines: row.lines.map((line) => publicLine(line, internal)),
+    lines: row.lines.map((line) => publicLine(line, internal, has(context, QUOTE_PERMISSIONS.UPDATE))),
     issues: internal ? row.issues.map(({ issueRef, code, severity, message, status }) => ({ issueRef, code, severity, message, status })) : row.issues.filter((issue) => issue.status === "OPEN" && issue.severity === "BLOCKER").map(({ code, message }) => ({ code, message })),
     logicalSha256: row.logicalSha256,
   };
@@ -443,6 +501,19 @@ async function nextReference(tx, tenantId, position) {
   return `Q-${year}-${String(counter.value).padStart(6, "0")}-${String.fromCharCode(64 + position)}`;
 }
 
+async function resolveQuoteBasis(tx, context, pipelineCase, input, supersedes = null) {
+  if (input.costingRevisionRef === null) {
+    if (input.discount) requirePermission(context, QUOTE_PERMISSIONS.OVERRIDE_PRICE);
+    const lines = await buildLines(tx, input, { lines: [] }, context, supersedes);
+    const costing = await ensureCatalogQuoteBasis(tx, context, pipelineCase, input, lines);
+    return { costing, lines };
+  }
+  const costing = await resolvePublishedCosting(tx, context, pipelineCase.id, input.costingRevisionRef);
+  if (isCatalogQuoteBasis(costing.inputSnapshot)) quoteFail("QUOTE_COSTING_CONTEXT_INVALID", 409);
+  await assertPackageCaseCurrent(tx, context, pipelineCase, costing);
+  return { costing, lines: await buildLines(tx, input, costing, context, supersedes) };
+}
+
 export async function createQuoteProposal(prisma, context, raw) {
   requirePermission(context, QUOTE_PERMISSIONS.CREATE);
   const input = normalizeQuoteCreate(raw);
@@ -458,20 +529,20 @@ export async function createQuoteProposal(prisma, context, raw) {
       throw error;
     }
     const revisionInput = commercialAuthority ? { ...input, commercialContext: commercialAuthority.commercialContext, payer: commercialAuthority.payer } : input;
-    const costing = await resolvePublishedCosting(tx, context, pipelineCase.id, input.costingRevisionRef);
-    await assertPackageCaseCurrent(tx, context, pipelineCase, costing);
     await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${context.tenantId}:${pipelineCase.id}:quote-cycle`}, 0))`);
-    let quote = await tx.pipelineCaseQuote.findFirst({ where: { tenantId: context.tenantId, caseId: pipelineCase.id, contractVersion: 2, costingRevisionId: costing.id }, orderBy: { cycleNumber: "desc" } });
+    const { costing, lines } = await resolveQuoteBasis(tx, context, pipelineCase, revisionInput);
+    const costingRevisionId = input.costingRevisionRef === null ? null : costing.id;
+    let quote = await tx.pipelineCaseQuote.findFirst({ where: { tenantId: context.tenantId, caseId: pipelineCase.id, contractVersion: 2, costingRevisionId }, orderBy: { cycleNumber: "desc" } });
     if (!quote) {
       const latest = await tx.pipelineCaseQuote.findFirst({ where: { tenantId: context.tenantId, caseId: pipelineCase.id }, orderBy: { cycleNumber: "desc" }, select: { cycleNumber: true } });
-      quote = await tx.pipelineCaseQuote.create({ data: { tenantId: context.tenantId, caseId: pipelineCase.id, costingRevisionId: costing.id, cycleNumber: (latest?.cycleNumber || 0) + 1, contractVersion: 2, level: "STANDARD", version: 1, status: "DRAFT" } });
+      quote = await tx.pipelineCaseQuote.create({ data: { tenantId: context.tenantId, caseId: pipelineCase.id, costingRevisionId, cycleNumber: (latest?.cycleNumber || 0) + 1, contractVersion: 2, level: "STANDARD", version: 1, status: "DRAFT" } });
     }
     const count = await tx.quoteProposal.count({ where: { tenantId: context.tenantId, quoteId: quote.id } });
     if (count >= 3) quoteFail("QUOTE_PROPOSAL_LIMIT_REACHED", 409);
     const reference = await nextReference(tx, context.tenantId, input.position);
     const proposal = await tx.quoteProposal.create({ data: { tenantId: context.tenantId, quoteId: quote.id, pipelineCaseId: pipelineCase.id, position: input.position, reference } });
-    const revision = await createRevision(tx, context, proposal, revisionInput, costing, pipelineCase, "DRAFT");
-    const result = mapRevision(revision, context, { ...proposal, state: "DRAFT" });
+    const revision = await createRevision(tx, context, proposal, revisionInput, costing, lines, pipelineCase, "DRAFT");
+    const result = mapRevision(revision, context, { ...proposal, quote, state: "DRAFT" });
     return persist(tx, context, input, quote.id, proposal.proposalRef, result, "QUOTE_PROPOSAL_CREATE");
   });
 }
@@ -494,41 +565,58 @@ export async function reviseQuoteProposal(prisma, context, raw) {
       throw error;
     }
     const revisionInput = commercialAuthority ? { ...input, commercialContext: commercialAuthority.commercialContext, payer: commercialAuthority.payer } : input;
-    const costing = await resolvePublishedCosting(tx, context, proposal.pipelineCaseId, input.costingRevisionRef);
-    await assertPackageCaseCurrent(tx, context, proposal.pipelineCase, costing);
-    if (costing.id !== proposal.quote.costingRevisionId) quoteFail("QUOTE_COSTING_SELECTION_IMMUTABLE", 409);
-    const revision = await createRevision(tx, context, proposal, revisionInput, costing, proposal.pipelineCase, "DRAFT", current);
+    const flexible = proposal.quote.costingRevisionId === null;
+    if (!flexible && input.costingRevisionRef === null) quoteFail("QUOTE_COSTING_SELECTION_IMMUTABLE", 409);
+    const { costing, lines } = await resolveQuoteBasis(tx, context, proposal.pipelineCase, revisionInput, current);
+    if (!flexible && costing.id !== proposal.quote.costingRevisionId ||
+      flexible && input.costingRevisionRef !== null && !costing.inputSnapshot?.packagePricing) quoteFail("QUOTE_COSTING_SELECTION_IMMUTABLE", 409);
+    const revision = await createRevision(tx, context, proposal, revisionInput, costing, lines, proposal.pipelineCase, "DRAFT", current);
     const result = mapRevision(revision, context, { ...proposal, state: "DRAFT" });
     return persist(tx, context, input, proposal.quoteId, proposal.proposalRef, result, "QUOTE_PROPOSAL_REVISE");
   });
 }
 
-async function cloneStateRevision(tx, context, proposal, current, state) {
+async function cloneStateRevision(tx, context, proposal, current, state, approval = null) {
+  const approvalSnapshot = approval ?? current.marginAuthorizationSnapshot;
   return tx.quoteProposalRevision.create({
     data: {
       tenantId: context.tenantId, proposalId: proposal.id, costingRevisionId: current.costingRevisionId, revision: current.revision + 1, state,
       proposalName: current.proposalName, costingLogicalSha256: current.costingLogicalSha256, currency: current.currency, issueDate: current.issueDate, validUntil: current.validUntil,
       commercialContextSnapshot: current.commercialContextSnapshot, payerSnapshot: current.payerSnapshot, termsSnapshot: current.termsSnapshot, exchangeSnapshot: current.exchangeSnapshot,
-      discountSnapshot: current.discountSnapshot, totalsSnapshot: current.totalsSnapshot, marginAuthorizationSnapshot: current.marginAuthorizationSnapshot, internalSnapshot: current.internalSnapshot,
-      clientSnapshot: current.clientSnapshot, logicalSha256: quoteHash({ source: current.logicalSha256, revision: current.revision + 1, state }), supersedesRevisionId: current.id,
+      discountSnapshot: current.discountSnapshot, totalsSnapshot: current.totalsSnapshot, marginAuthorizationSnapshot: approvalSnapshot, internalSnapshot: current.internalSnapshot,
+      clientSnapshot: current.clientSnapshot, logicalSha256: quoteHash({ source: current.logicalSha256, revision: current.revision + 1, state, ...(approval && { approval }) }), supersedesRevisionId: current.id,
       createdByMembershipId: context.membershipId, createdByUserId: context.userId,
       lines: { create: current.lines.map(({ sourceKind, costingLineRef, sourceRef, sourceVersion, concept, quantity, unit, economicClass, priceStatus, capturedCost, suggestedPrice, quotedPrice, currency, reason, position, snapshot }) => ({ sourceKind, costingLineRef, sourceRef, sourceVersion, concept, quantity, unit, economicClass, priceStatus, capturedCost, suggestedPrice, quotedPrice, currency, reason, position, snapshot })) },
-      issues: { create: current.issues.map(({ code, severity, message, status, sourceSnapshot }) => ({ code, severity, message, status, sourceSnapshot })) },
+      issues: { create: current.issues.map(({ code, severity, message, status, sourceSnapshot }) =>
+        approval && code === "MARGIN_AUTHORIZATION_REQUIRED"
+          ? { code, severity, message, status: "RESOLVED", sourceSnapshot: { ...sourceSnapshot, authorizationRef: approval.authorizationRef } }
+          : { code, severity, message, status, sourceSnapshot }) },
     },
     include: { lines: { orderBy: { position: "asc" } }, issues: true },
   });
 }
 
-async function assertReadyForExternal(tx, context, proposal, revision, { acceptance = false } = {}) {
+async function assertReadyForExternal(tx, context, proposal, revision, { acceptance = false, marginApproval = false } = {}) {
   if (proposal.pipelineCase.destinationStatus === "PENDING") quoteFail("QUOTE_DESTINATION_PENDING", 409);
   if (revision.validUntil < new Date(new Date().toISOString().slice(0, 10))) quoteFail("QUOTE_EXPIRED", 409);
   const costing = await resolvePublishedCosting(tx, context, proposal.pipelineCaseId, revision.internalSnapshot.costingRevisionRef);
+  const catalog = isCatalogQuoteBasis(costing.inputSnapshot);
   if (costing.logicalSha256 !== revision.costingLogicalSha256) quoteFail("QUOTE_COSTING_INPUT_STALE", 409);
+  if (marginApproval && (!catalog || !revision.issues.some((issue) => issue.code === "MARGIN_AUTHORIZATION_REQUIRED" && issue.status === "OPEN"))) {
+    quoteFail("QUOTE_MARGIN_APPROVAL_INVALID", 409);
+  }
   if (costing.issues.some((issue) => issue.severity === "BLOCKER" && issue.status === "OPEN")) quoteFail("QUOTE_COSTING_BLOCKERS_PRESENT", 409);
-  if (revision.issues.some((issue) => issue.severity === "BLOCKER" && issue.status === "OPEN")) quoteFail("QUOTE_BLOCKERS_PRESENT", 409);
+  if (revision.issues.some((issue) => issue.severity === "BLOCKER" && issue.status === "OPEN" &&
+    (!marginApproval || issue.code !== "MARGIN_AUTHORIZATION_REQUIRED"))) quoteFail("QUOTE_BLOCKERS_PRESENT", 409);
   if (acceptance) {
     const accepted = await tx.quoteProposal.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: proposal.pipelineCaseId, state: "ACCEPTED", id: { not: proposal.id } }, select: { proposalRef: true } });
     if (accepted) quoteFail("QUOTE_ALREADY_ACCEPTED", 409);
+  } else if (catalog) {
+    const facts = costing.inputSnapshot.caseFacts;
+    const current = await currentCatalogSelection(tx, context.tenantId, proposal.pipelineCaseId);
+    if (facts?.caseRef !== proposal.pipelineCase.publicRef || facts.routeRevision !== proposal.pipelineCase.routeRevision ||
+      facts.mode !== proposal.pipelineCase.mode || facts.serviceType !== proposal.pipelineCase.serviceType ||
+      facts.selectionRef !== (current?.selectionRef ?? null)) quoteFail("QUOTE_COSTING_INPUT_STALE", 409);
   } else if (costing.inputSnapshot?.packagePricing) {
     await assertPackageCaseCurrent(tx, context, proposal.pipelineCase, costing);
   } else {
@@ -536,6 +624,26 @@ async function assertReadyForExternal(tx, context, proposal, revision, { accepta
     if (latest?.id !== costing.id) quoteFail("QUOTE_COSTING_INPUT_STALE", 409);
   }
   return costing;
+}
+
+async function approveCatalogQuoteMargin(tx, context, costing, revision, reason) {
+  const { regularPrice, payablePrice, capturedCost, foregoneRevenue } = revision.totalsSnapshot;
+  const override = await tx.costingOverride.create({
+    data: {
+      tenantId: context.tenantId, revisionId: costing.id, kind: "MARGIN", status: "AUTHORIZATION_REQUIRED", reason,
+      suggestedValue: { quoteRevisionRef: revision.revisionRef, regularPrice, capturedCost },
+      finalValue: { quoteRevisionRef: revision.revisionRef, payablePrice, foregoneRevenue },
+      ...actor(context),
+    },
+  });
+  const authorization = await tx.costingMarginAuthorization.create({
+    data: {
+      tenantId: context.tenantId, overrideId: override.id, decision: "AUTHORIZED", reason,
+      ...actor(context),
+    },
+  });
+  return { authorizationRef: authorization.authorizationRef, overrideRef: override.overrideRef, decision: "AUTHORIZED",
+    quoteRevisionRef: revision.revisionRef, createdAt: authorization.createdAt.toISOString() };
 }
 
 async function assertPackageCaseCurrent(tx, context, pipelineCase, costing) {
@@ -552,12 +660,14 @@ async function assertPackageCaseCurrent(tx, context, pipelineCase, costing) {
 export async function publishQuoteProposal(prisma, context, raw) {
   requirePermission(context, QUOTE_PERMISSIONS.PUBLISH);
   const input = normalizeQuotePublish(raw);
+  if (input.marginApprovalReason) requirePermission(context, "costing:authorize-margin");
   return serializable(prisma, async (tx) => {
     const prior = await replay(tx, context, input); if (prior) return prior;
     const { proposal, revision: current } = await loadProposal(tx, context, input.proposalRef);
     if (proposal.state !== "DRAFT" || current.revision !== input.expectedRevision) quoteFail("QUOTE_VERSION_CONFLICT", 409);
-    await assertReadyForExternal(tx, context, proposal, current);
-    const revision = await cloneStateRevision(tx, context, proposal, current, "READY");
+    const costing = await assertReadyForExternal(tx, context, proposal, current, { marginApproval: Boolean(input.marginApprovalReason) });
+    const approval = input.marginApprovalReason ? await approveCatalogQuoteMargin(tx, context, costing, current, input.marginApprovalReason) : null;
+    const revision = await cloneStateRevision(tx, context, proposal, current, "READY", approval);
     await tx.quoteProposal.update({ where: { id: proposal.id }, data: { currentRevision: revision.revision, state: "READY" } });
     const result = mapRevision(revision, context, { ...proposal, state: "READY" });
     return persist(tx, context, input, proposal.quoteId, proposal.proposalRef, result, "QUOTE_PROPOSAL_PUBLISH");
@@ -616,7 +726,7 @@ export async function getQuoteCase(prisma, context, caseRefRaw) {
   const proposals = await prisma.quoteProposal.findMany({
     where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id },
     orderBy: { position: "asc" },
-    include: { revisions: { orderBy: { revision: "desc" }, take: 1, include: { lines: { orderBy: { position: "asc" } }, issues: true } } },
+    include: { quote: { select: { costingRevisionId: true } }, revisions: { orderBy: { revision: "desc" }, take: 1, include: { lines: { orderBy: { position: "asc" } }, issues: true } } },
   });
   return { caseRef: pipelineCase.publicRef, caseCode: pipelineCase.caseCode, destinationStatus: pipelineCase.destinationStatus, proposals: proposals.filter((proposal) => proposal.revisions[0]).map((proposal) => mapRevision(proposal.revisions[0], context, proposal)) };
 }
@@ -629,6 +739,7 @@ export function getQuoteClientProjection(internal) {
     revision: internal.revision,
     state: internal.state,
     proposalName: internal.proposalName,
+    groupName: internal.groupName ?? null,
     currency: internal.currency,
     issueDate: internal.issueDate,
     validUntil: internal.validUntil,

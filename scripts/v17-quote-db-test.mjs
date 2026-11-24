@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createQuoteProposal, getQuoteCase, getQuoteClientProjection, publishQuoteProposal, recordQuoteDecision, reviseQuoteProposal, sendQuoteProposal } from "../api/_lib/quoteDomain.js";
 import { quoteHash } from "../api/_lib/quoteContract.js";
+import { costingHash } from "../api/_lib/costingContract.js";
+import { getCosting, getQuoteAddOnCatalog, versionCostingRule } from "../api/_lib/costingDomain.js";
 import { createV17QuoteLocalPrisma } from "./v17-quote-local-target.mjs";
 import { createPublishedQuoteCostingFixture } from "./v17-quote-db-fixture.mjs";
 
@@ -74,5 +76,74 @@ try {
   await assert.rejects(publishQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_PUBLISH", { proposalRef: blocked.proposalRef, expectedRevision: restoredRevision.revision })), /QUOTE_COSTING_BLOCKERS_PRESENT/); assertions += 1;
   const line = await prisma.quoteLine.findFirst({ where: { tenantId: contexts[0].tenantId } }); await assert.rejects(prisma.quoteLine.update({ where: { id: line.id }, data: { concept: "Mutable" } }), /QUOTE_APPEND_ONLY/); assertions += 1;
   const commands = await prisma.quoteMutationCommand.count({ where: { tenantId: contexts[0].tenantId, requestId: input.requestId } }); assert.equal(commands, 1); assertions += 1;
+
+  // The salesperson can go directly from a case to a proposal using a
+  // standalone sale rate, even before a service selection or cost calculation.
+  const seller = { ...contexts[0], effectivePermissions: permissions.filter((permission) => !["quote:tenant", "quote:internal-cost:view"].includes(permission)) };
+  const catalogAdmin = { ...seller, effectivePermissions: ["costing:rules:manage"] };
+  const costingReader = { ...seller, effectivePermissions: ["costing:view"] };
+  const sourceCase = costings[0].pipelineCase;
+  const directCase = await prisma.pipelineCase.create({ data: {
+    tenantId: seller.tenantId, caseCode: `QUOTE-DIRECT-${randomUUID().slice(0, 8)}`,
+    mode: sourceCase.mode, serviceType: sourceCase.serviceType, customerType: sourceCase.customerType,
+    ownerName: sourceCase.ownerName, ownerMembershipId: seller.membershipId, ownerUserId: seller.userId,
+    originLocation: "Synthetic direct origin", destinationLocation: "Synthetic direct destination",
+  } });
+  const component = {
+    seriesRef: null, family: "MATERIAL", code: "QUOTE_DIRECT_BOX", name: "Cajas adicionales", classification: "PR", source: "ADMIN",
+    priority: 100, specificity: 10, conditions: { packageComponentCode: "QUOTE_DIRECT_BOX" }, unitCost: "30", currency: "DOP",
+    minimumMarginBps: 2500, recommendedMarginBps: 3500, result: { unit: "unidad", saleUnitPrice: "60" }, state: "ACTIVE", validFrom: null, validTo: null,
+  };
+  function signedRule(data) {
+    const requestId = randomUUID();
+    return { requestId, payloadHash: costingHash({ operation: "COSTING_RULE_VERSION", requestId, ...data }), ...data };
+  }
+  const rate = await versionCostingRule(prisma, catalogAdmin, signedRule(component));
+  const catalog = await getQuoteAddOnCatalog(prisma, seller, directCase.publicRef, "DOP");
+  assert.deepEqual(catalog.map(({ ruleRef, unitPrice }) => [ruleRef, unitPrice]), [[rate.ruleRef, "60"]]);
+  assert.equal("unitCost" in catalog[0], false);
+  await assert.rejects(getQuoteAddOnCatalog(prisma, seller, costings[1].pipelineCase.publicRef, "DOP"), /COSTING_NOT_FOUND/);
+  assertions += 3;
+  const directBase = draft(costings[0], 1);
+  const directInput = {
+    ...directBase, caseRef: directCase.publicRef, costingRevisionRef: null,
+    terms: { ...directBase.terms, groupName: "Material de empaque" },
+    lines: [{
+      sourceKind: "MANUAL", costingLineRef: null, concept: component.name, quantity: "2", unit: component.result.unit,
+      quotedPrice: "120", economicClass: component.classification, currency: component.currency, reason: "Tarifa de catálogo",
+      manualAuthority: { kind: "QUOTE_CATALOG_COMPONENT", reference: rate.ruleRef, version: rate.version, status: "CONFIRMED", capturedCost: null, suggestedPrice: null },
+    }],
+  };
+  const direct = await createQuoteProposal(prisma, seller, signed("QUOTE_PROPOSAL_CREATE", directInput));
+  assert.deepEqual([direct.sourceMode, direct.flexibleBasis, direct.groupName, direct.totals.totalQuotedPrice], ["CATALOG", true, "Material de empaque", 120]);
+  assert.equal(getQuoteClientProjection(direct).groupName, direct.groupName);
+  assert.equal("capturedCost" in direct.lines[0], false);
+  assert.equal(await getCosting(prisma, costingReader, directCase.publicRef), null);
+  await assert.rejects(getCosting(prisma, costingReader, directCase.publicRef, undefined, direct.costingRevisionRef), /COSTING_NOT_FOUND/);
+  assert.equal((await getCosting(prisma, costingReader, sourceCase.publicRef, undefined, costings[0].revisionRef)).revisionRef, costings[0].revisionRef);
+  assertions += 6;
+  await versionCostingRule(prisma, catalogAdmin, signedRule({ ...component, seriesRef: rate.seriesRef, result: { ...component.result, saleUnitPrice: "70" } }));
+  const directRevised = await reviseQuoteProposal(prisma, seller, signed("QUOTE_PROPOSAL_REVISE", {
+    ...directInput, proposalRef: direct.proposalRef, expectedRevision: direct.revision,
+    lines: [{ ...directInput.lines[0], lineRef: direct.lines[0].lineRef, manualAuthority: null, quantity: "3", quotedPrice: "150", reason: "Descuento solicitado" }],
+  }));
+  assert.deepEqual(directRevised.lines[0].catalog, { ruleRef: rate.ruleRef, version: 1, unitPrice: "60" });
+  assert.equal(directRevised.totals.totalQuotedPrice, 150);
+  assert.equal(directRevised.issues.some((issue) => issue.code === "MARGIN_AUTHORIZATION_REQUIRED"), true);
+  const publishDirect = { proposalRef: direct.proposalRef, expectedRevision: directRevised.revision };
+  await assert.rejects(publishQuoteProposal(prisma, seller, signed("QUOTE_PROPOSAL_PUBLISH", publishDirect)), /QUOTE_BLOCKERS_PRESENT/);
+  const approveDirect = signed("QUOTE_PROPOSAL_PUBLISH", { ...publishDirect, marginApprovalReason: "Descuento al cliente autorizado" });
+  await assert.rejects(publishQuoteProposal(prisma, seller, approveDirect), /QUOTE_FORBIDDEN/);
+  const approver = { ...contexts[0], effectivePermissions: [...contexts[0].effectivePermissions, "costing:authorize-margin"] };
+  const directReady = await publishQuoteProposal(prisma, approver, approveDirect);
+  assert.equal(directReady.state, "READY");
+  assert.equal(directReady.marginAuthorization.quoteRevisionRef, directRevised.revisionRef);
+  assert.equal(directReady.issues.some((issue) => issue.code === "MARGIN_AUTHORIZATION_REQUIRED" && issue.status === "RESOLVED"), true);
+  const directSent = await sendQuoteProposal(prisma, seller, signed("QUOTE_PROPOSAL_SEND", { proposalRef: direct.proposalRef, expectedRevision: directReady.revision, channel: "MANUAL", recipient: { kind: "RECIPIENT_ON_FILE", displayName: null, reference: null, present: true }, evidenceRef: null }));
+  const directAccepted = await recordQuoteDecision(prisma, seller, signed("QUOTE_CLIENT_DECISION", { proposalRef: direct.proposalRef, expectedRevision: directSent.revision, decision: "ACCEPTED", method: "SIGNED_DOCUMENT", decidedBy: { kind: "CLIENT_REPRESENTATIVE", displayName: null, reference: null, present: true }, evidenceRef: "DOC-DIRECT-TEST", reason: null }));
+  assert.equal(directAccepted.state, "ACCEPTED");
+  assert.equal(directAccepted.operationalHandoff.caseRef, directCase.publicRef);
+  assert.equal(directAccepted.operationalHandoff.logisticsPlanRevisionRef, null);
+  assertions += 11;
   console.log(`V17-QUOTE-09A database: ${assertions}/${assertions}`);
 } finally { await prisma.$disconnect(); }

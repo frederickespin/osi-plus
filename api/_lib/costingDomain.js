@@ -66,14 +66,14 @@ async function serializable(prisma, work, timeout = 5_000) {
   costingFail("COSTING_CONCURRENCY_CONFLICT", 409);
 }
 
-function caseScope(context) {
-  const tenantWide = context.effectivePermissions?.includes(COSTING_PERMISSIONS.TENANT) && !context.deniedPermissions?.includes(COSTING_PERMISSIONS.TENANT);
+function caseScope(context, tenantPermission = COSTING_PERMISSIONS.TENANT) {
+  const tenantWide = context.effectivePermissions?.includes(tenantPermission) && !context.deniedPermissions?.includes(tenantPermission);
   return tenantWide ? {} : { ownerMembershipId: context.membershipId, ownerUserId: context.userId };
 }
 
-async function resolveCase(tx, context, caseRef) {
+async function resolveCase(tx, context, caseRef, tenantPermission) {
   const row = await tx.pipelineCase.findFirst({
-    where: { tenantId: context.tenantId, publicRef: caseRef, ...caseScope(context) },
+    where: { tenantId: context.tenantId, publicRef: caseRef, ...caseScope(context, tenantPermission) },
     select: { id: true, publicRef: true, caseCode: true, mode: true, routeRevision: true, estimatedCbm: true },
   });
   if (!row) costingFail("COSTING_NOT_FOUND", 404);
@@ -346,10 +346,18 @@ function mapRevision(row) {
   };
 }
 
-export async function getCosting(prisma, context, caseRef, transportContext = QUOTE_TRANSPORT_CONTEXT) {
+export async function getCosting(prisma, context, caseRef, transportContext = QUOTE_TRANSPORT_CONTEXT, revisionRef) {
   requirePermission(context, COSTING_PERMISSIONS.VIEW);
   const pipelineCase = await resolveCase(prisma, context, caseRef);
-  const row = await latestCostingRevision(prisma, { where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id }, context: transportContext, include: { lines: { orderBy: { position: "asc" } }, issues: true, overrides: { include: { authorizations: true } } } });
+  const where = { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id };
+  const include = { lines: { orderBy: { position: "asc" } }, issues: true, overrides: { include: { authorizations: true } } };
+  if (revisionRef !== undefined) {
+    if (typeof revisionRef !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(revisionRef)) costingFail("COSTING_NOT_FOUND", 404);
+    const exact = await prisma.costingRevision.findFirst({ where: { ...where, revisionRef, status: "PUBLISHED" }, include });
+    if (!exact || !sameTransportContext(transportContextOf(exact.inputSnapshot), transportContext)) costingFail("COSTING_NOT_FOUND", 404);
+    return mapRevision(exact);
+  }
+  const row = await latestCostingRevision(prisma, { where, context: transportContext, include });
   return row ? mapRevision(row) : null;
 }
 
@@ -361,7 +369,10 @@ export async function getCostingPackageOptions(prisma, context, caseRef) {
   if (!eligible.packages.length) return { hasService: eligible.hasService, packages: [], volumeM3: null };
   const where = { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, serviceSelectionRef: eligible.selection.selectionRef };
   const [configuration, survey] = await Promise.all([
-    prisma.caseServiceConfigurationRevision.findFirst({ where, orderBy: { revision: "desc" }, select: { preferenceSnapshot: true } }),
+    prisma.caseServiceConfigurationRevision.findFirst({ where, orderBy: { revision: "desc" }, select: {
+      preferenceSnapshot: true,
+      packageVersion: { select: { versionRef: true } },
+    } }),
     prisma.surveyPublication.findFirst({ where: { ...where, status: "CURRENT" }, select: { totalsSnapshot: true } }),
   ]);
   const preference = configuration?.preferenceSnapshot;
@@ -370,6 +381,8 @@ export async function getCostingPackageOptions(prisma, context, caseRef) {
     ? [publishedVolume, preference.directQuote.volumeM3]
     : [preference?.quickQuote?.volumeM3, publishedVolume, pipelineCase.estimatedCbm];
   const volumeM3 = candidates.map(Number).find((value) => Number.isFinite(value) && value > 0) ?? null;
+  const configuredVersion = configuration?.packageVersion?.versionRef;
+  const selectedPackageVersionRef = eligible.packages.find((pkg) => pkg.versionRef === configuredVersion)?.versionRef;
   return {
     hasService: eligible.hasService,
     packages: eligible.packages.map(({ rule, ...pkg }) => ({
@@ -378,12 +391,17 @@ export async function getCostingPackageOptions(prisma, context, caseRef) {
       needsWeight: rule.result.shipment.mode === "NONE" && rule.result.components.some((component) => component.basis === "CWT"),
     })),
     volumeM3,
+    ...(selectedPackageVersionRef ? { selectedPackageVersionRef } : {}),
   };
 }
 
 export async function getQuoteAddOnCatalog(prisma, context, caseRef, currency) {
-  requirePermission(context, COSTING_PERMISSIONS.VIEW);
-  await resolveCase(prisma, context, caseRef);
+  const quoteView = context?.effectivePermissions?.includes("quote:view") && !context.deniedPermissions?.includes("quote:view");
+  const costingTenant = context?.effectivePermissions?.includes(COSTING_PERMISSIONS.VIEW) &&
+    !context.deniedPermissions?.includes(COSTING_PERMISSIONS.VIEW) &&
+    context.effectivePermissions.includes(COSTING_PERMISSIONS.TENANT) && !context.deniedPermissions?.includes(COSTING_PERMISSIONS.TENANT);
+  requirePermission(context, quoteView ? "quote:view" : COSTING_PERMISSIONS.VIEW);
+  await resolveCase(prisma, context, caseRef, quoteView && !costingTenant ? "quote:tenant" : COSTING_PERMISSIONS.TENANT);
   if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) costingFail("COSTING_CURRENCY_INVALID");
   const rules = await currentRules(prisma, context.tenantId);
   return rules.filter((rule) => rule.currency === currency).map(toQuoteCatalogItem).filter(Boolean)

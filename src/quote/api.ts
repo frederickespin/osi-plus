@@ -12,7 +12,7 @@ type QuoteTerms = Readonly<{
 }>;
 type QuoteClientSnapshot = Readonly<{
   caseCode: string; client: { displayName: string } | null;
-  route: readonly Readonly<{ role: string; stopOrder: number; streetAndNumber: string | null; buildingResidential: string | null;
+  route: readonly Readonly<{ role: string; stopOrder: number; kind?: "PICKUP" | "DELIVERY" | null; streetAndNumber: string | null; buildingResidential: string | null;
     floorUnit: string | null; sector: string | null; cityMunicipality: string | null; provinceState: string | null; countryCode: string | null }>[];
 }>;
 export type QuoteVersion = Readonly<{ revisionRef: string; revision: number; state: string; createdAt?: string }>;

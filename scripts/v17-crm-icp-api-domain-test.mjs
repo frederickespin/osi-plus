@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { updateCaseRoute } from "../api/_lib/crmCaseRouteDomain.js";
+import { hashCrmCaseMutation } from "../api/_lib/crmCaseMutationDomain.js";
 import {
   createCrmIcpV2Case,
   findCrmIcpV2Case,
@@ -142,15 +144,16 @@ function creationDatabase({ actor = actorRow(), duplicateRows = [] } = {}) {
       async create({ data }) { state.savedAddresses.push(data); return { addressRef: randomUUID() }; },
     },
     pipelineCaseCommand: {
-      async findFirst() { return null; },
+      async findFirst({ where }) { return state.commands.find((row) => row.tenantId === where.tenantId && row.requestId === where.requestId) || null; },
       async create({ data }) { state.commands.push(data); return { id: randomUUID() }; },
     },
     pipelineCase: {
+      async findMany() { return []; },
       async create({ data }) {
         state.caseCreate = data;
         return { id: "case-internal", publicRef: casePublicRef };
       },
-      async updateMany({ data }) { state.casePromotion = data; return { count: 1 }; },
+      async updateMany({ data }) { state.casePromotion = { ...state.casePromotion, ...data }; return { count: 1 }; },
       async findFirst() {
         return {
           id: "case-internal", publicRef: casePublicRef, caseCode: "CS-2026-SYNTHETIC", status: "NEW_INBOX",
@@ -160,12 +163,14 @@ function creationDatabase({ actor = actorRow(), duplicateRows = [] } = {}) {
           clientProfileType: "CORPORATE", routeContractVersion: 2, routeRevision: 1,
           destinationStatus: "CONFIRMED", ownerName: "Synthetic Seller", createdAt: new Date(), updatedAt: new Date(),
           client: { publicRef: clientPublicRef, name: client.name, type: client.type, status: client.status },
+          milestonesJson: state.caseCreate?.milestonesJson, clientId: client.id, ownerMembershipId: membershipId, ownerUserId: userId,
+          ...state.casePromotion,
         };
       },
     },
     pipelineCaseRouteSnapshot: {
-      async createMany({ data }) { state.snapshots = data; return { count: data.length }; },
-      async findMany() { return state.snapshots; },
+      async createMany({ data }) { state.snapshots.push(...data); return { count: data.length }; },
+      async findMany({ where }) { return state.snapshots.filter((row) => row.routeVersion === where.routeVersion && row.tenantId === where.tenantId && row.pipelineCaseId === where.pipelineCaseId); },
     },
   };
   return {
@@ -274,5 +279,45 @@ await reject("denied pipeline:view prevalece", "CRM_PIPELINE_PERMISSION_FORBIDDE
   }));
 
 function PUBLIC_REF(value) { return typeof value === "string" && /^[0-9a-f-]{36}$/.test(value); }
+
+const multi = creationDatabase({ actor: actorRow({ granted_permissions: ["pipeline:create", "pipeline:update:own"] }) });
+const initial = unsigned();
+const intermediate = selection({ address: address({ streetAndNumber: "Parada histórica" }) });
+const multiCase = (await createCrmIcpV2Case(context, signed({ ...initial, route: {
+  ...initial.route, additionalStops: [{ kind: "PICKUP", selection: selection() }, intermediate],
+} }), multi.database)).case;
+check("el alta conserva el tipo de recogida y la parada antigua pendiente de clasificar",
+  multiCase.route.additionalStops.map((stop) => stop.kind ?? "UNKNOWN").join() === "PICKUP,UNKNOWN");
+const point = [-69.933, 18.49];
+const routeAddress = (street, extra) => ({ sourceAddressRef: null, ...address({ streetAndNumber: street }), ...extra });
+const origin = routeAddress("Origen", { point });
+const destination = routeAddress("Destino");
+const stops = [{ kind: "DELIVERY", address: routeAddress("Entrega en sector", { point: [-69.97, 18.46] }) },
+  { kind: null, address: routeAddress("Parada histórica") }, { kind: "PICKUP", address: routeAddress("Nueva recogida") }];
+function signedRoute(expectedVersion, patch = {}) {
+  const fields = { requestId: randomUUID(), expectedVersion, expectedRouteRevision: expectedVersion,
+    destinationStatus: "CONFIRMED", origin, destination, ...patch };
+  return { ...fields, payloadHash: hashCrmCaseMutation({ operation: "UPDATE_CASE_ROUTE", ...fields }) };
+}
+const update = (command) => updateCaseRoute(context, multiCase.caseRef, command, multi.database);
+const add = signedRoute(1, { stops });
+const modified = await update(add);
+check("guarda orden, tipos y puntos en la misma revisión", modified.route.stops.map((s) => s.kind ?? "?").join() === "DELIVERY,?,PICKUP"
+  && modified.route.origin.point[0] === point[0] && modified.route.stops[0].address.point[1] === 18.46);
+check("repetir el comando no duplica paradas ni revisiones", (await update(add)).route.revision === 2 && multi.state.commands.length === 2);
+await reject("un cambio concurrente no reemplaza la ruta vigente", "CRM_PIPELINE_VERSION_CONFLICT", () => update(signedRoute(1)));
+await reject("una parada nueva debe indicar recogida o entrega", "CRM_CASE_ROUTE_STOP_KIND_REQUIRED", () =>
+  update(signedRoute(2, { stops: [{ kind: null, address: routeAddress("Otra dirección") }] })));
+await reject("el límite de ocho paradas coincide con el orden previsto en la base", "CRM_CASE_ROUTE_INPUT_INVALID", () =>
+  update(signedRoute(2, { stops: Array.from({ length: 9 }, () => stops[0]) })));
+await reject("coordenadas inválidas se rechazan antes de publicar", "CRM_CASE_ROUTE_INPUT_INVALID", () =>
+  update(signedRoute(2, { destination: routeAddress("Punto no válido", { point: [180.4, 17] }) })));
+const oldClient = await update(signedRoute(2, { origin: routeAddress("Origen") }));
+check("una aplicación anterior conserva paradas y puntos al editar los extremos", oldClient.route.stops.length === 3 &&
+  oldClient.route.stops[0].kind === "DELIVERY" && oldClient.route.origin.point[0] === point[0] && oldClient.route.stops[0].address.point[0] === -69.97);
+const cleared = await update(signedRoute(3, { origin: routeAddress("Otro origen"), stops: [] }));
+check("quitar todas las paradas y cambiar de dirección preserva la ruta anterior y borra el punto obsoleto",
+  !cleared.route.stops.length && cleared.route.origin.point === null &&
+  multi.state.snapshots.filter((row) => row.routeVersion === 2 && row.role === "ADDITIONAL_STOP").length === 3);
 
 process.stdout.write(`${JSON.stringify({ ok: true, assertions: results.length, results }, null, 2)}\n`);

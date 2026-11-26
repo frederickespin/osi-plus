@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { caseRouteDetails, stopDetails } from "./caseRouteDetails.js";
 import { latestCostingRevision, QUOTE_TRANSPORT_CONTEXT, sameTransportContext, transportContextOf } from "./logisticsTransportContext.js";
 import { resolveCommercialQuoteAuthority } from "./commercialRelationshipsDomain.js";
 import { toQuoteCatalogItem } from "./costingPackages.js";
@@ -108,6 +109,7 @@ async function resolveCase(tx, context, caseRef) {
       serviceType: true,
       destinationStatus: true,
       routeRevision: true,
+      milestonesJson: true,
       client: { select: { publicRef: true, name: true, type: true, status: true } },
       routeSnapshots: { orderBy: [{ routeVersion: "desc" }, { role: "asc" }, { stopOrder: "asc" }] },
     },
@@ -135,9 +137,11 @@ async function resolvePublishedCosting(tx, context, pipelineCaseId, revisionRef)
 }
 
 function routeForCurrentVersion(pipelineCase) {
+  const details = caseRouteDetails(pipelineCase);
   return pipelineCase.routeSnapshots.filter((row) => row.routeVersion === pipelineCase.routeRevision).map((row) => ({
     role: row.role,
     stopOrder: row.stopOrder,
+    ...(row.role === "ADDITIONAL_STOP" && { kind: stopDetails(details, row.stopOrder)?.kind ?? null }),
     countryCode: row.countryCode,
     provinceState: row.provinceState,
     cityMunicipality: row.cityMunicipality,

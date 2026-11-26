@@ -8,7 +8,7 @@ import { isTransportUnauthorized, transportApi, transportErrorMessage, Transport
 import { isRoadTransportComponent } from "../../shared/transportCostScope.js";
 import { ADMIN_FLEET_TRANSIT_CONFIGURATION_LABELS } from "../../shared/adminFleet.js";
 import type { TransportUiAccess } from "./transportAccess";
-import { BASIS_LABELS, PURPOSE_LABELS, UNIT_LABELS, formatTransportCoverage, formatTransportDate, formatTransportNumber } from "./transportPresentation";
+import { BASIS_LABELS, PURPOSE_LABELS, UNIT_LABELS, formatTransportCoverage, formatTransportDate, formatTransportNumber, formatTravelDuration } from "./transportPresentation";
 import { calculateRoadRoute, reverseTransportLocation, searchTransportLocations, type TransportLocation } from "./transportRouting";
 
 const TransportZoneMap = lazy(() => import("./TransportZoneMap"));
@@ -45,6 +45,7 @@ function fromCaseLeg(leg: CaseTravelLeg, days: number, baseAddress: string, vehi
     ...(leg.returnToBase && { returnToBase: true }),
     origin: point(leg.origin, leg.from.address), destination: point(leg.destination, leg.to.address),
     distanceKm: leg.distanceKm === null ? "" : String(leg.distanceKm), distanceSource: leg.source || "",
+    ...(leg.durationMinutes != null && { durationMinutes: leg.durationMinutes }),
   };
 }
 
@@ -163,6 +164,7 @@ function CaseTransport({ authorization, caseRef, addresses, access, onUnauthoriz
           originLabel: journey.origin.address.slice(0, 240).trim() || "Salida",
           destinationLabel: journey.destination.address.slice(0, 240).trim() || "Destino",
           distanceKm: journey.distanceKm.trim() || null, distanceSource: journey.distanceSource.trim(),
+          ...(journey.durationMinutes != null && { durationMinutes: journey.durationMinutes }),
           trips: Number(journey.trips), people: null, days: null,
           quantities: Object.fromEntries(Object.entries(journey.quantities).filter(([, value]) => value.trim()).map(([key, value]) => [key, value.trim()])),
         };
@@ -283,7 +285,7 @@ function CaseTransport({ authorization, caseRef, addresses, access, onUnauthoriz
       {publication && <details className="rounded border border-slate-200"><summary className="cursor-pointer p-3 text-xs font-medium text-slate-600">Comparar con publicación vigente · revisión {publication.revision}</summary><div className="px-3 pb-3"><CostComparison previous={publication.result} current={calculation.result} /></div></details>}
       {!access.canPublish && calculation.result.complete && <p className="text-xs text-slate-600">Estimación para consulta. Aplicar el costo requiere permiso de publicación.</p>}
     </section>}
-    {publication && <details open={!access.canCalculate || (!legacyPublication && !oldRoute && !calculation) || undefined} className="rounded border border-slate-200 bg-white" data-testid="transport-publication"><summary className="cursor-pointer p-3 text-xs font-semibold text-slate-700">{legacyPublication || oldRoute ? "Historial de transporte" : "Costo aplicado"} · revisión {publication.revision} · {PURPOSE_LABELS[publication.context.purpose]}</summary><div className="space-y-3 px-3 pb-3"><ResultTable result={publication.result} journeys={publication.input.journeys} commonCoverage={commonCoverage} /><details className="border-t pt-3"><summary className="cursor-pointer text-xs font-medium text-slate-600">Recorridos utilizados</summary><div className="mt-2 overflow-x-auto"><table className="w-full min-w-[630px] text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="p-2">Recorrido</th><th className="p-2">Vehículo</th><th className="p-2">Kilómetros</th><th className="p-2">Viajes</th><th className="p-2">Regreso</th><th className="p-2">Fuente vial</th></tr></thead><tbody>{publication.input.journeys.map((journey) => <tr key={journey.journeyRef} className="border-t"><td className="p-2">{journey.label}</td><td className="p-2">{journey.vehicleType}</td><td className="p-2 tabular-nums">{formatTransportNumber(journey.distanceKm)}</td><td className="p-2 tabular-nums">{journey.trips}</td><td className="p-2">{journey.returnToOrigin ? "Incluido" : "Sin duplicar"}</td><td className="p-2">{journey.distanceSource || "Pendiente"}</td></tr>)}</tbody></table></div></details></div></details>}
+    {publication && <details open={!access.canCalculate || (!legacyPublication && !oldRoute && !calculation) || undefined} className="rounded border border-slate-200 bg-white" data-testid="transport-publication"><summary className="cursor-pointer p-3 text-xs font-semibold text-slate-700">{legacyPublication || oldRoute ? "Historial de transporte" : "Costo aplicado"} · revisión {publication.revision} · {PURPOSE_LABELS[publication.context.purpose]}</summary><div className="space-y-3 px-3 pb-3"><ResultTable result={publication.result} journeys={publication.input.journeys} commonCoverage={commonCoverage} /><details className="border-t pt-3"><summary className="cursor-pointer text-xs font-medium text-slate-600">Recorridos utilizados</summary><div className="mt-2 overflow-x-auto"><table className="w-full min-w-[630px] text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr><th className="p-2">Recorrido</th><th className="p-2">Vehículo</th><th className="p-2">Kilómetros</th><th className="p-2">Conducción por tramo</th><th className="p-2">Viajes</th><th className="p-2">Regreso</th><th className="p-2">Fuente vial</th></tr></thead><tbody>{publication.input.journeys.map((journey) => <tr key={journey.journeyRef} className="border-t"><td className="p-2">{journey.label}</td><td className="p-2">{journey.vehicleType}</td><td className="p-2 tabular-nums">{formatTransportNumber(journey.distanceKm)}</td><td className="p-2 tabular-nums">{formatTravelDuration(journey.durationMinutes)}</td><td className="p-2 tabular-nums">{journey.trips}</td><td className="p-2">{journey.returnToOrigin ? "Incluido" : "Sin duplicar"}</td><td className="p-2">{journey.distanceSource || "Pendiente"}</td></tr>)}</tbody></table></div></details></div></details>}
   </section>;
 }
 
@@ -310,7 +312,7 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
   const [locationError, setLocationError] = useState<string | null>(null);
   const [routeBusy, setRouteBusy] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
-  const [routeDuration, setRouteDuration] = useState<number | null>(null);
+  const routeDuration = journey.durationMinutes;
   const routeRequest = useRef(0);
   const originPoint = pointValue(journey.origin);
   const destinationPoint = pointValue(journey.destination);
@@ -351,7 +353,7 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
     let destination = draft.destination;
     const originCoordinate = pointValue(origin);
     const destinationCoordinate = pointValue(destination);
-    setRouteError(null); setRouteDuration(null);
+    setRouteError(null);
     if (!originCoordinate || !destinationCoordinate) { setRouteBusy(false); return; }
     setRouteBusy(true);
     try {
@@ -362,20 +364,19 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
       onChange(enriched);
       if (!origin.countryCode || !destination.countryCode || origin.countryCode !== destination.countryCode) {
         setRouteError("La salida y el destino deben pertenecer al mismo país para calcular automáticamente esta ruta.");
-        onChange({ ...enriched, distanceKm: "", distanceSource: "" });
+        onChange({ ...enriched, distanceKm: "", distanceSource: "", durationMinutes: undefined });
         return;
       }
       const route = await calculateRoadRoute(pointValue(origin)!, pointValue(destination)!);
       if (request !== routeRequest.current) return;
-      setRouteDuration(route.durationMinutes);
-      onChange({ ...enriched, distanceKm: route.distanceKm, distanceSource: route.source });
+      onChange({ ...enriched, distanceKm: route.distanceKm, distanceSource: route.source, durationMinutes: route.durationMinutes ?? undefined });
     } catch (error) { if (request === routeRequest.current) setRouteError(routeErrorMessage(error)); }
     finally { if (request === routeRequest.current) setRouteBusy(false); }
   };
 
   const selectLocation = async (pointKey: "origin" | "destination", value: TransportLocation) => {
     const point: PointDraft = { longitude: String(value.point[0]), latitude: String(value.point[1]), address: value.label, countryCode: value.countryCode };
-    const next = { ...journey, [pointKey]: point, distanceKm: "", distanceSource: "", quantities: {} };
+    const next = { ...journey, [pointKey]: point, distanceKm: "", distanceSource: "", durationMinutes: undefined, quantities: {} };
     if (pointKey === "destination" && point.address !== journey.destination.address) delete next.returnToBase;
     if (pointKey === "origin") delete next.referenceBaseAddress;
     onChange(next); setAddressQuery(""); setAddressResults([]); setLocationError(null);
@@ -401,9 +402,9 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
     const base = bases.find((candidate) => candidate.address === address);
     if (!base) return;
     routeRequest.current += 1;
-    setRouteBusy(false); setRouteError(null); setRouteDuration(null);
+    setRouteBusy(false); setRouteError(null);
     const { operatingBaseAddress: _base, returnToBase: _return, ...current } = journey;
-    onChange({ ...current, origin: { ...EMPTY_POINT, address: base.name, countryCode: "DO" }, referenceBaseAddress: base.address, distanceKm: "", distanceSource: "", quantities: {} });
+    onChange({ ...current, origin: { ...EMPTY_POINT, address: base.name, countryCode: "DO" }, referenceBaseAddress: base.address, distanceKm: "", distanceSource: "", durationMinutes: undefined, quantities: {} });
     if (!destinationPoint) openMap("destination");
     else setMapPoint(null);
   };
@@ -423,7 +424,7 @@ function JourneyFields({ journey, index, vehicles, bases, addresses, lines, disa
     {mapPoint && <div className="space-y-2 rounded border border-sky-200 bg-sky-50/40 p-3"><div className="flex items-center justify-between gap-2"><div><p className="text-xs font-bold text-[#003366]">{mapPoint === "origin" ? "Seleccione la salida" : "Seleccione el destino"}</p><p className="text-[11px] text-slate-500">Busque una dirección o pulse directamente el punto en el mapa.</p></div><button type="button" aria-label="Cerrar mapa del recorrido" onClick={() => setMapPoint(null)} className="grid h-8 w-8 place-items-center rounded text-slate-500"><X className="h-4 w-4" /></button></div>
       {mapPoint === "origin" && bases.length > 0 && <label className="block max-w-md text-xs font-medium text-slate-600">Distancia de referencia desde una sede<select value={journey.referenceBaseAddress || ""} onChange={(event) => chooseReferenceBase(event.target.value)} className={field}><option value="">Elegir sede configurada</option>{bases.map((base) => <option key={base.address} value={base.address}>{base.name} · {base.address}</option>)}</select></label>}
       <label className="relative block"><span className="sr-only">Buscar dirección de {mapPoint === "origin" ? "salida" : "destino"}</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input aria-label={`Buscar dirección de ${mapPoint === "origin" ? "salida" : "destino"}`} value={addressQuery} onChange={(event) => setAddressQuery(event.target.value)} placeholder="Calle, sector, ciudad o establecimiento" className={`${field} mt-0 pl-9 pr-10`} />{searchingAddress && <LoaderCircle className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[#0070a8]" />}</label>{addressResults.length > 0 && <div className="divide-y rounded border bg-white" aria-label="Resultados de direcciones">{addressResults.map((result) => <button key={`${result.point[0]}:${result.point[1]}`} type="button" onClick={() => void selectLocation(mapPoint, result)} className="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-sky-50"><MapPin className="mr-2 inline h-3.5 w-3.5 text-[#0070a8]" />{result.label}</button>)}</div>}{locationError && <p role="alert" className="text-xs text-amber-800">{locationError}</p>}{locationBusy && <p role="status" className="text-xs text-sky-800"><LoaderCircle className="mr-1 inline h-3.5 w-3.5 animate-spin" />Identificando la dirección…</p>}<Suspense fallback={<p role="status" className="p-8 text-center text-xs text-slate-500">Cargando mapa…</p>}><TransportZoneMap points={selectedMapPoints} mode="points" selectedPoint={mapIndex} autoSelect pointLabels={mapLabels} disabled={disabled || locationBusy} label="Mapa del recorrido" onChange={(points) => { const point = points[mapIndex]; if (point) void selectMapCoordinate(mapPoint, point); }} /></Suspense></div>}
-    <div className="flex flex-wrap items-end gap-2"><div aria-label="Distancia vial calculada" className={`min-w-36 rounded px-3 py-1.5 text-[11px] ${journey.distanceKm ? "bg-emerald-50 text-emerald-800" : "bg-slate-50 text-slate-500"}`}><span className="block">Distancia vial</span><strong className="text-sm">{routeBusy ? "Calculando…" : journey.distanceKm ? `${Number(journey.distanceKm).toFixed(2)} km` : journey.referenceBaseAddress ? "Referencia de sede" : "Pendiente del mapa"}</strong>{routeDuration !== null && <span className="ml-1">· aprox. {routeDuration} min</span>}</div><label className="text-[11px] font-medium text-slate-600">Viajes *<NumericInput required min="1" max="9999" step="1" value={journey.trips} onChange={(event) => set("trips", event.target.value)} className={compact} /></label><label className="flex min-h-9 items-center gap-2 text-[11px] text-slate-600"><input type="checkbox" checked={journey.returnToOrigin} onChange={(event) => set("returnToOrigin", event.target.checked)} className="h-4 w-4 accent-[#003366]" />Regreso</label><AdministrationHelp title="Kilómetros y viajes"><p>La distancia vial se calcula automáticamente al seleccionar la salida y el destino dentro del mismo país.</p><p>Los kilómetros afectan el combustible y los renglones por kilómetro. Una tarifa por viaje cambia con la cantidad de viajes, no con la distancia.</p></AdministrationHelp></div>
+    <div className="flex flex-wrap items-end gap-2"><div aria-label="Distancia vial calculada" className={`min-w-36 rounded px-3 py-1.5 text-[11px] ${journey.distanceKm ? "bg-emerald-50 text-emerald-800" : "bg-slate-50 text-slate-500"}`}><span className="block">Distancia vial</span><strong className="text-sm">{routeBusy ? "Calculando…" : journey.distanceKm ? `${Number(journey.distanceKm).toFixed(2)} km` : journey.referenceBaseAddress ? "Referencia de sede" : "Pendiente del mapa"}</strong>{routeDuration != null && <span className="ml-1">· aprox. {routeDuration} min por tramo</span>}</div><label className="text-[11px] font-medium text-slate-600">Viajes *<NumericInput required min="1" max="9999" step="1" value={journey.trips} onChange={(event) => set("trips", event.target.value)} className={compact} /></label><label className="flex min-h-9 items-center gap-2 text-[11px] text-slate-600"><input type="checkbox" checked={journey.returnToOrigin} onChange={(event) => set("returnToOrigin", event.target.checked)} className="h-4 w-4 accent-[#003366]" />Regreso</label><AdministrationHelp title="Kilómetros y viajes"><p>La distancia vial se calcula automáticamente al seleccionar la salida y el destino dentro del mismo país.</p><p>Los kilómetros afectan el combustible y los renglones por kilómetro. Una tarifa por viaje cambia con la cantidad de viajes, no con la distancia.</p></AdministrationHelp></div>
     {routeError && <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900"><div className="flex flex-wrap items-center justify-between gap-2"><p>{routeError}</p>{originPoint && destinationPoint && <button type="button" disabled={routeBusy} onClick={() => void calculateSelectedRoute(journey)} className="inline-flex min-h-8 items-center gap-1 rounded border border-amber-300 bg-white px-2 font-bold"><Navigation className="h-3.5 w-3.5" />Reintentar ruta</button>}</div><details className="mt-2"><summary className="cursor-pointer text-[11px] font-bold">Registrar distancia manual como respaldo</summary><div className="mt-2 flex flex-wrap gap-2"><label>Km viales manuales<NumericInput min="0" max="999999.9999" step="0.01" value={journey.distanceKm} onChange={(event) => set("distanceKm", event.target.value)} className={compact} /></label><label className="min-w-52 flex-1">Fuente de la distancia<input maxLength={240} value={journey.distanceSource} onChange={(event) => set("distanceSource", event.target.value)} placeholder="Documento o medición confirmada" className={field} /></label></div></details></div>}
     {unmatchedQuantities.length > 0 && <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><p>Hay cantidades de una zona anterior que ya no corresponden a este recorrido.</p><button type="button" onClick={() => set("quantities", Object.fromEntries(Object.entries(journey.quantities).filter(([code]) => !unmatchedQuantities.includes(code))))} className="min-h-9 rounded border border-amber-300 bg-white px-3 font-medium">Retirar cantidades anteriores</button></div>}
     {quantities.length > 0 && <div className="space-y-2 border-t pt-3"><div className="flex items-center gap-1"><h5 className="text-xs font-semibold text-slate-600">Cantidades del recorrido</h5><AdministrationHelp title="Peajes y cantidades"><p>Indique el total de pasos o unidades de todos los viajes y regresos de este recorrido. El motor no los vuelve a multiplicar.</p><p>Ejemplo ilustrativo: una tarifa de DOP 200 por paso cuesta DOP 400 con 2 pasos y DOP 800 con 4 pasos. Aumentar los viajes no duplica automáticamente estos pasos.</p><p>Deje vacío lo que aún no esté confirmado. Ingrese cero si el concepto no tiene cantidad en este recorrido.</p></AdministrationHelp></div><div className="flex flex-wrap items-end gap-3">{quantities.map((line) => <label key={line.componentCode} className="max-w-48 text-xs font-medium text-slate-600">{line.concept}<span className="block text-[11px] font-normal text-slate-400">{line.basis === "PASS" ? "Pasos totales" : "Unidades totales"}</span><NumericInput aria-label={`${line.concept} del recorrido ${index + 1}`} min="0" step={line.basis === "PASS" ? "1" : "0.0001"} value={journey.quantities[line.componentCode] ?? ""} onChange={(event) => set("quantities", { ...journey.quantities, [line.componentCode]: event.target.value })} placeholder="Pendiente" className={compact} /></label>)}</div></div>}

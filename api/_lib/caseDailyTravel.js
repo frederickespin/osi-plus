@@ -33,8 +33,8 @@ function serviceUrl(raw) {
 
 export function configuredCaseRoadProvider(env = process.env, fetcher = fetch) {
   const geocoder = serviceUrl(env.OSI_CASE_GEOCODER_URL);
-  const router = serviceUrl(env.OSI_CASE_ROUTER_URL);
-  if (!geocoder || !router) return null;
+  const router = serviceUrl(env.OSI_CASE_ROUTER_URL ?? "https://router.project-osrm.org/");
+  if (!router) return null;
   async function query(url) {
     const response = await fetcher(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(3500), redirect: "error" });
     if (!response.ok) throw new Error("CASE_ROAD_SERVICE_UNAVAILABLE");
@@ -42,6 +42,7 @@ export function configuredCaseRoadProvider(env = process.env, fetcher = fetch) {
   }
   return {
     async locate(address, city) {
+      if (!geocoder) return null;
       const url = new URL(geocoder);
       url.search = new URLSearchParams({ q: address, countrycode: "DO", limit: "1" }).toString();
       const { features } = await query(url);
@@ -89,55 +90,89 @@ export async function caseDailyTravel(zones, route, { baseRef, baseAddress, loca
   const foreignDestination = Boolean(route.destination && route.destination.countryCode !== "DO");
   const terminal = find(terminals, localTerminalRef, localTerminalAddress) ?? null;
   const classify = (address) => geography?.metro
-    ? classifyLogisticsMetro(geography.metro, address)
+    ? classifyLogisticsMetro(geography.metro, address, address?.point)
     : uniqueValue(localityProfiles(zones, address).map((zone) => zone.zoneType));
   const area = { origin: classify(route.origin), destination: classify(route.destination) };
-  const result = { revision: route.revision, bases, terminals, base, terminal, foreignOrigin, foreignDestination, area,
-    metroVersion: geography?.metro?.version ?? null, legs: [], preparation: [], distanceKm: null, estimated: false };
-  if (!base || !route.destination || ((foreignOrigin || foreignDestination) && !terminal)) return result;
-  const format = (address) => fields(address).filter(Boolean).join(", ");
-  const stopAt = (base) => ({ label: base.name, address: base.address + ", República Dominicana", ...(base.point && { point: base.point }) });
-  const stops = [
-    stopAt(base),
-    foreignOrigin ? stopAt(terminal) : { label: "Origen", address: format(route.origin), city: route.origin.cityMunicipality },
-    foreignDestination ? stopAt(terminal) : { label: "Destino", address: format(route.destination), city: route.destination.cityMunicipality },
+  const baseStop = (row) => ({ label: row.name, address: row.address + ", República Dominicana", point: row.point, local: true });
+  function addressStop(label, address) {
+    const local = address.countryCode === "DO";
+    const addressFields = local ? fields(address) : [address.streetAndNumber, address.sector, address.cityMunicipality, address.provinceState, address.countryCode];
+    return {
+      label, address: addressFields.filter(Boolean).join(", "), city: address.cityMunicipality, point: local ? address.point : null, local,
+      reference: local && base ? reference(localityProfiles(profiles, address), base) : null,
+    };
+  }
+  const stopLabels = { PICKUP: "Recogida", DELIVERY: "Entrega" };
+  const originStop = foreignOrigin && terminal ? baseStop(terminal) : addressStop("Origen", route.origin);
+  const routeStops = [
+    originStop,
+    ...(route.stops ?? []).map(({ kind, address }, index) => addressStop(`${stopLabels[kind] ?? "Parada"} ${index + 1}`, address)),
   ];
-  const pointAtBase = base.point ?? (provider ? attempt(() => provider.locate(stops[0].address)) : null);
-  const points = await Promise.all(stops.map((stop) => {
-    if (stop.point) return stop.point;
-    if (key(stop.address) === key(stops[0].address)) return pointAtBase;
-    return provider ? attempt(() => provider.locate(stop.address, stop.city)) : null;
+  if (route.destination) routeStops.push(foreignDestination && terminal ? baseStop(terminal) : addressStop("Destino", route.destination));
+
+  const depot = base ? baseStop(base) : null;
+  const stops = depot ? [depot, ...routeStops] : routeStops;
+  const lookups = new Map();
+  await Promise.all(stops.map(async (stop) => {
+    if (!stop.local || stop.point || !provider?.locate) return;
+    const addressKey = key(stop.address);
+    if (!lookups.has(addressKey)) lookups.set(addressKey, attempt(() => provider.locate(stop.address, stop.city)));
+    stop.point = await lookups.get(addressKey);
   }));
-  const loop = [0, 1, 2, 0];
-  const prep = [0, 1, 0];
-  const measure = (sequence) => provider && sequence.every((index) => points[index])
-    ? attempt(() => provider.legs(sequence.map((index) => points[index]))) : null;
-  const [measured, measuredPrep] = await Promise.all([measure(loop), measure(prep)]);
-  const originReference = foreignOrigin ? null : reference(localityProfiles(profiles, route.origin), base);
-  const destinationReference = foreignDestination ? null : reference(localityProfiles(profiles, route.destination), base);
-  const sameStop = (first, second) => points[first] && points[second]
-    ? points[first][0] === points[second][0] && points[first][1] === points[second][1]
-    : key(stops[first].address) === key(stops[second].address);
-  const references = [
-    originReference,
-    terminal && sameStop(foreignOrigin ? 1 : 2, 0) ? (foreignDestination ? originReference : destinationReference) : null,
-    destinationReference,
-  ];
-  const build = (sequence, measurements, fallback) => sequence.slice(1).map((to, index) => {
-    const from = sequence[index];
-    const distance = sameStop(from, to) ? { distanceKm: 0, durationMinutes: 0, source: "Mismo punto", estimated: false }
-      : measurements?.[index] ?? fallback[index];
-    const { label: fromLabel, address: fromAddress } = stops[from];
-    const { label: toLabel, address: toAddress } = stops[to];
-    return { from: { label: fromLabel, address: fromAddress }, to: { label: toLabel, address: toAddress }, origin: points[from], destination: points[to],
-      distanceKm: distance?.distanceKm ?? null, source: distance?.source ?? null,
-      durationMinutes: distance?.durationMinutes ?? null,
-      estimated: Boolean(distance?.estimated) || route.destinationStatus === "APPROXIMATE",
-      returnToBase: sameStop(to, 0) };
-  });
-  const legs = build(loop, measured, references);
-  const preparation = build(prep, measuredPrep, [references[0], references[0]]);
-  const total = legs.every(({ distanceKm }) => distanceKm !== null)
-    ? Math.round(legs.reduce((sum, leg) => sum + leg.distanceKm, 0) * 100) / 100 : null;
-  return { ...result, legs, preparation, distanceKm: total, estimated: legs.some((leg) => leg.estimated) };
+  const sameStop = (a, b) => Boolean(a?.local && b?.local && (a.point && b.point
+    ? a.point[0] === b.point[0] && a.point[1] === b.point[1] : key(a.address) === key(b.address)));
+  const complete = Boolean(route.destination && (!(foreignOrigin || foreignDestination) || terminal));
+  const circuit = depot && complete ? [depot, ...routeStops, depot] : null;
+  const preparationStops = depot && originStop.local ? [depot, originStop, depot] : [];
+
+  async function buildLegs(sequence) {
+    const measurements = [];
+    const requests = [];
+    // Keep known adjacent legs when the map cannot locate one of the stops.
+    // Each contiguous run is routed in order; never bridge over an unknown address.
+    if (provider?.legs) {
+      for (let start = 0; start < sequence.length;) {
+        if (!sequence[start].point) { start++; continue; }
+        let end = start + 1;
+        while (end < sequence.length && sequence[end].point) end++;
+        if (end > start + 1) {
+          const offset = start;
+          const points = sequence.slice(start, end).map((stop) => stop.point);
+          requests.push(attempt(() => provider.legs(points)).then((result) => {
+            if (Array.isArray(result) && result.length === points.length - 1) {
+              result.forEach((leg, index) => { measurements[offset + index] = leg; });
+            }
+          }));
+        }
+        start = end;
+      }
+    }
+    await Promise.all(requests);
+    return sequence.slice(1).map((to, index) => {
+      const from = sequence[index];
+      const atBase = sameStop(to, depot);
+      const fallback = atBase ? from.reference : sameStop(from, depot) ? to.reference : null;
+      const distance = sameStop(from, to) ? { distanceKm: 0, durationMinutes: 0, source: "Mismo punto", estimated: false }
+        : measurements[index] ?? fallback;
+      return {
+        from: { label: from.label, address: from.address }, to: { label: to.label, address: to.address },
+        origin: from.point ?? null, destination: to.point ?? null, distanceKm: distance?.distanceKm ?? null,
+        durationMinutes: distance?.durationMinutes ?? null, source: distance?.source ?? null,
+        estimated: Boolean(distance?.estimated) || route.destinationStatus === "APPROXIMATE", returnToBase: atBase,
+      };
+    });
+  }
+  const [sequenceLegs, preparation] = await Promise.all([buildLegs(circuit ?? routeStops), buildLegs(preparationStops)]);
+  const legs = circuit ? sequenceLegs : [];
+  const routeLegs = circuit ? sequenceLegs.slice(1, -1) : sequenceLegs;
+  const total = (rows, field) => rows.length && rows.every((row) => Number.isFinite(row[field]))
+    ? Math.round(rows.reduce((sum, row) => sum + row[field], 0) * 100) / 100 : null;
+  return {
+    revision: route.revision, bases, terminals, base, terminal, foreignOrigin, foreignDestination, area,
+    metroVersion: geography?.metro?.version ?? null, legs, routeLegs, preparation,
+    distanceKm: total(legs, "distanceKm"), durationMinutes: total(legs, "durationMinutes"),
+    routeDistanceKm: complete ? total(routeLegs, "distanceKm") : null,
+    routeDurationMinutes: complete ? total(routeLegs, "durationMinutes") : null,
+    estimated: legs.some((leg) => leg.estimated),
+  };
 }

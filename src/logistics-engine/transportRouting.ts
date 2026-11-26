@@ -4,6 +4,7 @@ export type TransportLocation = Readonly<{
   point: TransportCoordinate;
   label: string;
   countryCode: string;
+  address?: Readonly<{ city: string; province: string; sector: string; street: string }>;
 }>;
 
 export type TransportRoadRoute = Readonly<{
@@ -16,7 +17,7 @@ type NominatimPlace = Readonly<{
   lat?: string;
   lon?: string;
   display_name?: string;
-  address?: Readonly<{ country_code?: string }>;
+  address?: Readonly<Record<string, string | undefined>>;
 }>;
 
 const NOMINATIM = "https://nominatim.openstreetmap.org";
@@ -26,7 +27,14 @@ function location(place: NominatimPlace): TransportLocation | null {
   const longitude = Number(place.lon);
   const latitude = Number(place.lat);
   if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || !place.display_name) return null;
-  return { point: [longitude, latitude], label: place.display_name, countryCode: place.address?.country_code?.toUpperCase() || "" };
+  const address = place.address;
+  return { point: [longitude, latitude], label: place.display_name, countryCode: address?.country_code?.toUpperCase() || "",
+    ...(address && { address: {
+      city: address.city || address.town || address.village || address.municipality || address.county || "",
+      province: address.state || address.province || "", sector: address.suburb || address.neighbourhood || address.city_district || "",
+      street: [address.road || address.pedestrian || address.residential || "", address.house_number].filter(Boolean).join(" "),
+    } }),
+  };
 }
 
 async function readJson(response: Response) {

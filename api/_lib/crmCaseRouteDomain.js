@@ -4,6 +4,7 @@ import { prisma } from "./db.js";
 import { appendCommercialAudit } from "./commercialAuditLog.js";
 import { CrmCaseMutationError, hashCrmCaseMutation } from "./crmCaseMutationDomain.js";
 import { PERMS, permsForRole } from "./rbac.js";
+import { CASE_ROUTE_MAX_STOPS, caseRouteDetails, isRoutePoint, isRouteStopKind, makeRouteDetails, stopDetails } from "./caseRouteDetails.js";
 
 const PUBLIC_REF = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const HASH = /^[0-9a-f]{64}$/;
@@ -45,7 +46,9 @@ function nullableRef(value) {
   return publicRef(value);
 }
 function normalizeAddress(value) {
-  exact(value, ADDRESS_FIELDS);
+  const withPoint = value != null && Object.hasOwn(value, "point");
+  exact(value, withPoint ? new Set([...ADDRESS_FIELDS, "point"]) : ADDRESS_FIELDS);
+  if (withPoint && value.point !== null && !isRoutePoint(value.point)) fail("CRM_CASE_ROUTE_INPUT_INVALID");
   const countryCode = text(value.countryCode, 2);
   if (!COUNTRY.test(countryCode)) fail("CRM_CASE_ROUTE_INPUT_INVALID");
   return Object.freeze({
@@ -60,10 +63,13 @@ function normalizeAddress(value) {
     arrivalReference: text(value.arrivalReference, 320, true),
     locationContactName: text(value.locationContactName, 160, true),
     locationContactPhone: text(value.locationContactPhone, 40, true),
+    ...(withPoint && { point: value.point }),
   });
 }
 function normalizeCommand(input) {
-  exact(input, COMMAND_FIELDS);
+  const withStops = input != null && Object.hasOwn(input, "stops");
+  exact(input, withStops ? new Set([...COMMAND_FIELDS, "stops"]) : COMMAND_FIELDS);
+  if (withStops && (!Array.isArray(input.stops) || input.stops.length > CASE_ROUTE_MAX_STOPS)) fail("CRM_CASE_ROUTE_INPUT_INVALID");
   const destinationStatus = text(input.destinationStatus, 32);
   if (!DESTINATION_STATUSES.has(destinationStatus)) fail("CRM_CASE_ROUTE_INPUT_INVALID");
   const destination = input.destination === null ? null : normalizeAddress(input.destination);
@@ -76,6 +82,11 @@ function normalizeCommand(input) {
     destinationStatus,
     origin: normalizeAddress(input.origin),
     destination,
+    ...(withStops && { stops: input.stops.map((stop) => {
+      exact(stop, new Set(["kind", "address"]));
+      if (stop.kind !== null && !isRouteStopKind(stop.kind)) fail("CRM_CASE_ROUTE_INPUT_INVALID");
+      return { kind: stop.kind, address: normalizeAddress(stop.address) };
+    }) }),
   });
   if (!REQUEST_ID.test(normalized.requestId) || typeof input.payloadHash !== "string" || !HASH.test(input.payloadHash)
     || hashCrmCaseMutation(normalized) !== input.payloadHash) fail("CRM_PIPELINE_PAYLOAD_HASH_INVALID");
@@ -140,14 +151,14 @@ async function routeOptions(tx, tenantId, clientId, excludedCaseId = null) {
   });
   const recentCases = await tx.pipelineCase.findMany({
     where: { tenantId, clientId, routeRevision: { gt: 0 }, ...(excludedCaseId ? { id: { not: excludedCaseId } } : {}) },
-    select: { id: true, caseCode: true, routeRevision: true, updatedAt: true, serviceType: true },
+    select: { id: true, caseCode: true, routeRevision: true, milestonesJson: true, updatedAt: true, serviceType: true },
     orderBy: { updatedAt: "desc" },
     take: 2,
   });
   const recent = [];
   for (const item of recentCases) {
     const rows = await tx.pipelineCaseRouteSnapshot.findMany({
-      where: { tenantId, pipelineCaseId: item.id, routeVersion: item.routeRevision, role: { in: ["ORIGIN", "DESTINATION"] } },
+      where: { tenantId, pipelineCaseId: item.id, routeVersion: item.routeRevision },
       orderBy: [{ role: "asc" }, { stopOrder: "asc" }],
     });
     for (const row of rows) recent.push({ row, item });
@@ -160,14 +171,19 @@ async function routeOptions(tx, tenantId, clientId, excludedCaseId = null) {
   }
   for (const { row, item } of recent) {
     const key = optionKey(row); if (seen.has(key)) continue; seen.add(key);
-    options.push(Object.freeze({ optionId: `RECENT:${item.id}:${row.role}`, source: "RECENT_SERVICE", label: `${row.role === "ORIGIN" ? "Origen" : "Destino"} · ${item.caseCode}`, caseCode: item.caseCode, serviceType: item.serviceType, usedAt: item.updatedAt, address: addressDto({ ...row, sourceAddressRef: null }) }));
+    const details = caseRouteDetails(item);
+    const stop = stopDetails(details, row.stopOrder);
+    const kind = row.role === "ORIGIN" ? "Origen" : row.role === "DESTINATION" ? "Destino" : stop?.kind === "PICKUP" ? "Recogida" : stop?.kind === "DELIVERY" ? "Entrega" : "Parada";
+    const point = row.role === "ORIGIN" ? details?.originPoint : row.role === "DESTINATION" ? details?.destinationPoint : stop?.point;
+    const optionId = `RECENT:${item.id}:${row.role}` + (row.role === "ADDITIONAL_STOP" ? `:${row.stopOrder}` : "");
+    options.push(Object.freeze({ optionId, source: "RECENT_SERVICE", label: `${kind} · ${item.caseCode}`, caseCode: item.caseCode, serviceType: item.serviceType, usedAt: item.updatedAt, address: { ...addressDto({ ...row, sourceAddressRef: null }), point: point ?? null } }));
   }
   return Object.freeze(options);
 }
 async function caseAuthority(database, context, ref) {
   const item = await database.pipelineCase.findFirst({
     where: { tenantId: context.tenantId, publicRef: publicRef(ref) },
-    select: { id: true, publicRef: true, caseCode: true, clientId: true, version: true, routeRevision: true, destinationStatus: true, status: true, ownerMembershipId: true, ownerUserId: true },
+    select: { id: true, publicRef: true, caseCode: true, clientId: true, version: true, routeRevision: true, milestonesJson: true, destinationStatus: true, status: true, ownerMembershipId: true, ownerUserId: true },
   });
   if (!item || (context.role === "V" && (item.ownerMembershipId !== context.membershipId || item.ownerUserId !== context.userId))) fail("CRM_PIPELINE_RESOURCE_NOT_FOUND", 404);
   return item;
@@ -180,11 +196,16 @@ async function currentRoute(database, tenantId, item) {
   const origin = rows.find((row) => row.role === "ORIGIN");
   const destination = rows.find((row) => row.role === "DESTINATION");
   if (!origin || (item.destinationStatus !== "PENDING" && !destination)) fail("CRM_ICP_STATE_CONFLICT", 409);
+  const details = caseRouteDetails(item);
   return Object.freeze({
     revision: item.routeRevision,
     destinationStatus: item.destinationStatus,
-    origin: addressDto(origin),
-    destination: destination ? addressDto(destination) : null,
+    origin: { ...addressDto(origin), point: details?.originPoint ?? null },
+    destination: destination ? { ...addressDto(destination), point: details?.destinationPoint ?? null } : null,
+    stops: rows.filter((row) => row.role === "ADDITIONAL_STOP").map((row) => {
+      const detail = stopDetails(details, row.stopOrder);
+      return { kind: detail?.kind ?? null, address: { ...addressDto(row), point: detail?.point ?? null } };
+    }),
   });
 }
 
@@ -243,14 +264,36 @@ export async function getCaseRouteTravel(context, ref, { baseRef, baseAddress, l
   return caseDailyTravel(zones, route, { baseRef, baseAddress, localTerminalRef, localTerminalAddress, geography });
 }
 
-async function materializeAddress(tx, actorRow, clientId, address) {
-  if (!address.sourceAddressRef) return address;
-  const registered = await tx.clientAddress.findFirst({ where: { tenantId: actorRow.tenantId, clientId, addressRef: address.sourceAddressRef, status: "ACTIVE" } });
-  if (!registered) fail("CRM_CASE_ROUTE_ADDRESS_UNAVAILABLE", 409);
-  return addressDto(registered);
+async function materializeAddress(tx, actorRow, clientId, address, previous) {
+  let resolved = address;
+  if (address.sourceAddressRef) {
+    const registered = await tx.clientAddress.findFirst({ where: { tenantId: actorRow.tenantId, clientId, addressRef: address.sourceAddressRef, status: "ACTIVE" } });
+    if (!registered) fail("CRM_CASE_ROUTE_ADDRESS_UNAVAILABLE", 409);
+    resolved = addressDto(registered);
+  }
+  const samePlace = previous && optionKey(previous) === optionKey(resolved);
+  const point = Object.hasOwn(address, "point") ? (optionKey(address) === optionKey(resolved) ? address.point : null)
+    : (samePlace ? previous.point : null);
+  return { ...resolved, point: point ?? null };
 }
-function snapshotData(address, role) {
-  return { role, stopOrder: 0, ...address };
+function snapshotData(address, role, stopOrder = 0) {
+  return { role, stopOrder, ...addressDto(address) };
+}
+
+async function resolveStops(tx, who, item, requested, previous) {
+  if (requested === undefined) return previous;
+  const unused = [...previous];
+  const result = [];
+  for (const stop of requested) {
+    // A generic historical stop can survive reordering. Newly added stops need a purpose.
+    const index = unused.findIndex((prior) => (stop.kind !== null || prior.kind === null) && optionKey(prior.address) === optionKey(stop.address));
+    if (index < 0 && stop.kind === null) fail("CRM_CASE_ROUTE_STOP_KIND_REQUIRED");
+    const prior = index < 0 ? null : unused.splice(index, 1)[0];
+    const address = await materializeAddress(tx, who, item.clientId, stop.address, prior?.address);
+    if (address.countryCode === "DO" && (!address.provinceState || !address.streetAndNumber)) fail("CRM_CASE_ROUTE_INPUT_INVALID");
+    result.push({ kind: stop.kind, address });
+  }
+  return result;
 }
 function deriveMode(origin, destination) {
   if (!destination || (origin.countryCode === "DO" && destination.countryCode === "DO")) return "LOCAL";
@@ -276,23 +319,26 @@ export async function updateCaseRoute(context, ref, input, database = prisma) {
       }
       if (item.version !== command.expectedVersion || item.routeRevision !== command.expectedRouteRevision) fail("CRM_PIPELINE_VERSION_CONFLICT", 409);
       if (!item.clientId) fail("CRM_CASE_ROUTE_CLIENT_REQUIRED", 409);
-      const origin = await materializeAddress(tx, who, item.clientId, command.origin);
-      const destination = command.destination ? await materializeAddress(tx, who, item.clientId, command.destination) : null;
-      const existingStops = await tx.pipelineCaseRouteSnapshot.findMany({ where: { tenantId: who.tenantId, pipelineCaseId: item.id, routeVersion: item.routeRevision, role: "ADDITIONAL_STOP" }, orderBy: { stopOrder: "asc" } });
+      const previous = item.routeRevision > 0 ? await currentRoute(tx, who.tenantId, item) : { origin: null, destination: null, stops: [] };
+      const origin = await materializeAddress(tx, who, item.clientId, command.origin, previous.origin);
+      const destination = command.destination ? await materializeAddress(tx, who, item.clientId, command.destination, previous.destination) : null;
+      const stops = await resolveStops(tx, who, item, command.stops, previous.stops);
       const routeRevision = item.routeRevision + 1;
       const version = item.version + 1;
+      const routeDetails = makeRouteDetails(routeRevision, origin, destination, stops);
       await tx.pipelineCaseRouteSnapshot.createMany({ data: [
         { tenantId: who.tenantId, pipelineCaseId: item.id, routeVersion: routeRevision, ...snapshotData(origin, "ORIGIN") },
         ...(destination ? [{ tenantId: who.tenantId, pipelineCaseId: item.id, routeVersion: routeRevision, ...snapshotData(destination, "DESTINATION") }] : []),
-        ...existingStops.map((stop) => ({ tenantId: who.tenantId, pipelineCaseId: item.id, routeVersion: routeRevision, role: "ADDITIONAL_STOP", stopOrder: stop.stopOrder, sourceAddressRef: stop.sourceAddressRef, countryCode: stop.countryCode, provinceState: stop.provinceState, cityMunicipality: stop.cityMunicipality, sector: stop.sector, streetAndNumber: stop.streetAndNumber, buildingResidential: stop.buildingResidential, floorUnit: stop.floorUnit, arrivalReference: stop.arrivalReference, locationContactName: stop.locationContactName, locationContactPhone: stop.locationContactPhone })),
+        ...stops.map((stop, index) => ({ tenantId: who.tenantId, pipelineCaseId: item.id, routeVersion: routeRevision, ...snapshotData(stop.address, "ADDITIONAL_STOP", index + 1) })),
       ] });
       const changed = await tx.pipelineCase.updateMany({
         where: { id: item.id, tenantId: who.tenantId, version: item.version, routeRevision: item.routeRevision },
-        data: { version, routeRevision, destinationStatus: command.destinationStatus, mode: deriveMode(origin, destination), originLocation: compactAddress(origin), destinationLocation: destination ? compactAddress(destination) : "PENDING" },
+        data: { version, routeRevision, destinationStatus: command.destinationStatus, mode: deriveMode(origin, destination), originLocation: compactAddress(origin), destinationLocation: destination ? compactAddress(destination) : "PENDING",
+          milestonesJson: { ...item.milestonesJson, icpV2: { ...item.milestonesJson?.icpV2, routeDetails } } },
       });
       if (changed.count !== 1) fail("CRM_PIPELINE_VERSION_CONFLICT", 409);
       await tx.pipelineCaseCommand.create({ data: { tenantId: who.tenantId, pipelineCaseId: item.id, requestId: command.requestId, commandType: "UPDATE", payloadHash: command.payloadHash, expectedVersion: item.version, resultingVersion: version, previousStatus: item.status, resultingStatus: item.status, previousOwnerMembershipId: item.ownerMembershipId, previousOwnerUserId: item.ownerUserId, resultingOwnerMembershipId: item.ownerMembershipId, resultingOwnerUserId: item.ownerUserId, actorMembershipId: who.membershipId, actorUserId: who.userId, actorRole: who.role } });
-      await appendCommercialAudit(tx, { tenantId: who.tenantId, actorKind: "MEMBERSHIP", actorMembershipId: who.membershipId }, { source: "CRM_CASE_ROUTE", action: "CRM_CASE_ROUTE_UPDATED", entity: "PIPELINE_CASE", entityId: item.id, requestId: command.requestId, correlationId: command.requestId, beforeJson: { version: item.version, routeRevision: item.routeRevision }, afterJson: { version, routeRevision, destinationStatus: command.destinationStatus }, metadataJson: { recalculationRequired: true } });
+      await appendCommercialAudit(tx, { tenantId: who.tenantId, actorKind: "MEMBERSHIP", actorMembershipId: who.membershipId }, { source: "CRM_CASE_ROUTE", action: "CRM_CASE_ROUTE_UPDATED", entity: "PIPELINE_CASE", entityId: item.id, requestId: command.requestId, correlationId: command.requestId, beforeJson: { version: item.version, routeRevision: item.routeRevision }, afterJson: { version, routeRevision, destinationStatus: command.destinationStatus, routeDetails }, metadataJson: { recalculationRequired: true } });
       return getCaseRouteEditor(context, ref, tx);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 3_000, timeout: 10_000 });
   } catch (error) {

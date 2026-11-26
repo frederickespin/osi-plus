@@ -217,13 +217,15 @@ const quotationInput = {
   exchange: null, discount: null, marginAuthorizationRef: null,
   lines: [{ sourceKind: "COSTING", costingLineRef: ref(1202), concept: "Transport", quantity: "1", unit: "TRIP", economicClass: "DE", quotedPrice: "100", currency: "DOP", reason: null, manualAuthority: null }],
 };
+const sourceLine = { ...quotationInput.lines[0], lineRef: ref(1202), classification: "DE", suggestedPrice: "100", totalCost: "100", sourceRef: ref(1320), sourceVersion: 1 };
+const sourceCosting = { id: ref(1201), revisionRef: ref(1201), revision: 1, status: "PUBLISHED", baseCurrency: "DOP", publishedAt: new Date("2026-10-01T00:00:00Z"), logicalSha256: "d".repeat(64), inputSnapshot: { transportContext: QUOTE_TRANSPORT_CONTEXT }, logisticsRevision: { revisionRef: ref(1330), inputSnapshot: { transportContext: QUOTE_TRANSPORT_CONTEXT } }, lines: [sourceLine, { ...sourceLine, lineRef: ref(1321), concept: "Unused toll", quantity: "0", suggestedPrice: "0", totalCost: "0" }], issues: [], overrides: [] };
 function quoteFixture(costContext, logisticsContext) {
   const tx = {
     $executeRaw: async () => {},
     quoteMutationCommand: { findUnique: async () => null },
     pipelineCase: { findFirst: async () => ({ id: "case-a" }) },
     pipelineCaseCommercialContextVersion: { findFirst: async () => null },
-    costingRevision: { findFirst: async () => ({ id: ref(1201), inputSnapshot: costContext ? { transportContext: costContext } : {}, logisticsRevision: { inputSnapshot: logisticsContext ? { transportContext: logisticsContext } : {} } }) },
+    costingRevision: { findFirst: async () => ({ ...sourceCosting, inputSnapshot: costContext ? { transportContext: costContext } : {}, logisticsRevision: { inputSnapshot: logisticsContext ? { transportContext: logisticsContext } : {} } }) },
     pipelineCaseQuote: { findFirst: async () => { throw new Error("QUOTATION_CONTEXT_ACCEPTED"); } },
   };
   return { $transaction: (work) => work(tx) };
@@ -249,8 +251,6 @@ assert.deepEqual(selected.map((value) => value.quantity), ["0.0001", "1", "99999
 assert.equal(selectable.length, 5);
 assert.equal(eligibleCostingLines([{ lineRef: ref(1310), quantity: "NaN", suggestedPrice: "0" }]).length, 0);
 
-const sourceLine = { ...quotationInput.lines[0], lineRef: ref(1202), classification: "DE", suggestedPrice: "100", totalCost: "100", sourceRef: ref(1320), sourceVersion: 1 };
-const sourceCosting = { id: ref(1201), revisionRef: ref(1201), revision: 1, status: "PUBLISHED", baseCurrency: "DOP", publishedAt: new Date("2026-10-01T00:00:00Z"), logicalSha256: "d".repeat(64), inputSnapshot: { transportContext: QUOTE_TRANSPORT_CONTEXT }, logisticsRevision: { revisionRef: ref(1330), inputSnapshot: { transportContext: QUOTE_TRANSPORT_CONTEXT } }, lines: [sourceLine, { ...sourceLine, lineRef: ref(1321), concept: "Unused toll", quantity: "0", suggestedPrice: "0", totalCost: "0" }], issues: [], overrides: [] };
 const subsetTx = {
   $executeRaw: async () => {},
   quoteMutationCommand: { findUnique: async () => null },

@@ -23,3 +23,12 @@ export function formatTransportCoverage(value: "METRO" | "INTERIOR" | null) {
   if (value === "INTERIOR") return "Fuera de zona metro";
   return "Zona por verificar";
 }
+
+export function formatTravelDuration(minutes: number | null | undefined) {
+  if (minutes == null || !Number.isFinite(minutes) || minutes < 0) return "Tiempo pendiente";
+  const total = Math.round(minutes);
+  const hours = Math.floor(total / 60);
+  const rest = total % 60;
+  if (!hours) return rest + " min";
+  return hours + " h" + (rest ? " " + rest + " min" : "");
+}

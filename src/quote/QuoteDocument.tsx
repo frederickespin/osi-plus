@@ -63,7 +63,8 @@ export function QuoteDocument({ proposal }: { proposal: QuoteClientProposal }) {
       {client?.client?.displayName && <p>Cliente · <strong>{client.client.displayName}</strong></p>}
       {proposal.payer.displayName && proposal.payer.displayName !== client?.client?.displayName && <p>Responsable del pago · {proposal.payer.displayName}</p>}
       {stops.map((row) => {
-        const label = row.role === "ORIGIN" ? "Origen" : row.role === "DESTINATION" ? "Destino" : "Parada";
+        const label = row.role === "ORIGIN" ? "Origen" : row.role === "DESTINATION" ? "Destino"
+          : (row.kind === "PICKUP" ? "Recogida" : row.kind === "DELIVERY" ? "Entrega" : "Parada") + " " + row.stopOrder;
         const address = [row.streetAndNumber, row.buildingResidential, row.floorUnit, row.sector, row.cityMunicipality, row.provinceState, row.countryCode].filter(Boolean).join(", ");
         return address && <p key={row.role + row.stopOrder}>{label} · {address}</p>;
       })}

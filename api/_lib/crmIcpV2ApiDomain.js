@@ -10,6 +10,7 @@ import {
   toCrmIcpClientSearchResult,
 } from "./crmIcpV2Domain.js";
 import { PERMS, permsForRole } from "./rbac.js";
+import { caseRouteDetails, makeRouteDetails, stopDetails } from "./caseRouteDetails.js";
 
 const PUBLIC_REF = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ICP_SOURCE = "CRM_ICP_V2_API_05B1";
@@ -418,7 +419,9 @@ async function readCaseForActor(database, actor, ref) {
       destinationStatus: item.destinationStatus,
       origin: publicAddress(origin),
       destination: destination ? publicAddress(destination) : null,
-      additionalStops: Object.freeze(snapshots.filter((row) => row.role === "ADDITIONAL_STOP").map(publicAddress)),
+      additionalStops: Object.freeze(snapshots.filter((row) => row.role === "ADDITIONAL_STOP").map((row) => ({
+        ...publicAddress(row), kind: stopDetails(caseRouteDetails(item), row.stopOrder)?.kind ?? null,
+      }))),
     }),
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -494,6 +497,7 @@ export async function createCrmIcpV2Case(context, input, database = prisma) {
       const owner = actor.role === "V"
         ? Object.freeze({ membershipId: actor.membershipId, userId: actor.userId })
         : Object.freeze({ membershipId: null, userId: null });
+      const routeDetails = command.route.additionalStops.length ? makeRouteDetails(plan.nextRouteRevision, null, null, command.route.additionalStops) : null;
       const pipelineCase = await tx.pipelineCase.create({
         data: {
           tenantId: actor.tenantId,
@@ -515,6 +519,7 @@ export async function createCrmIcpV2Case(context, input, database = prisma) {
           flags: ["ICP_SERVICE_PENDING", "ICP_SURVEY_PENDING", "ICP_VOLUME_PENDING"],
           milestonesJson: {
             icpV2: {
+              ...(routeDetails && { routeDetails }),
               requirementNotes: command.requirementNotes,
               serviceDefinitionStatus: "PENDING",
               surveyDecisionStatus: "PENDING",
@@ -566,7 +571,7 @@ export async function createCrmIcpV2Case(context, input, database = prisma) {
         requestId: command.requestId,
         correlationId: command.requestId,
         beforeJson: null,
-        afterJson: { version: 1, routeContractVersion: 2, routeRevision: 1, destinationStatus: command.route.destinationStatus },
+        afterJson: { version: 1, routeContractVersion: 2, routeRevision: 1, destinationStatus: command.route.destinationStatus, ...(routeDetails && { routeDetails }) },
         metadataJson: plan.audit,
       });
       return Object.freeze({

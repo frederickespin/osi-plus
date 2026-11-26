@@ -46,6 +46,7 @@ export type IcpClientSearchResult = Readonly<{
 
 export type IcpCreateReceipt = Readonly<{ caseRef: string; clientRef: string; version: number; routeRevision: number; replayed: boolean }>;
 export type IcpCaseAddress = Readonly<{
+  kind?: "PICKUP" | "DELIVERY" | null;
   countryCode: string;
   provinceState: string | null;
   cityMunicipality: string;
@@ -114,8 +115,11 @@ function text(value: unknown, nullable = false) {
 
 function address(value: unknown): IcpCaseAddress {
   const row = object(value);
-  exactKeys(row, ["countryCode", "provinceState", "cityMunicipality", "sector", "streetAndNumber", "buildingResidential", "floorUnit", "arrivalReference", "locationContactName", "locationContactPhone"]);
+  const metadata = ["role", "stopOrder", "sourceAddressRef", "kind"].filter((key) => Object.hasOwn(row, key));
+  exactKeys(row, ["countryCode", "provinceState", "cityMunicipality", "sector", "streetAndNumber", "buildingResidential", "floorUnit", "arrivalReference", "locationContactName", "locationContactPhone", ...metadata]);
+  if (row.kind != null && row.kind !== "PICKUP" && row.kind !== "DELIVERY") throw new CrmIcpV2ClientError(502, "CRM_ICP_RESPONSE_INVALID");
   return Object.freeze({
+    ...(Object.hasOwn(row, "kind") && { kind: row.kind === "PICKUP" || row.kind === "DELIVERY" ? row.kind : null }),
     countryCode: text(row.countryCode) as string,
     provinceState: text(row.provinceState, true),
     cityMunicipality: text(row.cityMunicipality) as string,

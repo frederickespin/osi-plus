@@ -284,6 +284,64 @@ test("Direcciones del plan conserva la selección de origen y destino al guardar
   await expect(editor.getByRole("button", { name: "Guardar ruta" })).toBeDisabled();
 });
 
+test("Direcciones ordena recogidas y entregas con direcciones registradas y un punto del mapa", async ({ page }) => {
+  await session(page, false, ["pipeline:update"]);
+  await crm(page);
+  const address = (streetAndNumber: string) => ({ countryCode: "DO", cityMunicipality: "Santo Domingo", provinceState: "Distrito Nacional", streetAndNumber });
+  type Stop = { kind: string | null; address: ReturnType<typeof address> & { point?: readonly number[] | null } };
+  let stops: Stop[] = [], revision = 3, pinnedPoint: number[] = [];
+  await page.route(`**/api/crm/services/cases/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: savedWorkspace() } }));
+  await page.route(`**/api/crm/pipeline-cases/${CASE_REF}/route`, (route) => {
+    if (route.request().method() === "PATCH") {
+      expect(route.request().postDataJSON().expectedRouteRevision).toBe(revision);
+      stops = route.request().postDataJSON().stops; revision++;
+    }
+    return route.fulfill({ headers: privateHeaders, json: { ok: true, data: { caseRef: CASE_REF, version: revision, route: {
+      revision, origin: address("Inicio"), destinationStatus: "CONFIRMED", destination: address("Fin"), stops,
+    }, options: [{ optionId: "casa", source: "REGISTERED", label: "Casa", address: address("Calle de recogida") }] } } });
+  });
+  await page.route(`**/api/crm/pipeline-cases/${CASE_REF}/route?longitude=**`, (route) => route.fulfill({ headers: privateHeaders, json: { ok: true, data: { areas: [], classification: "METRO" } } }));
+  await page.route("https://tile.openstreetmap.org/**", (route) => route.abort());
+  await page.route("https://nominatim.openstreetmap.org/reverse**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    pinnedPoint = [Number(params.get("lon")), Number(params.get("lat"))];
+    return route.fulfill({ json: { lat: "18.3", lon: "-69.1", display_name: "Avenida de entrega", address: {
+      country_code: "do", city: "Santo Domingo", state: "Distrito Nacional", road: "Avenida de entrega",
+    } } });
+  });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  const directions = page.getByRole("tab", { name: "Direcciones", exact: true });
+  await directions.click();
+  const editor = page.getByRole("region", { name: "Direcciones del caso" });
+  const route = editor.getByRole("region", { name: "Recorrido del servicio" });
+  const save = editor.getByRole("button", { name: "Guardar ruta" });
+  await route.getByRole("button", { name: "Añadir recogida" }).click();
+  await expect(save).toBeDisabled();
+  await route.getByLabel("Seleccionar dirección").selectOption("casa");
+  await route.getByRole("button", { name: "Añadir entrega" }).click();
+  await route.getByRole("button", { name: "Buscar parada 2 en el mapa" }).click();
+  const map = route.getByRole("region", { name: "Mapa de la parada 2", exact: true }).last();
+  await expect(map).toHaveClass(/leaflet-container/);
+  await map.click({ position: { x: 130, y: 110 } });
+  await route.getByRole("button", { name: "Usar punto del mapa" }).click();
+  await route.getByRole("button", { name: "Subir parada 2" }).click();
+  await route.getByRole("button", { name: "Añadir entrega" }).click();
+  await route.getByRole("button", { name: "Quitar parada 3" }).click();
+  await page.getByRole("tab", { name: "Plan", exact: true }).click();
+  await directions.click();
+  await save.click();
+  await expect.poll(() => stops).toMatchObject([{ kind: "DELIVERY", address: { streetAndNumber: "Avenida de entrega", point: pinnedPoint } },
+    { kind: "PICKUP", address: { streetAndNumber: "Calle de recogida" } }]);
+  await page.reload(); await directions.click();
+  await expect(route.getByLabel("Movimiento de la parada 1")).toHaveValue("DELIVERY");
+  await route.getByRole("button", { name: "Editar dirección de la parada 1" }).click();
+  await route.getByRole("button", { name: "Detalles de dirección de parada 1" }).click();
+  await route.getByLabel("Calle y número").fill("Otra calle");
+  await save.click();
+  await expect.poll(() => stops[0]?.address.point ?? null).toBeNull();
+  await expect.poll(() => stops[0]?.address.streetAndNumber).toBe("Otra calle");
+});
+
 test("deny bloquea antes del lazy de Servicios y no inicia requests", async ({ page }) => {
   await session(page, true); let serviceRequests = 0; page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/crm/services")) serviceRequests += 1; });
   await page.goto(`/commercial/cases/${CASE_REF}`); await expect(page.getByTestId("hub-forbidden")).toContainText("403 · Acceso no autorizado"); await expect(page.getByTestId("case-services-panel")).toHaveCount(0); expect(serviceRequests).toBe(0);

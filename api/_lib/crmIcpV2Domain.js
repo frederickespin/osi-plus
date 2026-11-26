@@ -212,10 +212,13 @@ function normalizeRoute(input) {
   const destinationStatus = enumValue(input.destinationStatus, DESTINATION_STATUSES);
   const destination = input.destination === null ? null : normalizeAddressSelection(input.destination);
   if (!Array.isArray(input.additionalStops) || input.additionalStops.length > 8) fail("CRM_ICP_ROUTE_INVALID", 400);
-  const additionalStops = input.additionalStops.map((item, index) => Object.freeze({
-    order: index + 1,
-    selection: normalizeAddressSelection(item),
-  }));
+  const additionalStops = input.additionalStops.map((item, index) => {
+    if (item && (item.kind === "PICKUP" || item.kind === "DELIVERY")) {
+      exactObject(item, new Set(["kind", "selection"]));
+      return Object.freeze({ order: index + 1, kind: item.kind, selection: normalizeAddressSelection(item.selection) });
+    }
+    return Object.freeze({ order: index + 1, selection: normalizeAddressSelection(item) });
+  });
   if ((destinationStatus === "PENDING") !== (destination === null)) fail("CRM_ICP_ROUTE_INVALID", 400);
   return Object.freeze({
     destinationStatus,

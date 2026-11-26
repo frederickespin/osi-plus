@@ -37,6 +37,7 @@ export type TransportJourney = Readonly<{
   people: number | null; days: string | null;
   originLabel?: string;
   destinationLabel?: string;
+  durationMinutes?: number; // One-way driving estimate for this leg; historical publications may lack it.
   referenceBaseAddress?: string; // Selects a configured base-to-zone distance.
   operatingBaseAddress?: string;
   returnToBase?: boolean;
@@ -82,6 +83,8 @@ export type CaseDailyTravel = Readonly<{
   metroVersion?: number | null;
   area: Readonly<{ origin: "METRO" | "INTERIOR" | null; destination: "METRO" | "INTERIOR" | null }>;
   legs: readonly CaseTravelLeg[]; preparation: readonly CaseTravelLeg[]; distanceKm: number | null; estimated: boolean;
+  routeLegs?: readonly CaseTravelLeg[]; routeDistanceKm?: number | null; routeDurationMinutes?: number | null;
+  durationMinutes?: number | null;
 }>;
 export type TransportCaseAddresses = Readonly<{
   revision?: number; origin: string; destination: string;

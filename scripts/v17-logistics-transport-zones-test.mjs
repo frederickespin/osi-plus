@@ -226,6 +226,7 @@ check("idempotent replay does not bypass revoked permission", f.state().commands
     $executeRaw: async () => {},
     pipelineCase: { findFirst: async () => pipelineCase },
     pipelineCaseServiceRevision: { findFirst: async () => service },
+    caseServiceConfigurationRevision: noResult,
     pipelineCaseRouteSnapshot: empty,
     surveyPublication: noResult,
     materialRequirementSnapshot: noResult,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { caseDailyTravel } from "../api/_lib/caseDailyTravel.js";
+import { caseDailyTravel, configuredCaseRoadProvider } from "../api/_lib/caseDailyTravel.js";
 import { canonicalHash, normalizeRuleCreate, ruleMatches } from "../api/_lib/logisticsEngineContract.js";
 import { calculateTransportResult, normalizeTransportCalculate, normalizeTransportPolygon, normalizeTransportZone, normalizeTransportZonePayload, pointInTransportPolygon, selectTransportZone, TRANSPORT_CONTRACT } from "../api/_lib/logisticsTransportContract.js";
 
@@ -27,6 +27,8 @@ rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...autom
 rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...automaticPayload, components: [{ ...payload.components[0], code: "BAD-CODE" }] })), "COMPONENT_CODE_INVALID");
 rejects(() => normalizeTransportZone(signed("TRANSPORT_ZONE_VERSION", { ...automaticPayload, components: [payload.components[0], payload.components[0]] })), "COMPONENT_DUPLICATED");
 equal(normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", input)).journeys[0], journey);
+equal(normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, journeys: [{ ...journey, durationMinutes: 37 }] })).journeys[0].durationMinutes, 37);
+rejects(() => normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, journeys: [{ ...journey, durationMinutes: -1 }] })), "PAYLOAD_INVALID");
 equal(normalizeTransportCalculate(signed("TRANSPORT_CALCULATE", { ...input, journeys: [{ ...journey, vehicleRef: "cmrealopaquevehicle" }] })).journeys[0].vehicleRef, "cmrealopaquevehicle");
 rejects(() => normalizeTransportZone({ ...signed("TRANSPORT_ZONE_VERSION", payload), tenantId: "cross-tenant" }), "PAYLOAD_INVALID");
 rejects(() => normalizeTransportCalculate({ ...signed("TRANSPORT_CALCULATE", input), purpose: "SERVICE" }), "HASH_MISMATCH");
@@ -176,6 +178,61 @@ equal(registeredTravel.legs[1].destination, registeredWarehouse.point);
 equal(lookups.length, 1);
 equal((await caseDailyTravel(localZones, localRoute, { geography, baseRef: registeredOffice.baseRef }, provider)).area.destination, null);
 equal((await caseDailyTravel(localZones, exportRoute, { geography, baseRef: registeredOffice.baseRef, localTerminalRef: inactiveWarehouse.baseRef }, provider)).legs, []);
+const pointAt = (index) => [-70 + index / 10, 18];
+const indexedRoute = {
+  ...localRoute,
+  origin: { ...localRoute.origin, point: pointAt(1) },
+  stops: [
+    { kind: "PICKUP", address: { ...routeAddress("Recogida", null), point: pointAt(4) } },
+    { kind: "DELIVERY", address: { ...routeAddress("Entrega", null), point: pointAt(2) } },
+  ],
+  destination: { ...localRoute.destination, point: pointAt(3) },
+};
+const coordinatesRequested = [];
+const pointProvider = {
+  locate: async () => { throw new Error("No se puede geocodificar en esta instalación"); },
+  legs: async (points) => {
+    coordinatesRequested.push(points);
+    return points.slice(1).map((point, index) => {
+      const km = Math.round(Math.abs(point[0] - points[index][0]) * 100);
+      return { distanceKm: km, durationMinutes: km * 2, source: "Ruta de prueba" };
+    });
+  },
+};
+const officeGeography = { bases: [{ ...registeredOffice, point: pointAt(0) }] };
+const itinerary = await caseDailyTravel(localZones, indexedRoute, { geography: officeGeography }, pointProvider);
+equal(coordinatesRequested[0], [0, 1, 4, 2, 3, 0].map(pointAt));
+equal(itinerary.routeLegs.map((leg) => leg.to.label), ["Recogida 1", "Entrega 2", "Destino"]);
+equal([itinerary.routeDistanceKm, itinerary.routeDurationMinutes, itinerary.distanceKm, itinerary.durationMinutes], [60, 120, 100, 200]);
+equal(itinerary.preparation.map((leg) => leg.durationMinutes), [20, 20]);
+const reversed = await caseDailyTravel(localZones, { ...indexedRoute, stops: [...indexedRoute.stops].reverse() }, { geography: officeGeography }, pointProvider);
+equal([reversed.routeDistanceKm, reversed.routeDurationMinutes], [40, 80]);
+const noBaseTravel = await caseDailyTravel([], indexedRoute, {}, pointProvider);
+equal([noBaseTravel.routeDistanceKm, noBaseTravel.routeDurationMinutes, noBaseTravel.legs, noBaseTravel.distanceKm], [60, 120, [], null]);
+const partialTravel = await caseDailyTravel([], { ...indexedRoute, stops: [
+  { kind: "PICKUP", address: routeAddress("Sin punto", null) }, indexedRoute.stops[1],
+] }, { geography: officeGeography }, pointProvider);
+equal(partialTravel.legs.map((leg) => leg.distanceKm), [10, null, null, 10, 30]);
+equal([partialTravel.distanceKm, partialTravel.durationMinutes, partialTravel.routeDistanceKm, partialTravel.routeDurationMinutes], [null, null, null, null]);
+equal([referenceTravel.durationMinutes, measuredTravel.durationMinutes], [null, null]);
+const internationalStop = { kind: null, address: { ...routeAddress("Exterior", null, "US"), point: pointAt(4) } };
+const abroad = await caseDailyTravel([], { ...indexedRoute, stops: [internationalStop] }, { geography: officeGeography }, pointProvider);
+equal(abroad.legs.map((leg) => leg.distanceKm), [10, null, null, 30]);
+equal(abroad.routeLegs[0].to.label, "Parada 1");
+equal(abroad.routeLegs[0].destination, null);
+const pendingDest = await caseDailyTravel([], { ...indexedRoute, destination: null, destinationStatus: "PENDING" }, { geography: officeGeography }, pointProvider);
+equal([pendingDest.routeLegs.length, pendingDest.distanceKm, pendingDest.routeDistanceKm], [2, null, null]);
+const repeated = await caseDailyTravel([], { ...indexedRoute, stops: [{ kind: "DELIVERY", address: indexedRoute.origin }] }, { geography: officeGeography }, pointProvider);
+equal([repeated.routeLegs[0].durationMinutes, repeated.routeLegs[0].distanceKm, repeated.routeLegs[0].source], [0, 0, "Mismo punto"]);
+const fetches = [];
+const coordinateOnlyProvider = configuredCaseRoadProvider({}, async (url) => {
+  fetches.push(url.toString());
+  return { ok: true, json: async () => ({ code: "Ok", routes: [{ legs: [{ distance: 12345, duration: 620 }] }] }) };
+});
+equal(await coordinateOnlyProvider.locate("Calle de prueba 7", "Ciudad"), null);
+equal(fetches.length, 0);
+equal((await coordinateOnlyProvider.legs([pointAt(1), pointAt(2)]))[0].durationMinutes, 11);
+equal(new URL(fetches[0]).hostname, "router.project-osrm.org");
 const returnLeg = { ...journey, origin: [-69.8, 18.4], destination: [-70.3, 18.8], returnToOrigin: false,
   operatingBaseAddress: payload.baseAddress, returnToBase: true };
 equal(selectTransportZone(localZones.slice(0, 1), returnLeg, "QUOTE").zone.ruleRef, localZones[0].ruleRef);

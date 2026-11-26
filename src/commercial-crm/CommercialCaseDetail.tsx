@@ -155,7 +155,9 @@ function CommercialCaseWorkspace({ caseRef, state, authorization, servicesAccess
   };
   const inCosts = activeTab === "COSTS" || activeTab === "SERVICES" && planStage === "costs";
   const showTravelDetails = logisticsEnabled && canViewCosts && inCosts;
-  const travelState = useCaseDailyTravel(routeApi, showTravelDetails ? item?.caseRef : undefined, item?.route?.revision);
+  const inAddresses = logisticsEnabled && activeTab === "SERVICES" && planStage === "addresses";
+  const travelState = useCaseDailyTravel(routeApi, showTravelDetails || inAddresses ? item?.caseRef : undefined, item?.route?.revision);
+  const travelDays = { completeDays, preparationDays, setCompleteDays, setPreparationDays };
   const transportAddresses = {
     revision: item?.route?.revision,
     origin: item?.route?.origin?.compactAddress || item?.originLocation || "",
@@ -168,8 +170,7 @@ function CommercialCaseWorkspace({ caseRef, state, authorization, servicesAccess
     setCommunicationTarget(target);
   };
   const costs = canViewCosts && item && <>
-    {showTravelDetails && item.route?.revision ? <CaseDailyTravelPanel {...travelState} completeDays={completeDays}
-      preparationDays={preparationDays} setCompleteDays={setCompleteDays} setPreparationDays={setPreparationDays} /> : null}
+    {showTravelDetails && item.route?.revision ? <CaseDailyTravelPanel {...travelState} {...travelDays} /> : null}
     <Suspense fallback={<p role="status" className="p-4 text-sm text-slate-500">Cargando costos…</p>}>
       <CostingPanel caseRef={item.caseRef} authorization={authorization} access={costingAccess} transportAccess={transportAccess}
         transportAddresses={transportAddresses} onUnauthorized={onUnauthorized} onContinueToProposals={canViewQuote ? openProposals : undefined} />
@@ -220,6 +221,12 @@ function CommercialCaseWorkspace({ caseRef, state, authorization, servicesAccess
               canViewConfiguration={servicesAccess.canCaseConfigView} canConfigure={servicesAccess.canCaseConfigUpdate}
               onUnauthorized={onUnauthorized} intake={{
                 addresses: <CaseRouteEditor embedded open savedRevision={savedRouteRevision} caseRef={item.caseRef} api={routeApi}
+                  renderTravel={(revision, changed) => {
+                    if (!inAddresses) return null;
+                    if (changed || !revision) return <p className="text-xs text-slate-600">Guarda la ruta para actualizar los kilómetros y el tiempo de conducción.</p>;
+                    if (revision !== item.route?.revision) return <p role="status" className="text-xs text-slate-600">Actualizando el recorrido…</p>;
+                    return <CaseDailyTravelPanel {...travelState} {...travelDays} addressesView onReviewTolls={canOpenTransport ? openTransport : undefined} />;
+                  }}
                   onSaved={(revision) => { setSavedRouteRevision(revision); onReload(); }} />,
                 costs, saving: savingIntake,
                 nextStep: (plan) => <CommercialCaseIntake key={plan.selectionRef ?? "new-plan"} caseRef={item.caseRef}

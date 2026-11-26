@@ -450,36 +450,54 @@ test("el caso muestra los kilómetros diarios y los tramos se cargan en cotizaci
   const base = { baseRef: "a294b93b-10d5-4d7d-af33-119a2b935fd7", name: "Oficina de prueba", address: "Avenida de prueba 1" };
   const origin = { label: "Origen", address: "Calle de prueba 2" };
   const destination = { label: "Destino", address: "Calle de prueba 3" };
+  const pickup = { label: "Recogida 1", address: "Calle de prueba 4" };
+  const delivery = { label: "Entrega 2", address: "Calle de prueba 5" };
   const leg = (from: typeof origin, to: typeof destination, distanceKm: number, returnToBase = false) => ({
-    from, to, origin: [-69.9, 18.5], destination: [-69.8, 18.6], distanceKm, source: "Ruta sintética", estimated: false, returnToBase,
+    from, to, origin: [-69.9, 18.5], destination: [-69.8, 18.6], distanceKm, durationMinutes: distanceKm * 2, source: "Ruta sintética", estimated: false, returnToBase,
   });
   const office = { label: base.name, address: base.address };
+  const stops = [leg(origin, pickup, 5), leg(pickup, delivery, 7), leg(delivery, destination, 6)];
+  const addr = { sourceAddressRef: null, countryCode: "DO", provinceState: "Distrito Nacional", cityMunicipality: "Santo Domingo", streetAndNumber: origin.address };
+  await page.route(`**/api/crm/pipeline-cases/${CASE}/route`, (route) => route.fulfill({
+    ...json({ caseRef: CASE, caseCode: "CASO-PRUEBA-01", version: 3, route: { revision: 3, destinationStatus: "CONFIRMED",
+      origin: addr, destination: { ...addr, streetAndNumber: destination.address },
+      stops: [{ kind: "PICKUP", address: { ...addr, streetAndNumber: pickup.address } }, { kind: "DELIVERY", address: { ...addr, streetAndNumber: delivery.address } }] }, options: [] }),
+    headers: { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" },
+  }));
   await page.route(`**/api/crm/pipeline-cases/${CASE}/route?travel=1`, (route) => route.fulfill({
     ...json({ revision: 3, bases: [base], base, terminal: null, foreignOrigin: false, foreignDestination: false,
       area: { origin: "METRO", destination: "INTERIOR" }, metroVersion: 1, distanceKm: 45, estimated: false,
-      legs: [leg(office, origin, 12), leg(origin, destination, 18), leg(destination, office, 15, true)],
+      durationMinutes: 90, routeDistanceKm: 18, routeDurationMinutes: 36, routeLegs: stops,
+      legs: [leg(office, origin, 12), ...stops, leg(destination, office, 15, true)],
       preparation: [leg(office, origin, 12), leg(origin, office, 13, true)] }),
     headers: { "Cache-Control": "private, no-store", Vary: "Authorization, Origin" },
   }));
   await page.goto(`/commercial/cases/${CASE}`);
   const plan = page.getByRole("region", { name: "Recorrido diario del caso" });
-  await page.getByRole("tab", { name: "Costos internos" }).click();
+  await page.getByRole("tab", { name: "Direcciones", exact: true }).click();
+  const summary = page.getByRole("region", { name: "Recorrido de la ruta guardada" });
+  await expect(summary).toContainText("18 km");
+  await expect(summary).toContainText("36 min de conducción estimada");
+  await summary.getByText("Ver tramos y zonas").click();
+  await expect(summary.getByRole("row", { name: /Recogida 1 → Entrega 2/ })).toContainText("14 min");
+  await summary.getByRole("button", { name: "Ver peajes por vehículo" }).click();
   await expect(plan).toContainText("45 km/día");
   await expect(plan).toContainText("Total pendiente");
   await plan.getByLabel("Días de ruta completa").fill("3");
   await expect(plan).toContainText("135 km en total");
   await plan.getByLabel("Días solo en origen").fill("1");
   await expect(plan).toContainText("160 km en total");
+  await expect(plan).toContainText("5 h 20 min de conducción");
   await expect(page.getByLabel("Cobertura del caso")).toContainText("Origen · Zona metro");
   await expect(page.getByLabel("Cobertura del caso")).toContainText("Destino · Fuera de zona metro");
   const form = page.getByTestId("transport-calculation-form");
   await form.getByRole("combobox", { name: "Vehículo de flota" }).selectOption(VEHICLE);
   await form.getByRole("button", { name: "Cargar tramos del caso" }).click();
-  await expect(form.getByLabel("Distancia vial calculada")).toHaveCount(5);
+  await expect(form.getByLabel("Distancia vial calculada")).toHaveCount(7);
   await form.getByRole("button", { name: "Calcular transporte" }).click();
   await expect.poll(() => seen.calculations.length).toBe(1);
-  expect(seen.calculations[0].input.journeys.map(({ distanceKm, trips }) => [distanceKm, trips])).toEqual([
-    ["12", 3], ["18", 3], ["15", 3], ["12", 1], ["13", 1],
+  expect(seen.calculations[0].input.journeys.map(({ distanceKm, trips, durationMinutes }) => [distanceKm, trips, durationMinutes])).toEqual([
+    ["12", 3, 24], ["5", 3, 10], ["7", 3, 14], ["6", 3, 12], ["15", 3, 30], ["12", 1, 24], ["13", 1, 26],
   ]);
 });
 

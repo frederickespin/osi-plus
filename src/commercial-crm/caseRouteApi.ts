@@ -2,6 +2,7 @@ import { getMembershipRef } from "@/lib/sessionStore";
 import type { CaseDailyTravel, TransportCoordinate, TransportPolygon } from "../../shared/logisticsTransport";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+export const CASE_ROUTE_MAX_STOPS = 8;
 
 export type CaseRouteAddress = Readonly<{
   sourceAddressRef: string | null;
@@ -15,7 +16,9 @@ export type CaseRouteAddress = Readonly<{
   arrivalReference: string | null;
   locationContactName: string | null;
   locationContactPhone: string | null;
+  point?: TransportCoordinate | null;
 }>;
+export type CaseRouteStop = Readonly<{ kind: "PICKUP" | "DELIVERY" | null; address: CaseRouteAddress }>;
 export type CaseRouteOption = Readonly<{
   optionId: string;
   source: "REGISTERED" | "RECENT_SERVICE";
@@ -34,6 +37,7 @@ export type CaseRouteWorkspace = Readonly<{
     destinationStatus: "CONFIRMED" | "APPROXIMATE" | "PENDING";
     origin: CaseRouteAddress;
     destination: CaseRouteAddress | null;
+    stops: readonly CaseRouteStop[];
   }>;
   options: readonly CaseRouteOption[];
 }>;
@@ -68,6 +72,8 @@ function assertPrivate(response: Response) {
 }
 function address(value: unknown): CaseRouteAddress {
   const row = record(value);
+  if (row.point != null && (!Array.isArray(row.point) || row.point.length !== 2 || !row.point.every(Number.isFinite) ||
+    Math.abs(row.point[0]) > 180 || Math.abs(row.point[1]) > 90)) throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
   return Object.freeze({
     sourceAddressRef: typeof row.sourceAddressRef === "string" ? row.sourceAddressRef : null,
     countryCode: String(row.countryCode || ""), provinceState: row.provinceState == null ? null : String(row.provinceState),
@@ -75,6 +81,7 @@ function address(value: unknown): CaseRouteAddress {
     streetAndNumber: row.streetAndNumber == null ? null : String(row.streetAndNumber), buildingResidential: row.buildingResidential == null ? null : String(row.buildingResidential),
     floorUnit: row.floorUnit == null ? null : String(row.floorUnit), arrivalReference: row.arrivalReference == null ? null : String(row.arrivalReference),
     locationContactName: row.locationContactName == null ? null : String(row.locationContactName), locationContactPhone: row.locationContactPhone == null ? null : String(row.locationContactPhone),
+    ...(row.point != null && { point: [row.point[0], row.point[1]] as const }),
   });
 }
 function options(value: unknown): readonly CaseRouteOption[] {
@@ -131,10 +138,11 @@ export class CaseRouteApi {
     }
     return { areas: data.areas as CaseRouteArea[], classification: data.classification };
   }
-  async update(caseRef: string, value: Omit<CaseRouteWorkspace["route"], "revision"> & Readonly<{ expectedVersion: number; expectedRouteRevision: number }>): Promise<CaseRouteWorkspace> {
+  async update(caseRef: string, value: Omit<CaseRouteWorkspace["route"], "revision" | "stops"> & Readonly<{ stops?: readonly CaseRouteStop[]; expectedVersion: number; expectedRouteRevision: number }>): Promise<CaseRouteWorkspace> {
     if (!UUID.test(caseRef)) throw new CaseRouteClientError(404, "CRM_PIPELINE_RESOURCE_NOT_FOUND");
-    const command = { operation: "UPDATE_CASE_ROUTE", requestId: crypto.randomUUID(), expectedVersion: value.expectedVersion, expectedRouteRevision: value.expectedRouteRevision, destinationStatus: value.destinationStatus, origin: value.origin, destination: value.destination };
-    const body = { requestId: command.requestId, expectedVersion: command.expectedVersion, expectedRouteRevision: command.expectedRouteRevision, destinationStatus: command.destinationStatus, origin: command.origin, destination: command.destination, payloadHash: await sha256(command) };
+    const fields = { requestId: crypto.randomUUID(), expectedVersion: value.expectedVersion, expectedRouteRevision: value.expectedRouteRevision, destinationStatus: value.destinationStatus, origin: value.origin, destination: value.destination,
+      ...(value.stops !== undefined && { stops: value.stops }) };
+    const body = { ...fields, payloadHash: await sha256({ operation: "UPDATE_CASE_ROUTE", ...fields }) };
     const response = await this.fetchImpl(`/api/crm/pipeline-cases/${encodeURIComponent(caseRef)}/route`, { method: "PATCH", headers: this.headers(true), credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", body: JSON.stringify(body) });
     const root = record(await (async () => { assertPrivate(response); try { return JSON.parse(await response.text()); } catch { throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID"); } })());
     if (!response.ok) throw new CaseRouteClientError(response.status, typeof root.error === "string" ? root.error : "CRM_PIPELINE_REQUEST_FAILED");
@@ -144,6 +152,12 @@ export class CaseRouteApi {
     const route = record(data.route);
     const destinationStatus = String(route.destinationStatus) as CaseRouteWorkspace["route"]["destinationStatus"];
     if (!new Set(["CONFIRMED", "APPROXIMATE", "PENDING"]).has(destinationStatus)) throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
-    return Object.freeze({ caseRef: String(data.caseRef), caseCode: String(data.caseCode), version: Number(data.version), route: Object.freeze({ revision: Number(route.revision), destinationStatus, origin: address(route.origin), destination: route.destination === null ? null : address(route.destination) }), options: options(data.options) });
+    if (route.stops !== undefined && (!Array.isArray(route.stops) || route.stops.length > CASE_ROUTE_MAX_STOPS)) throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+    const stops = (route.stops ?? []).map((entry: unknown): CaseRouteStop => {
+      const stop = record(entry);
+      if (stop.kind !== "PICKUP" && stop.kind !== "DELIVERY" && stop.kind !== null) throw new CaseRouteClientError(502, "CRM_PIPELINE_RESPONSE_INVALID");
+      return { kind: stop.kind, address: address(stop.address) };
+    });
+    return Object.freeze({ caseRef: String(data.caseRef), caseCode: String(data.caseCode), version: Number(data.version), route: Object.freeze({ revision: Number(route.revision), destinationStatus, origin: address(route.origin), destination: route.destination === null ? null : address(route.destination), stops }), options: options(data.options) });
   }
 }

@@ -105,7 +105,8 @@ export default function CommercialCaseIntake({ caseRef, authorization, estimated
       expectedRevision: current?.revision ?? 0,
       serviceSelectionRef: plan.selectionRef,
       serviceSelectionRevision: plan.selectionRevision,
-      intake: { serviceStartDate: date || null, ...(directQuote && { directQuote }) },
+      intake: { serviceStartDate: date || null, ...(directQuote && { directQuote }),
+        ...(directQuote && plan.configuration?.routeRevision != null && { accessRouteRevision: plan.configuration.routeRevision }) },
     };
     const key = JSON.stringify(command);
     if (previousRequest.current?.key !== key) previousRequest.current = { key, id: crypto.randomUUID() };

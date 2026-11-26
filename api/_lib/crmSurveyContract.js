@@ -1,3 +1,4 @@
+import { ROUTE_ACCESS_LABELS } from "../../shared/routeAccess.js";
 import { createHash } from "node:crypto";
 
 const UUID_V4 =
@@ -15,20 +16,7 @@ const FLAGS = new Set([
   "OVERSIZED",
 ]);
 const ACCESS_SIDES = new Set(["ORIGIN", "DESTINATION"]);
-const ACCESS_FLAGS = new Set([
-  "STAIRS",
-  "PASSENGER_ELEVATOR",
-  "FREIGHT_ELEVATOR",
-  "ITEM_DOES_NOT_FIT_ELEVATOR",
-  "NARROW_PASSAGE",
-  "LONG_CARRY",
-  "RESTRICTED_PARKING",
-  "LOADING_DOCK",
-  "RESTRICTED_HOURS",
-  "PERMIT_REQUIRED",
-  "CRANE_OR_HOIST",
-  "TRANSSHIPMENT",
-]);
+const ACCESS_FLAGS = new Set(Object.keys(ROUTE_ACCESS_LABELS));
 const PHOTO_PURPOSES = new Set([
   "ITEM",
   "DAMAGE",

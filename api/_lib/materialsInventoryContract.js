@@ -137,6 +137,7 @@ export function normalizeRecipeCreate(input) {
     const row = object(entry); exact(row, ["materialRef", "unitRef", "formulaType", "fixedQuantity", "multiplier", "roundingIncrement", "wastePercent", "formulaConfig"]);
     const formulaType = enumValue(row.formulaType, FORMULA_TYPES); const fixedQuantity = decimal(row.fixedQuantity, { optional: true }); const multiplier = decimal(row.multiplier, { optional: true });
     if ((formulaType === "FIXED" && fixedQuantity === null) || (formulaType !== "FIXED" && multiplier === null) || !row.formulaConfig || typeof row.formulaConfig !== "object" || Array.isArray(row.formulaConfig)) materialFail("MATERIALS_INPUT_INVALID");
+    if (row.formulaConfig.measurement === "UNIT_VOLUME_M3" && formulaType !== "PER_ITEM") materialFail("MATERIALS_RECIPE_FORMULA_INVALID");
     return Object.freeze({ position, materialRef: uuid(row.materialRef), unitRef: uuid(row.unitRef), formulaType, fixedQuantity, multiplier, roundingIncrement: decimal(row.roundingIncrement, { min: Number.EPSILON }), wastePercent: decimal(row.wastePercent, { min: 0, max: 100 }), formulaConfig: Object.freeze({ ...row.formulaConfig }) });
   });
   if (new Set(lines.map((line) => `${line.materialRef}:${line.unitRef}`)).size !== lines.length) materialFail("MATERIALS_RECIPE_LINE_DUPLICATE");
@@ -150,6 +151,7 @@ export function normalizeRecipeVersionCreate(input) {
     const row = object(entry); exact(row, ["materialRef", "unitRef", "formulaType", "fixedQuantity", "multiplier", "roundingIncrement", "wastePercent", "formulaConfig"]);
     const formulaType = enumValue(row.formulaType, FORMULA_TYPES); const fixedQuantity = decimal(row.fixedQuantity, { optional: true }); const multiplier = decimal(row.multiplier, { optional: true });
     if ((formulaType === "FIXED" && fixedQuantity === null) || (formulaType !== "FIXED" && multiplier === null) || !row.formulaConfig || typeof row.formulaConfig !== "object" || Array.isArray(row.formulaConfig)) materialFail("MATERIALS_INPUT_INVALID");
+    if (row.formulaConfig.measurement === "UNIT_VOLUME_M3" && formulaType !== "PER_ITEM") materialFail("MATERIALS_RECIPE_FORMULA_INVALID");
     return Object.freeze({ position, materialRef: uuid(row.materialRef), unitRef: uuid(row.unitRef), formulaType, fixedQuantity, multiplier, roundingIncrement: decimal(row.roundingIncrement, { min: Number.EPSILON }), wastePercent: decimal(row.wastePercent, { min: 0, max: 100 }), formulaConfig: Object.freeze({ ...row.formulaConfig }) });
   });
   if (new Set(lines.map((line) => `${line.materialRef}:${line.unitRef}`)).size !== lines.length) materialFail("MATERIALS_RECIPE_LINE_DUPLICATE");
@@ -209,8 +211,32 @@ export function inventoryAvailability({ movements, reservations, assignments = [
   const assigned = [...reservations, ...assignments].filter((row) => row.status === "ASSIGNED").reduce((total, row) => total + Number(row.quantity), 0);
   return Object.freeze({ physical, reserved, assigned, available: physical - reserved - assigned });
 }
+export function recipeAppliesToItem(applicability, item, caseMode) {
+  const { articleCodes = [], modes = [], flags = [] } = applicability || {};
+  return Array.isArray(articleCodes) && (!articleCodes.length || articleCodes.includes(item.articleCode))
+    && Array.isArray(modes) && (!modes.length || modes.includes(item.shipmentMode) || modes.includes(caseMode))
+    && Array.isArray(flags) && flags.every((flag) => item.flags?.includes(flag));
+}
+
+export function surveyRecipeQuantity(line, item) {
+  const measures = item.measurements || {};
+  const factor = { CM: 0.01, IN: 0.0254 }[measures.unit];
+  const lengthM = Number(measures.lengthM ?? (Number(measures.length) * factor));
+  const areaM2 = Number(measures.areaM2);
+  if ((line.formulaType === "PER_LENGTH" && !(lengthM > 0)) || (line.formulaType === "PER_AREA" && !(areaM2 > 0))) return null;
+  if (line.formulaConfig?.measurement === "UNIT_VOLUME_M3" && !(Number(item.unitVolumeM3) > 0)) return null;
+  return resolveRecipeQuantity(line, { quantity: item.quantity, lengthM, areaM2, unitVolumeM3: item.unitVolumeM3 });
+}
+
 export function resolveRecipeQuantity(line, facts) {
-  const base = line.formulaType === "FIXED" ? Number(line.fixedQuantity) : line.formulaType === "PER_ITEM" ? Number(facts.quantity) * Number(line.multiplier) : line.formulaType === "PER_LENGTH" ? Number(facts.lengthM) * Number(line.multiplier) : line.formulaType === "PER_AREA" ? Number(facts.areaM2) * Number(line.multiplier) : materialFail("MATERIALS_RECIPE_FORMULA_INVALID");
+  const bases = { PER_ITEM: facts.quantity, PER_LENGTH: facts.lengthM, PER_AREA: facts.areaM2 };
+  if (line.formulaConfig?.measurement === "UNIT_VOLUME_M3") {
+    if (line.formulaType !== "PER_ITEM") materialFail("MATERIALS_RECIPE_FORMULA_INVALID");
+    if (!(Number(facts.unitVolumeM3) > 0)) materialFail("MATERIALS_RECIPE_MEASUREMENT_REQUIRED", 409);
+    bases.PER_ITEM = Number(facts.quantity) * Number(facts.unitVolumeM3);
+  }
+  if (line.formulaType !== "FIXED" && !Object.hasOwn(bases, line.formulaType)) materialFail("MATERIALS_RECIPE_FORMULA_INVALID");
+  const base = line.formulaType === "FIXED" ? Number(line.fixedQuantity) : Number(bases[line.formulaType]) * Number(line.multiplier);
   const withWaste = base * (1 + Number(line.wastePercent) / 100); const increment = Number(line.roundingIncrement);
   if (!(withWaste >= 0) || !(increment > 0)) materialFail("MATERIALS_RECIPE_FORMULA_INVALID");
   return Math.ceil((withWaste - Number.EPSILON) / increment) * increment;

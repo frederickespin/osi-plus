@@ -1,3 +1,5 @@
+import { planPricedAdditions, type PlanPricedAddition } from "@/crm-services/planPricedAdditions";
+
 export type CaseDirectQuote = Readonly<{
   source: "CLIENT_LIST" | "ESTIMATE";
   clientList: string | null;
@@ -11,6 +13,7 @@ export type CaseCommercialIntake = Readonly<{
   serviceStartDate: string | null;
   directQuote: CaseDirectQuote | null;
   directQuoteRecordedAt: string | null;
+  pricedAdditions?: readonly PlanPricedAddition[];
 }>;
 
 export function isServiceIntakeDate(value: unknown): value is string {
@@ -22,7 +25,9 @@ export function isServiceIntakeDate(value: unknown): value is string {
 export function commercialIntake(preference: Readonly<Record<string, unknown>> | undefined): CaseCommercialIntake {
   const serviceStartDate = isServiceIntakeDate(preference?.serviceStartDate) ? preference.serviceStartDate : null;
   const raw = preference?.directQuote;
-  const empty = { serviceStartDate, directQuote: null, directQuoteRecordedAt: null };
+  const pricedAdditions = planPricedAdditions(preference);
+  const additions = pricedAdditions.length ? { pricedAdditions } : {};
+  const empty = { serviceStartDate, directQuote: null, directQuoteRecordedAt: null, ...additions };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return empty;
   const entry = raw as Record<string, unknown>;
   if (entry.source !== "CLIENT_LIST" && entry.source !== "ESTIMATE") return empty;
@@ -31,6 +36,7 @@ export function commercialIntake(preference: Readonly<Record<string, unknown>> |
   const capturedAt = preference?.directQuoteRecordedAt;
   return {
     serviceStartDate,
+    ...additions,
     directQuoteRecordedAt: typeof capturedAt === "string" && Number.isFinite(Date.parse(capturedAt)) ? capturedAt : null,
     directQuote: {
       source: entry.source, volumeM3, clientList: optionalText(entry.clientList), originAccess: optionalText(entry.originAccess),

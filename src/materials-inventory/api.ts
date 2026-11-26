@@ -5,7 +5,14 @@ export type MovementRow = Readonly<{ movementRef: string; transactionRef: string
 export type ReservationRow = Readonly<{ reservationRef: string; material: { materialRef: string; code: string; name: string }; location: { locationRef: string; code: string; name: string }; quantity: number; status: string; version: number; createdAt: string }>;
 export type WarehouseLocationRow = Readonly<{ locationRef: string; parentLocationRef: string | null; code: string; name: string; kind: string; depth: number; path: string; status: string; version: number }>;
 export type WarehouseRow = Readonly<{ warehouseRef: string; code: string; name: string; status: string; version: number; locations: readonly WarehouseLocationRow[] }>;
-export type RecipeRow = Readonly<{ recipeRef: string; code: string; name: string; status: string; versions: readonly { recipeVersionRef: string; version: number; status: string; lines: readonly unknown[] }[] }>;
+export type RecipeLine = Readonly<{
+  materialRef: string; materialName: string; unitRef: string; unitCode: string;
+  formulaType: "FIXED" | "PER_ITEM" | "PER_LENGTH" | "PER_AREA"; formulaConfig: Record<string, unknown>;
+  fixedQuantity: number | null; multiplier: number | null; roundingIncrement: number; wastePercent: number;
+}>;
+export type RecipeRow = Readonly<{ recipeRef: string; code: string; name: string; status: string; versions: readonly {
+  recipeVersionRef: string; version: number; status: string; applicability: Record<string, unknown>; lines: readonly RecipeLine[];
+}[] }>;
 export type RequirementRow = Readonly<{ requirementRef: string; surveyPublicationRef: string; recipe: { recipeRef: string; recipeVersionRef: string; code: string; version: number }; revision: number; status: string; createdAt: string; items: readonly { materialRef: string; code: string; name: string; quantity: number; unit: { unitRef: string; code: string } }[] }>;
 async function read<T>(authorization: string | undefined, path: string): Promise<T> {
   const response = await fetch(path, { headers: authorization ? { Authorization: `Bearer ${authorization}` } : {}, credentials: "omit", cache: "no-store" });
@@ -28,6 +35,12 @@ export const materialsApi = Object.freeze({
   movements: (authorization?: string) => read<{ items: readonly MovementRow[] }>(authorization, "/api/materials/movements"),
   reservations: (authorization?: string) => read<readonly ReservationRow[]>(authorization, "/api/materials/reservations"),
   recipes: (authorization?: string) => read<readonly RecipeRow[]>(authorization, "/api/materials/recipes"),
+  updateRecipe: (authorization: string | undefined, recipeRef: string, version: RecipeRow["versions"][number], lines: readonly RecipeLine[]) =>
+    command(authorization, "/api/materials/recipes/version", "RECIPE_VERSION_ACTIVATE", {
+      recipeRef, expectedActiveVersion: version.version, applicability: version.applicability,
+      lines: lines.map(({ materialRef, unitRef, formulaType, formulaConfig, fixedQuantity, multiplier, roundingIncrement, wastePercent }) =>
+        ({ materialRef, unitRef, formulaType, formulaConfig, fixedQuantity, multiplier, roundingIncrement, wastePercent })),
+    }),
   requirements: (authorization?: string) => read<readonly RequirementRow[]>(authorization, "/api/materials/requirements"),
   warehouses: (authorization?: string) => read<readonly WarehouseRow[]>(authorization, "/api/materials/warehouses"),
   movement: (authorization: string | undefined, payload: Record<string, unknown>) => command(authorization, "/api/materials/movements", "INVENTORY_MOVEMENT", payload),

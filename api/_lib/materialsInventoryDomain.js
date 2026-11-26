@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { isWarehouseConfigurationEnabled } from "./warehouseConfigurationMode.js";
 import { advanceWarehouseLocationPolicyEpoch, assertWarehouseLocationPolicy, loadWarehouseLocationPolicies, warehouseStockAvailability, withWarehousePolicyTransaction } from "./warehouseLocationPolicy.js";
-import { MaterialsInventoryError, canonicalPayloadHash, inventoryAvailability, normalizeCostVersionCreate, normalizeMaterialCreate, normalizeMaterialUpdate, normalizeMovement, normalizePurchaseRequest, normalizePurchaseTransition, normalizeRecipeCreate, normalizeRecipeVersionCreate, normalizeRequirementResolution, normalizeReservation, normalizeReservationAssign, normalizeReservationRelease, normalizeUnitConversionCreate, normalizeUnitCreate, normalizeWarehouseCreate, normalizeWarehouseLocationCreate, normalizeWarehouseUpdate, normalizeWarehouseLocationUpdate, resolveRecipeQuantity } from "./materialsInventoryContract.js";
+import { MaterialsInventoryError, canonicalPayloadHash, inventoryAvailability, normalizeCostVersionCreate, normalizeMaterialCreate, normalizeMaterialUpdate, normalizeMovement, normalizePurchaseRequest, normalizePurchaseTransition, normalizeRecipeCreate, normalizeRecipeVersionCreate, normalizeRequirementResolution, normalizeReservation, normalizeReservationAssign, normalizeReservationRelease, normalizeUnitConversionCreate, normalizeUnitCreate, normalizeWarehouseCreate, normalizeWarehouseLocationCreate, normalizeWarehouseUpdate, normalizeWarehouseLocationUpdate, recipeAppliesToItem, surveyRecipeQuantity } from "./materialsInventoryContract.js";
 
 function fail(code, status = 400) { throw new MaterialsInventoryError(code, status); }
 function requirePermission(context, permission) { if (!context.effectivePermissions?.includes(permission) || context.deniedPermissions?.includes(permission)) fail("MATERIALS_FORBIDDEN", 403); }
@@ -367,7 +367,7 @@ export async function listReservations(prisma, context) {
 
 export async function listRecipes(prisma, context) {
   const rows = await prisma.packingRecipe.findMany({ where: { tenantId: context.tenantId }, include: { versions: { include: { lines: { include: { material: true, unit: true }, orderBy: { position: "asc" } } }, orderBy: { version: "desc" } } }, orderBy: { code: "asc" } });
-  return Object.freeze(rows.map((row) => ({ recipeRef: row.recipeRef, code: row.code, name: row.name, status: row.status, versions: row.versions.map((version) => ({ recipeVersionRef: version.recipeVersionRef, version: version.version, status: version.status, applicability: version.applicability, lines: version.lines.map((line) => ({ materialRef: line.material.materialRef, materialCode: line.material.code, materialName: line.material.name, unitRef: line.unit.unitRef, unitCode: line.unit.code, formulaType: line.formulaType, fixedQuantity: line.fixedQuantity == null ? null : Number(line.fixedQuantity), multiplier: line.multiplier == null ? null : Number(line.multiplier), roundingIncrement: Number(line.roundingIncrement), wastePercent: Number(line.wastePercent) })) })) })));
+  return Object.freeze(rows.map((row) => ({ recipeRef: row.recipeRef, code: row.code, name: row.name, status: row.status, versions: row.versions.map((version) => ({ recipeVersionRef: version.recipeVersionRef, version: version.version, status: version.status, applicability: version.applicability, lines: version.lines.map((line) => ({ materialRef: line.material.materialRef, materialCode: line.material.code, materialName: line.material.name, unitRef: line.unit.unitRef, unitCode: line.unit.code, formulaType: line.formulaType, formulaConfig: line.formulaConfig, fixedQuantity: line.fixedQuantity == null ? null : Number(line.fixedQuantity), multiplier: line.multiplier == null ? null : Number(line.multiplier), roundingIncrement: Number(line.roundingIncrement), wastePercent: Number(line.wastePercent) })) })) })));
 }
 
 export async function listMaterialRequirements(prisma, context) {
@@ -533,21 +533,24 @@ export async function resolveSurveyRequirements(prisma, context, raw) {
   const input = normalizeRequirementResolution(raw);
   return prisma.$transaction(async (tx) => {
     const replay = await commandReplay(tx, context.tenantId, input.requestId, input.payloadHash); if (replay) return replay;
-    const publication = await tx.surveyPublication.findFirst({ where: { tenantId: context.tenantId, publicationRef: input.surveyPublicationRef }, include: { items: { orderBy: { position: "asc" } } } });
+    const publication = await tx.surveyPublication.findFirst({ where: { tenantId: context.tenantId, publicationRef: input.surveyPublicationRef }, include: { pipelineCase: { select: { mode: true } }, items: { orderBy: { position: "asc" } } } });
     const recipeVersion = await tx.packingRecipeVersion.findFirst({ where: { tenantId: context.tenantId, recipeVersionRef: input.recipeVersionRef, status: "ACTIVE" }, include: { lines: { include: { material: true, unit: true }, orderBy: { position: "asc" } } } });
     if (!publication || !recipeVersion) fail("MATERIALS_RESOURCE_NOT_FOUND", 404);
     if (recipeVersion.lines.some((line) => line.material.status !== "ACTIVE")) fail("MATERIALS_RECIPE_HAS_INACTIVE_MATERIAL", 409);
-    const applicability = recipeVersion.applicability || {}; const allowedArticles = new Set(Array.isArray(applicability.articleCodes) ? applicability.articleCodes : []); const allowedModes = new Set(Array.isArray(applicability.modes) ? applicability.modes : []);
-    const items = publication.items.filter((item) => (allowedArticles.size === 0 || allowedArticles.has(item.articleCode)) && (allowedModes.size === 0 || allowedModes.has(item.shipmentMode)));
+    const items = publication.items.filter((item) => recipeAppliesToItem(recipeVersion.applicability, item, publication.pipelineCase.mode));
     const lines = recipeVersion.lines.map((line, position) => {
-      const quantity = items.reduce((sum, item) => sum + resolveRecipeQuantity(line, { quantity: item.quantity, lengthM: Number(item.measurements?.lengthM || 0), areaM2: Number(item.measurements?.areaM2 || 0) }), 0);
+      const quantity = items.reduce((sum, item) => {
+        const amount = surveyRecipeQuantity(line, item);
+        if (amount === null) fail("MATERIALS_RECIPE_MEASUREMENT_REQUIRED", 409);
+        return sum + amount;
+      }, 0);
       return { position, line, quantity };
     }).filter((row) => row.quantity > 0);
     if (!lines.length) fail("MATERIALS_RECIPE_NOT_APPLICABLE", 409);
     await tx.materialRequirementSnapshot.updateMany({ where: { tenantId: context.tenantId, surveyPublicationId: publication.id, status: "CURRENT" }, data: { status: "SUPERSEDED" } });
     const revision = await tx.materialRequirementSnapshot.count({ where: { tenantId: context.tenantId, surveyPublicationId: publication.id } }) + 1;
     const contextSnapshot = { publicationRef: publication.publicationRef, publicationRevision: publication.revision, recipeVersionRef: recipeVersion.recipeVersionRef, recipeVersion: recipeVersion.version, applicability: recipeVersion.applicability };
-    const logicalSha256 = canonicalPayloadHash({ contextSnapshot, lines: lines.map(({ line, quantity }) => ({ materialRef: line.material.materialRef, unitRef: line.unit.unitRef, quantity, formula: { formulaType: line.formulaType, fixedQuantity: line.fixedQuantity && Number(line.fixedQuantity), multiplier: line.multiplier && Number(line.multiplier), roundingIncrement: Number(line.roundingIncrement), wastePercent: Number(line.wastePercent) } })) });
+    const logicalSha256 = canonicalPayloadHash({ contextSnapshot, lines: lines.map(({ line, quantity }) => ({ materialRef: line.material.materialRef, unitRef: line.unit.unitRef, quantity, formula: { formulaConfig: line.formulaConfig, formulaType: line.formulaType, fixedQuantity: line.fixedQuantity && Number(line.fixedQuantity), multiplier: line.multiplier && Number(line.multiplier), roundingIncrement: Number(line.roundingIncrement), wastePercent: Number(line.wastePercent) } })) });
     const createdSnapshot = await tx.materialRequirementSnapshot.create({ data: { tenantId: context.tenantId, surveyPublicationId: publication.id, pipelineCaseId: publication.pipelineCaseId, recipeVersionId: recipeVersion.id, revision, contextSnapshot, logicalSha256, createdByMembershipId: context.membershipId, createdByUserId: context.userId } });
     await tx.materialRequirementLine.createMany({ data: lines.map(({ position, line, quantity }) => ({ tenantId: context.tenantId, requirementSnapshotId: createdSnapshot.id, position, materialId: line.materialId, unitId: line.unitId, requiredQuantity: quantity, formulaSnapshot: { formulaType: line.formulaType, fixedQuantity: line.fixedQuantity && Number(line.fixedQuantity), multiplier: line.multiplier && Number(line.multiplier), roundingIncrement: Number(line.roundingIncrement), wastePercent: Number(line.wastePercent), formulaConfig: line.formulaConfig }, sourceSnapshot: { articleRefs: items.map((item) => item.articleRef), publicationRevision: publication.revision } })) });
     const snapshot = await tx.materialRequirementSnapshot.findUniqueOrThrow({ where: { id: createdSnapshot.id }, include: { lines: { include: { material: true, unit: true }, orderBy: { position: "asc" } } } });

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { planSurveySummary, currentPlanSurvey } from "../api/_lib/planSurveySummary.js";
 import { normalizeCaseConfigurationSave, normalizeCaseIntakeSave, normalizeCatalogModesSave, normalizeConfigurationConflictResolve, normalizeMaterialPolicySave, normalizeModeSave, normalizePackageSave, serviceConfigurationPayloadHash } from "../api/_lib/servicePackagesContract.js";
 
 let checks = 0; const pass = (condition, message) => { assert.ok(condition, message); checks += 1; };
@@ -42,6 +43,20 @@ const dualAuthority = structuredClone(policy); dualAuthority.lines[0].assetModel
 assert.throws(() => normalizeMaterialPolicySave(dualAuthority), /SERVICE_PACKAGES_MATERIAL_AUTHORITY_INVALID/); checks += 1;
 const configuration = signed("CASE_CONFIGURATION_SAVE", { requestId: requestId(), expectedRevision: 0, serviceSelectionRef: id(), serviceSelectionRevision: 1, packageVersionRef: id(), materialPolicyVersionRef: id(), surveyPublicationRef: null, commercialAgreementRef: null, preference: { material: "NEW" }, duration: { hours: 8 }, source: "PACKAGE", overrides: [] });
 pass(normalizeCaseConfigurationSave(configuration).source === "PACKAGE", "snapshot final cerrado");
+const withConditions = (conditions) => resign("CASE_CONFIGURATION_SAVE", configuration, { preference: { quickQuote: { schemaVersion: 2, clientAccessConditions: conditions } } });
+const clientAccess = { origin: { routeRevision: 2, flags: ["STAIRS", "LONG_CARRY"] } };
+assert.deepEqual(normalizeCaseConfigurationSave(withConditions(clientAccess)).preference.quickQuote.clientAccessConditions, clientAccess); checks += 1;
+for (const invalid of [{ origin: { flags: ["STAIRS"] } }, { destination: { routeRevision: 1, flags: ["STAIRS", "STAIRS"] } },
+  { origin: { routeRevision: 1, flags: ["Inventado"] } }]) {
+  assert.throws(() => normalizeCaseConfigurationSave(withConditions(invalid)), /SERVICE_PACKAGES_INPUT_INVALID/); checks += 1;
+}
+const addon = { ruleRef: id(), version: 2, name: "Grúa auxiliar", family: "ASSET", unit: "hora", currency: "DOP", unitPrice: "100.25", classification: "EX", quantity: "2.5" };
+const withAddons = (pricedAdditions) => resign("CASE_CONFIGURATION_SAVE", configuration, { preference: { quickQuote: { volumeM3: 21.7, pricedAdditions } } });
+const manyAddons = Array.from({ length: 25 }, () => ({ ...addon, ruleRef: id() }));
+assert.deepEqual(normalizeCaseConfigurationSave(withAddons(manyAddons)).preference.quickQuote.pricedAdditions, manyAddons); checks += 1;
+for (const invalid of [[addon, addon], [addon, { ...addon, ruleRef: id(), currency: "USD" }], [{ ...addon, quantity: "-1" }], [{ ...addon, quantity: "0" }]]) {
+  assert.throws(() => normalizeCaseConfigurationSave(withAddons(invalid)), /SERVICE_PACKAGES_ADDON_INPUT_INVALID/); checks += 1;
+}
 assert.throws(() => normalizeCaseConfigurationSave({ ...configuration, ownerId: "forbidden" }), /SERVICE_PACKAGES_INPUT_INVALID/); checks += 1;
 assert.throws(() => normalizeCaseConfigurationSave({ ...configuration, packageVersionRef: "cuid-internal" }), /SERVICE_PACKAGES_RESOURCE_NOT_FOUND/); checks += 1;
 pass(!JSON.stringify(normalizeCaseConfigurationSave(configuration)).match(/tenantId|membershipId|userId/), "contrato no acepta autoridad cliente");
@@ -59,6 +74,32 @@ for (const invalid of [{ volumeM3: 0 }, { volumeM3: 100_001 }, { volumeM3: "12" 
 for (const serviceStartDate of ["2026-02-29", "2028-04-31", "2028-1-01", "2028-01-01T00:00:00.000Z", "0000-01-01"]) {
   assert.throws(() => normalizeCaseIntakeSave(intakeCommand({ serviceStartDate })), /SERVICE_PACKAGES_INPUT_INVALID/); checks += 1;
 }
+const surveyForPlan = {
+  publicationRef: id(), revision: 2, totalsSnapshot: { volumeM3: 4.8 },
+  items: [
+    { articleCode: "CHAIR", articleName: "Silla", quantity: 3, unitVolumeM3: 1.6, shipmentMode: "SEA", flags: ["FRAGILE"] },
+    { articleCode: "LAMP", articleName: "Lámpara", quantity: 1, unitVolumeM3: null, shipmentMode: "SEA", flags: ["FRAGILE"] },
+  ],
+  accessSnapshots: [{ side: "ORIGIN", factsSnapshot: { floorNumber: 0, elevatorAvailable: false, flags: ["LONG_CARRY"], parkingDistanceM: 25 } }],
+  materialRequirements: [],
+};
+const recipeForPlan = {
+  applicability: { articleCodes: ["CHAIR", "LAMP"], modes: ["EXPORT"], flags: ["FRAGILE"] },
+  lines: [{ materialId: "paper", unitId: "kg", formulaType: "PER_ITEM", formulaConfig: { measurement: "UNIT_VOLUME_M3" },
+    multiplier: 2, wastePercent: 10, roundingIncrement: 1, material: { name: "Papel", status: "ACTIVE" }, unit: { name: "kg", status: "ACTIVE" } }],
+};
+const summary = planSurveySummary(surveyForPlan, [recipeForPlan], "EXPORT");
+pass(summary.volumeM3 === 4.8 && summary.contentNote.includes("4 frágiles") && !summary.contentNote.includes("m³"), "métricas incompletas no simulan volumen por perfil");
+pass(summary.originAccess.includes("Piso 0") && summary.originAccess.includes("Sin ascensor") && summary.originAccess.includes("25 m"), "acceso conserva planta baja y ausencia de ascensor");
+pass(summary.materialsNote.includes("Papel (11 kg)") && summary.materialsNote.includes("Pendientes de medir: 1"), "material por m³ y cantidad con merma, redondeo y datos parciales");
+pass(planSurveySummary(surveyForPlan, [recipeForPlan, recipeForPlan], "EXPORT").materialsNote === "Por elegir receta: 4", "no duplica ni escoge entre recetas equivalentes");
+pass(planSurveySummary(surveyForPlan, [recipeForPlan], "IMPORT").materialsNote === "Sin receta específica: 4", "respeta la modalidad de la receta");
+const confirmed = { ...surveyForPlan, materialRequirements: [{ lines: [{ requiredQuantity: 5, material: { name: "Cartón" }, unit: { name: "hojas" } }], _count: { lines: 1 } }] };
+const summaryDb = { surveyPublication: { findFirst: async ({ where }) => {
+  assert.deepEqual(where, { tenantId: "tenant", pipelineCaseId: "case", serviceSelectionRef: "plan", status: "CURRENT" });
+  return confirmed;
+} } };
+pass((await currentPlanSurvey(summaryDb, { tenantId: "tenant", pipelineCaseId: "case" }, "plan", "EXPORT")).materialsNote === "Cartón (5 hojas)", "material confirmado prevalece sin estimar de nuevo");
 const conflict = signed("CONFIGURATION_CONFLICT_RESOLVE", { requestId: requestId(), expectedState: "OPEN", resolutionCode: "SELECTED_AUTHORITY", selectedAuthorityRef: id() });
 pass(normalizeConfigurationConflictResolve(conflict).expectedState === "OPEN", "resolución de conflicto cerrada e idempotente");
 assert.throws(() => normalizeConfigurationConflictResolve({ ...conflict, tenantId: "forbidden" }), /SERVICE_PACKAGES_INPUT_INVALID/); checks += 1;

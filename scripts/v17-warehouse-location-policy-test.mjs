@@ -94,9 +94,11 @@ function factDatabase() {
   return {
     pipelineCase: { findFirst: async () => ({ id: "case", publicRef: "case-ref", mode: "LOCAL", routeContractVersion: 1, routeRevision: 1, destinationStatus: "CONFIRMED" }) },
     pipelineCaseRouteSnapshot: { findMany: async () => [] },
+    caseServiceConfigurationRevision: { findFirst: async () => null },
     pipelineCaseServiceRevision: { findFirst: async () => ({ selectionRef: "service-ref", revision: 1, modeSnapshot: "LOCAL", items: [] }) },
-    surveyPublication: { findFirst: async () => null },
-    materialRequirementSnapshot: { findFirst: async () => ({ requirementRef: "requirement-ref", logicalSha256: "a".repeat(64), lines: [{ requiredQuantity: 25, material: { id: "material", materialRef: "material-ref", name: "Material", costs: [] }, unit: { code: "UND" } }] }) },
+    surveyPublication: { findFirst: async () => ({ routeVersion: 1, publicationRef: "survey", logicalSha256: "b".repeat(64), items: [], accessSnapshots: [],
+      materialRequirements: [{ requirementRef: "requirement-ref", logicalSha256: "a".repeat(64), lines: [{ requiredQuantity: 25,
+        material: { id: "material", materialRef: "material-ref", name: "Material", costs: [] }, unit: { code: "UND" } }] }] }) },
     assetModel: { findMany: async () => [{ modelRef: "model-ref", code: "MODEL", name: "Model", family: "TOOLS", resourceType: "TOOL", version: 1, instances: [instance("bin"), instance("safe")] }] },
     vehicle: { findMany: async () => [] }, externalResourceOffer: { findMany: async () => [] },
     materialInventoryMovement: { findMany: async () => [{ materialId: "material", locationId: "bin", movementType: "RECEIPT", quantityBase: 10 }, { materialId: "material", locationId: "safe", movementType: "RECEIPT", quantityBase: 20 }] },

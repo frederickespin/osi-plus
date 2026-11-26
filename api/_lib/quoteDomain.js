@@ -728,7 +728,24 @@ export async function getQuoteCase(prisma, context, caseRefRaw) {
     orderBy: { position: "asc" },
     include: { quote: { select: { costingRevisionId: true } }, revisions: { orderBy: { revision: "desc" }, take: 1, include: { lines: { orderBy: { position: "asc" } }, issues: true } } },
   });
-  return { caseRef: pipelineCase.publicRef, caseCode: pipelineCase.caseCode, destinationStatus: pipelineCase.destinationStatus, proposals: proposals.filter((proposal) => proposal.revisions[0]).map((proposal) => mapRevision(proposal.revisions[0], context, proposal)) };
+  const previousVersions = proposals.filter((proposal) => proposal.currentRevision > 1);
+  const history = previousVersions.length ? await prisma.quoteProposalRevision.findMany({
+    where: {
+      tenantId: context.tenantId,
+      OR: previousVersions.map((proposal) => ({ proposalId: proposal.id, revision: { lt: proposal.currentRevision } })),
+    },
+    select: { proposalId: true, revisionRef: true, revision: true, state: true, createdAt: true },
+    orderBy: { revision: "desc" },
+  }) : [];
+  return {
+    caseRef: pipelineCase.publicRef, caseCode: pipelineCase.caseCode, destinationStatus: pipelineCase.destinationStatus,
+    proposals: proposals.filter((proposal) => proposal.revisions[0]).map((proposal) => {
+      const current = proposal.revisions[0];
+      const versions = [{ revisionRef: current.revisionRef, revision: current.revision, state: proposal.state, createdAt: current.createdAt },
+        ...history.filter((row) => row.proposalId === proposal.id).map(({ revisionRef, revision, state, createdAt }) => ({ revisionRef, revision, state, createdAt }))];
+      return { ...mapRevision(current, context, proposal), versions };
+    }),
+  };
 }
 
 export function getQuoteClientProjection(internal) {
@@ -744,22 +761,37 @@ export function getQuoteClientProjection(internal) {
     issueDate: internal.issueDate,
     validUntil: internal.validUntil,
     client: internal.client,
-    commercialContext: internal.commercialContext,
-    payer: internal.payer,
-    terms: internal.terms,
-    exchange: internal.exchange,
-    discount: internal.discount,
+    payer: { displayName: internal.payer.displayName },
+    terms: internal.terms && {
+      scope: internal.terms.scope, paymentTerms: internal.terms.paymentTerms, exclusions: internal.terms.exclusions,
+      specialConditions: internal.terms.specialConditions, clientNotes: internal.terms.clientNotes,
+    },
+    exchange: internal.exchange && {
+      sourceCurrency: internal.exchange.sourceCurrency, targetCurrency: internal.exchange.targetCurrency, rate: internal.exchange.rate,
+    },
+    ...(internal.packageScope && { packageScope: { name: internal.packageScope.name, volumeM3: internal.packageScope.volumeM3 } }),
     totals: { grossQuotedPrice: internal.totals.grossQuotedPrice, discountAmount: internal.totals.discountAmount, totalQuotedPrice: internal.totals.totalQuotedPrice },
-    lines: internal.lines.map(({ lineRef, sourceKind, concept, quantity, unit, economicClass, quotedPrice, currency, priceStatus, position }) => ({ lineRef, sourceKind, concept, quantity, unit, economicClass, quotedPrice, currency, priceStatus, position })),
+    lines: internal.lines.map(({ lineRef, concept, quantity, unit, quotedPrice, currency, position }) => ({ lineRef, concept, quantity, unit, quotedPrice, currency, position })),
     logicalSha256: internal.logicalSha256,
   };
 }
 
-export async function getQuoteClientProposal(prisma, context, proposalRefRaw) {
+export async function getQuoteClientProposal(prisma, context, proposalRefRaw, revisionRefRaw) {
   requirePermission(context, QUOTE_PERMISSIONS.VIEW);
   const proposalRef = normalizeQuoteCaseRef(proposalRefRaw);
-  const { proposal, revision } = await loadProposal(prisma, context, proposalRef);
-  return getQuoteClientProjection(mapRevision(revision, context, proposal));
+  const revisionRef = revisionRefRaw === undefined ? undefined : normalizeQuoteCaseRef(revisionRefRaw);
+  const proposal = await prisma.quoteProposal.findFirst({
+    where: { tenantId: context.tenantId, proposalRef, pipelineCase: scope(context) },
+    select: {
+      proposalRef: true, reference: true, currentRevision: true, state: true,
+      revisions: { where: { tenantId: context.tenantId, revisionRef }, orderBy: { revision: "desc" }, take: 1,
+        include: { lines: { orderBy: { position: "asc" } }, issues: true } },
+    },
+  });
+  const revision = proposal?.revisions[0];
+  if (!revision) quoteFail("QUOTE_NOT_FOUND", 404);
+  const state = revision.revision === proposal.currentRevision ? proposal.state : revision.state;
+  return getQuoteClientProjection(mapRevision(revision, context, { ...proposal, state }));
 }
 
 export function mapQuoteDatabaseError(error) {

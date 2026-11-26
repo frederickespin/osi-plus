@@ -28,7 +28,7 @@ export function ruleMatches(rule, facts) {
   const c = rule.conditions || {};
   if (c.modes && !c.modes.includes(facts.mode)) return false;
   if (c.serviceCodes && !includesAll(facts.services.codes, c.serviceCodes)) return false;
-  if (c.accessFlags && !includesAll(facts.survey.accessFlags, c.accessFlags)) return false;
+  if (c.accessFlags && !includesAll([...(facts.survey.accessFlags || []), ...(facts.route.clientAccessFlags || [])], c.accessFlags)) return false;
   if (c.minVolumeM3 != null && facts.survey.volumeM3 < c.minVolumeM3) return false;
   if (c.maxVolumeM3 != null && facts.survey.volumeM3 > c.maxVolumeM3) return false;
   if (c.minWeightKg != null && facts.survey.weightKg < c.minWeightKg) return false;

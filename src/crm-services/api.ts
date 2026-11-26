@@ -13,7 +13,12 @@ export type ServicePackage = Readonly<{ packageRef: string; versionRef: string; 
 export type ServiceMaterialPolicyLine = Readonly<{ lineRef: string; materialRef: string | null; assetModelRef: string | null; materialClass: string; disposition: string; proportion: number | null; chargeType: string; preparationRule: RecordValue; maintenanceRule: RecordValue; deteriorationRule: RecordValue; replacementRule: RecordValue; conditions: RecordValue }>;
 export type ServiceMaterialResource = Readonly<{ kind: "MATERIAL" | "ASSET"; resourceRef: string; code: string; name: string; family: string }>;
 export type ServiceMaterialPolicy = Readonly<{ policyRef: string; versionRef: string; code: string; name: string; version: number; state: "DRAFT" | "PUBLISHED" | "INACTIVE"; packageVersionRef: string | null; serviceRef: string | null; modeRef: string | null; preferenceCode: string | null; standardCode: string; validFrom: string | null; validTo: string | null; lines: readonly ServiceMaterialPolicyLine[] }>;
-export type CaseServiceConfigurationWorkspace = Readonly<{ caseRef: string; mode: string; current: null | Readonly<{ configurationRef: string; revision: number; serviceSelectionRef: string; serviceSelectionRevision: number; packageRef: string | null; packageVersion: number | null; materialPolicyRef: string | null; materialPolicyVersion: number | null; preference: RecordValue; duration: RecordValue; source: string; items: readonly Readonly<{ itemRef: string; kind: string; source: string; code: string; name: string; quantity: number | null; unitCode: string | null; hours: number | null; days: number | null; disposition: string | null; chargeType: string | null; proportion: number | null }>[]; conflicts: readonly Readonly<{ conflictRef: string; kind: string; state: string }>[] }>; packages: readonly ServicePackage[]; materialPolicies: readonly ServiceMaterialPolicy[]; precedence: readonly string[] }>;
+export type PlanSurveySummary = Readonly<{
+  publicationRef: string; revision: number; routeVersion?: number | null; volumeM3: number | null;
+  contentNote: string | null; materialsNote: string | null; originAccess: string | null; destinationAccess: string | null;
+  accessFlags?: Readonly<{ origin: readonly string[]; destination: readonly string[] }>;
+}>;
+export type CaseServiceConfigurationWorkspace = Readonly<{ caseRef: string; mode: string; surveySummary?: PlanSurveySummary | null; routeRevision?: number | null; estimatedVolumeM3?: number | null; current: null | Readonly<{ configurationRef: string; revision: number; serviceSelectionRef: string; serviceSelectionRevision: number; packageRef: string | null; packageVersion: number | null; materialPolicyRef: string | null; materialPolicyVersion: number | null; preference: RecordValue; duration: RecordValue; source: string; items: readonly Readonly<{ itemRef: string; kind: string; source: string; code: string; name: string; quantity: number | null; unitCode: string | null; hours: number | null; days: number | null; disposition: string | null; chargeType: string | null; proportion: number | null }>[]; conflicts: readonly Readonly<{ conflictRef: string; kind: string; state: string }>[] }>; packages: readonly ServicePackage[]; materialPolicies: readonly ServiceMaterialPolicy[]; precedence: readonly string[] }>;
 
 export class CrmServicesApiError extends Error { readonly status: number; readonly code: string; constructor(status: number, code: string) { super(code); this.name = "CrmServicesApiError"; this.status = status; this.code = code; } }
 function record(value: unknown): RecordValue { if (!value || typeof value !== "object" || Array.isArray(value)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID"); return value as RecordValue; }
@@ -54,7 +59,25 @@ function workspace(value: unknown): CaseServiceWorkspace {
 }
 
 function caseConfiguration(value: unknown): CaseServiceConfigurationWorkspace {
-  const row = publicRecord(value, ["caseRef", "mode", "current", "packages", "materialPolicies", "precedence"]);
+  const row = record(value);
+  exact(row, ["caseRef", "mode", "current", "packages", "materialPolicies", "precedence", ...["estimatedVolumeM3", "surveySummary", "routeRevision"].filter((key) => Object.hasOwn(row, key))]);
+  let surveySummary: PlanSurveySummary | null = null;
+  if (row.surveySummary != null) {
+    const summary = record(row.surveySummary);
+    exact(summary, ["publicationRef", "revision", "volumeM3", "contentNote", "materialsNote", "originAccess", "destinationAccess", ...["accessFlags", "routeVersion"].filter((key) => Object.hasOwn(summary, key))]);
+    let accessFlags: PlanSurveySummary["accessFlags"];
+    if (summary.accessFlags != null) {
+      const flags = publicRecord(summary.accessFlags, ["origin", "destination"]);
+      if (!Array.isArray(flags.origin) || !Array.isArray(flags.destination)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID");
+      accessFlags = { origin: flags.origin.map((flag) => text(flag)), destination: flags.destination.map((flag) => text(flag)) };
+    }
+    function note(value: unknown) {
+      if (value === null || (typeof value === "string" && value.length <= 2400)) return value;
+      throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID");
+    }
+    surveySummary = { publicationRef: text(summary.publicationRef, true), revision: integer(summary.revision), routeVersion: summary.routeVersion == null ? null : integer(summary.routeVersion), volumeM3: nullableNumber(summary.volumeM3),
+      accessFlags, contentNote: note(summary.contentNote), materialsNote: note(summary.materialsNote), originAccess: note(summary.originAccess), destinationAccess: note(summary.destinationAccess) };
+  }
   if (!Array.isArray(row.packages) || !Array.isArray(row.materialPolicies) || !Array.isArray(row.precedence)) throw new CrmServicesApiError(502, "CRM_SERVICES_RESPONSE_INVALID");
   let current: CaseServiceConfigurationWorkspace["current"] = null;
   if (row.current !== null) {
@@ -63,7 +86,7 @@ function caseConfiguration(value: unknown): CaseServiceConfigurationWorkspace {
     record(item.preference); record(item.duration); record(item.precedence);
     current = Object.freeze({ configurationRef: text(item.configurationRef, true), revision: integer(item.revision), serviceSelectionRef: text(item.serviceSelectionRef, true), serviceSelectionRevision: integer(item.serviceSelectionRevision), packageRef: item.packageRef === null ? null : text(item.packageRef, true), packageVersion: item.packageVersion === null ? null : integer(item.packageVersion), materialPolicyRef: item.materialPolicyRef === null ? null : text(item.materialPolicyRef, true), materialPolicyVersion: item.materialPolicyVersion === null ? null : integer(item.materialPolicyVersion), preference: Object.freeze({ ...(item.preference as RecordValue) }), duration: Object.freeze({ ...(item.duration as RecordValue) }), source: text(item.source), items: Object.freeze(item.items.map((entry) => { const currentItem = publicRecord(entry, ["itemRef", "kind", "source", "authorityRef", "code", "name", "quantity", "unitCode", "hours", "days", "disposition", "chargeType", "proportion", "details"]); if (currentItem.authorityRef !== null) text(currentItem.authorityRef, true); record(currentItem.details); return Object.freeze({ itemRef: text(currentItem.itemRef, true), kind: text(currentItem.kind), source: text(currentItem.source), code: text(currentItem.code), name: text(currentItem.name), quantity: nullableNumber(currentItem.quantity), unitCode: nullableString(currentItem.unitCode), hours: nullableNumber(currentItem.hours), days: nullableNumber(currentItem.days), disposition: nullableString(currentItem.disposition), chargeType: nullableString(currentItem.chargeType), proportion: nullableNumber(currentItem.proportion) }); })), conflicts: Object.freeze(item.conflicts.map((entry) => { const conflict = publicRecord(entry, ["conflictRef", "kind", "state"]); return Object.freeze({ conflictRef: text(conflict.conflictRef, true), kind: text(conflict.kind), state: text(conflict.state) }); })) });
   }
-  return Object.freeze({ caseRef: text(row.caseRef, true), mode: text(row.mode), current, packages: Object.freeze(row.packages.map(servicePackage)), materialPolicies: Object.freeze(row.materialPolicies.map(materialPolicy)), precedence: Object.freeze(row.precedence.map((entry) => text(entry))) });
+  return Object.freeze({ caseRef: text(row.caseRef, true), mode: text(row.mode), current, routeRevision: row.routeRevision == null ? null : integer(row.routeRevision), estimatedVolumeM3: nullableNumber(row.estimatedVolumeM3 ?? null), surveySummary, packages: Object.freeze(row.packages.map(servicePackage)), materialPolicies: Object.freeze(row.materialPolicies.map(materialPolicy)), precedence: Object.freeze(row.precedence.map((entry) => text(entry))) });
 }
 
 export class CrmServicesApi {

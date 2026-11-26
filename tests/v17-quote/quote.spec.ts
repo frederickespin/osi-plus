@@ -56,15 +56,17 @@ test("usa costos publicados, crea, publica, envía y registra decisión", async 
   await page.getByRole("button", { name: "Usar costos publicados" }).click();
   await page.getByLabel("Precio cotizado Equipo operativo").fill("350");
   await page.getByRole("button", { name: "Guardar borrador" }).click();
-  await expect(page.getByText("Debajo del sugerido")).toBeVisible();
+  const document = page.getByRole("article", { name: "Propuesta para el cliente" });
+  await expect(document.getByRole("cell", { name: /350[.,]00/ })).toBeVisible();
+  await expect(document.getByText(/sugerido|costo/i)).toHaveCount(0);
   await page.getByRole("button", { name: "Publicar" }).click();
   await page.getByRole("button", { name: "Registrar envío" }).click();
   await page.getByRole("button", { name: "Registrar aceptación" }).click();
-  await expect(page.getByText("ACCEPTED").last()).toBeVisible();
+  await expect(page.getByText("Aceptada", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 test("muestra tres propuestas con referencias y posiciones estables", async ({ page }) => { await session(page); await crm(page); const proposals = [proposal(1), proposal(2), proposal(3)]; await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: costing }) })); await page.route(`**/api/quote/cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, caseCode: "CS-2026-0901", destinationStatus: "CONFIRMED", proposals } }) })); await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Cotización" }).click(); await expect(page.getByRole("button", { name: "Propuesta 1 Q-2026-000001-A" })).toBeVisible(); await expect(page.getByRole("button", { name: "Propuesta 2 Q-2026-000002-B" })).toBeVisible(); await expect(page.getByRole("button", { name: "Propuesta 3 Q-2026-000003-C" })).toBeVisible(); await expect(page.getByRole("button", { name: /Nueva propuesta/ })).toHaveCount(0); });
-test("registra rechazo explícito sin eliminar la revisión enviada", async ({ page }) => { await session(page); await crm(page); let proposals: Record<string, unknown>[] = [proposal(1, "SENT", 3)]; await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: costing }) })); await page.route(`**/api/quote/cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, caseCode: "CS-2026-0901", destinationStatus: "CONFIRMED", proposals } }) })); await page.route("**/api/quote/proposals/decision", (route) => { proposals = [proposal(1, "REJECTED", 3)]; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: proposals[0] }) }); }); await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Cotización" }).click(); await page.getByRole("button", { name: "Registrar rechazo" }).click(); await expect(page.getByText("REJECTED").last()).toBeVisible(); await expect(page.getByText("Revisión 3")).toBeVisible(); });
+test("registra rechazo explícito sin eliminar la revisión enviada", async ({ page }) => { await session(page); await crm(page); let proposals: Record<string, unknown>[] = [proposal(1, "SENT", 3)]; await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: costing }) })); await page.route(`**/api/quote/cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, caseCode: "CS-2026-0901", destinationStatus: "CONFIRMED", proposals } }) })); await page.route("**/api/quote/proposals/decision", (route) => { proposals = [proposal(1, "REJECTED", 3)]; return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: proposals[0] }) }); }); await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Cotización" }).click(); await page.getByRole("button", { name: "Registrar rechazo" }).click(); await expect(page.getByText("Rechazada", { exact: true })).toBeVisible(); await expect(page.getByText(/Versión 3/)).toBeVisible(); });
 test("deny no carga chunk ni solicita APIs Quote", async ({ page }) => { await session(page, true); await crm(page); let requests = 0; page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/quote/")) requests += 1; }); await page.goto(`/commercial/cases/${CASE_REF}`); await expect(page.getByRole("tab", { name: "Cotización" })).toHaveCount(0); expect(requests).toBe(0); const chunks = await page.evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name).filter((name) => name.includes("QuotePanel"))); expect(chunks).toHaveLength(0); });
 
 test("abre el borrador desde el catálogo y revisa la propuesta enviada", async ({ page }) => {
@@ -145,10 +147,59 @@ test("abre el borrador desde el catálogo y revisa la propuesta enviada", async 
   await expect(page.getByLabel("Cantidad de " + serviceName)).toHaveValue("2");
   await page.getByLabel("Cantidad de " + serviceName).fill("3");
   await page.getByRole("button", { name: "Guardar revisión" }).click();
-  await expect(page.getByText("Revisión 4", { exact: false })).toBeVisible();
+  await expect(page.getByText(/Versión 4/)).toBeVisible();
   expect(proposals[0].proposalRef).toBe(record.proposalRef);
   expect(costingOperations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test("cada versión muestra las condiciones y el total que se ofrecieron al cliente", async ({ page }) => {
+  await session(page);
+  await crm(page);
+  const current = proposal(1, "DRAFT", 4);
+  const sent = { ...current, revisionRef: "848f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", revision: 3, state: "SENT",
+    terms: { scope: "Entrega hasta la puerta", paymentTerms: "Pago a 30 días", exclusions: ["Desembalaje"], specialConditions: [], clientNotes: null },
+    lines: [{ ...current.lines[0], concept: "Transporte original", quotedPrice: "312" }],
+    totals: { grossQuotedPrice: 312, discountAmount: 12, totalQuotedPrice: 300 },
+  };
+  const versions = [current, sent].map(({ revisionRef, revision, state }) => ({ revisionRef, revision, state }));
+  await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: costing } }));
+  await page.route(`**/api/quote/cases/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: {
+    caseRef: CASE_REF, proposals: [{ ...current, versions }, proposal(2)],
+  } } }));
+  await page.route(`**/api/quote/proposals/${current.proposalRef}/client?revisionRef=${sent.revisionRef}`,
+    (route) => route.fulfill({ json: { ok: true, data: sent } }));
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Cotización", exact: true }).click();
+  const document = page.getByRole("article", { name: "Propuesta para el cliente" });
+  const versionsList = page.getByLabel("Versión de la propuesta");
+  await expect(document.getByRole("cell", { name: "Equipo operativo" })).toBeVisible();
+  await versionsList.selectOption(sent.revisionRef);
+  await expect(document.getByText("Transporte original")).toBeVisible();
+  await expect(document.getByText("Pago a 30 días")).toBeVisible();
+  await expect(document.getByText("Desembalaje")).toBeVisible();
+  await expect(document.getByText(/300[.,]00/)).toBeVisible();
+  await expect(document.getByText(/costo|sugerido|equipo operativo/i)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Publicar", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Editar propuesta" })).toHaveCount(0);
+  await page.evaluate(() => { window.print = () => {}; });
+  await document.getByRole("button", { name: "Imprimir o guardar como PDF" }).click();
+  await page.emulateMedia({ media: "print" });
+  const printed = page.locator("body > .quote-print-copy");
+  await expect(printed).toBeVisible();
+  await expect(printed.getByRole("button")).toHaveCount(0);
+  await expect(printed.getByText("Transporte original")).toBeVisible();
+  await expect(printed.getByText("Pago a 30 días")).toBeVisible();
+  await expect(page.locator("#root")).toBeHidden();
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  await page.emulateMedia({ media: "screen" });
+  await expect(printed).toHaveCount(0);
+  await page.getByRole("button", { name: "Propuesta 2 Q-2026-000002-B" }).click();
+  await expect(document.getByText("Transporte original")).toHaveCount(0);
+  await expect(document.getByRole("heading", { name: "Opción 2" })).toBeVisible();
+  await page.getByRole("button", { name: "Propuesta 1 Q-2026-000001-A" }).click();
+  await expect(versionsList).toHaveValue(current.revisionRef);
+  await expect(page.getByRole("button", { name: "Publicar", exact: true })).toBeVisible();
 });
 
 for (const authorized of [false, true]) {
@@ -282,7 +333,8 @@ test("recupera la combinación preparada en Servicios y conserva las cajas adici
   await expect(page.getByLabel("Totales de la propuesta").getByText(/350[.,]00/)).toBeVisible();
   await expect(page.getByLabel("Cantidad de " + crate)).toHaveValue("2");
   await page.getByRole("button", { name: "Guardar borrador" }).click();
-  await expect(page.getByText("Ajuste del paquete", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Adicionales.*50[.,]00/)).toBeVisible();
+  const document = page.getByRole("article", { name: "Propuesta para el cliente" });
+  await expect(document.getByRole("row", { name: /Ajuste al mínimo del paquete.*200[.,]00/ })).toBeVisible();
+  await expect(document.getByRole("row", { name: new RegExp(crate + ".*50[.,]00") })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });

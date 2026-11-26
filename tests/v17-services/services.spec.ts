@@ -62,6 +62,121 @@ function savedWorkspace(mode: Mode = "LOCAL") {
   };
 }
 
+test("el adicional tarifado del Plan llega una sola vez al borrador nuevo", async ({ page }) => {
+  await session(page, false, ["quote:view", "quote:create", "quote:override-price", "costing:view", "costing:calculate", "costing:publish"]);
+  await crm(page);
+  const tariff = { ruleRef: "9e8f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", version: 3, name: "Caja de madera", family: "MATERIAL",
+    unit: "caja", currency: "USD", unitPrice: "31.50", classification: "EX" };
+  let current: Record<string, unknown> | null = null;
+  const basic = { versionRef: "448f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", version: 1, name: "Mudanza básica", currency: "USD",
+    shipment: { mode: "NONE", factor: null, roundKg: 1 }, includeRouteTransport: false, needsWeight: false, minimumSale: "0", volumeTiers: [] };
+  const expanded = { ...basic, versionRef: "458f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", name: "Mudanza ampliada" };
+  let selected = basic;
+  await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: null } }));
+  await page.route(`**/api/costing/revisions/${CASE_REF}?view=packages`, (route) => route.fulfill({ json: { ok: true, data: {
+    hasService: true, volumeM3: 18.4, packages: [basic, expanded],
+  } } }));
+  await page.route("**/api/costing/calculate", (route) => {
+    selected = route.request().postDataJSON().packageEstimate.versionRef === basic.versionRef ? basic : expanded;
+    return route.fulfill({ json: { ok: true, data: { calculationRef: CONFIGURATION_REF, result: { issues: [] } } } });
+  });
+  await page.route("**/api/costing/publish", (route) => route.fulfill({ json: { ok: true, data: {
+    revisionRef: selected.versionRef, baseCurrency: tariff.currency, overrides: [],
+    lines: [{ lineRef: CONFIGURATION_REF, sourceRef: tariff.ruleRef, sourceVersion: tariff.version, concept: tariff.name, family: tariff.family,
+      unit: tariff.unit, classification: tariff.classification, quantity: "2", suggestedPrice: "63.00" }],
+    packagePricing: { ...selected, pricingVersion: 1, allowEdits: true, measures: { volumeM3: 18.4 } },
+  } } }));
+
+  await page.route(`**/api/crm/services/cases/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: savedWorkspace() } }));
+  await page.route(`**/api/costing/revisions/${CASE_REF}?view=plan-addons`, (route) => route.fulfill({ json: { ok: true, data: [tariff] } }));
+  await page.route(`**/api/costing/revisions/${CASE_REF}?view=addons&currency=USD`, (route) => route.fulfill({ json: { ok: true, data: [tariff] } }));
+  await page.route(`**/api/quote/cases/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: {
+    caseRef: CASE_REF, caseCode: "CS-2026-0001", destinationStatus: "CONFIRMED", proposals: [],
+  } } }));
+  await page.route(`**/api/crm/services/configurations/${CASE_REF}`, (route) => {
+    if (route.request().method() !== "POST") return route.fulfill({ json: { ok: true, data: configurationWorkspace("LOCAL", current) } });
+    const body = route.request().postDataJSON();
+    expect(body.preference.quickQuote.pricedAdditions).toEqual([{ ...tariff, quantity: "3" }]);
+    current = {
+      configurationRef: CONFIGURATION_REF, revision: 1, mode: "LOCAL", serviceSelectionRef: SELECTION_REF, serviceSelectionRevision: 1,
+      packageRef: null, packageVersion: null, materialPolicyRef: null, materialPolicyVersion: null,
+      surveyPublicationRef: null, commercialAgreementRef: null, duration: body.duration, precedence: {}, source: body.source,
+      preference: body.preference, createdAt: "2026-09-04T12:00:00.000Z", items: [], conflicts: [],
+    };
+    return route.fulfill({ status: 201, json: { ok: true, data: { configuration: current, replayed: false } } });
+  });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Configuración", exact: true }).click();
+  const plan = page.getByTestId("case-service-configuration");
+  await plan.getByLabel("Volumen a cotizar (m³)").fill("18.4");
+  const select = plan.getByRole("combobox", { name: "Necesidades adicionales" });
+  await select.selectOption(tariff.ruleRef);
+  await expect(select.locator(`option[value="${tariff.ruleRef}"]`)).toHaveCount(0);
+  await plan.getByLabel("Cantidad de Caja de madera").fill("3");
+  await plan.getByRole("button", { name: "Guardar configuración" }).click();
+  await expect.poll(() => current).not.toBeNull();
+  await page.reload();
+  await page.getByRole("tab", { name: "Cotización" }).click();
+  await page.getByRole("button", { name: /Nueva propuesta/ }).click();
+  await expect(page.getByRole("textbox", { name: "Cantidad de Caja de madera" })).toHaveValue("3");
+  await expect(page.getByLabel("Totales de la propuesta")).toContainText("94.50");
+  await expect(page.getByRole("button", { name: "Quitar Caja de madera" })).toHaveCount(1);
+  for (const pkg of [basic, expanded]) {
+    await page.getByRole("button", { name: "Agregar " + pkg.name, exact: true }).click();
+    await expect(page.getByLabel("Cantidad de Caja de madera", { exact: true })).toHaveValue("2");
+    await expect(page.getByLabel("Cantidad adicional 1", { exact: true })).toHaveValue("3");
+    await expect(page.getByLabel("Cantidad adicional 2", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Adicional del plan · caja", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Totales de la propuesta")).toContainText("157.50");
+  }
+  await expect(page.getByRole("button", { name: "Guardar borrador" })).toBeEnabled();
+});
+
+test("pide resolver monedas distintas antes de cotizar y conserva el volumen exacto al aplicar el paquete", async ({ page }) => {
+  await session(page, false, ["quote:view", "quote:create", "costing:view", "costing:calculate", "costing:publish"]);
+  await crm(page);
+  const addon = { ruleRef: PACKING, version: 1, name: "Acarreo adicional", family: "LABOR", unit: "hora",
+    currency: "DOP", unitPrice: "250", classification: "PR", quantity: "2" };
+  const selected = { versionRef: DEFAULT_REF, version: 1, name: "Mudanza por volumen", currency: "USD", minimumSale: "100",
+    volumeTiers: [{ maxM3: 6, minimumSale: "100" }, { maxM3: null, minimumSale: "200" }],
+    shipment: { mode: "NONE", factor: null, roundKg: 1 }, includeRouteTransport: false, needsWeight: false };
+  await page.route(`**/api/crm/services/cases/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: savedWorkspace() } }));
+  await page.route(`**/api/crm/services/configurations/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: configurationWorkspace("LOCAL", {
+    configurationRef: CONFIGURATION_REF, revision: 1, mode: "LOCAL", serviceSelectionRef: SELECTION_REF, serviceSelectionRevision: 1,
+    packageRef: DEFAULT_REF, packageVersion: 1, materialPolicyRef: null, materialPolicyVersion: null, surveyPublicationRef: null,
+    commercialAgreementRef: null, duration: {}, precedence: {}, source: "PACKAGE", preference: { quickQuote: { pricedAdditions: [addon] } },
+    createdAt: "2026-11-10T12:00:00.000Z", items: [], conflicts: [],
+  }) } }));
+  await page.route(`**/api/quote/cases/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: { caseRef: CASE_REF, proposals: [] } } }));
+  await page.route(`**/api/costing/revisions/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: null } }));
+  await page.route(`**/api/costing/revisions/${CASE_REF}?view=addons&currency=*`, (route) => route.fulfill({ json: { ok: true, data: [] } }));
+  await page.route(`**/api/costing/revisions/${CASE_REF}?view=packages`, (route) => route.fulfill({ json: { ok: true,
+    data: { hasService: true, volumeM3: 6.00001, selectedPackageVersionRef: selected.versionRef, packages: [selected] } } }));
+  let measured = "";
+  await page.route("**/api/costing/calculate", (route) => {
+    measured = route.request().postDataJSON().packageEstimate.volumeM3;
+    return route.fulfill({ json: { ok: true, data: { result: { issues: [{ severity: "BLOCKER", status: "OPEN", message: "Datos pendientes de prueba" }] } } } });
+  });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Cotización", exact: true }).click();
+  await page.getByRole("button", { name: "Nueva propuesta 1" }).click();
+  const choice = page.getByRole("group", { name: "Moneda del plan" });
+  await expect(choice).toContainText("Mudanza por volumen");
+  await expect(choice).toContainText("USD");
+  await expect(choice).toContainText("DOP");
+  await expect(page.getByRole("button", { name: "Guardar borrador" })).toHaveCount(0);
+  await choice.getByRole("button", { name: "Cotizar solo adicionales en DOP" }).click();
+  await expect(page.getByRole("textbox", { name: "Cantidad de Acarreo adicional" })).toHaveValue("2");
+  await expect(page.getByLabel("Totales de la propuesta")).toContainText("500.00");
+  await page.reload();
+  await page.getByRole("tab", { name: "Cotización", exact: true }).click();
+  await page.getByRole("button", { name: "Nueva propuesta 1" }).click();
+  await choice.getByRole("button", { name: "Preparar en USD sin adicionales" }).click();
+  await expect(page.getByRole("textbox", { name: "Cantidad de Acarreo adicional" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Agregar Mudanza por volumen" }).click();
+  await expect.poll(() => measured).toBe("6.00001");
+});
+
 test("Servicios consume modo ICP, precarga defaults y guarda un snapshot sin IDs internos", async ({ page }) => {
   await session(page); await crm(page); let writes = 0; let body: Record<string, unknown> | null = null;
   await page.route(`**/api/crm/services/cases/${CASE_REF}`, async (route) => {
@@ -128,6 +243,47 @@ for (const role of ["principal", "asociado"] as const) {
   });
 }
 
+test("Direcciones del plan conserva la selección de origen y destino al guardar y reabrir", async ({ page }) => {
+  await session(page, false, ["pipeline:update"]);
+  await crm(page);
+  await page.route(`**/api/crm/services/cases/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: savedWorkspace() } }));
+  const address = (street: string) => ({ countryCode: "DO", cityMunicipality: "Santo Domingo", provinceState: "Distrito Nacional", streetAndNumber: street });
+  let state = { caseRef: CASE_REF, version: 3, route: { revision: 2, origin: address("Calle actual 1"), destination: address("Calle actual 2"), destinationStatus: "CONFIRMED" },
+    options: [
+      { optionId: "registered", source: "REGISTERED", label: "Dirección registrada", address: address("Calle registrada 8") },
+      { optionId: "recent", source: "RECENT_SERVICE", label: "Servicio reciente", address: address("Calle entrega 10") },
+    ] };
+  let writes = 0;
+  await page.route(`**/api/crm/pipeline-cases/${CASE_REF}/route`, (route) => {
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON();
+      expect(body).toMatchObject({ expectedVersion: 3, expectedRouteRevision: 2, origin: { streetAndNumber: "Calle registrada 8" }, destination: { streetAndNumber: "Calle entrega 10" } });
+      writes++;
+      state = { ...state, version: 4, route: { revision: 3, origin: body.origin, destination: body.destination, destinationStatus: body.destinationStatus } };
+    }
+    return route.fulfill({ headers: privateHeaders, json: { ok: true, data: state } });
+  });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  const tab = page.getByRole("tab", { name: "Direcciones", exact: true });
+  const editor = page.getByRole("region", { name: "Direcciones del caso" });
+  await tab.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(editor.getByRole("button", { name: "Guardar ruta" })).toBeDisabled();
+  const selectors = editor.getByRole("combobox", { name: "Seleccionar dirección" });
+  await selectors.first().selectOption("registered");
+  await selectors.last().selectOption("recent");
+  await page.getByRole("tab", { name: "Plan", exact: true }).click();
+  await tab.click();
+  await expect(selectors.last()).toHaveValue("recent");
+  await editor.getByRole("button", { name: "Guardar ruta" }).click();
+  await expect.poll(() => writes).toBe(1);
+  await expect(editor.getByLabel("Calle y número").nth(1)).toHaveValue("Calle entrega 10");
+  await page.reload();
+  await tab.click();
+  await expect(editor.getByLabel("Calle y número").first()).toHaveValue("Calle registrada 8");
+  await expect(editor.getByRole("button", { name: "Guardar ruta" })).toBeDisabled();
+});
+
 test("deny bloquea antes del lazy de Servicios y no inicia requests", async ({ page }) => {
   await session(page, true); let serviceRequests = 0; page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/crm/services")) serviceRequests += 1; });
   await page.goto(`/commercial/cases/${CASE_REF}`); await expect(page.getByTestId("hub-forbidden")).toContainText("403 · Acceso no autorizado"); await expect(page.getByTestId("case-services-panel")).toHaveCount(0); expect(serviceRequests).toBe(0);
@@ -172,9 +328,9 @@ test("Servicios lleva el método elegido a la solicitud y agenda del Survey", as
   const survey = page.getByTestId("survey-scheduling-workspace");
   await expect(survey.getByRole("combobox", { name: "Método de Survey" })).toContainText("Visita virtual");
   expect(decisions).toHaveLength(0);
-  await survey.getByRole("button", { name: "Crear solicitud" }).click();
-  await expect(survey.getByRole("heading", { name: "Agenda" })).toBeVisible();
-  expect(decisions).toHaveLength(1);
+  await survey.getByRole("button", { name: "Guardar pendiente" }).click();
+  await expect(survey.getByRole("heading", { name: "Agenda del día" })).toBeVisible();
+  await expect.poll(() => decisions.length).toBe(1);
   expect(decisions[0]).toMatchObject({ operation: "DECIDE_METHOD", method: "VIRTUAL", caseRef: CASE_REF, expectedVersion: null });
 });
 
@@ -236,7 +392,6 @@ test("Servicios guarda datos directos de exportación y Propuestas vuelve a leer
 
   await page.reload();
   await page.getByRole("tab", { name: "Cotización" }).click();
-  await page.getByRole("tab", { name: "Propuestas" }).click();
   const quote = page.getByTestId("quote-intake");
   await quote.getByText("Datos para cotizar", { exact: true }).click();
   await expect(quote.getByText("Dos mesas y seis cajas", { exact: true })).toBeVisible();
@@ -248,8 +403,40 @@ test("Servicios guarda datos directos de exportación y Propuestas vuelve a leer
 
 test("preparación rápida versiona paquete, volumen, perfil, accesos y duración sin IDs internos", async ({ page }) => {
   await session(page); await crm(page); const selectionRef = SELECTION_REF; const packageRef = "738f6d8f-8d11-4f39-8a2d-1b6c7e8f9012"; const packageVersionRef = "838f6d8f-8d11-4f39-8a2d-1b6c7e8f9012"; const policyRef = "938f6d8f-8d11-4f39-8a2d-1b6c7e8f9012"; const policyVersionRef = "a38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012"; let saved: Record<string, unknown> | null = null; let configurationReads = 0;
+  const surveySummary = { publicationRef: "b38f6d8f-8d11-4f39-8a2d-1b6c7e8f9013", revision: 2, routeVersion: 3, volumeM3: 22.375, contentNote: "12 artículos · 2 frágiles",
+    materialsNote: "Papel de empaque (3 kg)", originAccess: "Piso 3 · Sin ascensor", destinationAccess: null };
+  await page.route(`**/api/costing/revisions/${CASE_REF}?view=plan-addons`, (route) => route.fulfill({ json: { ok: true, data: [] } }));
   const selected = savedWorkspace();
   await page.route(`**/api/crm/services/cases/${CASE_REF}`, (route) => route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: selected }) }));
-  await page.route(`**/api/crm/services/configurations/${CASE_REF}`, async (route) => { if (route.request().method() === "POST") { saved = route.request().postDataJSON() as Record<string, unknown>; return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { replayed: false } }) }); } configurationReads += 1; return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, mode: "LOCAL", current: null, packages: [{ packageRef, versionRef: packageVersionRef, code: "LOC-MOVE-STD", name: "Mudanza local estándar", description: null, category: "MUDANZA", tags: [], state: "PUBLISHED", version: 1, validFrom: null, validTo: null, modes: [{ modeRef: "b38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", code: "LOCAL", name: "Local / Nacional" }], primary: { serviceRef: PRIMARY_LOCAL, code: "MOV_LOCAL", name: "Mudanza local" }, complementaries: [{ serviceRef: PACKING, code: "PACKING", name: "Empaque" }], requirements: [] }], materialPolicies: [{ policyRef, versionRef: policyVersionRef, code: "LOCAL-REUSE", name: "Materiales reutilizables", version: 1, state: "PUBLISHED", packageVersionRef, serviceRef: null, modeRef: null, preferenceCode: "REUSABLE_ALLOWED", standardCode: "STANDARD", validFrom: null, validTo: null, lines: [] }], precedence: ["CASE_OVERRIDE", "COMMERCIAL_AGREEMENT", "SERVICE_PACKAGE", "SERVICE_MODE_DEFAULT", "MANUAL_RESOLUTION"] } }) }); });
-  await page.goto(`/commercial/cases/${CASE_REF}`); await page.getByRole("tab", { name: "Servicios" }).click(); await page.getByRole("tab", { name: "Configuración" }).click(); const configuration = page.getByTestId("case-service-configuration"); await expect(configuration).toBeVisible(); await configuration.getByRole("button", { name: /Mudanza local estándar/ }).click(); await configuration.getByRole("button", { name: "20 m³" }).click(); await configuration.getByRole("button", { name: /Cristalería/ }).click(); await configuration.getByRole("button", { name: /Complejo/ }).click(); await configuration.getByRole("button", { name: /Escaleras/ }).click(); await configuration.getByText("Detalle técnico opcional").click(); await configuration.getByLabel("Política de materiales").selectOption(policyVersionRef); await configuration.getByLabel("Duración preliminar editable (horas)").fill("8"); await configuration.getByRole("button", { name: "Guardar configuración" }).click(); await expect.poll(() => saved).not.toBeNull(); await expect.poll(() => configurationReads).toBeGreaterThanOrEqual(2); expect(saved).toMatchObject({ expectedRevision: 0, serviceSelectionRef: selectionRef, packageVersionRef, materialPolicyVersionRef: policyVersionRef, duration: { hours: 8 }, preference: { quickQuote: { schemaVersion: 1, volumeM3: 20, contentProfile: "GLASS_HEAVY", contentMix: { regular: 25, fragile: 55, packed: 20 }, accessProfile: "COMPLEX", additions: ["STAIRS"] } }, source: "PACKAGE", overrides: [] }); expect(JSON.stringify(saved)).not.toMatch(/tenantId|membershipId|userId|clientId|stock|cost/i);
+  await page.route(`**/api/crm/services/configurations/${CASE_REF}`, async (route) => { if (route.request().method() === "POST") { saved = route.request().postDataJSON() as Record<string, unknown>; return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { replayed: false } }) }); } configurationReads += 1; return route.fulfill({ status: 200, contentType: "application/json", headers: privateHeaders, body: JSON.stringify({ ok: true, data: { caseRef: CASE_REF, mode: "LOCAL", current: null, routeRevision: 4, estimatedVolumeM3: 17, surveySummary, packages: [{ packageRef, versionRef: packageVersionRef, code: "LOC-MOVE-STD", name: "Mudanza local estándar", description: null, category: "MUDANZA", tags: [], state: "PUBLISHED", version: 1, validFrom: null, validTo: null, modes: [{ modeRef: "b38f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", code: "LOCAL", name: "Local / Nacional" }], primary: { serviceRef: PRIMARY_LOCAL, code: "MOV_LOCAL", name: "Mudanza local" }, complementaries: [{ serviceRef: PACKING, code: "PACKING", name: "Empaque" }], requirements: [] }], materialPolicies: [{ policyRef, versionRef: policyVersionRef, code: "LOCAL-REUSE", name: "Materiales reutilizables", version: 1, state: "PUBLISHED", packageVersionRef, serviceRef: null, modeRef: null, preferenceCode: "REUSABLE_ALLOWED", standardCode: "STANDARD", validFrom: null, validTo: null, lines: [] }], precedence: ["CASE_OVERRIDE", "COMMERCIAL_AGREEMENT", "SERVICE_PACKAGE", "SERVICE_MODE_DEFAULT", "MANUAL_RESOLUTION"] } }) }); });
+  await page.goto(`/commercial/cases/${CASE_REF}`);
+  await page.getByRole("tab", { name: "Servicios" }).click();
+  await page.getByRole("tab", { name: "Configuración" }).click();
+  const configuration = page.getByTestId("case-service-configuration");
+  const volume = configuration.getByLabel("Volumen a cotizar (m³)");
+  await expect(volume).toHaveValue("22.375");
+  await expect(configuration.getByText(/12 artículos · 2 frágiles/)).toBeVisible();
+  await expect(configuration.getByText("Survey anterior · confirmar acceso")).toBeVisible();
+  await expect(configuration.getByText(/Papel de empaque \(3 kg\)/)).toBeVisible();
+  await expect(configuration.getByText(/Piso 3 · Sin ascensor/)).toBeVisible();
+  await configuration.getByLabel("Paquete de referencia").selectOption(packageVersionRef);
+  await volume.fill("19,45");
+  await configuration.getByRole("button", { name: "Usar este volumen" }).click();
+  await expect(volume).toHaveValue("22.375");
+  await volume.fill("19,45");
+  await configuration.getByLabel("Observación del cliente sobre acceso de destino").fill("Reservar montacargas");
+  await configuration.getByLabel("Condición de acceso en origen").selectOption("STAIRS");
+  await configuration.getByLabel("Condición de acceso en destino").selectOption("CRANE_OR_HOIST");
+  await expect(configuration.getByLabel("Condición de acceso en destino").locator('option[value="CRANE_OR_HOIST"]')).toHaveCount(0);
+  await configuration.getByLabel("Política de materiales").selectOption(policyVersionRef);
+  await configuration.getByLabel("Duración prevista (h)").fill("8");
+  await configuration.getByRole("button", { name: "Guardar configuración" }).click();
+  await expect.poll(() => saved).not.toBeNull();
+  await expect.poll(() => configurationReads).toBeGreaterThanOrEqual(2);
+  expect(saved).toMatchObject({ expectedRevision: 0, serviceSelectionRef: selectionRef, packageVersionRef,
+    surveyPublicationRef: surveySummary.publicationRef, materialPolicyVersionRef: policyVersionRef, duration: { hours: 8 },
+    preference: { quickQuote: { schemaVersion: 2, volumeM3: 19.45, volumeSource: "MANUAL", clientDestinationAccess: "Reservar montacargas",
+      clientAccessConditions: { origin: { routeRevision: 4, flags: ["STAIRS"] }, destination: { routeRevision: 4, flags: ["CRANE_OR_HOIST"] } } } },
+    source: "PACKAGE", overrides: [] });
+  expect(JSON.stringify(saved)).not.toMatch(/tenantId|membershipId|userId|clientId|stock|contentMix/i);
 });

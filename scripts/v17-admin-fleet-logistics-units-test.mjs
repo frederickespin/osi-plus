@@ -18,6 +18,7 @@ function fixture(rows, containerTypes = []) {
   const tx = {
     pipelineCase: { findFirst: async () => ({ id: "test-case", publicRef: ref(1), mode: "LOCAL", routeContractVersion: 2, routeRevision: 3, destinationStatus: "CONFIRMED" }) },
     pipelineCaseRouteSnapshot: { findMany: async () => [] },
+    caseServiceConfigurationRevision: { findFirst: async () => null },
     pipelineCaseServiceRevision: { findFirst: async () => ({ selectionRef: ref(2), revision: 4, modeSnapshot: "LOCAL", items: [{ serviceRefSnapshot: ref(3), codeSnapshot: "MOVING_LOCAL", kind: "BASE", catalogVersionSnapshot: 2 }] }) },
     surveyPublication: { findFirst: async () => null },
     materialRequirementSnapshot: { findFirst: async () => null },
@@ -44,6 +45,30 @@ function fixture(rows, containerTypes = []) {
   };
   return { tx, calls, read: () => loadCanonicalLogisticsFacts(tx, context, ref(1), start, end) };
 }
+
+test("las condiciones de acceso confirmadas por el cliente alimentan una sola regla por trayecto", async () => {
+  const f = fixture([]);
+  const conditions = { origin: { routeRevision: 3, flags: ["STAIRS", "LONG_CARRY"] },
+    destination: { routeRevision: 2, flags: ["CRANE_OR_HOIST"] } };
+  f.tx.caseServiceConfigurationRevision.findFirst = async ({ where }) => {
+    assert.deepEqual(where, { tenantId: context.tenantId, pipelineCaseId: "test-case", serviceSelectionRef: ref(2), serviceSelectionRevision: 4 });
+    return { preferenceSnapshot: { quickQuote: { clientAccessConditions: conditions,
+      clientDestinationAccess: "Grúa y permisos", pricedAdditions: [{ name: "Permiso" }] } } };
+  };
+  const timeRule = { ruleRef: ref(8), version: 1, state: "ACTIVE", family: "TIME", priority: 1, specificity: 1,
+    conditions: { accessFlags: ["ORIGIN:STAIRS"] }, result: { kind: "STAIR_HANDLING", label: "Tiempo por escalera",
+      quantity: 1, hours: 2, unit: "servicio" } };
+  const withoutSurvey = await f.read();
+  assert.deepEqual(withoutSurvey.route.clientAccessFlags, ["LONG_CARRY", "ORIGIN:LONG_CARRY", "ORIGIN:STAIRS", "STAIRS"]);
+  assert.deepEqual(withoutSurvey.survey.accessFlags, []);
+  assert.equal(calculateLogisticsPlan(withoutSurvey, [timeRule]).items.length, 1);
+  f.tx.surveyPublication.findFirst = async () => ({ publicationRef: ref(6), logicalSha256: "a".repeat(64), routeVersion: 3,
+    accessSnapshots: [{ side: "ORIGIN", factsSnapshot: { flags: ["STAIRS"] } }], items: [], materialRequirements: [] });
+  const withSurvey = await f.read();
+  const plan = calculateLogisticsPlan(withSurvey, [timeRule, { ...timeRule, ruleRef: ref(9), conditions: { accessFlags: ["DESTINATION:CRANE_OR_HOIST"] } }]);
+  assert.equal(plan.items.length, 1);
+  assert.equal(plan.items[0].estimatedHours, 2);
+});
 
 test("metric capacities remain unchanged and preserve the operational fleet query", async () => {
   const f = fixture([vehicle({ capacity_weight: new Prisma.Decimal("1500.125"), capacity_volume: new Prisma.Decimal("35.1234"), row_version: 7 })]);

@@ -9,16 +9,18 @@ import { quoteApi, type QuoteCase, type QuoteProposal } from "./api";
 import { costingApi, type CostingPackageEstimate, type CostingPackageOption, type CostingPackageOptions, type CostingRevision } from "@/costing/api";
 import type { CommunicationsAccess } from "@/communications/access";
 import type { CaseCommercialIntake } from "@/commercial-crm/caseCommercialIntake";
-import { pricingDecimal, pricingQuantity } from "@/costing/pricingInput";
+import { pricingDecimal, pricingVolume } from "@/costing/pricingInput";
 import { minimumForPackage } from "../../shared/servicePackagePricing.js";
 import ProposalComposer from "./ProposalComposer";
+import { ArchivedQuoteDocument, QuoteDocument, quoteDate, quoteStateLabel } from "./QuoteDocument";
 
 type Props = Readonly<{
   caseRef: string; authorization?: string; access: QuoteUiAccess; defaultPayer?: string; canPreparePackage?: boolean;
   canViewCosting?: boolean; canAuthorizeMargin?: boolean; suggestedGroupName?: string;
   intake?: CaseCommercialIntake;
+  planPending?: boolean;
   communicationsEnabled?: boolean; communicationsAccess?: CommunicationsAccess;
-  onOpenCommunications?(quoteRevisionRef: string): void; onOpenTransport?(): void; onUnauthorized(): void;
+  onOpenCommunications?(quoteRevisionRef: string): void; onOpenTransport?(): void; onEditPlanConfiguration?(): void; onUnauthorized(): void;
 }>;
 
 const SERVICE_DATE = new Intl.DateTimeFormat("es-DO", { dateStyle: "medium", timeZone: "UTC" });
@@ -26,11 +28,11 @@ const EDITABLE_STATES = new Set(["DRAFT", "READY", "SENT"]);
 const COMPACT_FIELD = COMPACT_FORM_FIELD + " w-full bg-white";
 const DEFAULT_QUOTE_CURRENCY = "DOP";
 
-type Editor = Readonly<{ position: number; currency: string; basis: CostingRevision | null; proposal?: QuoteProposal }>;
+type Editor = Readonly<{ position: number; currency: string; basis: CostingRevision | null; proposal?: QuoteProposal; omitPlanAdditions?: boolean }>;
 type CombinationInput = Readonly<{ option: CostingPackageOption; volume: string; gross: string }>;
 
 function combinationEstimate(input: CombinationInput): CostingPackageEstimate | null {
-  const volumeM3 = pricingDecimal(input.volume, 4);
+  const volumeM3 = pricingDecimal(input.volume, 6);
   const grossKg = pricingDecimal(input.gross, 4);
   const tier = volumeM3 && minimumForPackage(input.option, Number(volumeM3));
   if (!volumeM3 || Number(volumeM3) <= 0 || Number(volumeM3) > 100_000 || !tier) return null;
@@ -72,7 +74,7 @@ function quoteError(value: string) {
 function ProposalHeader({ proposal, active, onClick }: { proposal: QuoteProposal; active: boolean; onClick(): void }) {
   return <button type="button" onClick={onClick} aria-pressed={active} aria-label={`Propuesta ${proposal.position} ${proposal.reference}`}
     className={`rounded px-3 py-1.5 text-left text-xs font-semibold ${active ? "bg-sky-50 text-[#003366]" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
-    {proposal.reference} <span className="ml-1 font-normal">{money(proposal.totals.totalQuotedPrice, proposal.currency)}</span>
+    Opción {proposal.position} · {proposal.reference} <span className="ml-1 font-normal">{money(proposal.totals.totalQuotedPrice, proposal.currency)}</span>
   </button>;
 }
 
@@ -118,7 +120,7 @@ function PackageQuoteSummary({ proposal }: { proposal: QuoteProposal }) {
   const base = proposal.totals.packageSubtotal ?? proposal.lines.filter((line) => line.sourceKind === "COSTING" || line.packageMinimum).reduce((sum, line) => sum + Number(line.quotedPrice), 0);
   const extras = proposal.totals.grossQuotedPrice - base;
   return <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 border-b bg-sky-50 px-3 py-2 text-xs">
-    <strong className="text-[#003366]">{proposal.packageScope.name} · {pricingQuantity.format(proposal.packageScope.volumeM3)} m³</strong>
+    <strong className="text-[#003366]">{proposal.packageScope.name} · {pricingVolume.format(proposal.packageScope.volumeM3)} m³</strong>
     <span>Paquete {money(base, proposal.currency)}</span>
     <span>Adicionales {money(extras, proposal.currency)}</span>
     <span className="font-semibold">Total {money(proposal.totals.totalQuotedPrice, proposal.currency)}</span>
@@ -148,7 +150,7 @@ function QuoteIntake({ intake }: { intake: CaseCommercialIntake }) {
         <dd><time dateTime={serviceStartDate ?? undefined}>{SERVICE_DATE.format(serviceDate)}</time></dd></div>}
       {directQuote && <div><dt className="font-semibold text-slate-600">Fuente</dt>
         <dd>{directQuote.source === "CLIENT_LIST" ? "Listado del cliente" : "Estimación preliminar"}
-          {directQuote.volumeM3 !== null && <> · {pricingQuantity.format(directQuote.volumeM3)} m³</>}</dd></div>}
+          {directQuote.volumeM3 !== null && <> · {pricingVolume.format(directQuote.volumeM3)} m³</>}</dd></div>}
       {capturedDetails.map(([label, detail]) => detail && <div className="min-w-0" key={label}>
         <dt className="font-semibold text-slate-600">{label}</dt><dd className="whitespace-pre-wrap break-words">{detail}</dd>
       </div>)}
@@ -168,7 +170,7 @@ function CombinationFields({ input, busy, needsRoute, canOpenRoute, onInput, onA
     <strong className="text-[#003366]">{input.option.name}</strong>
     <div className="flex flex-wrap items-end gap-2">
       <label className="w-28">Volumen (m³)
-        <NumericInput className={COMPACT_FIELD} allowDecimalComma min="0.0001" max={100_000} step="0.0001"
+        <NumericInput className={COMPACT_FIELD} allowDecimalComma min="0.000001" max={100_000} step="0.000001"
           value={input.volume} onChange={(event) => onInput({ ...input, volume: event.target.value })} />
       </label>
       {canUseWeight && <label className="w-32">Peso bruto (kg)
@@ -180,20 +182,24 @@ function CombinationFields({ input, busy, needsRoute, canOpenRoute, onInput, onA
       {needsRoute && canOpenRoute && <Button type="button" variant="outline" size="sm" onClick={onOpenRoute}>Calcular ruta</Button>}
     </div>
     {tier && <p className="text-slate-600">Mínimo {money(tier.minimumSale, input.option.currency)}</p>}
-    {!tier && pricingDecimal(input.volume, 4) && Number(input.volume.replace(",", ".")) > 0 &&
+    {!tier && pricingDecimal(input.volume, 6) && Number(input.volume.replace(",", ".")) > 0 &&
       <p className="text-amber-800">Revisa el volumen o el peso requerido para esta combinación.</p>}
   </div>;
 }
 
 export default function QuotePanel({
   caseRef, authorization, access, defaultPayer, canPreparePackage = false, canViewCosting = true,
-  canAuthorizeMargin = false, suggestedGroupName, intake, communicationsEnabled = false,
-  communicationsAccess, onOpenCommunications, onOpenTransport, onUnauthorized,
+  canAuthorizeMargin = false, suggestedGroupName, intake, planPending = false, communicationsEnabled = false,
+  communicationsAccess, onOpenCommunications, onOpenTransport, onEditPlanConfiguration, onUnauthorized,
 }: Props) {
   const [value, setValue] = useState<QuoteCase | null>(null);
   const [costing, setCosting] = useState<CostingRevision | null>(null);
   const [packageOptions, setPackageOptions] = useState<CostingPackageOptions | null>(null);
+  const [packagesUnavailable, setPackagesUnavailable] = useState(false);
+  const [packagesRetry, setPackagesRetry] = useState(0);
+  const [reviewPlanCurrency, setReviewPlanCurrency] = useState(false);
   const [activeRef, setActiveRef] = useState<string | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -231,16 +237,24 @@ export default function QuotePanel({
       }).catch(() => {});
     }
     if (canPreparePackage) {
+      setPackagesUnavailable(false);
       void costingApi.packageOptions(authorization, caseRef, controller.signal).then((options) => {
+        if (!Array.isArray(options?.packages)) throw new Error("COSTING_PACKAGE_NOT_AVAILABLE");
         if (!controller.signal.aborted) setPackageOptions(options);
-      }).catch(() => {});
+      }).catch(() => { if (!controller.signal.aborted) setPackagesUnavailable(true); });
     }
     return () => controller.abort();
-  }, [authorization, caseRef, canViewCosting, canPreparePackage]);
+  }, [authorization, caseRef, canViewCosting, canPreparePackage, packagesRetry]);
 
   const active = useMemo(() => value?.proposals.find((proposal) => proposal.proposalRef === activeRef) || null, [activeRef, value]);
+  const archived = active?.versions?.find((row) => row.revisionRef === selectedVersion && row.revisionRef !== active.revisionRef);
   const accepted = useMemo(() => value?.proposals.find((proposal) => proposal.state === "ACCEPTED") || null, [value]);
   const nextPosition = [1, 2, 3].find((position) => !value?.proposals.some((proposal) => proposal.position === position));
+  const preparedPackage = packageOptions?.packages.find((option) => option.versionRef === packageOptions.selectedPackageVersionRef);
+  const additionsCurrency = intake?.pricedAdditions?.[0]?.currency;
+  const mixedPlan = Boolean(additionsCurrency && preparedPackage && additionsCurrency !== preparedPackage.currency);
+  const checkPackageCurrency = Boolean(canPreparePackage && additionsCurrency && !packageOptions);
+  const needsCurrencyChoice = mixedPlan || (checkPackageCurrency && packagesUnavailable);
   const editBasis = prepared ?? editor?.basis ?? null;
   const isFlexible = editor && (!editor.proposal || editor.proposal.flexibleBasis || editor.proposal.sourceMode === "CATALOG");
   const packages = isFlexible && canPreparePackage
@@ -265,13 +279,14 @@ export default function QuotePanel({
     setPackageBusy(false);
     setMissingTransport(false);
     setError(null);
+    setReviewPlanCurrency(false);
     setEditor(null);
   }
 
   function startNew(position: number) {
     closeEditor();
-    const configuredPackage = packageOptions?.packages.find((option) => option.versionRef === packageOptions.selectedPackageVersionRef);
-    setEditor({ position, currency: configuredPackage?.currency ?? costing?.baseCurrency ?? DEFAULT_QUOTE_CURRENCY, basis: null });
+    if (needsCurrencyChoice) { setReviewPlanCurrency(true); return; }
+    setEditor({ position, currency: additionsCurrency ?? preparedPackage?.currency ?? costing?.baseCurrency ?? DEFAULT_QUOTE_CURRENCY, basis: null });
   }
 
   async function startRevision(proposal: QuoteProposal) {
@@ -341,7 +356,7 @@ export default function QuotePanel({
     const knownVolume = measures?.volumeM3 ?? packageOptions?.volumeM3 ?? intake?.directQuote?.volumeM3;
     const input = {
       option,
-      volume: knownVolume == null ? "" : String(Number(knownVolume.toFixed(4))),
+      volume: knownVolume == null ? "" : String(knownVolume),
       gross: measures?.grossKg == null ? "" : String(measures.grossKg),
     };
     setError(null);
@@ -380,7 +395,7 @@ export default function QuotePanel({
     <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
       <h2 className="text-base font-bold text-[#003366]">Propuestas comerciales</h2>
       <div className="flex items-center gap-1">
-        {!editor && value && !accepted && access.canCreate && nextPosition && <Button type="button" size="sm" onClick={() => startNew(nextPosition)}>
+        {!editor && value && !accepted && access.canCreate && nextPosition && <Button type="button" size="sm" disabled={planPending || (checkPackageCurrency && !packagesUnavailable)} onClick={() => startNew(nextPosition)}>
           <Plus />Nueva propuesta {nextPosition}
         </Button>}
         {!editor && <Button type="button" size="icon-sm" variant="ghost" aria-label="Actualizar cotización" title="Actualizar" onClick={() => void load()}><RefreshCw /></Button>}
@@ -389,13 +404,34 @@ export default function QuotePanel({
     {loading && !value && <p role="status" className="p-4 text-center text-sm text-slate-500">Cargando cotización…</p>}
     {error && <p role="alert" className="mx-3 my-2 flex gap-2 rounded bg-red-50 px-2 py-1.5 text-xs text-red-800"><AlertCircle className="size-4 shrink-0" />{error}</p>}
     {value && <>
-      {intake && <QuoteIntake intake={intake} />}
+      {reviewPlanCurrency && needsCurrencyChoice && nextPosition && !accepted && access.canCreate && <div role="group" aria-label="Moneda del plan" className="space-y-2 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+        <p>{mixedPlan && preparedPackage
+          ? <>La combinación <strong>{preparedPackage.name}</strong> tiene tarifa en <strong>{preparedPackage.currency}</strong> y los adicionales del plan están en <strong>{additionsCurrency}</strong>. Para cotizarlos juntos, selecciona adicionales en {preparedPackage.currency} en el Plan.</>
+          : <>No se pudo comprobar la moneda del paquete. Los adicionales del plan están en {additionsCurrency}.</>}</p>
+        <div className="flex flex-wrap gap-2">
+          {onEditPlanConfiguration && <Button type="button" size="sm" variant="outline" onClick={onEditPlanConfiguration}>Revisar el Plan</Button>}
+          {mixedPlan && preparedPackage && <Button type="button" size="sm" variant="outline" onClick={() => {
+            setReviewPlanCurrency(false); setEditor({ position: nextPosition, currency: preparedPackage.currency, basis: null, omitPlanAdditions: true });
+          }}>Preparar en {preparedPackage.currency} sin adicionales</Button>}
+          {!mixedPlan && <Button type="button" size="sm" variant="outline" onClick={() => { setReviewPlanCurrency(false); setPackagesRetry((value) => value + 1); }}>Reintentar</Button>}
+          {additionsCurrency && <Button type="button" size="sm" variant="outline" onClick={() => {
+            setReviewPlanCurrency(false); setEditor({ position: nextPosition, currency: additionsCurrency, basis: null });
+          }}>Cotizar solo adicionales en {additionsCurrency}</Button>}
+        </div>
+      </div>}
+      {intake && (editor || !active) && <QuoteIntake intake={intake} />}
       {accepted && <div className="border-b border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900" data-testid="quote-ready-for-operations">Propuesta aceptada · Lista para Operaciones</div>}
-      {!editor && value.proposals.length > 0 && <div className="flex flex-wrap gap-1 border-b border-slate-200 px-2 py-1">
+      {!editor && value.proposals.length > 1 && <div aria-label="Alternativas de la propuesta" className="flex flex-wrap gap-1 border-b border-slate-200 px-2 py-1">
         {value.proposals.map((proposal) => <ProposalHeader key={proposal.proposalRef} proposal={proposal} active={proposal.proposalRef === activeRef}
-          onClick={() => { setActiveRef(proposal.proposalRef); setMarginReason(""); setError(null); }} />)}
+          onClick={() => { setActiveRef(proposal.proposalRef); setSelectedVersion(null); setMarginReason(""); setError(null); }} />)}
       </div>}
       {editor && <div className="min-w-0 p-3">
+        {editor.proposal && access.canViewInternalCost && <details className="mb-2 text-xs">
+          <summary className="cursor-pointer font-semibold text-slate-600">Ver precios de la versión anterior</summary>
+          <PackageQuoteSummary proposal={editor.proposal} />
+          <BillingSummary proposal={editor.proposal} internal />
+          <QuoteLines proposal={editor.proposal} internal />
+        </details>}
         {usePublished && costing && <Button type="button" size="sm" variant="ghost" className="mb-2"
           disabled={packageBusy} onClick={() => { setEditor({ ...editor, currency: costing.baseCurrency, basis: costing }); setCombination(null); }}>
           Usar costos publicados
@@ -405,7 +441,7 @@ export default function QuotePanel({
           position={editor.position} defaultPayer={defaultPayer} canConfirmCharges={access.canOverridePrice}
           autoOpen awaitingPackage={Boolean(combination)} errorText={quoteError} currency={editor.currency}
           packages={packages} selectedPackageVersionRef={packageOptions?.selectedPackageVersionRef}
-          onSelectPackage={selectCombination} proposal={editor.proposal}
+          onSelectPackage={selectCombination} proposal={editor.proposal} planAdditions={editor.omitPlanAdditions ? undefined : intake?.pricedAdditions}
           onClose={closeEditor} onRemovePackage={isFlexible && editBasis?.packagePricing ? removeCombination : undefined}
           suggestedGroupName={suggestedGroupName}
           currencyOptions={[...new Set([DEFAULT_QUOTE_CURRENCY, "USD", "EUR", editor.currency, ...(packageOptions?.packages.map((option) => option.currency) ?? [])])]}
@@ -416,39 +452,33 @@ export default function QuotePanel({
           onCreated={(proposalRef) => { if (prepared) setCosting(prepared); closeEditor(); setActiveRef(proposalRef); void load(); }} />
       </div>}
       {!editor && active && <div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2">
-          <div>
-            <h3 className="text-sm font-semibold text-[#003366]">{active.proposalName}</h3>
-            <p className="text-xs text-slate-600">{active.reference} · Revisión {active.revision} · Vigente hasta {active.validUntil}</p>
-          </div>
-          <div className="flex items-center gap-1">
-            <Badge variant="outline">{active.state}</Badge>
-            {canRevise && <Button variant="ghost" size="icon-sm" aria-label="Editar propuesta" title="Editar propuesta" disabled={actionBusy}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 text-xs">
+          <strong className="text-slate-700">Vista del cliente</strong>
+          <div className="flex flex-wrap items-center gap-2">
+            {(active.versions?.length ?? 0) > 1
+              ? <label className="flex items-center gap-1">Versión
+                <select className="max-w-56 rounded bg-slate-100 px-2 py-1 text-xs" aria-label="Versión de la propuesta"
+                  value={archived?.revisionRef ?? active.revisionRef} disabled={actionBusy}
+                  onChange={(event) => { setSelectedVersion(event.target.value === active.revisionRef ? null : event.target.value); setError(null); }}>
+                  {active.versions?.map((row) => <option key={row.revisionRef} value={row.revisionRef}>
+                    {row.revision} · {quoteStateLabel(row.state)}{row.createdAt ? " · " + quoteDate(row.createdAt) : ""}
+                  </option>)}
+                </select></label>
+              : <Badge variant="outline">{quoteStateLabel(active.state)}</Badge>}
+            {!archived && canRevise && <Button variant="ghost" size="icon-sm" aria-label="Editar propuesta" title="Editar propuesta" disabled={actionBusy}
               onClick={() => void startRevision(active)}><Pencil /></Button>}
           </div>
         </div>
-        <PackageQuoteSummary proposal={active} />
-        <BillingSummary proposal={active} internal={access.canViewInternalCost} />
-        {active.groupName && <h4 className="px-3 pt-2 text-sm font-semibold text-[#003366]">{active.groupName}</h4>}
-        <QuoteLines proposal={active} internal={access.canViewInternalCost} />
-        <details className="border-b border-slate-200 px-3 py-1.5 text-xs" data-testid="quote-commercial-snapshot">
-          <summary className="cursor-pointer font-semibold text-slate-600">Datos comerciales</summary>
-          <dl className="grid gap-2 py-2 sm:grid-cols-2 lg:grid-cols-3">
-            <div><dt>Responsable del pago</dt><dd className="font-semibold">{active.payer.displayName}</dd></div>
-            {active.commercialContext.leadAccount && <div><dt>Cuenta principal</dt><dd className="font-semibold">{active.commercialContext.leadAccount.displayName}</dd></div>}
-            {active.commercialContext.booker && <div><dt>Booker</dt><dd className="font-semibold">{active.commercialContext.booker.displayName}</dd></div>}
-            {active.commercialContext.tariff && <div><dt>Acuerdo o tarifario</dt><dd className="font-semibold">{active.commercialContext.tariff.displayName}</dd></div>}
-            {active.commercialContext.referral && <div><dt>Referido</dt><dd className="font-semibold">{active.commercialContext.referral.displayName}</dd></div>}
-            {active.commercialContext.associations.length > 0 && <div><dt>Asociaciones</dt><dd className="font-semibold">{active.commercialContext.associations.join(", ")}</dd></div>}
-          </dl>
-        </details>
-        {currentIssues.length > 0 && !accepted && <ul className="space-y-1 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        {archived
+          ? <ArchivedQuoteDocument key={archived.revisionRef} authorization={authorization} proposalRef={active.proposalRef} revisionRef={archived.revisionRef} onUnauthorized={onUnauthorized} />
+          : <QuoteDocument proposal={active} />}
+        {!archived && currentIssues.length > 0 && !accepted && <ul className="space-y-1 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           {currentIssues.map((issue, index) => <li key={issue.code + index}>{issue.message}</li>)}
         </ul>}
         <footer className="flex flex-wrap items-end justify-end gap-2 p-3">
           {communicationsEnabled && communicationsAccess && (communicationsAccess.canView || communicationsAccess.canPrepare && communicationsAccess.canTemplatesView)
-            && onOpenCommunications && <Button size="sm" variant="ghost" onClick={() => onOpenCommunications(active.revisionRef)}>Ver comunicaciones de Cotización</Button>}
-          {!accepted && access.canPublish && active.state === "DRAFT" && (canPublishDirectDiscount
+            && onOpenCommunications && <Button size="sm" variant="ghost" onClick={() => onOpenCommunications(archived?.revisionRef ?? active.revisionRef)}>Ver comunicaciones de Cotización</Button>}
+          {!archived && !accepted && access.canPublish && active.state === "DRAFT" && (canPublishDirectDiscount
             ? <>
               <label className="min-w-44 text-xs font-semibold">Motivo de autorización
                 <input className={COMPACT_FIELD} maxLength={1000} value={marginReason} onChange={(event) => setMarginReason(event.target.value)} />
@@ -460,11 +490,11 @@ export default function QuotePanel({
             </>
             : <Button size="sm" disabled={actionBusy || currentIssues.length > 0}
               onClick={() => void runAction(() => quoteApi.publish(authorization, active.proposalRef, active.revision))}><Check />Publicar</Button>)}
-          {!accepted && access.canSend && active.state === "READY" && <Button size="sm" disabled={actionBusy} onClick={() => void runAction(() =>
+          {!archived && !accepted && access.canSend && active.state === "READY" && <Button size="sm" disabled={actionBusy} onClick={() => void runAction(() =>
             quoteApi.send(authorization, { proposalRef: active.proposalRef, expectedRevision: active.revision, channel: "MANUAL", recipient: { kind: "RECIPIENT_ON_FILE", displayName: null, reference: null, present: true }, evidenceRef: null }))}>
             <Send />Registrar envío
           </Button>}
-          {!accepted && access.canRecordDecision && active.state === "SENT" && <>
+          {!archived && !accepted && access.canRecordDecision && active.state === "SENT" && <>
             <Button size="sm" disabled={actionBusy} onClick={() => void runAction(() => quoteApi.decision(authorization, {
               proposalRef: active.proposalRef, expectedRevision: active.revision, decision: "ACCEPTED", method: "EVIDENCE_ON_FILE",
               decidedBy: { kind: "CLIENT_REPRESENTATIVE", displayName: null, reference: null, present: true }, evidenceRef: "CLIENT-ACCEPTANCE-EVIDENCE", reason: null,

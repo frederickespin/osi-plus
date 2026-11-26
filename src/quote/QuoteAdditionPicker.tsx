@@ -21,6 +21,7 @@ export type AdditionalCharge = Readonly<{
   classification: "PR" | "EX" | "DE";
   catalog?: Pick<QuoteCatalogItem, "ruleRef" | "version" | "unitPrice" | "currency">;
   addedDuringPackage?: string;
+  planAddition?: boolean;
   prior?: Readonly<{ lineRef: string; quantity: string; quotedPrice: string | null; unitPrice: string }>;
 }>;
 

@@ -4,6 +4,7 @@ import { latestCostingRevision, latestLogisticsRevision, QUOTE_TRANSPORT_CONTEXT
 import { hasTransportCostingAuthority, resolveTransportCostingAuthority, transportCostingItemKey } from "./costingTransportAuthority.js";
 import { assertTransportRevisionCurrent } from "./logisticsTransportDomain.js";
 import { isPackagePricingRule } from "../../shared/servicePackagePricing.js";
+import { planVolume } from "../../shared/planVolume.js";
 import {
   applyPackageMargin,
   assertPackagePricingRule,
@@ -373,14 +374,11 @@ export async function getCostingPackageOptions(prisma, context, caseRef) {
       preferenceSnapshot: true,
       packageVersion: { select: { versionRef: true } },
     } }),
-    prisma.surveyPublication.findFirst({ where: { ...where, status: "CURRENT" }, select: { totalsSnapshot: true } }),
+    prisma.surveyPublication.findFirst({ where: { ...where, status: "CURRENT" }, orderBy: [{ publishedAt: "desc" }, { revision: "desc" }], select: { totalsSnapshot: true } }),
   ]);
   const preference = configuration?.preferenceSnapshot;
   const publishedVolume = survey?.totalsSnapshot?.totalVolumeM3 ?? survey?.totalsSnapshot?.volumeM3;
-  const candidates = preference?.directQuote
-    ? [publishedVolume, preference.directQuote.volumeM3]
-    : [preference?.quickQuote?.volumeM3, publishedVolume, pipelineCase.estimatedCbm];
-  const volumeM3 = candidates.map(Number).find((value) => Number.isFinite(value) && value > 0) ?? null;
+  const { amount: volumeM3 } = planVolume(preference, publishedVolume, pipelineCase.estimatedCbm);
   const configuredVersion = configuration?.packageVersion?.versionRef;
   const selectedPackageVersionRef = eligible.packages.find((pkg) => pkg.versionRef === configuredVersion)?.versionRef;
   return {
@@ -402,9 +400,9 @@ export async function getQuoteAddOnCatalog(prisma, context, caseRef, currency) {
     context.effectivePermissions.includes(COSTING_PERMISSIONS.TENANT) && !context.deniedPermissions?.includes(COSTING_PERMISSIONS.TENANT);
   requirePermission(context, quoteView ? "quote:view" : COSTING_PERMISSIONS.VIEW);
   await resolveCase(prisma, context, caseRef, quoteView && !costingTenant ? "quote:tenant" : COSTING_PERMISSIONS.TENANT);
-  if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) costingFail("COSTING_CURRENCY_INVALID");
+  if (currency !== null && (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency))) costingFail("COSTING_CURRENCY_INVALID");
   const rules = await currentRules(prisma, context.tenantId);
-  return rules.filter((rule) => rule.currency === currency).map(toQuoteCatalogItem).filter(Boolean)
+  return rules.filter((rule) => currency === null || rule.currency === currency).map(toQuoteCatalogItem).filter(Boolean)
     .sort((a, b) => a.name.localeCompare(b.name, "es"));
 }
 

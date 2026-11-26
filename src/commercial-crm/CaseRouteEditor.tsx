@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, LoaderCircle, MapPin, MapPinned, Save } from "lucide-react";
 import { AdministrationIconAction } from "@/administration/AdministrationHelp";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { isLogisticsUiEnabled } from "@/logistics-engine/mode";
 import type { TransportPlace } from "@/logistics-engine/transportPlaces";
 import { CaseRouteApi, CaseRouteClientError, type CaseRouteAddress, type CaseRouteOption, type CaseRouteWorkspace } from "./caseRouteApi";
@@ -10,7 +10,7 @@ import { CaseRouteApi, CaseRouteClientError, type CaseRouteAddress, type CaseRou
 const CaseRouteMap = lazy(() => import("./CaseRouteMap"));
 type RouteEnd = "origin" | "destination";
 type EditableAddress = { -readonly [K in keyof CaseRouteAddress]: CaseRouteAddress[K] };
-const field = "mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100";
+const field = "mt-1 h-8 w-full rounded-sm border-0 bg-slate-100 px-2 text-sm font-normal text-slate-900 outline-none focus:bg-sky-50 focus-visible:ring-2 focus-visible:ring-sky-600";
 const label = "text-[10px] font-bold uppercase tracking-wide text-slate-600";
 const blankAddress = (): EditableAddress => ({ sourceAddressRef: null, countryCode: "DO", provinceState: "", cityMunicipality: "", sector: "", streetAndNumber: "", buildingResidential: "", floorUnit: "", arrivalReference: "", locationContactName: "", locationContactPhone: "" });
 const edit = (value: CaseRouteAddress | null): EditableAddress => value ? { ...value } : blankAddress();
@@ -35,7 +35,7 @@ function optionText(option: CaseRouteOption) {
 
 function AddressEditor({ title, value, options, source, onSource, onChange, onMap }: Readonly<{ title: string; value: EditableAddress; options: readonly CaseRouteOption[]; source: string; onSource(value: string): void; onChange(value: EditableAddress): void; onMap?(): void }>) {
   const update = <K extends keyof EditableAddress>(key: K, next: EditableAddress[K]) => { onSource("MANUAL"); onChange({ ...value, [key]: next, ...(key === "sourceAddressRef" ? {} : { sourceAddressRef: null }) }); };
-  return <fieldset className="rounded-xl border border-slate-200 p-3">
+  return <fieldset className="min-w-0 space-y-1.5">
     <legend className="px-1 text-sm font-black text-[#003366]"><span className="inline-flex items-center gap-1">
       {title}
       {onMap && value.countryCode === "DO" && <AdministrationIconAction label={`Buscar ${title.toLowerCase()} en el mapa`} onClick={onMap}><MapPinned className="h-4 w-4" aria-hidden="true" /></AdministrationIconAction>}
@@ -54,7 +54,7 @@ function AddressEditor({ title, value, options, source, onSource, onChange, onMa
   </fieldset>;
 }
 
-export default function CaseRouteEditor({ open, caseRef, api, onOpenChange, onSaved }: Readonly<{ open: boolean; caseRef: string; api: CaseRouteApi; onOpenChange(open: boolean): void; onSaved(): void }>) {
+export default function CaseRouteEditor({ open, embedded = false, savedRevision, caseRef, api, onOpenChange, onSaved }: Readonly<{ open: boolean; embedded?: boolean; savedRevision?: number; caseRef: string; api: CaseRouteApi; onOpenChange?(open: boolean): void; onSaved(revision: number): void }>) {
   const [workspace, setWorkspace] = useState<CaseRouteWorkspace | null>(null);
   const [origin, setOrigin] = useState<EditableAddress>(blankAddress);
   const [destination, setDestination] = useState<EditableAddress>(blankAddress);
@@ -63,12 +63,17 @@ export default function CaseRouteEditor({ open, caseRef, api, onOpenChange, onSa
   const [destinationSource, setDestinationSource] = useState("CURRENT");
   const [mapEnd, setMapEnd] = useState<RouteEnd | null>(null);
   const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false); const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+  function applyWorkspace(value: CaseRouteWorkspace) {
+    setWorkspace(value); setOrigin(edit(value.route.origin)); setDestination(edit(value.route.destination));
+    setDestinationStatus(value.route.destinationStatus); setOriginSource("CURRENT"); setDestinationSource("CURRENT");
+  }
   useEffect(() => {
     if (!open) return undefined;
-    let active = true; setLoading(true); setError(""); setMapEnd(null);
-    void api.workspace(caseRef).then((value) => { if (!active) return; setWorkspace(value); setOrigin(edit(value.route.origin)); setDestination(edit(value.route.destination)); setDestinationStatus(value.route.destinationStatus); setOriginSource("CURRENT"); setDestinationSource("CURRENT"); }).catch((cause) => { if (active) setError(errorText(cause)); }).finally(() => { if (active) setLoading(false); });
+    let active = true; setLoading(true); setWorkspace(null); setError(""); setMapEnd(null);
+    void api.workspace(caseRef).then((value) => { if (active) applyWorkspace(value); }).catch((cause) => { if (active) setError(errorText(cause)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [api, caseRef, open]);
+  }, [api, caseRef, open, reload]);
   const select = (value: string, current: RouteEnd) => {
     setMapEnd(null);
     const option = workspace?.options.find((candidate) => candidate.optionId === value);
@@ -88,21 +93,25 @@ export default function CaseRouteEditor({ open, caseRef, api, onOpenChange, onSa
     }));
     setMapEnd(null);
   }
-  const canSave = useMemo(() => Boolean(workspace && valid(origin) && (destinationStatus === "PENDING" || valid(destination))), [destination, destinationStatus, origin, workspace]);
+  const changed = workspace && (JSON.stringify(clean(origin)) !== JSON.stringify(clean(edit(workspace.route.origin))) ||
+    destinationStatus !== workspace.route.destinationStatus ||
+    (destinationStatus !== "PENDING" && JSON.stringify(clean(destination)) !== JSON.stringify(clean(edit(workspace.route.destination)))));
+  const canSave = useMemo(() => Boolean(changed && valid(origin) && (destinationStatus === "PENDING" || valid(destination))), [changed, destination, destinationStatus, origin]);
   const save = async () => {
     if (!workspace || !canSave || saving) return;
     setSaving(true); setError("");
-    try { await api.update(caseRef, { expectedVersion: workspace.version, expectedRouteRevision: workspace.route.revision, destinationStatus, origin: clean(origin), destination: destinationStatus === "PENDING" ? null : clean(destination) }); onSaved(); onOpenChange(false); }
+    try {
+      const updated = await api.update(caseRef, { expectedVersion: workspace.version, expectedRouteRevision: workspace.route.revision, destinationStatus, origin: clean(origin), destination: destinationStatus === "PENDING" ? null : clean(destination) });
+      applyWorkspace(updated); setMapEnd(null); onSaved(updated.route.revision); onOpenChange?.(false);
+    }
     catch (cause) { setError(errorText(cause)); }
     finally { setSaving(false); }
   };
-  return <Dialog open={open} onOpenChange={(value) => { if (!saving) onOpenChange(value); }}>
-    <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-5xl" data-testid="case-route-editor">
-      <DialogHeader><DialogTitle className="flex items-center gap-2 text-[#003366]"><MapPin className="h-5 w-5" />Ruta del caso</DialogTitle><DialogDescription>Estas direcciones pertenecen al servicio. No modifican la dirección maestra del cliente.</DialogDescription></DialogHeader>
+  const body = <>
       {loading && <div className="grid min-h-56 place-items-center text-sm text-slate-500"><LoaderCircle className="h-5 w-5 animate-spin" />Cargando direcciones…</div>}
-      {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">{error}</p>}
+      {error && <p role="alert" className="bg-red-50 px-2 py-1 text-sm text-red-800">{error} <button className="underline" onClick={() => setReload((value) => value + 1)}>Recargar direcciones</button></p>}
       {workspace && !loading && <>
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><AlertTriangle className="mr-1 inline h-4 w-4" />Al guardar se crea una nueva versión de la ruta y deberán revisarse geocerca, distancia, visita, transporte y agenda.</div>
+        {changed && <p className="text-xs text-amber-900"><AlertTriangle className="mr-1 inline h-4 w-4" />Al guardar, revisa la distancia, el transporte y la visita para esta ruta.</p>}
         {mapEnd && <Suspense fallback={<p role="status" className="text-xs text-slate-500">Cargando mapa…</p>}>
           <CaseRouteMap key={mapEnd} api={api} caseRef={caseRef} title={mapEnd === "origin" ? "Mapa del origen" : "Mapa del destino"} disabled={saving}
             onApply={(place) => applyMap(mapEnd, place)} onClose={() => setMapEnd(null)} />
@@ -110,16 +119,26 @@ export default function CaseRouteEditor({ open, caseRef, api, onOpenChange, onSa
         <div className="grid gap-3 lg:grid-cols-2">
           <AddressEditor title="Origen" value={origin} options={workspace.options} source={originSource} onSource={(value) => select(value, "origin")} onChange={setOrigin} onMap={isLogisticsUiEnabled() ? () => setMapEnd("origin") : undefined} />
           <div className="space-y-3">
-            <label className={label}>Estado del destino
+            {destinationStatus !== "PENDING" && <AddressEditor title="Destino" value={destination} options={workspace.options} source={destinationSource} onSource={(value) => select(value, "destination")} onChange={setDestination} onMap={isLogisticsUiEnabled() ? () => setMapEnd("destination") : undefined} />}
+            <label className={label + " block max-w-56"}>Estado del destino
               <select className={field} value={destinationStatus} onChange={(event) => { setDestinationStatus(event.target.value as CaseRouteWorkspace["route"]["destinationStatus"]); if (mapEnd === "destination") setMapEnd(null); }}>
                 <option value="CONFIRMED">Confirmado</option><option value="APPROXIMATE">Aproximado</option><option value="PENDING">Pendiente de confirmar</option>
               </select>
             </label>
-            {destinationStatus !== "PENDING" && <AddressEditor title="Destino" value={destination} options={workspace.options} source={destinationSource} onSource={(value) => select(value, "destination")} onChange={setDestination} onMap={isLogisticsUiEnabled() ? () => setMapEnd("destination") : undefined} />}
           </div>
         </div>
       </>}
-      <DialogFooter><Button type="button" variant="outline" disabled={saving} onClick={() => onOpenChange(false)}>Cancelar</Button><Button type="button" disabled={!canSave || saving} onClick={() => void save()}>{saving ? <LoaderCircle className="animate-spin" /> : <Save />}{saving ? "Guardando…" : "Guardar ruta"}</Button></DialogFooter>
+      <div className="flex items-center justify-end gap-2">
+        {embedded && workspace && savedRevision === workspace.route.revision && !changed && <span role="status" className="text-xs text-emerald-700">Direcciones guardadas</span>}
+        {!embedded && <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => onOpenChange?.(false)}>Cancelar</Button>}
+        <Button type="button" size="sm" disabled={!canSave || saving} onClick={() => void save()}>{saving ? <LoaderCircle className="animate-spin" /> : <Save />}{saving ? "Guardando…" : "Guardar ruta"}</Button>
+      </div>
+  </>;
+  if (embedded) return <section aria-label="Direcciones del caso" data-testid="case-route-editor" className="space-y-3">{body}</section>;
+  return <Dialog open={open} onOpenChange={(value) => { if (!saving) onOpenChange?.(value); }}>
+    <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-5xl" data-testid="case-route-editor">
+      <DialogHeader><DialogTitle className="flex items-center gap-2 text-[#003366]"><MapPin className="h-5 w-5" />Ruta del caso</DialogTitle><DialogDescription>Selecciona el origen y el destino del servicio.</DialogDescription></DialogHeader>
+      {body}
     </DialogContent>
   </Dialog>;
 }

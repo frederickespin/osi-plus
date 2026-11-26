@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { CrmServicesError } from "./crmServicesContract.js";
+import { knownAccessFlags } from "../../shared/routeAccess.js";
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,190}$/;
@@ -37,6 +38,40 @@ function requestId(value) { const result = text(value, 191, 8); if (!REQUEST_ID.
 function code(value) { const result = text(value, 64, 2); if (!CODE.test(result)) fail("SERVICE_PACKAGES_INPUT_INVALID"); return result; }
 function identityCode(value) { return value === null ? null : code(value); }
 function optionalRule(value) { if (!value || typeof value !== "object" || Array.isArray(value) || JSON.stringify(value).length > 2_000) fail("SERVICE_PACKAGES_INPUT_INVALID"); return Object.freeze({ ...value }); }
+
+function configurationPreference(value) {
+  const quick = value?.quickQuote;
+  if (quick && Object.hasOwn(quick, "clientAccessConditions")) {
+    const conditions = quick.clientAccessConditions;
+    if (quick.schemaVersion !== 2 || !conditions || typeof conditions !== "object" || Array.isArray(conditions)
+      || Object.keys(conditions).some((side) => !["origin", "destination"].includes(side))) fail("SERVICE_PACKAGES_INPUT_INVALID");
+    for (const entry of Object.values(conditions)) {
+      exact(entry, ["routeRevision", "flags"]);
+      integer(entry.routeRevision, 1);
+      if (!Array.isArray(entry.flags) || !entry.flags.length || knownAccessFlags(entry.flags).length !== entry.flags.length) {
+        fail("SERVICE_PACKAGES_INPUT_INVALID");
+      }
+    }
+  }
+  if (!quick || !Object.hasOwn(quick, "pricedAdditions")) return optionalRule(value);
+  const { pricedAdditions, ...rest } = quick;
+  optionalRule({ ...value, quickQuote: rest });
+  if (!Array.isArray(pricedAdditions) || pricedAdditions.length > 120) fail("SERVICE_PACKAGES_ADDON_INPUT_INVALID");
+  const seen = new Set();
+  for (const row of pricedAdditions) {
+    exact(row, ["ruleRef", "version", "name", "family", "unit", "currency", "unitPrice", "classification", "quantity"]);
+    ref(row.ruleRef);
+    if (!Number.isSafeInteger(row.version) || row.version < 1 || seen.has(row.ruleRef) ||
+      typeof row.quantity !== "string" || !/^\d{1,7}(?:[.,]\d{1,6})?$/.test(row.quantity) ||
+      Number(row.quantity.replace(",", ".")) <= 0 || Number(row.quantity.replace(",", ".")) > 1_000_000 ||
+      !/^[A-Z]{3}$/.test(row.currency) || row.currency !== pricedAdditions[0].currency ||
+      typeof row.unitPrice !== "string" || !/^\d{1,10}(?:\.\d{1,10})?$/.test(row.unitPrice) ||
+      !["PR", "EX", "DE"].includes(row.classification)) fail("SERVICE_PACKAGES_ADDON_INPUT_INVALID");
+    text(row.name, 240); text(row.unit, 80); text(row.family, 80);
+    seen.add(row.ruleRef);
+  }
+  return Object.freeze({ ...value });
+}
 
 function validateDirectQuote(value) {
   const textLimits = { clientList: 800, originAccess: 100, destinationAccess: 100, specialWork: 260 };
@@ -126,7 +161,7 @@ function override(value) {
 export function normalizeCaseConfigurationSave(input) {
   exact(input, ["requestId", "payloadHash", "expectedRevision", "serviceSelectionRef", "serviceSelectionRevision", "packageVersionRef", "materialPolicyVersionRef", "surveyPublicationRef", "commercialAgreementRef", "preference", "duration", "source", "overrides"]);
   if (!Array.isArray(input.overrides) || input.overrides.length > 100) fail("SERVICE_PACKAGES_INPUT_INVALID");
-  const preference = optionalRule(input.preference);
+  const preference = configurationPreference(input.preference);
   if (Object.hasOwn(preference, "directQuote")) validateDirectQuote(preference.directQuote);
   if (Object.hasOwn(preference, "serviceStartDate")) serviceStartDate(preference.serviceStartDate);
   const payload = Object.freeze({ operation: "CASE_CONFIGURATION_SAVE", requestId: requestId(input.requestId), expectedRevision: integer(input.expectedRevision), serviceSelectionRef: ref(input.serviceSelectionRef), serviceSelectionRevision: integer(input.serviceSelectionRevision, 1), packageVersionRef: ref(input.packageVersionRef, true), materialPolicyVersionRef: ref(input.materialPolicyVersionRef, true), surveyPublicationRef: ref(input.surveyPublicationRef, true), commercialAgreementRef: ref(input.commercialAgreementRef, true), preference, duration: optionalRule(input.duration), source: choice(input.source, SOURCES), overrides: Object.freeze(input.overrides.map(override)) });
@@ -137,7 +172,9 @@ export function normalizeCaseIntakeSave(input) {
   exact(input, ["requestId", "payloadHash", "expectedRevision", "serviceSelectionRef", "serviceSelectionRevision", "intake"]);
   const intake = optionalRule(input.intake);
   const hasDirectQuote = Object.hasOwn(intake, "directQuote");
-  exact(intake, hasDirectQuote ? ["serviceStartDate", "directQuote"] : ["serviceStartDate"]);
+  const hasRouteRevision = Object.hasOwn(intake, "accessRouteRevision");
+  exact(intake, ["serviceStartDate", ...(hasDirectQuote ? ["directQuote"] : []), ...(hasDirectQuote && hasRouteRevision ? ["accessRouteRevision"] : [])]);
+  if (hasRouteRevision) integer(intake.accessRouteRevision);
   serviceStartDate(intake.serviceStartDate);
   if (hasDirectQuote && intake.directQuote !== null) validateDirectQuote(intake.directQuote);
   return signed(input, {

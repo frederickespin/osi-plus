@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, Calculator, History, MapPin, Plus, Save, X } from "lucide-react";
+import { AlertTriangle, History, Plus, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { COMPACT_TABLE_FIELD } from "@/components/ui/compact-form";
 import { cn } from "@/lib/utils";
@@ -8,10 +8,8 @@ import CommercialStorageAuthorizationPanel from "@/customer-custody/CommercialSt
 import QuickQuoteConfigurator from "./QuickQuoteConfigurator";
 
 export type ServiceCaseIntake = Readonly<{
-  origin: string;
-  destination: string;
-  onOpenRoute?: () => void;
-  onOpenTransport?: () => void;
+  addresses?: ReactNode;
+  costs?: ReactNode;
   saving?: boolean;
   nextStep?: (plan: Readonly<{
     canContinue: boolean;
@@ -28,19 +26,25 @@ type Props = Readonly<{
   authorization?: string;
   canUpdate: boolean;
   canConfigure?: boolean;
+  canReadCatalog: boolean;
   canViewConfiguration?: boolean;
   intake?: ServiceCaseIntake;
+  activeStage: PlanStage;
+  onStageChange(stage: PlanStage): void;
   onUnauthorized(): void;
 }>;
-type GuidedStage = "plan" | "movements" | "configuration";
+export type PlanStage = "plan" | "addresses" | "movements" | "configuration" | "costs";
 const MODE_LABEL = { LOCAL: "LOCAL / NACIONAL", EXPORT: "EXPORTACIÓN", IMPORT: "IMPORTACIÓN" };
 const FIELD = cn(COMPACT_TABLE_FIELD, "bg-slate-50 px-2");
 function errorCopy(error: unknown) {
   const code = error instanceof CrmServicesApiError ? error.code : "CRM_SERVICES_UNAVAILABLE";
+  if (code === "SERVICE_PACKAGES_ADDON_PRICE_STALE") return "Cambió la tarifa de un adicional. Actualiza la lista y vuelve a seleccionarlo.";
+  if (code === "SERVICE_PACKAGES_ADDON_INPUT_INVALID") return "Revisa la cantidad y la moneda de los adicionales.";
+  if (code === "SERVICE_PACKAGES_VERSION_CONFLICT") return "Cambió la ruta o la configuración del caso. Actualiza el plan y confirma los datos antes de guardar.";
   return ({ CRM_SERVICES_VERSION_CONFLICT: "El plan cambió. Recargue antes de guardar una nueva versión.", CRM_SERVICES_PRIMARY_INCOMPATIBLE: "La necesidad principal ya no es compatible con el modo del caso.", CRM_SERVICES_COMPLEMENTARY_NOT_ALLOWED: "Un servicio asociado ya no está permitido para la necesidad principal.", CRM_SERVICES_DISABLED: "Servicios permanece desactivado en este entorno." } as Record<string, string>)[code] || "No fue posible cargar o guardar el plan de Servicios.";
 }
 
-export default function ServiceCasePanel({ caseRef, authorization, canUpdate, canConfigure = false, canViewConfiguration = false, intake, onUnauthorized }: Props) {
+export default function ServiceCasePanel({ caseRef, authorization, canUpdate, canConfigure = false, canReadCatalog, canViewConfiguration = false, intake, activeStage, onStageChange, onUnauthorized }: Props) {
   const api = useMemo(() => new CrmServicesApi(() => authorization || null), [authorization]);
   const [workspace, setWorkspace] = useState<CaseServiceWorkspace | null>(null);
   const [primaryRef, setPrimaryRef] = useState("");
@@ -57,11 +61,10 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
   const [configurationLoading, setConfigurationLoading] = useState(canViewConfiguration);
   const [configurationUnavailable, setConfigurationUnavailable] = useState(false);
   const [configurationRefresh, setConfigurationRefresh] = useState(0);
-  const [packageVersionRef, setPackageVersionRef] = useState("");
-  const [policyVersionRef, setPolicyVersionRef] = useState("");
-  const [durationHours, setDurationHours] = useState("");
+  const [loadedSelection, setLoadedSelection] = useState<string>();
   const [configurationSaving, setConfigurationSaving] = useState(false);
-  const [activeStage, setActiveStage] = useState<GuidedStage>("plan");
+  const [openedAddresses, setOpenedAddresses] = useState(false);
+  const [openedConfiguration, setOpenedConfiguration] = useState(false);
   const load = useCallback(() => {
     const controller = new AbortController(); setLoading(true); setError(null);
     void api.workspace(caseRef, controller.signal).then((value) => {
@@ -76,9 +79,15 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
   }, [api, caseRef, onUnauthorized]);
   useEffect(load, [load]);
   const reloadConfiguration = useCallback(() => { setConfigurationRefresh((count) => count + 1); }, []);
-  const configuration = canViewConfiguration && configurationWorkspace?.caseRef === caseRef ? configurationWorkspace : null;
+  const selectionKey = workspace && workspace.caseRef === caseRef ? workspace.selection.selectionRef || "empty" : undefined;
+  const configuration = canViewConfiguration && selectionKey && loadedSelection === selectionKey && configurationWorkspace?.caseRef === caseRef ? configurationWorkspace : null;
+  const current = configuration?.current && configuration.current.serviceSelectionRef === workspace?.selection.selectionRef &&
+    configuration.current.serviceSelectionRevision === workspace.selection.revision ? configuration.current : null;
+  const packageVersionRef = configuration?.packages.find((item) => item.packageRef === current?.packageRef && item.version === current?.packageVersion)?.versionRef || "";
+  const policyVersionRef = configuration?.materialPolicies.find((item) => item.policyRef === current?.materialPolicyRef && item.version === current?.materialPolicyVersion)?.versionRef || "";
+  const durationHours = typeof current?.duration.hours === "number" ? String(current.duration.hours) : "";
   useEffect(() => {
-    if (!canViewConfiguration) {
+    if (!canViewConfiguration || !selectionKey) {
       setConfiguration(null);
       setConfigurationLoading(false);
       setConfigurationUnavailable(false);
@@ -90,18 +99,14 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
     void api.caseConfiguration(caseRef, controller.signal).then((value) => {
       if (controller.signal.aborted) return;
       setConfiguration(value);
-      setPackageVersionRef(value.packages.find((item) =>
-        item.packageRef === value.current?.packageRef && item.version === value.current?.packageVersion)?.versionRef || "");
-      setPolicyVersionRef(value.materialPolicies.find((item) =>
-        item.policyRef === value.current?.materialPolicyRef && item.version === value.current?.materialPolicyVersion)?.versionRef || "");
-      setDurationHours(String(typeof value.current?.duration.hours === "number" ? value.current.duration.hours : ""));
+      setLoadedSelection(selectionKey);
     }).catch((cause) => {
       if (controller.signal.aborted) return;
       if (cause instanceof CrmServicesApiError && cause.status === 401) onUnauthorized();
       setConfigurationUnavailable(true);
     }).finally(() => { if (!controller.signal.aborted) setConfigurationLoading(false); });
     return () => controller.abort();
-  }, [api, canViewConfiguration, caseRef, onUnauthorized, configurationRefresh]);
+  }, [api, canViewConfiguration, caseRef, onUnauthorized, configurationRefresh, selectionKey]);
   const compatible = useMemo(() => workspace?.allowedComplementaries.filter((item) => item.primaryServiceRef === primaryRef).map((item) => item.service) || [], [primaryRef, workspace]);
   const compatibleByRef = useMemo(() => new Map(compatible.map((item) => [item.serviceRef, item])), [compatible]);
   const availableCatalog = useMemo(() => compatible.filter((item) => !complementaryRefs.includes(item.serviceRef)), [compatible, complementaryRefs]);
@@ -115,10 +120,14 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
     const selectedCodes = new Set([workspace.selection.primary?.code, ...workspace.selection.complementaries.map((item) => item.code)].filter(Boolean));
     return configuration.packages.filter((item) => [item.primary, ...item.complementaries].filter(Boolean).every((service) => Boolean(service && selectedCodes.has(service.code))));
   }, [configuration, workspace]);
+  const hasCostView = Boolean(intake?.costs);
   useEffect(() => {
-    if ((!storageSelected && activeStage === "movements") ||
-      (!canViewConfiguration && activeStage === "configuration")) setActiveStage("plan");
-  }, [activeStage, canViewConfiguration, storageSelected]);
+    if (activeStage === "addresses") setOpenedAddresses(true);
+    if (activeStage === "configuration") setOpenedConfiguration(true);
+    if ((!loading && !storageSelected && activeStage === "movements") ||
+      (!canViewConfiguration && activeStage === "configuration") ||
+      (!hasCostView && activeStage === "costs")) onStageChange("plan");
+  }, [activeStage, canViewConfiguration, hasCostView, loading, onStageChange, storageSelected]);
   const pendingService = Boolean(catalogRef || otherDraft.trim());
   const canEditPlan = canUpdate && !saving && !loading && !intake?.saving;
   const canContinue = Boolean(workspace?.selection.selectionRef && !dirty && !pendingService && !saving && !loading);
@@ -149,17 +158,18 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
     const nextPackageRef = draft?.packageVersionRef ?? packageVersionRef;
     const nextPolicyRef = draft?.policyVersionRef ?? policyVersionRef;
     const nextDuration = draft?.durationHours ?? durationHours;
-    const preference = { ...configuration.current?.preference };
+    const preference = { ...current?.preference };
     delete preference.serviceStartDate;
     delete preference.directQuote;
     delete preference.directQuoteRecordedAt;
+    delete preference.directAccessRouteVersions;
     if (draft) preference.quickQuote = draft.preference;
     try {
       await api.saveCaseConfiguration(caseRef, {
         requestId: crypto.randomUUID(), expectedRevision: configuration.current?.revision || 0,
         serviceSelectionRef: workspace.selection.selectionRef, serviceSelectionRevision: workspace.selection.revision,
         packageVersionRef: nextPackageRef || null, materialPolicyVersionRef: nextPolicyRef || null,
-        surveyPublicationRef: null, commercialAgreementRef: null,
+        surveyPublicationRef: configuration.surveySummary?.publicationRef ?? null, commercialAgreementRef: null,
         preference,
         duration: nextDuration ? { hours: Number(nextDuration) } : {},
         source: nextPackageRef ? "PACKAGE" : "MANUAL_RESOLUTION", overrides: [],
@@ -178,9 +188,11 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
   }
   if (!workspace || workspace.caseRef !== caseRef) return null;
 
-  const stages: { id: GuidedStage; label: string }[] = [{ id: "plan", label: "Plan" }];
+  const stages: { id: PlanStage; label: string }[] = [{ id: "plan", label: "Plan" }];
+  if (intake?.addresses) stages.push({ id: "addresses", label: "Direcciones" });
   if (storageSelected) stages.push({ id: "movements", label: "Movimientos" });
   if (canViewConfiguration) stages.push({ id: "configuration", label: "Configuración" });
+  if (intake?.costs) stages.push({ id: "costs", label: "Costos internos" });
   const selectedPrimary = workspace.primaries.find((item) => item.serviceRef === primaryRef) ??
     (workspace.selection.primary?.serviceRef === primaryRef ? workspace.selection.primary : undefined);
   const savedPrimary = workspace.selection.primary;
@@ -194,32 +206,19 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
       {stages.map((stage) => <button key={stage.id} id={"storage-" + stage.id + "-tab"} type="button" role="tab"
         aria-selected={activeStage === stage.id} aria-controls={"storage-" + stage.id + "-panel"}
         disabled={stage.id !== "plan" && !canChangeStage}
-        onClick={() => setActiveStage(stage.id)}
+        onClick={() => onStageChange(stage.id)}
         className={"rounded px-2.5 py-1.5 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0070a8] disabled:opacity-40 " +
           (activeStage === stage.id ? "bg-[#003366] text-white" : "text-slate-600 hover:bg-slate-100")}>{stage.label}</button>)}
     </nav>}
     {error && <p role="alert" className="mb-2 flex items-center gap-2 rounded bg-red-50 px-2 py-1.5 text-xs text-red-800">
       <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />{error}
+      {activeStage === "configuration" && <button type="button" className="font-semibold underline" onClick={() => { load(); reloadConfiguration(); }}>Actualizar plan</button>}
     </p>}
     <div id="storage-plan-panel" role={hasViews ? "tabpanel" : undefined} aria-labelledby={hasViews ? "storage-plan-tab" : undefined}
       hidden={activeStage !== "plan"}>
       <div className="grid min-w-0 items-start gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         <section aria-labelledby="case-intake-heading" className="min-w-0 space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <h2 id="case-intake-heading" className="text-sm font-semibold text-[#003366]">Datos del caso</h2>
-            {intake?.onOpenRoute && <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs"
-              onClick={intake.onOpenRoute}><MapPin aria-hidden="true" className="size-4" />Editar ruta</Button>}
-          </div>
-          {intake && <section aria-label="Ruta para cotizar" className="space-y-1">
-            <dl className="grid min-w-0 gap-2 sm:grid-cols-2">
-            <div className="min-w-0"><dt className="text-xs font-semibold text-slate-600">Origen</dt>
-              <dd className="mt-0.5 break-words rounded-sm bg-slate-50 px-2 py-1.5 text-xs text-slate-900">{intake.origin || "Pendiente"}</dd></div>
-            <div className="min-w-0"><dt className="text-xs font-semibold text-slate-600">Destino</dt>
-              <dd className="mt-0.5 break-words rounded-sm bg-slate-50 px-2 py-1.5 text-xs text-slate-900">{intake.destination || "Pendiente"}</dd></div>
-            </dl>
-            {intake.onOpenTransport && <Button type="button" variant="ghost" size="sm" className="h-7 px-1 text-xs"
-              onClick={intake.onOpenTransport}><Calculator aria-hidden="true" className="size-3.5" />Ver costo de transporte</Button>}
-          </section>}
+          <h2 id="case-intake-heading" className="text-sm font-semibold text-[#003366]">Datos del caso</h2>
           <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
             <label className="min-w-0 text-xs font-semibold text-slate-600">Modo / Alcance
               <input readOnly value={MODE_LABEL[workspace.mode]} className={FIELD + " mt-0.5"} />
@@ -331,6 +330,12 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
         {primaryChanged && <p className="basis-full text-xs text-amber-900">El cambio de necesidad principal creará una nueva versión.</p>}
       </footer>
     </div>
+    {intake?.addresses && <div id="storage-addresses-panel" role="tabpanel" aria-labelledby="storage-addresses-tab" hidden={activeStage !== "addresses"}>
+      {(activeStage === "addresses" || openedAddresses) && intake.addresses}
+    </div>}
+    {intake?.costs && <div id="storage-costs-panel" role="tabpanel" aria-labelledby="storage-costs-tab" hidden={activeStage !== "costs"}>
+      {activeStage === "costs" && intake.costs}
+    </div>}
     {storageSelected && <div id="storage-movements-panel"
       role="tabpanel" aria-labelledby="storage-movements-tab" hidden={activeStage !== "movements"}>
       <CommercialStorageAuthorizationPanel caseRef={caseRef} selectionRef={workspace.selection.selectionRef}
@@ -338,16 +343,21 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
         canAuthorize={canUpdate && canContinue} activeView="authorization" showRequirementDetails />
     </div>}
     <div id="storage-configuration-panel" role="tabpanel" aria-labelledby="storage-configuration-tab" hidden={activeStage !== "configuration"}>
-      {canViewConfiguration && <section className="mt-4" data-testid="case-service-configuration">
-        <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-[.18em] text-[#0070a8]">Planificación del servicio</p><h3 className="text-lg font-black text-[#003366]">Recursos y materiales</h3><p className="text-xs text-slate-500">Indique el volumen, las condiciones de acceso y la duración estimada del trabajo.</p></div><span className="rounded bg-slate-100 px-2 py-1 text-xs font-bold">Revisión {configuration?.current?.revision || 0}</span></div>
+      {canViewConfiguration && (activeStage === "configuration" || openedConfiguration) && <section className="mt-4" data-testid="case-service-configuration">
+        <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold text-[#003366]">Recursos y materiales</h3><span className="text-xs text-slate-500">Revisión {current?.revision || 0}</span></div>
         {configurationLoading && <p role="status" className="mt-2 text-xs text-slate-600">Cargando configuración…</p>}
         {configurationUnavailable && <p role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-800">
           No fue posible cargar la configuración.<Button type="button" variant="ghost" size="sm" onClick={reloadConfiguration}>Reintentar</Button>
         </p>}
         {configuration && <>
-          <QuickQuoteConfigurator key={configuration.current?.revision || 0} packages={eligiblePackages} policies={configuration.materialPolicies} initialPackageVersionRef={packageVersionRef} initialPolicyVersionRef={policyVersionRef} initialDurationHours={durationHours} initialPreference={configuration.current?.preference || {}} disabled={!canConfigure || !canContinue || configurationLoading || configurationUnavailable} saving={configurationSaving} onConfirm={(draft) => void saveConfiguration(draft)} />
-          <details className="mt-4 rounded-lg border border-slate-200 bg-white"><summary className="cursor-pointer px-3 py-2 text-xs font-bold text-slate-700">Ver recursos y requerimientos confirmados</summary><div className="overflow-x-auto border-t"><div className="grid min-w-[700px] grid-cols-[120px_minmax(180px,1fr)_100px_110px_120px] border-b bg-slate-50 px-3 py-2 text-[10px] font-black uppercase text-slate-500"><span>Tipo</span><span>Requerimiento</span><span>Cantidad</span><span>Disposición</span><span>Fuente</span></div>{configuration.current?.items.map((item) => <div key={item.itemRef} className="grid min-w-[700px] grid-cols-[120px_minmax(180px,1fr)_100px_110px_120px] border-b px-3 py-2 text-xs"><span>{item.kind}</span><strong>{item.name}</strong><span>{item.quantity ?? item.hours ?? item.days ?? "—"} {item.unitCode || ""}</span><span>{item.disposition || item.chargeType || "—"}</span><span>{item.source}</span></div>)}{!configuration.current && <p className="p-4 text-xs text-slate-500">Aún no se han guardado los recursos del servicio.</p>}</div></details>
-          {configuration.current?.conflicts.some((item) => item.state === "OPEN") && <p role="alert" className="mt-3 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Existe un conflicto de configuraciones equivalentes. Debe resolverse administrativamente; no se eligió una al azar.</p>}
+          <QuickQuoteConfigurator key={selectionKey + ":" + (current?.revision || 0) + ":" + (configuration.surveySummary?.publicationRef || "")}
+            caseRef={caseRef} authorization={authorization} canReadCatalog={canReadCatalog} surveySummary={configuration.surveySummary}
+            routeRevision={configuration.routeRevision} estimatedVolumeM3={configuration.estimatedVolumeM3}
+            packages={eligiblePackages} policies={configuration.materialPolicies} initialPackageVersionRef={packageVersionRef}
+            initialPolicyVersionRef={policyVersionRef} initialDurationHours={durationHours} initialPreference={current?.preference || {}}
+            disabled={!canConfigure || !canContinue || configurationLoading || configurationUnavailable} saving={configurationSaving} onConfirm={(draft) => void saveConfiguration(draft)} />
+          <details className="mt-4 rounded-lg border border-slate-200 bg-white"><summary className="cursor-pointer px-3 py-2 text-xs font-bold text-slate-700">Ver recursos y requerimientos confirmados</summary><div className="overflow-x-auto border-t"><div className="grid min-w-[700px] grid-cols-[120px_minmax(180px,1fr)_100px_110px_120px] border-b bg-slate-50 px-3 py-2 text-[10px] font-black uppercase text-slate-500"><span>Tipo</span><span>Requerimiento</span><span>Cantidad</span><span>Disposición</span><span>Fuente</span></div>{current?.items.map((item) => <div key={item.itemRef} className="grid min-w-[700px] grid-cols-[120px_minmax(180px,1fr)_100px_110px_120px] border-b px-3 py-2 text-xs"><span>{item.kind}</span><strong>{item.name}</strong><span>{item.quantity ?? item.hours ?? item.days ?? "—"} {item.unitCode || ""}</span><span>{item.disposition || item.chargeType || "—"}</span><span>{item.source}</span></div>)}{!current && <p className="p-4 text-xs text-slate-500">Aún no se han guardado los recursos del servicio.</p>}</div></details>
+          {current?.conflicts.some((item) => item.state === "OPEN") && <p role="alert" className="mt-3 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Existe un conflicto de configuraciones equivalentes. Debe resolverse administrativamente; no se eligió una al azar.</p>}
           <p className="mt-3 text-[11px] text-slate-500">Precedencia: ajuste del caso → acuerdo comercial → paquete → modo/servicio → resolución manual.</p>
         </>}
       </section>}

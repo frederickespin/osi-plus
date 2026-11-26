@@ -1,3 +1,4 @@
+import { clientRouteAccessFlags } from "../../shared/routeAccess.js";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { isWarehouseConfigurationEnabled } from "./warehouseConfigurationMode.js";
@@ -53,12 +54,15 @@ function sumMovement(rows) {
   const positive = new Set(["RECEIPT", "TRANSFER_IN", "RETURN", "ADJUSTMENT_POSITIVE"]);
   return rows.reduce((total, row) => total + numeric(row.quantityBase) * (positive.has(row.movementType) ? 1 : -1), 0);
 }
-function surveyMetrics(publication) {
+function surveyMetrics(publication, routeRevision) {
   if (!publication) return { publicationRef: null, logicalSha256: null, volumeM3: 0, weightKg: 0, itemCount: 0, accessFlags: [], cratingCandidates: 0 };
   const totals = publication.totalsSnapshot || {};
-  const accessFlags = [...new Set(publication.accessSnapshots.flatMap((row) => {
+  const access = publication.routeVersion === routeRevision ? publication.accessSnapshots : [];
+  const accessFlags = [...new Set(access.flatMap((row) => {
     const facts = row.factsSnapshot || {};
-    return Object.entries(facts).filter(([, value]) => value === true).map(([key]) => `${row.side}:${key}`);
+    const legacy = Object.keys(facts).filter((key) => facts[key] === true).map((key) => `${row.side}:${key}`);
+    const flags = Array.isArray(facts.flags) ? facts.flags.filter((flag) => typeof flag === "string") : [];
+    return [...legacy, ...flags, ...flags.map((flag) => `${row.side}:${flag}`)];
   }))].sort();
   const items = publication.items || [];
   return {
@@ -83,16 +87,24 @@ function inputFingerprint(facts, rules) {
 export async function loadCanonicalLogisticsFacts(tx, context, caseRef, intervalStart, intervalEnd) {
   const pipelineCase = await resolveCase(tx, context, caseRef);
   const start = new Date(intervalStart); const end = new Date(intervalEnd); const observedAt = new Date();
-  const [routeRows, service, publication, requirement, models, vehicles, offers] = await Promise.all([
+  const scope = { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id };
+  const service = await tx.pipelineCaseServiceRevision.findFirst({ where: scope, orderBy: { revision: "desc" }, include: { items: { orderBy: { position: "asc" } } } });
+  if (!service) logisticsFail("LOGISTICS_SERVICE_REVISION_REQUIRED", 409);
+  const [routeRows, publication, models, vehicles, offers, configuration] = await Promise.all([
     tx.pipelineCaseRouteSnapshot.findMany({ where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, routeVersion: pipelineCase.routeRevision }, select: { role: true, stopOrder: true, countryCode: true, provinceState: true, cityMunicipality: true }, orderBy: [{ role: "asc" }, { stopOrder: "asc" }] }),
-    tx.pipelineCaseServiceRevision.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id }, orderBy: { revision: "desc" }, include: { items: { orderBy: { position: "asc" } } } }),
-    tx.surveyPublication.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, status: "CURRENT" }, orderBy: { publishedAt: "desc" }, include: { items: { orderBy: { position: "asc" } }, accessSnapshots: true } }),
-    tx.materialRequirementSnapshot.findFirst({ where: { tenantId: context.tenantId, pipelineCaseId: pipelineCase.id, status: "CURRENT" }, orderBy: { createdAt: "desc" }, include: { lines: { include: { material: { select: { id: true, materialRef: true, name: true, costs: { where: { validTo: null }, orderBy: { version: "desc" }, take: 1 } } }, unit: { select: { code: true } } }, orderBy: { position: "asc" } } } }),
+    tx.surveyPublication.findFirst({ where: { ...scope, serviceSelectionRef: service.selectionRef, status: "CURRENT" },
+      orderBy: [{ publishedAt: "desc" }, { revision: "desc" }], include: { items: { orderBy: { position: "asc" } }, accessSnapshots: true,
+        materialRequirements: { where: { status: "CURRENT" }, orderBy: { revision: "desc" }, take: 1, include: {
+          lines: { include: { material: { select: { id: true, materialRef: true, name: true, costs: { where: { validTo: null }, orderBy: { version: "desc" }, take: 1 } } }, unit: { select: { code: true } } }, orderBy: { position: "asc" } },
+        } },
+      } }),
     tx.assetModel.findMany({ where: { tenantId: context.tenantId, status: "ACTIVE" }, include: { instances: { where: { operationalStatus: { notIn: ["OUT_OF_SERVICE", "LOST", "RETIRED"] } }, include: { reservations: { where: { status: "ACTIVE", startsAt: { lt: end }, endsAt: { gt: start } } }, assignments: { where: { status: "ACTIVE" } }, maintenanceOrders: { where: { status: { in: ["SCHEDULED", "IN_PROGRESS"] }, scheduledStart: { lt: end }, scheduledEnd: { gt: start } } } } } } }),
     tx.vehicle.findMany({ where: { tenant_id: context.tenantId, operational_status: "AVAILABLE", available_for_calculation: true, effective_from: { lte: start }, OR: [{ effective_to: null }, { effective_to: { gt: start } }] }, select: { vehicle_type: true, capacity_volume: true, capacity_weight: true, volume_unit: true, weight_unit: true, row_version: true } }),
     tx.externalResourceOffer.findMany({ where: { tenantId: context.tenantId, status: "ACTIVE", OR: [{ validFrom: null }, { validFrom: { lte: end } }], AND: [{ OR: [{ validTo: null }, { validTo: { gt: start } }] }] }, include: { reservations: { where: { status: { in: ["REQUESTED", "CONFIRMED"] }, startsAt: { lt: end }, endsAt: { gt: start } } } } }),
+    tx.caseServiceConfigurationRevision.findFirst({ where: { ...scope, serviceSelectionRef: service.selectionRef,
+      serviceSelectionRevision: service.revision }, orderBy: { revision: "desc" }, select: { preferenceSnapshot: true } }),
   ]);
-  if (!service) logisticsFail("LOGISTICS_SERVICE_REVISION_REQUIRED", 409);
+  const requirement = publication?.materialRequirements?.[0];
   const locationPolicies = isWarehouseConfigurationEnabled() ? await loadWarehouseLocationPolicies(tx, context.tenantId) : null;
   const materialIds = requirement?.lines.map((line) => line.material.id) || [];
   const [movements, reservations] = materialIds.length ? await Promise.all([
@@ -114,10 +126,12 @@ export async function loadCanonicalLogisticsFacts(tx, context, caseRef, interval
     current.sourceVersion = Math.max(current.sourceVersion, row.row_version);
     byType.set(row.vehicle_type, current);
   }
-  const survey = surveyMetrics(publication);
+  const survey = surveyMetrics(publication, pipelineCase.routeRevision);
   const distanceKm = numeric((publication?.contextSnapshot || {}).distanceKm, Number.NaN);
   const route = { contractVersion: pipelineCase.routeContractVersion, version: pipelineCase.routeRevision, destinationStatus: pipelineCase.destinationStatus || "CONFIRMED", distanceStatus: Number.isFinite(distanceKm) ? "KNOWN" : "PENDING", distanceKm: Number.isFinite(distanceKm) ? distanceKm : null, stops: routeRows.map((row) => ({ role: row.role, order: row.stopOrder, countryCode: row.countryCode, provinceState: row.provinceState, cityMunicipality: row.cityMunicipality })) };
   const services = { selectionRef: service.selectionRef, revision: service.revision, mode: service.modeSnapshot, codes: service.items.map((item) => item.codeSnapshot), items: service.items.map((item) => ({ serviceRef: item.serviceRefSnapshot, code: item.codeSnapshot, kind: item.kind, catalogVersion: item.catalogVersionSnapshot })) };
+  const clientFlags = clientRouteAccessFlags(configuration?.preferenceSnapshot?.quickQuote?.clientAccessConditions, pipelineCase.routeRevision);
+  if (clientFlags.length) route.clientAccessFlags = clientFlags;
   const materials = { requirementRef: requirement?.requirementRef || null, logicalSha256: requirement?.logicalSha256 || null, lines: (requirement?.lines || []).map((line) => {
     const materialMovements = movements.filter((row) => row.materialId === line.material.id);
     const materialReservations = reservations.filter((row) => row.materialId === line.material.id);

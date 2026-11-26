@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { createQuoteProposal, getQuoteCase, getQuoteClientProjection, publishQuoteProposal, recordQuoteDecision, reviseQuoteProposal, sendQuoteProposal } from "../api/_lib/quoteDomain.js";
+import { createQuoteProposal, getQuoteCase, getQuoteClientProjection, getQuoteClientProposal, publishQuoteProposal, recordQuoteDecision, reviseQuoteProposal, sendQuoteProposal } from "../api/_lib/quoteDomain.js";
 import { quoteHash } from "../api/_lib/quoteContract.js";
 import { costingHash } from "../api/_lib/costingContract.js";
 import { getCosting, getQuoteAddOnCatalog, versionCostingRule } from "../api/_lib/costingDomain.js";
@@ -53,6 +53,13 @@ try {
   const accepted = await recordQuoteDecision(prisma, contexts[0], signed("QUOTE_CLIENT_DECISION", { proposalRef: first.proposalRef, expectedRevision: sent.revision, decision: "ACCEPTED", method: "SIGNED_DOCUMENT", decidedBy: { kind: "CLIENT_REPRESENTATIVE", displayName: null, reference: null, present: true }, evidenceRef: "DOC-TEST", reason: null })); assert.equal(accepted.state, "ACCEPTED"); assert.equal(accepted.operationalHandoff.caseRef, costings[0].pipelineCase.publicRef); assertions += 2;
   const view = await getQuoteCase(prisma, contexts[0], costings[0].pipelineCase.publicRef); assert.equal(view.proposals.length, 3); assertions += 1;
   const projection = getQuoteClientProjection(view.proposals[0]); assert.equal("capturedCost" in projection.lines[0], false); assert.equal("suggestedPrice" in projection.lines[0], false); assertions += 2;
+  assert.deepEqual(view.proposals[0].versions.map(({ revision, state }) => [revision, state]), [[3, "ACCEPTED"], [2, "READY"], [1, "DRAFT"]]);
+  assert.deepEqual(await getQuoteClientProposal(prisma, contexts[0], first.proposalRef), projection);
+  const original = await getQuoteClientProposal(prisma, contexts[0], first.proposalRef, first.revisionRef);
+  assert.deepEqual([original.state, original.revision, original.totals.totalQuotedPrice], ["DRAFT", 1, first.totals.totalQuotedPrice]);
+  await assert.rejects(getQuoteClientProposal(prisma, contexts[1], first.proposalRef, first.revisionRef), /QUOTE_NOT_FOUND/);
+  await assert.rejects(getQuoteClientProposal(prisma, contexts[0], second.proposalRef, first.revisionRef), /QUOTE_NOT_FOUND/);
+  assertions += 5;
 
   const a = await createQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_CREATE", draft(costings[1], 1))); const b = await createQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_CREATE", draft(costings[1], 2)));
   const ar = await publishQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_PUBLISH", { proposalRef: a.proposalRef, expectedRevision: a.revision })); const br = await publishQuoteProposal(prisma, contexts[1], signed("QUOTE_PROPOSAL_PUBLISH", { proposalRef: b.proposalRef, expectedRevision: b.revision }));

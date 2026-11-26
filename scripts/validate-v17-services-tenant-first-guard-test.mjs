@@ -18,17 +18,25 @@ const cases = [
   ["snapshot mutable", "prisma/migrations/20260904010000_v17_services_tenant_first/migration.sql", (s) => s.replace("BEFORE UPDATE OR DELETE ON \"osi\".\"pipeline_case_service_revisions\"", "BEFORE INSERT ON \"osi\".\"pipeline_case_service_revisions\"")],
   ["sin confirmación", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("window.confirm", "Boolean")],
   ["sin selector de catálogo", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Agregar desde el catálogo", "Agregar manualmente")],
-  ["sin listado compacto", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Base tarifaria", "Observación")],
-  ["frontera económica mezclada", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("Costos aplica el tarifario versionado", "Servicios fija el precio")],
+  ["modo editable", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("readOnly value={MODE_LABEL[workspace.mode]}", "value={MODE_LABEL[workspace.mode]}")],
+  ["sin listado compacto", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('<table aria-labelledby="selected-services-heading"', '<div aria-labelledby="selected-services-heading"')],
+  ["costos sin permiso", "src/commercial-crm/CommercialCaseDetail.tsx", (s) => s.replace("const canViewCosts = costingEnabled && costingAccess.canView;", "const canViewCosts = costingEnabled;")],
+  ["cotización sin control de margen", "src/commercial-crm/CommercialCaseDetail.tsx", (s) => s.replace("canAuthorizeMargin={costingAccess.canAuthorizeMargin}", "canAuthorizeMargin={true}")],
+  ["configuración visible sin permiso", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace("if (canViewConfiguration) stages.push", "stages.push")],
   ["sin flujo guiado", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('label: "Movimientos"', 'label: "Todo junto"')],
   ["sin pestaña activa", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('bg-[#003366] text-white', 'bg-white text-slate-600')],
-  ["procesos reunificados", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('activeView={activeStage === "movements" ? "authorization" : "requirement"}', 'activeView="requirement"')],
+  ["sin pestaña de direcciones", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('label: "Direcciones"', 'label: "Otra"')],
+  ["costos siempre visibles", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('hidden={activeStage !== "costs"}', 'hidden={false}')],
+  ["movimientos siempre visibles", "src/crm-services/ServiceCasePanel.tsx", (s) => s.replace('hidden={activeStage !== "movements"}', 'hidden={false}')],
   ["contrato duplicado", "src/commercial-crm/CommercialCaseDetail.tsx", (s) => s.replace('activeTab === "CONTRACT"', 'activeTab === "SERVICES"')],
 ];
 assert.equal(validateV17ServicesTenantFirst().ok, true);
 for (const [name, path, mutate] of cases) {
+  const original = read(path);
+  const changed = mutate(original);
+  assert.notEqual(changed, original, name + " debe modificar el código de referencia");
   let rejected = false;
-  try { validateV17ServicesTenantFirst({ overrides: { [path]: mutate(read(path)) } }); } catch { rejected = true; }
+  try { validateV17ServicesTenantFirst({ overrides: { [path]: changed } }); } catch { rejected = true; }
   assert.equal(rejected, true, name);
 }
 process.stdout.write(`${JSON.stringify({ ok: true, negatives: cases.length }, null, 2)}\n`);

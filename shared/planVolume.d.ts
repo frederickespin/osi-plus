@@ -1,0 +1,1 @@
+export function planVolume(preference: Record<string, unknown> | null | undefined, surveyVolume: unknown, estimatedVolume: unknown): { amount: number | null; source: "MANUAL" | "SURVEY" | "CLIENT" | "CASE" };

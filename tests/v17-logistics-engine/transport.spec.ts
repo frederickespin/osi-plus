@@ -115,7 +115,7 @@ async function calculator(page: Page, options: { lostPublishResponse?: boolean; 
     headers: privateHeaders,
   }));
   await page.route("**/api/crm/services/cases/**", (route) => route.fulfill({
-    ...json({ caseRef: CASE, mode: "LOCAL", selection: { selectionRef: null, revision: 0, primary: null, complementaries: [], otherServices: [] }, primaries: [], allowedComplementaries: [], defaults: [] }),
+    ...json({ caseRef: CASE, mode: "LOCAL", selection: { selectionRef: null, revision: 0, mode: null, source: null, defaultCombinationRef: null, primary: null, complementaries: [], otherServices: [], historyCount: 0 }, primaries: [], allowedComplementaries: [], defaults: [], planHistory: [] }),
     headers: privateHeaders,
   }));
   await page.route("**/api/logistics/transport/zones", (route) => route.fulfill(json([])));
@@ -149,10 +149,7 @@ async function calculator(page: Page, options: { lostPublishResponse?: boolean; 
 
 async function openCosting(page: Page) {
   await page.goto(`/commercial/cases/${CASE}`);
-  const serviceRoute = page.getByRole("region", { name: "Ruta para cotizar" });
-  await expect(serviceRoute).toContainText("Base de prueba, Santo Domingo, DO");
-  await expect(serviceRoute).toContainText("Destino de prueba, Santiago, DO");
-  await serviceRoute.getByRole("button", { name: "Ver costo de transporte" }).click();
+  await page.getByRole("tab", { name: "Costos internos" }).click();
   await expect(page.getByTestId("transport-calculation-panel")).toBeVisible();
 }
 
@@ -466,13 +463,13 @@ test("el caso muestra los kilómetros diarios y los tramos se cargan en cotizaci
   }));
   await page.goto(`/commercial/cases/${CASE}`);
   const plan = page.getByRole("region", { name: "Recorrido diario del caso" });
+  await page.getByRole("tab", { name: "Costos internos" }).click();
   await expect(plan).toContainText("45 km/día");
   await expect(plan).toContainText("Total pendiente");
   await plan.getByLabel("Días de ruta completa").fill("3");
   await expect(plan).toContainText("135 km en total");
   await plan.getByLabel("Días solo en origen").fill("1");
   await expect(plan).toContainText("160 km en total");
-  await page.getByRole("button", { name: "Ver costo de transporte" }).click();
   await expect(page.getByLabel("Cobertura del caso")).toContainText("Origen · Zona metro");
   await expect(page.getByLabel("Cobertura del caso")).toContainText("Destino · Fuera de zona metro");
   const form = page.getByTestId("transport-calculation-form");

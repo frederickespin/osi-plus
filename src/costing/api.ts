@@ -66,6 +66,7 @@ export const costingApi = Object.freeze({
   rules: (authorization?: string) => request<readonly CostingRule[]>(authorization, "/api/costing/rules"),
   versionRule: (authorization: string | undefined, payload: Record<string, unknown>, requestId?: string) => command<Pick<CostingRule, "ruleRef" | "seriesRef" | "family" | "classification" | "state" | "version" | "validFrom">>(authorization, "/api/costing/rules", "COSTING_RULE_VERSION", payload, requestId),
   quoteCatalog: (authorization: string | undefined, caseRef: string, currency: string, signal: AbortSignal) => request<readonly QuoteCatalogItem[]>(authorization, `/api/costing/revisions/${encodeURIComponent(caseRef)}?view=addons&currency=${encodeURIComponent(currency)}`, { signal }),
+  planCatalog: (authorization: string | undefined, caseRef: string, signal: AbortSignal) => request<readonly QuoteCatalogItem[]>(authorization, `/api/costing/revisions/${encodeURIComponent(caseRef)}?view=plan-addons`, { signal }),
   rates: (authorization?: string) => request<readonly CostingRate[]>(authorization, "/api/costing/exchange-rates"),
   versionRate: (authorization: string | undefined, payload: Record<string, unknown>) => command<CostingRate>(authorization, "/api/costing/exchange-rates", "COSTING_EXCHANGE_RATE_VERSION", payload),
 });

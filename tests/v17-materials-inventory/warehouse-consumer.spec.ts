@@ -10,6 +10,37 @@ async function session(page: Page, permissions: string[], deniedPermissions: str
 }
 function empty(path: string) { return path.endsWith("/catalog") ? { page: 1, pageSize: 25, total: 0, items: [] } : path.endsWith("/movements") ? { items: [] } : []; }
 
+test("el rendimiento por m³ guarda una nueva versión de la receta vigente", async ({ page }) => {
+  await session(page, ["inventory:catalog:view", "inventory:stock:view", "inventory:recipes:view", "inventory:recipes:manage"]);
+  let version = 1;
+  const applicability = { articleCodes: ["MESA"], modes: ["LOCAL"] };
+  const material = { materialRef: "148f6d8f-8d11-4f39-8a2d-1b6c7e8f9012", unitRef: "248f6d8f-8d11-4f39-8a2d-1b6c7e8f9012",
+    materialName: "Cartón corrugado", unitCode: "PL", formulaType: "PER_ITEM", fixedQuantity: null, multiplier: 1, roundingIncrement: 1, wastePercent: 5 };
+  await page.route("**/api/materials/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/recipes/version")) {
+      expect(route.request().postDataJSON()).toMatchObject({ expectedActiveVersion: 1, applicability,
+        lines: [{ materialRef: material.materialRef, multiplier: 2.5, formulaType: "PER_ITEM", formulaConfig: { measurement: "UNIT_VOLUME_M3" }, wastePercent: 5 }] });
+      version += 1;
+      return route.fulfill({ json: { ok: true, data: { version } } });
+    }
+    if (path.endsWith("/recipes")) return route.fulfill({ json: { ok: true, data: [{
+      name: "Envolver mesa", status: "ACTIVE", recipeRef: membershipRef, code: "MESA", versions: [{
+        version, recipeVersionRef: membershipRef, applicability, status: "ACTIVE",
+        lines: [{ ...material, formulaConfig: version === 1 ? {} : { measurement: "UNIT_VOLUME_M3" }, multiplier: version === 1 ? 1 : 2.5 }],
+      }],
+    }] } });
+    return route.fulfill({ json: { ok: true, data: empty(path) } });
+  });
+  await page.goto("/warehouses/materials");
+  await page.getByRole("button", { name: "Recetas", exact: true }).click();
+  await page.locator("summary").filter({ hasText: "Envolver mesa" }).click();
+  await page.getByLabel("Base de Cartón corrugado").selectOption("VOLUME");
+  await page.getByLabel("Cantidad de Cartón corrugado").fill("2,5");
+  await page.getByRole("button", { name: "Guardar nueva versión" }).click();
+  await expect(page.locator("summary").filter({ hasText: "Envolver mesa" })).toContainText("V2");
+});
+
 test("lector de catálogo y stock consulta sólo la pestaña elegida y respeta deny", async ({ page }) => {
   await session(page, ["inventory:catalog:view", "inventory:stock:view", "inventory:recipes:view"], ["inventory:recipes:view"]);
   const reads: string[] = [];

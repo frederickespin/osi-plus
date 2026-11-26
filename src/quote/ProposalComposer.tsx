@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { COMPACT_FORM_FIELD, COMPACT_TABLE_FIELD } from "@/components/ui/compact-form";
 import type { CostingLine, CostingPackageOption, CostingRevision } from "@/costing/api";
-import { pricingDecimal, pricingMoney, pricingQuantity } from "@/costing/pricingInput";
+import type { PlanPricedAddition } from "@/crm-services/planPricedAdditions";
+import { catalogAmountCents, pricingDecimal, pricingMoney, pricingVolume } from "@/costing/pricingInput";
 import { eligibleCostingLines } from "../../shared/quoteCostingSelection.js";
 import { isPackageMinimumLine } from "../../shared/servicePackagePricing.js";
 import { QuoteAdditionPicker, type AdditionalCharge } from "./QuoteAdditionPicker";
@@ -25,6 +26,7 @@ type Props = Readonly<{
   currencyOptions?: readonly string[];
   suggestedGroupName?: string;
   proposal?: QuoteProposal;
+  planAdditions?: readonly PlanPricedAddition[];
   extraControls?: ReactNode;
   onCurrencyChange?(currency: string): void;
   onSelectPackage?(option: CostingPackageOption): void;
@@ -41,6 +43,7 @@ const ROW = "grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_2
 const CONCEPT = "min-w-0 break-words max-sm:col-span-4";
 const MOBILE_LABEL = "block text-slate-600 sm:hidden";
 const DEFAULT_CONTEXT = { company: null, leadAccount: null, booker: null, tariff: null, associations: [], referral: null, commissionContext: null };
+const PLAN_ADDITION_REASON = "Necesidad adicional del plan";
 const DEFAULT_TERMS = { paymentTerms: "Según propuesta comercial", scope: "", exclusions: [], clientNotes: null, specialConditions: [], templateRef: null, templateVersion: null };
 
 function scaled(value: string, decimals: number) {
@@ -76,19 +79,22 @@ function normalizeCharges(charges: readonly AdditionalCharge[], currency: string
     const quantity = pricingDecimal(charge.quantity, 6);
     if (!quantity || Number(quantity) <= 0 || Number(quantity) > 1_000_000) return null;
     const unitPrice = pricingDecimal(charge.unitPrice, 2);
+    const catalogCents = charge.catalog ? catalogAmountCents(quantity, charge.catalog.unitPrice) : null;
+    const catalogAmount = catalogCents === null ? null : moneyFromCents(catalogCents);
+    const usesCatalogPrice = charge.catalog && Number(pricingDecimal(charge.unitPrice, 10) ?? NaN) === Number(charge.catalog.unitPrice);
     const retained = charge.prior && (unitPrice === null ? charge.unitPrice === charge.prior.unitPrice : Number(unitPrice) === Number(charge.prior.unitPrice));
     const quotedPrice = retained && charge.prior
       ? charge.prior.quotedPrice === null ? null : priorAmount(quantity, charge.prior.quantity, charge.prior.quotedPrice)
-      : amountFor(quantity, unitPrice);
+      : usesCatalogPrice ? catalogAmount : amountFor(quantity, unitPrice);
     const cost = charge.catalog || charge.prior ? null : amountFor(quantity, pricingDecimal(charge.unitCost, 2));
     const suggestedRate = charge.catalog?.unitPrice ?? charge.suggestedUnitPrice;
-    const suggested = suggestedRate ? amountFor(quantity, pricingDecimal(suggestedRate, 2)) : quotedPrice;
+    const suggested = charge.catalog ? catalogAmount : suggestedRate ? amountFor(quantity, pricingDecimal(suggestedRate, 2)) : quotedPrice;
     if (quotedPrice === null && !(retained && charge.prior?.quotedPrice === null)
       || !charge.catalog && !charge.prior && cost === null) return null;
     lines.push({
       input: {
         sourceKind: "MANUAL", costingLineRef: null, concept: charge.concept, quantity, unit: charge.unit,
-        economicClass: charge.classification, quotedPrice, currency, reason: "Concepto de la propuesta",
+        economicClass: charge.classification, quotedPrice, currency, reason: charge.planAddition ? PLAN_ADDITION_REASON : "Concepto de la propuesta",
         ...(charge.prior && { lineRef: charge.prior.lineRef }),
         manualAuthority: charge.prior ? null : charge.catalog ? {
           kind: "QUOTE_CATALOG_COMPONENT", reference: charge.catalog.ruleRef, version: charge.catalog.version,
@@ -133,8 +139,8 @@ function changeCombination(state: ChargeState, basis: string | null, preview: Co
     const { catalog } = draft;
     // Solo absorbe selecciones anteriores de la misma tarifa. Una cantidad adicional
     // que el vendedor añadió con la combinación aplicada sigue siendo un adicional.
-    if (!packageRef || !catalog || draft.addedDuringPackage === packageRef
-      || Number(pricingDecimal(draft.unitPrice, 2) ?? NaN) !== Number(catalog.unitPrice)) {
+    if (draft.planAddition || !packageRef || !catalog || draft.addedDuringPackage === packageRef
+      || Number(pricingDecimal(draft.unitPrice, 10) ?? NaN) !== Number(catalog.unitPrice)) {
       rows.push(draft);
       continue;
     }
@@ -161,6 +167,7 @@ function initialCharges(proposal: QuoteProposal | undefined, packageRef?: string
     return {
       id: line.lineRef, concept: line.concept, quantity: line.quantity, unit: line.unit,
       unitCost: "", unitPrice, classification: line.economicClass, addedDuringPackage: packageRef,
+      planAddition: Boolean(line.catalog && line.reason === PLAN_ADDITION_REASON),
       ...(line.catalog && { catalog: { ...line.catalog, currency: line.currency } }),
       prior: { lineRef: line.lineRef, quantity: line.quantity, quotedPrice: line.quotedPrice, unitPrice },
     };
@@ -213,12 +220,12 @@ function Amount({ value, currency }: { value: string | null; currency: string })
 
 export default function ProposalComposer({ caseRef, authorization, costing, position, canConfirmCharges, defaultPayer,
   autoOpen, awaitingPackage, packages, selectedPackageVersionRef, currency: directCurrency = "DOP", currencyOptions,
-  suggestedGroupName, proposal, extraControls, onCurrencyChange, onSelectPackage,
+  suggestedGroupName, proposal, planAdditions, extraControls, onCurrencyChange, onSelectPackage,
   onRemovePackage, onClose, errorText, onCreated }: Props) {
   const pkg = costing?.packagePricing;
   const basis = costing?.revisionRef ?? null;
   const sourceLines = eligibleCostingLines(costing?.lines ?? []).filter((line) => !isPackageMinimumLine(line));
-  const packageLabel = pkg ? pkg.name + " · " + pricingQuantity.format(pkg.measures.volumeM3) + " m³" : "";
+  const packageLabel = pkg ? pkg.name + " · " + pricingVolume.format(pkg.measures.volumeM3) + " m³" : "";
   const canEditIncluded = Boolean(pkg && canConfirmCharges && pkg.allowEdits !== false);
   const canEditBasePrice = pkg ? canEditIncluded : canConfirmCharges;
   const [open, setOpen] = useState(Boolean(proposal));
@@ -237,7 +244,14 @@ export default function ProposalComposer({ caseRef, authorization, costing, posi
   const [groupName, setGroupName] = useState(proposal?.groupName ?? proposal?.terms?.groupName ?? suggestedGroupName ?? "");
   const [scope, setScope] = useState<string | null>(proposal?.terms?.scope ?? null);
   const [adjustments, setAdjustments] = useState(() => initialAdjustments(proposal, sourceLines, pkg?.versionRef));
-  const [chargeState, setChargeState] = useState<ChargeState>(() => ({ basis, rows: initialCharges(proposal, pkg?.versionRef), included: [] }));
+  const [chargeState, setChargeState] = useState<ChargeState>(() => {
+    if (proposal) return { basis, rows: initialCharges(proposal, pkg?.versionRef), included: [] };
+    const rows = (planAdditions ?? []).map((item) => ({
+      id: item.ruleRef, concept: item.name, quantity: item.quantity.replace(",", "."), unit: item.unit,
+      unitCost: "", unitPrice: item.unitPrice, classification: item.classification, catalog: item, planAddition: true,
+    }));
+    return changeCombination({ basis: null, rows, included: [] }, basis, costing, sourceLines);
+  });
   const [reason, setReason] = useState(proposal?.packageScope?.adjustmentReason ?? "");
   const [approvalRef, setApprovalRef] = useState(proposal?.marginAuthorization?.authorizationRef ?? "");
   const [saving, setSaving] = useState(false);
@@ -308,7 +322,7 @@ export default function ProposalComposer({ caseRef, authorization, costing, posi
   }
   function addCharge(charge: AdditionalCharge) {
     setCharges((current) => {
-      const existing = charge.catalog && current.find((row) => row.catalog?.ruleRef === charge.catalog?.ruleRef
+      const existing = charge.catalog && current.find((row) => !row.planAddition && row.catalog?.ruleRef === charge.catalog?.ruleRef
         && row.catalog?.version === charge.catalog?.version && row.catalog?.currency === charge.catalog?.currency
         && row.addedDuringPackage === pkg?.versionRef
         && Number(pricingDecimal(row.unitPrice, 2) ?? NaN) === Number(charge.unitPrice));
@@ -427,7 +441,7 @@ export default function ProposalComposer({ caseRef, authorization, costing, posi
           const pendingPrice = charge.prior?.quotedPrice === null;
           return <div key={charge.id} className={ROW}>
             <div className={CONCEPT}><p className="font-semibold">{charge.concept}</p>
-              <span className="text-slate-600">{pkg ? "Adicional · " : ""}{charge.unit}</span>
+              <span className="text-slate-600">{charge.planAddition ? "Adicional del plan · " : pkg ? "Adicional · " : ""}{charge.unit}</span>
               {treatment && <span className={"ml-1 " + treatment.color}>{treatment.detail}</span>}
             </div>
             <NumberField label={pkg ? "Cantidad " + label : "Cantidad de " + charge.concept} mobileLabel="Cant." precision={6}

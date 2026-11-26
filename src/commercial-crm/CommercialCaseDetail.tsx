@@ -6,6 +6,7 @@ import type { CrmPipelineReadError } from "@/crm-relational/readApi";
 import type { CrmPipelineCaseDetail } from "@/crm-relational/types";
 import { STATUS_LABELS, commercialReadErrorCopy } from "./presentation";
 import type { CrmServicesUiAccess } from "@/crm-services/access";
+import type { PlanStage } from "@/crm-services/ServiceCasePanel";
 import { CrmServicesApi, CrmServicesApiError } from "@/crm-services/api";
 import { isCrmServicesUiEnabled } from "@/crm-services/mode";
 import type { LogisticsUiAccess } from "@/logistics-engine/access";
@@ -35,6 +36,7 @@ const ChangeAddendaPanel = lazy(() => import("./ChangeAddendaPanel"));
 const EconomicControlPanel = lazy(() => import("./EconomicControlPanel"));
 
 type Props = Readonly<{
+  caseRef: string;
   state: Readonly<{ loading: boolean; value: CrmPipelineCaseDetail | null; error: CrmPipelineReadError | null }>;
   onBack(): void;
   onOpenNavigation(): void;
@@ -58,8 +60,7 @@ type Props = Readonly<{
   onNavigate(pathname: string): void;
   onUnauthorized(): void;
 }>;
-type WorkspaceTab = "SURVEY" | "SERVICES" | "QUOTE" | "CONTRACT" | "EXECUTION" | "CHANGES" | "ECONOMIC_CONTROL";
-type QuoteWorkspaceView = "COSTS" | "PROPOSALS";
+type WorkspaceTab = "SURVEY" | "SERVICES" | "COSTS" | "QUOTE" | "CONTRACT" | "EXECUTION" | "CHANGES" | "ECONOMIC_CONTROL";
 type CommunicationTarget = Readonly<
   | { context: "SCHEDULING"; surveyAssignmentRef: string; quoteRevisionRef: null }
   | { context: "QUOTE"; surveyAssignmentRef: null; quoteRevisionRef: string }
@@ -69,6 +70,7 @@ type CommunicationTarget = Readonly<
 const TABS = Object.freeze([
   ["SERVICES", "Servicios", BriefcaseBusiness],
   ["SURVEY", "Survey", ClipboardCheck],
+  ["COSTS", "Costos internos", Calculator],
   ["QUOTE", "Cotización", BriefcaseBusiness],
   ["CONTRACT", "Contrato", FileText],
   ["EXECUTION", "Ejecución", Route],
@@ -114,44 +116,45 @@ function CaseProposals({ readIntake, ...props }: ComponentProps<typeof QuotePane
         setRetry((current) => current + 1);
       }}>Reintentar</button>
     </p>}
-    <QuotePanel {...props} intake={readIntake && typeof result === "object" ? result?.intake : undefined} />
+    <QuotePanel {...props} planPending={readIntake && (result === null || result === "ERROR")} intake={readIntake && typeof result === "object" ? result?.intake : undefined} />
   </>;
 }
 
 export default function CommercialCaseDetail(props: Props) {
-  return <CommercialCaseWorkspace key={props.state.value?.caseRef ?? "loading"} {...props} />;
+  return <CommercialCaseWorkspace key={props.caseRef} {...props} />;
 }
 
-function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, commercialRelationshipsEnabled, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, clientTemporaryAccessEnabled, clientTemporaryAccess, onNavigate, onUnauthorized, onBack, onOpenNavigation, onReload }: Props) {
-  const [tab, setTab] = useState<WorkspaceTab>(() => initialWorkspaceTab(state.value?.caseRef));
-  const [quoteView, setQuoteView] = useState<QuoteWorkspaceView>("PROPOSALS");
+function CommercialCaseWorkspace({ caseRef, state, authorization, servicesAccess, logisticsAccess, logisticsEnabled, costingAccess, costingEnabled, quoteAccess, quoteEnabled, surveyEnabled, surveySchedulingAccess, commercialRelationshipsEnabled, commercialRelationshipsAccess, communicationsEnabled, communicationsAccess, clientTemporaryAccessEnabled, clientTemporaryAccess, onNavigate, onUnauthorized, onBack, onOpenNavigation, onReload }: Props) {
+  const [tab, setTab] = useState<WorkspaceTab>(() => initialWorkspaceTab(caseRef));
+  const [planStage, setPlanStage] = useState<PlanStage>("plan");
   const [keepProposalDraft, setKeepProposalDraft] = useState(false);
   const [surveyIntakeMethod, setSurveyIntakeMethod] = useState<SurveyIntakeMethod>();
   const [savingIntake, setSavingIntake] = useState(false);
   const [communicationTarget, setCommunicationTarget] = useState<CommunicationTarget | null>(null);
   const [routeOpen, setRouteOpen] = useState(false);
+  const [savedRouteRevision, setSavedRouteRevision] = useState<number>();
   const routeApi = useMemo(() => new CaseRouteApi(() => authorization ?? null), [authorization]);
-  const item = state.value;
+  const item = state.value?.caseRef === caseRef ? state.value : null;
   const [completeDays, setCompleteDays] = useState("");
   const [preparationDays, setPreparationDays] = useState("");
   const alerts = item ? [!item.client ? "Cliente receptor pendiente" : null, !item.owner ? "Caso sin asignar" : null, item.requiresSurvey ? "Survey requerido" : null, !item.route?.destination ? "Destino estructurado pendiente" : null].filter((value): value is string => Boolean(value)) : [];
   const servicesEnabled = isCrmServicesUiEnabled() && servicesAccess.canCaseView;
   const transportAccess = logisticsEnabled && costingEnabled ? resolveTransportUiAccess(logisticsAccess, costingAccess) : undefined;
-  const quoteWorkspaceAvailable = quoteEnabled && quoteAccess.canView || costingEnabled && costingAccess.canView;
+  const canViewQuote = quoteEnabled && quoteAccess.canView;
+  const canViewCosts = costingEnabled && costingAccess.canView;
   const canOpenTransport = Boolean(transportAccess?.canView && costingEnabled && costingAccess.canView);
-  const openProposals = () => { setQuoteView("PROPOSALS"); setTab("QUOTE"); };
+  const openProposals = () => setTab("QUOTE");
   const openSurvey = (method: SurveyIntakeMethod) => { setSurveyIntakeMethod(method); setTab("SURVEY"); };
   const canReadIntake = servicesEnabled && servicesAccess.canCaseConfigView;
-  const quoteWorkspaceCount = Number(costingEnabled && costingAccess.canView) + Number(quoteEnabled && quoteAccess.canView);
-  const tabs = TABS.filter(([value]) => ((value !== "SERVICES" && value !== "CONTRACT") || servicesEnabled) && (value !== "SURVEY" || surveyEnabled && surveySchedulingAccess.canView) && (value !== "QUOTE" || quoteWorkspaceAvailable));
+  const tabs = TABS.filter(([value]) => ((value !== "SERVICES" && value !== "CONTRACT") || servicesEnabled) && (value !== "SURVEY" || surveyEnabled && surveySchedulingAccess.canView) && (value !== "COSTS" || canViewCosts && !servicesEnabled) && (value !== "QUOTE" || canViewQuote));
   const activeTab = tabs.some(([value]) => value === tab) ? tab : tabs[0]?.[0] ?? "SERVICES";
-  const activeQuoteView: QuoteWorkspaceView = quoteView === "COSTS" && costingEnabled && costingAccess.canView || quoteView === "PROPOSALS" && quoteEnabled && quoteAccess.canView ? quoteView : costingEnabled && costingAccess.canView ? "COSTS" : "PROPOSALS";
   const openTransport = () => {
-    if (activeTab === "QUOTE" && activeQuoteView === "PROPOSALS") setKeepProposalDraft(true);
-    setQuoteView("COSTS");
-    setTab("QUOTE");
+    setKeepProposalDraft(activeTab === "QUOTE");
+    setPlanStage("costs");
+    setTab(servicesEnabled ? "SERVICES" : "COSTS");
   };
-  const showTravelDetails = logisticsEnabled && activeTab === "QUOTE" && activeQuoteView === "COSTS";
+  const inCosts = activeTab === "COSTS" || activeTab === "SERVICES" && planStage === "costs";
+  const showTravelDetails = logisticsEnabled && canViewCosts && inCosts;
   const travelState = useCaseDailyTravel(routeApi, showTravelDetails ? item?.caseRef : undefined, item?.route?.revision);
   const transportAddresses = {
     revision: item?.route?.revision,
@@ -164,6 +167,14 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
   const openCommunications = (target: CommunicationTarget) => {
     setCommunicationTarget(target);
   };
+  const costs = canViewCosts && item && <>
+    {showTravelDetails && item.route?.revision ? <CaseDailyTravelPanel {...travelState} completeDays={completeDays}
+      preparationDays={preparationDays} setCompleteDays={setCompleteDays} setPreparationDays={setPreparationDays} /> : null}
+    <Suspense fallback={<p role="status" className="p-4 text-sm text-slate-500">Cargando costos…</p>}>
+      <CostingPanel caseRef={item.caseRef} authorization={authorization} access={costingAccess} transportAccess={transportAccess}
+        transportAddresses={transportAddresses} onUnauthorized={onUnauthorized} onContinueToProposals={canViewQuote ? openProposals : undefined} />
+    </Suspense>
+  </>;
 
   return <section className="min-h-full bg-white" data-testid="commercial-case-detail">
     <header data-testid="commercial-case-focused-header" className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-3">
@@ -176,7 +187,7 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
           {item && <h2 className="break-words text-xl font-black tracking-tight text-[#003366]">{item.client?.displayName || "Sin cliente vinculado"}</h2>}
         </div>
         <div className="ms-auto flex items-center gap-2">
-          {item && activeTab !== "SERVICES" && <Button size="sm" variant="outline" onClick={() => setRouteOpen(true)}><MapPin />Ruta del caso</Button>}
+          {item && !servicesEnabled && <Button size="sm" variant="outline" onClick={() => setRouteOpen(true)}><MapPin />Ruta del caso</Button>}
           <Button type="button" size="icon" title="Volver al Inbox" aria-label="Volver al Inbox" onClick={onBack}
             className="border border-yellow-400 bg-yellow-300 text-slate-900 hover:border-yellow-500 hover:bg-yellow-400">
             <ArrowLeft aria-hidden="true" />
@@ -200,53 +211,37 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
     {item && <>
       <div role="tablist" aria-label="Áreas del Caso Comercial" className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-[#e7e5e4] p-1">{tabs.map(([value, label, Icon]) => <button id={`${value.toLowerCase()}-tab`} key={value} type="button" role="tab" aria-selected={activeTab === value} disabled={savingIntake} onClick={() => { setSurveyIntakeMethod(undefined); setTab(value); }} className={`flex shrink-0 items-center gap-1.5 rounded px-3 py-2 text-xs font-bold ${activeTab === value ? "bg-[#df8750] text-white shadow-sm" : "text-slate-700 hover:bg-white/60"}`}><Icon className="h-3.5 w-3.5" />{label}</button>)}</div>
       <div className="p-4">
-        {showTravelDetails && item.route?.revision &&
-          <CaseDailyTravelPanel {...travelState} completeDays={completeDays} preparationDays={preparationDays}
-            setCompleteDays={setCompleteDays} setPreparationDays={setPreparationDays} />}
+        {activeTab === "COSTS" && costs}
         {activeTab === "SURVEY" && surveyEnabled && surveySchedulingAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Survey…</div>}><SurveyCasePanel caseRef={item.caseRef} authorization={authorization} routeVersion={item.route?.revision} access={surveySchedulingAccess} intakeMethod={surveyIntakeMethod} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess} logisticsSummaryEnabled={logisticsEnabled && logisticsAccess.canView} transportAccess={transportAccess} clientTemporaryAccessEnabled={clientTemporaryAccessEnabled} clientTemporaryAccess={clientTemporaryAccess} onPrepareClientMessage={() => openCommunications({ context: "CASE", surveyAssignmentRef: null, quoteRevisionRef: null })} onOpenCommunications={(surveyAssignmentRef) => openCommunications({ context: "SCHEDULING", surveyAssignmentRef, quoteRevisionRef: null })} onEditRoute={() => setRouteOpen(true)} onNavigate={onNavigate} onUnauthorized={onUnauthorized} /></Suspense>}
         {activeTab === "SERVICES" && servicesEnabled && <div className="space-y-3">
           <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando selección de Servicios…</div>}>
             <ServiceCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate}
+              activeStage={planStage} onStageChange={setPlanStage} canReadCatalog={canViewQuote || canViewCosts}
               canViewConfiguration={servicesAccess.canCaseConfigView} canConfigure={servicesAccess.canCaseConfigUpdate}
               onUnauthorized={onUnauthorized} intake={{
-                origin: transportAddresses.origin, destination: transportAddresses.destination,
-                onOpenRoute: () => setRouteOpen(true), onOpenTransport: canOpenTransport ? openTransport : undefined, saving: savingIntake,
+                addresses: <CaseRouteEditor embedded open savedRevision={savedRouteRevision} caseRef={item.caseRef} api={routeApi}
+                  onSaved={(revision) => { setSavedRouteRevision(revision); onReload(); }} />,
+                costs, saving: savingIntake,
                 nextStep: (plan) => <CommercialCaseIntake key={plan.selectionRef ?? "new-plan"} caseRef={item.caseRef}
                   authorization={authorization} estimatedCbm={item.estimatedCbm} plan={plan}
                   canCapture={canReadIntake && servicesAccess.canCaseConfigUpdate}
                   onSchedule={surveyEnabled && surveySchedulingAccess.canView && surveySchedulingAccess.canManage ? openSurvey : undefined}
-                  onQuote={quoteWorkspaceAvailable ? openProposals : undefined} onSavingChange={setSavingIntake} onUnauthorized={onUnauthorized} />,
+                  onQuote={canViewQuote ? openProposals : canViewCosts ? openTransport : undefined} onSavingChange={setSavingIntake} onUnauthorized={onUnauthorized} />,
               }} />
           </Suspense>
-          {commercialRelationshipsEnabled && commercialRelationshipsAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando contexto comercial…</div>}><CaseCommercialContextPanel caseRef={item.caseRef} authorization={authorization} access={commercialRelationshipsAccess} onUnauthorized={onUnauthorized} /></Suspense>}
+          {planStage === "plan" && commercialRelationshipsEnabled && commercialRelationshipsAccess.canView && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando contexto comercial…</div>}><CaseCommercialContextPanel caseRef={item.caseRef} authorization={authorization} access={commercialRelationshipsAccess} onUnauthorized={onUnauthorized} /></Suspense>}
         </div>}
-        {activeTab === "QUOTE" && quoteWorkspaceAvailable && <section aria-label="Cotización del caso" className="space-y-2">
-          {quoteWorkspaceCount > 1 && <div role="tablist" aria-label="Etapas de Cotización" className="flex gap-1 border border-slate-200 bg-slate-50 p-1">
-            {costingEnabled && costingAccess.canView && <button type="button" role="tab" aria-selected={activeQuoteView === "COSTS"} onClick={openTransport}
-              className={`rounded px-3 py-1.5 text-xs font-bold ${activeQuoteView === "COSTS" ? "bg-[#003366] text-white" : "text-slate-600 hover:bg-white"}`}>
-              <Calculator className="mr-1.5 inline h-3.5 w-3.5" />Costos internos
-            </button>}
-            {quoteEnabled && quoteAccess.canView && <button type="button" role="tab" aria-selected={activeQuoteView === "PROPOSALS"} onClick={openProposals}
-              className={`rounded px-3 py-1.5 text-xs font-bold ${activeQuoteView === "PROPOSALS" ? "bg-[#003366] text-white" : "text-slate-600 hover:bg-white"}`}>
-              <BriefcaseBusiness className="mr-1.5 inline h-3.5 w-3.5" />Propuestas
-            </button>}
-          </div>}
-          {activeQuoteView === "COSTS" && costingEnabled && costingAccess.canView &&
-            <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Costos…</div>}>
-              <CostingPanel caseRef={item.caseRef} authorization={authorization} access={costingAccess} transportAccess={transportAccess}
-                transportAddresses={transportAddresses} onUnauthorized={onUnauthorized} onContinueToProposals={quoteEnabled && quoteAccess.canView ? openProposals : undefined} />
-            </Suspense>}
-          {(activeQuoteView === "PROPOSALS" || keepProposalDraft) && quoteEnabled && quoteAccess.canView && <div hidden={activeQuoteView !== "PROPOSALS"}>
+        {canViewQuote && (activeTab === "QUOTE" || keepProposalDraft && inCosts) && <section aria-label="Cotización del caso" hidden={activeTab !== "QUOTE"}>
             <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Cotización…</div>}>
               <CaseProposals caseRef={item.caseRef} authorization={authorization} access={quoteAccess} readIntake={canReadIntake}
                 defaultPayer={item.client?.displayName} canViewCosting={costingEnabled && costingAccess.canView}
+                onEditPlanConfiguration={canReadIntake ? () => { setPlanStage("configuration"); setTab("SERVICES"); } : undefined}
                 canAuthorizeMargin={costingAccess.canAuthorizeMargin}
                 canPreparePackage={costingEnabled && costingAccess.canView && costingAccess.canCalculate && costingAccess.canPublish}
                 onOpenTransport={canOpenTransport ? openTransport : undefined} communicationsEnabled={communicationsEnabled} communicationsAccess={communicationsAccess}
                 onOpenCommunications={(quoteRevisionRef) => openCommunications({ context: "QUOTE", surveyAssignmentRef: null, quoteRevisionRef })}
                 onUnauthorized={onUnauthorized} />
             </Suspense>
-          </div>}
         </section>}
         {activeTab === "CONTRACT" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Contrato…</div>}><ContractCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} canViewTemplates={communicationsEnabled && communicationsAccess.canTemplatesView} context={{ caseCode: item.caseCode, clientName: item.client?.displayName || "Cliente pendiente", origin: item.route?.origin?.compactAddress || item.originLocation || "Origen pendiente", destination: item.route?.destination?.compactAddress || item.destinationLocation || "Destino pendiente" }} onUnauthorized={onUnauthorized} /></Suspense>}
         {activeTab === "EXECUTION" && servicesEnabled && <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Cargando Ejecución…</div>}><ExecutionCasePanel caseRef={item.caseRef} authorization={authorization} canUpdate={servicesAccess.canCaseUpdate} onUnauthorized={onUnauthorized} /></Suspense>}

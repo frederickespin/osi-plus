@@ -20,7 +20,8 @@ export function validateV17ServicesTenantFirst({ root = process.cwd(), overrides
   const detail = read(root, overrides, "src/commercial-crm/CommercialCaseDetail.tsx");
 
   for (const model of ["ServiceCatalogItem", "ServiceCatalogCompatibility", "ServiceDefaultCombination", "PipelineCaseServiceRevision", "PipelineCaseServiceItem", "ServiceMutationCommand"]) need(schema, new RegExp(`model ${model} \\{`), `falta ${model}`);
-  need(schema, /model ServiceCatalogItem[\s\S]*serviceRef[\s\S]*tenantId[\s\S]*@@unique\(\[tenantId, serviceRef\]/, "catálogo no es tenant-first");
+  const catalogModel = schema.match(/model ServiceCatalogItem \{[^}]*\}/)?.[0] ?? "";
+  need(catalogModel, /serviceRef[\s\S]*tenantId[\s\S]*@@unique\(\[tenantId, serviceRef\]/, "catálogo no es tenant-first");
   if (/serviceRef\s+String\s+@id/.test(schema)) fail("serviceRef reemplaza la PK interna");
   need(schema, /model PipelineCaseServiceRevision[\s\S]*@@unique\(\[tenantId, pipelineCaseId, revision\]/, "historial no versiona por caso/tenant");
   need(migration, /pipeline_case_service_items_one_primary_key/, "no se impide más de un principal por revisión");
@@ -47,15 +48,18 @@ export function validateV17ServicesTenantFirst({ root = process.cwd(), overrides
   if (/PRODUCTION_(?:READ|WRITE|PILOT)/.test(http) || /PRODUCTION_(?:READ|WRITE|PILOT)/.test(mode)) fail("Servicios habilita Production");
   need(mode, /return preview \? value : CRM_SERVICES_UI_MODES\.DISABLED/, "frontend no falla cerrado");
   need(panel, /Modo \/ Alcance[\s\S]*Necesidad principal[\s\S]*Servicios asociados al caso/, "orden visual aprobado ausente");
-  need(panel, /readOnly value=\{workspace\.mode/, "Servicios permite alterar modo ICP");
+  need(panel, /<input\s+readOnly\s+value=\{MODE_LABEL\[workspace\.mode\]\}/, "Servicios permite alterar el modo del caso");
   need(panel, /window\.confirm\([\s\S]*Cambiar la necesidad principal/, "cambio de necesidad principal pierde decisiones sin confirmar");
-  need(panel, /Plan vigente V[\s\S]*Historial del plan de servicios[\s\S]*Guardar Plan V/, "plan de servicios versionado no es visible");
+  need(panel, /Plan vigente V[\s\S]*Historial del plan[\s\S]*workspace\.planHistory\.map[\s\S]*Guardar Plan V/, "plan de servicios versionado no es visible");
   need(panel, /Agregar desde el catálogo[\s\S]*availableCatalog\.map[\s\S]*addCatalogService/, "Servicios asociados no se seleccionan desde el catálogo compatible");
-  need(panel, /<table[\s\S]*Base tarifaria[\s\S]*Volumen, peso o unidad del tarifario[\s\S]*removeCatalogService/, "selección no se presenta como listado compacto editable");
-  need(panel, /Servicios conserva la selección[\s\S]*Costos aplica el tarifario versionado[\s\S]*monto sugerido[\s\S]*comparación, motivo, margen y aprobación/, "se perdió la frontera Servicios → Costos → Cotización");
-  need(panel, /label: "Plan"[\s\S]*label: "Movimientos"[\s\S]*label: "Configuración"/, "Servicios no conserva sus tres pantallas operativas");
-  need(panel, /role="tablist"[\s\S]*grid-cols-3[\s\S]*activeStage === stage\.id \? "bg-\[#003366\] text-white/, "pestañas compactas no resaltan la pantalla activa");
-  need(panel, /activeView=\{activeStage === "movements" \? "authorization" : "requirement"\}[\s\S]*compactRequirement=\{activeStage === "plan"\}/, "procesos de almacenaje volvieron a una sola pantalla larga");
+  need(panel, /<table aria-labelledby="selected-services-heading"[\s\S]*selectedCatalogServices\.map[\s\S]*Según tarifario[\s\S]*removeCatalogService/, "selección no se presenta como listado compacto editable");
+  need(detail, /const canViewCosts = costingEnabled && costingAccess\.canView;[\s\S]*const costs = canViewCosts && item &&[\s\S]*<CostingPanel[\s\S]*onContinueToProposals=\{canViewQuote \? openProposals : undefined\}/, "se perdió el acceso autorizado a los costos y el paso a propuestas");
+  need(detail, /canViewQuote && \(activeTab === "QUOTE"[\s\S]*<CaseProposals[\s\S]*canAuthorizeMargin=\{costingAccess\.canAuthorizeMargin\}/, "Cotización debe conservar su propio permiso y la autorización de margen");
+  need(panel, /id: "plan", label: "Plan"[\s\S]*if \(intake\?\.addresses\)[^\n]*label: "Direcciones"[\s\S]*if \(storageSelected\)[^\n]*label: "Movimientos"[\s\S]*if \(canViewConfiguration\)[^\n]*label: "Configuración"[\s\S]*if \(intake\?\.costs\)[^\n]*label: "Costos internos"/, "las áreas del plan no respetan su disponibilidad");
+  need(panel, /role="tablist"[\s\S]*aria-selected=\{activeStage === stage\.id\}[\s\S]*activeStage === stage\.id \? "bg-\[#003366\] text-white/, "pestañas compactas no resaltan la pantalla activa");
+  need(panel, /id="storage-addresses-panel"[\s\S]*hidden=\{activeStage !== "addresses"\}[\s\S]*intake\.addresses/, "Direcciones debe tener su propia pantalla");
+  need(panel, /id="storage-costs-panel"[\s\S]*hidden=\{activeStage !== "costs"\}[\s\S]*activeStage === "costs" && intake\.costs/, "Costos internos debe tener su propia pantalla");
+  need(panel, /storageSelected && <div id="storage-movements-panel"[\s\S]*hidden=\{activeStage !== "movements"\}[\s\S]*activeView="authorization"/, "los movimientos de almacenaje deben abrirse en su propia pantalla");
   need(detail, /\["CONTRACT", "Contrato", FileText\][\s\S]*activeTab === "CONTRACT"[\s\S]*ContractCasePanel/, "Contrato no está separado como pantalla principal del caso");
   need(detail, /activeTab === "SERVICES" && servicesEnabled[\s\S]*ServiceCasePanel/, "UI carga Servicios sin autorización previa");
 

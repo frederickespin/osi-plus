@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { calculateQuoteTotals, normalizeQuoteCreate, normalizeQuotePublish, normalizeQuoteRevise, quoteHash } from "../api/_lib/quoteContract.js";
-import { getQuoteClientProjection, quoteContractInternals } from "../api/_lib/quoteDomain.js";
+import { getQuoteClientProjection, getQuoteClientProposal, quoteContractInternals } from "../api/_lib/quoteDomain.js";
 
 const ref = () => randomUUID();
 function payload(overrides = {}) {
@@ -97,4 +97,25 @@ assert.throws(() => normalizeQuotePublish(signed({ ...approvalInput, marginAppro
 assertions += 11;
 const client = getQuoteClientProjection({ proposalRef: ref(), reference: "Q-2026-000001-A", revisionRef: ref(), revision: 1, state: "SENT", proposalName: "A", currency: "USD", issueDate: "2026-09-05", validUntil: "2026-10-05", client: {}, commercialContext: {}, payer: {}, terms: {}, exchange: null, discount: null, totals: { capturedCost: 90, suggestedPrice: 130, grossQuotedPrice: 160, discountAmount: 0, totalQuotedPrice: 160 }, lines: [{ lineRef: ref(), sourceKind: "COSTING", concept: "Servicio", quantity: "1", unit: "SERVICE", economicClass: "PR", capturedCost: "90", suggestedPrice: "130", quotedPrice: "160", currency: "USD", priceStatus: "CONFIRMED", position: 1 }], logicalSha256: "a".repeat(64) });
 assert.equal("capturedCost" in client.lines[0], false); assert.equal("suggestedPrice" in client.lines[0], false); assert.equal("capturedCost" in client.totals, false); assertions += 3;
+const reader = { tenantId: ref(), membershipId: ref(), userId: ref(), effectivePermissions: ["quote:view"] };
+const proposalRef = ref(), archivedRef = ref();
+const archived = {
+  revisionRef: archivedRef, revision: 2, state: "SENT", issueDate: new Date("2026-09-05"), validUntil: new Date("2026-10-05"),
+  currency: "USD", proposalName: "Primer transporte", termsSnapshot: { scope: "Entrega al puerto" },
+  payerSnapshot: { displayName: "Familia Pérez" }, clientSnapshot: { client: { displayName: "Familia Pérez" } },
+  commercialContextSnapshot: { commissionContext: { amount: 20 } }, totalsSnapshot: { grossQuotedPrice: 100, discountAmount: 10, totalQuotedPrice: 90 },
+  lines: [{ lineRef: ref(), quantity: "1", quotedPrice: "100", concept: "Transporte", currency: "USD", position: 1 }], issues: [],
+};
+const previous = await getQuoteClientProposal({ quoteProposal: {
+  findFirst: async ({ where, select }) => {
+    assert.deepEqual(where, { tenantId: reader.tenantId, proposalRef, pipelineCase: { ownerMembershipId: reader.membershipId, ownerUserId: reader.userId } });
+    assert.deepEqual(select.revisions.where, { tenantId: reader.tenantId, revisionRef: archivedRef });
+    return { proposalRef, reference: "Q-1", currentRevision: 3, state: "DRAFT", revisions: [archived] };
+  },
+} }, reader, proposalRef, archivedRef);
+assert.deepEqual([previous.state, previous.revisionRef, previous.totals.totalQuotedPrice, previous.terms.scope], ["SENT", archivedRef, 90, "Entrega al puerto"]);
+assert.equal("commercialContext" in previous, false);
+await assert.rejects(getQuoteClientProposal({}, { ...reader, deniedPermissions: ["quote:view"] }, proposalRef, archivedRef), /QUOTE_FORBIDDEN/);
+await assert.rejects(getQuoteClientProposal({ quoteProposal: { findFirst: async () => ({ revisions: [] }) } }, reader, proposalRef, ref()), /QUOTE_NOT_FOUND/);
+assertions += 6;
 console.log(`V17-QUOTE-09A contract: ${assertions}/${assertions}`);

@@ -18,9 +18,12 @@ assert.deepEqual(inventoryAvailability({ movements: [{ movementType: "RECEIPT", 
 assert.deepEqual(inventoryAvailability({ movements: [{ movementType: "RECEIPT", quantity: 100 }], reservations: [{ status: "RESERVED", quantity: 30 }, { status: "ASSIGNED", quantity: 10 }] }), { physical: 100, reserved: 30, assigned: 10, available: 60 });
 assert.equal(resolveRecipeQuantity({ formulaType: "PER_ITEM", multiplier: 1.5, wastePercent: 10, roundingIncrement: 1 }, { quantity: 3 }), 5);
 assert.equal(resolveRecipeQuantity({ formulaType: "PER_AREA", multiplier: 2, wastePercent: 0, roundingIncrement: 0.5 }, { areaM2: 1.1 }), 2.5);
+const perVolume = { formulaType: "PER_ITEM", formulaConfig: { measurement: "UNIT_VOLUME_M3" }, multiplier: 2, roundingIncrement: 1, wastePercent: 10 };
+assert.equal(resolveRecipeQuantity(perVolume, { quantity: 3, unitVolumeM3: "1.6" }), 11);
+assert.throws(() => resolveRecipeQuantity(perVolume, { quantity: 3, unitVolumeM3: null }), /MATERIALS_RECIPE_MEASUREMENT_REQUIRED/);
 assert.throws(() => normalizeRecipeCreate(command("RECIPE_CREATE", { code: "DUP", name: "Duplicada", applicability: {}, lines: [{ materialRef: refs[0], unitRef: refs[1], formulaType: "FIXED", fixedQuantity: 1, multiplier: null, roundingIncrement: 1, wastePercent: 0, formulaConfig: {} }, { materialRef: refs[0], unitRef: refs[1], formulaType: "FIXED", fixedQuantity: 2, multiplier: null, roundingIncrement: 1, wastePercent: 0, formulaConfig: {} }] })), /MATERIALS_RECIPE_LINE_DUPLICATE/);
 assert.equal(normalizeReservationAssign(command("RESERVATION_ASSIGN", { reservationRef: refs[0], expectedVersion: 1, reasonCode: "CREW_READY" })).expectedVersion, 1);
 assert.equal(normalizeRecipeVersionCreate(command("RECIPE_VERSION_ACTIVATE", { recipeRef: refs[0], expectedActiveVersion: 1, applicability: { modes: ["LOCAL"] }, lines: [{ materialRef: refs[1], unitRef: refs[2], formulaType: "FIXED", fixedQuantity: 2, multiplier: null, roundingIncrement: 1, wastePercent: 0, formulaConfig: {} }] })).lines.length, 1);
 assert.throws(() => normalizePurchaseTransition(command("PURCHASE_REQUEST_TRANSITION", { purchaseRequestRef: refs[0], expectedVersion: 1, action: "RECEIVE", locationRef: null, lotCode: null, reasonCode: "RECEIPT" })), /MATERIALS_INPUT_INVALID/);
 assert.equal(normalizePurchaseTransition(command("PURCHASE_REQUEST_TRANSITION", { purchaseRequestRef: refs[0], expectedVersion: 1, action: "APPROVE", locationRef: null, lotCode: null, reasonCode: "APPROVED" })).action, "APPROVE");
-process.stdout.write(JSON.stringify({ ok: true, assertions: 20, productionApiEnabled: false }) + "\n");
+process.stdout.write(JSON.stringify({ ok: true, assertions: 22, productionApiEnabled: false }) + "\n");

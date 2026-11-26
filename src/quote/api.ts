@@ -2,6 +2,7 @@ export type QuoteLine = Readonly<{
   lineRef: string; sourceKind: "COSTING" | "MANUAL"; packageMinimum?: boolean; concept: string; quantity: string; unit: string;
   economicClass: "PR" | "EX" | "DE"; capturedCost?: string | null; suggestedPrice?: string | null; quotedPrice: string | null;
   currency: string; priceStatus: "CONFIRMED" | "PENDING"; position: number;
+  reason?: string | null;
   costingLineRef?: string | null; catalog?: Readonly<{ ruleRef: string; version: number; unitPrice: string }>;
 }>;
 type QuoteCommercialParty = null | Readonly<{ kind: string; reference: string; displayName: string; version: number; validFrom: string | null; validUntil: string | null }>;
@@ -9,6 +10,12 @@ type QuoteTerms = Readonly<{
   groupName?: string | null; paymentTerms: string; scope: string; exclusions: readonly string[];
   clientNotes: string | null; specialConditions: readonly string[]; templateRef: string | null; templateVersion: number | null;
 }>;
+type QuoteClientSnapshot = Readonly<{
+  caseCode: string; client: { displayName: string } | null;
+  route: readonly Readonly<{ role: string; stopOrder: number; streetAndNumber: string | null; buildingResidential: string | null;
+    floorUnit: string | null; sector: string | null; cityMunicipality: string | null; provinceState: string | null; countryCode: string | null }>[];
+}>;
+export type QuoteVersion = Readonly<{ revisionRef: string; revision: number; state: string; createdAt?: string }>;
 export type QuoteProposal = Readonly<{
   proposalRef: string; reference: string; position: number; state: string; revisionRef: string; revision: number;
   proposalName: string; costingRevisionRef: string; sourceMode?: "CATALOG" | "PACKAGE" | "COSTING"; groupName?: string | null; flexibleBasis?: boolean;
@@ -18,8 +25,16 @@ export type QuoteProposal = Readonly<{
   payer: Readonly<{ kind: string; reference: string; displayName: string; sourceVersion: number; validFrom: string | null; validUntil: string | null; conditions?: string | null }>;
   terms?: QuoteTerms; exchange?: Readonly<Record<string, unknown>> | null; discount?: Readonly<Record<string, unknown>> | null;
   marginAuthorization?: Readonly<{ authorizationRef?: string; reason?: string }> | null;
+  client?: QuoteClientSnapshot; versions?: readonly QuoteVersion[];
   totals: Record<string, number>; lines: readonly QuoteLine[];
   issues: readonly { code: string; message: string; severity?: string; status?: string }[]; logicalSha256: string;
+}>;
+export type QuoteClientProposal = Pick<QuoteProposal, "proposalRef" | "reference" | "revisionRef" | "revision" | "state" |
+  "proposalName" | "groupName" | "currency" | "issueDate" | "validUntil" | "client" | "exchange"> & Readonly<{
+  payer: { displayName: string }; terms?: Pick<QuoteTerms, "paymentTerms" | "scope" | "exclusions" | "clientNotes" | "specialConditions">;
+  totals: { grossQuotedPrice?: number; discountAmount?: number; totalQuotedPrice?: number };
+  packageScope?: { name: string; volumeM3: number };
+  lines: readonly Pick<QuoteLine, "lineRef" | "concept" | "quantity" | "unit" | "quotedPrice" | "currency" | "position">[];
 }>;
 export type QuoteCase = Readonly<{ caseRef: string; caseCode: string; destinationStatus: string | null; proposals: readonly QuoteProposal[] }>;
 
@@ -49,6 +64,8 @@ async function command<T>(authorization: string | undefined, path: string, opera
 
 export const quoteApi = Object.freeze({
   case: (authorization: string | undefined, caseRef: string) => request<QuoteCase>(authorization, `/api/quote/cases/${encodeURIComponent(caseRef)}`),
+  clientVersion: (authorization: string | undefined, proposalRef: string, revisionRef: string, signal: AbortSignal) =>
+    request<QuoteClientProposal>(authorization, `/api/quote/proposals/${encodeURIComponent(proposalRef)}/client?revisionRef=${encodeURIComponent(revisionRef)}`, { signal }),
   create: (authorization: string | undefined, payload: Record<string, unknown>, requestId?: string) => command<QuoteProposal>(authorization, "/api/quote/proposals/create", "QUOTE_PROPOSAL_CREATE", payload, requestId),
   revise: (authorization: string | undefined, payload: Record<string, unknown>, requestId?: string) => command<QuoteProposal>(authorization, "/api/quote/proposals/revise", "QUOTE_PROPOSAL_REVISE", payload, requestId),
   publish: (authorization: string | undefined, proposalRef: string, expectedRevision: number, marginApprovalReason?: string) =>

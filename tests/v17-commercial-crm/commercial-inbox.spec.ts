@@ -197,6 +197,24 @@ test("cero casos presenta estado empresarial vacío y sólo ejecuta GET canónic
   expect(await page.evaluate(() => Object.keys(localStorage).filter((key) => /crm|pipeline|case/i.test(key) && !key.startsWith("osi-plus.")))).toEqual([]);
 });
 
+test("la cabecera destaca el cliente y permite volver al Inbox con la flecha", async ({ page }) => {
+  await authenticate(page);
+  const item = pipelineCase();
+  await mockCrm(page, { cases: [item] });
+  await page.goto(`/commercial/cases/${DEFAULT_CASE_REF}`);
+  const header = page.getByTestId("commercial-case-focused-header");
+  await expect(header.getByRole("heading", { name: "Receptor Sintético" })).toBeVisible();
+  await expect(header).toContainText(item.caseCode);
+  await expect(header.getByRole("heading", { name: "Ficha del Caso", exact: true })).toHaveCSS("width", "1px");
+  const back = header.getByRole("button", { name: "Volver al Inbox", exact: true });
+  await expect(back).toHaveText("");
+  await expect(back).toHaveAttribute("title", "Volver al Inbox");
+  await expect(back.locator("svg")).toBeVisible();
+  await back.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/commercial$/);
+});
+
 test("shell ERP azul, Inbox avanzado y tabs futuros conservan autoridad de sólo lectura", async ({ page }, testInfo) => {
   const item = pipelineCase({ quoteCount: 2, eventCount: 3 });
   await authenticate(page);

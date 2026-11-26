@@ -89,6 +89,45 @@ test("Servicios consume modo ICP, precarga defaults y guarda un snapshot sin IDs
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 
+for (const role of ["principal", "asociado"] as const) {
+  test(`la capacidad del almacenaje ${role} y sus autorizaciones se consultan en Movimientos`, async ({ page }) => {
+    await session(page);
+    await crm(page);
+    const plan = savedWorkspace();
+    const storage = { code: "ALMACENAJE", category: "STORAGE", name: "Almacenaje" };
+    if (role === "principal") {
+      Object.assign(plan.primaries[0], storage);
+      Object.assign(plan.selection.primary, storage);
+    } else {
+      Object.assign(plan.allowedComplementaries[0].service, storage);
+      Object.assign(plan.selection.complementaries[0], storage);
+    }
+    await page.route(`**/api/crm/services/cases/${CASE_REF}`, (route) => route.fulfill({ json: { ok: true, data: plan } }));
+    await page.route("**/api/customer-custody/storage-requirements?**", (route) => route.fulfill({ json: { ok: true, data: {
+      historyCount: 1, current: { revision: 1, storageType: "PERSONAL_EFFECTS", capacityBasis: "CUBIC_METER",
+        capacityQuantity: 18, estimatedDurationMonths: 4, dataSource: "COMMERCIAL_ESTIMATE", visitDecision: "TO_CONFIRM" },
+    } } }));
+    await page.route("**/api/customer-custody/storage-agreements?**", (route) => route.fulfill({ json: { ok: true, data: {
+      client: { name: "Cliente relacional" }, agreement: null, acceptedQuote: null,
+      requirements: { storageServiceSelected: true, acceptedQuote: false, identityConfirmed: false, billingConfirmed: false, signed: false, active: false },
+    } } }));
+    await page.route("**/api/customer-custody/authorizations?**", (route) => route.fulfill({ json: { ok: true, data: [] } }));
+    await page.route("**/api/materials/warehouses", (route) => route.fulfill({ json: { ok: true, data: [] } }));
+
+    await page.goto(`/commercial/cases/${CASE_REF}`);
+    const panel = page.getByTestId("case-services-panel");
+    await expect(panel.getByRole("tab", { name: "Plan", exact: true })).toBeVisible();
+    await expect(panel.getByRole("tab", { name: "Almacenaje", exact: true })).toHaveCount(0);
+    await panel.getByRole("tab", { name: "Movimientos" }).click();
+    await expect(panel.getByRole("heading", { name: "Entradas y salidas de almacenaje" })).toBeVisible();
+    const quantity = panel.getByTestId("storage-requirement-panel").getByLabel("Cantidad aproximada");
+    await expect(quantity).toBeHidden();
+    await panel.getByText("Capacidad y duración del servicio", { exact: true }).click();
+    await expect(quantity).toBeVisible();
+    await expect(quantity).toHaveValue("18");
+  });
+}
+
 test("deny bloquea antes del lazy de Servicios y no inicia requests", async ({ page }) => {
   await session(page, true); let serviceRequests = 0; page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/crm/services")) serviceRequests += 1; });
   await page.goto(`/commercial/cases/${CASE_REF}`); await expect(page.getByTestId("hub-forbidden")).toContainText("403 · Acceso no autorizado"); await expect(page.getByTestId("case-services-panel")).toHaveCount(0); expect(serviceRequests).toBe(0);

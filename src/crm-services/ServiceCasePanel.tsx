@@ -32,7 +32,7 @@ type Props = Readonly<{
   intake?: ServiceCaseIntake;
   onUnauthorized(): void;
 }>;
-type GuidedStage = "plan" | "storage" | "movements" | "configuration";
+type GuidedStage = "plan" | "movements" | "configuration";
 const MODE_LABEL = { LOCAL: "LOCAL / NACIONAL", EXPORT: "EXPORTACIÓN", IMPORT: "IMPORTACIÓN" };
 const FIELD = cn(COMPACT_TABLE_FIELD, "bg-slate-50 px-2");
 function errorCopy(error: unknown) {
@@ -116,7 +116,7 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
     return configuration.packages.filter((item) => [item.primary, ...item.complementaries].filter(Boolean).every((service) => Boolean(service && selectedCodes.has(service.code))));
   }, [configuration, workspace]);
   useEffect(() => {
-    if ((!storageSelected && (activeStage === "storage" || activeStage === "movements")) ||
+    if ((!storageSelected && activeStage === "movements") ||
       (!canViewConfiguration && activeStage === "configuration")) setActiveStage("plan");
   }, [activeStage, canViewConfiguration, storageSelected]);
   const pendingService = Boolean(catalogRef || otherDraft.trim());
@@ -179,7 +179,7 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
   if (!workspace || workspace.caseRef !== caseRef) return null;
 
   const stages: { id: GuidedStage; label: string }[] = [{ id: "plan", label: "Plan" }];
-  if (storageSelected) stages.push({ id: "storage", label: "Almacenaje" }, { id: "movements", label: "Movimientos" });
+  if (storageSelected) stages.push({ id: "movements", label: "Movimientos" });
   if (canViewConfiguration) stages.push({ id: "configuration", label: "Configuración" });
   const selectedPrimary = workspace.primaries.find((item) => item.serviceRef === primaryRef) ??
     (workspace.selection.primary?.serviceRef === primaryRef ? workspace.selection.primary : undefined);
@@ -187,7 +187,6 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
   const unavailableSavedPrimary = savedPrimary && !workspace.primaries.some((item) => item.serviceRef === savedPrimary.serviceRef);
   const total = selectedCatalogServices.length + others.length + Number(Boolean(selectedPrimary));
   const hasViews = stages.length > 1;
-  const viewingStorage = activeStage === "storage" || activeStage === "movements";
   const canChangeStage = !dirty && !pendingService && !saving && !loading && !configurationSaving && !intake?.saving;
 
   return <section role="tabpanel" aria-labelledby="services-tab" className="w-full min-w-0 px-2 py-3 sm:px-4" data-testid="case-services-panel">
@@ -332,11 +331,11 @@ export default function ServiceCasePanel({ caseRef, authorization, canUpdate, ca
         {primaryChanged && <p className="basis-full text-xs text-amber-900">El cambio de necesidad principal creará una nueva versión.</p>}
       </footer>
     </div>
-    {storageSelected && <div id={viewingStorage ? "storage-" + activeStage + "-panel" : undefined}
-      role="tabpanel" aria-labelledby={viewingStorage ? "storage-" + activeStage + "-tab" : undefined} hidden={!viewingStorage}>
+    {storageSelected && <div id="storage-movements-panel"
+      role="tabpanel" aria-labelledby="storage-movements-tab" hidden={activeStage !== "movements"}>
       <CommercialStorageAuthorizationPanel caseRef={caseRef} selectionRef={workspace.selection.selectionRef}
         primary={workspace.selection.primary} complementaries={workspace.selection.complementaries} authorization={authorization}
-        canAuthorize={canUpdate && canContinue} activeView={activeStage === "movements" ? "authorization" : "requirement"} />
+        canAuthorize={canUpdate && canContinue} activeView="authorization" showRequirementDetails />
     </div>}
     <div id="storage-configuration-panel" role="tabpanel" aria-labelledby="storage-configuration-tab" hidden={activeStage !== "configuration"}>
       {canViewConfiguration && <section className="mt-4" data-testid="case-service-configuration">

@@ -165,7 +165,36 @@ function CommercialCaseWorkspace({ state, authorization, servicesAccess, logisti
     setCommunicationTarget(target);
   };
 
-  return <section className="min-h-full bg-white" data-testid="commercial-case-detail"><header data-testid="commercial-case-focused-header" className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-4"><div className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-center gap-3"><button type="button" aria-label="Abrir navegación ERP" className="rounded-lg border border-slate-200 p-2 text-[#003366] lg:hidden" onClick={onOpenNavigation}><Menu className="h-5 w-5" /></button><h1 className="text-sm font-black uppercase tracking-[.18em] text-[#0070a8]">Ficha del Caso</h1></div><div className="flex gap-2">{item && activeTab !== "SERVICES" && <Button size="sm" variant="outline" onClick={() => setRouteOpen(true)}><MapPin />Ruta del caso</Button>}<Button size="sm" variant="outline" onClick={onBack}><ArrowLeft />Volver al Inbox</Button></div></div>{item && <div className="mt-2"><h2 className="text-xl font-black tracking-tight text-[#003366]">{item.client?.displayName || "Sin Client vinculado"}</h2><p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600"><span className="font-mono font-black text-[#003366]">{item.caseCode}</span><span aria-hidden="true">·</span><span>{STATUS_LABELS[item.status]}</span><span aria-hidden="true">·</span><span>Etapa no publicada</span><span aria-hidden="true">·</span><span>{item.owner?.displayName || "Sin responsable"}</span></p>{alerts.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-1.5"><BellRing className="h-4 w-4 text-amber-700" />{alerts.map((alert) => <span key={alert} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">{alert}</span>)}</div>}</div>}</header>
+  return <section className="min-h-full bg-white" data-testid="commercial-case-detail">
+    <header data-testid="commercial-case-focused-header" className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-3">
+      <h1 className="sr-only">Ficha del Caso</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <button type="button" aria-label="Abrir navegación ERP" className="shrink-0 rounded-lg border border-slate-200 p-2 text-[#003366] lg:hidden" onClick={onOpenNavigation}>
+            <Menu aria-hidden="true" className="h-5 w-5" />
+          </button>
+          {item && <h2 className="break-words text-xl font-black tracking-tight text-[#003366]">{item.client?.displayName || "Sin cliente vinculado"}</h2>}
+        </div>
+        <div className="ms-auto flex items-center gap-2">
+          {item && activeTab !== "SERVICES" && <Button size="sm" variant="outline" onClick={() => setRouteOpen(true)}><MapPin />Ruta del caso</Button>}
+          <Button type="button" size="icon" title="Volver al Inbox" aria-label="Volver al Inbox" onClick={onBack}
+            className="border border-yellow-400 bg-yellow-300 text-slate-900 hover:border-yellow-500 hover:bg-yellow-400">
+            <ArrowLeft aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+      {item && <>
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600">
+          <span className="font-mono font-black text-[#003366]">{item.caseCode}</span><span aria-hidden="true">·</span>
+          <span>{STATUS_LABELS[item.status]}</span><span aria-hidden="true">·</span>
+          <span>Etapa no publicada</span><span aria-hidden="true">·</span><span>{item.owner?.displayName || "Sin responsable"}</span>
+        </p>
+        {alerts.length > 0 && <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <BellRing className="h-4 w-4 text-amber-700" />
+          {alerts.map((alert) => <span key={alert} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-800">{alert}</span>)}
+        </div>}
+      </>}
+    </header>
     {state.loading && <div className="grid min-h-[40vh] place-items-center text-sm text-slate-500">Cargando la autoridad relacional del caso…</div>}
     {state.error && <Alert variant="destructive" role="alert" className="m-4"><AlertCircle /><AlertTitle>No pudimos cargar la Ficha</AlertTitle><AlertDescription>{commercialReadErrorCopy(state.error)}<Button className="mt-3" size="sm" variant="outline" onClick={onReload}>Reintentar lectura</Button></AlertDescription></Alert>}
     {item && <>
